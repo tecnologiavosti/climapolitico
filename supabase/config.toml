@@ -1,1 +1,7 @@
 project_id = "okazmxhoviblxtxtjzzc"
+
+[auth]
+enabled = true
+
+[functions.analyze-sentiment]
+verify_jwt = false

@@ -84,10 +84,15 @@ const Dashboard = () => {
               Clima Político
             </h1>
           </div>
-          <Button onClick={signOut} variant="outline" size="sm">
-            <LogOut className="mr-2 h-4 w-4" />
-            Sair
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button onClick={() => navigate("/test-ai")} variant="outline" size="sm">
+              Testar IA
+            </Button>
+            <Button onClick={signOut} variant="outline" size="sm">
+              <LogOut className="mr-2 h-4 w-4" />
+              Sair
+            </Button>
+          </div>
         </div>
       </header>
 
