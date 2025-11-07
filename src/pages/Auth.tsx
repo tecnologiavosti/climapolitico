@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -280,9 +280,9 @@ const Auth = () => {
         </Tabs>
 
         <div className="text-center text-sm text-muted-foreground">
-          <a href="/" className="hover:text-primary transition-colors">
+          <Link to="/" className="hover:text-primary transition-colors">
             ← Voltar para Home
-          </a>
+          </Link>
         </div>
       </Card>
     </div>

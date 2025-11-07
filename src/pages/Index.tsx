@@ -4,8 +4,11 @@ import { Badge } from "@/components/ui/badge";
 import { BarChart3, TrendingUp, Users, Shield, LineChart, Globe, Zap, Lock } from "lucide-react";
 import { StatsGrid } from "@/components/dashboard/StatsGrid";
 import { FeatureCard } from "@/components/features/FeatureCard";
+import { useNavigate } from "react-router-dom";
 
 const Index = () => {
+  const navigate = useNavigate();
+  
   return (
     <div className="min-h-screen bg-gradient-secondary">
       {/* Hero Section */}
@@ -27,7 +30,7 @@ const Index = () => {
               <Button 
                 size="lg" 
                 className="bg-gradient-primary hover:shadow-glow transition-all duration-300"
-                onClick={() => window.location.href = '/auth'}
+                onClick={() => navigate('/auth')}
               >
                 Começar Análise
                 <TrendingUp className="ml-2 h-5 w-5" />
@@ -35,7 +38,7 @@ const Index = () => {
               <Button 
                 size="lg" 
                 variant="outline"
-                onClick={() => window.location.href = '/auth'}
+                onClick={() => navigate('/auth')}
               >
                 Entrar
                 <BarChart3 className="ml-2 h-5 w-5" />
