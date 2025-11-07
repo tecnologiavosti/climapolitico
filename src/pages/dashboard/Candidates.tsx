@@ -3,6 +3,15 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -58,11 +67,25 @@ const candidatesData = [
 
 export default function Candidates() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    fullName: "",
+    region: "",
+    socialMedia: "",
+  });
 
   const filteredCandidates = candidatesData.filter((candidate) =>
     candidate.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     candidate.party.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    console.log("Novo candidato:", formData);
+    // Aqui você pode adicionar a lógica para salvar no banco de dados
+    setDialogOpen(false);
+    setFormData({ fullName: "", region: "", socialMedia: "" });
+  };
 
   return (
     <div className="space-y-6">
@@ -72,10 +95,60 @@ export default function Candidates() {
           <h2 className="text-3xl font-bold">Candidatos</h2>
           <p className="text-muted-foreground">Gerencie e monitore candidatos políticos</p>
         </div>
-        <Button className="bg-gradient-primary">
-          <Plus className="mr-2 h-4 w-4" />
-          Adicionar Candidato
-        </Button>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogTrigger asChild>
+            <Button className="bg-gradient-primary">
+              <Plus className="mr-2 h-4 w-4" />
+              Adicionar Candidato
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Adicionar Novo Político</DialogTitle>
+              <DialogDescription>
+                Insira as informações do político que deseja monitorar
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="fullName">Nome Completo *</Label>
+                <Input
+                  id="fullName"
+                  placeholder="Ex: João Silva"
+                  value={formData.fullName}
+                  onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="region">Região / Estado</Label>
+                <Input
+                  id="region"
+                  placeholder="Ex: São Paulo, Rio de Janeiro"
+                  value={formData.region}
+                  onChange={(e) => setFormData({ ...formData, region: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="socialMedia">Link de Rede Social</Label>
+                <Input
+                  id="socialMedia"
+                  placeholder="Ex: https://twitter.com/usuario, https://instagram.com/usuario"
+                  value={formData.socialMedia}
+                  onChange={(e) => setFormData({ ...formData, socialMedia: e.target.value })}
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-4">
+                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" className="bg-gradient-primary">
+                  Adicionar
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Search */}
