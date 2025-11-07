@@ -24,12 +24,20 @@ const Index = () => {
               Monitore, analise e compreenda o cenário político nas redes sociais.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <Button size="lg" className="bg-gradient-primary hover:shadow-glow transition-all duration-300">
+              <Button 
+                size="lg" 
+                className="bg-gradient-primary hover:shadow-glow transition-all duration-300"
+                onClick={() => window.location.href = '/auth'}
+              >
                 Começar Análise
                 <TrendingUp className="ml-2 h-5 w-5" />
               </Button>
-              <Button size="lg" variant="outline">
-                Ver Demo
+              <Button 
+                size="lg" 
+                variant="outline"
+                onClick={() => window.location.href = '/auth'}
+              >
+                Entrar
                 <BarChart3 className="ml-2 h-5 w-5" />
               </Button>
             </div>
