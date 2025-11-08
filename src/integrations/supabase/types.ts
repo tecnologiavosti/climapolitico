@@ -14,6 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      candidates: {
+        Row: {
+          created_at: string | null
+          followers: string | null
+          full_name: string
+          id: string
+          mentions: number | null
+          party: string | null
+          region: string | null
+          sentiment: number | null
+          social_media_link: string | null
+          status: string | null
+          trend: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          followers?: string | null
+          full_name: string
+          id?: string
+          mentions?: number | null
+          party?: string | null
+          region?: string | null
+          sentiment?: number | null
+          social_media_link?: string | null
+          status?: string | null
+          trend?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          followers?: string | null
+          full_name?: string
+          id?: string
+          mentions?: number | null
+          party?: string | null
+          region?: string | null
+          sentiment?: number | null
+          social_media_link?: string | null
+          status?: string | null
+          trend?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
