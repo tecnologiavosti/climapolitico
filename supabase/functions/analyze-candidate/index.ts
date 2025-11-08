@@ -85,19 +85,21 @@ serve(async (req) => {
       throw new Error('LOVABLE_API_KEY not configured');
     }
 
-    const analysisPrompt = `Analyze the following political candidate for sentiment, ideology, and key topics:
+    const analysisPrompt = `Analise o seguinte candidato político quanto ao sentimento, ideologia e tópicos-chave:
 
-Name: ${candidate.full_name}
-Region: ${candidate.region}
-Social Media: ${candidate.social_media_link}
+Nome: ${candidate.full_name}
+Região: ${candidate.region}
+Rede Social: ${candidate.social_media_link}
 
-Provide:
-1. Sentiment (positive/negative/neutral) with a score 0-100
-2. Political ideology (left/center/right/neutral)
-3. Top 5 keywords related to their campaign
-4. Confidence level (0-1)
+Forneça:
+1. Sentimento (positive/negative/neutral) com pontuação de 0-100
+2. Ideologia política (left/center/right/neutral)
+3. As 5 principais palavras-chave relacionadas à campanha (EM PORTUGUÊS)
+4. Nível de confiança (0-1)
 
-Format your response as JSON with these fields: sentiment, sentimentScore, ideology, keywords (array), confidence, reasoning`;
+IMPORTANTE: Todas as keywords devem estar em PORTUGUÊS do Brasil.
+
+Formate sua resposta como JSON com estes campos: sentiment, sentimentScore, ideology, keywords (array em português), confidence, reasoning`;
 
     // Call three AI models in parallel
     const [geminiFlashResult, geminiProResult, gpt5MiniResult] = await Promise.all([
