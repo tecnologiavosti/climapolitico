@@ -1,61 +1,27 @@
 import { useState } from "react";
-import { Card } from "@/components/ui/card";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Plus, Search, TrendingUp, TrendingDown, Trash2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
-import { toast } from "@/hooks/use-toast";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { z } from "zod";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ArrowUpRight, ArrowDownRight, Minus, Search, UserPlus, Trash2, Brain, Loader2 } from "lucide-react";
 
 // Zod validation schema
 const candidateSchema = z.object({
-  fullName: z.string()
-    .trim()
-    .min(3, "Nome deve ter no mínimo 3 caracteres")
-    .max(100, "Nome deve ter no máximo 100 caracteres"),
-  region: z.string()
-    .trim()
-    .max(50, "Região deve ter no máximo 50 caracteres")
-    .optional()
-    .or(z.literal("")),
-  socialMedia: z.string()
-    .trim()
-    .refine((val) => !val || val.startsWith("http://") || val.startsWith("https://"), {
-      message: "Link deve começar com http:// ou https://"
-    })
-    .optional()
-    .or(z.literal(""))
+  fullName: z.string().trim().min(3, "Nome deve ter no mínimo 3 caracteres").max(100, "Nome deve ter no máximo 100 caracteres"),
+  region: z.string().trim().max(50, "Região deve ter no máximo 50 caracteres").optional().or(z.literal("")),
+  socialMedia: z.string().trim().refine((val) => !val || val.startsWith("http://") || val.startsWith("https://"), {
+    message: "Link deve começar com http:// ou https://"
+  }).optional().or(z.literal(""))
 });
 
 type CandidateFormData = {
@@ -65,13 +31,12 @@ type CandidateFormData = {
 };
 
 export default function Candidates() {
-  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [candidateToDelete, setCandidateToDelete] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<CandidateFormData>({
     fullName: "",
     region: "",
     socialMedia: "",
@@ -80,9 +45,11 @@ export default function Candidates() {
 
   // Fetch user's subscription
   const { data: subscription } = useQuery({
-    queryKey: ['subscription', user?.id],
+    queryKey: ['subscription'],
     queryFn: async () => {
-      if (!user?.id) return null;
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
       const { data, error } = await supabase
         .from('subscriptions')
         .select('*')
@@ -92,39 +59,38 @@ export default function Candidates() {
       if (error) throw error;
       return data;
     },
-    enabled: !!user?.id
   });
 
   // Fetch candidates
-  const { data: candidates = [], isLoading, refetch } = useQuery({
-    queryKey: ['candidates', user?.id],
+  const { data: candidates = [], isLoading } = useQuery({
+    queryKey: ['candidates'],
     queryFn: async () => {
-      if (!user?.id) return [];
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
       const { data, error } = await supabase
         .from('candidates')
         .select('*')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
       return data;
     },
-    enabled: !!user?.id
   });
 
   // Add candidate mutation
   const addCandidateMutation = useMutation({
     mutationFn: async (formData: CandidateFormData) => {
-      if (!user?.id) throw new Error('Usuário não autenticado');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuário não autenticado');
 
-      // Validate data
       const validatedData = candidateSchema.parse(formData);
 
-      // Check subscription limits
       if (subscription && candidates.length >= subscription.max_candidates) {
         throw new Error(`Limite de ${subscription.max_candidates} candidatos atingido. Faça upgrade do seu plano.`);
       }
 
-      // Insert into database
       const { data, error } = await supabase
         .from('candidates')
         .insert({
@@ -140,50 +106,72 @@ export default function Candidates() {
       return data;
     },
     onSuccess: () => {
-      toast({
-        title: "Sucesso!",
-        description: "Candidato adicionado com sucesso.",
-      });
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      toast.success('Candidato adicionado com sucesso!');
       setDialogOpen(false);
       setFormData({ fullName: "", region: "", socialMedia: "" });
       setValidationErrors({});
     },
     onError: (error: Error) => {
-      toast({
-        title: "Erro",
-        description: error.message || "Erro ao adicionar candidato",
-        variant: "destructive"
-      });
+      toast.error(error.message || 'Erro ao adicionar candidato');
     }
   });
 
   // Delete candidate mutation
   const deleteCandidateMutation = useMutation({
-    mutationFn: async (candidateId: string) => {
+    mutationFn: async (id: string) => {
       const { error } = await supabase
         .from('candidates')
         .delete()
-        .eq('id', candidateId);
-
+        .eq('id', id);
+      
       if (error) throw error;
     },
     onSuccess: () => {
-      toast({
-        title: "Sucesso!",
-        description: "Candidato removido com sucesso.",
-      });
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      toast.success('Candidato removido com sucesso!');
       setDeleteDialogOpen(false);
       setCandidateToDelete(null);
     },
-    onError: (error: Error) => {
-      toast({
-        title: "Erro",
-        description: error.message || "Erro ao remover candidato",
-        variant: "destructive"
+    onError: (error) => {
+      toast.error('Erro ao remover candidato');
+      console.error('Delete error:', error);
+    },
+  });
+
+  // Analyze candidate mutation
+  const analyzeCandidateMutation = useMutation({
+    mutationFn: async (candidateId: string) => {
+      if (!subscription) throw new Error('Subscription not found');
+      
+      if (subscription.updates_used_this_month >= subscription.max_updates_per_month) {
+        throw new Error('Limite mensal de análises atingido');
+      }
+
+      const { data, error } = await supabase.functions.invoke('analyze-candidate', {
+        body: { candidateId }
       });
-    }
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['subscription'] });
+      toast.success(`Análise concluída! Sentimento: ${data.analysis.sentiment} (${data.analysis.sentimentScore}%)`);
+    },
+    onError: (error: Error) => {
+      if (error.message.includes('Rate limit')) {
+        toast.error('Limite de análises excedido. Aguarde 1 minuto.');
+      } else if (error.message.includes('credits exhausted')) {
+        toast.error('Créditos de IA esgotados. Adicione mais créditos.');
+      } else if (error.message.includes('Limite mensal')) {
+        toast.error('Limite mensal atingido. Faça upgrade do plano.');
+      } else {
+        toast.error('Erro ao analisar candidato. Tente novamente.');
+      }
+      console.error('Analysis error:', error);
+    },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -206,20 +194,9 @@ export default function Candidates() {
     }
   };
 
-  const handleDelete = (candidateId: string) => {
-    setCandidateToDelete(candidateId);
-    setDeleteDialogOpen(true);
-  };
-
-  const confirmDelete = () => {
-    if (candidateToDelete) {
-      deleteCandidateMutation.mutate(candidateToDelete);
-    }
-  };
-
   const filteredCandidates = candidates.filter((candidate) =>
     candidate.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (candidate.party && candidate.party.toLowerCase().includes(searchTerm.toLowerCase()))
+    (candidate.region && candidate.region.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   const isLimitReached = subscription && candidates.length >= subscription.max_candidates;
@@ -242,19 +219,18 @@ export default function Candidates() {
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button 
-              className="bg-gradient-primary" 
               disabled={isLimitReached}
               title={isLimitReached ? "Limite de candidatos atingido" : ""}
             >
-              <Plus className="mr-2 h-4 w-4" />
+              <UserPlus className="mr-2 h-4 w-4" />
               Adicionar Candidato
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
-              <DialogTitle>Adicionar Novo Político</DialogTitle>
+              <DialogTitle>Adicionar Novo Candidato</DialogTitle>
               <DialogDescription>
-                Insira as informações do político que deseja monitorar
+                Insira as informações do candidato que deseja monitorar
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4 mt-4">
@@ -307,8 +283,7 @@ export default function Candidates() {
                   Cancelar
                 </Button>
                 <Button 
-                  type="submit" 
-                  className="bg-gradient-primary"
+                  type="submit"
                   disabled={addCandidateMutation.isPending}
                 >
                   {addCandidateMutation.isPending ? "Adicionando..." : "Adicionar"}
@@ -324,7 +299,7 @@ export default function Candidates() {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar por nome ou partido..."
+            placeholder="Buscar por nome ou região..."
             className="pl-10"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -336,28 +311,26 @@ export default function Candidates() {
       <Card>
         {isLoading ? (
           <div className="p-6 space-y-4">
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
+            {[...Array(3)].map((_, i) => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
           </div>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Candidato</TableHead>
-                <TableHead>Partido</TableHead>
                 <TableHead>Menções</TableHead>
                 <TableHead>Sentimento</TableHead>
                 <TableHead>Tendência</TableHead>
-                <TableHead>Seguidores</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Última Análise</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredCandidates.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
                     {searchTerm 
                       ? "Nenhum candidato encontrado com esse critério de busca"
                       : "Nenhum candidato cadastrado. Adicione seu primeiro candidato!"}
@@ -366,59 +339,93 @@ export default function Candidates() {
               ) : (
                 filteredCandidates.map((candidate) => (
                   <TableRow key={candidate.id}>
-                    <TableCell className="font-medium">{candidate.full_name}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{candidate.party || "N/A"}</Badge>
-                    </TableCell>
-                    <TableCell>{candidate.mentions.toLocaleString()}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <div className="w-full max-w-[100px] bg-muted rounded-full h-2">
-                          <div
-                            className={`h-full rounded-full ${
-                              candidate.sentiment >= 60
-                                ? "bg-success"
-                                : candidate.sentiment >= 40
-                                ? "bg-warning"
-                                : "bg-destructive"
-                            }`}
-                            style={{ width: `${candidate.sentiment}%` }}
-                          />
-                        </div>
-                        <span className="text-sm">{candidate.sentiment}%</span>
+                      <div>
+                        <p className="font-medium">{candidate.full_name}</p>
+                        <p className="text-sm text-muted-foreground">{candidate.region || 'N/A'}</p>
                       </div>
                     </TableCell>
+                    <TableCell>{candidate.mentions?.toLocaleString() || 0}</TableCell>
                     <TableCell>
-                      {candidate.trend === "up" ? (
-                        <TrendingUp className="h-4 w-4 text-success" />
-                      ) : candidate.trend === "down" ? (
-                        <TrendingDown className="h-4 w-4 text-destructive" />
+                      {candidate.sentiment !== null ? (
+                        <div className="flex items-center gap-2">
+                          <Badge variant={
+                            candidate.sentiment >= 60 ? 'default' :
+                            candidate.sentiment >= 40 ? 'secondary' :
+                            'destructive'
+                          }>
+                            {candidate.sentiment}%
+                          </Badge>
+                        </div>
                       ) : (
-                        <span className="text-muted-foreground">—</span>
+                        <span className="text-muted-foreground text-sm">Não analisado</span>
                       )}
                     </TableCell>
-                    <TableCell>{candidate.followers || "N/A"}</TableCell>
                     <TableCell>
-                      <Badge
-                        className={
-                          candidate.status === "active"
-                            ? "bg-success"
-                            : "bg-warning"
-                        }
-                      >
-                        {candidate.status === "active" ? "Ativo" : "Monitorando"}
-                      </Badge>
+                      {candidate.trend === 'up' ? (
+                        <div className="flex items-center gap-1 text-green-500">
+                          <ArrowUpRight className="h-4 w-4" />
+                          <span className="text-sm">Alta</span>
+                        </div>
+                      ) : candidate.trend === 'down' ? (
+                        <div className="flex items-center gap-1 text-red-500">
+                          <ArrowDownRight className="h-4 w-4" />
+                          <span className="text-sm">Baixa</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 text-muted-foreground">
+                          <Minus className="h-4 w-4" />
+                          <span className="text-sm">Neutro</span>
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {candidate.last_analysis_at ? (
+                        <span className="text-sm text-muted-foreground">
+                          {new Date(candidate.last_analysis_at).toLocaleDateString('pt-BR')}
+                        </span>
+                      ) : (
+                        <Badge variant="outline" className="text-xs">Nunca analisado</Badge>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={() => handleDelete(candidate.id)}
-                        disabled={deleteCandidateMutation.isPending}
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Remover
-                      </Button>
+                      <div className="flex justify-end gap-2">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => analyzeCandidateMutation.mutate(candidate.id)}
+                                disabled={analyzeCandidateMutation.isPending}
+                              >
+                                {analyzeCandidateMutation.isPending ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Brain className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Análise multi-IA (Gemini Flash, Gemini Pro, GPT-5 Mini)</p>
+                              <p className="text-xs text-muted-foreground">
+                                {subscription ? `${subscription.updates_used_this_month}/${subscription.max_updates_per_month} análises usadas` : ''}
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setCandidateToDelete(candidate.id);
+                            setDeleteDialogOpen(true);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -442,7 +449,7 @@ export default function Candidates() {
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={confirmDelete}
+              onClick={() => candidateToDelete && deleteCandidateMutation.mutate(candidateToDelete)}
               disabled={deleteCandidateMutation.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >

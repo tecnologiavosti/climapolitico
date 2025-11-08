@@ -14,12 +14,94 @@ export type Database = {
   }
   public: {
     Tables: {
+      candidate_analyses: {
+        Row: {
+          ai_models_used: string[] | null
+          analysis_status: string | null
+          candidate_id: string
+          created_at: string | null
+          error_message: string | null
+          followers_count: string | null
+          gemini_flash_result: Json | null
+          gemini_pro_result: Json | null
+          gpt5_mini_result: Json | null
+          id: string
+          ideology_confidence: number | null
+          ideology_label: string | null
+          keywords: string[] | null
+          mentions_count: number | null
+          posts_analyzed: number | null
+          sentiment_confidence: number | null
+          sentiment_label: string | null
+          sentiment_score: number | null
+          topics: string[] | null
+          trend: string | null
+          user_id: string
+        }
+        Insert: {
+          ai_models_used?: string[] | null
+          analysis_status?: string | null
+          candidate_id: string
+          created_at?: string | null
+          error_message?: string | null
+          followers_count?: string | null
+          gemini_flash_result?: Json | null
+          gemini_pro_result?: Json | null
+          gpt5_mini_result?: Json | null
+          id?: string
+          ideology_confidence?: number | null
+          ideology_label?: string | null
+          keywords?: string[] | null
+          mentions_count?: number | null
+          posts_analyzed?: number | null
+          sentiment_confidence?: number | null
+          sentiment_label?: string | null
+          sentiment_score?: number | null
+          topics?: string[] | null
+          trend?: string | null
+          user_id: string
+        }
+        Update: {
+          ai_models_used?: string[] | null
+          analysis_status?: string | null
+          candidate_id?: string
+          created_at?: string | null
+          error_message?: string | null
+          followers_count?: string | null
+          gemini_flash_result?: Json | null
+          gemini_pro_result?: Json | null
+          gpt5_mini_result?: Json | null
+          id?: string
+          ideology_confidence?: number | null
+          ideology_label?: string | null
+          keywords?: string[] | null
+          mentions_count?: number | null
+          posts_analyzed?: number | null
+          sentiment_confidence?: number | null
+          sentiment_label?: string | null
+          sentiment_score?: number | null
+          topics?: string[] | null
+          trend?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_analyses_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidates: {
         Row: {
+          analysis_count: number | null
           created_at: string | null
           followers: string | null
           full_name: string
           id: string
+          last_analysis_at: string | null
           mentions: number | null
           party: string | null
           region: string | null
@@ -31,10 +113,12 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          analysis_count?: number | null
           created_at?: string | null
           followers?: string | null
           full_name: string
           id?: string
+          last_analysis_at?: string | null
           mentions?: number | null
           party?: string | null
           region?: string | null
@@ -46,10 +130,12 @@ export type Database = {
           user_id: string
         }
         Update: {
+          analysis_count?: number | null
           created_at?: string | null
           followers?: string | null
           full_name?: string
           id?: string
+          last_analysis_at?: string | null
           mentions?: number | null
           party?: string | null
           region?: string | null

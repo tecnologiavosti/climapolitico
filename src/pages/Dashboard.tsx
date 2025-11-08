@@ -7,6 +7,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import Overview from "./dashboard/Overview";
 import Candidates from "./dashboard/Candidates";
+import AnalysisHistory from "./dashboard/AnalysisHistory";
 
 const Dashboard = () => {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -53,12 +54,7 @@ const Dashboard = () => {
             <Routes>
               <Route path="/" element={<Overview />} />
               <Route path="/candidates" element={<Candidates />} />
-              <Route path="/analytics" element={
-                <div className="text-center py-12">
-                  <h3 className="text-2xl font-bold mb-2">Análises Detalhadas</h3>
-                  <p className="text-muted-foreground">Em desenvolvimento</p>
-                </div>
-              } />
+              <Route path="/analytics" element={<AnalysisHistory />} />
               <Route path="/ai" element={
                 <div className="text-center py-12">
                   <h3 className="text-2xl font-bold mb-2">IA & Insights</h3>

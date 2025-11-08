@@ -5,3 +5,6 @@ enabled = true
 
 [functions.analyze-sentiment]
 verify_jwt = false
+
+[functions.analyze-candidate]
+verify_jwt = true
