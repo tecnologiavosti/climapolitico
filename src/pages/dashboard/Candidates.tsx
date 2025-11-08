@@ -362,20 +362,20 @@ export default function Candidates() {
                       )}
                     </TableCell>
                     <TableCell>
-                      {candidate.trend === 'up' ? (
+                      {candidate.trend?.toLowerCase() === 'up' || candidate.trend?.toLowerCase() === 'alta' ? (
                         <div className="flex items-center gap-1 text-green-500">
                           <ArrowUpRight className="h-4 w-4" />
-                          <span className="text-sm">Alta</span>
+                          <span className="text-sm">{candidate.trend}</span>
                         </div>
-                      ) : candidate.trend === 'down' ? (
+                      ) : candidate.trend?.toLowerCase() === 'down' || candidate.trend?.toLowerCase() === 'baixa' ? (
                         <div className="flex items-center gap-1 text-red-500">
                           <ArrowDownRight className="h-4 w-4" />
-                          <span className="text-sm">Baixa</span>
+                          <span className="text-sm">{candidate.trend}</span>
                         </div>
                       ) : (
                         <div className="flex items-center gap-1 text-muted-foreground">
                           <Minus className="h-4 w-4" />
-                          <span className="text-sm">Neutro</span>
+                          <span className="text-sm">{candidate.trend || 'Neutro'}</span>
                         </div>
                       )}
                     </TableCell>

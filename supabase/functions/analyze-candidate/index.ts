@@ -25,6 +25,36 @@ interface AggregatedResult {
   trend: string;
 }
 
+// Translation mappings
+const SENTIMENT_TRANSLATIONS: Record<string, string> = {
+  'positive': 'Positivo',
+  'negative': 'Negativo',
+  'neutral': 'Neutro',
+  'muito positivo': 'Muito Positivo',
+  'muito negativo': 'Muito Negativo'
+};
+
+const IDEOLOGY_TRANSLATIONS: Record<string, string> = {
+  'left': 'Esquerda',
+  'center': 'Centro',
+  'right': 'Direita',
+  'neutral': 'Neutro',
+  'center-left': 'Centro-Esquerda',
+  'center-right': 'Centro-Direita'
+};
+
+const TREND_TRANSLATIONS: Record<string, string> = {
+  'up': 'Alta',
+  'down': 'Baixa',
+  'neutral': 'Neutro',
+  'stable': 'Estável'
+};
+
+function translateField(value: string, translations: Record<string, string>): string {
+  const lowerValue = value.toLowerCase().trim();
+  return translations[lowerValue] || value;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -117,6 +147,11 @@ Formate sua resposta como JSON com estes campos: sentiment, sentimentScore, ideo
     // Aggregate results
     const aggregated = aggregateResults(results, candidate);
 
+    // Translate all fields to Portuguese
+    const translatedSentiment = translateField(aggregated.sentiment, SENTIMENT_TRANSLATIONS);
+    const translatedIdeology = translateField(aggregated.ideology, IDEOLOGY_TRANSLATIONS);
+    const translatedTrend = translateField(aggregated.trend, TREND_TRANSLATIONS);
+
     // Save analysis
     const { data: analysis, error: insertError } = await supabase
       .from('candidate_analyses')
@@ -125,10 +160,10 @@ Formate sua resposta como JSON com estes campos: sentiment, sentimentScore, ideo
         user_id: user.id,
         ai_models_used: ['gemini-flash', 'gemini-pro', 'gpt5-mini'],
         sentiment_score: aggregated.sentimentScore,
-        sentiment_label: aggregated.sentiment,
+        sentiment_label: translatedSentiment,
         sentiment_confidence: aggregated.confidence,
-        ideology_label: aggregated.ideology,
-        trend: aggregated.trend,
+        ideology_label: translatedIdeology,
+        trend: translatedTrend,
         keywords: aggregated.keywords,
         gemini_flash_result: results[0],
         gemini_pro_result: results[1],
@@ -157,11 +192,12 @@ Formate sua resposta como JSON com estes campos: sentiment, sentimentScore, ideo
       JSON.stringify({
         success: true,
         analysis: {
-          sentiment: aggregated.sentiment,
+          sentiment: translatedSentiment,
           sentimentScore: aggregated.sentimentScore,
           confidence: aggregated.confidence,
           keywords: aggregated.keywords,
-          trend: aggregated.trend,
+          trend: translatedTrend,
+          ideology: translatedIdeology,
         },
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -47,8 +47,9 @@ export default function AnalysisHistory() {
   };
 
   const getTrendIcon = (trend: string | null) => {
-    if (trend === 'up') return <TrendingUp className="h-4 w-4 text-green-500" />;
-    if (trend === 'down') return <TrendingDown className="h-4 w-4 text-red-500" />;
+    const trendLower = trend?.toLowerCase() || '';
+    if (trendLower === 'up' || trendLower === 'alta') return <TrendingUp className="h-4 w-4 text-green-500" />;
+    if (trendLower === 'down' || trendLower === 'baixa') return <TrendingDown className="h-4 w-4 text-red-500" />;
     return <Minus className="h-4 w-4 text-muted-foreground" />;
   };
 
@@ -139,8 +140,8 @@ export default function AnalysisHistory() {
                     </TableCell>
                     <TableCell>
                       <Badge variant={
-                        analysis.sentiment_label === 'positive' ? 'default' :
-                        analysis.sentiment_label === 'negative' ? 'destructive' :
+                        analysis.sentiment_label?.toLowerCase().includes('positiv') ? 'default' :
+                        analysis.sentiment_label?.toLowerCase().includes('negativ') ? 'destructive' :
                         'secondary'
                       }>
                         {analysis.sentiment_label || 'N/A'}
