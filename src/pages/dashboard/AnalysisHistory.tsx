@@ -11,18 +11,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Brain, TrendingUp, TrendingDown, Minus, Filter, X } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { format } from "date-fns";
+import { DateRange } from "react-day-picker";
+import { DateRangePicker } from "@/components/DateRangePicker";
 
 export default function AnalysisHistory() {
   const [sentimentFilter, setSentimentFilter] = useState<string>("all");
   const [ideologyFilter, setIdeologyFilter] = useState<string>("all");
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: new Date(new Date().setDate(new Date().getDate() - 30)),
+    to: new Date(),
+  });
 
   const { data: analyses, isLoading } = useQuery({
-    queryKey: ['candidate-analyses'],
+    queryKey: ['candidate-analyses', dateRange],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('candidate_analyses')
         .select(`
           *,
@@ -34,6 +40,14 @@ export default function AnalysisHistory() {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
+      if (dateRange?.from) {
+        query = query.gte('created_at', dateRange.from.toISOString());
+      }
+      if (dateRange?.to) {
+        query = query.lte('created_at', dateRange.to.toISOString());
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
@@ -58,6 +72,10 @@ export default function AnalysisHistory() {
   const handleClearFilters = () => {
     setSentimentFilter("all");
     setIdeologyFilter("all");
+    setDateRange({
+      from: new Date(new Date().setDate(new Date().getDate() - 30)),
+      to: new Date(),
+    });
   };
 
   const hasActiveFilters = sentimentFilter !== "all" || ideologyFilter !== "all";
@@ -92,7 +110,7 @@ export default function AnalysisHistory() {
                 <Filter className="h-5 w-5" />
                 Filtros
               </CardTitle>
-              <CardDescription>Filtre as análises por sentimento e ideologia</CardDescription>
+              <CardDescription>Filtre as análises por sentimento, ideologia e período</CardDescription>
             </div>
             {hasActiveFilters && (
               <Button variant="outline" size="sm" onClick={handleClearFilters}>
@@ -103,38 +121,45 @@ export default function AnalysisHistory() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Sentimento</label>
-              <Select value={sentimentFilter} onValueChange={setSentimentFilter}>
-                <SelectTrigger className="w-full bg-background">
-                  <SelectValue placeholder="Selecione o sentimento" />
-                </SelectTrigger>
-                <SelectContent className="bg-background z-50">
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="positiv">Positivo</SelectItem>
-                  <SelectItem value="neutro">Neutro</SelectItem>
-                  <SelectItem value="negativ">Negativo</SelectItem>
-                </SelectContent>
-              </Select>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Período</label>
+              <DateRangePicker dateRange={dateRange} onDateRangeChange={setDateRange} />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Ideologia</label>
-              <Select value={ideologyFilter} onValueChange={setIdeologyFilter}>
-                <SelectTrigger className="w-full bg-background">
-                  <SelectValue placeholder="Selecione a ideologia" />
-                </SelectTrigger>
-                <SelectContent className="bg-background z-50">
-                  <SelectItem value="all">Todas</SelectItem>
-                  <SelectItem value="esquerda">Esquerda</SelectItem>
-                  <SelectItem value="centro-esquerda">Centro-Esquerda</SelectItem>
-                  <SelectItem value="centro">Centro</SelectItem>
-                  <SelectItem value="centro-direita">Centro-Direita</SelectItem>
-                  <SelectItem value="direita">Direita</SelectItem>
-                  <SelectItem value="neutro">Neutro</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Sentimento</label>
+                <Select value={sentimentFilter} onValueChange={setSentimentFilter}>
+                  <SelectTrigger className="w-full bg-background">
+                    <SelectValue placeholder="Selecione o sentimento" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-background z-50">
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="positiv">Positivo</SelectItem>
+                    <SelectItem value="neutro">Neutro</SelectItem>
+                    <SelectItem value="negativ">Negativo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Ideologia</label>
+                <Select value={ideologyFilter} onValueChange={setIdeologyFilter}>
+                  <SelectTrigger className="w-full bg-background">
+                    <SelectValue placeholder="Selecione a ideologia" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-background z-50">
+                    <SelectItem value="all">Todas</SelectItem>
+                    <SelectItem value="esquerda">Esquerda</SelectItem>
+                    <SelectItem value="centro-esquerda">Centro-Esquerda</SelectItem>
+                    <SelectItem value="centro">Centro</SelectItem>
+                    <SelectItem value="centro-direita">Centro-Direita</SelectItem>
+                    <SelectItem value="direita">Direita</SelectItem>
+                    <SelectItem value="neutro">Neutro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
           

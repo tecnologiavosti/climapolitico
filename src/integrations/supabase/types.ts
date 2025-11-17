@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       candidate_analyses: {
         Row: {
+          age_distribution: Json | null
           ai_models_used: string[] | null
           analysis_status: string | null
           candidate_id: string
@@ -24,6 +25,7 @@ export type Database = {
           followers_count: string | null
           gemini_flash_result: Json | null
           gemini_pro_result: Json | null
+          gender_distribution: Json | null
           gpt5_mini_result: Json | null
           id: string
           ideology_confidence: number | null
@@ -31,14 +33,17 @@ export type Database = {
           keywords: string[] | null
           mentions_count: number | null
           posts_analyzed: number | null
+          region_distribution: Json | null
           sentiment_confidence: number | null
           sentiment_label: string | null
           sentiment_score: number | null
+          social_network: string | null
           topics: string[] | null
           trend: string | null
           user_id: string
         }
         Insert: {
+          age_distribution?: Json | null
           ai_models_used?: string[] | null
           analysis_status?: string | null
           candidate_id: string
@@ -47,6 +52,7 @@ export type Database = {
           followers_count?: string | null
           gemini_flash_result?: Json | null
           gemini_pro_result?: Json | null
+          gender_distribution?: Json | null
           gpt5_mini_result?: Json | null
           id?: string
           ideology_confidence?: number | null
@@ -54,14 +60,17 @@ export type Database = {
           keywords?: string[] | null
           mentions_count?: number | null
           posts_analyzed?: number | null
+          region_distribution?: Json | null
           sentiment_confidence?: number | null
           sentiment_label?: string | null
           sentiment_score?: number | null
+          social_network?: string | null
           topics?: string[] | null
           trend?: string | null
           user_id: string
         }
         Update: {
+          age_distribution?: Json | null
           ai_models_used?: string[] | null
           analysis_status?: string | null
           candidate_id?: string
@@ -70,6 +79,7 @@ export type Database = {
           followers_count?: string | null
           gemini_flash_result?: Json | null
           gemini_pro_result?: Json | null
+          gender_distribution?: Json | null
           gpt5_mini_result?: Json | null
           id?: string
           ideology_confidence?: number | null
@@ -77,9 +87,11 @@ export type Database = {
           keywords?: string[] | null
           mentions_count?: number | null
           posts_analyzed?: number | null
+          region_distribution?: Json | null
           sentiment_confidence?: number | null
           sentiment_label?: string | null
           sentiment_score?: number | null
+          social_network?: string | null
           topics?: string[] | null
           trend?: string | null
           user_id?: string
