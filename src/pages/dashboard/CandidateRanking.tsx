@@ -64,7 +64,7 @@ export default function CandidateRanking() {
         .from('candidate_rankings')
         .select(`
           *,
-          candidate:candidates(
+          candidates!candidate_rankings_candidate_id_fkey(
             id,
             full_name,
             party,
@@ -76,7 +76,7 @@ export default function CandidateRanking() {
         .order('rank_position', { ascending: true });
 
       if (error) throw error;
-      return data;
+      return data || [];
     },
     enabled: !!dateRange?.from && !!dateRange?.to
   });
@@ -118,16 +118,16 @@ export default function CandidateRanking() {
 
   // Prepare radar chart data
   const radarData = [
-    { metric: 'Alcance', ...Object.fromEntries(rankings?.slice(0, 5).map(r => [r.candidate.full_name, r.reach_score]) || []) },
-    { metric: 'Engajamento', ...Object.fromEntries(rankings?.slice(0, 5).map(r => [r.candidate.full_name, r.engagement_score]) || []) },
-    { metric: 'Percepção+', ...Object.fromEntries(rankings?.slice(0, 5).map(r => [r.candidate.full_name, r.positive_perception]) || []) },
-    { metric: 'Impacto Falas', ...Object.fromEntries(rankings?.slice(0, 5).map(r => [r.candidate.full_name, r.speech_impact_score || 50]) || []) },
-    { metric: 'Tendência', ...Object.fromEntries(rankings?.slice(0, 5).map(r => [r.candidate.full_name, r.trend_score]) || []) },
+    { metric: 'Alcance', ...Object.fromEntries(rankings?.slice(0, 5).map(r => [(r.candidates as any)?.full_name || 'N/A', r.reach_score]) || []) },
+    { metric: 'Engajamento', ...Object.fromEntries(rankings?.slice(0, 5).map(r => [(r.candidates as any)?.full_name || 'N/A', r.engagement_score]) || []) },
+    { metric: 'Percepção+', ...Object.fromEntries(rankings?.slice(0, 5).map(r => [(r.candidates as any)?.full_name || 'N/A', r.positive_perception]) || []) },
+    { metric: 'Impacto Falas', ...Object.fromEntries(rankings?.slice(0, 5).map(r => [(r.candidates as any)?.full_name || 'N/A', r.speech_impact_score || 50]) || []) },
+    { metric: 'Tendência', ...Object.fromEntries(rankings?.slice(0, 5).map(r => [(r.candidates as any)?.full_name || 'N/A', r.trend_score]) || []) },
   ];
 
   // Prepare bar chart data
   const barChartData = rankings?.slice(0, 10).map(r => ({
-    name: r.candidate.full_name.split(' ')[0],
+    name: ((r.candidates as any)?.full_name || 'N/A').split(' ')[0],
     Alcance: r.reach_score,
     Engajamento: r.engagement_score,
     'Percepção+': r.positive_perception,
@@ -179,7 +179,7 @@ export default function CandidateRanking() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{topCandidate?.candidate.full_name}</div>
+              <div className="text-2xl font-bold">{(topCandidate?.candidates as any)?.full_name || 'N/A'}</div>
               <p className="text-xs text-muted-foreground">
                 Score: {topCandidate?.overall_score.toFixed(1)}
               </p>
@@ -195,7 +195,7 @@ export default function CandidateRanking() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{mostImproved.candidate.full_name}</div>
+                <div className="text-2xl font-bold">{(mostImproved.candidates as any)?.full_name || 'N/A'}</div>
                 <p className="text-xs text-green-600">
                   +{mostImproved.rank_change} posições
                 </p>
@@ -212,7 +212,7 @@ export default function CandidateRanking() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{mostDeclined.candidate.full_name}</div>
+                <div className="text-2xl font-bold">{(mostDeclined.candidates as any)?.full_name || 'N/A'}</div>
                 <p className="text-xs text-red-600">
                   {mostDeclined.rank_change} posições
                 </p>
@@ -290,9 +290,9 @@ export default function CandidateRanking() {
                     </TableCell>
                     <TableCell>
                       <div>
-                        <div className="font-medium">{rank.candidate.full_name}</div>
+                        <div className="font-medium">{(rank.candidates as any)?.full_name || 'N/A'}</div>
                         <div className="text-sm text-muted-foreground">
-                          {rank.candidate.party} • {rank.candidate.region}
+                          {(rank.candidates as any)?.party} • {(rank.candidates as any)?.region}
                         </div>
                       </div>
                     </TableCell>
@@ -349,8 +349,8 @@ export default function CandidateRanking() {
                     {rankings.slice(0, 5).map((rank, i) => (
                       <Radar
                         key={rank.id}
-                        name={rank.candidate.full_name}
-                        dataKey={rank.candidate.full_name}
+                        name={(rank.candidates as any)?.full_name || 'N/A'}
+                        dataKey={(rank.candidates as any)?.full_name || 'N/A'}
                         stroke={COLORS[i]}
                         fill={COLORS[i]}
                         fillOpacity={0.3}
