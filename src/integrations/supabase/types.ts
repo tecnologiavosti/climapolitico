@@ -106,6 +106,68 @@ export type Database = {
           },
         ]
       }
+      candidate_rankings: {
+        Row: {
+          candidate_id: string
+          created_at: string | null
+          engagement_score: number
+          id: string
+          negative_perception: number
+          overall_score: number
+          period_end: string
+          period_start: string
+          positive_perception: number
+          rank_change: number | null
+          rank_position: number
+          reach_score: number
+          speech_impact_score: number | null
+          trend_score: number
+          user_id: string
+        }
+        Insert: {
+          candidate_id: string
+          created_at?: string | null
+          engagement_score: number
+          id?: string
+          negative_perception: number
+          overall_score: number
+          period_end: string
+          period_start: string
+          positive_perception: number
+          rank_change?: number | null
+          rank_position: number
+          reach_score: number
+          speech_impact_score?: number | null
+          trend_score: number
+          user_id: string
+        }
+        Update: {
+          candidate_id?: string
+          created_at?: string | null
+          engagement_score?: number
+          id?: string
+          negative_perception?: number
+          overall_score?: number
+          period_end?: string
+          period_start?: string
+          positive_perception?: number
+          rank_change?: number | null
+          rank_position?: number
+          reach_score?: number
+          speech_impact_score?: number | null
+          trend_score?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_rankings_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidates: {
         Row: {
           analysis_count: number | null

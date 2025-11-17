@@ -10,6 +10,7 @@ import {
   CreditCard,
   LineChart,
   Mic,
+  Trophy,
 } from "lucide-react";
 
 import {
@@ -30,6 +31,7 @@ const mainItems = [
   { title: "Análises", url: "/dashboard/analytics", icon: TrendingUp },
   { title: "Analytics Avançado", url: "/dashboard/analytics-advanced", icon: LineChart },
   { title: "Análise de Fala", url: "/dashboard/speech-analysis", icon: Mic },
+  { title: "Ranking", url: "/dashboard/ranking", icon: Trophy },
   { title: "IA & Insights", url: "/dashboard/ai", icon: Brain },
 ];
 
