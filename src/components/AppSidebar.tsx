@@ -8,6 +8,7 @@ import {
   Brain,
   Bell,
   CreditCard,
+  LineChart,
 } from "lucide-react";
 
 import {
@@ -26,6 +27,7 @@ const mainItems = [
   { title: "Visão Geral", url: "/dashboard", icon: BarChart3 },
   { title: "Candidatos", url: "/dashboard/candidates", icon: Users },
   { title: "Análises", url: "/dashboard/analytics", icon: TrendingUp },
+  { title: "Analytics Avançado", url: "/dashboard/analytics-advanced", icon: LineChart },
   { title: "IA & Insights", url: "/dashboard/ai", icon: Brain },
 ];
 
