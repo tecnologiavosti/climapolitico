@@ -196,6 +196,95 @@ export type Database = {
         }
         Relationships: []
       }
+      speech_analyses: {
+        Row: {
+          affected_voter_profiles: Json | null
+          ai_model_used: string | null
+          analysis_confidence: number | null
+          candidate_id: string | null
+          communication_suggestions: Json | null
+          created_at: string | null
+          emotional_analysis: Json | null
+          id: string
+          media_type: string | null
+          media_url: string | null
+          negative_perception_score: number | null
+          problematic_segments: Json | null
+          psychological_impact: string | null
+          recommended_actions: Json | null
+          risk_level: number | null
+          speech_date: string | null
+          speech_duration: number | null
+          speech_text: string
+          speech_title: string
+          speech_type: string | null
+          transcription_status: string | null
+          trigger_words: Json | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          affected_voter_profiles?: Json | null
+          ai_model_used?: string | null
+          analysis_confidence?: number | null
+          candidate_id?: string | null
+          communication_suggestions?: Json | null
+          created_at?: string | null
+          emotional_analysis?: Json | null
+          id?: string
+          media_type?: string | null
+          media_url?: string | null
+          negative_perception_score?: number | null
+          problematic_segments?: Json | null
+          psychological_impact?: string | null
+          recommended_actions?: Json | null
+          risk_level?: number | null
+          speech_date?: string | null
+          speech_duration?: number | null
+          speech_text: string
+          speech_title: string
+          speech_type?: string | null
+          transcription_status?: string | null
+          trigger_words?: Json | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          affected_voter_profiles?: Json | null
+          ai_model_used?: string | null
+          analysis_confidence?: number | null
+          candidate_id?: string | null
+          communication_suggestions?: Json | null
+          created_at?: string | null
+          emotional_analysis?: Json | null
+          id?: string
+          media_type?: string | null
+          media_url?: string | null
+          negative_perception_score?: number | null
+          problematic_segments?: Json | null
+          psychological_impact?: string | null
+          recommended_actions?: Json | null
+          risk_level?: number | null
+          speech_date?: string | null
+          speech_duration?: number | null
+          speech_text?: string
+          speech_title?: string
+          speech_type?: string | null
+          transcription_status?: string | null
+          trigger_words?: Json | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "speech_analyses_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscriptions: {
         Row: {
           cancelled_at: string | null

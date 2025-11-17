@@ -9,6 +9,7 @@ import Overview from "./dashboard/Overview";
 import Candidates from "./dashboard/Candidates";
 import AnalysisHistory from "./dashboard/AnalysisHistory";
 import Analytics from "./dashboard/Analytics";
+import SpeechAnalysis from "./dashboard/SpeechAnalysis";
 
 const Dashboard = () => {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -57,6 +58,7 @@ const Dashboard = () => {
               <Route path="/candidates" element={<Candidates />} />
               <Route path="/analytics" element={<AnalysisHistory />} />
               <Route path="/analytics-advanced" element={<Analytics />} />
+              <Route path="/speech-analysis" element={<SpeechAnalysis />} />
               <Route path="/ai" element={
                 <div className="text-center py-12">
                   <h3 className="text-2xl font-bold mb-2">IA & Insights</h3>
