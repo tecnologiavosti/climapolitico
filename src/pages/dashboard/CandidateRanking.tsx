@@ -107,14 +107,24 @@ export default function CandidateRanking() {
     }
   });
 
-  // Calculate insights
+  // Calculate insights - VERSÃO CORRIGIDA
   const topCandidate = rankings?.[0];
-  const mostImproved = rankings?.reduce((max, r) => 
-    r.rank_change > (max?.rank_change || 0) ? r : max, rankings[0]
-  );
-  const mostDeclined = rankings?.reduce((min, r) => 
-    r.rank_change < (min?.rank_change || 0) ? r : min, rankings[0]
-  );
+
+  // Maior crescimento (apenas se rank_change > 0)
+  const mostImproved = rankings?.filter(r => r.rank_change > 0)
+    .reduce((max, r) => 
+      !max || r.rank_change > max.rank_change ? r : max
+    , null as any);
+
+  // Maior queda (apenas se rank_change < 0)
+  const mostDeclined = rankings?.filter(r => r.rank_change < 0)
+    .reduce((min, r) => 
+      !min || r.rank_change < min.rank_change ? r : min
+    , null as any);
+
+  // Flags para controlar exibição
+  const hasImprovement = mostImproved && mostImproved.rank_change > 0;
+  const hasDecline = mostDeclined && mostDeclined.rank_change < 0;
 
   // Prepare radar chart data
   const radarData = [
