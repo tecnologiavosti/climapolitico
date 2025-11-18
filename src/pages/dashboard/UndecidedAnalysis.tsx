@@ -56,6 +56,8 @@ export default function UndecidedAnalysis() {
     from: new Date(new Date().setDate(new Date().getDate() - 30)),
     to: new Date(),
   });
+  const [regionFilter, setRegionFilter] = useState<string>("all");
+  const [socialNetworkFilter, setSocialNetworkFilter] = useState<string>("all");
 
   // Fetch candidates
   const { data: candidates } = useQuery({
@@ -188,6 +190,122 @@ export default function UndecidedAnalysis() {
     }
   };
 
+  // Extract unique regions and social networks from analysis data
+  const availableRegions = selectedAnalysis?.candidates_comparison
+    ? Array.from(new Set(
+        candidates
+          ?.filter(c => selectedAnalysis.candidates_comparison.some((comp: any) => comp.candidate_id === c.id))
+          .map(c => c.region)
+          .filter(Boolean)
+      )).sort()
+    : [];
+
+  const availableSocialNetworks = selectedAnalysis?.social_media_breakdown?.sources
+    ? selectedAnalysis.social_media_breakdown.sources.map((s: any) => s.network).sort()
+    : [];
+
+  // Filter data based on selected filters
+  const getFilteredData = () => {
+    if (!selectedAnalysis) return null;
+
+    let filteredAnalysis = { ...selectedAnalysis };
+
+    // Filter social media breakdown
+    if (socialNetworkFilter !== "all" && filteredAnalysis.social_media_breakdown?.sources) {
+      const filteredSources = filteredAnalysis.social_media_breakdown.sources.filter(
+        (s: any) => s.network === socialNetworkFilter
+      );
+      filteredAnalysis.social_media_breakdown = {
+        sources: filteredSources,
+        total_posts: filteredSources.reduce((sum: number, s: any) => sum + s.posts, 0),
+        total_comments: filteredSources.reduce((sum: number, s: any) => sum + s.comments, 0),
+        total_interactions: filteredSources.reduce((sum: number, s: any) => sum + s.interactions, 0),
+        total_profiles: filteredSources.reduce((sum: number, s: any) => sum + s.profiles, 0),
+      };
+    }
+
+    // Filter candidates comparison by region
+    if (regionFilter !== "all" && filteredAnalysis.candidates_comparison) {
+      const candidatesInRegion = candidates?.filter(c => c.region === regionFilter).map(c => c.id) || [];
+      filteredAnalysis.candidates_comparison = filteredAnalysis.candidates_comparison.filter(
+        (comp: any) => candidatesInRegion.includes(comp.candidate_id)
+      );
+    }
+
+    return filteredAnalysis;
+  };
+
+  const filteredAnalysis = getFilteredData();
+
+  // Generate strategic insights
+  const generateInsights = () => {
+    if (!filteredAnalysis) return [];
+
+    const insights: { type: 'success' | 'warning' | 'info'; message: string }[] = [];
+
+    // Insight 1: Undecided percentage
+    if (filteredAnalysis.undecided_percentage > 30) {
+      insights.push({
+        type: 'warning',
+        message: `Alta taxa de indecisão (${filteredAnalysis.undecided_percentage.toFixed(1)}%) - Grande oportunidade de conversão com estratégias direcionadas.`
+      });
+    } else if (filteredAnalysis.undecided_percentage < 15) {
+      insights.push({
+        type: 'success',
+        message: `Baixa taxa de indecisão (${filteredAnalysis.undecided_percentage.toFixed(1)}%) - Eleitorado está mais definido.`
+      });
+    }
+
+    // Insight 2: Volatility
+    if (filteredAnalysis.sentiment_fluctuation_score > 70) {
+      insights.push({
+        type: 'warning',
+        message: `Alta volatilidade (${filteredAnalysis.sentiment_fluctuation_score}/100) - Eleitores indecisos mudam de opinião frequentemente. Necessário reforço constante de mensagem.`
+      });
+    }
+
+    // Insight 3: Top social network
+    if (filteredAnalysis.social_media_breakdown?.sources?.length > 0) {
+      const topNetwork = [...filteredAnalysis.social_media_breakdown.sources]
+        .sort((a: any, b: any) => b.interactions - a.interactions)[0];
+      insights.push({
+        type: 'info',
+        message: `${topNetwork.network} é a rede mais engajada com ${topNetwork.interactions.toLocaleString('pt-BR')} interações - Priorize investimento nesta plataforma.`
+      });
+    }
+
+    // Insight 4: Candidate comparison
+    if (filteredAnalysis.candidates_comparison?.length > 1) {
+      const topCandidate = [...filteredAnalysis.candidates_comparison]
+        .sort((a: any, b: any) => b.positive_percentage - a.positive_percentage)[0];
+      const diff = topCandidate.positive_percentage - topCandidate.negative_percentage;
+      
+      if (diff > 20) {
+        insights.push({
+          type: 'success',
+          message: `${topCandidate.candidate_name} lidera com ${diff.toFixed(1)} pontos de diferença entre intenção positiva e negativa.`
+        });
+      } else if (diff < 5) {
+        insights.push({
+          type: 'warning',
+          message: `${topCandidate.candidate_name} tem margem pequena (${diff.toFixed(1)} pontos) - Eleição muito disputada entre indecisos.`
+        });
+      }
+    }
+
+    // Insight 5: Key topics
+    if (filteredAnalysis.key_topics?.length > 0) {
+      insights.push({
+        type: 'info',
+        message: `Tópicos mais relevantes para indecisos: ${filteredAnalysis.key_topics.slice(0, 3).join(', ')} - Use estes temas em campanhas.`
+      });
+    }
+
+    return insights;
+  };
+
+  const strategicInsights = generateInsights();
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div>
@@ -258,6 +376,99 @@ export default function UndecidedAnalysis() {
 
           {selectedAnalysis && (
             <div className="space-y-6">
+              {/* Filtros */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Target className="h-5 w-5" />
+                    Filtros de Análise
+                  </CardTitle>
+                  <CardDescription>
+                    Refine a visualização por região geográfica ou rede social
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="region-filter">Região Geográfica</Label>
+                      <Select value={regionFilter} onValueChange={setRegionFilter}>
+                        <SelectTrigger id="region-filter" className="bg-background">
+                          <SelectValue placeholder="Todas as regiões" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-card z-50">
+                          <SelectItem value="all">Todas as regiões</SelectItem>
+                          {availableRegions.map((region) => (
+                            <SelectItem key={region} value={region}>
+                              {region}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="network-filter">Rede Social</Label>
+                      <Select value={socialNetworkFilter} onValueChange={setSocialNetworkFilter}>
+                        <SelectTrigger id="network-filter" className="bg-background">
+                          <SelectValue placeholder="Todas as redes" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-card z-50">
+                          <SelectItem value="all">Todas as redes</SelectItem>
+                          {availableSocialNetworks.map((network) => (
+                            <SelectItem key={network} value={network}>
+                              {network}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {(regionFilter !== "all" || socialNetworkFilter !== "all") && (
+                    <div className="mt-4 flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setRegionFilter("all");
+                          setSocialNetworkFilter("all");
+                        }}
+                      >
+                        Limpar Filtros
+                      </Button>
+                      <p className="text-sm text-muted-foreground">
+                        {regionFilter !== "all" && `Região: ${regionFilter}`}
+                        {regionFilter !== "all" && socialNetworkFilter !== "all" && " • "}
+                        {socialNetworkFilter !== "all" && `Rede: ${socialNetworkFilter}`}
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Insights Estratégicos */}
+              {strategicInsights.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Lightbulb className="h-5 w-5" />
+                      Insights Estratégicos
+                    </CardTitle>
+                    <CardDescription>
+                      Recomendações baseadas na análise dos dados
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {strategicInsights.map((insight, index) => (
+                      <Alert key={index} variant={insight.type === 'warning' ? 'destructive' : 'default'}>
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>{insight.message}</AlertDescription>
+                      </Alert>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
               {/* KPIs */}
               <div className="grid gap-4 md:grid-cols-3">
                 <Card>
@@ -267,10 +478,10 @@ export default function UndecidedAnalysis() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">
-                      {selectedAnalysis.undecided_percentage?.toFixed(1)}%
+                      {filteredAnalysis.undecided_percentage?.toFixed(1)}%
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {selectedAnalysis.neutral_profiles_count} de {selectedAnalysis.total_profiles_analyzed} perfis
+                      {filteredAnalysis.neutral_profiles_count} de {filteredAnalysis.total_profiles_analyzed} perfis
                     </p>
                   </CardContent>
                 </Card>
@@ -282,10 +493,10 @@ export default function UndecidedAnalysis() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">
-                      {selectedAnalysis.sentiment_fluctuation_score}/100
+                      {filteredAnalysis.sentiment_fluctuation_score}/100
                     </div>
                     <Progress 
-                      value={selectedAnalysis.sentiment_fluctuation_score} 
+                      value={filteredAnalysis.sentiment_fluctuation_score} 
                       className="mt-2"
                     />
                   </CardContent>
@@ -298,10 +509,10 @@ export default function UndecidedAnalysis() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">
-                      {selectedAnalysis.confidence_score}/100
+                      {filteredAnalysis.confidence_score}/100
                     </div>
                     <Progress 
-                      value={selectedAnalysis.confidence_score} 
+                      value={filteredAnalysis.confidence_score} 
                       className="mt-2"
                     />
                   </CardContent>
@@ -309,7 +520,7 @@ export default function UndecidedAnalysis() {
               </div>
 
               {/* Evolução Temporal da Indecisão */}
-              {selectedAnalysis?.temporal_evolution && selectedAnalysis.temporal_evolution.length > 0 && (
+              {filteredAnalysis?.temporal_evolution && filteredAnalysis.temporal_evolution.length > 0 && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -322,7 +533,7 @@ export default function UndecidedAnalysis() {
                   </CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={300}>
-                      <LineChart data={selectedAnalysis.temporal_evolution}>
+                      <LineChart data={filteredAnalysis.temporal_evolution}>
                         <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                         <XAxis 
                           dataKey="date" 
@@ -354,7 +565,7 @@ export default function UndecidedAnalysis() {
               )}
 
               {/* Redes Sociais Analisadas */}
-              {selectedAnalysis?.social_media_breakdown?.sources && selectedAnalysis.social_media_breakdown.sources.length > 0 && (
+              {filteredAnalysis?.social_media_breakdown?.sources && filteredAnalysis.social_media_breakdown.sources.length > 0 && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -367,7 +578,7 @@ export default function UndecidedAnalysis() {
                   </CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={250}>
-                      <BarChart data={selectedAnalysis.social_media_breakdown.sources}>
+                      <BarChart data={filteredAnalysis.social_media_breakdown.sources}>
                         <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                         <XAxis dataKey="network" className="text-xs" />
                         <YAxis className="text-xs" />
@@ -392,7 +603,7 @@ export default function UndecidedAnalysis() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {selectedAnalysis.social_media_breakdown.sources.map((source: any) => (
+                        {filteredAnalysis.social_media_breakdown.sources.map((source: any) => (
                           <TableRow key={source.network}>
                             <TableCell className="font-medium">{source.network}</TableCell>
                             <TableCell className="text-right">{source.posts.toLocaleString('pt-BR')}</TableCell>
@@ -407,19 +618,19 @@ export default function UndecidedAnalysis() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t">
                       <div className="text-center">
                         <p className="text-sm text-muted-foreground">Total Posts</p>
-                        <p className="text-2xl font-bold">{selectedAnalysis.social_media_breakdown.total_posts?.toLocaleString('pt-BR')}</p>
+                        <p className="text-2xl font-bold">{filteredAnalysis.social_media_breakdown.total_posts?.toLocaleString('pt-BR')}</p>
                       </div>
                       <div className="text-center">
                         <p className="text-sm text-muted-foreground">Total Comentários</p>
-                        <p className="text-2xl font-bold">{selectedAnalysis.social_media_breakdown.total_comments?.toLocaleString('pt-BR')}</p>
+                        <p className="text-2xl font-bold">{filteredAnalysis.social_media_breakdown.total_comments?.toLocaleString('pt-BR')}</p>
                       </div>
                       <div className="text-center">
                         <p className="text-sm text-muted-foreground">Total Interações</p>
-                        <p className="text-2xl font-bold">{selectedAnalysis.social_media_breakdown.total_interactions?.toLocaleString('pt-BR')}</p>
+                        <p className="text-2xl font-bold">{filteredAnalysis.social_media_breakdown.total_interactions?.toLocaleString('pt-BR')}</p>
                       </div>
                       <div className="text-center">
                         <p className="text-sm text-muted-foreground">Total Perfis</p>
-                        <p className="text-2xl font-bold">{selectedAnalysis.social_media_breakdown.total_profiles?.toLocaleString('pt-BR')}</p>
+                        <p className="text-2xl font-bold">{filteredAnalysis.social_media_breakdown.total_profiles?.toLocaleString('pt-BR')}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -427,7 +638,7 @@ export default function UndecidedAnalysis() {
               )}
 
               {/* Comparação Entre Candidatos */}
-              {selectedAnalysis?.candidates_comparison && selectedAnalysis.candidates_comparison.length > 0 && (
+              {filteredAnalysis?.candidates_comparison && filteredAnalysis.candidates_comparison.length > 0 && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -439,9 +650,9 @@ export default function UndecidedAnalysis() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <ResponsiveContainer width="100%" height={Math.max(300, selectedAnalysis.candidates_comparison.length * 60)}>
+                    <ResponsiveContainer width="100%" height={Math.max(300, filteredAnalysis.candidates_comparison.length * 60)}>
                       <BarChart 
-                        data={selectedAnalysis.candidates_comparison}
+                        data={filteredAnalysis.candidates_comparison}
                         layout="vertical"
                       >
                         <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
@@ -478,7 +689,7 @@ export default function UndecidedAnalysis() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {selectedAnalysis.candidates_comparison
+                        {filteredAnalysis.candidates_comparison
                           ?.sort((a: any, b: any) => b.positive_percentage - a.positive_percentage)
                           .map((candidate: any) => (
                           <TableRow key={candidate.candidate_id}>
@@ -515,7 +726,7 @@ export default function UndecidedAnalysis() {
                 <CardContent>
                   <ScrollArea className="h-[300px]">
                     <div className="space-y-4">
-                      {selectedAnalysis.behavioral_patterns?.map((pattern: any, index: number) => (
+                      {filteredAnalysis.behavioral_patterns?.map((pattern: any, index: number) => (
                         <div key={index} className="border-l-4 border-primary pl-4 py-2">
                           <div className="flex items-start justify-between mb-2">
                             <h4 className="font-medium">{pattern.pattern}</h4>
@@ -547,7 +758,7 @@ export default function UndecidedAnalysis() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {selectedAnalysis.decision_triggers?.map((trigger: any, index: number) => (
+                    {filteredAnalysis.decision_triggers?.map((trigger: any, index: number) => (
                       <div key={index} className="flex items-center justify-between p-3 bg-muted rounded-lg">
                         <div className="flex-1">
                           <p className="font-medium">{trigger.trigger}</p>
@@ -579,7 +790,7 @@ export default function UndecidedAnalysis() {
                     <div>
                       <h4 className="font-medium mb-2">Faixas Etárias</h4>
                       <div className="flex flex-wrap gap-2">
-                        {selectedAnalysis.demographic_profile?.age_groups?.map((age: string, i: number) => (
+                        {filteredAnalysis.demographic_profile?.age_groups?.map((age: string, i: number) => (
                           <Badge key={i} variant="secondary">{age}</Badge>
                         ))}
                       </div>
@@ -587,7 +798,7 @@ export default function UndecidedAnalysis() {
                     <div>
                       <h4 className="font-medium mb-2">Regiões</h4>
                       <div className="flex flex-wrap gap-2">
-                        {selectedAnalysis.demographic_profile?.regions?.map((region: string, i: number) => (
+                        {filteredAnalysis.demographic_profile?.regions?.map((region: string, i: number) => (
                           <Badge key={i} variant="secondary">{region}</Badge>
                         ))}
                       </div>
@@ -595,7 +806,7 @@ export default function UndecidedAnalysis() {
                     <div>
                       <h4 className="font-medium mb-2">Preocupações</h4>
                       <div className="flex flex-wrap gap-2">
-                        {selectedAnalysis.demographic_profile?.concerns?.map((concern: string, i: number) => (
+                        {filteredAnalysis.demographic_profile?.concerns?.map((concern: string, i: number) => (
                           <Badge key={i} variant="outline">{concern}</Badge>
                         ))}
                       </div>
@@ -611,7 +822,7 @@ export default function UndecidedAnalysis() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-wrap gap-2">
-                    {selectedAnalysis.key_topics?.map((topic: string, index: number) => (
+                    {filteredAnalysis.key_topics?.map((topic: string, index: number) => (
                       <Badge key={index} variant="default" className="text-sm">
                         {topic}
                       </Badge>
@@ -634,7 +845,7 @@ export default function UndecidedAnalysis() {
                 <CardContent>
                   <ScrollArea className="h-[400px]">
                     <div className="space-y-4">
-                      {selectedAnalysis.persuasion_strategies?.map((strategy: any, index: number) => (
+                      {filteredAnalysis.persuasion_strategies?.map((strategy: any, index: number) => (
                         <div key={index} className="border rounded-lg p-4 space-y-3">
                           <div className="flex items-start justify-between">
                             <h4 className="font-medium flex-1">{strategy.strategy}</h4>
