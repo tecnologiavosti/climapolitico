@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate, Routes, Route } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { useSessionHealthCheck } from "@/hooks/useSessionHealthCheck";
 import { Button } from "@/components/ui/button";
 import { Loader2, LogOut } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -17,6 +18,7 @@ import UndecidedAnalysis from "./dashboard/UndecidedAnalysis";
 const Dashboard = () => {
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
+  useSessionHealthCheck();
 
   useEffect(() => {
     if (!authLoading && !user) {

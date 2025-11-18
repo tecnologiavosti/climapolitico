@@ -142,6 +142,13 @@ export default function UndecidedAnalysis() {
         throw new Error('Selecione um candidato');
       }
 
+      // Validate session before calling edge function
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        throw new Error('Sessão inválida. Por favor, faça login novamente.');
+      }
+
       const { data, error } = await supabase.functions.invoke('analyze-undecided', {
         body: {
           candidate_id: selectedCandidateId,
@@ -150,7 +157,16 @@ export default function UndecidedAnalysis() {
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        // Detect authentication errors
+        if (error.message?.includes('Unauthorized') || 
+            error.message?.includes('JWT') ||
+            error.message?.includes('authorization')) {
+          console.error('🔒 Authentication error detected');
+          throw new Error('Sessão expirada. Por favor, faça login novamente.');
+        }
+        throw error;
+      }
       return data;
     },
     onSuccess: (data) => {
@@ -163,6 +179,22 @@ export default function UndecidedAnalysis() {
     },
     onError: (error: any) => {
       console.error('Analysis error:', error);
+      
+      // If authentication error, force logout
+      if (error.message?.includes('Sessão expirada')) {
+        toast({
+          title: "Sessão Expirada 🔒",
+          description: "Sua sessão expirou. Redirecionando para login...",
+          variant: "destructive",
+        });
+        
+        setTimeout(async () => {
+          await supabase.auth.signOut();
+          window.location.href = '/auth';
+        }, 2000);
+        return;
+      }
+      
       toast({
         title: "Erro na análise",
         description: error.message || "Não foi possível realizar a análise.",
