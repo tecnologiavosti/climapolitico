@@ -36,6 +36,12 @@ serve(async (req) => {
     }
 
     console.log('Starting speech analysis for user:', user.id);
+    console.log('Request payload:', {
+      speechTextLength: speechText.length,
+      speechTitle,
+      hasCandidateId: !!candidateId,
+      speechType
+    });
 
     // Get candidate info if provided
     let candidate = null;
@@ -148,6 +154,11 @@ IMPORTANTE: Responda APENAS com o JSON válido, sem texto adicional.
     }
 
     console.log('Calling Lovable AI for analysis...');
+    console.log('AI Request payload:', {
+      model: 'google/gemini-2.5-pro',
+      promptLength: analysisPrompt.length,
+      speechTextLength: speechText.length
+    });
 
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -181,23 +192,59 @@ IMPORTANTE: Responda APENAS com o JSON válido, sem texto adicional.
     const aiData = await aiResponse.json();
     const aiContent = aiData.choices[0]?.message?.content;
 
+    console.log('AI Response received:', {
+      hasContent: !!aiContent,
+      contentLength: aiContent?.length || 0,
+      contentPreview: aiContent?.substring(0, 200)
+    });
+
     if (!aiContent) {
-      throw new Error('No response from AI');
+      console.error('No content in AI response:', aiData);
+      throw new Error('AI did not return any content');
     }
 
-    // Parse AI response
-    let analysisResult;
+    // Parse AI response com validação robusta
+    let analysisResult: any;
     try {
-      // Try to extract JSON from response
+      // Tentar extrair JSON se vier com texto adicional
       const jsonMatch = aiContent.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        analysisResult = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error('No JSON found in AI response');
+      if (!jsonMatch) {
+        console.error('No JSON found in AI response. Full response:', aiContent);
+        throw new Error('No valid JSON found in AI response');
       }
-    } catch (parseError) {
-      console.error('Error parsing AI response:', parseError);
-      throw new Error('Erro ao processar resposta da IA');
+      
+      console.log('JSON extracted, attempting parse...');
+      analysisResult = JSON.parse(jsonMatch[0]);
+      
+      // Validar campos obrigatórios
+      const requiredFields = ['risk_level', 'emotional_analysis', 'trigger_words', 'problematic_segments'];
+      const missingFields = requiredFields.filter(field => !analysisResult[field]);
+      
+      if (missingFields.length > 0) {
+        console.error('Missing required fields:', missingFields);
+        console.error('Parsed result:', JSON.stringify(analysisResult, null, 2));
+        throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+      }
+      
+      // Garantir tipos corretos e valores default
+      analysisResult.risk_level = Math.min(10, Math.max(1, Number(analysisResult.risk_level) || 5));
+      analysisResult.confidence = Math.min(1, Math.max(0, Number(analysisResult.confidence) || 0.8));
+      
+      // Validar emotional_analysis
+      const emotions = ['anger', 'fear', 'distrust', 'hope', 'joy', 'sadness'];
+      emotions.forEach(emotion => {
+        if (typeof analysisResult.emotional_analysis[emotion] !== 'number') {
+          console.warn(`Missing or invalid emotion: ${emotion}, setting to 0`);
+          analysisResult.emotional_analysis[emotion] = 0;
+        }
+      });
+      
+      console.log('AI response validated successfully');
+      
+    } catch (parseError: any) {
+      console.error('Failed to parse AI response:', parseError);
+      console.error('Raw AI response:', aiContent);
+      throw new Error(`Erro ao processar resposta da IA: ${parseError?.message || 'Unknown error'}`);
     }
 
     // Calculate negative perception score (0-10)
@@ -206,6 +253,16 @@ IMPORTANTE: Responda APENAS com o JSON válido, sem texto adicional.
       (analysisResult.emotional_analysis.fear || 0) * 0.3 +
       (analysisResult.emotional_analysis.distrust || 0) * 0.3
     ) / 10;
+
+    console.log('Attempting database insert with data:', {
+      user_id: user.id,
+      candidate_id: candidateId || null,
+      risk_level: analysisResult.risk_level,
+      negative_perception_score: negativePerceptionScore,
+      hasEmotionalAnalysis: !!analysisResult.emotional_analysis,
+      triggerWordsCount: analysisResult.trigger_words?.length || 0,
+      problematicSegmentsCount: analysisResult.problematic_segments?.length || 0
+    });
 
     // Insert analysis into database
     const { data: speechAnalysis, error: insertError } = await supabase
@@ -235,11 +292,20 @@ IMPORTANTE: Responda APENAS com o JSON válido, sem texto adicional.
       .single();
 
     if (insertError) {
-      console.error('Database insert error:', insertError);
-      throw new Error('Erro ao salvar análise no banco de dados');
+      console.error('Database insert error details:', {
+        code: insertError.code,
+        message: insertError.message,
+        details: insertError.details,
+        hint: insertError.hint
+      });
+      throw new Error(`Erro ao salvar análise: ${insertError.message}`);
     }
 
-    console.log('Speech analysis completed successfully');
+    console.log('Speech analysis saved successfully:', {
+      id: speechAnalysis.id,
+      risk_level: speechAnalysis.risk_level,
+      confidence: speechAnalysis.analysis_confidence
+    });
 
     return new Response(
       JSON.stringify({

@@ -80,9 +80,16 @@ export default function SpeechAnalysis() {
       setSpeechType("discurso");
     },
     onError: (error: any) => {
+      console.error('Speech analysis error:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        fullError: JSON.stringify(error, null, 2)
+      });
+      
       toast({
         title: "Erro na análise",
-        description: error.message || "Não foi possível analisar a fala.",
+        description: error.message || "Não foi possível analisar a fala. Verifique os logs para mais detalhes.",
         variant: "destructive",
       });
     },
