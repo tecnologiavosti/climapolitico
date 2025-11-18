@@ -14,6 +14,77 @@ export type Database = {
   }
   public: {
     Tables: {
+      analysis_sources: {
+        Row: {
+          analysis_id: string
+          collection_date: string | null
+          collection_method: string | null
+          comments_collected: number | null
+          created_at: string | null
+          data_quality_score: number | null
+          followers_at_collection: number | null
+          id: string
+          inferred_region: string | null
+          interactions_count: number | null
+          posts_collected: number | null
+          profile_location_city: string | null
+          profile_location_state: string | null
+          profile_unique_id: string
+          profile_url: string | null
+          profile_username: string | null
+          social_network: string
+          source_type: string
+        }
+        Insert: {
+          analysis_id: string
+          collection_date?: string | null
+          collection_method?: string | null
+          comments_collected?: number | null
+          created_at?: string | null
+          data_quality_score?: number | null
+          followers_at_collection?: number | null
+          id?: string
+          inferred_region?: string | null
+          interactions_count?: number | null
+          posts_collected?: number | null
+          profile_location_city?: string | null
+          profile_location_state?: string | null
+          profile_unique_id: string
+          profile_url?: string | null
+          profile_username?: string | null
+          social_network: string
+          source_type: string
+        }
+        Update: {
+          analysis_id?: string
+          collection_date?: string | null
+          collection_method?: string | null
+          comments_collected?: number | null
+          created_at?: string | null
+          data_quality_score?: number | null
+          followers_at_collection?: number | null
+          id?: string
+          inferred_region?: string | null
+          interactions_count?: number | null
+          posts_collected?: number | null
+          profile_location_city?: string | null
+          profile_location_state?: string | null
+          profile_unique_id?: string
+          profile_url?: string | null
+          profile_username?: string | null
+          social_network?: string
+          source_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analysis_sources_analysis_id_fkey"
+            columns: ["analysis_id"]
+            isOneToOne: false
+            referencedRelation: "candidate_analyses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidate_analyses: {
         Row: {
           age_distribution: Json | null
@@ -21,11 +92,13 @@ export type Database = {
           analysis_status: string | null
           candidate_id: string
           created_at: string | null
+          data_quality_score: number | null
           error_message: string | null
           followers_count: string | null
           gemini_flash_result: Json | null
           gemini_pro_result: Json | null
           gender_distribution: Json | null
+          geographic_scope: string | null
           gpt5_mini_result: Json | null
           id: string
           ideology_confidence: number | null
@@ -33,13 +106,16 @@ export type Database = {
           keywords: string[] | null
           mentions_count: number | null
           posts_analyzed: number | null
+          primary_data_source: string | null
           region_distribution: Json | null
           sentiment_confidence: number | null
           sentiment_label: string | null
           sentiment_score: number | null
           social_network: string | null
           topics: string[] | null
+          total_profiles_analyzed: number | null
           trend: string | null
+          unique_profiles_count: number | null
           user_id: string
         }
         Insert: {
@@ -48,11 +124,13 @@ export type Database = {
           analysis_status?: string | null
           candidate_id: string
           created_at?: string | null
+          data_quality_score?: number | null
           error_message?: string | null
           followers_count?: string | null
           gemini_flash_result?: Json | null
           gemini_pro_result?: Json | null
           gender_distribution?: Json | null
+          geographic_scope?: string | null
           gpt5_mini_result?: Json | null
           id?: string
           ideology_confidence?: number | null
@@ -60,13 +138,16 @@ export type Database = {
           keywords?: string[] | null
           mentions_count?: number | null
           posts_analyzed?: number | null
+          primary_data_source?: string | null
           region_distribution?: Json | null
           sentiment_confidence?: number | null
           sentiment_label?: string | null
           sentiment_score?: number | null
           social_network?: string | null
           topics?: string[] | null
+          total_profiles_analyzed?: number | null
           trend?: string | null
+          unique_profiles_count?: number | null
           user_id: string
         }
         Update: {
@@ -75,11 +156,13 @@ export type Database = {
           analysis_status?: string | null
           candidate_id?: string
           created_at?: string | null
+          data_quality_score?: number | null
           error_message?: string | null
           followers_count?: string | null
           gemini_flash_result?: Json | null
           gemini_pro_result?: Json | null
           gender_distribution?: Json | null
+          geographic_scope?: string | null
           gpt5_mini_result?: Json | null
           id?: string
           ideology_confidence?: number | null
@@ -87,13 +170,16 @@ export type Database = {
           keywords?: string[] | null
           mentions_count?: number | null
           posts_analyzed?: number | null
+          primary_data_source?: string | null
           region_distribution?: Json | null
           sentiment_confidence?: number | null
           sentiment_label?: string | null
           sentiment_score?: number | null
           social_network?: string | null
           topics?: string[] | null
+          total_profiles_analyzed?: number | null
           trend?: string | null
+          unique_profiles_count?: number | null
           user_id?: string
         }
         Relationships: [
