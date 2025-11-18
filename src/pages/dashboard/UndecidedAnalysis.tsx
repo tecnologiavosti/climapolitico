@@ -26,10 +26,23 @@ import {
   AlertCircle,
   Loader2,
   Trash2,
-  Eye
+  Eye,
+  MessageSquare
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 
 export default function UndecidedAnalysis() {
   const { toast } = useToast();
@@ -294,6 +307,199 @@ export default function UndecidedAnalysis() {
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Evolução Temporal da Indecisão */}
+              {selectedAnalysis?.temporal_evolution && selectedAnalysis.temporal_evolution.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <TrendingUp className="h-5 w-5" />
+                      Evolução Temporal da Indecisão
+                    </CardTitle>
+                    <CardDescription>
+                      Acompanhe como a indecisão evoluiu ao longo do período analisado
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <LineChart data={selectedAnalysis.temporal_evolution}>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                        <XAxis 
+                          dataKey="date" 
+                          tickFormatter={(date) => format(new Date(date), 'dd/MM', { locale: ptBR })}
+                          className="text-xs"
+                        />
+                        <YAxis 
+                          label={{ value: '% Indecisos', angle: -90, position: 'insideLeft' }}
+                          className="text-xs"
+                        />
+                        <Tooltip 
+                          labelFormatter={(date) => format(new Date(date), 'dd/MM/yyyy', { locale: ptBR })}
+                          formatter={(value: number) => [`${value.toFixed(1)}%`, 'Indecisão']}
+                          contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
+                        />
+                        <Legend />
+                        <Line 
+                          type="monotone" 
+                          dataKey="undecided_percentage" 
+                          stroke="hsl(var(--primary))" 
+                          strokeWidth={2}
+                          name="% Indecisos"
+                          dot={{ fill: 'hsl(var(--primary))' }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Redes Sociais Analisadas */}
+              {selectedAnalysis?.social_media_breakdown?.sources && selectedAnalysis.social_media_breakdown.sources.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <MessageSquare className="h-5 w-5" />
+                      Redes Sociais Analisadas
+                    </CardTitle>
+                    <CardDescription>
+                      Distribuição das fontes de dados por rede social
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <BarChart data={selectedAnalysis.social_media_breakdown.sources}>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                        <XAxis dataKey="network" className="text-xs" />
+                        <YAxis className="text-xs" />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
+                        />
+                        <Legend />
+                        <Bar dataKey="posts" fill="hsl(var(--chart-1))" name="Posts" />
+                        <Bar dataKey="comments" fill="hsl(var(--chart-2))" name="Comentários" />
+                        <Bar dataKey="interactions" fill="hsl(var(--chart-3))" name="Interações" />
+                      </BarChart>
+                    </ResponsiveContainer>
+
+                    <Table className="mt-4">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Rede Social</TableHead>
+                          <TableHead className="text-right">Posts</TableHead>
+                          <TableHead className="text-right">Comentários</TableHead>
+                          <TableHead className="text-right">Interações</TableHead>
+                          <TableHead className="text-right">Perfis</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedAnalysis.social_media_breakdown.sources.map((source: any) => (
+                          <TableRow key={source.network}>
+                            <TableCell className="font-medium">{source.network}</TableCell>
+                            <TableCell className="text-right">{source.posts.toLocaleString('pt-BR')}</TableCell>
+                            <TableCell className="text-right">{source.comments.toLocaleString('pt-BR')}</TableCell>
+                            <TableCell className="text-right">{source.interactions.toLocaleString('pt-BR')}</TableCell>
+                            <TableCell className="text-right">{source.profiles}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t">
+                      <div className="text-center">
+                        <p className="text-sm text-muted-foreground">Total Posts</p>
+                        <p className="text-2xl font-bold">{selectedAnalysis.social_media_breakdown.total_posts?.toLocaleString('pt-BR')}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm text-muted-foreground">Total Comentários</p>
+                        <p className="text-2xl font-bold">{selectedAnalysis.social_media_breakdown.total_comments?.toLocaleString('pt-BR')}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm text-muted-foreground">Total Interações</p>
+                        <p className="text-2xl font-bold">{selectedAnalysis.social_media_breakdown.total_interactions?.toLocaleString('pt-BR')}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm text-muted-foreground">Total Perfis</p>
+                        <p className="text-2xl font-bold">{selectedAnalysis.social_media_breakdown.total_profiles?.toLocaleString('pt-BR')}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Comparação Entre Candidatos */}
+              {selectedAnalysis?.candidates_comparison && selectedAnalysis.candidates_comparison.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Users className="h-5 w-5" />
+                      Comparação Entre Candidatos
+                    </CardTitle>
+                    <CardDescription>
+                      Intenção de voto positiva vs negativa por candidato
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={Math.max(300, selectedAnalysis.candidates_comparison.length * 60)}>
+                      <BarChart 
+                        data={selectedAnalysis.candidates_comparison}
+                        layout="vertical"
+                      >
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                        <XAxis 
+                          type="number" 
+                          label={{ value: '% Intenção', position: 'bottom' }}
+                          className="text-xs"
+                        />
+                        <YAxis 
+                          dataKey="candidate_name" 
+                          type="category" 
+                          width={150}
+                          className="text-xs"
+                        />
+                        <Tooltip 
+                          formatter={(value: number) => `${value.toFixed(1)}%`}
+                          contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
+                        />
+                        <Legend />
+                        <Bar dataKey="positive_percentage" fill="hsl(var(--chart-2))" name="Intenção Positiva" />
+                        <Bar dataKey="negative_percentage" fill="hsl(var(--destructive))" name="Intenção Negativa" />
+                        <Bar dataKey="neutral_percentage" fill="hsl(var(--muted))" name="Neutros/Indecisos" />
+                      </BarChart>
+                    </ResponsiveContainer>
+
+                    <Table className="mt-4">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Candidato</TableHead>
+                          <TableHead className="text-right">Positiva</TableHead>
+                          <TableHead className="text-right">Negativa</TableHead>
+                          <TableHead className="text-right">Neutra</TableHead>
+                          <TableHead className="text-right">Total Menções</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedAnalysis.candidates_comparison
+                          ?.sort((a: any, b: any) => b.positive_percentage - a.positive_percentage)
+                          .map((candidate: any) => (
+                          <TableRow key={candidate.candidate_id}>
+                            <TableCell className="font-medium">{candidate.candidate_name}</TableCell>
+                            <TableCell className="text-right">
+                              <Badge className="bg-green-600">{candidate.positive_percentage.toFixed(1)}%</Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Badge variant="destructive">{candidate.negative_percentage.toFixed(1)}%</Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Badge variant="secondary">{candidate.neutral_percentage.toFixed(1)}%</Badge>
+                            </TableCell>
+                            <TableCell className="text-right">{candidate.total_mentions.toLocaleString('pt-BR')}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Padrões Comportamentais */}
               <Card>

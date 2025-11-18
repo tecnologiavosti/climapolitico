@@ -90,6 +90,131 @@ serve(async (req) => {
       .slice(0, 10)
       .map(([keyword]) => keyword);
 
+    // Fetch analysis sources for social media breakdown
+    const analysisIds = analyses.map(a => a.id);
+    const { data: sources, error: sourcesError } = await supabaseClient
+      .from('analysis_sources')
+      .select('*')
+      .in('analysis_id', analysisIds);
+
+    if (sourcesError) {
+      console.error('Error fetching analysis sources:', sourcesError);
+    }
+
+    // Aggregate social media breakdown
+    const socialMediaMap: Record<string, { network: string; posts: number; comments: number; interactions: number; profiles: number }> = {};
+    
+    if (sources) {
+      sources.forEach(source => {
+        const network = source.social_network || 'Outro';
+        if (!socialMediaMap[network]) {
+          socialMediaMap[network] = {
+            network,
+            posts: 0,
+            comments: 0,
+            interactions: 0,
+            profiles: 0
+          };
+        }
+        socialMediaMap[network].posts += source.posts_collected || 0;
+        socialMediaMap[network].comments += source.comments_collected || 0;
+        socialMediaMap[network].interactions += source.interactions_count || 0;
+        socialMediaMap[network].profiles += 1;
+      });
+    }
+
+    const socialMediaBreakdown = {
+      sources: Object.values(socialMediaMap),
+      total_posts: Object.values(socialMediaMap).reduce((sum, s) => sum + s.posts, 0),
+      total_comments: Object.values(socialMediaMap).reduce((sum, s) => sum + s.comments, 0),
+      total_interactions: Object.values(socialMediaMap).reduce((sum, s) => sum + s.interactions, 0),
+      total_profiles: Object.values(socialMediaMap).reduce((sum, s) => sum + s.profiles, 0)
+    };
+
+    // Create temporal evolution data
+    const temporalEvolution = analyses
+      .sort((a, b) => new Date(a.created_at!).getTime() - new Date(b.created_at!).getTime())
+      .map(analysis => {
+        const sentimentScore = analysis.sentiment_score || 50;
+        const isNeutral = sentimentScore >= 40 && sentimentScore <= 60;
+        const neutralCount = isNeutral ? (analysis.mentions_count || 0) : 0;
+        const totalCount = analysis.mentions_count || 1;
+        const undecidedPercentage = (neutralCount / totalCount) * 100;
+        
+        return {
+          date: analysis.created_at?.split('T')[0] || '',
+          undecided_percentage: undecidedPercentage,
+          neutral_count: neutralCount,
+          total_count: totalCount,
+          sentiment_score: sentimentScore
+        };
+      });
+
+    // Fetch all candidates for comparison
+    const { data: allCandidates, error: allCandidatesError } = await supabaseClient
+      .from('candidates')
+      .select('id, full_name')
+      .eq('user_id', user.id);
+
+    if (allCandidatesError) {
+      console.error('Error fetching all candidates:', allCandidatesError);
+    }
+
+    // Fetch analyses for all candidates in the same period
+    let allAnalysesQuery = supabaseClient
+      .from('candidate_analyses')
+      .select('candidate_id, sentiment_score, mentions_count')
+      .eq('user_id', user.id);
+
+    if (period_start) {
+      allAnalysesQuery = allAnalysesQuery.gte('created_at', period_start);
+    }
+    if (period_end) {
+      allAnalysesQuery = allAnalysesQuery.lte('created_at', period_end);
+    }
+
+    const { data: allAnalyses, error: allAnalysesError } = await allAnalysesQuery;
+
+    if (allAnalysesError) {
+      console.error('Error fetching all analyses:', allAnalysesError);
+    }
+
+    // Aggregate by candidate
+    const candidateMap: Record<string, { positive: number; negative: number; neutral: number; total: number }> = {};
+    
+    if (allAnalyses && allCandidates) {
+      allAnalyses.forEach(analysis => {
+        const candidateId = analysis.candidate_id;
+        if (!candidateMap[candidateId]) {
+          candidateMap[candidateId] = { positive: 0, negative: 0, neutral: 0, total: 0 };
+        }
+        
+        const score = analysis.sentiment_score || 50;
+        const mentions = analysis.mentions_count || 0;
+        
+        if (score > 60) {
+          candidateMap[candidateId].positive += mentions;
+        } else if (score < 40) {
+          candidateMap[candidateId].negative += mentions;
+        } else {
+          candidateMap[candidateId].neutral += mentions;
+        }
+        candidateMap[candidateId].total += mentions;
+      });
+    }
+
+    const candidatesComparison = allCandidates?.map(candidate => {
+      const data = candidateMap[candidate.id] || { positive: 0, negative: 0, neutral: 0, total: 1 };
+      return {
+        candidate_id: candidate.id,
+        candidate_name: candidate.full_name,
+        positive_percentage: (data.positive / data.total) * 100,
+        negative_percentage: (data.negative / data.total) * 100,
+        neutral_percentage: (data.neutral / data.total) * 100,
+        total_mentions: data.total
+      };
+    }) || [];
+
     // Prepare data summary for AI
     const dataSummary = {
       candidate: candidate.full_name,
@@ -105,7 +230,10 @@ serve(async (req) => {
         positive: analyses.filter(a => a.sentiment_score > 60).length,
         neutral: neutralAnalyses.length,
         negative: analyses.filter(a => a.sentiment_score < 40).length
-      }
+      },
+      social_media_breakdown: socialMediaBreakdown,
+      temporal_evolution: temporalEvolution,
+      candidates_comparison: candidatesComparison
     };
 
     console.log('Data summary for AI:', JSON.stringify(dataSummary, null, 2));
@@ -215,6 +343,9 @@ Retorne APENAS um JSON válido (sem markdown, sem explicações extras) com esta
         confidence_score: parsedResult.confidence_score,
         analysis_period_start: period_start || null,
         analysis_period_end: period_end || null,
+        social_media_breakdown: socialMediaBreakdown,
+        temporal_evolution: temporalEvolution,
+        candidates_comparison: candidatesComparison,
       })
       .select()
       .single();
