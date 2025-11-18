@@ -14,6 +14,8 @@ import { format } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { DateRangePicker } from "@/components/DateRangePicker";
 
+import { AnalysisSourceMetadata } from "@/components/dashboard/AnalysisSourceMetadata";
+
 export default function AnalysisHistory() {
   const [sentimentFilter, setSentimentFilter] = useState<string>("all");
   const [ideologyFilter, setIdeologyFilter] = useState<string>("all");
@@ -23,7 +25,7 @@ export default function AnalysisHistory() {
   });
 
   const { data: analyses, isLoading } = useQuery({
-    queryKey: ['candidate-analyses', dateRange],
+    queryKey: ['candidate-analyses-with-sources', dateRange],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
@@ -47,9 +49,22 @@ export default function AnalysisHistory() {
         query = query.lte('created_at', dateRange.to.toISOString());
       }
 
-      const { data, error } = await query;
+      const { data: analysesData, error } = await query;
       if (error) throw error;
-      return data;
+
+      // Fetch sources for each analysis
+      const analysesWithSources = await Promise.all(
+        analysesData.map(async (analysis) => {
+          const { data: sources } = await supabase
+            .from('analysis_sources')
+            .select('*')
+            .eq('analysis_id', analysis.id);
+          
+          return { ...analysis, sources: sources || [] };
+        })
+      );
+
+      return analysesWithSources;
     },
   });
 
@@ -232,69 +247,87 @@ export default function AnalysisHistory() {
               </TableHeader>
               <TableBody>
                 {filteredAnalyses.map((analysis) => (
-                  <TableRow key={analysis.id}>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium">{(analysis.candidates as any)?.full_name || 'N/A'}</p>
-                        <p className="text-sm text-muted-foreground">{(analysis.candidates as any)?.region || 'N/A'}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {analysis.ai_models_used?.map((model) => (
-                          <Badge key={model} variant="outline" className="text-xs">
-                            <Brain className="h-3 w-3 mr-1" />
-                            {model}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={
-                        analysis.sentiment_label?.toLowerCase().includes('positiv') ? 'default' :
-                        analysis.sentiment_label?.toLowerCase().includes('negativ') ? 'destructive' :
-                        'secondary'
-                      }>
-                        {analysis.sentiment_label || 'N/A'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">{analysis.sentiment_score?.toFixed(0) || 0}%</span>
+                  <>
+                    <TableRow key={analysis.id}>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{(analysis.candidates as any)?.full_name || 'N/A'}</p>
+                          <p className="text-sm text-muted-foreground">{(analysis.candidates as any)?.region || 'N/A'}</p>
                         </div>
-                        <Progress 
-                          value={analysis.sentiment_score || 0} 
-                          className="h-2"
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {analysis.ai_models_used?.map((model) => (
+                            <Badge key={model} variant="outline" className="text-xs">
+                              <Brain className="h-3 w-3 mr-1" />
+                              {model}
+                            </Badge>
+                          ))}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={
+                          analysis.sentiment_label?.toLowerCase().includes('positiv') ? 'default' :
+                          analysis.sentiment_label?.toLowerCase().includes('negativ') ? 'destructive' :
+                          'secondary'
+                        }>
+                          {analysis.sentiment_label || 'N/A'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">{analysis.sentiment_score?.toFixed(0) || 0}%</span>
+                          </div>
+                          <Progress 
+                            value={analysis.sentiment_score || 0} 
+                            className="h-2"
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          {getTrendIcon(analysis.trend)}
+                          <span className="text-sm capitalize">{analysis.trend || 'neutral'}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1 max-w-xs">
+                          {analysis.keywords?.slice(0, 3).map((keyword) => (
+                            <Badge key={keyword} variant="secondary" className="text-xs">
+                              {keyword}
+                            </Badge>
+                          ))}
+                          {analysis.keywords && analysis.keywords.length > 3 && (
+                            <Badge variant="secondary" className="text-xs">
+                              +{analysis.keywords.length - 3}
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm text-muted-foreground">
+                          {format(new Date(analysis.created_at), "dd/MM/yyyy HH:mm")}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                    <TableRow key={`${analysis.id}-source`} className="border-b-2">
+                      <TableCell colSpan={7} className="p-4 bg-muted/50">
+                        <AnalysisSourceMetadata
+                          sources={(analysis as any).sources?.map((s: any) => ({
+                            social_network: s.social_network,
+                            profile_count: 1,
+                            state: s.profile_location_state,
+                            total_interactions: s.interactions_count || 0,
+                            data_quality: s.data_quality_score || 0.7
+                          })) || []}
+                          geographicScope={analysis.geographic_scope || 'nacional'}
+                          totalProfiles={analysis.total_profiles_analyzed || 1}
+                          uniqueProfiles={analysis.unique_profiles_count || 1}
                         />
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        {getTrendIcon(analysis.trend)}
-                        <span className="text-sm capitalize">{analysis.trend || 'neutral'}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1 max-w-xs">
-                        {analysis.keywords?.slice(0, 3).map((keyword) => (
-                          <Badge key={keyword} variant="secondary" className="text-xs">
-                            {keyword}
-                          </Badge>
-                        ))}
-                        {analysis.keywords && analysis.keywords.length > 3 && (
-                          <Badge variant="secondary" className="text-xs">
-                            +{analysis.keywords.length - 3}
-                          </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-muted-foreground">
-                        {format(new Date(analysis.created_at), "dd/MM/yyyy HH:mm")}
-                      </span>
-                    </TableCell>
-                  </TableRow>
+                      </TableCell>
+                    </TableRow>
+                  </>
                 ))}
               </TableBody>
             </Table>
