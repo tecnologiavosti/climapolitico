@@ -11,7 +11,9 @@ import {
   LineChart,
   Mic,
   Trophy,
+  Shield,
 } from "lucide-react";
+import { useAdminCheck } from "@/hooks/useAdminCheck";
 
 import {
   Sidebar,
@@ -35,6 +37,10 @@ const mainItems = [
   { title: "IA & Insights", url: "/dashboard/ai", icon: Brain },
 ];
 
+const adminItems = [
+  { title: "Administração", url: "/dashboard/admin", icon: Shield },
+];
+
 const settingsItems = [
   { title: "Notificações", url: "/dashboard/notifications", icon: Bell },
   { title: "Assinatura", url: "/dashboard/subscription", icon: CreditCard },
@@ -46,6 +52,7 @@ export function AppSidebar() {
   const location = useLocation();
   const currentPath = location.pathname;
   const isCollapsed = state === "collapsed";
+  const { isAdmin } = useAdminCheck();
 
   const isActive = (path: string) => {
     if (path === "/dashboard") {
@@ -94,6 +101,31 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {/* Admin Section */}
+        {isAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Administração</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {adminItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild>
+                      <NavLink
+                        to={item.url}
+                        className="hover:bg-muted/50"
+                        activeClassName="bg-muted text-primary font-medium"
+                      >
+                        <item.icon className="h-4 w-4" />
+                        {!isCollapsed && <span>{item.title}</span>}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         {/* Settings */}
         <SidebarGroup>
