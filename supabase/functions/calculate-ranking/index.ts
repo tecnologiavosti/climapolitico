@@ -6,6 +6,22 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Normalize region name to standard format
+function normalizeRegion(region: string | null): string {
+  if (!region) return 'NACIONAL';
+  const normalized = region.trim().toUpperCase();
+  
+  const regionMap: Record<string, string> = {
+    'BRASIL': 'NACIONAL', 'BR': 'NACIONAL', 'NACIONAL': 'NACIONAL',
+    'DF': 'DISTRITO FEDERAL', 'SP': 'SÃO PAULO', 'SAO PAULO': 'SÃO PAULO',
+    'RJ': 'RIO DE JANEIRO', 'MG': 'MINAS GERAIS', 'BA': 'BAHIA',
+    'PR': 'PARANÁ', 'RS': 'RIO GRANDE DO SUL', 'PE': 'PERNAMBUCO',
+    'CE': 'CEARÁ', 'PA': 'PARÁ', 'SC': 'SANTA CATARINA'
+  };
+  
+  return regionMap[normalized] || normalized;
+}
+
 // Helper: Parse follower count string to number
 function parseFollowerCount(followers: string | null): number {
   if (!followers) return 0;
@@ -157,16 +173,39 @@ serve(async (req) => {
 
     console.log(`Found ${candidates?.length || 0} candidates`);
 
+    // Calculate scores for each candidate with geographic validation
     const rankings = [];
     
     for (const candidate of candidates || []) {
-      // Fetch analyses in period
-      const { data: analyses } = await supabase
+      const candidateRegion = normalizeRegion(candidate.region);
+      const isNationalCandidate = candidateRegion === 'NACIONAL';
+      const geoScope = isNationalCandidate 
+        ? 'nacional' 
+        : `regional_${candidateRegion.toLowerCase().replace(/ /g, '_')}`;
+      
+      console.log(`📊 Ranking ${candidate.full_name} - Region: ${candidateRegion}, Scope: ${geoScope}`);
+      
+      // Fetch analyses in period - filter by geographic scope
+      let analysisQuery = supabase
         .from('candidate_analyses')
         .select('*')
         .eq('candidate_id', candidate.id)
-        .gte('created_at', period_start)
-        .lte('created_at', period_end);
+        .eq('geographic_scope', geoScope); // CRITICAL: Only use analyses from correct region
+
+      if (period_start) {
+        analysisQuery = analysisQuery.gte('created_at', period_start);
+      }
+      if (period_end) {
+        analysisQuery = analysisQuery.lte('created_at', period_end);
+      }
+
+      const { data: analyses } = await analysisQuery;
+      
+      if (!analyses || analyses.length === 0) {
+        console.warn(`⚠️ No analyses found for ${candidate.full_name} in region ${candidateRegion} (${geoScope})`);
+      } else {
+        console.log(`✓ Found ${analyses.length} analyses for ${candidate.full_name} in ${candidateRegion}`);
+      }
 
       // Fetch speeches in period
       const { data: speeches } = await supabase
