@@ -76,10 +76,27 @@ export default function SpeechAnalysis() {
   // Analyze speech mutation
   const analyzeMutation = useMutation({
     mutationFn: async (payload: any) => {
+      // Validate session before calling edge function
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        throw new Error('Sessão inválida. Por favor, faça login novamente.');
+      }
+
       const { data, error } = await supabase.functions.invoke('analyze-speech', {
         body: payload,
       });
-      if (error) throw error;
+
+      if (error) {
+        // Detect authentication errors
+        if (error.message?.includes('Unauthorized') || 
+            error.message?.includes('JWT') ||
+            error.message?.includes('authorization')) {
+          console.error('🔒 Authentication error detected');
+          throw new Error('Sessão expirada. Por favor, faça login novamente.');
+        }
+        throw error;
+      }
       return data;
     },
     onSuccess: (data) => {
@@ -97,15 +114,25 @@ export default function SpeechAnalysis() {
     },
     onError: (error: any) => {
       console.error('Speech analysis error:', error);
-      console.error('Error details:', {
-        message: error.message,
-        stack: error.stack,
-        fullError: JSON.stringify(error, null, 2)
-      });
+      
+      // If authentication error, force logout
+      if (error.message?.includes('Sessão expirada')) {
+        toast({
+          title: "Sessão Expirada 🔒",
+          description: "Sua sessão expirou. Redirecionando para login...",
+          variant: "destructive",
+        });
+        
+        setTimeout(async () => {
+          await supabase.auth.signOut();
+          window.location.href = '/auth';
+        }, 2000);
+        return;
+      }
       
       toast({
         title: "Erro na análise",
-        description: error.message || "Não foi possível analisar a fala. Verifique os logs para mais detalhes.",
+        description: error.message || "Não foi possível analisar a fala.",
         variant: "destructive",
       });
     },

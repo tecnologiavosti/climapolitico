@@ -45,7 +45,18 @@ serve(async (req) => {
 
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
-      throw new Error('Unauthorized');
+      console.error('❌ Authentication failed:', {
+        error: userError?.message,
+        hasAuthHeader: !!authHeader,
+        authHeaderPreview: authHeader ? authHeader.substring(0, 20) + '...' : 'none'
+      });
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized - Invalid or expired session' }),
+        { 
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
     const { speechText, speechTitle, candidateId, speechDate, speechType } = await req.json();
