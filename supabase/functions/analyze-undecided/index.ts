@@ -1,0 +1,253 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new Error('Missing authorization header');
+    }
+
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    if (userError || !user) {
+      throw new Error('Unauthorized');
+    }
+
+    const { candidate_id, period_start, period_end } = await req.json();
+
+    if (!candidate_id) {
+      throw new Error('candidate_id is required');
+    }
+
+    console.log(`Analyzing undecided voters for candidate ${candidate_id}, user ${user.id}`);
+
+    // Fetch candidate info
+    const { data: candidate, error: candidateError } = await supabaseClient
+      .from('candidates')
+      .select('full_name, region, party')
+      .eq('id', candidate_id)
+      .single();
+
+    if (candidateError) throw candidateError;
+
+    // Fetch analyses for the candidate in the period
+    let query = supabaseClient
+      .from('candidate_analyses')
+      .select('*')
+      .eq('candidate_id', candidate_id)
+      .eq('user_id', user.id);
+
+    if (period_start) {
+      query = query.gte('created_at', period_start);
+    }
+    if (period_end) {
+      query = query.lte('created_at', period_end);
+    }
+
+    const { data: analyses, error: analysesError } = await query;
+    if (analysesError) throw analysesError;
+
+    if (!analyses || analyses.length === 0) {
+      throw new Error('Nenhuma análise encontrada para este candidato no período selecionado');
+    }
+
+    // Calculate metrics
+    const neutralAnalyses = analyses.filter(a => 
+      a.sentiment_score >= 40 && a.sentiment_score <= 60
+    );
+    const neutralCount = neutralAnalyses.reduce((sum, a) => sum + (a.mentions_count || 0), 0);
+    const totalCount = analyses.reduce((sum, a) => sum + (a.mentions_count || 0), 0);
+    const undecidedPercentage = totalCount > 0 ? (neutralCount / totalCount) * 100 : 0;
+
+    // Aggregate keywords from neutral analyses
+    const allKeywords = neutralAnalyses
+      .flatMap(a => a.keywords || [])
+      .filter((k): k is string => typeof k === 'string');
+    
+    // Get unique keywords
+    const keywordFrequency = allKeywords.reduce((acc, keyword) => {
+      acc[keyword] = (acc[keyword] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const topKeywords = Object.entries(keywordFrequency)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 10)
+      .map(([keyword]) => keyword);
+
+    // Prepare data summary for AI
+    const dataSummary = {
+      candidate: candidate.full_name,
+      region: candidate.region,
+      party: candidate.party,
+      total_analyses: analyses.length,
+      neutral_analyses_count: neutralAnalyses.length,
+      undecided_percentage: undecidedPercentage.toFixed(2),
+      total_mentions: totalCount,
+      neutral_mentions: neutralCount,
+      top_keywords: topKeywords,
+      sentiment_distribution: {
+        positive: analyses.filter(a => a.sentiment_score > 60).length,
+        neutral: neutralAnalyses.length,
+        negative: analyses.filter(a => a.sentiment_score < 40).length
+      }
+    };
+
+    console.log('Data summary for AI:', JSON.stringify(dataSummary, null, 2));
+
+    // Call Lovable AI
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    if (!LOVABLE_API_KEY) {
+      throw new Error('LOVABLE_API_KEY not configured');
+    }
+
+    const aiPrompt = `Você é um especialista em análise de comportamento eleitoral. Analise os seguintes dados sobre eleitores indecisos/neutros para o candidato ${candidate.full_name}:
+
+Dados:
+${JSON.stringify(dataSummary, null, 2)}
+
+Forneça uma análise estruturada em português brasileiro identificando:
+
+1. PADRÕES COMPORTAMENTAIS (behavioral_patterns): Liste 3-5 padrões comportamentais observados nos eleitores indecisos. Cada padrão deve ter:
+   - pattern: descrição do padrão
+   - frequency: frequência observada (baixa/média/alta)
+   - impact: impacto potencial (baixo/médio/alto)
+
+2. GATILHOS DE DECISÃO (decision_triggers): Identifique 3-5 fatores que podem influenciar a decisão desses eleitores:
+   - trigger: o gatilho/fator
+   - effectiveness: efetividade estimada (baixa/média/alta)
+   - timing: momento ideal para usar (curto prazo/médio prazo/longo prazo)
+
+3. PERFIL DEMOGRÁFICO (demographic_profile): Baseado nos dados, infira características demográficas:
+   - age_groups: faixas etárias mais presentes (array)
+   - regions: regiões de maior concentração (array)
+   - concerns: principais preocupações (array)
+
+4. TÓPICOS-CHAVE (key_topics): Liste 5-8 tópicos que geram mais indecisão
+
+5. ESTRATÉGIAS DE PERSUASÃO (persuasion_strategies): Sugira 4-6 estratégias práticas:
+   - strategy: descrição da estratégia
+   - target: público-alvo específico
+   - channel: canal recomendado (redes sociais/TV/eventos/etc)
+   - priority: prioridade (alta/média/baixa)
+
+6. SCORE DE FLUTUAÇÃO (sentiment_fluctuation_score): Dê um score de 0-100 indicando o quão volátil é o sentimento desse grupo (0=muito estável, 100=extremamente volátil)
+
+7. CONFIDENCE SCORE: Dê um score de 0-100 sobre sua confiança nesta análise baseado na quantidade e qualidade dos dados.
+
+Retorne APENAS um JSON válido (sem markdown, sem explicações extras) com esta estrutura:
+{
+  "behavioral_patterns": [{"pattern": "...", "frequency": "...", "impact": "..."}],
+  "decision_triggers": [{"trigger": "...", "effectiveness": "...", "timing": "..."}],
+  "demographic_profile": {"age_groups": [], "regions": [], "concerns": []},
+  "key_topics": [],
+  "persuasion_strategies": [{"strategy": "...", "target": "...", "channel": "...", "priority": "..."}],
+  "sentiment_fluctuation_score": 0,
+  "confidence_score": 0
+}`;
+
+    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          { 
+            role: 'system', 
+            content: 'Você é um especialista em análise política e comportamento eleitoral. Retorne sempre JSON válido, sem markdown.' 
+          },
+          { role: 'user', content: aiPrompt }
+        ],
+        temperature: 0.7,
+      }),
+    });
+
+    if (!aiResponse.ok) {
+      const errorText = await aiResponse.text();
+      console.error('Lovable AI error:', aiResponse.status, errorText);
+      throw new Error(`Lovable AI error: ${aiResponse.status}`);
+    }
+
+    const aiData = await aiResponse.json();
+    let aiResult = aiData.choices[0].message.content;
+
+    // Remove markdown code blocks if present
+    aiResult = aiResult.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    
+    console.log('AI raw result:', aiResult);
+
+    const parsedResult = JSON.parse(aiResult);
+
+    // Insert analysis into database
+    const { data: analysisRecord, error: insertError } = await supabaseClient
+      .from('undecided_analyses')
+      .insert({
+        user_id: user.id,
+        candidate_id,
+        undecided_percentage: parseFloat(undecidedPercentage.toFixed(2)),
+        neutral_profiles_count: neutralCount,
+        total_profiles_analyzed: totalCount,
+        behavioral_patterns: parsedResult.behavioral_patterns,
+        decision_triggers: parsedResult.decision_triggers,
+        demographic_profile: parsedResult.demographic_profile,
+        key_topics: parsedResult.key_topics,
+        persuasion_strategies: parsedResult.persuasion_strategies,
+        sentiment_fluctuation_score: parsedResult.sentiment_fluctuation_score,
+        ai_model_used: 'google/gemini-2.5-flash',
+        confidence_score: parsedResult.confidence_score,
+        analysis_period_start: period_start || null,
+        analysis_period_end: period_end || null,
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('Insert error:', insertError);
+      throw insertError;
+    }
+
+    console.log('Analysis completed successfully');
+
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        analysis: analysisRecord,
+        message: 'Análise de eleitores indecisos concluída com sucesso'
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+
+  } catch (error) {
+    console.error('Error in analyze-undecided function:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorDetails = error instanceof Error ? error.toString() : String(error);
+    return new Response(
+      JSON.stringify({ 
+        error: errorMessage,
+        details: errorDetails
+      }),
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  }
+});

@@ -478,6 +478,77 @@ export type Database = {
         }
         Relationships: []
       }
+      undecided_analyses: {
+        Row: {
+          ai_model_used: string | null
+          analysis_period_end: string | null
+          analysis_period_start: string | null
+          behavioral_patterns: Json | null
+          candidate_id: string
+          confidence_score: number | null
+          created_at: string | null
+          decision_triggers: Json | null
+          demographic_profile: Json | null
+          id: string
+          key_topics: string[] | null
+          neutral_profiles_count: number | null
+          persuasion_strategies: Json | null
+          sentiment_fluctuation_score: number | null
+          total_profiles_analyzed: number | null
+          undecided_percentage: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          ai_model_used?: string | null
+          analysis_period_end?: string | null
+          analysis_period_start?: string | null
+          behavioral_patterns?: Json | null
+          candidate_id: string
+          confidence_score?: number | null
+          created_at?: string | null
+          decision_triggers?: Json | null
+          demographic_profile?: Json | null
+          id?: string
+          key_topics?: string[] | null
+          neutral_profiles_count?: number | null
+          persuasion_strategies?: Json | null
+          sentiment_fluctuation_score?: number | null
+          total_profiles_analyzed?: number | null
+          undecided_percentage?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          ai_model_used?: string | null
+          analysis_period_end?: string | null
+          analysis_period_start?: string | null
+          behavioral_patterns?: Json | null
+          candidate_id?: string
+          confidence_score?: number | null
+          created_at?: string | null
+          decision_triggers?: Json | null
+          demographic_profile?: Json | null
+          id?: string
+          key_topics?: string[] | null
+          neutral_profiles_count?: number | null
+          persuasion_strategies?: Json | null
+          sentiment_fluctuation_score?: number | null
+          total_profiles_analyzed?: number | null
+          undecided_percentage?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "undecided_analyses_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string

@@ -12,6 +12,7 @@ import Analytics from "./dashboard/Analytics";
 import SpeechAnalysis from "./dashboard/SpeechAnalysis";
 import CandidateRanking from "./dashboard/CandidateRanking";
 import Admin from "./dashboard/Admin";
+import UndecidedAnalysis from "./dashboard/UndecidedAnalysis";
 
 const Dashboard = () => {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -62,6 +63,7 @@ const Dashboard = () => {
               <Route path="/analytics-advanced" element={<Analytics />} />
               <Route path="/speech-analysis" element={<SpeechAnalysis />} />
               <Route path="/ranking" element={<CandidateRanking />} />
+              <Route path="/undecided" element={<UndecidedAnalysis />} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/ai" element={
                 <div className="text-center py-12">
