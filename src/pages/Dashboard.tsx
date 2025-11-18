@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, LogOut } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Overview from "./dashboard/Overview";
 import Candidates from "./dashboard/Candidates";
 import AnalysisHistory from "./dashboard/AnalysisHistory";
@@ -63,9 +64,17 @@ const Dashboard = () => {
               <Route path="/candidates" element={<Candidates />} />
               <Route path="/analytics" element={<AnalysisHistory />} />
               <Route path="/analytics-advanced" element={<Analytics />} />
-              <Route path="/speech-analysis" element={<SpeechAnalysis />} />
+              <Route path="/speech-analysis" element={
+                <ErrorBoundary>
+                  <SpeechAnalysis />
+                </ErrorBoundary>
+              } />
               <Route path="/ranking" element={<CandidateRanking />} />
-              <Route path="/undecided" element={<UndecidedAnalysis />} />
+              <Route path="/undecided" element={
+                <ErrorBoundary>
+                  <UndecidedAnalysis />
+                </ErrorBoundary>
+              } />
               <Route path="/admin" element={<Admin />} />
               <Route path="/ai" element={
                 <div className="text-center py-12">

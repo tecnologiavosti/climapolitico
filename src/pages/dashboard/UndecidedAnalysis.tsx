@@ -135,39 +135,78 @@ export default function UndecidedAnalysis() {
     },
   });
 
-  // Analyze mutation
+  // Analyze mutation with retry logic (FASE 1.2 + 1.3)
   const analyzeMutation = useMutation({
     mutationFn: async () => {
       if (!selectedCandidateId) {
         throw new Error('Selecione um candidato');
       }
 
-      // Validate session before calling edge function
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      let retries = 2;
       
-      if (sessionError || !session) {
-        throw new Error('Sessão inválida. Por favor, faça login novamente.');
-      }
-
-      const { data, error } = await supabase.functions.invoke('analyze-undecided', {
-        body: {
-          candidate_id: selectedCandidateId,
-          period_start: dateRange?.from?.toISOString(),
-          period_end: dateRange?.to?.toISOString(),
-        },
-      });
-
-      if (error) {
-        // Detect authentication errors
-        if (error.message?.includes('Unauthorized') || 
-            error.message?.includes('JWT') ||
-            error.message?.includes('authorization')) {
-          console.error('🔒 Authentication error detected');
-          throw new Error('Sessão expirada. Por favor, faça login novamente.');
+      while (retries > 0) {
+        // FASE 1.2: Token debugging antes de chamar edge function
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        console.log('🔑 Token status before undecided analysis:', {
+          hasSession: !!session,
+          hasAccessToken: !!session?.access_token,
+          tokenExpiry: session?.expires_at,
+          isExpired: session?.expires_at ? new Date(session.expires_at * 1000) < new Date() : true,
+          retriesLeft: retries
+        });
+        
+        if (sessionError || !session) {
+          throw new Error('Sessão inválida. Por favor, faça login novamente.');
         }
-        throw error;
+
+        try {
+          const { data, error } = await supabase.functions.invoke('analyze-undecided', {
+            body: {
+              candidate_id: selectedCandidateId,
+              period_start: dateRange?.from?.toISOString(),
+              period_end: dateRange?.to?.toISOString(),
+            },
+          });
+
+          // FASE 1.3: Implementar retry automático com refresh em caso de 401
+          if (error) {
+            const isAuthError = error.message?.includes('Unauthorized') || 
+                               error.message?.includes('JWT') ||
+                               error.message?.includes('authorization') ||
+                               error.message?.includes('401');
+            
+            if (isAuthError && retries > 1) {
+              console.log('🔄 Authentication error detected, attempting token refresh...');
+              const { error: refreshError } = await supabase.auth.refreshSession();
+              
+              if (refreshError) {
+                console.error('❌ Token refresh failed:', refreshError);
+                throw new Error('Sessão expirada. Por favor, faça login novamente.');
+              }
+              
+              console.log('✅ Token refreshed successfully, retrying...');
+              retries--;
+              continue;
+            }
+            
+            if (isAuthError) {
+              console.error('🔒 Authentication error after retry');
+              throw new Error('Sessão expirada. Por favor, faça login novamente.');
+            }
+            
+            throw error;
+          }
+          
+          console.log('✅ Undecided analysis completed successfully');
+          return data;
+        } catch (e: any) {
+          if (retries === 1) throw e;
+          retries--;
+        }
       }
-      return data;
+      
+      throw new Error('Falha ao analisar após múltiplas tentativas');
     },
     onSuccess: (data) => {
       toast({

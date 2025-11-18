@@ -27,6 +27,18 @@ export default function SpeechAnalysis() {
   const queryClient = useQueryClient();
   const { isAdmin } = useAdminCheck();
   const { user } = useAuth();
+
+  // FASE 2.3: Loading state defensivo
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Carregando usuário...</p>
+        </div>
+      </div>
+    );
+  }
   
   const [speechTitle, setSpeechTitle] = useState("");
   const [speechText, setSpeechText] = useState("");
@@ -35,23 +47,29 @@ export default function SpeechAnalysis() {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
   const [selectedAnalysis, setSelectedAnalysis] = useState<any>(null);
 
-  // Fetch candidates
-  const { data: candidates } = useQuery({
-    queryKey: ['candidates', isAdmin],
+  // Fetch candidates with error handling
+  const { data: candidates, isLoading: candidatesLoading, error: candidatesError } = useQuery({
+    queryKey: ['candidates', isAdmin, user?.id],
     queryFn: async () => {
-      let query = supabase
-        .from('candidates')
-        .select('id, full_name, region, party')
-        .order('full_name');
-      
-      if (!isAdmin && user) {
-        query = query.eq('user_id', user.id);
+      try {
+        let query = supabase
+          .from('candidates')
+          .select('id, full_name, region, party')
+          .order('full_name');
+        
+        if (!isAdmin && user) {
+          query = query.eq('user_id', user.id);
+        }
+        
+        const { data, error } = await query;
+        if (error) throw error;
+        return data || [];
+      } catch (error) {
+        console.error('❌ Error fetching candidates:', error);
+        throw error;
       }
-      
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
     },
+    enabled: !!user,
   });
 
   // Fetch speech analyses
@@ -73,31 +91,70 @@ export default function SpeechAnalysis() {
     },
   });
 
-  // Analyze speech mutation
+  // Analyze speech mutation with retry logic
   const analyzeMutation = useMutation({
     mutationFn: async (payload: any) => {
-      // Validate session before calling edge function
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      let retries = 2;
       
-      if (sessionError || !session) {
-        throw new Error('Sessão inválida. Por favor, faça login novamente.');
-      }
-
-      const { data, error } = await supabase.functions.invoke('analyze-speech', {
-        body: payload,
-      });
-
-      if (error) {
-        // Detect authentication errors
-        if (error.message?.includes('Unauthorized') || 
-            error.message?.includes('JWT') ||
-            error.message?.includes('authorization')) {
-          console.error('🔒 Authentication error detected');
-          throw new Error('Sessão expirada. Por favor, faça login novamente.');
+      while (retries > 0) {
+        // FASE 1.2: Token debugging antes de chamar edge function
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        console.log('🔑 Token status before speech analysis:', {
+          hasSession: !!session,
+          hasAccessToken: !!session?.access_token,
+          tokenExpiry: session?.expires_at,
+          isExpired: session?.expires_at ? new Date(session.expires_at * 1000) < new Date() : true,
+          retriesLeft: retries
+        });
+        
+        if (sessionError || !session) {
+          throw new Error('Sessão inválida. Por favor, faça login novamente.');
         }
-        throw error;
+
+        try {
+          const { data, error } = await supabase.functions.invoke('analyze-speech', {
+            body: payload,
+          });
+
+          // FASE 1.3: Implementar retry automático com refresh em caso de 401
+          if (error) {
+            const isAuthError = error.message?.includes('Unauthorized') || 
+                               error.message?.includes('JWT') ||
+                               error.message?.includes('authorization') ||
+                               error.message?.includes('401');
+            
+            if (isAuthError && retries > 1) {
+              console.log('🔄 Authentication error detected, attempting token refresh...');
+              const { error: refreshError } = await supabase.auth.refreshSession();
+              
+              if (refreshError) {
+                console.error('❌ Token refresh failed:', refreshError);
+                throw new Error('Sessão expirada. Por favor, faça login novamente.');
+              }
+              
+              console.log('✅ Token refreshed successfully, retrying...');
+              retries--;
+              continue;
+            }
+            
+            if (isAuthError) {
+              console.error('🔒 Authentication error after retry');
+              throw new Error('Sessão expirada. Por favor, faça login novamente.');
+            }
+            
+            throw error;
+          }
+          
+          console.log('✅ Speech analysis completed successfully');
+          return data;
+        } catch (e: any) {
+          if (retries === 1) throw e;
+          retries--;
+        }
       }
-      return data;
+      
+      throw new Error('Falha ao analisar após múltiplas tentativas');
     },
     onSuccess: (data) => {
       toast({
