@@ -8,17 +8,28 @@ import { supabase } from "@/integrations/supabase/client";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAdminCheck } from "@/hooks/useAdminCheck";
+import { useAuth } from "@/hooks/useAuth";
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--destructive))', 'hsl(var(--warning))', 'hsl(var(--muted))'];
 
 export default function Overview() {
+  const { isAdmin } = useAdminCheck();
+  const { user } = useAuth();
+
   // Query: Total de candidatos
   const { data: candidates, isLoading: loadingCandidates } = useQuery({
-    queryKey: ['candidates-overview'],
+    queryKey: ['candidates-overview', isAdmin],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('candidates')
         .select('id, full_name, mentions, sentiment, party, region');
+      
+      if (!isAdmin && user) {
+        query = query.eq('user_id', user.id);
+      }
+      
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     }
@@ -26,11 +37,17 @@ export default function Overview() {
 
   // Query: Análises de candidatos
   const { data: analyses, isLoading: loadingAnalyses } = useQuery({
-    queryKey: ['analyses-overview'],
+    queryKey: ['analyses-overview', isAdmin],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('candidate_analyses')
         .select('id, candidate_id, sentiment_score, mentions_count, ideology_label, created_at, sentiment_label');
+      
+      if (!isAdmin && user) {
+        query = query.eq('user_id', user.id);
+      }
+      
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     }
@@ -38,11 +55,17 @@ export default function Overview() {
 
   // Query: Análises de fala
   const { data: speeches, isLoading: loadingSpeeches } = useQuery({
-    queryKey: ['speeches-overview'],
+    queryKey: ['speeches-overview', isAdmin],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('speech_analyses')
         .select('id, risk_level, negative_perception_score, created_at');
+      
+      if (!isAdmin && user) {
+        query = query.eq('user_id', user.id);
+      }
+      
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     }
@@ -50,9 +73,9 @@ export default function Overview() {
 
   // Query: Rankings
   const { data: rankings, isLoading: loadingRankings } = useQuery({
-    queryKey: ['rankings-overview'],
+    queryKey: ['rankings-overview', isAdmin],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('candidate_rankings')
         .select(`
           id,
@@ -61,10 +84,17 @@ export default function Overview() {
           rank_position,
           rank_change,
           created_at,
+          user_id,
           candidates!candidate_rankings_candidate_id_fkey(full_name)
         `)
         .order('created_at', { ascending: false })
         .limit(10);
+      
+      if (!isAdmin && user) {
+        query = query.eq('user_id', user.id);
+      }
+      
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     }
