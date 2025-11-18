@@ -88,6 +88,86 @@ function extractUsername(url: string): string | null {
   }
 }
 
+// Normalize region name to standard format
+function normalizeRegion(region: string | null): string {
+  if (!region) return 'NACIONAL';
+  const normalized = region.trim().toUpperCase();
+  
+  // Mapping of variations to standard names
+  const regionMap: Record<string, string> = {
+    'BRASIL': 'NACIONAL',
+    'BR': 'NACIONAL',
+    'NACIONAL': 'NACIONAL',
+    'DF': 'DISTRITO FEDERAL',
+    'DISTRITO FEDERAL': 'DISTRITO FEDERAL',
+    'SP': 'SÃO PAULO',
+    'SAO PAULO': 'SÃO PAULO',
+    'SÃO PAULO': 'SÃO PAULO',
+    'RJ': 'RIO DE JANEIRO',
+    'RIO DE JANEIRO': 'RIO DE JANEIRO',
+    'MG': 'MINAS GERAIS',
+    'MINAS GERAIS': 'MINAS GERAIS',
+    'BA': 'BAHIA',
+    'BAHIA': 'BAHIA',
+    'PR': 'PARANÁ',
+    'PARANA': 'PARANÁ',
+    'PARANÁ': 'PARANÁ',
+    'RS': 'RIO GRANDE DO SUL',
+    'RIO GRANDE DO SUL': 'RIO GRANDE DO SUL',
+    'PE': 'PERNAMBUCO',
+    'PERNAMBUCO': 'PERNAMBUCO',
+    'CE': 'CEARÁ',
+    'CEARA': 'CEARÁ',
+    'CEARÁ': 'CEARÁ',
+    'PA': 'PARÁ',
+    'PARA': 'PARÁ',
+    'PARÁ': 'PARÁ',
+    'SC': 'SANTA CATARINA',
+    'SANTA CATARINA': 'SANTA CATARINA',
+    'GO': 'GOIÁS',
+    'GOIAS': 'GOIÁS',
+    'GOIÁS': 'GOIÁS',
+    'MA': 'MARANHÃO',
+    'MARANHAO': 'MARANHÃO',
+    'MARANHÃO': 'MARANHÃO',
+    'ES': 'ESPÍRITO SANTO',
+    'ESPIRITO SANTO': 'ESPÍRITO SANTO',
+    'ESPÍRITO SANTO': 'ESPÍRITO SANTO',
+    'PB': 'PARAÍBA',
+    'PARAIBA': 'PARAÍBA',
+    'PARAÍBA': 'PARAÍBA',
+    'RN': 'RIO GRANDE DO NORTE',
+    'RIO GRANDE DO NORTE': 'RIO GRANDE DO NORTE',
+    'AL': 'ALAGOAS',
+    'ALAGOAS': 'ALAGOAS',
+    'PI': 'PIAUÍ',
+    'PIAUI': 'PIAUÍ',
+    'PIAUÍ': 'PIAUÍ',
+    'MT': 'MATO GROSSO',
+    'MATO GROSSO': 'MATO GROSSO',
+    'MS': 'MATO GROSSO DO SUL',
+    'MATO GROSSO DO SUL': 'MATO GROSSO DO SUL',
+    'SE': 'SERGIPE',
+    'SERGIPE': 'SERGIPE',
+    'RO': 'RONDÔNIA',
+    'RONDONIA': 'RONDÔNIA',
+    'RONDÔNIA': 'RONDÔNIA',
+    'TO': 'TOCANTINS',
+    'TOCANTINS': 'TOCANTINS',
+    'AC': 'ACRE',
+    'ACRE': 'ACRE',
+    'AM': 'AMAZONAS',
+    'AMAZONAS': 'AMAZONAS',
+    'RR': 'RORAIMA',
+    'RORAIMA': 'RORAIMA',
+    'AP': 'AMAPÁ',
+    'AMAPA': 'AMAPÁ',
+    'AMAPÁ': 'AMAPÁ'
+  };
+  
+  return regionMap[normalized] || normalized;
+}
+
 // Estimate demographic data based on candidate region and sentiment
 function estimateDemographics(candidate: any, sentimentScore: number): DemographicData {
   const socialNetwork = extractSocialNetwork(candidate.social_media_link);
@@ -198,7 +278,23 @@ serve(async (req) => {
 
     console.log('Candidate data:', candidate);
 
-    // Prepare source metadata
+    // Normalize candidate region for validation
+    const candidateRegion = normalizeRegion(candidate.region);
+    const isNationalCandidate = candidateRegion === 'NACIONAL';
+    console.log(`Candidate electoral region: ${candidateRegion}, National candidate: ${isNationalCandidate}`);
+
+    // Prepare source metadata for database with region validation
+    const sourceRegion = normalizeRegion(candidate.region);
+    
+    // Validate source region against candidate's electoral region
+    if (!isNationalCandidate && sourceRegion !== candidateRegion) {
+      console.warn(`⚠️ Region mismatch: Source is from ${sourceRegion}, but candidate runs in ${candidateRegion}`);
+      throw new Error(
+        `Dados inválidos: a fonte de análise é da região ${sourceRegion}, mas o candidato concorre em ${candidateRegion}. ` +
+        `Por favor, forneça dados da região correta (${candidateRegion}).`
+      );
+    }
+    
     const socialNetwork = extractSocialNetwork(candidate.social_media_link);
     const sourcesData = {
       social_network: socialNetwork,
@@ -206,16 +302,16 @@ serve(async (req) => {
       profile_username: extractUsername(candidate.social_media_link),
       profile_unique_id: candidate.id,
       profile_location_state: candidate.region || null,
-      inferred_region: candidate.region || 'Nacional',
+      inferred_region: sourceRegion,
       followers_at_collection: parseInt(candidate.followers?.replace(/[^\d]/g, '') || '0'),
       collection_method: 'manual',
       collection_date: new Date().toISOString(),
-      data_quality_score: 0.7,
+      data_quality_score: isNationalCandidate ? 0.8 : 0.9,
       posts_collected: 50,
       interactions_count: 1500,
     };
 
-    console.log('Source metadata prepared:', sourcesData);
+    console.log(`✓ Source validated for region: ${sourceRegion}`, sourcesData);
 
     // Check subscription limits
     const { data: subscription, error: subError } = await supabase
@@ -311,12 +407,13 @@ Formate sua resposta como JSON com estes campos: sentiment, sentimentScore, ideo
     }
 
     // Calculate geographic scope
-    const geographicScope = candidate.region 
-      ? `regional_${candidate.region.toLowerCase().replace(/\s+/g, '_')}`
-      : 'nacional';
+    // Prepare geographic scope for analysis record
+    const geographicScope = isNationalCandidate 
+      ? 'nacional' 
+      : `regional_${candidateRegion.toLowerCase().replace(/ /g, '_')}`;
 
     // Update analysis with summary fields
-    console.log('Updating analysis summary fields...');
+    console.log(`Updating analysis summary fields with geographic scope: ${geographicScope}...`);
     const { error: updateError } = await supabase
       .from('candidate_analyses')
       .update({

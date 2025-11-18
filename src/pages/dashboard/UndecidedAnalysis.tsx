@@ -27,7 +27,9 @@ import {
   Loader2,
   Trash2,
   Eye,
-  MessageSquare
+  MessageSquare,
+  CheckCircle,
+  MapPin
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -43,6 +45,42 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+
+// Region Validation Alert Component
+const RegionValidationAlert = ({ candidate, analysis }: any) => {
+  if (!candidate || !analysis) return null;
+  
+  const candidateRegion = candidate.region?.toUpperCase() || 'BRASIL';
+  const analysisScope = analysis.geographic_scope || 'desconhecido';
+  
+  const isValid = 
+    (candidateRegion === 'BRASIL' && analysisScope === 'nacional') ||
+    (candidateRegion === 'NACIONAL' && analysisScope === 'nacional') ||
+    analysisScope.includes(candidateRegion.toLowerCase().replace(/ /g, '_'));
+  
+  if (isValid) {
+    return (
+      <Alert className="border-green-500 bg-green-50 dark:bg-green-950/20">
+        <CheckCircle className="h-4 w-4 text-green-600" />
+        <AlertTitle className="text-green-800 dark:text-green-400">Região Validada ✓</AlertTitle>
+        <AlertDescription className="text-green-700 dark:text-green-500">
+          Análise feita com dados da região correta: <strong>{candidateRegion}</strong>
+        </AlertDescription>
+      </Alert>
+    );
+  }
+  
+  return (
+    <Alert variant="destructive">
+      <AlertCircle className="h-4 w-4" />
+      <AlertTitle>Aviso de Região ⚠️</AlertTitle>
+      <AlertDescription>
+        Esta análise pode conter dados de regiões diferentes da região do candidato ({candidateRegion}).
+        Considere refazer a análise com dados da região correta.
+      </AlertDescription>
+    </Alert>
+  );
+};
 
 export default function UndecidedAnalysis() {
   const { toast } = useToast();
@@ -376,6 +414,12 @@ export default function UndecidedAnalysis() {
 
           {selectedAnalysis && (
             <div className="space-y-6">
+              {/* Region Validation Alert */}
+              <RegionValidationAlert 
+                candidate={candidates?.find(c => c.id === selectedCandidateId)} 
+                analysis={selectedAnalysis} 
+              />
+              
               {/* Filtros */}
               <Card>
                 <CardHeader>
@@ -470,7 +514,26 @@ export default function UndecidedAnalysis() {
               )}
 
               {/* KPIs */}
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-4 md:grid-cols-4">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Região Analisada</CardTitle>
+                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {filteredAnalysis.geographic_scope === 'nacional' 
+                        ? '🇧🇷 Nacional' 
+                        : `📍 ${candidates?.find(c => c.id === selectedCandidateId)?.region || 'N/A'}`}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {filteredAnalysis.geographic_scope === 'nacional'
+                        ? 'Dados de todo o Brasil'
+                        : 'Dados exclusivos da região'}
+                    </p>
+                  </CardContent>
+                </Card>
+                
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Eleitores Indecisos</CardTitle>

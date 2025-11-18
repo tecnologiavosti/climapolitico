@@ -6,6 +6,45 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Normalize region name to standard format
+function normalizeRegion(region: string | null): string {
+  if (!region) return 'NACIONAL';
+  const normalized = region.trim().toUpperCase();
+  
+  const regionMap: Record<string, string> = {
+    'BRASIL': 'NACIONAL', 'BR': 'NACIONAL', 'NACIONAL': 'NACIONAL',
+    'DF': 'DISTRITO FEDERAL', 'DISTRITO FEDERAL': 'DISTRITO FEDERAL',
+    'SP': 'SÃO PAULO', 'SAO PAULO': 'SÃO PAULO', 'SÃO PAULO': 'SÃO PAULO',
+    'RJ': 'RIO DE JANEIRO', 'RIO DE JANEIRO': 'RIO DE JANEIRO',
+    'MG': 'MINAS GERAIS', 'MINAS GERAIS': 'MINAS GERAIS',
+    'BA': 'BAHIA', 'BAHIA': 'BAHIA',
+    'PR': 'PARANÁ', 'PARANA': 'PARANÁ', 'PARANÁ': 'PARANÁ',
+    'RS': 'RIO GRANDE DO SUL', 'RIO GRANDE DO SUL': 'RIO GRANDE DO SUL',
+    'PE': 'PERNAMBUCO', 'PERNAMBUCO': 'PERNAMBUCO',
+    'CE': 'CEARÁ', 'CEARA': 'CEARÁ', 'CEARÁ': 'CEARÁ',
+    'PA': 'PARÁ', 'PARA': 'PARÁ', 'PARÁ': 'PARÁ',
+    'SC': 'SANTA CATARINA', 'SANTA CATARINA': 'SANTA CATARINA',
+    'GO': 'GOIÁS', 'GOIAS': 'GOIÁS', 'GOIÁS': 'GOIÁS',
+    'MA': 'MARANHÃO', 'MARANHAO': 'MARANHÃO', 'MARANHÃO': 'MARANHÃO',
+    'ES': 'ESPÍRITO SANTO', 'ESPIRITO SANTO': 'ESPÍRITO SANTO', 'ESPÍRITO SANTO': 'ESPÍRITO SANTO',
+    'PB': 'PARAÍBA', 'PARAIBA': 'PARAÍBA', 'PARAÍBA': 'PARAÍBA',
+    'RN': 'RIO GRANDE DO NORTE', 'RIO GRANDE DO NORTE': 'RIO GRANDE DO NORTE',
+    'AL': 'ALAGOAS', 'ALAGOAS': 'ALAGOAS',
+    'PI': 'PIAUÍ', 'PIAUI': 'PIAUÍ', 'PIAUÍ': 'PIAUÍ',
+    'MT': 'MATO GROSSO', 'MATO GROSSO': 'MATO GROSSO',
+    'MS': 'MATO GROSSO DO SUL', 'MATO GROSSO DO SUL': 'MATO GROSSO DO SUL',
+    'SE': 'SERGIPE', 'SERGIPE': 'SERGIPE',
+    'RO': 'RONDÔNIA', 'RONDONIA': 'RONDÔNIA', 'RONDÔNIA': 'RONDÔNIA',
+    'TO': 'TOCANTINS', 'TOCANTINS': 'TOCANTINS',
+    'AC': 'ACRE', 'ACRE': 'ACRE',
+    'AM': 'AMAZONAS', 'AMAZONAS': 'AMAZONAS',
+    'RR': 'RORAIMA', 'RORAIMA': 'RORAIMA',
+    'AP': 'AMAPÁ', 'AMAPA': 'AMAPÁ', 'AMAPÁ': 'AMAPÁ'
+  };
+  
+  return regionMap[normalized] || normalized;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -45,12 +84,24 @@ serve(async (req) => {
 
     if (candidateError) throw candidateError;
 
+    // Normalize and validate candidate region
+    const candidateRegion = normalizeRegion(candidate.region);
+    const isNationalCandidate = candidateRegion === 'NACIONAL';
+    console.log(`🔍 Analyzing undecided voters for ${candidate.full_name} in region: ${candidateRegion} (National: ${isNationalCandidate})`);
+
     // Fetch analyses for the candidate in the period
     let query = supabaseClient
       .from('candidate_analyses')
       .select('*')
       .eq('candidate_id', candidate_id)
       .eq('user_id', user.id);
+
+    // CRITICAL: Filter by geographic scope for regional candidates
+    if (!isNationalCandidate) {
+      const geoScope = `regional_${candidateRegion.toLowerCase().replace(/ /g, '_')}`;
+      query = query.eq('geographic_scope', geoScope);
+      console.log(`📍 Filtering analyses by geographic scope: ${geoScope}`);
+    }
 
     if (period_start) {
       query = query.gte('created_at', period_start);
@@ -63,8 +114,16 @@ serve(async (req) => {
     if (analysesError) throw analysesError;
 
     if (!analyses || analyses.length === 0) {
-      throw new Error('Nenhuma análise encontrada para este candidato no período selecionado');
+      const regionMsg = isNationalCandidate 
+        ? 'em todo o Brasil' 
+        : `na região ${candidateRegion}`;
+      throw new Error(
+        `Nenhuma análise encontrada para este candidato ${regionMsg} no período selecionado. ` +
+        `Certifique-se de que as análises foram feitas com dados da região correta.`
+      );
     }
+    
+    console.log(`✓ Found ${analyses.length} analyses for region ${candidateRegion}`);
 
     // Calculate metrics
     const neutralAnalyses = analyses.filter(a => 
@@ -90,15 +149,31 @@ serve(async (req) => {
       .slice(0, 10)
       .map(([keyword]) => keyword);
 
-    // Fetch analysis sources for social media breakdown
+    // Fetch analysis sources for social media breakdown - filter by region
     const analysisIds = analyses.map(a => a.id);
-    const { data: sources, error: sourcesError } = await supabaseClient
+    let sourcesQuery = supabaseClient
       .from('analysis_sources')
       .select('*')
       .in('analysis_id', analysisIds);
+    
+    // CRITICAL: Filter sources by candidate's region for regional candidates
+    if (!isNationalCandidate) {
+      sourcesQuery = sourcesQuery.or(
+        `inferred_region.eq.${candidateRegion},profile_location_state.eq.${candidateRegion}`
+      );
+      console.log(`📍 Filtering sources by region: ${candidateRegion}`);
+    }
+
+    const { data: sources, error: sourcesError } = await sourcesQuery;
 
     if (sourcesError) {
       console.error('Error fetching analysis sources:', sourcesError);
+    }
+    
+    if (!sources || sources.length === 0) {
+      console.warn(`⚠️ No sources found for region ${candidateRegion}`);
+    } else {
+      console.log(`✓ Found ${sources.length} valid sources for region ${candidateRegion}`);
     }
 
     // Aggregate social media breakdown
@@ -215,11 +290,21 @@ serve(async (req) => {
       };
     }) || [];
 
-    // Prepare data summary for AI
+    // Prepare data summary for AI analysis with geographic context
     const dataSummary = {
-      candidate: candidate.full_name,
-      region: candidate.region,
-      party: candidate.party,
+      candidate: {
+        name: candidate.full_name,
+        party: candidate.party,
+        region: candidateRegion,
+        electoralScope: isNationalCandidate ? 'Nacional (Presidência)' : `Regional - ${candidateRegion}`,
+      },
+      geographicContext: {
+        scope: isNationalCandidate ? 'nacional' : 'regional',
+        region: candidateRegion,
+        validation: isNationalCandidate 
+          ? 'Análise nacional - dados de todo o Brasil' 
+          : `Análise regional - dados exclusivos de ${candidateRegion}`,
+      },
       total_analyses: analyses.length,
       neutral_analyses_count: neutralAnalyses.length,
       undecided_percentage: undecidedPercentage.toFixed(2),
@@ -244,7 +329,15 @@ serve(async (req) => {
       throw new Error('LOVABLE_API_KEY not configured');
     }
 
-    const aiPrompt = `Você é um especialista em análise de comportamento eleitoral. Analise os seguintes dados sobre eleitores indecisos/neutros para o candidato ${candidate.full_name}:
+    const aiPrompt = `Você é um especialista em análise de comportamento eleitoral.
+
+**CONTEXTO GEOGRÁFICO CRÍTICO:**
+O candidato ${candidate.full_name} concorre em: ${candidateRegion}
+${isNationalCandidate 
+  ? '🇧🇷 Esta é uma candidatura NACIONAL (Presidente). A análise considera dados de TODO O BRASIL.' 
+  : `📍 Esta é uma candidatura REGIONAL (${candidateRegion}). A análise considera EXCLUSIVAMENTE dados da região ${candidateRegion}.`}
+
+Analise os seguintes dados sobre eleitores indecisos/neutros para o candidato:
 
 Dados:
 ${JSON.stringify(dataSummary, null, 2)}

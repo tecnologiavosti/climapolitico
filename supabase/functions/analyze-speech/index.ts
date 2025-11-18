@@ -7,6 +7,25 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Normalize region name to standard format
+function normalizeRegion(region: string | null): string {
+  if (!region) return 'NACIONAL';
+  const normalized = region.trim().toUpperCase();
+  
+  const regionMap: Record<string, string> = {
+    'BRASIL': 'NACIONAL', 'BR': 'NACIONAL', 'NACIONAL': 'NACIONAL',
+    'DF': 'DISTRITO FEDERAL', 'DISTRITO FEDERAL': 'DISTRITO FEDERAL',
+    'SP': 'SÃO PAULO', 'SAO PAULO': 'SÃO PAULO', 'SÃO PAULO': 'SÃO PAULO',
+    'RJ': 'RIO DE JANEIRO', 'MG': 'MINAS GERAIS', 'BA': 'BAHIA',
+    'PR': 'PARANÁ', 'PARANA': 'PARANÁ', 'RS': 'RIO GRANDE DO SUL',
+    'PE': 'PERNAMBUCO', 'CE': 'CEARÁ', 'CEARA': 'CEARÁ', 'PA': 'PARÁ',
+    'SC': 'SANTA CATARINA', 'GO': 'GOIÁS', 'MA': 'MARANHÃO', 
+    'ES': 'ESPÍRITO SANTO', 'PB': 'PARAÍBA', 'RN': 'RIO GRANDE DO NORTE'
+  };
+  
+  return regionMap[normalized] || normalized;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -45,6 +64,9 @@ serve(async (req) => {
 
     // Get candidate info if provided
     let candidate = null;
+    let candidateRegion = 'NACIONAL';
+    let isNationalCandidate = true;
+    
     if (candidateId) {
       const { data: candidateData } = await supabase
         .from('candidates')
@@ -52,9 +74,15 @@ serve(async (req) => {
         .eq('id', candidateId)
         .maybeSingle();
       candidate = candidateData;
+      
+      if (candidate) {
+        candidateRegion = normalizeRegion(candidate.region);
+        isNationalCandidate = candidateRegion === 'NACIONAL';
+        console.log(`📍 Speech analysis for candidate in region: ${candidateRegion} (National: ${isNationalCandidate})`);
+      }
     }
 
-    // Construct AI analysis prompt
+    // Construct AI analysis prompt with geographic context
     const analysisPrompt = `
 Você é um especialista em comunicação política e análise de discurso. 
 Analise o seguinte trecho de fala política e identifique:
@@ -65,8 +93,13 @@ FALA A SER ANALISADA:
 ${candidate ? `
 CONTEXTO DO CANDIDATO:
 - Nome: ${candidate.full_name}
-- Região: ${candidate.region}
+- Região Eleitoral: ${candidateRegion}
+- Escopo: ${isNationalCandidate ? '🇧🇷 Nacional (Presidência)' : `📍 Regional (${candidateRegion})`}
 - Partido: ${candidate.party}
+
+**IMPORTANTE:** ${isNationalCandidate 
+  ? 'Esta fala é de uma campanha NACIONAL. Considere o impacto em TODO O BRASIL.' 
+  : `Esta fala é de uma campanha REGIONAL em ${candidateRegion}. Foque no impacto específico para eleitores desta região.`}
 ` : ''}
 
 TAREFAS:
