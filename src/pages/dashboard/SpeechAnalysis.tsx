@@ -19,10 +19,14 @@ import { Mic, AlertTriangle, TrendingUp, Brain, Target, MessageSquare, Trash2 } 
 import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer } from "recharts";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useAdminCheck } from "@/hooks/useAdminCheck";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function SpeechAnalysis() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { isAdmin } = useAdminCheck();
+  const { user } = useAuth();
   
   const [speechTitle, setSpeechTitle] = useState("");
   const [speechText, setSpeechText] = useState("");
@@ -33,12 +37,18 @@ export default function SpeechAnalysis() {
 
   // Fetch candidates
   const { data: candidates } = useQuery({
-    queryKey: ['candidates'],
+    queryKey: ['candidates', isAdmin],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('candidates')
         .select('id, full_name, region, party')
         .order('full_name');
+      
+      if (!isAdmin && user) {
+        query = query.eq('user_id', user.id);
+      }
+      
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
@@ -46,12 +56,18 @@ export default function SpeechAnalysis() {
 
   // Fetch speech analyses
   const { data: analyses, isLoading: analysesLoading } = useQuery({
-    queryKey: ['speech-analyses'],
+    queryKey: ['speech-analyses', isAdmin],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('speech_analyses')
         .select('*, candidates(full_name)')
         .order('created_at', { ascending: false });
+      
+      if (!isAdmin && user) {
+        query = query.eq('user_id', user.id);
+      }
+      
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
