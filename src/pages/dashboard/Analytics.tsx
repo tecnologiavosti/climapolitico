@@ -8,20 +8,28 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { TrendingUp, TrendingDown, MessageSquare, FileCheck } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { useAdminCheck } from "@/hooks/useAdminCheck";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Analytics() {
+  const { isAdmin } = useAdminCheck();
+  const { user } = useAuth();
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: new Date(new Date().setDate(new Date().getDate() - 30)),
     to: new Date(),
   });
 
   const { data: analyses, isLoading } = useQuery({
-    queryKey: ['analytics', dateRange],
+    queryKey: ['analytics', dateRange, isAdmin],
     queryFn: async () => {
       let query = supabase
         .from('candidate_analyses')
         .select('*, candidates(full_name, party)')
         .order('created_at', { ascending: true });
+
+      if (!isAdmin && user) {
+        query = query.eq('user_id', user.id);
+      }
 
       if (dateRange?.from) {
         query = query.gte('created_at', dateRange.from.toISOString());

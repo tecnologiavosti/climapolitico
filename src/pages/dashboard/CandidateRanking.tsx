@@ -20,6 +20,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   LineChart, Line, ResponsiveContainer
 } from "recharts";
+import { useAdminCheck } from "@/hooks/useAdminCheck";
+import { useAuth } from "@/hooks/useAuth";
 
 const COLORS = ['#8b5cf6', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#3b82f6'];
 
@@ -49,6 +51,8 @@ function TrendIndicator({ value }: { value: number }) {
 
 export default function CandidateRanking() {
   const queryClient = useQueryClient();
+  const { isAdmin } = useAdminCheck();
+  const { user } = useAuth();
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: new Date(new Date().setDate(new Date().getDate() - 30)),
     to: new Date(),
@@ -56,11 +60,11 @@ export default function CandidateRanking() {
 
   // Query: Fetch existing rankings
   const { data: rankings, isLoading } = useQuery({
-    queryKey: ['rankings', dateRange],
+    queryKey: ['rankings', dateRange, isAdmin],
     queryFn: async () => {
       if (!dateRange?.from || !dateRange?.to) return [];
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('candidate_rankings')
         .select(`
           *,
@@ -75,6 +79,11 @@ export default function CandidateRanking() {
         .lte('period_end', dateRange.to.toISOString())
         .order('rank_position', { ascending: true });
 
+      if (!isAdmin && user) {
+        query = query.eq('user_id', user.id);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
