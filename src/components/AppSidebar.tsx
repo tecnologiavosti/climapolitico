@@ -12,6 +12,7 @@ import {
   Mic,
   Trophy,
   Shield,
+  UserX,
 } from "lucide-react";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 
@@ -34,6 +35,7 @@ const mainItems = [
   { title: "Analytics Avançado", url: "/dashboard/analytics-advanced", icon: LineChart },
   { title: "Análise de Fala", url: "/dashboard/speech-analysis", icon: Mic },
   { title: "Ranking", url: "/dashboard/ranking", icon: Trophy },
+  { title: "Público Indeciso", url: "/dashboard/undecided", icon: UserX },
   { title: "IA & Insights", url: "/dashboard/ai", icon: Brain },
 ];
 

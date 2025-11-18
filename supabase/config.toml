@@ -14,3 +14,6 @@ verify_jwt = true
 
 [functions.calculate-ranking]
 verify_jwt = true
+
+[functions.analyze-undecided]
+verify_jwt = true
