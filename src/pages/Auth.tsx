@@ -69,12 +69,35 @@ const Auth = () => {
           : error.message,
         variant: "destructive",
       });
-    } else {
-      toast({
-        title: "Login realizado com sucesso!",
-        description: "Redirecionando...",
-      });
+      setLoading(false);
+      return;
     }
+
+    // FASE 1.1: Forçar refresh do token após login para garantir token válido
+    console.log('🔄 Forcing token refresh after login...');
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (!session || sessionError) {
+      console.log('⚠️ No session found, attempting refresh...');
+      const { error: refreshError } = await supabase.auth.refreshSession();
+      
+      if (refreshError) {
+        console.error('❌ Token refresh failed:', refreshError);
+        toast({
+          title: "Erro ao autenticar",
+          description: "Por favor, tente fazer login novamente.",
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      }
+    }
+
+    console.log('✅ Login successful with valid token');
+    toast({
+      title: "Login realizado com sucesso!",
+      description: "Redirecionando...",
+    });
 
     setLoading(false);
   };
