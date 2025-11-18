@@ -485,6 +485,7 @@ export type Database = {
           analysis_period_start: string | null
           behavioral_patterns: Json | null
           candidate_id: string
+          candidates_comparison: Json | null
           confidence_score: number | null
           created_at: string | null
           decision_triggers: Json | null
@@ -494,6 +495,8 @@ export type Database = {
           neutral_profiles_count: number | null
           persuasion_strategies: Json | null
           sentiment_fluctuation_score: number | null
+          social_media_breakdown: Json | null
+          temporal_evolution: Json | null
           total_profiles_analyzed: number | null
           undecided_percentage: number | null
           updated_at: string | null
@@ -505,6 +508,7 @@ export type Database = {
           analysis_period_start?: string | null
           behavioral_patterns?: Json | null
           candidate_id: string
+          candidates_comparison?: Json | null
           confidence_score?: number | null
           created_at?: string | null
           decision_triggers?: Json | null
@@ -514,6 +518,8 @@ export type Database = {
           neutral_profiles_count?: number | null
           persuasion_strategies?: Json | null
           sentiment_fluctuation_score?: number | null
+          social_media_breakdown?: Json | null
+          temporal_evolution?: Json | null
           total_profiles_analyzed?: number | null
           undecided_percentage?: number | null
           updated_at?: string | null
@@ -525,6 +531,7 @@ export type Database = {
           analysis_period_start?: string | null
           behavioral_patterns?: Json | null
           candidate_id?: string
+          candidates_comparison?: Json | null
           confidence_score?: number | null
           created_at?: string | null
           decision_triggers?: Json | null
@@ -534,6 +541,8 @@ export type Database = {
           neutral_profiles_count?: number | null
           persuasion_strategies?: Json | null
           sentiment_fluctuation_score?: number | null
+          social_media_breakdown?: Json | null
+          temporal_evolution?: Json | null
           total_profiles_analyzed?: number | null
           undecided_percentage?: number | null
           updated_at?: string | null
