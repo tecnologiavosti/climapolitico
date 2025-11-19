@@ -35,6 +35,7 @@ export default function SocialMediaReport() {
     to: new Date(),
   });
   const [selectedCandidate, setSelectedCandidate] = useState<string>("all");
+  const [selectedNetwork, setSelectedNetwork] = useState<string>("all");
 
   // Query: Candidatos do usuário
   const { data: candidates, isLoading: loadingCandidates } = useQuery({
@@ -57,7 +58,7 @@ export default function SocialMediaReport() {
 
   // Query: Dados de redes sociais agregados
   const { data: reportData, isLoading: loadingReport } = useQuery({
-    queryKey: ['social-media-report', selectedCandidate, dateRange, isAdmin],
+    queryKey: ['social-media-report', selectedCandidate, selectedNetwork, dateRange, isAdmin],
     queryFn: async () => {
       // Buscar análises no período
       let analysesQuery = supabase
@@ -89,10 +90,17 @@ export default function SocialMediaReport() {
 
       // Buscar sources para essas análises
       const analysisIds = analyses.map(a => a.id);
-      const { data: sources, error: sourcesError } = await supabase
+      let sourcesQuery = supabase
         .from('analysis_sources')
         .select('*')
         .in('analysis_id', analysisIds);
+
+      // Filtrar por rede social se selecionada
+      if (selectedNetwork !== 'all') {
+        sourcesQuery = sourcesQuery.eq('social_network', selectedNetwork);
+      }
+
+      const { data: sources, error: sourcesError } = await sourcesQuery;
 
       if (sourcesError) throw sourcesError;
 
@@ -197,7 +205,7 @@ export default function SocialMediaReport() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Candidato</label>
               <Select
@@ -215,6 +223,28 @@ export default function SocialMediaReport() {
                       {candidate.full_name}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Rede Social</label>
+              <Select
+                value={selectedNetwork}
+                onValueChange={setSelectedNetwork}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Todas as redes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as redes sociais</SelectItem>
+                  <SelectItem value="Instagram">Instagram</SelectItem>
+                  <SelectItem value="Twitter/X">Twitter/X</SelectItem>
+                  <SelectItem value="Facebook">Facebook</SelectItem>
+                  <SelectItem value="TikTok">TikTok</SelectItem>
+                  <SelectItem value="YouTube">YouTube</SelectItem>
+                  <SelectItem value="Threads">Threads</SelectItem>
+                  <SelectItem value="LinkedIn">LinkedIn</SelectItem>
                 </SelectContent>
               </Select>
             </div>
