@@ -7,6 +7,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Helper to parse JWT payload (without validation)
+function parseJWTPayload(token: string): any {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(base64));
+  } catch {
+    return null;
+  }
+}
+
 function normalizeRegion(region: string | null): string {
   if (!region) return 'NACIONAL';
   const normalized = region.trim().toUpperCase();
@@ -34,8 +45,27 @@ serve(async (req) => {
 
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
+      const jwtToken = authHeader ? authHeader.replace('Bearer ', '') : null;
+      const jwtPayload = jwtToken ? parseJWTPayload(jwtToken) : null;
+      
+      console.error('❌ Authentication failed:', {
+        error: userError?.message || 'Auth session missing!',
+        errorName: userError?.name,
+        errorStatus: userError?.status,
+        hasAuthHeader: !!authHeader,
+        authHeaderPreview: authHeader ? authHeader.substring(0, 20) + '...' : 'none',
+        jwtPayload: jwtPayload ? {
+          exp: jwtPayload.exp,
+          sub: jwtPayload.sub,
+          iat: jwtPayload.iat
+        } : null
+      });
+      
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
+        JSON.stringify({ 
+          error: 'Unauthorized - Invalid or expired session',
+          details: userError?.message || 'JWT token validation failed'
+        }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

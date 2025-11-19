@@ -7,6 +7,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Helper to parse JWT payload (without validation)
+function parseJWTPayload(token: string): any {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(base64));
+  } catch {
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -26,8 +37,29 @@ serve(async (req) => {
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
-      console.error('Authentication error:', authError);
-      throw new Error('Unauthorized');
+      const jwtToken = authHeader ? authHeader.replace('Bearer ', '') : null;
+      const jwtPayload = jwtToken ? parseJWTPayload(jwtToken) : null;
+      
+      console.error('❌ Authentication failed:', {
+        error: authError?.message || 'Auth session missing!',
+        errorName: authError?.name,
+        errorStatus: authError?.status,
+        hasAuthHeader: !!authHeader,
+        authHeaderPreview: authHeader ? authHeader.substring(0, 20) + '...' : 'none',
+        jwtPayload: jwtPayload ? {
+          exp: jwtPayload.exp,
+          sub: jwtPayload.sub,
+          iat: jwtPayload.iat
+        } : null
+      });
+      
+      return new Response(
+        JSON.stringify({ 
+          error: 'Unauthorized - Invalid or expired session',
+          details: authError?.message || 'JWT token validation failed'
+        }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const { candidateId, startDate, endDate } = await req.json();

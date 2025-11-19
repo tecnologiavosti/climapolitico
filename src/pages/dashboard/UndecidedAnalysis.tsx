@@ -15,6 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { useAuth } from "@/hooks/useAuth";
+import { useTokenValidator } from "@/hooks/useTokenValidator";
 import { DateRange } from "react-day-picker";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { 
@@ -135,17 +136,27 @@ export default function UndecidedAnalysis() {
     },
   });
 
-  // Analyze mutation with retry logic (FASE 1.2 + 1.3)
+  const { validateToken } = useTokenValidator();
+  
+  // Analyze mutation with retry logic and pre-flight validation
   const analyzeMutation = useMutation({
     mutationFn: async () => {
       if (!selectedCandidateId) {
         throw new Error('Selecione um candidato');
       }
 
+      // 🔥 PRE-FLIGHT TOKEN VALIDATION
+      console.group('🔐 PRE-FLIGHT AUTH CHECK');
+      const isTokenValid = await validateToken();
+      console.groupEnd();
+      
+      if (!isTokenValid) {
+        throw new Error('Token inválido. Redirecionando para login...');
+      }
+
       let retries = 2;
       
       while (retries > 0) {
-        // FASE 1.2: Token debugging antes de chamar edge function
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         console.log('🔑 Token status before undecided analysis:', {
@@ -219,18 +230,24 @@ export default function UndecidedAnalysis() {
     onError: (error: any) => {
       console.error('Analysis error:', error);
       
-      // If authentication error, force logout
-      if (error.message?.includes('Sessão expirada')) {
+      // 🔥 AGGRESSIVE AUTH ERROR DETECTION
+      const authErrorKeywords = ['Unauthorized', 'JWT', 'authorization', '401', 'session', 'token', 'expired', 'Invalid', 'Sessão expirada'];
+      const isAuthError = authErrorKeywords.some(keyword => 
+        error.message?.toLowerCase().includes(keyword.toLowerCase())
+      );
+      
+      if (isAuthError) {
         toast({
-          title: "Sessão Expirada 🔒",
-          description: "Sua sessão expirou. Redirecionando para login...",
+          title: "Sessão Inválida 🔒",
+          description: "Sua sessão está corrompida. Redirecionando para login...",
           variant: "destructive",
         });
         
+        // Force immediate logout
         setTimeout(async () => {
           await supabase.auth.signOut();
           window.location.href = '/auth';
-        }, 2000);
+        }, 1500);
         return;
       }
       
