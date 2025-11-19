@@ -67,23 +67,25 @@ serve(async (req) => {
       throw new Error('Missing authorization header');
     }
 
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    
+    // Create admin client for validation
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+    
+    // Extract and validate JWT
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
+    
     if (userError || !user) {
-      const jwtToken = authHeader ? authHeader.replace('Bearer ', '') : null;
-      const jwtPayload = jwtToken ? parseJWTPayload(jwtToken) : null;
+      const jwtPayload = parseJWTPayload(token);
       
       console.error('❌ Authentication failed:', {
         error: userError?.message || 'Auth session missing!',
         errorName: userError?.name,
         errorStatus: userError?.status,
-        hasAuthHeader: !!authHeader,
-        authHeaderPreview: authHeader ? authHeader.substring(0, 20) + '...' : 'none',
+        hasAuthHeader: true,
+        authHeaderPreview: authHeader.substring(0, 20) + '...',
         jwtPayload: jwtPayload ? {
           exp: jwtPayload.exp,
           sub: jwtPayload.sub,
@@ -102,6 +104,9 @@ serve(async (req) => {
         }
       );
     }
+
+    // Create user-scoped client for database operations
+    const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
 
     const { candidate_id, period_start, period_end } = await req.json();
 
