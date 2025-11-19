@@ -15,6 +15,7 @@ import { SocialMediaDetailedAnalysis } from "@/components/dashboard/SocialMediaD
 import { SocialMediaComparison } from "@/components/dashboard/SocialMediaComparison";
 import { SocialMediaTemporalEvolution } from "@/components/dashboard/SocialMediaTemporalEvolution";
 import { SocialMediaPeakHours } from "@/components/dashboard/SocialMediaPeakHours";
+import { SocialMediaKeywordAnalysis } from "@/components/dashboard/SocialMediaKeywordAnalysis";
 
 export interface SocialMediaReportData {
   network: string;
@@ -301,6 +302,12 @@ export default function SocialMediaReport() {
 
           {/* Horários de Pico */}
           <SocialMediaPeakHours 
+            selectedCandidate={selectedCandidate}
+            dateRange={dateRange}
+          />
+
+          {/* Análise de Palavras-Chave */}
+          <SocialMediaKeywordAnalysis 
             selectedCandidate={selectedCandidate}
             dateRange={dateRange}
           />
