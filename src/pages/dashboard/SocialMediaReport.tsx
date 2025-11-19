@@ -121,7 +121,7 @@ export default function SocialMediaReport() {
     const networkMap: Record<string, any> = {};
 
     sources.forEach(source => {
-      const network = source.social_network || 'Outro';
+      const network = source.social_network || 'Desconhecida';
       const analysis = analyses.find(a => a.id === source.analysis_id);
 
       if (!networkMap[network]) {
