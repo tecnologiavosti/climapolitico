@@ -361,6 +361,8 @@ export type Database = {
           psychological_impact: string | null
           recommended_actions: Json | null
           risk_level: number | null
+          source_analysis_id: string | null
+          source_type: string | null
           speech_date: string | null
           speech_duration: number | null
           speech_text: string
@@ -387,6 +389,8 @@ export type Database = {
           psychological_impact?: string | null
           recommended_actions?: Json | null
           risk_level?: number | null
+          source_analysis_id?: string | null
+          source_type?: string | null
           speech_date?: string | null
           speech_duration?: number | null
           speech_text: string
@@ -413,6 +417,8 @@ export type Database = {
           psychological_impact?: string | null
           recommended_actions?: Json | null
           risk_level?: number | null
+          source_analysis_id?: string | null
+          source_type?: string | null
           speech_date?: string | null
           speech_duration?: number | null
           speech_text?: string
@@ -429,6 +435,13 @@ export type Database = {
             columns: ["candidate_id"]
             isOneToOne: false
             referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "speech_analyses_source_analysis_id_fkey"
+            columns: ["source_analysis_id"]
+            isOneToOne: false
+            referencedRelation: "candidate_analyses"
             referencedColumns: ["id"]
           },
         ]
