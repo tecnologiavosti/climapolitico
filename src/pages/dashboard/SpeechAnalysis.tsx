@@ -144,10 +144,32 @@ export default function SpeechAnalysis() {
       queryClient.invalidateQueries({ queryKey: ['speech-analyses'] });
     },
     onError: (error: any) => {
-      toast({ 
-        title: "Erro na análise", 
+      console.error('Temporal analysis error:', error);
+      
+      // 🔥 AGGRESSIVE AUTH ERROR DETECTION
+      const authErrorKeywords = ['Unauthorized', 'JWT', 'authorization', '401', 'session', 'token', 'expired', 'Invalid'];
+      const isAuthError = authErrorKeywords.some(keyword => 
+        error.message?.toLowerCase().includes(keyword.toLowerCase())
+      );
+      
+      if (isAuthError) {
+        toast({
+          title: "Sessão Inválida",
+          description: "Sua sessão está corrompida. Redirecionando para login...",
+          variant: "destructive",
+        });
+        
+        setTimeout(async () => {
+          await supabase.auth.signOut();
+          window.location.href = '/auth';
+        }, 1500);
+        return;
+      }
+      
+      toast({
+        title: "Erro na análise temporal",
         description: error.message || "Erro desconhecido",
-        variant: "destructive"
+        variant: "destructive",
       });
     }
   });
@@ -284,7 +306,9 @@ export default function SpeechAnalysis() {
                       <CardContent className="space-y-2 text-sm">
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Análises disponíveis:</span>
-                          <span className="font-semibold">{periodAnalyses?.length || 0}</span>
+                          <span className={`font-semibold ${(periodAnalyses?.length || 0) === 0 ? 'text-destructive' : 'text-primary'}`}>
+                            {periodAnalyses?.length || 0}
+                          </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Posts coletados:</span>
@@ -294,14 +318,29 @@ export default function SpeechAnalysis() {
                           <span className="text-muted-foreground">Redes sociais:</span>
                           <span className="font-semibold">{socialNetworksInPeriod.join(', ') || 'N/A'}</span>
                         </div>
+                        
+                        {(periodAnalyses?.length || 0) === 0 && (
+                          <div className="mt-3 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                            <p className="text-xs text-destructive">
+                              ⚠️ Nenhuma análise encontrada neste período. Execute análises de redes sociais primeiro ou selecione outro período.
+                            </p>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   )}
 
                   <Button 
                     onClick={handleTemporalAnalysis}
-                    disabled={!selectedCandidateId || !dateRange?.from || !dateRange?.to || analyzeTemporalMutation.isPending}
+                    disabled={
+                      !selectedCandidateId || 
+                      !dateRange?.from || 
+                      !dateRange?.to || 
+                      (periodAnalyses?.length || 0) === 0 ||
+                      analyzeTemporalMutation.isPending
+                    }
                     className="w-full"
+                    title={(periodAnalyses?.length || 0) === 0 ? "Nenhuma análise disponível no período selecionado" : ""}
                   >
                     <Brain className="mr-2 h-4 w-4" />
                     {analyzeTemporalMutation.isPending ? 'Analisando...' : 'Analisar Falas no Período'}
