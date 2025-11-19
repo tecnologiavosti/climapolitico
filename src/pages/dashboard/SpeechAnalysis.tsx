@@ -7,757 +7,169 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
-import { Mic, AlertTriangle, TrendingUp, Brain, Target, MessageSquare, Trash2, AlertCircle } from "lucide-react";
-import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer } from "recharts";
+import { Brain, Share2, FileText, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function SpeechAnalysis() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { isAdmin } = useAdminCheck();
   const { user } = useAuth();
-
-  // FASE 2.3: Loading state defensivo
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Carregando usuário...</p>
-        </div>
-      </div>
-    );
-  }
   
+  const [analysisMode, setAnalysisMode] = useState<'social_media' | 'manual'>('social_media');
   const [speechTitle, setSpeechTitle] = useState("");
   const [speechText, setSpeechText] = useState("");
-  const [speechDate, setSpeechDate] = useState("");
-  const [speechType, setSpeechType] = useState("discurso");
-  const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
-  const [selectedAnalysis, setSelectedAnalysis] = useState<any>(null);
+  const [selectedCandidateId, setSelectedCandidateId] = useState("");
+  const [selectedAnalysisId, setSelectedAnalysisId] = useState("");
 
-  // Fetch candidates with error handling
-  const { data: candidates, isLoading: candidatesLoading, error: candidatesError } = useQuery({
-    queryKey: ['candidates', isAdmin, user?.id],
+  const { data: candidates } = useQuery({
+    queryKey: ['candidates'],
     queryFn: async () => {
-      try {
-        let query = supabase
-          .from('candidates')
-          .select('id, full_name, region, party')
-          .order('full_name');
-        
-        if (!isAdmin && user) {
-          query = query.eq('user_id', user.id);
-        }
-        
-        const { data, error } = await query;
-        if (error) {
-          console.error('❌ Candidates query error:', error);
-          throw error;
-        }
-        console.log('✅ Candidates loaded:', data?.length || 0);
-        return data || [];
-      } catch (error) {
-        console.error('❌ Error fetching candidates:', error);
-        throw error;
-      }
-    },
-    enabled: !!user,
+      const { data } = await supabase.from('candidates').select('*').order('full_name');
+      return data || [];
+    }
   });
 
-  // Fetch speech analyses with safe data handling
-  const { data: analyses, isLoading: analysesLoading } = useQuery({
-    queryKey: ['speech-analyses', isAdmin, user?.id],
+  const { data: candidateAnalyses } = useQuery({
+    queryKey: ['candidate-analyses', selectedCandidateId],
     queryFn: async () => {
-      try {
-        let query = supabase
-          .from('speech_analyses')
-          .select('*, candidates(full_name)')
-          .order('created_at', { ascending: false });
-        
-        if (!isAdmin && user) {
-          query = query.eq('user_id', user.id);
-        }
-        
-        const { data, error } = await query;
-        if (error) {
-          console.error('❌ Analyses query error:', error);
-          throw error;
-        }
-        console.log('✅ Analyses loaded:', data?.length || 0);
-        return data || [];
-      } catch (error) {
-        console.error('❌ Error fetching analyses:', error);
-        throw error;
-      }
+      if (!selectedCandidateId) return [];
+      const { data } = await supabase.from('candidate_analyses')
+        .select('*').eq('candidate_id', selectedCandidateId).eq('analysis_status', 'completed');
+      return data || [];
     },
-    enabled: !!user,
+    enabled: !!selectedCandidateId && analysisMode === 'social_media'
   });
 
-  // Analyze speech mutation with retry logic
+  const { data: speechAnalyses } = useQuery({
+    queryKey: ['speech-analyses'],
+    queryFn: async () => {
+      const { data } = await supabase.from('speech_analyses').select('*, candidates(full_name)').order('created_at', { ascending: false });
+      return data || [];
+    }
+  });
+
   const analyzeMutation = useMutation({
     mutationFn: async (payload: any) => {
-      let retries = 2;
-      
-      while (retries > 0) {
-        // FASE 1.2: Token debugging antes de chamar edge function
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        console.log('🔑 Token status before speech analysis:', {
-          hasSession: !!session,
-          hasAccessToken: !!session?.access_token,
-          tokenExpiry: session?.expires_at,
-          isExpired: session?.expires_at ? new Date(session.expires_at * 1000) < new Date() : true,
-          retriesLeft: retries
-        });
-        
-        if (sessionError || !session) {
-          throw new Error('Sessão inválida. Por favor, faça login novamente.');
-        }
-
-        try {
-          const { data, error } = await supabase.functions.invoke('analyze-speech', {
-            body: payload,
-          });
-
-          // FASE 1.3: Implementar retry automático com refresh em caso de 401
-          if (error) {
-            const isAuthError = error.message?.includes('Unauthorized') || 
-                               error.message?.includes('JWT') ||
-                               error.message?.includes('authorization') ||
-                               error.message?.includes('401');
-            
-            if (isAuthError && retries > 1) {
-              console.log('🔄 Authentication error detected, attempting token refresh...');
-              const { error: refreshError } = await supabase.auth.refreshSession();
-              
-              if (refreshError) {
-                console.error('❌ Token refresh failed:', refreshError);
-                throw new Error('Sessão expirada. Por favor, faça login novamente.');
-              }
-              
-              console.log('✅ Token refreshed successfully, retrying...');
-              retries--;
-              continue;
-            }
-            
-            if (isAuthError) {
-              console.error('🔒 Authentication error after retry');
-              throw new Error('Sessão expirada. Por favor, faça login novamente.');
-            }
-            
-            throw error;
-          }
-          
-          console.log('✅ Speech analysis completed successfully');
-          return data;
-        } catch (e: any) {
-          if (retries === 1) throw e;
-          retries--;
-        }
-      }
-      
-      throw new Error('Falha ao analisar após múltiplas tentativas');
-    },
-    onSuccess: (data) => {
-      toast({
-        title: "Análise concluída!",
-        description: "A fala foi analisada com sucesso.",
-      });
-      queryClient.invalidateQueries({ queryKey: ['speech-analyses'] });
-      setSelectedAnalysis(data.analysis);
-      // Clear form
-      setSpeechTitle("");
-      setSpeechText("");
-      setSpeechDate("");
-      setSpeechType("discurso");
-    },
-    onError: (error: any) => {
-      console.error('Speech analysis error:', error);
-      
-      // If authentication error, force logout
-      if (error.message?.includes('Sessão expirada')) {
-        toast({
-          title: "Sessão Expirada 🔒",
-          description: "Sua sessão expirou. Redirecionando para login...",
-          variant: "destructive",
-        });
-        
-        setTimeout(async () => {
-          await supabase.auth.signOut();
-          window.location.href = '/auth';
-        }, 2000);
-        return;
-      }
-      
-      toast({
-        title: "Erro na análise",
-        description: error.message || "Não foi possível analisar a fala.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Delete analysis mutation
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('speech_analyses')
-        .delete()
-        .eq('id', id);
+      const { data, error } = await supabase.functions.invoke('analyze-speech', { body: payload });
       if (error) throw error;
+      return data;
     },
     onSuccess: () => {
-      toast({
-        title: "Análise excluída",
-        description: "A análise foi removida com sucesso.",
-      });
+      toast({ title: "Análise concluída!" });
       queryClient.invalidateQueries({ queryKey: ['speech-analyses'] });
-      if (selectedAnalysis?.id === deleteMutation.variables) {
-        setSelectedAnalysis(null);
-      }
+      setSpeechTitle(""); setSpeechText(""); setSelectedAnalysisId("");
+    }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await supabase.from('speech_analyses').delete().eq('id', id);
     },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['speech-analyses'] })
   });
 
   const handleAnalyze = () => {
-    if (!speechTitle.trim() || !speechText.trim()) {
-      toast({
-        title: "Campos obrigatórios",
-        description: "Por favor, preencha o título e o texto da fala.",
-        variant: "destructive",
+    if (analysisMode === 'manual') {
+      analyzeMutation.mutate({ mode: 'manual', speechText, speechTitle, candidateId: selectedCandidateId });
+    } else {
+      const analysis = candidateAnalyses?.find(a => a.id === selectedAnalysisId);
+      analyzeMutation.mutate({
+        mode: 'social_media',
+        candidateId: selectedCandidateId,
+        analysisId: selectedAnalysisId,
+        keywords: analysis?.keywords,
+        postsAnalyzed: analysis?.posts_analyzed,
+        sentimentLabel: analysis?.sentiment_label
       });
-      return;
     }
-
-    analyzeMutation.mutate({
-      speechTitle,
-      speechText,
-      candidateId: selectedCandidateId || null,
-      speechDate: speechDate || null,
-      speechType,
-    });
   };
-
-  const getRiskColor = (level: number) => {
-    if (level >= 8) return "text-red-600";
-    if (level >= 5) return "text-yellow-600";
-    return "text-green-600";
-  };
-
-  const getRiskLabel = (level: number) => {
-    if (level >= 8) return "Alto Risco";
-    if (level >= 5) return "Risco Moderado";
-    return "Baixo Risco";
-  };
-
-  // Prepare emotional data for radar chart
-  const getEmotionalChartData = (emotionalAnalysis: any) => {
-    if (!emotionalAnalysis) return [];
-    return [
-      { emotion: 'Raiva', value: emotionalAnalysis.anger || 0 },
-      { emotion: 'Medo', value: emotionalAnalysis.fear || 0 },
-      { emotion: 'Desconfiança', value: emotionalAnalysis.distrust || 0 },
-      { emotion: 'Esperança', value: emotionalAnalysis.hope || 0 },
-      { emotion: 'Alegria', value: emotionalAnalysis.joy || 0 },
-      { emotion: 'Tristeza', value: emotionalAnalysis.sadness || 0 },
-    ];
-  };
-
-  // Show error if candidates failed to load
-  if (candidatesError) {
-    return (
-      <div className="space-y-6">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Erro ao Carregar Candidatos</AlertTitle>
-          <AlertDescription>
-            Não foi possível carregar a lista de candidatos. Por favor, recarregue a página ou entre em contato com o suporte.
-            <div className="mt-2 text-xs opacity-70">
-              {candidatesError instanceof Error ? candidatesError.message : 'Erro desconhecido'}
-            </div>
-          </AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
-
-  // Show loading state while candidates are being fetched
-  if (candidatesLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Carregando candidatos...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Mic className="h-8 w-8" />
-            Análise Inteligente de Fala
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            Analise discursos, entrevistas e falas políticas para identificar gatilhos e impactos
-          </p>
-        </div>
-      </div>
-
-      <Tabs defaultValue="new" className="space-y-4">
-        <TabsList>
+      <h1 className="text-3xl font-bold">Análise Inteligente de Fala</h1>
+      <Tabs defaultValue="new">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="new">Nova Análise</TabsTrigger>
           <TabsTrigger value="history">Histórico</TabsTrigger>
         </TabsList>
-
-        <TabsContent value="new" className="space-y-4">
+        <TabsContent value="new">
           <Card>
-            <CardHeader>
-              <CardTitle>Dados da Fala</CardTitle>
-              <CardDescription>
-                Preencha as informações sobre a fala a ser analisada
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="title">Título da Fala *</Label>
-                  <Input
-                    id="title"
-                    placeholder="Ex: Discurso sobre economia"
-                    value={speechTitle}
-                    onChange={(e) => setSpeechTitle(e.target.value)}
-                  />
+            <CardContent className="pt-6 space-y-4">
+              <RadioGroup value={analysisMode} onValueChange={(v: any) => setAnalysisMode(v)}>
+                <div className="flex items-center space-x-2 p-4 border rounded-lg">
+                  <RadioGroupItem value="social_media" />
+                  <Label className="flex-1"><Share2 className="inline h-4 w-4 mr-2" />Análise Automática (Redes Sociais)</Label>
                 </div>
+                <div className="flex items-center space-x-2 p-4 border rounded-lg">
+                  <RadioGroupItem value="manual" />
+                  <Label className="flex-1"><FileText className="inline h-4 w-4 mr-2" />Análise Manual (Texto)</Label>
+                </div>
+              </RadioGroup>
 
-                <div className="space-y-2">
-                  <Label htmlFor="candidate">Candidato (Opcional)</Label>
+              {analysisMode === 'social_media' ? (
+                <>
                   <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione um candidato ou deixe em branco" />
-                    </SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Candidato" /></SelectTrigger>
                     <SelectContent>
-                      {candidates && Array.isArray(candidates) && candidates.length > 0 ? (
-                        candidates.map((candidate) => (
-                          <SelectItem key={candidate.id} value={candidate.id}>
-                            {candidate.full_name}
-                          </SelectItem>
-                        ))
-                      ) : (
-                        <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                          Nenhum candidato disponível
-                        </div>
-                      )}
+                      {candidates?.map(c => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="date">Data da Fala</Label>
-                  <Input
-                    id="date"
-                    type="date"
-                    value={speechDate}
-                    onChange={(e) => setSpeechDate(e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="type">Tipo de Fala</Label>
-                  <Select value={speechType} onValueChange={setSpeechType}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="discurso">Discurso</SelectItem>
-                      <SelectItem value="entrevista">Entrevista</SelectItem>
-                      <SelectItem value="debate">Debate</SelectItem>
-                      <SelectItem value="video">Vídeo</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="text">Texto da Fala *</Label>
-                <Textarea
-                  id="text"
-                  placeholder="Cole aqui o texto completo da fala a ser analisada..."
-                  value={speechText}
-                  onChange={(e) => setSpeechText(e.target.value)}
-                  rows={10}
-                  className="font-mono text-sm"
-                />
-              </div>
-
-              <Button
-                onClick={handleAnalyze}
-                disabled={analyzeMutation.isPending}
-                className="w-full"
-                size="lg"
-              >
-                {analyzeMutation.isPending ? (
-                  <>
-                    <Brain className="mr-2 h-4 w-4 animate-pulse" />
-                    Analisando com IA...
-                  </>
-                ) : (
-                  <>
-                    <Brain className="mr-2 h-4 w-4" />
-                    Analisar Fala
-                  </>
-                )}
+                  {selectedCandidateId && (
+                    <Select value={selectedAnalysisId} onValueChange={setSelectedAnalysisId}>
+                      <SelectTrigger><SelectValue placeholder="Análise" /></SelectTrigger>
+                      <SelectContent>
+                        {candidateAnalyses?.map(a => <SelectItem key={a.id} value={a.id}>{format(new Date(a.created_at), 'dd/MM/yyyy')}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </>
+              ) : (
+                <>
+                  <Input placeholder="Título" value={speechTitle} onChange={e => setSpeechTitle(e.target.value)} />
+                  <Textarea placeholder="Texto da fala" value={speechText} onChange={e => setSpeechText(e.target.value)} rows={6} />
+                </>
+              )}
+              <Button onClick={handleAnalyze} disabled={analyzeMutation.isPending} className="w-full">
+                <Brain className="mr-2 h-4 w-4" />{analyzeMutation.isPending ? 'Analisando...' : 'Analisar'}
               </Button>
             </CardContent>
           </Card>
-
-          {selectedAnalysis && (
-            <div className="space-y-4">
-              {/* KPIs Header */}
-              <div className="grid grid-cols-4 gap-4">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Nível de Risco
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className={`text-3xl font-bold ${getRiskColor(selectedAnalysis.risk_level)}`}>
-                      {selectedAnalysis.risk_level}/10
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {getRiskLabel(selectedAnalysis.risk_level)}
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Percepção Negativa
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold">
-                      {selectedAnalysis.negative_perception_score?.toFixed(1) || 0}/10
-                    </div>
-                    <Progress 
-                      value={(selectedAnalysis.negative_perception_score || 0) * 10} 
-                      className="mt-2"
-                    />
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Confiança da Análise
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold text-green-600">
-                      {Math.round((selectedAnalysis.analysis_confidence || 0) * 100)}%
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Alta confiança
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Gatilhos Detectados
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold text-red-600">
-                      {selectedAnalysis.trigger_words?.length || 0}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Palavras críticas
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Main Analysis Content */}
-              <div className="grid grid-cols-3 gap-4">
-                {/* Left Column - Triggers and Segments */}
-                <div className="col-span-2 space-y-4">
-                  {/* Trigger Words */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <AlertTriangle className="h-5 w-5 text-red-500" />
-                        Gatilhos Críticos
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ScrollArea className="h-[200px]">
-                        <div className="space-y-2">
-                          {Array.isArray(selectedAnalysis.trigger_words) && selectedAnalysis.trigger_words.length > 0 ? (
-                            selectedAnalysis.trigger_words.map((trigger: any, index: number) => (
-                              <Alert key={index} variant="destructive">
-                                <AlertTitle className="flex items-center justify-between">
-                                  <span className="font-bold">"{trigger?.word || 'Não especificado'}"</span>
-                                  <Badge variant="destructive">
-                                    Severidade: {trigger?.severity || 0}/10
-                                  </Badge>
-                                </AlertTitle>
-                                <AlertDescription className="mt-2 space-y-1">
-                                  <p><strong>Posição:</strong> {trigger?.position || 'Não especificada'}</p>
-                                  <p><strong>Motivo:</strong> {trigger?.reason || 'Não especificado'}</p>
-                                </AlertDescription>
-                              </Alert>
-                            ))
-                          ) : (
-                            <p className="text-center text-muted-foreground py-4">
-                              Nenhum gatilho crítico detectado
-                            </p>
-                          )}
-                        </div>
-                      </ScrollArea>
-                    </CardContent>
-                  </Card>
-
-                  {/* Problematic Segments */}
-                  {Array.isArray(selectedAnalysis.problematic_segments) && selectedAnalysis.problematic_segments.length > 0 && (
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                          <MessageSquare className="h-5 w-5" />
-                          Trechos Problemáticos
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <ScrollArea className="h-[200px]">
-                          <div className="space-y-3">
-                            {selectedAnalysis.problematic_segments.map((segment: any, index: number) => (
-                              <div key={index} className="border-l-4 border-red-500 pl-3 py-2">
-                                <p className="text-sm italic mb-2">"{segment?.text || 'Texto não disponível'}"</p>
-                                <div className="space-y-1 text-xs">
-                                  <p><strong>Problema:</strong> {segment?.issue || 'Não especificado'}</p>
-                                  <Badge variant="outline">{segment?.emotion || 'Não especificado'}</Badge>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </ScrollArea>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* Psychological Impact */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Brain className="h-5 w-5" />
-                        Análise Psicológica
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-sm leading-relaxed">{selectedAnalysis.psychological_impact}</p>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Right Column - Charts and Profiles */}
-                <div className="space-y-4">
-                  {/* Emotional Radar Chart */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-sm">Análise Emocional</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ResponsiveContainer width="100%" height={200}>
-                        <RadarChart data={getEmotionalChartData(selectedAnalysis.emotional_analysis)}>
-                          <PolarGrid />
-                          <PolarAngleAxis dataKey="emotion" tick={{ fontSize: 10 }} />
-                          <Radar
-                            name="Intensidade"
-                            dataKey="value"
-                            stroke="hsl(var(--primary))"
-                            fill="hsl(var(--primary))"
-                            fillOpacity={0.6}
-                          />
-                        </RadarChart>
-                      </ResponsiveContainer>
-                    </CardContent>
-                  </Card>
-
-                  {/* Affected Voter Profiles */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-sm flex items-center gap-2">
-                        <Target className="h-4 w-4" />
-                        Eleitores Afetados
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex flex-wrap gap-2">
-                        {Array.isArray(selectedAnalysis.affected_voter_profiles) && selectedAnalysis.affected_voter_profiles.length > 0 ? (
-                          selectedAnalysis.affected_voter_profiles.map((profile: string, index: number) => (
-                            <Badge key={index} variant="secondary">
-                              {profile}
-                            </Badge>
-                          ))
-                        ) : (
-                          <p className="text-sm text-muted-foreground">
-                            Nenhum perfil de eleitor afetado identificado
-                          </p>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Recommended Actions */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-sm flex items-center gap-2">
-                        <TrendingUp className="h-4 w-4" />
-                        Ações Recomendadas
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ol className="space-y-2 text-sm">
-                        {Array.isArray(selectedAnalysis.recommended_actions) && selectedAnalysis.recommended_actions.length > 0 ? (
-                          selectedAnalysis.recommended_actions.map((action: string, index: number) => (
-                            <li key={index} className="flex gap-2">
-                              <Badge variant="outline" className="shrink-0">{index + 1}</Badge>
-                              <span>{action}</span>
-                            </li>
-                          ))
-                        ) : (
-                          <p className="text-sm text-muted-foreground">
-                            Nenhuma ação recomendada disponível
-                          </p>
-                        )}
-                      </ol>
-                    </CardContent>
-                  </Card>
-
-                  {/* Communication Suggestions */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-sm">Sugestões de Comunicação</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ul className="space-y-2 text-sm">
-                        {Array.isArray(selectedAnalysis.communication_suggestions) && selectedAnalysis.communication_suggestions.length > 0 ? (
-                          selectedAnalysis.communication_suggestions.map((suggestion: string, index: number) => (
-                            <li key={index} className="flex items-start gap-2">
-                              <span className="text-green-500">✓</span>
-                              <span>{suggestion}</span>
-                            </li>
-                          ))
-                        ) : (
-                          <p className="text-sm text-muted-foreground">
-                            Nenhuma sugestão de comunicação disponível
-                          </p>
-                        )}
-                      </ul>
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
-            </div>
-          )}
         </TabsContent>
-
         <TabsContent value="history">
           <Card>
-            <CardHeader>
-              <CardTitle>Histórico de Análises</CardTitle>
-              <CardDescription>
-                Visualize e compare análises anteriores
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {analysesLoading ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-12 w-full" />
-                  <Skeleton className="h-12 w-full" />
-                  <Skeleton className="h-12 w-full" />
-                </div>
-              ) : analyses && analyses.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Título</TableHead>
-                      <TableHead>Candidato</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Risco</TableHead>
-                      <TableHead>Gatilhos</TableHead>
-                      <TableHead>Data</TableHead>
-                      <TableHead>Ações</TableHead>
+            <CardContent className="pt-6">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Título</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {speechAnalyses?.map(a => (
+                    <TableRow key={a.id}>
+                      <TableCell>{a.speech_title}</TableCell>
+                      <TableCell>
+                        <Badge variant={a.source_type === 'social_media' ? 'default' : 'secondary'}>
+                          {a.source_type === 'social_media' ? <Share2 className="h-3 w-3 mr-1" /> : <FileText className="h-3 w-3 mr-1" />}
+                          {a.source_type === 'social_media' ? 'Redes Sociais' : 'Manual'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{format(new Date(a.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR })}</TableCell>
+                      <TableCell><Button variant="ghost" size="sm" onClick={() => deleteMutation.mutate(a.id)}><Trash2 className="h-4 w-4" /></Button></TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {Array.isArray(analyses) && analyses.map((analysis: any) => {
-                      // Safe access to related candidate data
-                      const candidateName = analysis.candidates && typeof analysis.candidates === 'object' 
-                        ? analysis.candidates.full_name 
-                        : '-';
-                      
-                      return (
-                        <TableRow key={analysis.id}>
-                          <TableCell className="font-medium">{analysis.speech_title || 'Sem título'}</TableCell>
-                          <TableCell>{candidateName}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{analysis.speech_type || 'discurso'}</Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge className={getRiskColor(analysis.risk_level || 0)}>
-                              {analysis.risk_level || 0}/10
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{Array.isArray(analysis.trigger_words) ? analysis.trigger_words.length : 0}</TableCell>
-                          <TableCell>
-                            {analysis.created_at ? format(new Date(analysis.created_at), "dd/MM/yyyy", { locale: ptBR }) : '-'}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex gap-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setSelectedAnalysis(analysis)}
-                              >
-                                Ver
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => deleteMutation.mutate(analysis.id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              ) : (
-                <p className="text-center text-muted-foreground py-8">
-                  Nenhuma análise encontrada
-                </p>
-              )}
+                  ))}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>
