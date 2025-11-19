@@ -15,7 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { Mic, AlertTriangle, TrendingUp, Brain, Target, MessageSquare, Trash2 } from "lucide-react";
+import { Mic, AlertTriangle, TrendingUp, Brain, Target, MessageSquare, Trash2, AlertCircle } from "lucide-react";
 import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer } from "recharts";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -62,7 +62,11 @@ export default function SpeechAnalysis() {
         }
         
         const { data, error } = await query;
-        if (error) throw error;
+        if (error) {
+          console.error('❌ Candidates query error:', error);
+          throw error;
+        }
+        console.log('✅ Candidates loaded:', data?.length || 0);
         return data || [];
       } catch (error) {
         console.error('❌ Error fetching candidates:', error);
@@ -72,23 +76,33 @@ export default function SpeechAnalysis() {
     enabled: !!user,
   });
 
-  // Fetch speech analyses
+  // Fetch speech analyses with safe data handling
   const { data: analyses, isLoading: analysesLoading } = useQuery({
-    queryKey: ['speech-analyses', isAdmin],
+    queryKey: ['speech-analyses', isAdmin, user?.id],
     queryFn: async () => {
-      let query = supabase
-        .from('speech_analyses')
-        .select('*, candidates(full_name)')
-        .order('created_at', { ascending: false });
-      
-      if (!isAdmin && user) {
-        query = query.eq('user_id', user.id);
+      try {
+        let query = supabase
+          .from('speech_analyses')
+          .select('*, candidates(full_name)')
+          .order('created_at', { ascending: false });
+        
+        if (!isAdmin && user) {
+          query = query.eq('user_id', user.id);
+        }
+        
+        const { data, error } = await query;
+        if (error) {
+          console.error('❌ Analyses query error:', error);
+          throw error;
+        }
+        console.log('✅ Analyses loaded:', data?.length || 0);
+        return data || [];
+      } catch (error) {
+        console.error('❌ Error fetching analyses:', error);
+        throw error;
       }
-      
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
     },
+    enabled: !!user,
   });
 
   // Analyze speech mutation with retry logic
@@ -260,6 +274,36 @@ export default function SpeechAnalysis() {
     ];
   };
 
+  // Show error if candidates failed to load
+  if (candidatesError) {
+    return (
+      <div className="space-y-6">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Erro ao Carregar Candidatos</AlertTitle>
+          <AlertDescription>
+            Não foi possível carregar a lista de candidatos. Por favor, recarregue a página ou entre em contato com o suporte.
+            <div className="mt-2 text-xs opacity-70">
+              {candidatesError instanceof Error ? candidatesError.message : 'Erro desconhecido'}
+            </div>
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
+  // Show loading state while candidates are being fetched
+  if (candidatesLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Carregando candidatos...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -308,11 +352,17 @@ export default function SpeechAnalysis() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="">Nenhum</SelectItem>
-                      {candidates?.map((candidate) => (
-                        <SelectItem key={candidate.id} value={candidate.id}>
-                          {candidate.full_name}
-                        </SelectItem>
-                      ))}
+                      {candidates && Array.isArray(candidates) && candidates.length > 0 ? (
+                        candidates.map((candidate) => (
+                          <SelectItem key={candidate.id} value={candidate.id}>
+                            {candidate.full_name}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                          Nenhum candidato disponível
+                        </div>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -461,27 +511,33 @@ export default function SpeechAnalysis() {
                     <CardContent>
                       <ScrollArea className="h-[200px]">
                         <div className="space-y-2">
-                          {selectedAnalysis.trigger_words?.map((trigger: any, index: number) => (
-                            <Alert key={index} variant="destructive">
-                              <AlertTitle className="flex items-center justify-between">
-                                <span className="font-bold">"{trigger.word}"</span>
-                                <Badge variant="destructive">
-                                  Severidade: {trigger.severity}/10
-                                </Badge>
-                              </AlertTitle>
-                              <AlertDescription className="mt-2 space-y-1">
-                                <p><strong>Posição:</strong> {trigger.position}</p>
-                                <p><strong>Motivo:</strong> {trigger.reason}</p>
-                              </AlertDescription>
-                            </Alert>
-                          ))}
+                          {Array.isArray(selectedAnalysis.trigger_words) && selectedAnalysis.trigger_words.length > 0 ? (
+                            selectedAnalysis.trigger_words.map((trigger: any, index: number) => (
+                              <Alert key={index} variant="destructive">
+                                <AlertTitle className="flex items-center justify-between">
+                                  <span className="font-bold">"{trigger?.word || 'Não especificado'}"</span>
+                                  <Badge variant="destructive">
+                                    Severidade: {trigger?.severity || 0}/10
+                                  </Badge>
+                                </AlertTitle>
+                                <AlertDescription className="mt-2 space-y-1">
+                                  <p><strong>Posição:</strong> {trigger?.position || 'Não especificada'}</p>
+                                  <p><strong>Motivo:</strong> {trigger?.reason || 'Não especificado'}</p>
+                                </AlertDescription>
+                              </Alert>
+                            ))
+                          ) : (
+                            <p className="text-center text-muted-foreground py-4">
+                              Nenhum gatilho crítico detectado
+                            </p>
+                          )}
                         </div>
                       </ScrollArea>
                     </CardContent>
                   </Card>
 
                   {/* Problematic Segments */}
-                  {selectedAnalysis.problematic_segments && selectedAnalysis.problematic_segments.length > 0 && (
+                  {Array.isArray(selectedAnalysis.problematic_segments) && selectedAnalysis.problematic_segments.length > 0 && (
                     <Card>
                       <CardHeader>
                         <CardTitle className="flex items-center gap-2">
@@ -494,10 +550,10 @@ export default function SpeechAnalysis() {
                           <div className="space-y-3">
                             {selectedAnalysis.problematic_segments.map((segment: any, index: number) => (
                               <div key={index} className="border-l-4 border-red-500 pl-3 py-2">
-                                <p className="text-sm italic mb-2">"{segment.text}"</p>
+                                <p className="text-sm italic mb-2">"{segment?.text || 'Texto não disponível'}"</p>
                                 <div className="space-y-1 text-xs">
-                                  <p><strong>Problema:</strong> {segment.issue}</p>
-                                  <Badge variant="outline">{segment.emotion}</Badge>
+                                  <p><strong>Problema:</strong> {segment?.issue || 'Não especificado'}</p>
+                                  <Badge variant="outline">{segment?.emotion || 'Não especificado'}</Badge>
                                 </div>
                               </div>
                             ))}
@@ -555,11 +611,17 @@ export default function SpeechAnalysis() {
                     </CardHeader>
                     <CardContent>
                       <div className="flex flex-wrap gap-2">
-                        {selectedAnalysis.affected_voter_profiles?.map((profile: string, index: number) => (
-                          <Badge key={index} variant="secondary">
-                            {profile}
-                          </Badge>
-                        ))}
+                        {Array.isArray(selectedAnalysis.affected_voter_profiles) && selectedAnalysis.affected_voter_profiles.length > 0 ? (
+                          selectedAnalysis.affected_voter_profiles.map((profile: string, index: number) => (
+                            <Badge key={index} variant="secondary">
+                              {profile}
+                            </Badge>
+                          ))
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            Nenhum perfil de eleitor afetado identificado
+                          </p>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -574,12 +636,18 @@ export default function SpeechAnalysis() {
                     </CardHeader>
                     <CardContent>
                       <ol className="space-y-2 text-sm">
-                        {selectedAnalysis.recommended_actions?.map((action: string, index: number) => (
-                          <li key={index} className="flex gap-2">
-                            <Badge variant="outline" className="shrink-0">{index + 1}</Badge>
-                            <span>{action}</span>
-                          </li>
-                        ))}
+                        {Array.isArray(selectedAnalysis.recommended_actions) && selectedAnalysis.recommended_actions.length > 0 ? (
+                          selectedAnalysis.recommended_actions.map((action: string, index: number) => (
+                            <li key={index} className="flex gap-2">
+                              <Badge variant="outline" className="shrink-0">{index + 1}</Badge>
+                              <span>{action}</span>
+                            </li>
+                          ))
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            Nenhuma ação recomendada disponível
+                          </p>
+                        )}
                       </ol>
                     </CardContent>
                   </Card>
@@ -591,12 +659,18 @@ export default function SpeechAnalysis() {
                     </CardHeader>
                     <CardContent>
                       <ul className="space-y-2 text-sm">
-                        {selectedAnalysis.communication_suggestions?.map((suggestion: string, index: number) => (
-                          <li key={index} className="flex items-start gap-2">
-                            <span className="text-green-500">✓</span>
-                            <span>{suggestion}</span>
-                          </li>
-                        ))}
+                        {Array.isArray(selectedAnalysis.communication_suggestions) && selectedAnalysis.communication_suggestions.length > 0 ? (
+                          selectedAnalysis.communication_suggestions.map((suggestion: string, index: number) => (
+                            <li key={index} className="flex items-start gap-2">
+                              <span className="text-green-500">✓</span>
+                              <span>{suggestion}</span>
+                            </li>
+                          ))
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            Nenhuma sugestão de comunicação disponível
+                          </p>
+                        )}
                       </ul>
                     </CardContent>
                   </Card>
@@ -635,44 +709,49 @@ export default function SpeechAnalysis() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {analyses.map((analysis: any) => (
-                      <TableRow key={analysis.id}>
-                        <TableCell className="font-medium">{analysis.speech_title}</TableCell>
-                        <TableCell>
-                          {analysis.candidates?.full_name || '-'}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{analysis.speech_type}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={getRiskColor(analysis.risk_level)}>
-                            {analysis.risk_level}/10
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{analysis.trigger_words?.length || 0}</TableCell>
-                        <TableCell>
-                          {format(new Date(analysis.created_at), "dd/MM/yyyy", { locale: ptBR })}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setSelectedAnalysis(analysis)}
-                            >
-                              Ver
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => deleteMutation.mutate(analysis.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {Array.isArray(analyses) && analyses.map((analysis: any) => {
+                      // Safe access to related candidate data
+                      const candidateName = analysis.candidates && typeof analysis.candidates === 'object' 
+                        ? analysis.candidates.full_name 
+                        : '-';
+                      
+                      return (
+                        <TableRow key={analysis.id}>
+                          <TableCell className="font-medium">{analysis.speech_title || 'Sem título'}</TableCell>
+                          <TableCell>{candidateName}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{analysis.speech_type || 'discurso'}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={getRiskColor(analysis.risk_level || 0)}>
+                              {analysis.risk_level || 0}/10
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{Array.isArray(analysis.trigger_words) ? analysis.trigger_words.length : 0}</TableCell>
+                          <TableCell>
+                            {analysis.created_at ? format(new Date(analysis.created_at), "dd/MM/yyyy", { locale: ptBR }) : '-'}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setSelectedAnalysis(analysis)}
+                              >
+                                Ver
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => deleteMutation.mutate(analysis.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               ) : (
