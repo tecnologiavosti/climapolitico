@@ -13,6 +13,7 @@ import {
   Trophy,
   Shield,
   UserX,
+  Share2,
 } from "lucide-react";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 
@@ -36,6 +37,7 @@ const mainItems = [
   { title: "Análise de Fala", url: "/dashboard/speech-analysis", icon: Mic },
   { title: "Ranking", url: "/dashboard/ranking", icon: Trophy },
   { title: "Público Indeciso", url: "/dashboard/undecided", icon: UserX },
+  { title: "Relatório por Rede Social", url: "/dashboard/social-media-report", icon: Share2 },
   { title: "IA & Insights", url: "/dashboard/ai", icon: Brain },
 ];
 
