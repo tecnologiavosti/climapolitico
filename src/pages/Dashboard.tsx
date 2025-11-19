@@ -15,6 +15,7 @@ import SpeechAnalysis from "./dashboard/SpeechAnalysis";
 import CandidateRanking from "./dashboard/CandidateRanking";
 import Admin from "./dashboard/Admin";
 import UndecidedAnalysis from "./dashboard/UndecidedAnalysis";
+import SocialMediaReport from "./dashboard/SocialMediaReport";
 
 const Dashboard = () => {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -75,6 +76,7 @@ const Dashboard = () => {
                   <UndecidedAnalysis />
                 </ErrorBoundary>
               } />
+              <Route path="/social-media-report" element={<SocialMediaReport />} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/ai" element={
                 <div className="text-center py-12">
