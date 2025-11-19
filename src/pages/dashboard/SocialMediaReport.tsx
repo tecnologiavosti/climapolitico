@@ -11,6 +11,7 @@ import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { SocialMediaKPIs } from "@/components/dashboard/SocialMediaKPIs";
 import { SocialMediaTable } from "@/components/dashboard/SocialMediaTable";
 import { SocialMediaCharts } from "@/components/dashboard/SocialMediaCharts";
+import { SocialMediaDetailedAnalysis } from "@/components/dashboard/SocialMediaDetailedAnalysis";
 
 export interface SocialMediaReportData {
   network: string;
@@ -252,6 +253,9 @@ export default function SocialMediaReport() {
 
           {/* Gráficos */}
           <SocialMediaCharts data={reportData} />
+
+          {/* Análise Detalhada por Rede */}
+          <SocialMediaDetailedAnalysis data={reportData} />
         </>
       )}
 
