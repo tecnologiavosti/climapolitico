@@ -12,6 +12,7 @@ import { SocialMediaKPIs } from "@/components/dashboard/SocialMediaKPIs";
 import { SocialMediaTable } from "@/components/dashboard/SocialMediaTable";
 import { SocialMediaCharts } from "@/components/dashboard/SocialMediaCharts";
 import { SocialMediaDetailedAnalysis } from "@/components/dashboard/SocialMediaDetailedAnalysis";
+import { SocialMediaComparison } from "@/components/dashboard/SocialMediaComparison";
 
 export interface SocialMediaReportData {
   network: string;
@@ -286,6 +287,9 @@ export default function SocialMediaReport() {
 
           {/* Análise Detalhada por Rede */}
           <SocialMediaDetailedAnalysis data={reportData} />
+
+          {/* Comparação Entre Redes */}
+          <SocialMediaComparison data={reportData} />
         </>
       )}
 
