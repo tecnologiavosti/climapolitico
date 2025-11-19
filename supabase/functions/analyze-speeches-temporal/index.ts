@@ -117,9 +117,18 @@ serve(async (req) => {
       
       console.log('Recent analyses for this candidate:', anyAnalyses);
       
-      throw new Error(
-        `Nenhuma análise encontrada para este candidato no período selecionado (${new Date(startDate).toLocaleDateString('pt-BR')} - ${new Date(endDate).toLocaleDateString('pt-BR')}). ` +
-        `Por favor, execute análises de redes sociais primeiro para este candidato ou selecione um período diferente.`
+      // Return success response with empty result instead of throwing error
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: `Nenhuma análise encontrada para este candidato no período selecionado (${new Date(startDate).toLocaleDateString('pt-BR')} - ${new Date(endDate).toLocaleDateString('pt-BR')}). ` +
+                   `Por favor, execute análises de redes sociais primeiro para este candidato ou selecione um período diferente.`,
+          data: null
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200
+        }
       );
     }
 
