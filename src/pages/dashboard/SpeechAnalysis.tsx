@@ -17,6 +17,7 @@ import { Brain, Share2, FileText, Trash2, Calendar } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useAuth } from "@/hooks/useAuth";
+import { useTokenValidator } from "@/hooks/useTokenValidator";
 import { DateRange } from "react-day-picker";
 
 export default function SpeechAnalysis() {
@@ -76,8 +77,16 @@ export default function SpeechAnalysis() {
     }
   });
 
+  const { validateToken } = useTokenValidator();
+  
   const analyzeMutation = useMutation({
     mutationFn: async (payload: any) => {
+      // 🔥 PRE-FLIGHT TOKEN VALIDATION
+      const isTokenValid = await validateToken();
+      if (!isTokenValid) {
+        throw new Error('Token inválido. Redirecionando para login...');
+      }
+      
       const { data, error } = await supabase.functions.invoke('analyze-speech', { body: payload });
       if (error) throw error;
       return data;
@@ -86,11 +95,46 @@ export default function SpeechAnalysis() {
       toast({ title: "Análise concluída!" });
       queryClient.invalidateQueries({ queryKey: ['speech-analyses'] });
       setSpeechTitle(""); setSpeechText(""); setSelectedAnalysisId("");
+    },
+    onError: (error: any) => {
+      console.error('Analysis error:', error);
+      
+      // 🔥 AGGRESSIVE AUTH ERROR DETECTION
+      const authErrorKeywords = ['Unauthorized', 'JWT', 'authorization', '401', 'session', 'token', 'expired', 'Invalid'];
+      const isAuthError = authErrorKeywords.some(keyword => 
+        error.message?.toLowerCase().includes(keyword.toLowerCase())
+      );
+      
+      if (isAuthError) {
+        toast({
+          title: "Sessão Inválida 🔒",
+          description: "Sua sessão está corrompida. Redirecionando para login...",
+          variant: "destructive",
+        });
+        
+        setTimeout(async () => {
+          await supabase.auth.signOut();
+          window.location.href = '/auth';
+        }, 1500);
+        return;
+      }
+      
+      toast({
+        title: "Erro na análise",
+        description: error.message,
+        variant: "destructive",
+      });
     }
   });
 
   const analyzeTemporalMutation = useMutation({
     mutationFn: async (payload: any) => {
+      // 🔥 PRE-FLIGHT TOKEN VALIDATION
+      const isTokenValid = await validateToken();
+      if (!isTokenValid) {
+        throw new Error('Token inválido. Redirecionando para login...');
+      }
+      
       const { data, error } = await supabase.functions.invoke('analyze-speeches-temporal', { body: payload });
       if (error) throw error;
       return data;
