@@ -349,14 +349,18 @@ export type Database = {
           affected_voter_profiles: Json | null
           ai_model_used: string | null
           analysis_confidence: number | null
+          analysis_period_end: string | null
+          analysis_period_start: string | null
           candidate_id: string | null
           communication_suggestions: Json | null
           created_at: string | null
           emotional_analysis: Json | null
           id: string
+          individual_speeches: Json | null
           media_type: string | null
           media_url: string | null
           negative_perception_score: number | null
+          period_summary: Json | null
           problematic_segments: Json | null
           psychological_impact: string | null
           recommended_actions: Json | null
@@ -377,14 +381,18 @@ export type Database = {
           affected_voter_profiles?: Json | null
           ai_model_used?: string | null
           analysis_confidence?: number | null
+          analysis_period_end?: string | null
+          analysis_period_start?: string | null
           candidate_id?: string | null
           communication_suggestions?: Json | null
           created_at?: string | null
           emotional_analysis?: Json | null
           id?: string
+          individual_speeches?: Json | null
           media_type?: string | null
           media_url?: string | null
           negative_perception_score?: number | null
+          period_summary?: Json | null
           problematic_segments?: Json | null
           psychological_impact?: string | null
           recommended_actions?: Json | null
@@ -405,14 +413,18 @@ export type Database = {
           affected_voter_profiles?: Json | null
           ai_model_used?: string | null
           analysis_confidence?: number | null
+          analysis_period_end?: string | null
+          analysis_period_start?: string | null
           candidate_id?: string | null
           communication_suggestions?: Json | null
           created_at?: string | null
           emotional_analysis?: Json | null
           id?: string
+          individual_speeches?: Json | null
           media_type?: string | null
           media_url?: string | null
           negative_perception_score?: number | null
+          period_summary?: Json | null
           problematic_segments?: Json | null
           psychological_impact?: string | null
           recommended_actions?: Json | null
