@@ -137,6 +137,12 @@ export default function SpeechAnalysis() {
       
       const { data, error } = await supabase.functions.invoke('analyze-speeches-temporal', { body: payload });
       if (error) throw error;
+      
+      // Handle graceful "no data" response from edge function
+      if (data && !data.success && data.message) {
+        throw new Error(data.message);
+      }
+      
       return data;
     },
     onSuccess: () => {
