@@ -241,182 +241,191 @@ export default function Analytics() {
         </Card>
       </div>
 
-      {/* Charts Row 1 */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Evolução do Sentimento</CardTitle>
-            <CardDescription>Sentimento médio ao longo do tempo</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {timelineChartData.length > 0 ? (
-              <ChartContainer
-                config={{
-                  sentiment: {
-                    label: "Sentimento",
-                    color: "hsl(var(--primary))",
-                  },
-                }}
-                className="h-[300px]"
-              >
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={timelineChartData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" />
-                    <YAxis domain={[0, 100]} />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Line type="monotone" dataKey="sentiment" stroke="hsl(var(--primary))" strokeWidth={2} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </ChartContainer>
-            ) : (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                Sem dados no período selecionado
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Distribuição por Rede Social</CardTitle>
-            <CardDescription>Análises por plataforma</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {socialNetworkChartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={socialNetworkChartData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {socialNetworkChartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={SOCIAL_COLORS[entry.name as keyof typeof SOCIAL_COLORS] || '#6B7280'} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
+      {/* Temporal Evolution - Full Width */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Evolução do Sentimento</CardTitle>
+          <CardDescription>Sentimento médio ao longo do tempo</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {timelineChartData.length > 0 ? (
+            <ChartContainer
+              config={{
+                sentiment: {
+                  label: "Sentimento",
+                  color: "hsl(var(--primary))",
+                },
+              }}
+              className="h-[350px]"
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={timelineChartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis domain={[0, 100]} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Line type="monotone" dataKey="sentiment" stroke="hsl(var(--primary))" strokeWidth={2} />
+                </LineChart>
               </ResponsiveContainer>
-            ) : (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                Sem dados no período selecionado
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+            </ChartContainer>
+          ) : (
+            <div className="h-[350px] flex items-center justify-center text-muted-foreground">
+              Sem dados no período selecionado
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-      {/* Demographics Section */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle>Distribuição Regional</CardTitle>
-            <CardDescription>Top 5 regiões</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {regionChartData.length > 0 ? (
-              <ChartContainer
-                config={{
-                  percentage: {
-                    label: "Percentual",
-                    color: "hsl(var(--primary))",
-                  },
-                }}
-                className="h-[300px]"
-              >
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={regionChartData} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis dataKey="region" type="category" width={100} />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="percentage" fill="hsl(var(--primary))" />
-                  </BarChart>
+      {/* Demographic Analysis Section */}
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-2xl font-bold">Análise Demográfica</h2>
+          <p className="text-muted-foreground">Distribuição do público por plataforma, região, idade e gênero</p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* Social Network Distribution */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Distribuição por Rede Social</CardTitle>
+              <CardDescription>Análises por plataforma</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {socialNetworkChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={socialNetworkChartData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {socialNetworkChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={SOCIAL_COLORS[entry.name as keyof typeof SOCIAL_COLORS] || '#6B7280'} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
                 </ResponsiveContainer>
-              </ChartContainer>
-            ) : (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                Sem dados disponíveis
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              ) : (
+                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                  Sem dados no período selecionado
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Faixa Etária</CardTitle>
-            <CardDescription>Distribuição por idade</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {ageChartData.length > 0 ? (
-              <ChartContainer
-                config={{
-                  percentage: {
-                    label: "Percentual",
-                    color: "hsl(var(--chart-2))",
-                  },
-                }}
-                className="h-[300px]"
-              >
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={ageChartData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="age" />
-                    <YAxis />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="percentage" fill="hsl(var(--chart-2))" />
-                  </BarChart>
+          {/* Regional Distribution */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Distribuição Regional</CardTitle>
+              <CardDescription>Top 5 regiões</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {regionChartData.length > 0 ? (
+                <ChartContainer
+                  config={{
+                    percentage: {
+                      label: "Percentual",
+                      color: "hsl(var(--primary))",
+                    },
+                  }}
+                  className="h-[300px]"
+                >
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={regionChartData} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis type="number" />
+                      <YAxis dataKey="region" type="category" width={100} />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Bar dataKey="percentage" fill="hsl(var(--primary))" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              ) : (
+                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                  Sem dados disponíveis
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Age Distribution */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Faixa Etária</CardTitle>
+              <CardDescription>Distribuição por idade</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {ageChartData.length > 0 ? (
+                <ChartContainer
+                  config={{
+                    percentage: {
+                      label: "Percentual",
+                      color: "hsl(var(--chart-2))",
+                    },
+                  }}
+                  className="h-[300px]"
+                >
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={ageChartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="age" />
+                      <YAxis />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Bar dataKey="percentage" fill="hsl(var(--chart-2))" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              ) : (
+                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                  Sem dados disponíveis
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Gender Distribution */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Distribuição por Gênero</CardTitle>
+              <CardDescription>Público por gênero</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {genderChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={genderChartData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, value }) => `${name}: ${value}%`}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {genderChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={GENDER_COLORS[entry.name as keyof typeof GENDER_COLORS] || '#8B5CF6'} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
                 </ResponsiveContainer>
-              </ChartContainer>
-            ) : (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                Sem dados disponíveis
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Distribuição por Gênero</CardTitle>
-            <CardDescription>Público por gênero</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {genderChartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={genderChartData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, value }) => `${name}: ${value}%`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {genderChartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={GENDER_COLORS[entry.name as keyof typeof GENDER_COLORS] || '#8B5CF6'} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                Sem dados disponíveis
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              ) : (
+                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                  Sem dados disponíveis
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );
