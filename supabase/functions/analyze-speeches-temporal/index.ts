@@ -99,13 +99,28 @@ serve(async (req) => {
       .lte('created_at', endDate)
       .eq('analysis_status', 'completed');
 
+    console.log(`Found ${analyses?.length || 0} completed analyses for candidate ${candidateId} in period ${startDate} to ${endDate}`);
+
     if (analysesError) {
       console.error('Error fetching analyses:', analysesError);
       throw new Error('Failed to fetch analyses');
     }
 
     if (!analyses || analyses.length === 0) {
-      throw new Error('No analyses found for this period');
+      // Check if ANY analyses exist for this candidate (regardless of period)
+      const { data: anyAnalyses } = await supabase
+        .from('candidate_analyses')
+        .select('id, created_at, analysis_status')
+        .eq('candidate_id', candidateId)
+        .eq('user_id', user.id)
+        .limit(5);
+      
+      console.log('Recent analyses for this candidate:', anyAnalyses);
+      
+      throw new Error(
+        `Nenhuma análise encontrada para este candidato no período selecionado (${new Date(startDate).toLocaleDateString('pt-BR')} - ${new Date(endDate).toLocaleDateString('pt-BR')}). ` +
+        `Por favor, execute análises de redes sociais primeiro para este candidato ou selecione um período diferente.`
+      );
     }
 
     console.log(`Found ${analyses.length} analyses in period`);
