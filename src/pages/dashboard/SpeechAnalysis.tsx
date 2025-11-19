@@ -345,13 +345,12 @@ export default function SpeechAnalysis() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="candidate">Candidato</Label>
+                  <Label htmlFor="candidate">Candidato (Opcional)</Label>
                   <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecione um candidato" />
+                      <SelectValue placeholder="Selecione um candidato ou deixe em branco" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Nenhum</SelectItem>
                       {candidates && Array.isArray(candidates) && candidates.length > 0 ? (
                         candidates.map((candidate) => (
                           <SelectItem key={candidate.id} value={candidate.id}>
