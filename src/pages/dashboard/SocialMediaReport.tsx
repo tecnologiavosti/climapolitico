@@ -13,6 +13,7 @@ import { SocialMediaTable } from "@/components/dashboard/SocialMediaTable";
 import { SocialMediaCharts } from "@/components/dashboard/SocialMediaCharts";
 import { SocialMediaDetailedAnalysis } from "@/components/dashboard/SocialMediaDetailedAnalysis";
 import { SocialMediaComparison } from "@/components/dashboard/SocialMediaComparison";
+import { SocialMediaTemporalEvolution } from "@/components/dashboard/SocialMediaTemporalEvolution";
 
 export interface SocialMediaReportData {
   network: string;
@@ -290,6 +291,12 @@ export default function SocialMediaReport() {
 
           {/* Comparação Entre Redes */}
           <SocialMediaComparison data={reportData} />
+
+          {/* Evolução Temporal */}
+          <SocialMediaTemporalEvolution 
+            selectedCandidate={selectedCandidate}
+            dateRange={dateRange}
+          />
         </>
       )}
 
