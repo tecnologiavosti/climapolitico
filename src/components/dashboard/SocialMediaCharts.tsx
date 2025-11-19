@@ -17,11 +17,13 @@ const SENTIMENT_COLORS = {
 
 export function SocialMediaCharts({ data }: SocialMediaChartsProps) {
   // Dados para gráfico de menções por rede
-  const mentionsChartData = data.map(item => ({
-    name: item.network,
-    mentions: item.totalMentions,
-    profiles: item.uniqueProfiles
-  }));
+  const mentionsChartData = data
+    .filter(item => item.network && item.totalMentions > 0)
+    .map(item => ({
+      name: item.network || 'Desconhecida',
+      mentions: item.totalMentions,
+      profiles: item.uniqueProfiles
+    }));
 
   // Dados para gráfico de sentimento geral
   const totalPositive = data.reduce((sum, item) => sum + item.positiveCount, 0);
@@ -35,12 +37,14 @@ export function SocialMediaCharts({ data }: SocialMediaChartsProps) {
   ].filter(item => item.value > 0);
 
   // Dados para gráfico de sentimento por rede (stacked)
-  const sentimentByNetworkData = data.map(item => ({
-    network: item.network,
-    Positivo: item.positivePercent,
-    Neutro: item.neutralPercent,
-    Negativo: item.negativePercent
-  }));
+  const sentimentByNetworkData = data
+    .filter(item => item.network && item.totalMentions > 0)
+    .map(item => ({
+      network: item.network || 'Desconhecida',
+      Positivo: item.positivePercent,
+      Neutro: item.neutralPercent,
+      Negativo: item.negativePercent
+    }));
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -53,33 +57,40 @@ export function SocialMediaCharts({ data }: SocialMediaChartsProps) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={mentionsChartData}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-              <XAxis 
-                dataKey="name" 
-                className="text-xs"
-                angle={-45}
-                textAnchor="end"
-                height={80}
-              />
-              <YAxis className="text-xs" />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: 'hsl(var(--card))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '8px'
-                }}
-                formatter={(value: number) => value.toLocaleString('pt-BR')}
-              />
-              <Bar 
-                dataKey="mentions" 
-                fill="hsl(var(--primary))" 
-                radius={[8, 8, 0, 0]}
-                name="Menções"
-              />
-            </BarChart>
-          </ResponsiveContainer>
+          {mentionsChartData.length === 0 ? (
+            <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+              Nenhum dado disponível para o período selecionado
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={mentionsChartData}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis 
+                  dataKey="name" 
+                  className="text-xs"
+                  angle={-45}
+                  textAnchor="end"
+                  height={80}
+                  tick={{ fill: 'hsl(var(--foreground))' }}
+                />
+                <YAxis className="text-xs" tick={{ fill: 'hsl(var(--foreground))' }} />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px'
+                  }}
+                  formatter={(value: number) => value.toLocaleString('pt-BR')}
+                />
+                <Bar 
+                  dataKey="mentions" 
+                  fill="hsl(var(--primary))" 
+                  radius={[8, 8, 0, 0]}
+                  name="Menções"
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </CardContent>
       </Card>
 
@@ -130,44 +141,61 @@ export function SocialMediaCharts({ data }: SocialMediaChartsProps) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={350}>
-            <BarChart 
-              data={sentimentByNetworkData}
-              layout="vertical"
-              margin={{ left: 80 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-              <XAxis type="number" domain={[0, 100]} className="text-xs" />
-              <YAxis type="category" dataKey="network" className="text-xs" />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: 'hsl(var(--card))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '8px'
-                }}
-                formatter={(value: number) => `${value.toFixed(1)}%`}
-              />
-              <Legend />
-              <Bar 
-                dataKey="Positivo" 
-                stackId="a" 
-                fill={SENTIMENT_COLORS.Positivo}
-                radius={[0, 0, 0, 0]}
-              />
-              <Bar 
-                dataKey="Neutro" 
-                stackId="a" 
-                fill={SENTIMENT_COLORS.Neutro}
-                radius={[0, 0, 0, 0]}
-              />
-              <Bar 
-                dataKey="Negativo" 
-                stackId="a" 
-                fill={SENTIMENT_COLORS.Negativo}
-                radius={[0, 8, 8, 0]}
-              />
-            </BarChart>
-          </ResponsiveContainer>
+          {sentimentByNetworkData.length === 0 ? (
+            <div className="flex items-center justify-center h-[350px] text-muted-foreground">
+              Nenhum dado disponível para o período selecionado
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={350}>
+              <BarChart 
+                data={sentimentByNetworkData}
+                layout="vertical"
+                margin={{ left: 80 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis 
+                  type="number" 
+                  domain={[0, 100]} 
+                  className="text-xs"
+                  tick={{ fill: 'hsl(var(--foreground))' }}
+                />
+                <YAxis 
+                  type="category" 
+                  dataKey="network" 
+                  className="text-xs"
+                  width={100}
+                  tick={{ fill: 'hsl(var(--foreground))' }}
+                />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px'
+                  }}
+                  formatter={(value: number) => `${value.toFixed(1)}%`}
+                />
+                <Legend />
+                <Bar 
+                  dataKey="Positivo" 
+                  stackId="a" 
+                  fill={SENTIMENT_COLORS.Positivo}
+                  radius={[0, 0, 0, 0]}
+                />
+                <Bar 
+                  dataKey="Neutro" 
+                  stackId="a" 
+                  fill={SENTIMENT_COLORS.Neutro}
+                  radius={[0, 0, 0, 0]}
+                />
+                <Bar 
+                  dataKey="Negativo" 
+                  stackId="a" 
+                  fill={SENTIMENT_COLORS.Negativo}
+                  radius={[0, 8, 8, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </CardContent>
       </Card>
     </div>
