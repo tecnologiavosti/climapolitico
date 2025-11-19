@@ -11,22 +11,28 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { DateRangePicker } from "@/components/DateRangePicker";
 import { useToast } from "@/hooks/use-toast";
-import { Brain, Share2, FileText, Trash2 } from "lucide-react";
+import { Brain, Share2, FileText, Trash2, Calendar } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useAuth } from "@/hooks/useAuth";
+import { DateRange } from "react-day-picker";
 
 export default function SpeechAnalysis() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   
-  const [analysisMode, setAnalysisMode] = useState<'social_media' | 'manual'>('social_media');
+  const [analysisMode, setAnalysisMode] = useState<'temporal' | 'social_media' | 'manual'>('temporal');
   const [speechTitle, setSpeechTitle] = useState("");
   const [speechText, setSpeechText] = useState("");
   const [selectedCandidateId, setSelectedCandidateId] = useState("");
   const [selectedAnalysisId, setSelectedAnalysisId] = useState("");
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: new Date(new Date().setDate(new Date().getDate() - 30)),
+    to: new Date()
+  });
 
   const { data: candidates } = useQuery({
     queryKey: ['candidates'],
@@ -47,6 +53,21 @@ export default function SpeechAnalysis() {
     enabled: !!selectedCandidateId && analysisMode === 'social_media'
   });
 
+  const { data: periodAnalyses } = useQuery({
+    queryKey: ['period-analyses', selectedCandidateId, dateRange],
+    queryFn: async () => {
+      if (!selectedCandidateId || !dateRange?.from || !dateRange?.to) return [];
+      const { data } = await supabase.from('candidate_analyses')
+        .select('*')
+        .eq('candidate_id', selectedCandidateId)
+        .eq('analysis_status', 'completed')
+        .gte('created_at', dateRange.from.toISOString())
+        .lte('created_at', dateRange.to.toISOString());
+      return data || [];
+    },
+    enabled: !!selectedCandidateId && !!dateRange?.from && !!dateRange?.to && analysisMode === 'temporal'
+  });
+
   const { data: speechAnalyses } = useQuery({
     queryKey: ['speech-analyses'],
     queryFn: async () => {
@@ -65,6 +86,25 @@ export default function SpeechAnalysis() {
       toast({ title: "Análise concluída!" });
       queryClient.invalidateQueries({ queryKey: ['speech-analyses'] });
       setSpeechTitle(""); setSpeechText(""); setSelectedAnalysisId("");
+    }
+  });
+
+  const analyzeTemporalMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const { data, error } = await supabase.functions.invoke('analyze-speeches-temporal', { body: payload });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast({ title: "Análise temporal concluída!" });
+      queryClient.invalidateQueries({ queryKey: ['speech-analyses'] });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Erro na análise", 
+        description: error.message || "Erro desconhecido",
+        variant: "destructive"
+      });
     }
   });
 
@@ -91,6 +131,26 @@ export default function SpeechAnalysis() {
     }
   };
 
+  const handleTemporalAnalysis = () => {
+    if (!selectedCandidateId || !dateRange?.from || !dateRange?.to) {
+      toast({ 
+        title: "Dados incompletos", 
+        description: "Selecione um candidato e período",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    analyzeTemporalMutation.mutate({
+      candidateId: selectedCandidateId,
+      startDate: dateRange.from.toISOString(),
+      endDate: dateRange.to.toISOString()
+    });
+  };
+
+  const totalPostsInPeriod = periodAnalyses?.reduce((sum, a) => sum + (a.posts_analyzed || 0), 0) || 0;
+  const socialNetworksInPeriod = [...new Set(periodAnalyses?.map(a => a.social_network).filter(Boolean))];
+
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">Análise Inteligente de Fala</h1>
@@ -101,44 +161,200 @@ export default function SpeechAnalysis() {
         </TabsList>
         <TabsContent value="new">
           <Card>
-            <CardContent className="pt-6 space-y-4">
-              <RadioGroup value={analysisMode} onValueChange={(v: any) => setAnalysisMode(v)}>
-                <div className="flex items-center space-x-2 p-4 border rounded-lg">
-                  <RadioGroupItem value="social_media" />
-                  <Label className="flex-1"><Share2 className="inline h-4 w-4 mr-2" />Análise Automática (Redes Sociais)</Label>
-                </div>
-                <div className="flex items-center space-x-2 p-4 border rounded-lg">
-                  <RadioGroupItem value="manual" />
-                  <Label className="flex-1"><FileText className="inline h-4 w-4 mr-2" />Análise Manual (Texto)</Label>
-                </div>
-              </RadioGroup>
+            <CardHeader>
+              <CardTitle>Criar Nova Análise</CardTitle>
+              <CardDescription>Escolha o tipo de análise que deseja realizar</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-3">
+                <Label>Modo de Análise</Label>
+                <RadioGroup value={analysisMode} onValueChange={(v: any) => setAnalysisMode(v)}>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="temporal" id="temporal" />
+                    <Label htmlFor="temporal" className="cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4" />
+                        <span>Análise Temporal (Período)</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground ml-6">
+                        Analisa falas identificadas nas redes sociais durante um período específico
+                      </p>
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="social_media" id="social" />
+                    <Label htmlFor="social" className="cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <Share2 className="h-4 w-4" />
+                        <span>Análise de Redes Sociais</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground ml-6">
+                        Analisa dados agregados de uma análise de candidato existente
+                      </p>
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="manual" id="manual" />
+                    <Label htmlFor="manual" className="cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        <span>Análise Manual (Texto)</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground ml-6">
+                        Insira manualmente o texto de uma fala específica para análise
+                      </p>
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
 
-              {analysisMode === 'social_media' ? (
-                <>
-                  <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
-                    <SelectTrigger><SelectValue placeholder="Candidato" /></SelectTrigger>
-                    <SelectContent>
-                      {candidates?.map(c => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  {selectedCandidateId && (
-                    <Select value={selectedAnalysisId} onValueChange={setSelectedAnalysisId}>
-                      <SelectTrigger><SelectValue placeholder="Análise" /></SelectTrigger>
+              {analysisMode === 'temporal' && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Candidato</Label>
+                    <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione um candidato" />
+                      </SelectTrigger>
                       <SelectContent>
-                        {candidateAnalyses?.map(a => <SelectItem key={a.id} value={a.id}>{format(new Date(a.created_at), 'dd/MM/yyyy')}</SelectItem>)}
+                        {candidates?.map(c => (
+                          <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Período de Análise</Label>
+                    <DateRangePicker 
+                      dateRange={dateRange}
+                      onDateRangeChange={setDateRange}
+                    />
+                  </div>
+
+                  {selectedCandidateId && dateRange?.from && dateRange?.to && (
+                    <Card className="bg-muted/50 border-primary/20">
+                      <CardHeader>
+                        <CardTitle className="text-sm">Preview do Período</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Análises disponíveis:</span>
+                          <span className="font-semibold">{periodAnalyses?.length || 0}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Posts coletados:</span>
+                          <span className="font-semibold">{totalPostsInPeriod}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Redes sociais:</span>
+                          <span className="font-semibold">{socialNetworksInPeriod.join(', ') || 'N/A'}</span>
+                        </div>
+                      </CardContent>
+                    </Card>
                   )}
-                </>
-              ) : (
-                <>
-                  <Input placeholder="Título" value={speechTitle} onChange={e => setSpeechTitle(e.target.value)} />
-                  <Textarea placeholder="Texto da fala" value={speechText} onChange={e => setSpeechText(e.target.value)} rows={6} />
-                </>
+
+                  <Button 
+                    onClick={handleTemporalAnalysis}
+                    disabled={!selectedCandidateId || !dateRange?.from || !dateRange?.to || analyzeTemporalMutation.isPending}
+                    className="w-full"
+                  >
+                    <Brain className="mr-2 h-4 w-4" />
+                    {analyzeTemporalMutation.isPending ? 'Analisando...' : 'Analisar Falas no Período'}
+                  </Button>
+                </div>
               )}
-              <Button onClick={handleAnalyze} disabled={analyzeMutation.isPending} className="w-full">
-                <Brain className="mr-2 h-4 w-4" />{analyzeMutation.isPending ? 'Analisando...' : 'Analisar'}
-              </Button>
+
+              {analysisMode === 'social_media' && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Candidato</Label>
+                    <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione um candidato" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {candidates?.map(c => (
+                          <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {selectedCandidateId && (
+                    <div className="space-y-2">
+                      <Label>Análise de Candidato</Label>
+                      <Select value={selectedAnalysisId} onValueChange={setSelectedAnalysisId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione uma análise" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {candidateAnalyses?.map(a => (
+                            <SelectItem key={a.id} value={a.id}>
+                              {format(new Date(a.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })} - {a.sentiment_label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  <Button 
+                    onClick={handleAnalyze}
+                    disabled={!selectedAnalysisId || analyzeMutation.isPending}
+                    className="w-full"
+                  >
+                    <Brain className="mr-2 h-4 w-4" />
+                    {analyzeMutation.isPending ? 'Analisando...' : 'Analisar'}
+                  </Button>
+                </div>
+              )}
+
+              {analysisMode === 'manual' && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Candidato (Opcional)</Label>
+                    <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione um candidato" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {candidates?.map(c => (
+                          <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Título da Fala</Label>
+                    <Input 
+                      value={speechTitle}
+                      onChange={(e) => setSpeechTitle(e.target.value)}
+                      placeholder="Ex: Discurso sobre educação"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Texto da Fala</Label>
+                    <Textarea 
+                      value={speechText}
+                      onChange={(e) => setSpeechText(e.target.value)}
+                      placeholder="Cole aqui o texto completo da fala ou discurso..."
+                      rows={8}
+                    />
+                  </div>
+
+                  <Button 
+                    onClick={handleAnalyze}
+                    disabled={!speechText || !speechTitle || analyzeMutation.isPending}
+                    className="w-full"
+                  >
+                    <Brain className="mr-2 h-4 w-4" />
+                    {analyzeMutation.isPending ? 'Analisando...' : 'Analisar Fala'}
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
