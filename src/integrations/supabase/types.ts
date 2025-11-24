@@ -447,6 +447,108 @@ export type Database = {
         }
         Relationships: []
       }
+      report_templates: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_default: boolean | null
+          name: string
+          sections: Json
+          styling: Json | null
+          template_type: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          name: string
+          sections?: Json
+          styling?: Json | null
+          template_type?: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          name?: string
+          sections?: Json
+          styling?: Json | null
+          template_type?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      scheduled_reports: {
+        Row: {
+          candidate_id: string | null
+          created_at: string | null
+          export_format: string
+          frequency: string
+          id: string
+          is_active: boolean | null
+          last_run_at: string | null
+          name: string
+          next_run_at: string | null
+          recipients: Json | null
+          template_id: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          candidate_id?: string | null
+          created_at?: string | null
+          export_format: string
+          frequency: string
+          id?: string
+          is_active?: boolean | null
+          last_run_at?: string | null
+          name: string
+          next_run_at?: string | null
+          recipients?: Json | null
+          template_id?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          candidate_id?: string | null
+          created_at?: string | null
+          export_format?: string
+          frequency?: string
+          id?: string
+          is_active?: boolean | null
+          last_run_at?: string | null
+          name?: string
+          next_run_at?: string | null
+          recipients?: Json | null
+          template_id?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_reports_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_reports_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "report_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       speech_analyses: {
         Row: {
           affected_voter_profiles: Json | null

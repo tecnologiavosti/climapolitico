@@ -16,6 +16,8 @@ import {
   Share2,
   Database,
   FileText,
+  Calendar,
+  ClipboardList,
 } from "lucide-react";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 
@@ -41,7 +43,9 @@ const mainItems = [
   { title: "Público Indeciso", url: "/dashboard/undecided", icon: UserX },
   { title: "Relatório por Rede Social", url: "/dashboard/social-media-report", icon: Share2 },
   { title: "Configuração de Coleta", url: "/dashboard/collection-status", icon: Database },
-  { title: "Relatório de Rastreabilidade", url: "/dashboard/traceability-report", icon: FileText },
+  { title: "Relatório de Rastreabilidade", url: "/dashboard/traceability-report", icon: ClipboardList },
+  { title: "Relatórios Agendados", url: "/dashboard/scheduled-reports", icon: Calendar },
+  { title: "Templates de Relatório", url: "/dashboard/report-templates", icon: FileText },
   { title: "IA & Insights", url: "/dashboard/ai", icon: Brain },
 ];
 
