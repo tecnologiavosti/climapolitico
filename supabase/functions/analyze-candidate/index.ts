@@ -429,13 +429,43 @@ Formate sua resposta como JSON com estes campos: sentiment, sentimentScore, ideo
       console.error('Error updating analysis summary:', updateError);
     }
 
-    // Save source data
+    // Deduplicate profile before saving source data
+    console.log('Deduplicating profile...');
+    let globalProfileId: string | null = null;
+    
+    try {
+      const username = sourcesData.profile_username || 'unknown';
+      const deduplicateResponse = await supabase.functions.invoke('deduplicate-profiles', {
+        body: {
+          profiles: [{
+            username,
+            network: socialNetwork,
+            url: sourcesData.profile_url,
+            location_city: null,
+            location_state: sourcesData.profile_location_state
+          }]
+        }
+      });
+
+      if (deduplicateResponse.data?.success && deduplicateResponse.data.deduplicatedProfiles?.length > 0) {
+        globalProfileId = deduplicateResponse.data.deduplicatedProfiles[0].globalProfileId;
+        console.log(`Profile deduplicated: ${globalProfileId}`);
+      } else {
+        console.warn('Deduplication failed, proceeding without global_profile_id');
+      }
+    } catch (dedupeError) {
+      console.error('Error during deduplication:', dedupeError);
+      // Continue without global_profile_id
+    }
+
+    // Save source data with global_profile_id
     console.log('Saving source data...');
     const { error: sourceError } = await supabase
       .from('analysis_sources')
       .insert({
         analysis_id: analysis.id,
         source_type: 'profile',
+        profile_global_id: globalProfileId,
         ...sourcesData
       });
 

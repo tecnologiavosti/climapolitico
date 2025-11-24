@@ -716,6 +716,16 @@ export type Database = {
       }
     }
     Functions: {
+      get_network_profiles_stats: {
+        Args: { _user_id?: string }
+        Returns: {
+          analyses_count: number
+          profile_location_state: string
+          social_network: string
+          total_profiles: number
+          unique_profiles: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
