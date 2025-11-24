@@ -26,3 +26,6 @@ verify_jwt = true
 
 [functions.calculate-opportunity-map]
 verify_jwt = true
+
+[functions.get-state-details]
+verify_jwt = true
