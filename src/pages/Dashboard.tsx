@@ -23,6 +23,8 @@ import SocialMediaReport from "./dashboard/SocialMediaReport";
 import AIInsights from "./dashboard/AIInsights";
 import CollectionStatus from "./dashboard/CollectionStatus";
 import TraceabilityReport from "./dashboard/TraceabilityReport";
+import ScheduledReports from "./dashboard/ScheduledReports";
+import ReportTemplates from "./dashboard/ReportTemplates";
 
 const onboardingSteps: OnboardingStep[] = [
   {
@@ -127,6 +129,8 @@ const Dashboard = () => {
               <Route path="/social-media-report" element={<SocialMediaReport />} />
               <Route path="/collection-status" element={<CollectionStatus />} />
               <Route path="/traceability-report" element={<TraceabilityReport />} />
+              <Route path="/scheduled-reports" element={<ScheduledReports />} />
+              <Route path="/report-templates" element={<ReportTemplates />} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/ai" element={<AIInsights />} />
               <Route path="/notifications" element={

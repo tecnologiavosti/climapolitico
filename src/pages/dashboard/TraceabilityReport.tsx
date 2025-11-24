@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { DateRange } from "react-day-picker";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FileDown, RefreshCw } from "lucide-react";
+import { FileDown, RefreshCw, FileText } from "lucide-react";
+import { exportReport, ExportFormat } from "@/lib/reportExporter";
 
 export default function TraceabilityReport() {
   const { user } = useAuth();
@@ -94,16 +95,16 @@ export default function TraceabilityReport() {
     }
   });
 
-  const handleExport = () => {
+  const [exportFormat, setExportFormat] = useState<ExportFormat>('pdf');
+
+  const handleExport = async () => {
     if (!reportData) return;
     
-    const dataStr = JSON.stringify(reportData, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `relatorio-rastreabilidade-${new Date().toISOString()}.json`;
-    link.click();
+    try {
+      await exportReport(reportData, exportFormat);
+    } catch (error) {
+      console.error('Erro ao exportar relatório:', error);
+    }
   };
 
   return (
@@ -151,13 +152,32 @@ export default function TraceabilityReport() {
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 md:col-span-2">
               <label className="text-sm font-medium invisible">Ações</label>
               <div className="flex gap-2">
                 <Button onClick={() => refetch()} disabled={!selectedCandidate || loadingReport}>
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Atualizar
                 </Button>
+                <Select value={exportFormat} onValueChange={(value) => setExportFormat(value as ExportFormat)}>
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pdf">
+                      <FileText className="h-4 w-4 inline mr-2" />
+                      PDF
+                    </SelectItem>
+                    <SelectItem value="excel">
+                      <FileText className="h-4 w-4 inline mr-2" />
+                      Excel
+                    </SelectItem>
+                    <SelectItem value="json">
+                      <FileText className="h-4 w-4 inline mr-2" />
+                      JSON
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
                 <Button onClick={handleExport} disabled={!reportData} variant="outline">
                   <FileDown className="h-4 w-4 mr-2" />
                   Exportar
