@@ -89,6 +89,7 @@ export type Database = {
           inferred_region: string | null
           interactions_count: number | null
           posts_collected: number | null
+          profile_global_id: string | null
           profile_location_city: string | null
           profile_location_state: string | null
           profile_unique_id: string
@@ -109,6 +110,7 @@ export type Database = {
           inferred_region?: string | null
           interactions_count?: number | null
           posts_collected?: number | null
+          profile_global_id?: string | null
           profile_location_city?: string | null
           profile_location_state?: string | null
           profile_unique_id: string
@@ -129,6 +131,7 @@ export type Database = {
           inferred_region?: string | null
           interactions_count?: number | null
           posts_collected?: number | null
+          profile_global_id?: string | null
           profile_location_city?: string | null
           profile_location_state?: string | null
           profile_unique_id?: string
@@ -645,6 +648,39 @@ export type Database = {
           },
         ]
       }
+      unique_profiles: {
+        Row: {
+          created_at: string | null
+          first_seen_at: string | null
+          global_profile_id: string
+          id: string
+          last_seen_at: string | null
+          platforms: Json | null
+          profile_username: string
+          total_appearances: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          first_seen_at?: string | null
+          global_profile_id: string
+          id?: string
+          last_seen_at?: string | null
+          platforms?: Json | null
+          profile_username: string
+          total_appearances?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          first_seen_at?: string | null
+          global_profile_id?: string
+          id?: string
+          last_seen_at?: string | null
+          platforms?: Json | null
+          profile_username?: string
+          total_appearances?: number | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -668,7 +704,16 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      network_profiles_deduplicated: {
+        Row: {
+          analyses_count: number | null
+          profile_location_state: string | null
+          social_network: string | null
+          total_profiles: number | null
+          unique_profiles: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       has_role: {
@@ -678,6 +723,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      refresh_network_profiles_deduplicated: { Args: never; Returns: undefined }
     }
     Enums: {
       app_role: "admin" | "analyst" | "subscriber"
