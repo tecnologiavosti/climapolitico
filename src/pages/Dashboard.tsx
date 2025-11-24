@@ -16,6 +16,7 @@ import CandidateRanking from "./dashboard/CandidateRanking";
 import Admin from "./dashboard/Admin";
 import UndecidedAnalysis from "./dashboard/UndecidedAnalysis";
 import SocialMediaReport from "./dashboard/SocialMediaReport";
+import AIInsights from "./dashboard/AIInsights";
 
 const Dashboard = () => {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -78,12 +79,7 @@ const Dashboard = () => {
               } />
               <Route path="/social-media-report" element={<SocialMediaReport />} />
               <Route path="/admin" element={<Admin />} />
-              <Route path="/ai" element={
-                <div className="text-center py-12">
-                  <h3 className="text-2xl font-bold mb-2">IA & Insights</h3>
-                  <p className="text-muted-foreground">Em desenvolvimento</p>
-                </div>
-              } />
+              <Route path="/ai" element={<AIInsights />} />
               <Route path="/notifications" element={
                 <div className="text-center py-12">
                   <h3 className="text-2xl font-bold mb-2">Notificações</h3>
