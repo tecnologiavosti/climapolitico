@@ -14,6 +14,68 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_insights: {
+        Row: {
+          affected_candidates: Json
+          candidate_id: string | null
+          confidence_score: number | null
+          created_at: string | null
+          description: string
+          dismissed_at: string | null
+          id: string
+          insight_type: string
+          is_active: boolean
+          priority: string
+          recommended_actions: Json
+          supporting_data: Json
+          title: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          affected_candidates?: Json
+          candidate_id?: string | null
+          confidence_score?: number | null
+          created_at?: string | null
+          description: string
+          dismissed_at?: string | null
+          id?: string
+          insight_type: string
+          is_active?: boolean
+          priority: string
+          recommended_actions?: Json
+          supporting_data?: Json
+          title: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          affected_candidates?: Json
+          candidate_id?: string | null
+          confidence_score?: number | null
+          created_at?: string | null
+          description?: string
+          dismissed_at?: string | null
+          id?: string
+          insight_type?: string
+          is_active?: boolean
+          priority?: string
+          recommended_actions?: Json
+          supporting_data?: Json
+          title?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_insights_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       analysis_sources: {
         Row: {
           analysis_id: string
