@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { InsightCard } from "@/components/dashboard/InsightCard";
 import { InsightFilters } from "@/components/dashboard/InsightFilters";
 import { TrendingKeywords } from "@/components/dashboard/TrendingKeywords";
+import { OpportunityMap } from "@/components/dashboard/OpportunityMap";
 
 interface Insight {
   id: string;
@@ -166,6 +167,9 @@ const AIInsights = () => {
 
       {/* Trending Keywords */}
       <TrendingKeywords />
+
+      {/* Opportunity Map */}
+      <OpportunityMap candidateId={selectedCandidate || undefined} />
 
       {/* Filters */}
       <InsightFilters
