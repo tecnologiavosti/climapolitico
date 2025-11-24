@@ -14,6 +14,7 @@ import {
   Shield,
   UserX,
   Share2,
+  Database,
 } from "lucide-react";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 
@@ -38,6 +39,7 @@ const mainItems = [
   { title: "Ranking", url: "/dashboard/ranking", icon: Trophy },
   { title: "Público Indeciso", url: "/dashboard/undecided", icon: UserX },
   { title: "Relatório por Rede Social", url: "/dashboard/social-media-report", icon: Share2 },
+  { title: "Configuração de Coleta", url: "/dashboard/collection-status", icon: Database },
   { title: "IA & Insights", url: "/dashboard/ai", icon: Brain },
 ];
 

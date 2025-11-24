@@ -21,6 +21,7 @@ import Admin from "./dashboard/Admin";
 import UndecidedAnalysis from "./dashboard/UndecidedAnalysis";
 import SocialMediaReport from "./dashboard/SocialMediaReport";
 import AIInsights from "./dashboard/AIInsights";
+import CollectionStatus from "./dashboard/CollectionStatus";
 
 const onboardingSteps: OnboardingStep[] = [
   {
@@ -123,6 +124,7 @@ const Dashboard = () => {
                 </ErrorBoundary>
               } />
               <Route path="/social-media-report" element={<SocialMediaReport />} />
+              <Route path="/collection-status" element={<CollectionStatus />} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/ai" element={<AIInsights />} />
               <Route path="/notifications" element={
