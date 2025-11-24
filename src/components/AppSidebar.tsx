@@ -89,7 +89,15 @@ export function AppSidebar() {
             <SidebarMenu>
               {mainItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
+                  <SidebarMenuButton 
+                    asChild
+                    data-onboarding={
+                      item.url === "/dashboard" ? "overview" :
+                      item.url === "/dashboard/candidates" ? "candidates" :
+                      item.url === "/dashboard/ai" ? "ai-insights" :
+                      undefined
+                    }
+                  >
                     <NavLink
                       to={item.url}
                       end={item.url === "/dashboard"}

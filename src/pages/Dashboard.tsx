@@ -9,6 +9,8 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs";
 import { PageLoader } from "@/components/ui/page-loader";
+import { useOnboarding, OnboardingStep } from "@/hooks/useOnboarding";
+import { OnboardingTour } from "@/components/onboarding/OnboardingTour";
 import Overview from "./dashboard/Overview";
 import Candidates from "./dashboard/Candidates";
 import AnalysisHistory from "./dashboard/AnalysisHistory";
@@ -20,10 +22,51 @@ import UndecidedAnalysis from "./dashboard/UndecidedAnalysis";
 import SocialMediaReport from "./dashboard/SocialMediaReport";
 import AIInsights from "./dashboard/AIInsights";
 
+const onboardingSteps: OnboardingStep[] = [
+  {
+    target: '[data-onboarding="sidebar"]',
+    title: "Navegação Principal",
+    description: "Use este menu para navegar entre as diferentes seções da plataforma. Você pode colapsar o menu clicando no ícone de menu.",
+    position: "right",
+  },
+  {
+    target: '[data-onboarding="overview"]',
+    title: "Visão Geral",
+    description: "Aqui você encontra um resumo dos seus candidatos, análises recentes e insights principais.",
+    position: "right",
+  },
+  {
+    target: '[data-onboarding="candidates"]',
+    title: "Candidatos",
+    description: "Gerencie seus candidatos e acompanhe suas métricas de engajamento e sentimento nas redes sociais.",
+    position: "right",
+  },
+  {
+    target: '[data-onboarding="ai-insights"]',
+    title: "Insights da IA",
+    description: "Receba recomendações inteligentes e análises preditivas baseadas em IA para otimizar suas estratégias.",
+    position: "right",
+  },
+  {
+    target: '[data-onboarding="breadcrumbs"]',
+    title: "Navegação Contextual",
+    description: "Use o breadcrumb para entender onde você está e navegar rapidamente entre seções.",
+    position: "bottom",
+  },
+  {
+    target: '[data-onboarding="user-menu"]',
+    title: "Menu de Usuário",
+    description: "Acesse suas configurações, preferências e faça logout por aqui.",
+    position: "bottom",
+  },
+];
+
 const Dashboard = () => {
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   useSessionHealthCheck();
+
+  const onboarding = useOnboarding(onboardingSteps, !!user);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -38,7 +81,9 @@ const Dashboard = () => {
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-gradient-secondary">
-        <AppSidebar />
+        <div data-onboarding="sidebar">
+          <AppSidebar />
+        </div>
         
         <div className="flex-1 flex flex-col">
           {/* Header */}
@@ -46,9 +91,11 @@ const Dashboard = () => {
             <div className="flex items-center justify-between px-6 py-4">
               <div className="flex items-center gap-4">
                 <SidebarTrigger />
-                <Breadcrumbs />
+                <div data-onboarding="breadcrumbs">
+                  <Breadcrumbs />
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2" data-onboarding="user-menu">
                 <Button onClick={signOut} variant="outline" size="sm" className="hover-lift">
                   <LogOut className="mr-2 h-4 w-4" />
                   Sair
@@ -100,6 +147,17 @@ const Dashboard = () => {
           </main>
         </div>
       </div>
+
+      <OnboardingTour
+        isActive={onboarding.isActive}
+        currentStep={onboarding.currentStep}
+        totalSteps={onboarding.totalSteps}
+        step={onboarding.step}
+        targetElement={onboarding.targetElement}
+        onNext={onboarding.next}
+        onPrevious={onboarding.previous}
+        onSkip={onboarding.skip}
+      />
     </SidebarProvider>
   );
 };
