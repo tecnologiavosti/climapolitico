@@ -8,6 +8,7 @@ import { brazilStates, getColorForScore, noDataColor } from "@/lib/brazilMapSvg"
 import { StateOpportunityData, getDataQualityLabel, getScoreLabel } from "@/lib/opportunityCalculator";
 import { useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { StateDetailModal } from "./StateDetailModal";
 
 interface OpportunityMapProps {
   candidateId?: string;
@@ -17,6 +18,8 @@ export const OpportunityMap = ({ candidateId: initialCandidateId }: OpportunityM
   const [selectedCandidate, setSelectedCandidate] = useState<string>(initialCandidateId || "all");
   const [hoveredState, setHoveredState] = useState<StateOpportunityData | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+  const [selectedStateForModal, setSelectedStateForModal] = useState<StateOpportunityData | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const { data: candidates } = useQuery({
     queryKey: ["candidates"],
@@ -44,6 +47,23 @@ export const OpportunityMap = ({ candidateId: initialCandidateId }: OpportunityM
     },
   });
 
+  const { data: stateDetails } = useQuery({
+    queryKey: ["state-details", selectedStateForModal?.stateCode, selectedCandidate],
+    queryFn: async () => {
+      if (!selectedStateForModal) return null;
+      const { data, error } = await supabase.functions.invoke("get-state-details", {
+        body: {
+          stateCode: selectedStateForModal.stateCode,
+          candidateId: selectedCandidate === "all" ? undefined : selectedCandidate,
+          daysBack: 30,
+        },
+      });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!selectedStateForModal,
+  });
+
   const handleMouseMove = (e: React.MouseEvent, stateData: StateOpportunityData) => {
     setHoveredState(stateData);
     setTooltipPosition({ x: e.clientX, y: e.clientY });
@@ -51,6 +71,11 @@ export const OpportunityMap = ({ candidateId: initialCandidateId }: OpportunityM
 
   const handleMouseLeave = () => {
     setHoveredState(null);
+  };
+
+  const handleStateClick = (stateData: StateOpportunityData) => {
+    setSelectedStateForModal(stateData);
+    setIsModalOpen(true);
   };
 
   const getStateColor = (stateCode: string): string => {
@@ -133,6 +158,7 @@ export const OpportunityMap = ({ candidateId: initialCandidateId }: OpportunityM
                       className="transition-all duration-200 hover:opacity-80 cursor-pointer"
                       onMouseMove={(e) => stateData && handleMouseMove(e, stateData)}
                       onMouseLeave={handleMouseLeave}
+                      onClick={() => stateData && handleStateClick(stateData)}
                     />
                   );
                 })}
@@ -233,6 +259,16 @@ export const OpportunityMap = ({ candidateId: initialCandidateId }: OpportunityM
           </>
         )}
       </CardContent>
+
+      <StateDetailModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setSelectedStateForModal(null);
+        }}
+        stateData={selectedStateForModal}
+        detailedData={stateDetails}
+      />
     </Card>
   );
 };
