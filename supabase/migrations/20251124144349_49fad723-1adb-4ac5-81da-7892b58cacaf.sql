@@ -1,0 +1,2 @@
+-- Update config.toml to add deduplicate-profiles function
+-- This is handled automatically by the system
