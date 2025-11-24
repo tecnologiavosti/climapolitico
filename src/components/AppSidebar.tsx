@@ -15,6 +15,7 @@ import {
   UserX,
   Share2,
   Database,
+  FileText,
 } from "lucide-react";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 
@@ -40,6 +41,7 @@ const mainItems = [
   { title: "Público Indeciso", url: "/dashboard/undecided", icon: UserX },
   { title: "Relatório por Rede Social", url: "/dashboard/social-media-report", icon: Share2 },
   { title: "Configuração de Coleta", url: "/dashboard/collection-status", icon: Database },
+  { title: "Relatório de Rastreabilidade", url: "/dashboard/traceability-report", icon: FileText },
   { title: "IA & Insights", url: "/dashboard/ai", icon: Brain },
 ];
 
