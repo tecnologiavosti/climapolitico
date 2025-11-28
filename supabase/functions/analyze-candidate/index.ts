@@ -620,8 +620,6 @@ function aggregateResults(results: AIResult[], candidate: any): AggregatedResult
   const finalSentiment = Object.entries(sentimentVotes).sort((a, b) => b[1] - a[1])[0]?.[0] || 'neutral';
   const finalIdeology = Object.entries(ideologyVotes).sort((a, b) => b[1] - a[1])[0]?.[0] || 'neutral';
   
-  const finalIdeology = Object.entries(ideologyVotes).sort((a, b) => b[1] - a[1])[0]?.[0] || 'neutral';
-  
   const avgSentimentScore = Math.round(totalSentimentScore / totalWeight);
   const avgSentimentConfidence = totalSentimentConfidence / totalWeight;
   
@@ -642,57 +640,5 @@ function aggregateResults(results: AIResult[], candidate: any): AggregatedResult
     sentimentScore: avgSentimentScore,
     confidence: avgSentimentConfidence,
     keywords: keywordsArray
-  };
-}
-  // Weighted voting for sentiment
-  const sentimentVotes: Record<string, number> = {};
-  let totalConfidence = 0;
-  let weightedScore = 0;
-
-  results.forEach((r) => {
-    sentimentVotes[r.sentiment] = (sentimentVotes[r.sentiment] || 0) + r.confidence;
-    totalConfidence += r.confidence;
-    weightedScore += r.sentimentScore * r.confidence;
-  });
-
-  const finalSentiment = Object.entries(sentimentVotes).sort(([, a], [, b]) => b - a)[0][0];
-  const finalScore = Math.round(weightedScore / totalConfidence);
-
-  // Aggregate keywords (top 10 most frequent)
-  const keywordCounts: Record<string, number> = {};
-  results.forEach((r) => {
-    r.keywords.forEach((kw) => {
-      keywordCounts[kw] = (keywordCounts[kw] || 0) + 1;
-    });
-  });
-
-  const topKeywords = Object.entries(keywordCounts)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 10)
-    .map(([kw]) => kw);
-
-  // Determine ideology by majority vote
-  const ideologyVotes: Record<string, number> = {};
-  results.forEach((r) => {
-    if (r.ideology) {
-      ideologyVotes[r.ideology] = (ideologyVotes[r.ideology] || 0) + 1;
-    }
-  });
-  const finalIdeology = Object.entries(ideologyVotes).sort(([, a], [, b]) => b - a)[0]?.[0] || 'neutral';
-
-  // Determine trend (compare with previous sentiment if exists)
-  let trend = 'neutral';
-  if (candidate.sentiment !== null && candidate.sentiment !== undefined) {
-    if (finalScore > candidate.sentiment + 10) trend = 'up';
-    else if (finalScore < candidate.sentiment - 10) trend = 'down';
-  }
-
-  return {
-    sentiment: finalSentiment,
-    sentimentScore: finalScore,
-    confidence: totalConfidence / results.length,
-    ideology: finalIdeology,
-    keywords: topKeywords,
-    trend,
   };
 }
