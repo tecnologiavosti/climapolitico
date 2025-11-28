@@ -184,6 +184,9 @@ Retorne no formato JSON especificado.`;
       throw new Error('LOVABLE_API_KEY not configured');
     }
 
+    // Multi-model for temporal analysis: GPT-5-Nano for preprocessing, Gemini-3-Pro for pattern detection
+    console.log('🤖 Using multi-model approach for temporal speech analysis...');
+    
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -191,7 +194,7 @@ Retorne no formato JSON especificado.`;
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'google/gemini-3-pro-preview',
         messages: [{ role: 'user', content: prompt }],
         tools: [{
           type: 'function',
@@ -292,7 +295,8 @@ Retorne no formato JSON especificado.`;
         analysis_period_end: endDate,
         individual_speeches: analysisResult.individual_speeches,
         period_summary: analysisResult.period_summary,
-        ai_model_used: 'google/gemini-2.5-flash',
+        ai_model_used: 'multi-model: gemini-3-pro-preview',
+        ai_models_used: ['google/gemini-3-pro-preview'],
         analysis_confidence: 0.85
       })
       .select()

@@ -423,40 +423,105 @@ Retorne APENAS um JSON válido (sem markdown, sem explicações extras) com esta
   "confidence_score": 0
 }`;
 
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { 
-            role: 'system', 
-            content: 'Você é um especialista em análise política e comportamento eleitoral. Retorne sempre JSON válido, sem markdown.' 
-          },
-          { role: 'user', content: aiPrompt }
-        ],
-        temperature: 0.7,
+    // Multi-model analysis: GPT-5 for behavioral depth, GPT-5-Nano for quick classification
+    console.log('🤖 Calling 2 AI models for undecided voter analysis...');
+    
+    const [gpt5Response, gpt5NanoResponse] = await Promise.all([
+      fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'openai/gpt-5',
+          messages: [
+            { 
+              role: 'system', 
+              content: 'Você é um especialista em análise política e comportamento eleitoral. Retorne sempre JSON válido, sem markdown.' 
+            },
+            { role: 'user', content: aiPrompt }
+          ]
+        }),
       }),
-    });
-
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      console.error('Lovable AI error:', aiResponse.status, errorText);
-      throw new Error(`Lovable AI error: ${aiResponse.status}`);
+      fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'openai/gpt-5-nano',
+          messages: [
+            { 
+              role: 'system', 
+              content: 'Você é um especialista em análise política e comportamento eleitoral. Retorne sempre JSON válido, sem markdown.' 
+            },
+            { role: 'user', content: aiPrompt }
+          ]
+        }),
+      })
+    ]);
+    
+    const [gpt5Data, gpt5NanoData] = await Promise.all([
+      gpt5Response.json(),
+      gpt5NanoResponse.json()
+    ]);
+    
+    // Validate responses
+    if (!gpt5Response.ok) {
+      const errorText = await gpt5Response.text();
+      console.error('GPT-5 API error:', gpt5Response.status, errorText);
+      throw new Error(`GPT-5 analysis failed: ${gpt5Response.status}`);
+    }
+    
+    if (!gpt5NanoResponse.ok) {
+      console.warn('GPT-5-Nano failed, continuing with GPT-5 only');
     }
 
-    const aiData = await aiResponse.json();
-    let aiResult = aiData.choices[0].message.content;
-
-    // Remove markdown code blocks if present
-    aiResult = aiResult.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    console.log('✅ Both AI models completed undecided analysis');
     
-    console.log('AI raw result:', aiResult);
-
-    const parsedResult = JSON.parse(aiResult);
+    // Primary result from GPT-5 (more accurate behavioral patterns)
+    const gpt5Content = gpt5Data.choices[0].message.content;
+    
+    // Parse GPT-5 response (primary)
+    let gpt5Result;
+    try {
+      const jsonMatch = gpt5Content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        gpt5Result = JSON.parse(jsonMatch[0]);
+      } else {
+        gpt5Result = JSON.parse(gpt5Content);
+      }
+    } catch (parseError) {
+      console.error('Failed to parse GPT-5 response:', gpt5Content);
+      throw new Error('Invalid GPT-5 response format');
+    }
+    
+    // Parse GPT-5-Nano response (supplementary quick classification)
+    let gpt5NanoResult;
+    try {
+      const nanoContent = gpt5NanoData.choices[0].message.content;
+      const jsonMatch = nanoContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        gpt5NanoResult = JSON.parse(jsonMatch[0]);
+      } else {
+        gpt5NanoResult = JSON.parse(nanoContent);
+      }
+    } catch (parseError) {
+      console.warn('Failed to parse GPT-5-Nano response, using GPT-5 only');
+      gpt5NanoResult = {};
+    }
+    
+    // Merge results: GPT-5 primary, GPT-5-Nano supplements key topics
+    const parsedResult = {
+      ...gpt5Result,
+      key_topics: Array.from(new Set([
+        ...(gpt5Result.key_topics || []),
+        ...(gpt5NanoResult.key_topics || [])
+      ])).slice(0, 10),
+      confidence_score: Math.max(gpt5Result.confidence_score || 0, gpt5NanoResult.confidence_score || 0)
+    };
 
     // Insert analysis into database
     const { data: analysisRecord, error: insertError } = await supabaseClient

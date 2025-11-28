@@ -98,18 +98,80 @@ serve(async (req) => {
       : `Analise a fala: "${speechText}"`;
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [{ role: 'user', content: prompt + '\n\nRetorne JSON com: trigger_words, problematic_segments, psychological_impact, affected_voter_profiles, emotional_analysis, risk_level, recommended_actions, communication_suggestions, confidence' }]
+    
+    // Multi-model analysis for cross-validation
+    console.log('🤖 Calling 3 AI models for speech analysis cross-validation...');
+    
+    const aiPrompt = prompt + '\n\nRetorne JSON com: trigger_words, problematic_segments, psychological_impact, affected_voter_profiles, emotional_analysis, risk_level, recommended_actions, communication_suggestions, confidence';
+    
+    const [gemini3ProResponse, gpt5Response, geminiFlashResponse] = await Promise.all([
+      fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'google/gemini-3-pro-preview',
+          messages: [{ role: 'user', content: aiPrompt }]
+        })
+      }),
+      fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'openai/gpt-5',
+          messages: [{ role: 'user', content: aiPrompt }]
+        })
+      }),
+      fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'google/gemini-2.5-flash',
+          messages: [{ role: 'user', content: aiPrompt }]
+        })
       })
-    });
-
-    const aiData = await aiResponse.json();
-    const content = aiData.choices[0].message.content;
-    let analysisResult = JSON.parse(content.includes('```') ? content.match(/\{[\s\S]*\}/)?.[0] || '{}' : content);
+    ]);
+    
+    const [gemini3ProData, gpt5Data, geminiFlashData] = await Promise.all([
+      gemini3ProResponse.json(),
+      gpt5Response.json(),
+      geminiFlashResponse.json()
+    ]);
+    
+    // Parse results from all models
+    const parseResult = (data: any) => {
+      const content = data.choices[0].message.content;
+      return JSON.parse(content.includes('```') ? content.match(/\{[\s\S]*\}/)?.[0] || '{}' : content);
+    };
+    
+    const gemini3ProResult = parseResult(gemini3ProData);
+    const gpt5Result = parseResult(gpt5Data);
+    const geminiFlashResult = parseResult(geminiFlashData);
+    
+    console.log('✅ All 3 models completed speech analysis');
+    
+    // Aggregate risk levels with weighted average (Gemini-3-Pro and GPT-5 have higher weight)
+    const riskLevels = [
+      { risk: gemini3ProResult.risk_level || 5, weight: 0.95 },
+      { risk: gpt5Result.risk_level || 5, weight: 0.90 },
+      { risk: geminiFlashResult.risk_level || 5, weight: 0.75 }
+    ];
+    const totalWeight = riskLevels.reduce((sum, r) => sum + r.weight, 0);
+    const avgRiskLevel = Math.round(riskLevels.reduce((sum, r) => sum + (r.risk * r.weight), 0) / totalWeight);
+    
+    // Merge trigger words from all models
+    const allTriggerWords = [
+      ...(gemini3ProResult.trigger_words || []),
+      ...(gpt5Result.trigger_words || []),
+      ...(geminiFlashResult.trigger_words || [])
+    ];
+    
+    // Use GPT-5 for primary analysis (most precise), supplement with others
+    let analysisResult = {
+      ...gpt5Result,
+      risk_level: avgRiskLevel,
+      trigger_words: allTriggerWords,
+      confidence: Math.max(gemini3ProResult.confidence || 0, gpt5Result.confidence || 0, geminiFlashResult.confidence || 0)
+    };
 
     const { data: saved } = await supabase.from('speech_analyses').insert({
       user_id: user.id,
@@ -119,7 +181,8 @@ serve(async (req) => {
       source_type: mode,
       source_analysis_id: mode === 'social_media' ? analysisId : null,
       ...analysisResult,
-      ai_model_used: 'google/gemini-2.5-flash'
+      ai_model_used: 'multi-model: gemini-3-pro-preview, gpt-5, gemini-2.5-flash',
+      ai_models_used: ['google/gemini-3-pro-preview', 'openai/gpt-5', 'google/gemini-2.5-flash']
     }).select().single();
 
     return new Response(JSON.stringify({ success: true, analysis: saved }), {

@@ -350,20 +350,30 @@ IMPORTANTE: Todas as keywords devem estar em PORTUGUÊS do Brasil.
 
 Formate sua resposta como JSON com estes campos: sentiment, sentimentScore, ideology, keywords (array em português), confidence, reasoning`;
 
-    // Call three AI models in parallel
-    const [geminiFlashResult, geminiProResult, gpt5MiniResult] = await Promise.all([
+    // Call 6 AI models in parallel for comprehensive aggregated analysis
+    console.log('🤖 Calling 6 AI models in parallel for comprehensive aggregated analysis...');
+    
+    const [geminiFlashResult, geminiProResult, gpt5MiniResult, gemini3ProResult, gpt5Result, gpt5NanoResult] = await Promise.all([
       analyzeWithAI('google/gemini-2.5-flash', analysisPrompt, LOVABLE_API_KEY),
       analyzeWithAI('google/gemini-2.5-pro', analysisPrompt, LOVABLE_API_KEY),
       analyzeWithAI('openai/gpt-5-mini', analysisPrompt, LOVABLE_API_KEY),
+      analyzeWithAI('google/gemini-3-pro-preview', analysisPrompt, LOVABLE_API_KEY),
+      analyzeWithAI('openai/gpt-5', analysisPrompt, LOVABLE_API_KEY),
+      analyzeWithAI('openai/gpt-5-nano', analysisPrompt, LOVABLE_API_KEY),
     ]);
+    
+    console.log('✅ All 6 AI models completed successfully');
 
     const results: AIResult[] = [
-      { model: 'gemini-flash', ...geminiFlashResult },
-      { model: 'gemini-pro', ...geminiProResult },
-      { model: 'gpt5-mini', ...gpt5MiniResult },
+      { model: 'gemini-2.5-flash', ...geminiFlashResult },
+      { model: 'gemini-2.5-pro', ...geminiProResult },
+      { model: 'gpt-5-mini', ...gpt5MiniResult },
+      { model: 'gemini-3-pro-preview', ...gemini3ProResult },
+      { model: 'gpt-5', ...gpt5Result },
+      { model: 'gpt-5-nano', ...gpt5NanoResult },
     ];
 
-    // Aggregate results
+    // Aggregate results with 6 models
     const aggregated = aggregateResults(results, candidate);
 
     // Translate all fields to Portuguese
@@ -380,7 +390,7 @@ Formate sua resposta como JSON com estes campos: sentiment, sentimentScore, ideo
       .insert({
         candidate_id: candidateId,
         user_id: user.id,
-        ai_models_used: ['gemini-flash', 'gemini-pro', 'gpt5-mini'],
+        ai_models_used: ['google/gemini-2.5-flash', 'google/gemini-2.5-pro', 'openai/gpt-5-mini', 'google/gemini-3-pro-preview', 'openai/gpt-5', 'openai/gpt-5-nano'],
         sentiment_score: aggregated.sentimentScore,
         sentiment_label: translatedSentiment,
         sentiment_confidence: aggregated.confidence,
@@ -390,6 +400,9 @@ Formate sua resposta como JSON com estes campos: sentiment, sentimentScore, ideo
         gemini_flash_result: results[0],
         gemini_pro_result: results[1],
         gpt5_mini_result: results[2],
+        gemini_3_pro_result: results[3],
+        gpt_5_result: results[4],
+        gpt_5_nano_result: results[5],
         mentions_count: Math.floor(Math.random() * 1000) + 100,
         posts_analyzed: Math.floor(Math.random() * 50) + 10,
         analysis_status: 'completed',
@@ -567,6 +580,70 @@ async function analyzeWithAI(model: string, prompt: string, apiKey: string): Pro
 }
 
 function aggregateResults(results: AIResult[], candidate: any): AggregatedResult {
+  console.log('🔄 Aggregating results from multiple AI models with weighted voting...');
+  
+  // Define weights for each model (by index)
+  const weights = [0.75, 0.85, 0.70, 0.95, 0.90, 0.60];
+  
+  // Count sentiment votes with weights
+  const sentimentVotes: Record<string, number> = {};
+  const ideologyVotes: Record<string, number> = {};
+  const trendVotes: Record<string, number> = {};
+  
+  let totalSentimentScore = 0;
+  let totalSentimentConfidence = 0;
+  let totalIdeologyConfidence = 0;
+  let totalWeight = 0;
+  let validModels = 0;
+  
+  const allKeywords = new Set<string>();
+  
+  results.forEach((result, index) => {
+    const weight = weights[index] || 0.75;
+    
+    if (result.sentiment) {
+      sentimentVotes[result.sentiment] = (sentimentVotes[result.sentiment] || 0) + (1 * weight);
+      validModels++;
+    }
+    if (result.ideology) {
+      ideologyVotes[result.ideology] = (ideologyVotes[result.ideology] || 0) + (1 * weight);
+    }
+    
+    totalSentimentScore += result.sentimentScore * weight;
+    totalSentimentConfidence += result.confidence * weight;
+    totalWeight += weight;
+    
+    result.keywords.forEach(kw => allKeywords.add(kw));
+  });
+  
+  // Calculate final aggregated values with weighted averages
+  const finalSentiment = Object.entries(sentimentVotes).sort((a, b) => b[1] - a[1])[0]?.[0] || 'neutral';
+  const finalIdeology = Object.entries(ideologyVotes).sort((a, b) => b[1] - a[1])[0]?.[0] || 'neutral';
+  
+  const finalIdeology = Object.entries(ideologyVotes).sort((a, b) => b[1] - a[1])[0]?.[0] || 'neutral';
+  
+  const avgSentimentScore = Math.round(totalSentimentScore / totalWeight);
+  const avgSentimentConfidence = totalSentimentConfidence / totalWeight;
+  
+  const keywordsArray = Array.from(allKeywords).slice(0, 15);
+  
+  console.log('✅ Weighted aggregation complete:', { 
+    finalSentiment, 
+    finalIdeology, 
+    avgSentimentScore,
+    modelsUsed: validModels,
+    totalWeight 
+  });
+  
+  return {
+    sentiment: finalSentiment,
+    ideology: finalIdeology,
+    trend: 'stable',
+    sentimentScore: avgSentimentScore,
+    confidence: avgSentimentConfidence,
+    keywords: keywordsArray
+  };
+}
   // Weighted voting for sentiment
   const sentimentVotes: Record<string, number> = {};
   let totalConfidence = 0;
