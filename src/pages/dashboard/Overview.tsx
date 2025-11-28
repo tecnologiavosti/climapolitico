@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { useAuth } from "@/hooks/useAuth";
 import { AIModelsPanel } from "@/components/dashboard/AIModelsPanel";
+import { AIModelAgreementDashboard } from "@/components/dashboard/AIModelAgreementDashboard";
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--destructive))', 'hsl(var(--warning))', 'hsl(var(--muted))'];
 
@@ -248,6 +249,9 @@ export default function Overview() {
 
       {/* AI Models Panel */}
       <AIModelsPanel />
+
+      {/* AI Model Agreement Dashboard */}
+      <AIModelAgreementDashboard />
 
       {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
