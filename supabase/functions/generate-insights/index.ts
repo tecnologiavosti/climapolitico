@@ -322,7 +322,7 @@ Gere um insight estratégico identificando:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: selectModelForInsightType(type),
         messages: [
           { role: 'system', content: 'Você é um analista político estratégico. Responda em português do Brasil.' },
           { role: 'user', content: prompt }
@@ -379,5 +379,22 @@ Gere um insight estratégico identificando:
   } catch (error) {
     console.error('Error calling AI:', error);
     return null;
+  }
+}
+
+// Intelligent model selection based on insight type
+function selectModelForInsightType(type: string): string {
+  switch (type) {
+    case 'crisis':
+      // Critical analysis requires maximum precision
+      return 'openai/gpt-5';
+    case 'opportunity':
+      // Strategic opportunities need advanced reasoning
+      return 'google/gemini-3-pro-preview';
+    case 'trend':
+      // Trend analysis benefits from speed
+      return 'google/gemini-2.5-flash';
+    default:
+      return 'google/gemini-2.5-flash';
   }
 }
