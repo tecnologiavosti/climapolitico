@@ -21,6 +21,9 @@ interface AgreementMetrics {
       geminiFlash?: ModelResult;
       geminiPro?: ModelResult;
       gpt5Mini?: ModelResult;
+      gemini3Pro?: ModelResult;
+      gpt5?: ModelResult;
+      gpt5Nano?: ModelResult;
     };
   }>;
   sentimentDistribution: Record<string, number>;
@@ -41,6 +44,9 @@ export function useModelAgreement(limit: number = 50) {
           gemini_flash_result,
           gemini_pro_result,
           gpt5_mini_result,
+          gemini_3_pro_result,
+          gpt_5_result,
+          gpt_5_nano_result,
           candidate_id,
           candidates!inner(full_name)
         `)
@@ -59,30 +65,41 @@ export function useModelAgreement(limit: number = 50) {
         const geminiFlash = analysis.gemini_flash_result as ModelResult;
         const geminiPro = analysis.gemini_pro_result as ModelResult;
         const gpt5Mini = analysis.gpt5_mini_result as ModelResult;
+        const gemini3Pro = analysis.gemini_3_pro_result as ModelResult;
+        const gpt5 = analysis.gpt_5_result as ModelResult;
+        const gpt5Nano = analysis.gpt_5_nano_result as ModelResult;
 
-        if (!geminiFlash || !geminiPro || !gpt5Mini) return;
+        // Collect all available models
+        const allModels = [geminiFlash, geminiPro, gpt5Mini, gemini3Pro, gpt5, gpt5Nano].filter(Boolean);
+        if (allModels.length < 3) return; // Need at least 3 models for meaningful comparison
 
-        // Count sentiment agreement (all 3 models agree)
-        const sentiments = [
-          geminiFlash.sentiment,
-          geminiPro.sentiment,
-          gpt5Mini.sentiment,
-        ].filter(Boolean);
+        // Count sentiment agreement (majority of models agree)
+        const sentiments = allModels
+          .map(m => m.sentiment)
+          .filter(Boolean);
 
-        const sentimentAgree = sentiments.length === 3 && 
-          sentiments.every((s) => s === sentiments[0]);
+        const sentimentCounts = sentiments.reduce((acc, s) => {
+          acc[s] = (acc[s] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+
+        const maxSentimentCount = Math.max(...Object.values(sentimentCounts));
+        const sentimentAgree = maxSentimentCount >= Math.ceil(sentiments.length * 0.6); // 60% agreement threshold
 
         if (sentimentAgree) sentimentAgreementCount++;
 
-        // Count ideology agreement
-        const ideologies = [
-          geminiFlash.ideology,
-          geminiPro.ideology,
-          gpt5Mini.ideology,
-        ].filter(Boolean);
+        // Count ideology agreement (majority of models agree)
+        const ideologies = allModels
+          .map(m => m.ideology)
+          .filter(Boolean);
 
-        const ideologyAgree = ideologies.length === 3 && 
-          ideologies.every((i) => i === ideologies[0]);
+        const ideologyCounts = ideologies.reduce((acc, i) => {
+          acc[i] = (acc[i] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+
+        const maxIdeologyCount = Math.max(...Object.values(ideologyCounts));
+        const ideologyAgree = maxIdeologyCount >= Math.ceil(ideologies.length * 0.6); // 60% agreement threshold
 
         if (ideologyAgree) ideologyAgreementCount++;
 
@@ -107,6 +124,9 @@ export function useModelAgreement(limit: number = 50) {
               geminiFlash,
               geminiPro,
               gpt5Mini,
+              gemini3Pro,
+              gpt5,
+              gpt5Nano,
             },
           });
         }

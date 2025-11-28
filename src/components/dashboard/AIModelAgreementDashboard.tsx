@@ -193,81 +193,168 @@ export function AIModelAgreementDashboard() {
                   </div>
                 </AccordionTrigger>
                 <AccordionContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                  <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 pt-2">
                     {/* Gemini Flash */}
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="font-medium text-xs mb-2 text-muted-foreground">
-                        Gemini Flash
-                      </p>
-                      <div className="space-y-1">
-                        <p className="text-sm">
-                          <span className="font-medium">Sentimento:</span>{" "}
-                          <Badge variant="outline" className="ml-1">
-                            {divergence.models.geminiFlash?.sentiment || "N/A"}
-                          </Badge>
+                    {divergence.models.geminiFlash && (
+                      <div className="p-3 bg-muted/50 rounded-lg">
+                        <p className="font-medium text-xs mb-2 text-muted-foreground">
+                          Gemini Flash
                         </p>
-                        <p className="text-sm">
-                          <span className="font-medium">Ideologia:</span>{" "}
-                          <Badge variant="outline" className="ml-1">
-                            {divergence.models.geminiFlash?.ideology || "N/A"}
-                          </Badge>
-                        </p>
-                        <p className="text-sm">
-                          <span className="font-medium">Score:</span>{" "}
-                          {divergence.models.geminiFlash?.sentimentScore || "N/A"}
-                        </p>
+                        <div className="space-y-1">
+                          <p className="text-sm">
+                            <span className="font-medium">Sentimento:</span>{" "}
+                            <Badge variant="outline" className="ml-1">
+                              {divergence.models.geminiFlash.sentiment || "N/A"}
+                            </Badge>
+                          </p>
+                          <p className="text-sm">
+                            <span className="font-medium">Ideologia:</span>{" "}
+                            <Badge variant="outline" className="ml-1">
+                              {divergence.models.geminiFlash.ideology || "N/A"}
+                            </Badge>
+                          </p>
+                          <p className="text-sm">
+                            <span className="font-medium">Score:</span>{" "}
+                            {divergence.models.geminiFlash.sentimentScore || "N/A"}
+                          </p>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     {/* Gemini Pro */}
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="font-medium text-xs mb-2 text-muted-foreground">
-                        Gemini Pro
-                      </p>
-                      <div className="space-y-1">
-                        <p className="text-sm">
-                          <span className="font-medium">Sentimento:</span>{" "}
-                          <Badge variant="outline" className="ml-1">
-                            {divergence.models.geminiPro?.sentiment || "N/A"}
-                          </Badge>
+                    {divergence.models.geminiPro && (
+                      <div className="p-3 bg-muted/50 rounded-lg">
+                        <p className="font-medium text-xs mb-2 text-muted-foreground">
+                          Gemini Pro
                         </p>
-                        <p className="text-sm">
-                          <span className="font-medium">Ideologia:</span>{" "}
-                          <Badge variant="outline" className="ml-1">
-                            {divergence.models.geminiPro?.ideology || "N/A"}
-                          </Badge>
-                        </p>
-                        <p className="text-sm">
-                          <span className="font-medium">Score:</span>{" "}
-                          {divergence.models.geminiPro?.sentimentScore || "N/A"}
-                        </p>
+                        <div className="space-y-1">
+                          <p className="text-sm">
+                            <span className="font-medium">Sentimento:</span>{" "}
+                            <Badge variant="outline" className="ml-1">
+                              {divergence.models.geminiPro.sentiment || "N/A"}
+                            </Badge>
+                          </p>
+                          <p className="text-sm">
+                            <span className="font-medium">Ideologia:</span>{" "}
+                            <Badge variant="outline" className="ml-1">
+                              {divergence.models.geminiPro.ideology || "N/A"}
+                            </Badge>
+                          </p>
+                          <p className="text-sm">
+                            <span className="font-medium">Score:</span>{" "}
+                            {divergence.models.geminiPro.sentimentScore || "N/A"}
+                          </p>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     {/* GPT-5 Mini */}
-                    <div className="p-3 bg-muted/50 rounded-lg">
-                      <p className="font-medium text-xs mb-2 text-muted-foreground">
-                        GPT-5 Mini
-                      </p>
-                      <div className="space-y-1">
-                        <p className="text-sm">
-                          <span className="font-medium">Sentimento:</span>{" "}
-                          <Badge variant="outline" className="ml-1">
-                            {divergence.models.gpt5Mini?.sentiment || "N/A"}
-                          </Badge>
+                    {divergence.models.gpt5Mini && (
+                      <div className="p-3 bg-muted/50 rounded-lg">
+                        <p className="font-medium text-xs mb-2 text-muted-foreground">
+                          GPT-5 Mini
                         </p>
-                        <p className="text-sm">
-                          <span className="font-medium">Ideologia:</span>{" "}
-                          <Badge variant="outline" className="ml-1">
-                            {divergence.models.gpt5Mini?.ideology || "N/A"}
-                          </Badge>
-                        </p>
-                        <p className="text-sm">
-                          <span className="font-medium">Score:</span>{" "}
-                          {divergence.models.gpt5Mini?.sentimentScore || "N/A"}
-                        </p>
+                        <div className="space-y-1">
+                          <p className="text-sm">
+                            <span className="font-medium">Sentimento:</span>{" "}
+                            <Badge variant="outline" className="ml-1">
+                              {divergence.models.gpt5Mini.sentiment || "N/A"}
+                            </Badge>
+                          </p>
+                          <p className="text-sm">
+                            <span className="font-medium">Ideologia:</span>{" "}
+                            <Badge variant="outline" className="ml-1">
+                              {divergence.models.gpt5Mini.ideology || "N/A"}
+                            </Badge>
+                          </p>
+                          <p className="text-sm">
+                            <span className="font-medium">Score:</span>{" "}
+                            {divergence.models.gpt5Mini.sentimentScore || "N/A"}
+                          </p>
+                        </div>
                       </div>
-                    </div>
+                    )}
+
+                    {/* Gemini 3 Pro */}
+                    {divergence.models.gemini3Pro && (
+                      <div className="p-3 bg-muted/50 rounded-lg">
+                        <p className="font-medium text-xs mb-2 text-muted-foreground">
+                          Gemini 3 Pro
+                        </p>
+                        <div className="space-y-1">
+                          <p className="text-sm">
+                            <span className="font-medium">Sentimento:</span>{" "}
+                            <Badge variant="outline" className="ml-1">
+                              {divergence.models.gemini3Pro.sentiment || "N/A"}
+                            </Badge>
+                          </p>
+                          <p className="text-sm">
+                            <span className="font-medium">Ideologia:</span>{" "}
+                            <Badge variant="outline" className="ml-1">
+                              {divergence.models.gemini3Pro.ideology || "N/A"}
+                            </Badge>
+                          </p>
+                          <p className="text-sm">
+                            <span className="font-medium">Score:</span>{" "}
+                            {divergence.models.gemini3Pro.sentimentScore || "N/A"}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* GPT-5 */}
+                    {divergence.models.gpt5 && (
+                      <div className="p-3 bg-muted/50 rounded-lg">
+                        <p className="font-medium text-xs mb-2 text-muted-foreground">
+                          GPT-5
+                        </p>
+                        <div className="space-y-1">
+                          <p className="text-sm">
+                            <span className="font-medium">Sentimento:</span>{" "}
+                            <Badge variant="outline" className="ml-1">
+                              {divergence.models.gpt5.sentiment || "N/A"}
+                            </Badge>
+                          </p>
+                          <p className="text-sm">
+                            <span className="font-medium">Ideologia:</span>{" "}
+                            <Badge variant="outline" className="ml-1">
+                              {divergence.models.gpt5.ideology || "N/A"}
+                            </Badge>
+                          </p>
+                          <p className="text-sm">
+                            <span className="font-medium">Score:</span>{" "}
+                            {divergence.models.gpt5.sentimentScore || "N/A"}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* GPT-5 Nano */}
+                    {divergence.models.gpt5Nano && (
+                      <div className="p-3 bg-muted/50 rounded-lg">
+                        <p className="font-medium text-xs mb-2 text-muted-foreground">
+                          GPT-5 Nano
+                        </p>
+                        <div className="space-y-1">
+                          <p className="text-sm">
+                            <span className="font-medium">Sentimento:</span>{" "}
+                            <Badge variant="outline" className="ml-1">
+                              {divergence.models.gpt5Nano.sentiment || "N/A"}
+                            </Badge>
+                          </p>
+                          <p className="text-sm">
+                            <span className="font-medium">Ideologia:</span>{" "}
+                            <Badge variant="outline" className="ml-1">
+                              {divergence.models.gpt5Nano.ideology || "N/A"}
+                            </Badge>
+                          </p>
+                          <p className="text-sm">
+                            <span className="font-medium">Score:</span>{" "}
+                            {divergence.models.gpt5Nano.sentimentScore || "N/A"}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </AccordionContent>
               </AccordionItem>

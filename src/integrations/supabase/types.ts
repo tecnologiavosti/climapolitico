@@ -160,10 +160,13 @@ export type Database = {
           data_quality_score: number | null
           error_message: string | null
           followers_count: string | null
+          gemini_3_pro_result: Json | null
           gemini_flash_result: Json | null
           gemini_pro_result: Json | null
           gender_distribution: Json | null
           geographic_scope: string | null
+          gpt_5_nano_result: Json | null
+          gpt_5_result: Json | null
           gpt5_mini_result: Json | null
           id: string
           ideology_confidence: number | null
@@ -192,10 +195,13 @@ export type Database = {
           data_quality_score?: number | null
           error_message?: string | null
           followers_count?: string | null
+          gemini_3_pro_result?: Json | null
           gemini_flash_result?: Json | null
           gemini_pro_result?: Json | null
           gender_distribution?: Json | null
           geographic_scope?: string | null
+          gpt_5_nano_result?: Json | null
+          gpt_5_result?: Json | null
           gpt5_mini_result?: Json | null
           id?: string
           ideology_confidence?: number | null
@@ -224,10 +230,13 @@ export type Database = {
           data_quality_score?: number | null
           error_message?: string | null
           followers_count?: string | null
+          gemini_3_pro_result?: Json | null
           gemini_flash_result?: Json | null
           gemini_pro_result?: Json | null
           gender_distribution?: Json | null
           geographic_scope?: string | null
+          gpt_5_nano_result?: Json | null
+          gpt_5_result?: Json | null
           gpt5_mini_result?: Json | null
           id?: string
           ideology_confidence?: number | null
