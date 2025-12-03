@@ -558,6 +558,81 @@ export type Database = {
           },
         ]
       }
+      social_interactions: {
+        Row: {
+          analysis_id: string | null
+          author_profile_url: string | null
+          candidate_id: string
+          collected_at: string | null
+          comment_author: string | null
+          comment_text: string | null
+          created_at: string | null
+          id: string
+          interaction_type: string
+          likes_count: number | null
+          original_posted_at: string | null
+          replies_count: number | null
+          sentiment_label: string | null
+          sentiment_score: number | null
+          shares_count: number | null
+          social_network: string
+          user_id: string
+        }
+        Insert: {
+          analysis_id?: string | null
+          author_profile_url?: string | null
+          candidate_id: string
+          collected_at?: string | null
+          comment_author?: string | null
+          comment_text?: string | null
+          created_at?: string | null
+          id?: string
+          interaction_type?: string
+          likes_count?: number | null
+          original_posted_at?: string | null
+          replies_count?: number | null
+          sentiment_label?: string | null
+          sentiment_score?: number | null
+          shares_count?: number | null
+          social_network: string
+          user_id: string
+        }
+        Update: {
+          analysis_id?: string | null
+          author_profile_url?: string | null
+          candidate_id?: string
+          collected_at?: string | null
+          comment_author?: string | null
+          comment_text?: string | null
+          created_at?: string | null
+          id?: string
+          interaction_type?: string
+          likes_count?: number | null
+          original_posted_at?: string | null
+          replies_count?: number | null
+          sentiment_label?: string | null
+          sentiment_score?: number | null
+          shares_count?: number | null
+          social_network?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_interactions_analysis_id_fkey"
+            columns: ["analysis_id"]
+            isOneToOne: false
+            referencedRelation: "candidate_analyses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_interactions_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       speech_analyses: {
         Row: {
           affected_voter_profiles: Json | null
