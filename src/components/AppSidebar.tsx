@@ -18,6 +18,7 @@ import {
   FileText,
   Calendar,
   ClipboardList,
+  Radio,
 } from "lucide-react";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 
@@ -35,6 +36,7 @@ import {
 
 const mainItems = [
   { title: "Visão Geral", url: "/dashboard", icon: BarChart3 },
+  { title: "Monitor Tempo Real", url: "/dashboard/realtime-monitor", icon: Radio },
   { title: "Candidatos", url: "/dashboard/candidates", icon: Users },
   { title: "Análises", url: "/dashboard/analytics", icon: TrendingUp },
   { title: "Analytics Avançado", url: "/dashboard/analytics-advanced", icon: LineChart },
