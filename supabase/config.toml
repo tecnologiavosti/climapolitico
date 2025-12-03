@@ -4,7 +4,7 @@ project_id = "okazmxhoviblxtxtjzzc"
 enabled = true
 
 [functions.analyze-sentiment]
-verify_jwt = false
+verify_jwt = true
 
 [functions.analyze-candidate]
 verify_jwt = true

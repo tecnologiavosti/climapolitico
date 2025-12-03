@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,12 +13,81 @@ serve(async (req) => {
   }
 
   try {
+    // Validate authentication
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      console.error('❌ Missing Authorization header');
+      return new Response(
+        JSON.stringify({ error: 'Autenticação necessária' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Create Supabase client with service role for validation
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Validate user token
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      console.error('❌ Invalid token:', authError?.message);
+      return new Response(
+        JSON.stringify({ error: 'Token inválido ou expirado' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('✅ User authenticated:', user.id);
+
+    // Check subscription limits
+    const { data: subscription, error: subError } = await supabase
+      .from('subscriptions')
+      .select('tier, max_updates_per_month, updates_used_this_month, status')
+      .eq('user_id', user.id)
+      .single();
+
+    if (subError || !subscription) {
+      console.error('❌ Subscription not found:', subError?.message);
+      return new Response(
+        JSON.stringify({ error: 'Assinatura não encontrada' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (subscription.status !== 'active') {
+      return new Response(
+        JSON.stringify({ error: 'Assinatura inativa. Por favor, renove sua assinatura.' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (subscription.updates_used_this_month >= subscription.max_updates_per_month) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Limite mensal de análises atingido',
+          details: `Você usou ${subscription.updates_used_this_month}/${subscription.max_updates_per_month} análises este mês.`
+        }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const { texts, analysisType = 'sentiment' } = await req.json();
-    console.log('Received request:', { textsCount: texts?.length, analysisType });
+    console.log('Received request:', { textsCount: texts?.length, analysisType, userId: user.id });
 
     if (!texts || !Array.isArray(texts) || texts.length === 0) {
       return new Response(
-        JSON.stringify({ error: 'texts array is required and must not be empty' }),
+        JSON.stringify({ error: 'O array de textos é obrigatório e não pode estar vazio' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Rate limit: max 50 texts per request
+    if (texts.length > 50) {
+      return new Response(
+        JSON.stringify({ error: 'Máximo de 50 textos por requisição' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -26,7 +96,7 @@ serve(async (req) => {
     if (!LOVABLE_API_KEY) {
       console.error('LOVABLE_API_KEY is not configured');
       return new Response(
-        JSON.stringify({ error: 'AI service not configured' }),
+        JSON.stringify({ error: 'Serviço de IA não configurado' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -83,20 +153,20 @@ Retorne APENAS um JSON array válido, sem texto adicional.`;
       
       if (response.status === 429) {
         return new Response(
-          JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }),
+          JSON.stringify({ error: 'Limite de requisições excedido. Tente novamente mais tarde.' }),
           { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       
       if (response.status === 402) {
         return new Response(
-          JSON.stringify({ error: 'AI credits exhausted. Please add credits to continue.' }),
+          JSON.stringify({ error: 'Créditos de IA esgotados. Por favor, adicione créditos para continuar.' }),
           { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
       return new Response(
-        JSON.stringify({ error: 'AI service error', details: errorText }),
+        JSON.stringify({ error: 'Erro no serviço de IA', details: errorText }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -108,7 +178,7 @@ Retorne APENAS um JSON array válido, sem texto adicional.`;
     if (!aiResponse) {
       console.error('No content in AI response');
       return new Response(
-        JSON.stringify({ error: 'Invalid AI response' }),
+        JSON.stringify({ error: 'Resposta de IA inválida' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -124,12 +194,18 @@ Retorne APENAS um JSON array válido, sem texto adicional.`;
       console.error('Failed to parse AI response as JSON:', parseError);
       console.log('Raw response:', aiResponse);
       return new Response(
-        JSON.stringify({ error: 'Failed to parse AI response', rawResponse: aiResponse }),
+        JSON.stringify({ error: 'Falha ao processar resposta da IA', rawResponse: aiResponse }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Analysis complete:', { resultsCount: results.length });
+    // Increment usage counter
+    await supabase
+      .from('subscriptions')
+      .update({ updates_used_this_month: subscription.updates_used_this_month + 1 })
+      .eq('user_id', user.id);
+
+    console.log('Analysis complete:', { resultsCount: results.length, userId: user.id });
 
     return new Response(
       JSON.stringify({
@@ -145,8 +221,8 @@ Retorne APENAS um JSON array válido, sem texto adicional.`;
     console.error('Error in analyze-sentiment function:', error);
     return new Response(
       JSON.stringify({ 
-        error: 'Internal server error', 
-        message: error instanceof Error ? error.message : 'Unknown error' 
+        error: 'Erro interno do servidor', 
+        message: error instanceof Error ? error.message : 'Erro desconhecido' 
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
