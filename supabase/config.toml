@@ -29,3 +29,6 @@ verify_jwt = true
 
 [functions.get-state-details]
 verify_jwt = true
+
+[functions.collect-social-comments]
+verify_jwt = false
