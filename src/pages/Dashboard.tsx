@@ -18,6 +18,7 @@ import Analytics from "./dashboard/Analytics";
 import SpeechAnalysis from "./dashboard/SpeechAnalysis";
 import CandidateRanking from "./dashboard/CandidateRanking";
 import Admin from "./dashboard/Admin";
+import AdminApiSettings from "./dashboard/AdminApiSettings";
 import UndecidedAnalysis from "./dashboard/UndecidedAnalysis";
 import SocialMediaReport from "./dashboard/SocialMediaReport";
 import AIInsights from "./dashboard/AIInsights";
@@ -134,6 +135,7 @@ const Dashboard = () => {
               <Route path="/report-templates" element={<ReportTemplates />} />
               <Route path="/realtime-monitor" element={<RealTimeMonitor />} />
               <Route path="/admin" element={<Admin />} />
+              <Route path="/admin/api-settings" element={<AdminApiSettings />} />
               <Route path="/ai" element={<AIInsights />} />
               <Route path="/notifications" element={
                 <div className="text-center py-12">
