@@ -150,6 +150,48 @@ export type Database = {
           },
         ]
       }
+      api_configurations: {
+        Row: {
+          access_token: string | null
+          api_key: string | null
+          api_secret: string | null
+          created_at: string | null
+          error_message: string | null
+          id: string
+          is_active: boolean | null
+          last_verified_at: string | null
+          platform: string
+          updated_at: string | null
+          verified_status: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          api_key?: string | null
+          api_secret?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_verified_at?: string | null
+          platform: string
+          updated_at?: string | null
+          verified_status?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          api_key?: string | null
+          api_secret?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_verified_at?: string | null
+          platform?: string
+          updated_at?: string | null
+          verified_status?: string | null
+        }
+        Relationships: []
+      }
       candidate_analyses: {
         Row: {
           age_distribution: Json | null

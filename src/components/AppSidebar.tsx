@@ -19,6 +19,7 @@ import {
   Calendar,
   ClipboardList,
   Radio,
+  Key,
 } from "lucide-react";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 
@@ -53,6 +54,7 @@ const mainItems = [
 
 const adminItems = [
   { title: "Administração", url: "/dashboard/admin", icon: Shield },
+  { title: "APIs & Integrações", url: "/dashboard/admin/api-settings", icon: Key },
 ];
 
 const settingsItems = [

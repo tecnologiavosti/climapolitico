@@ -32,3 +32,12 @@ verify_jwt = true
 
 [functions.collect-social-comments]
 verify_jwt = false
+
+[functions.validate-api-key]
+verify_jwt = true
+
+[functions.search-google-news]
+verify_jwt = false
+
+[functions.search-wikipedia]
+verify_jwt = false
