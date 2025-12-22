@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, TrendingDown, Users, MessageSquare, Eye, AlertCircle, Activity } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { TrendingUp, TrendingDown, Users, MessageSquare, Eye, AlertCircle, Activity, LayoutDashboard } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -12,10 +14,12 @@ import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { useAuth } from "@/hooks/useAuth";
 import { AIModelsPanel } from "@/components/dashboard/AIModelsPanel";
 import { AIModelAgreementDashboard } from "@/components/dashboard/AIModelAgreementDashboard";
+import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--destructive))', 'hsl(var(--warning))', 'hsl(var(--muted))'];
 
 export default function Overview() {
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
   const { isAdmin } = useAdminCheck();
   const { user } = useAuth();
 
@@ -160,6 +164,38 @@ export default function Overview() {
   const isLoading = loadingCandidates || loadingAnalyses || loadingSpeeches || loadingRankings;
   return (
     <div className="space-y-6">
+      {/* Candidate Selector for Consolidated View */}
+      <Card className="p-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <div className="flex items-center gap-2">
+            <LayoutDashboard className="h-5 w-5 text-primary" />
+            <span className="font-medium">Visão Consolidada do Candidato</span>
+          </div>
+          <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
+            <SelectTrigger className="w-64">
+              <SelectValue placeholder="Selecione um candidato para análise detalhada" />
+            </SelectTrigger>
+            <SelectContent>
+              {candidates?.map((candidate) => (
+                <SelectItem key={candidate.id} value={candidate.id}>
+                  {candidate.full_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selectedCandidateId && (
+            <Button variant="ghost" size="sm" onClick={() => setSelectedCandidateId("")}>
+              Limpar seleção
+            </Button>
+          )}
+        </div>
+      </Card>
+
+      {/* Consolidated Candidate Panel - when a candidate is selected */}
+      {selectedCandidateId && (
+        <CandidateOverviewPanel candidateId={selectedCandidateId} />
+      )}
+
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card className="p-6">
