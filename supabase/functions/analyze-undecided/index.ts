@@ -6,56 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Helper to parse JWT payload (without validation)
-function parseJWTPayload(token: string): any {
-  try {
-    const base64Url = token.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    return JSON.parse(atob(base64));
-  } catch {
-    return null;
-  }
-}
-
-// Normalize region name to standard format
-function normalizeRegion(region: string | null): string {
-  if (!region) return 'NACIONAL';
-  const normalized = region.trim().toUpperCase();
-  
-  const regionMap: Record<string, string> = {
-    'BRASIL': 'NACIONAL', 'BR': 'NACIONAL', 'NACIONAL': 'NACIONAL',
-    'DF': 'DISTRITO FEDERAL', 'DISTRITO FEDERAL': 'DISTRITO FEDERAL',
-    'SP': 'SÃO PAULO', 'SAO PAULO': 'SÃO PAULO', 'SÃO PAULO': 'SÃO PAULO',
-    'RJ': 'RIO DE JANEIRO', 'RIO DE JANEIRO': 'RIO DE JANEIRO',
-    'MG': 'MINAS GERAIS', 'MINAS GERAIS': 'MINAS GERAIS',
-    'BA': 'BAHIA', 'BAHIA': 'BAHIA',
-    'PR': 'PARANÁ', 'PARANA': 'PARANÁ', 'PARANÁ': 'PARANÁ',
-    'RS': 'RIO GRANDE DO SUL', 'RIO GRANDE DO SUL': 'RIO GRANDE DO SUL',
-    'PE': 'PERNAMBUCO', 'PERNAMBUCO': 'PERNAMBUCO',
-    'CE': 'CEARÁ', 'CEARA': 'CEARÁ', 'CEARÁ': 'CEARÁ',
-    'PA': 'PARÁ', 'PARA': 'PARÁ', 'PARÁ': 'PARÁ',
-    'SC': 'SANTA CATARINA', 'SANTA CATARINA': 'SANTA CATARINA',
-    'GO': 'GOIÁS', 'GOIAS': 'GOIÁS', 'GOIÁS': 'GOIÁS',
-    'MA': 'MARANHÃO', 'MARANHAO': 'MARANHÃO', 'MARANHÃO': 'MARANHÃO',
-    'ES': 'ESPÍRITO SANTO', 'ESPIRITO SANTO': 'ESPÍRITO SANTO', 'ESPÍRITO SANTO': 'ESPÍRITO SANTO',
-    'PB': 'PARAÍBA', 'PARAIBA': 'PARAÍBA', 'PARAÍBA': 'PARAÍBA',
-    'RN': 'RIO GRANDE DO NORTE', 'RIO GRANDE DO NORTE': 'RIO GRANDE DO NORTE',
-    'AL': 'ALAGOAS', 'ALAGOAS': 'ALAGOAS',
-    'PI': 'PIAUÍ', 'PIAUI': 'PIAUÍ', 'PIAUÍ': 'PIAUÍ',
-    'MT': 'MATO GROSSO', 'MATO GROSSO': 'MATO GROSSO',
-    'MS': 'MATO GROSSO DO SUL', 'MATO GROSSO DO SUL': 'MATO GROSSO DO SUL',
-    'SE': 'SERGIPE', 'SERGIPE': 'SERGIPE',
-    'RO': 'RONDÔNIA', 'RONDONIA': 'RONDÔNIA', 'RONDÔNIA': 'RONDÔNIA',
-    'TO': 'TOCANTINS', 'TOCANTINS': 'TOCANTINS',
-    'AC': 'ACRE', 'ACRE': 'ACRE',
-    'AM': 'AMAZONAS', 'AMAZONAS': 'AMAZONAS',
-    'RR': 'RORAIMA', 'RORAIMA': 'RORAIMA',
-    'AP': 'AMAPÁ', 'AMAPA': 'AMAPÁ', 'AMAPÁ': 'AMAPÁ'
-  };
-  
-  return regionMap[normalized] || normalized;
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -70,43 +20,18 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     
-    // Create admin client for validation
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Extract and validate JWT
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
     
     if (userError || !user) {
-      const jwtPayload = parseJWTPayload(token);
-      
-      console.error('❌ Authentication failed:', {
-        error: userError?.message || 'Auth session missing!',
-        errorName: userError?.name,
-        errorStatus: userError?.status,
-        hasAuthHeader: true,
-        authHeaderPreview: authHeader.substring(0, 20) + '...',
-        jwtPayload: jwtPayload ? {
-          exp: jwtPayload.exp,
-          sub: jwtPayload.sub,
-          iat: jwtPayload.iat
-        } : null
-      });
-      
+      console.error('❌ Authentication failed:', userError?.message);
       return new Response(
-        JSON.stringify({ 
-          error: 'Unauthorized - Invalid or expired session',
-          details: userError?.message || 'JWT token validation failed'
-        }),
-        { 
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        JSON.stringify({ error: 'Unauthorized - Invalid or expired session' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    // Create user-scoped client for database operations
-    const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
 
     const { candidate_id, period_start, period_end } = await req.json();
 
@@ -117,7 +42,7 @@ serve(async (req) => {
     console.log(`Analyzing undecided voters for candidate ${candidate_id}, user ${user.id}`);
 
     // Fetch candidate info
-    const { data: candidate, error: candidateError } = await supabaseClient
+    const { data: candidate, error: candidateError } = await supabaseAdmin
       .from('candidates')
       .select('full_name, region, party')
       .eq('id', candidate_id)
@@ -125,61 +50,65 @@ serve(async (req) => {
 
     if (candidateError) throw candidateError;
 
-    // Normalize and validate candidate region
-    const candidateRegion = normalizeRegion(candidate.region);
-    const isNationalCandidate = candidateRegion === 'NACIONAL';
-    console.log(`🔍 Analyzing undecided voters for ${candidate.full_name} in region: ${candidateRegion} (National: ${isNationalCandidate})`);
+    console.log(`🔍 Analyzing undecided voters for ${candidate.full_name}`);
 
-    // Fetch analyses for the candidate in the period
-    let query = supabaseClient
-      .from('candidate_analyses')
+    // Build query for social_interactions - the NEW single source of truth
+    let query = supabaseAdmin
+      .from('social_interactions')
       .select('*')
       .eq('candidate_id', candidate_id)
       .eq('user_id', user.id);
 
-    // CRITICAL: Filter by geographic scope for regional candidates
-    if (!isNationalCandidate) {
-      const geoScope = `regional_${candidateRegion.toLowerCase().replace(/ /g, '_')}`;
-      query = query.eq('geographic_scope', geoScope);
-      console.log(`📍 Filtering analyses by geographic scope: ${geoScope}`);
-    }
-
     if (period_start) {
-      query = query.gte('created_at', period_start);
+      query = query.gte('collected_at', period_start);
     }
     if (period_end) {
-      query = query.lte('created_at', period_end);
+      query = query.lte('collected_at', period_end);
     }
 
-    const { data: analyses, error: analysesError } = await query;
-    if (analysesError) throw analysesError;
+    const { data: interactions, error: interactionsError } = await query;
+    if (interactionsError) throw interactionsError;
 
-    if (!analyses || analyses.length === 0) {
-      const regionMsg = isNationalCandidate 
-        ? 'em todo o Brasil' 
-        : `na região ${candidateRegion}`;
+    if (!interactions || interactions.length === 0) {
       throw new Error(
-        `Nenhuma análise encontrada para este candidato ${regionMsg} no período selecionado. ` +
-        `Certifique-se de que as análises foram feitas com dados da região correta.`
+        `Nenhuma interação encontrada para este candidato no período selecionado. ` +
+        `Execute uma coleta de dados (YouTube, etc.) antes de analisar o público indeciso.`
       );
     }
     
-    console.log(`✓ Found ${analyses.length} analyses for region ${candidateRegion}`);
+    console.log(`✓ Found ${interactions.length} interactions for analysis`);
 
-    // Calculate metrics
-    const neutralAnalyses = analyses.filter(a => 
-      a.sentiment_score >= 40 && a.sentiment_score <= 60
-    );
-    const neutralCount = neutralAnalyses.reduce((sum, a) => sum + (a.mentions_count || 0), 0);
-    const totalCount = analyses.reduce((sum, a) => sum + (a.mentions_count || 0), 0);
+    // Classify sentiment from interactions
+    const classifyMention = (score: number | null) => {
+      if (score === null) return 'neutral';
+      if (score >= 60) return 'positive';
+      if (score <= 40) return 'negative';
+      return 'neutral';
+    };
+
+    const positiveInteractions = interactions.filter(i => classifyMention(i.sentiment_score) === 'positive');
+    const negativeInteractions = interactions.filter(i => classifyMention(i.sentiment_score) === 'negative');
+    const neutralInteractions = interactions.filter(i => classifyMention(i.sentiment_score) === 'neutral');
+
+    const totalCount = interactions.length;
+    const neutralCount = neutralInteractions.length;
     const undecidedPercentage = totalCount > 0 ? (neutralCount / totalCount) * 100 : 0;
 
-    // Aggregate keywords from neutral analyses
-    const allKeywords = neutralAnalyses
-      .flatMap(a => a.keywords || [])
-      .filter((k): k is string => typeof k === 'string');
-    
-    // Get unique keywords
+    // Extract keywords from neutral/undecided comments
+    const extractKeywords = (text: string): string[] => {
+      if (!text) return [];
+      const stopWords = ['de', 'da', 'do', 'que', 'e', 'em', 'um', 'uma', 'para', 'com', 'não', 'por', 'se', 'na', 'no', 'os', 'as', 'é', 'o', 'a', 'mas'];
+      return text
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(word => word.length > 3 && !stopWords.includes(word))
+        .slice(0, 5);
+    };
+
+    const allKeywords = neutralInteractions
+      .flatMap(i => extractKeywords(i.comment_text || ''))
+      .filter(Boolean);
+
     const keywordFrequency = allKeywords.reduce((acc, keyword) => {
       acc[keyword] = (acc[keyword] || 0) + 1;
       return acc;
@@ -187,182 +116,86 @@ serve(async (req) => {
 
     const topKeywords = Object.entries(keywordFrequency)
       .sort(([, a], [, b]) => b - a)
-      .slice(0, 10)
+      .slice(0, 15)
       .map(([keyword]) => keyword);
 
-    // Fetch analysis sources for social media breakdown - filter by region
-    const analysisIds = analyses.map(a => a.id);
-    let sourcesQuery = supabaseClient
-      .from('analysis_sources')
-      .select('*')
-      .in('analysis_id', analysisIds);
+    // Social media breakdown
+    const socialMediaMap: Record<string, { network: string; mentions: number; engagement: number; neutralCount: number }> = {};
     
-    // CRITICAL: Filter sources by candidate's region for regional candidates
-    if (!isNationalCandidate) {
-      sourcesQuery = sourcesQuery.or(
-        `inferred_region.eq.${candidateRegion},profile_location_state.eq.${candidateRegion}`
-      );
-      console.log(`📍 Filtering sources by region: ${candidateRegion}`);
-    }
-
-    const { data: sources, error: sourcesError } = await sourcesQuery;
-
-    if (sourcesError) {
-      console.error('Error fetching analysis sources:', sourcesError);
-    }
-    
-    if (!sources || sources.length === 0) {
-      console.warn(`⚠️ No sources found for region ${candidateRegion}`);
-    } else {
-      console.log(`✓ Found ${sources.length} valid sources for region ${candidateRegion}`);
-    }
-
-    // Aggregate social media breakdown
-    const socialMediaMap: Record<string, { network: string; posts: number; comments: number; interactions: number; profiles: number }> = {};
-    
-    if (sources) {
-      sources.forEach(source => {
-        const network = source.social_network || 'Outro';
-        if (!socialMediaMap[network]) {
-          socialMediaMap[network] = {
-            network,
-            posts: 0,
-            comments: 0,
-            interactions: 0,
-            profiles: 0
-          };
-        }
-        socialMediaMap[network].posts += source.posts_collected || 0;
-        socialMediaMap[network].comments += source.comments_collected || 0;
-        socialMediaMap[network].interactions += source.interactions_count || 0;
-        socialMediaMap[network].profiles += 1;
-      });
-    }
+    interactions.forEach(interaction => {
+      const network = interaction.social_network || 'Outro';
+      if (!socialMediaMap[network]) {
+        socialMediaMap[network] = { network, mentions: 0, engagement: 0, neutralCount: 0 };
+      }
+      socialMediaMap[network].mentions += 1;
+      socialMediaMap[network].engagement += (interaction.likes_count || 0) + (interaction.replies_count || 0) + (interaction.shares_count || 0);
+      if (classifyMention(interaction.sentiment_score) === 'neutral') {
+        socialMediaMap[network].neutralCount += 1;
+      }
+    });
 
     const socialMediaBreakdown = {
       sources: Object.values(socialMediaMap),
-      total_posts: Object.values(socialMediaMap).reduce((sum, s) => sum + s.posts, 0),
-      total_comments: Object.values(socialMediaMap).reduce((sum, s) => sum + s.comments, 0),
-      total_interactions: Object.values(socialMediaMap).reduce((sum, s) => sum + s.interactions, 0),
-      total_profiles: Object.values(socialMediaMap).reduce((sum, s) => sum + s.profiles, 0)
+      total_mentions: totalCount,
+      total_engagement: Object.values(socialMediaMap).reduce((sum, s) => sum + s.engagement, 0),
+      total_neutral: neutralCount
     };
 
-    // Create temporal evolution data
-    const temporalEvolution = analyses
-      .sort((a, b) => new Date(a.created_at!).getTime() - new Date(b.created_at!).getTime())
-      .map(analysis => {
-        const sentimentScore = analysis.sentiment_score || 50;
-        const isNeutral = sentimentScore >= 40 && sentimentScore <= 60;
-        const neutralCount = isNeutral ? (analysis.mentions_count || 0) : 0;
-        const totalCount = analysis.mentions_count || 1;
-        const undecidedPercentage = (neutralCount / totalCount) * 100;
-        
-        return {
-          date: analysis.created_at?.split('T')[0] || '',
-          undecided_percentage: undecidedPercentage,
-          neutral_count: neutralCount,
-          total_count: totalCount,
-          sentiment_score: sentimentScore
-        };
-      });
-
-    // Fetch all candidates for comparison
-    const { data: allCandidates, error: allCandidatesError } = await supabaseClient
-      .from('candidates')
-      .select('id, full_name')
-      .eq('user_id', user.id);
-
-    if (allCandidatesError) {
-      console.error('Error fetching all candidates:', allCandidatesError);
-    }
-
-    // Fetch analyses for all candidates in the same period
-    let allAnalysesQuery = supabaseClient
-      .from('candidate_analyses')
-      .select('candidate_id, sentiment_score, mentions_count')
-      .eq('user_id', user.id);
-
-    if (period_start) {
-      allAnalysesQuery = allAnalysesQuery.gte('created_at', period_start);
-    }
-    if (period_end) {
-      allAnalysesQuery = allAnalysesQuery.lte('created_at', period_end);
-    }
-
-    const { data: allAnalyses, error: allAnalysesError } = await allAnalysesQuery;
-
-    if (allAnalysesError) {
-      console.error('Error fetching all analyses:', allAnalysesError);
-    }
-
-    // Aggregate by candidate
-    const candidateMap: Record<string, { positive: number; negative: number; neutral: number; total: number }> = {};
+    // Temporal evolution - group by date
+    const dateMap = new Map<string, { date: string; total: number; neutral: number; positive: number; negative: number }>();
     
-    if (allAnalyses && allCandidates) {
-      allAnalyses.forEach(analysis => {
-        const candidateId = analysis.candidate_id;
-        if (!candidateMap[candidateId]) {
-          candidateMap[candidateId] = { positive: 0, negative: 0, neutral: 0, total: 0 };
-        }
-        
-        const score = analysis.sentiment_score || 50;
-        const mentions = analysis.mentions_count || 0;
-        
-        if (score > 60) {
-          candidateMap[candidateId].positive += mentions;
-        } else if (score < 40) {
-          candidateMap[candidateId].negative += mentions;
-        } else {
-          candidateMap[candidateId].neutral += mentions;
-        }
-        candidateMap[candidateId].total += mentions;
-      });
-    }
+    interactions.forEach(interaction => {
+      const date = (interaction.collected_at || interaction.created_at)?.split('T')[0] || '';
+      if (!date) return;
+      
+      if (!dateMap.has(date)) {
+        dateMap.set(date, { date, total: 0, neutral: 0, positive: 0, negative: 0 });
+      }
+      
+      const entry = dateMap.get(date)!;
+      entry.total += 1;
+      
+      const sentiment = classifyMention(interaction.sentiment_score);
+      if (sentiment === 'neutral') entry.neutral += 1;
+      else if (sentiment === 'positive') entry.positive += 1;
+      else entry.negative += 1;
+    });
 
-    const candidatesComparison = allCandidates?.map(candidate => {
-      const data = candidateMap[candidate.id] || { positive: 0, negative: 0, neutral: 0, total: 1 };
-      return {
-        candidate_id: candidate.id,
-        candidate_name: candidate.full_name,
-        positive_percentage: (data.positive / data.total) * 100,
-        negative_percentage: (data.negative / data.total) * 100,
-        neutral_percentage: (data.neutral / data.total) * 100,
-        total_mentions: data.total
-      };
-    }) || [];
+    const temporalEvolution = Array.from(dateMap.values())
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map(d => ({
+        ...d,
+        undecided_percentage: d.total > 0 ? (d.neutral / d.total) * 100 : 0
+      }));
 
-    // Prepare data summary for AI analysis with geographic context
+    // Get unique authors for demographic inference
+    const uniqueAuthors = [...new Set(interactions.map(i => i.comment_author).filter(Boolean))];
+
+    // Prepare data summary for AI
     const dataSummary = {
       candidate: {
         name: candidate.full_name,
         party: candidate.party,
-        region: candidateRegion,
-        electoralScope: isNationalCandidate ? 'Nacional (Presidência)' : `Regional - ${candidateRegion}`,
+        region: candidate.region
       },
-      geographicContext: {
-        scope: isNationalCandidate ? 'nacional' : 'regional',
-        region: candidateRegion,
-        validation: isNationalCandidate 
-          ? 'Análise nacional - dados de todo o Brasil' 
-          : `Análise regional - dados exclusivos de ${candidateRegion}`,
-      },
-      total_analyses: analyses.length,
-      neutral_analyses_count: neutralAnalyses.length,
-      undecided_percentage: undecidedPercentage.toFixed(2),
-      total_mentions: totalCount,
-      neutral_mentions: neutralCount,
-      top_keywords: topKeywords,
+      total_interactions: totalCount,
       sentiment_distribution: {
-        positive: analyses.filter(a => a.sentiment_score > 60).length,
-        neutral: neutralAnalyses.length,
-        negative: analyses.filter(a => a.sentiment_score < 40).length
+        positive: positiveInteractions.length,
+        neutral: neutralCount,
+        negative: negativeInteractions.length,
+        positive_pct: ((positiveInteractions.length / totalCount) * 100).toFixed(1),
+        neutral_pct: ((neutralCount / totalCount) * 100).toFixed(1),
+        negative_pct: ((negativeInteractions.length / totalCount) * 100).toFixed(1)
       },
+      undecided_percentage: undecidedPercentage.toFixed(2),
+      unique_authors: uniqueAuthors.length,
+      top_keywords: topKeywords,
       social_media_breakdown: socialMediaBreakdown,
-      temporal_evolution: temporalEvolution,
-      candidates_comparison: candidatesComparison
+      temporal_evolution: temporalEvolution.slice(-30), // Last 30 days
+      sample_neutral_comments: neutralInteractions.slice(0, 10).map(i => i.comment_text?.substring(0, 200))
     };
 
-    console.log('Data summary for AI:', JSON.stringify(dataSummary, null, 2));
+    console.log('📊 Data summary prepared, calling AI for analysis...');
 
     // Call Lovable AI
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
@@ -372,47 +205,41 @@ serve(async (req) => {
 
     const aiPrompt = `Você é um especialista em análise de comportamento eleitoral.
 
-**CONTEXTO GEOGRÁFICO CRÍTICO:**
-O candidato ${candidate.full_name} concorre em: ${candidateRegion}
-${isNationalCandidate 
-  ? '🇧🇷 Esta é uma candidatura NACIONAL (Presidente). A análise considera dados de TODO O BRASIL.' 
-  : `📍 Esta é uma candidatura REGIONAL (${candidateRegion}). A análise considera EXCLUSIVAMENTE dados da região ${candidateRegion}.`}
-
-Analise os seguintes dados sobre eleitores indecisos/neutros para o candidato:
+Analise os seguintes dados sobre eleitores indecisos/neutros para o candidato ${candidate.full_name}:
 
 Dados:
 ${JSON.stringify(dataSummary, null, 2)}
 
-Forneça uma análise estruturada em português brasileiro identificando:
+Forneça uma análise estruturada em português brasileiro:
 
-1. PADRÕES COMPORTAMENTAIS (behavioral_patterns): Liste 3-5 padrões comportamentais observados nos eleitores indecisos. Cada padrão deve ter:
+1. PADRÕES COMPORTAMENTAIS (behavioral_patterns): Liste 3-5 padrões comportamentais. Cada padrão:
    - pattern: descrição do padrão
-   - frequency: frequência observada (baixa/média/alta)
+   - frequency: frequência (baixa/média/alta)
    - impact: impacto potencial (baixo/médio/alto)
 
-2. GATILHOS DE DECISÃO (decision_triggers): Identifique 3-5 fatores que podem influenciar a decisão desses eleitores:
+2. GATILHOS DE DECISÃO (decision_triggers): 3-5 fatores que influenciam a decisão:
    - trigger: o gatilho/fator
-   - effectiveness: efetividade estimada (baixa/média/alta)
-   - timing: momento ideal para usar (curto prazo/médio prazo/longo prazo)
+   - effectiveness: efetividade (baixa/média/alta)
+   - timing: momento ideal (curto prazo/médio prazo/longo prazo)
 
-3. PERFIL DEMOGRÁFICO (demographic_profile): Baseado nos dados, infira características demográficas:
+3. PERFIL DEMOGRÁFICO (demographic_profile): Infira características:
    - age_groups: faixas etárias mais presentes (array)
    - regions: regiões de maior concentração (array)
    - concerns: principais preocupações (array)
 
-4. TÓPICOS-CHAVE (key_topics): Liste 5-8 tópicos que geram mais indecisão
+4. TÓPICOS-CHAVE (key_topics): 5-8 tópicos que geram indecisão
 
-5. ESTRATÉGIAS DE PERSUASÃO (persuasion_strategies): Sugira 4-6 estratégias práticas:
-   - strategy: descrição da estratégia
-   - target: público-alvo específico
-   - channel: canal recomendado (redes sociais/TV/eventos/etc)
+5. ESTRATÉGIAS DE PERSUASÃO (persuasion_strategies): 4-6 estratégias:
+   - strategy: descrição
+   - target: público-alvo
+   - channel: canal recomendado
    - priority: prioridade (alta/média/baixa)
 
-6. SCORE DE FLUTUAÇÃO (sentiment_fluctuation_score): Dê um score de 0-100 indicando o quão volátil é o sentimento desse grupo (0=muito estável, 100=extremamente volátil)
+6. SCORE DE FLUTUAÇÃO (sentiment_fluctuation_score): 0-100 indicando volatilidade
 
-7. CONFIDENCE SCORE: Dê um score de 0-100 sobre sua confiança nesta análise baseado na quantidade e qualidade dos dados.
+7. CONFIDENCE SCORE: 0-100 sobre confiança na análise
 
-Retorne APENAS um JSON válido (sem markdown, sem explicações extras) com esta estrutura:
+Retorne APENAS JSON válido (sem markdown):
 {
   "behavioral_patterns": [{"pattern": "...", "frequency": "...", "impact": "..."}],
   "decision_triggers": [{"trigger": "...", "effectiveness": "...", "timing": "..."}],
@@ -423,161 +250,107 @@ Retorne APENAS um JSON válido (sem markdown, sem explicações extras) com esta
   "confidence_score": 0
 }`;
 
-    // Multi-model analysis: GPT-5 for behavioral depth, GPT-5-Nano for quick classification
-    console.log('🤖 Calling 2 AI models for undecided voter analysis...');
+    console.log('🤖 Calling AI for undecided voter analysis...');
     
-    const [gpt5Response, gpt5NanoResponse] = await Promise.all([
-      fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'openai/gpt-5',
-          messages: [
-            { 
-              role: 'system', 
-              content: 'Você é um especialista em análise política e comportamento eleitoral. Retorne sempre JSON válido, sem markdown.' 
-            },
-            { role: 'user', content: aiPrompt }
-          ]
-        }),
+    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'openai/gpt-5-mini',
+        messages: [
+          { role: 'system', content: 'Você é um especialista em análise política. Retorne sempre JSON válido, sem markdown.' },
+          { role: 'user', content: aiPrompt }
+        ],
+        temperature: 0.7,
+        max_tokens: 2000,
       }),
-      fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'openai/gpt-5-nano',
-          messages: [
-            { 
-              role: 'system', 
-              content: 'Você é um especialista em análise política e comportamento eleitoral. Retorne sempre JSON válido, sem markdown.' 
-            },
-            { role: 'user', content: aiPrompt }
-          ]
-        }),
-      })
-    ]);
-    
-    const [gpt5Data, gpt5NanoData] = await Promise.all([
-      gpt5Response.json(),
-      gpt5NanoResponse.json()
-    ]);
-    
-    // Validate responses
-    if (!gpt5Response.ok) {
-      const errorText = await gpt5Response.text();
-      console.error('GPT-5 API error:', gpt5Response.status, errorText);
-      throw new Error(`GPT-5 analysis failed: ${gpt5Response.status}`);
-    }
-    
-    if (!gpt5NanoResponse.ok) {
-      console.warn('GPT-5-Nano failed, continuing with GPT-5 only');
+    });
+
+    if (!aiResponse.ok) {
+      const errorText = await aiResponse.text();
+      console.error('AI API error:', errorText);
+      throw new Error(`AI API error: ${aiResponse.status}`);
     }
 
-    console.log('✅ Both AI models completed undecided analysis');
+    const aiData = await aiResponse.json();
+    const aiContent = aiData.choices?.[0]?.message?.content || '{}';
     
-    // Primary result from GPT-5 (more accurate behavioral patterns)
-    const gpt5Content = gpt5Data.choices[0].message.content;
-    
-    // Parse GPT-5 response (primary)
-    let gpt5Result;
+    let aiAnalysis;
     try {
-      const jsonMatch = gpt5Content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        gpt5Result = JSON.parse(jsonMatch[0]);
-      } else {
-        gpt5Result = JSON.parse(gpt5Content);
-      }
+      const cleanContent = aiContent.replace(/```json\n?|\n?```/g, '').trim();
+      aiAnalysis = JSON.parse(cleanContent);
     } catch (parseError) {
-      console.error('Failed to parse GPT-5 response:', gpt5Content);
-      throw new Error('Invalid GPT-5 response format');
+      console.error('Failed to parse AI response:', aiContent);
+      aiAnalysis = {
+        behavioral_patterns: [],
+        decision_triggers: [],
+        demographic_profile: { age_groups: [], regions: [], concerns: [] },
+        key_topics: topKeywords,
+        persuasion_strategies: [],
+        sentiment_fluctuation_score: 50,
+        confidence_score: 30
+      };
     }
-    
-    // Parse GPT-5-Nano response (supplementary quick classification)
-    let gpt5NanoResult;
-    try {
-      const nanoContent = gpt5NanoData.choices[0].message.content;
-      const jsonMatch = nanoContent.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        gpt5NanoResult = JSON.parse(jsonMatch[0]);
-      } else {
-        gpt5NanoResult = JSON.parse(nanoContent);
-      }
-    } catch (parseError) {
-      console.warn('Failed to parse GPT-5-Nano response, using GPT-5 only');
-      gpt5NanoResult = {};
-    }
-    
-    // Merge results: GPT-5 primary, GPT-5-Nano supplements key topics
-    const parsedResult = {
-      ...gpt5Result,
-      key_topics: Array.from(new Set([
-        ...(gpt5Result.key_topics || []),
-        ...(gpt5NanoResult.key_topics || [])
-      ])).slice(0, 10),
-      confidence_score: Math.max(gpt5Result.confidence_score || 0, gpt5NanoResult.confidence_score || 0)
+
+    // Save analysis to database
+    const analysisRecord = {
+      user_id: user.id,
+      candidate_id,
+      undecided_percentage: undecidedPercentage,
+      neutral_profiles_count: neutralCount,
+      total_profiles_analyzed: totalCount,
+      behavioral_patterns: aiAnalysis.behavioral_patterns || [],
+      decision_triggers: aiAnalysis.decision_triggers || [],
+      demographic_profile: aiAnalysis.demographic_profile || {},
+      persuasion_strategies: aiAnalysis.persuasion_strategies || [],
+      sentiment_fluctuation_score: aiAnalysis.sentiment_fluctuation_score || 50,
+      confidence_score: aiAnalysis.confidence_score || 50,
+      key_topics: aiAnalysis.key_topics || topKeywords,
+      ai_model_used: 'openai/gpt-5-mini',
+      social_media_breakdown: socialMediaBreakdown,
+      temporal_evolution: temporalEvolution,
+      candidates_comparison: [],
+      analysis_period_start: period_start || null,
+      analysis_period_end: period_end || null
     };
 
-    // Insert analysis into database
-    const { data: analysisRecord, error: insertError } = await supabaseClient
+    const { data: savedAnalysis, error: saveError } = await supabaseAdmin
       .from('undecided_analyses')
-      .insert({
-        user_id: user.id,
-        candidate_id,
-        undecided_percentage: parseFloat(undecidedPercentage.toFixed(2)),
-        neutral_profiles_count: neutralCount,
-        total_profiles_analyzed: totalCount,
-        behavioral_patterns: parsedResult.behavioral_patterns,
-        decision_triggers: parsedResult.decision_triggers,
-        demographic_profile: parsedResult.demographic_profile,
-        key_topics: parsedResult.key_topics,
-        persuasion_strategies: parsedResult.persuasion_strategies,
-        sentiment_fluctuation_score: parsedResult.sentiment_fluctuation_score,
-        ai_model_used: 'google/gemini-2.5-flash',
-        confidence_score: parsedResult.confidence_score,
-        analysis_period_start: period_start || null,
-        analysis_period_end: period_end || null,
-        social_media_breakdown: socialMediaBreakdown,
-        temporal_evolution: temporalEvolution,
-        candidates_comparison: candidatesComparison,
-      })
+      .insert(analysisRecord)
       .select()
       .single();
 
-    if (insertError) {
-      console.error('Insert error:', insertError);
-      throw insertError;
+    if (saveError) {
+      console.error('Error saving analysis:', saveError);
+    } else {
+      console.log('✓ Analysis saved with ID:', savedAnalysis.id);
     }
 
-    console.log('Analysis completed successfully');
+    const response = {
+      success: true,
+      analysis: {
+        id: savedAnalysis?.id,
+        candidate_name: candidate.full_name,
+        ...analysisRecord
+      }
+    };
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        analysis: analysisRecord,
-        message: 'Análise de eleitores indecisos concluída com sucesso'
-      }),
+      JSON.stringify(response),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
     console.error('Error in analyze-undecided function:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    const errorDetails = error instanceof Error ? error.toString() : String(error);
     return new Response(
       JSON.stringify({ 
-        error: errorMessage,
-        details: errorDetails
+        error: error instanceof Error ? error.message : 'Unknown error',
+        details: String(error)
       }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
