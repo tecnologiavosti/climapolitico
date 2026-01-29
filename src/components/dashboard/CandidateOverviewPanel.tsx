@@ -105,21 +105,16 @@ export function CandidateOverviewPanel({ candidateId }: CandidateOverviewPanelPr
       }
 
       // Fetch social interactions for this candidate
-      let interactionsQuery = supabase
+      // We fetch ALL interactions for the candidate (no user_id filter) to get accurate totals
+      const { data: interactions, error: interactionsError } = await supabase
         .from('social_interactions')
         .select('id, sentiment_label, sentiment_score, likes_count, replies_count, shares_count, social_network, comment_author')
         .eq('candidate_id', candidateId);
-
-      if (!isAdmin && user) {
-        interactionsQuery = interactionsQuery.eq('user_id', user.id);
-      }
-
-      const { data: interactions, error: interactionsError } = await interactionsQuery;
       
-      // Calculate consolidated metrics
-      const totalMentions = analyses?.reduce((sum, a) => sum + (a.mentions_count || 0), 0) || candidate?.mentions || 0;
+      // Calculate consolidated metrics from interactions (real data)
+      const totalMentions = interactions?.length || candidate?.mentions || 0;
       
-      // Calculate unique authors from interactions or sources
+      // Calculate unique authors from interactions
       const uniqueAuthorsSet = new Set<string>();
       interactions?.forEach(i => {
         if (i.comment_author) uniqueAuthorsSet.add(i.comment_author);
@@ -158,28 +153,43 @@ export function CandidateOverviewPanel({ candidateId }: CandidateOverviewPanelPr
 
       const totalSentimentItems = sentimentCounts.positive + sentimentCounts.neutral + sentimentCounts.negative;
 
-      // Calculate network breakdown
+      // Calculate network breakdown from interactions (real data)
       const networkMap: Record<string, { mentions: number; engagement: number; sentimentSum: number; count: number }> = {};
       
-      sourcesData.forEach(s => {
-        const network = s.social_network || 'Outro';
+      // Build from interactions first (this is our primary real data source now)
+      interactions?.forEach(i => {
+        const network = i.social_network || 'Outro';
         if (!networkMap[network]) {
           networkMap[network] = { mentions: 0, engagement: 0, sentimentSum: 0, count: 0 };
         }
-        networkMap[network].mentions += (s.posts_collected || 0) + (s.comments_collected || 0);
-        networkMap[network].engagement += s.interactions_count || 0;
-      });
-
-      // Add from analyses
-      analyses?.forEach(a => {
-        const network = a.social_network || 'Outro';
-        if (!networkMap[network]) {
-          networkMap[network] = { mentions: 0, engagement: 0, sentimentSum: 0, count: 0 };
-        }
-        networkMap[network].mentions += a.mentions_count || 0;
-        networkMap[network].sentimentSum += a.sentiment_score || 0;
+        networkMap[network].mentions += 1;
+        networkMap[network].engagement += (i.likes_count || 0) + (i.replies_count || 0) + (i.shares_count || 0);
+        networkMap[network].sentimentSum += (i.sentiment_score || 0.5) * 100;
         networkMap[network].count++;
       });
+
+      // Fallback to sourcesData if no interactions
+      if (Object.keys(networkMap).length === 0) {
+        sourcesData.forEach(s => {
+          const network = s.social_network || 'Outro';
+          if (!networkMap[network]) {
+            networkMap[network] = { mentions: 0, engagement: 0, sentimentSum: 0, count: 0 };
+          }
+          networkMap[network].mentions += (s.posts_collected || 0) + (s.comments_collected || 0);
+          networkMap[network].engagement += s.interactions_count || 0;
+        });
+
+        // Add from analyses
+        analyses?.forEach(a => {
+          const network = a.social_network || 'Outro';
+          if (!networkMap[network]) {
+            networkMap[network] = { mentions: 0, engagement: 0, sentimentSum: 0, count: 0 };
+          }
+          networkMap[network].mentions += a.mentions_count || 0;
+          networkMap[network].sentimentSum += a.sentiment_score || 0;
+          networkMap[network].count++;
+        });
+      }
 
       const networkBreakdown = Object.entries(networkMap).map(([network, data]) => ({
         network,
@@ -188,9 +198,9 @@ export function CandidateOverviewPanel({ candidateId }: CandidateOverviewPanelPr
         sentiment: data.count > 0 ? Math.round(data.sentimentSum / data.count) : 50
       })).sort((a, b) => b.mentions - a.mentions);
 
-      // Calculate average sentiment
-      const avgSentiment = analyses?.length 
-        ? Math.round(analyses.reduce((sum, a) => sum + (a.sentiment_score || 50), 0) / analyses.length)
+      // Calculate average sentiment from interactions (real data)
+      const avgSentiment = interactions && interactions.length > 0
+        ? Math.round(interactions.reduce((sum, i) => sum + ((i.sentiment_score || 0.5) * 100), 0) / interactions.length)
         : candidate?.sentiment || 50;
 
       // Determine dominant sentiment
