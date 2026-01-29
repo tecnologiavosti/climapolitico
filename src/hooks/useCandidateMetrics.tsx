@@ -24,6 +24,16 @@ export interface CandidateMetrics {
   }>;
   followersCount: string | null;
   lastCalculatedAt: string | null;
+  // Derived properties
+  dominantSentiment: 'Positivo' | 'Negativo' | 'Neutro';
+  dataConfidence: 'high' | 'medium' | 'low';
+  analysisCount: number;
+  lastAnalysisDate: string | null;
+  sentimentDistribution: {
+    positive: number;
+    neutral: number;
+    negative: number;
+  };
 }
 
 interface NetworkBreakdownItem {
@@ -73,6 +83,28 @@ export function useCandidateMetrics(candidateId: string | null) {
         return await calculateMetricsOnTheFly(candidateId, user.id);
       }
 
+      // Calculate derived properties
+      const totalSentiment = data.positive_count + data.neutral_count + data.negative_count;
+      const sentimentDistribution = {
+        positive: totalSentiment > 0 ? Math.round((data.positive_count / totalSentiment) * 100) : 33,
+        neutral: totalSentiment > 0 ? Math.round((data.neutral_count / totalSentiment) * 100) : 34,
+        negative: totalSentiment > 0 ? Math.round((data.negative_count / totalSentiment) * 100) : 33,
+      };
+
+      let dominantSentiment: 'Positivo' | 'Negativo' | 'Neutro' = 'Neutro';
+      if (data.positive_count > data.neutral_count && data.positive_count > data.negative_count) {
+        dominantSentiment = 'Positivo';
+      } else if (data.negative_count > data.neutral_count && data.negative_count > data.positive_count) {
+        dominantSentiment = 'Negativo';
+      }
+
+      let dataConfidence: 'high' | 'medium' | 'low' = 'low';
+      if (data.total_mentions > 500 && data.unique_authors > 100) {
+        dataConfidence = 'high';
+      } else if (data.total_mentions > 100 && data.unique_authors > 20) {
+        dataConfidence = 'medium';
+      }
+
       return {
         candidateId: data.candidate_id,
         totalMentions: data.total_mentions,
@@ -84,10 +116,15 @@ export function useCandidateMetrics(candidateId: string | null) {
         positiveCount: data.positive_count,
         neutralCount: data.neutral_count,
         negativeCount: data.negative_count,
-        averageSentiment: data.average_sentiment,
+        averageSentiment: data.average_sentiment ?? 50,
         networkBreakdown: parseNetworkBreakdown(data.network_breakdown),
         followersCount: data.followers_count,
         lastCalculatedAt: data.last_calculated_at,
+        dominantSentiment,
+        dataConfidence,
+        analysisCount: data.total_mentions > 0 ? 1 : 0,
+        lastAnalysisDate: data.last_calculated_at,
+        sentimentDistribution,
       };
     },
     enabled: !!candidateId && !!user,
@@ -121,22 +158,50 @@ export function useAllCandidateMetrics() {
         return [];
       }
 
-      return (data || []).map(item => ({
-        candidateId: item.candidate_id,
-        totalMentions: item.total_mentions,
-        uniqueAuthors: item.unique_authors,
-        totalEngagement: item.total_engagement,
-        totalLikes: item.total_likes,
-        totalReplies: item.total_replies,
-        totalShares: item.total_shares,
-        positiveCount: item.positive_count,
-        neutralCount: item.neutral_count,
-        negativeCount: item.negative_count,
-        averageSentiment: item.average_sentiment,
-        networkBreakdown: parseNetworkBreakdown(item.network_breakdown),
-        followersCount: item.followers_count,
-        lastCalculatedAt: item.last_calculated_at,
-      }));
+      return (data || []).map(item => {
+        const totalSentiment = item.positive_count + item.neutral_count + item.negative_count;
+        const sentimentDistribution = {
+          positive: totalSentiment > 0 ? Math.round((item.positive_count / totalSentiment) * 100) : 33,
+          neutral: totalSentiment > 0 ? Math.round((item.neutral_count / totalSentiment) * 100) : 34,
+          negative: totalSentiment > 0 ? Math.round((item.negative_count / totalSentiment) * 100) : 33,
+        };
+
+        let dominantSentiment: 'Positivo' | 'Negativo' | 'Neutro' = 'Neutro';
+        if (item.positive_count > item.neutral_count && item.positive_count > item.negative_count) {
+          dominantSentiment = 'Positivo';
+        } else if (item.negative_count > item.neutral_count && item.negative_count > item.positive_count) {
+          dominantSentiment = 'Negativo';
+        }
+
+        let dataConfidence: 'high' | 'medium' | 'low' = 'low';
+        if (item.total_mentions > 500 && item.unique_authors > 100) {
+          dataConfidence = 'high';
+        } else if (item.total_mentions > 100 && item.unique_authors > 20) {
+          dataConfidence = 'medium';
+        }
+
+        return {
+          candidateId: item.candidate_id,
+          totalMentions: item.total_mentions,
+          uniqueAuthors: item.unique_authors,
+          totalEngagement: item.total_engagement,
+          totalLikes: item.total_likes,
+          totalReplies: item.total_replies,
+          totalShares: item.total_shares,
+          positiveCount: item.positive_count,
+          neutralCount: item.neutral_count,
+          negativeCount: item.negative_count,
+          averageSentiment: item.average_sentiment ?? 50,
+          networkBreakdown: parseNetworkBreakdown(item.network_breakdown),
+          followersCount: item.followers_count,
+          lastCalculatedAt: item.last_calculated_at,
+          dominantSentiment,
+          dataConfidence,
+          analysisCount: item.total_mentions > 0 ? 1 : 0,
+          lastAnalysisDate: item.last_calculated_at,
+          sentimentDistribution,
+        };
+      });
     },
     enabled: !!user,
   });
@@ -205,6 +270,28 @@ async function calculateMetricsOnTheFly(candidateId: string, userId: string): Pr
     avgSentiment: data.count > 0 ? Math.round(data.sentimentSum / data.count) : 50
   })).sort((a, b) => b.mentions - a.mentions);
 
+  // Calculate derived properties
+  const totalSentiment = positiveCount + neutralCount + negativeCount;
+  const sentimentDistribution = {
+    positive: totalSentiment > 0 ? Math.round((positiveCount / totalSentiment) * 100) : 33,
+    neutral: totalSentiment > 0 ? Math.round((neutralCount / totalSentiment) * 100) : 34,
+    negative: totalSentiment > 0 ? Math.round((negativeCount / totalSentiment) * 100) : 33,
+  };
+
+  let dominantSentiment: 'Positivo' | 'Negativo' | 'Neutro' = 'Neutro';
+  if (positiveCount > neutralCount && positiveCount > negativeCount) {
+    dominantSentiment = 'Positivo';
+  } else if (negativeCount > neutralCount && negativeCount > positiveCount) {
+    dominantSentiment = 'Negativo';
+  }
+
+  let dataConfidence: 'high' | 'medium' | 'low' = 'low';
+  if (totalMentions > 500 && uniqueAuthors > 100) {
+    dataConfidence = 'high';
+  } else if (totalMentions > 100 && uniqueAuthors > 20) {
+    dataConfidence = 'medium';
+  }
+
   return {
     candidateId,
     totalMentions,
@@ -220,5 +307,10 @@ async function calculateMetricsOnTheFly(candidateId: string, userId: string): Pr
     networkBreakdown,
     followersCount: null,
     lastCalculatedAt: null,
+    dominantSentiment,
+    dataConfidence,
+    analysisCount: totalMentions > 0 ? 1 : 0,
+    lastAnalysisDate: null,
+    sentimentDistribution,
   };
 }
