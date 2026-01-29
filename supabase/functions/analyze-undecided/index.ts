@@ -3,12 +3,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
@@ -79,16 +79,22 @@ serve(async (req) => {
     console.log(`✓ Found ${interactions.length} interactions for analysis`);
 
     // Classify sentiment from interactions
-    const classifyMention = (score: number | null) => {
+    // NOTE: In our dataset, sentiment_score is 0..1 (neutral ~= 0.5) and sentiment_label is PT-BR.
+    const classifyMention = (sentimentLabel: string | null, score: number | null) => {
+      const label = (sentimentLabel || '').trim().toLowerCase();
+      if (label === 'positivo') return 'positive';
+      if (label === 'negativo') return 'negative';
+      if (label === 'neutro') return 'neutral';
+
       if (score === null) return 'neutral';
-      if (score >= 60) return 'positive';
-      if (score <= 40) return 'negative';
+      if (score >= 0.6) return 'positive';
+      if (score <= 0.4) return 'negative';
       return 'neutral';
     };
 
-    const positiveInteractions = interactions.filter(i => classifyMention(i.sentiment_score) === 'positive');
-    const negativeInteractions = interactions.filter(i => classifyMention(i.sentiment_score) === 'negative');
-    const neutralInteractions = interactions.filter(i => classifyMention(i.sentiment_score) === 'neutral');
+    const positiveInteractions = interactions.filter(i => classifyMention(i.sentiment_label, i.sentiment_score) === 'positive');
+    const negativeInteractions = interactions.filter(i => classifyMention(i.sentiment_label, i.sentiment_score) === 'negative');
+    const neutralInteractions = interactions.filter(i => classifyMention(i.sentiment_label, i.sentiment_score) === 'neutral');
 
     const totalCount = interactions.length;
     const neutralCount = neutralInteractions.length;
@@ -129,7 +135,7 @@ serve(async (req) => {
       }
       socialMediaMap[network].mentions += 1;
       socialMediaMap[network].engagement += (interaction.likes_count || 0) + (interaction.replies_count || 0) + (interaction.shares_count || 0);
-      if (classifyMention(interaction.sentiment_score) === 'neutral') {
+      if (classifyMention(interaction.sentiment_label, interaction.sentiment_score) === 'neutral') {
         socialMediaMap[network].neutralCount += 1;
       }
     });
@@ -155,7 +161,7 @@ serve(async (req) => {
       const entry = dateMap.get(date)!;
       entry.total += 1;
       
-      const sentiment = classifyMention(interaction.sentiment_score);
+      const sentiment = classifyMention(interaction.sentiment_label, interaction.sentiment_score);
       if (sentiment === 'neutral') entry.neutral += 1;
       else if (sentiment === 'positive') entry.positive += 1;
       else entry.negative += 1;
@@ -264,15 +270,24 @@ Retorne APENAS JSON válido (sem markdown):
           { role: 'system', content: 'Você é um especialista em análise política. Retorne sempre JSON válido, sem markdown.' },
           { role: 'user', content: aiPrompt }
         ],
-        temperature: 0.7,
-        max_tokens: 2000,
+        // OpenAI-compatible gateway: use max_completion_tokens (max_tokens is rejected for newer models)
+        max_completion_tokens: 1200,
       }),
     });
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
       console.error('AI API error:', errorText);
-      throw new Error(`AI API error: ${aiResponse.status}`);
+      return new Response(
+        JSON.stringify({
+          error: `AI API error: ${aiResponse.status}`,
+          details: errorText,
+        }),
+        {
+          status: aiResponse.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
     }
 
     const aiData = await aiResponse.json();
