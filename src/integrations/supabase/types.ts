@@ -308,6 +308,77 @@ export type Database = {
           },
         ]
       }
+      candidate_metrics_cache: {
+        Row: {
+          average_sentiment: number | null
+          candidate_id: string
+          created_at: string
+          followers_count: string | null
+          id: string
+          last_calculated_at: string
+          negative_count: number
+          network_breakdown: Json
+          neutral_count: number
+          positive_count: number
+          total_engagement: number
+          total_likes: number
+          total_mentions: number
+          total_replies: number
+          total_shares: number
+          unique_authors: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          average_sentiment?: number | null
+          candidate_id: string
+          created_at?: string
+          followers_count?: string | null
+          id?: string
+          last_calculated_at?: string
+          negative_count?: number
+          network_breakdown?: Json
+          neutral_count?: number
+          positive_count?: number
+          total_engagement?: number
+          total_likes?: number
+          total_mentions?: number
+          total_replies?: number
+          total_shares?: number
+          unique_authors?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          average_sentiment?: number | null
+          candidate_id?: string
+          created_at?: string
+          followers_count?: string | null
+          id?: string
+          last_calculated_at?: string
+          negative_count?: number
+          network_breakdown?: Json
+          neutral_count?: number
+          positive_count?: number
+          total_engagement?: number
+          total_likes?: number
+          total_mentions?: number
+          total_replies?: number
+          total_shares?: number
+          unique_authors?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_metrics_cache_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidate_rankings: {
         Row: {
           candidate_id: string

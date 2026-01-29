@@ -494,29 +494,36 @@ Deno.serve(async (req) => {
 
     const totalLikes = insertedRowsForStats.reduce((sum, item) => sum + (item.likes_count || 0), 0);
 
-    // Get total count after insertion
+    // Recalculate metrics cache for this candidate (single source of truth)
+    console.log('Triggering metrics recalculation...');
+    try {
+      const metricsResponse = await fetch(
+        `${supabaseUrl}/functions/v1/recalculate-candidate-metrics`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': authHeader,
+          },
+          body: JSON.stringify({ candidateId }),
+        }
+      );
+      
+      if (!metricsResponse.ok) {
+        console.warn('Metrics recalculation returned non-OK:', await metricsResponse.text());
+      } else {
+        console.log('Metrics recalculated successfully');
+      }
+    } catch (metricsError) {
+      console.warn('Failed to recalculate metrics (non-blocking):', metricsError);
+    }
+
+    // Get total count after insertion (from cache or direct count)
     const { count: totalCount } = await supabase
       .from('social_interactions')
       .select('*', { count: 'exact', head: true })
       .eq('candidate_id', candidateId)
-      .eq('social_network', 'YouTube');
-
-    // Keep the Candidates list in sync: update the cached mentions count for this candidate
-    // (The UI currently reads candidates.mentions, not a live COUNT(*) over social_interactions.)
-    if (typeof totalCount === 'number') {
-      const { error: candidateUpdateError } = await supabase
-        .from('candidates')
-        .update({
-          mentions: totalCount,
-          last_analysis_at: new Date().toISOString(),
-        })
-        .eq('id', candidateId)
-        .eq('user_id', userId);
-
-      if (candidateUpdateError) {
-        console.error('Failed to update candidate mentions:', candidateUpdateError);
-      }
-    }
+      .eq('user_id', userId);
 
     const stats = {
       videosFound,

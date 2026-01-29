@@ -44,3 +44,9 @@ verify_jwt = false
 
 [functions.search-youtube-mentions]
 verify_jwt = false
+
+[functions.recalculate-candidate-metrics]
+verify_jwt = false
+
+[functions.deduplicate-profiles]
+verify_jwt = true
