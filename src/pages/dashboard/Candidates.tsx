@@ -202,9 +202,22 @@ export default function Candidates() {
         { duration: 5000 }
       );
     },
+    onSettled: () => {
+      // Mesmo que o browser acuse “Failed to fetch”, a coleta pode ter concluído no backend.
+      // Forçamos um refresh para sincronizar a contagem de menções.
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+    },
     onError: (error: Error) => {
       console.error('YouTube collection error:', error);
-      toast.error('Erro ao coletar dados do YouTube: ' + error.message);
+      const msg = (error?.message || '').toLowerCase();
+      if (msg.includes('failed to fetch') || msg.includes('functionsfetcherror')) {
+        toast.error('A conexão falhou durante a coleta. Vou atualizar a lista — em alguns casos a coleta termina mesmo assim.', {
+          duration: 7000,
+        });
+      } else {
+        toast.error('Erro ao coletar dados do YouTube: ' + error.message);
+      }
     },
   });
 
