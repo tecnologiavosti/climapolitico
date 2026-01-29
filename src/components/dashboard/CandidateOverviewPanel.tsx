@@ -61,41 +61,18 @@ export function CandidateOverviewPanel({ candidateId }: CandidateOverviewPanelPr
     );
   }
 
-  // Calculate derived values
-  const totalSentimentItems = metrics.positiveCount + metrics.neutralCount + metrics.negativeCount;
-  const sentimentDistribution = {
-    positive: totalSentimentItems > 0 ? Math.round((metrics.positiveCount / totalSentimentItems) * 100) : 33,
-    neutral: totalSentimentItems > 0 ? Math.round((metrics.neutralCount / totalSentimentItems) * 100) : 34,
-    negative: totalSentimentItems > 0 ? Math.round((metrics.negativeCount / totalSentimentItems) * 100) : 33
-  };
-
-  // Determine dominant sentiment
-  let dominantSentiment: "Positivo" | "Negativo" | "Neutro" = "Neutro";
-  if (metrics.positiveCount > metrics.neutralCount && metrics.positiveCount > metrics.negativeCount) {
-    dominantSentiment = "Positivo";
-  } else if (metrics.negativeCount > metrics.neutralCount && metrics.negativeCount > metrics.positiveCount) {
-    dominantSentiment = "Negativo";
-  }
-
-  // Determine data confidence
-  let dataConfidence: "high" | "medium" | "low" = "low";
-  if (metrics.totalMentions > 500 && metrics.uniqueAuthors > 100) {
-    dataConfidence = "high";
-  } else if (metrics.totalMentions > 100 && metrics.uniqueAuthors > 20) {
-    dataConfidence = "medium";
-  }
-
+  // Use derived values from hook
   const sentimentPieData = [
-    { name: "Positivo", value: sentimentDistribution.positive, color: SENTIMENT_COLORS.positive },
-    { name: "Neutro", value: sentimentDistribution.neutral, color: SENTIMENT_COLORS.neutral },
-    { name: "Negativo", value: sentimentDistribution.negative, color: SENTIMENT_COLORS.negative }
+    { name: "Positivo", value: metrics.sentimentDistribution.positive, color: SENTIMENT_COLORS.positive },
+    { name: "Neutro", value: metrics.sentimentDistribution.neutral, color: SENTIMENT_COLORS.neutral },
+    { name: "Negativo", value: metrics.sentimentDistribution.negative, color: SENTIMENT_COLORS.negative }
   ].filter(d => d.value > 0);
 
   const confidenceLabel = {
     high: { text: "Alta Confiança", icon: CheckCircle, color: "text-success" },
     medium: { text: "Média Confiança", icon: Info, color: "text-warning" },
     low: { text: "Baixa Confiança", icon: AlertTriangle, color: "text-destructive" }
-  }[dataConfidence];
+  }[metrics.dataConfidence];
 
   const ConfidenceIcon = confidenceLabel.icon;
 
@@ -352,8 +329,8 @@ export function CandidateOverviewPanel({ candidateId }: CandidateOverviewPanelPr
                   </div>
                   <div className="flex items-center gap-4 text-sm text-muted-foreground">
                     <span>{network.mentions.toLocaleString('pt-BR')} menções</span>
-                    <Badge variant={network.sentiment >= 60 ? 'default' : network.sentiment >= 40 ? 'secondary' : 'destructive'}>
-                      {network.sentiment}%
+                    <Badge variant={network.avgSentiment >= 60 ? 'default' : network.avgSentiment >= 40 ? 'secondary' : 'destructive'}>
+                      {network.avgSentiment}%
                     </Badge>
                   </div>
                 </div>
