@@ -41,13 +41,13 @@ export default function Overview() {
     }
   });
 
-  // Query: Análises de candidatos
-  const { data: analyses, isLoading: loadingAnalyses } = useQuery({
-    queryKey: ['analyses-overview', isAdmin],
+  // Query: Interações sociais reais (YouTube, etc.)
+  const { data: socialInteractions, isLoading: loadingInteractions } = useQuery({
+    queryKey: ['social-interactions-overview', isAdmin],
     queryFn: async () => {
       let query = supabase
-        .from('candidate_analyses')
-        .select('id, candidate_id, sentiment_score, mentions_count, ideology_label, created_at, sentiment_label');
+        .from('social_interactions')
+        .select('id, candidate_id, sentiment_label, sentiment_score, likes_count, social_network, created_at, comment_author');
       
       if (!isAdmin && user) {
         query = query.eq('user_id', user.id);
@@ -106,28 +106,30 @@ export default function Overview() {
     }
   });
 
-  // Calcular métricas
-  const totalMentions = analyses?.reduce((sum, a) => sum + (a.mentions_count || 0), 0) || 0;
+  // Calcular métricas a partir de dados REAIS (social_interactions)
+  const totalMentions = socialInteractions?.length || 0;
+  const uniqueAuthors = new Set(socialInteractions?.map(i => i.comment_author).filter(Boolean)).size;
   const totalCandidates = candidates?.length || 0;
-  const avgSentiment = analyses?.length 
-    ? Math.round(analyses.reduce((sum, a) => sum + (a.sentiment_score || 0), 0) / analyses.length)
+  const totalEngagement = socialInteractions?.reduce((sum, i) => sum + (i.likes_count || 0), 0) || 0;
+  const avgSentiment = socialInteractions?.length 
+    ? Math.round(socialInteractions.reduce((sum, i) => sum + ((i.sentiment_score || 0.5) * 100), 0) / socialInteractions.length)
     : 0;
   const totalSpeeches = speeches?.length || 0;
 
-  // Preparar dados de sentimento por dia (últimos 7 dias)
+  // Preparar dados de sentimento por dia (últimos 7 dias) - usando dados REAIS
   const sentimentData = Array.from({ length: 7 }, (_, i) => {
     const date = subDays(new Date(), 6 - i);
     const dayStart = startOfDay(date);
     const dayEnd = endOfDay(date);
     
-    const dayAnalyses = analyses?.filter(a => {
-      const createdAt = new Date(a.created_at || '');
+    const dayInteractions = socialInteractions?.filter(interaction => {
+      const createdAt = new Date(interaction.created_at || '');
       return createdAt >= dayStart && createdAt <= dayEnd;
     }) || [];
 
-    const positive = dayAnalyses.filter(a => a.sentiment_label === 'Positivo').length;
-    const negative = dayAnalyses.filter(a => a.sentiment_label === 'Negativo').length;
-    const neutral = dayAnalyses.filter(a => a.sentiment_label === 'Neutro').length;
+    const positive = dayInteractions.filter(i => i.sentiment_label === 'Positivo').length;
+    const negative = dayInteractions.filter(i => i.sentiment_label === 'Negativo').length;
+    const neutral = dayInteractions.filter(i => i.sentiment_label === 'Neutro').length;
 
     return {
       name: format(date, 'EEE', { locale: ptBR }),
@@ -147,21 +149,20 @@ export default function Overview() {
       sentiment: Math.round((c.sentiment || 0) * 100)
     })) || [];
 
-  // Preparar dados de ideologia
-  const ideologyCount = analyses?.reduce((acc, a) => {
-    const ideology = a.ideology_label || 'Neutro';
-    acc[ideology] = (acc[ideology] || 0) + 1;
+  // Preparar dados por rede social (dados REAIS)
+  const networkCount = socialInteractions?.reduce((acc, i) => {
+    const network = i.social_network || 'Outro';
+    acc[network] = (acc[network] || 0) + 1;
     return acc;
   }, {} as Record<string, number>) || {};
 
-  const ideologyData = [
-    { name: "Esquerda", value: ideologyCount['Esquerda'] || 0, color: COLORS[0] },
-    { name: "Centro", value: ideologyCount['Centro'] || 0, color: COLORS[2] },
-    { name: "Direita", value: ideologyCount['Direita'] || 0, color: COLORS[1] },
-    { name: "Neutro", value: ideologyCount['Neutro'] || 0, color: COLORS[3] },
-  ].filter(d => d.value > 0);
+  const networkData = Object.entries(networkCount).map(([name, value], index) => ({
+    name,
+    value,
+    color: COLORS[index % COLORS.length]
+  })).filter(d => d.value > 0);
 
-  const isLoading = loadingCandidates || loadingAnalyses || loadingSpeeches || loadingRankings;
+  const isLoading = loadingCandidates || loadingInteractions || loadingSpeeches || loadingRankings;
   return (
     <div className="space-y-6">
       {/* Candidate Selector for Consolidated View */}
@@ -209,7 +210,7 @@ export default function Overview() {
               )}
               <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
                 <Activity className="h-4 w-4" />
-                <span>{analyses?.length || 0} análises</span>
+                <span>{uniqueAuthors} autores únicos</span>
               </div>
             </div>
             <div className="p-3 bg-gradient-primary rounded-lg">
@@ -325,23 +326,23 @@ export default function Overview() {
           )}
         </Card>
 
-        {/* Ideology Distribution */}
+        {/* Network Distribution */}
         <Card className="p-6">
           <div className="mb-4">
-            <h3 className="text-lg font-bold">Distribuição Ideológica</h3>
-            <p className="text-sm text-muted-foreground">Análise do público</p>
+            <h3 className="text-lg font-bold">Distribuição por Rede Social</h3>
+            <p className="text-sm text-muted-foreground">Fontes de dados reais</p>
           </div>
           {isLoading ? (
             <Skeleton className="h-[300px] w-full" />
-          ) : ideologyData.length === 0 ? (
+          ) : networkData.length === 0 ? (
             <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-              <p>Nenhum dado de ideologia disponível</p>
+              <p>Nenhum dado coletado ainda</p>
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
-                  data={ideologyData}
+                  data={networkData}
                   cx="50%"
                   cy="50%"
                   labelLine={false}
@@ -350,7 +351,7 @@ export default function Overview() {
                   fill="#8884d8"
                   dataKey="value"
                 >
-                  {ideologyData.map((entry, index) => (
+                  {networkData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
