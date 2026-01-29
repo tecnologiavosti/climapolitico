@@ -336,6 +336,21 @@ export default function UndecidedAnalysis() {
 
     let filteredAnalysis = { ...selectedAnalysis };
 
+    // Normalize social media breakdown to avoid runtime errors when fields are missing
+    const normalizeSource = (s: any) => ({
+      network: s?.network ?? 'Outro',
+      mentions: Number(s?.mentions ?? 0),
+      engagement: Number(s?.engagement ?? 0),
+      neutralCount: Number(s?.neutralCount ?? s?.neutral_count ?? 0),
+    });
+
+    if (filteredAnalysis.social_media_breakdown?.sources) {
+      filteredAnalysis.social_media_breakdown = {
+        ...filteredAnalysis.social_media_breakdown,
+        sources: filteredAnalysis.social_media_breakdown.sources.map(normalizeSource),
+      };
+    }
+
     // Filter social media breakdown
     if (socialNetworkFilter !== "all" && filteredAnalysis.social_media_breakdown?.sources) {
       const filteredSources = filteredAnalysis.social_media_breakdown.sources.filter(
@@ -343,10 +358,9 @@ export default function UndecidedAnalysis() {
       );
       filteredAnalysis.social_media_breakdown = {
         sources: filteredSources,
-        total_posts: filteredSources.reduce((sum: number, s: any) => sum + s.posts, 0),
-        total_comments: filteredSources.reduce((sum: number, s: any) => sum + s.comments, 0),
-        total_interactions: filteredSources.reduce((sum: number, s: any) => sum + s.interactions, 0),
-        total_profiles: filteredSources.reduce((sum: number, s: any) => sum + s.profiles, 0),
+        total_mentions: filteredSources.reduce((sum: number, s: any) => sum + Number(s.mentions ?? 0), 0),
+        total_engagement: filteredSources.reduce((sum: number, s: any) => sum + Number(s.engagement ?? 0), 0),
+        total_neutral: filteredSources.reduce((sum: number, s: any) => sum + Number(s.neutralCount ?? 0), 0),
       };
     }
 
@@ -740,9 +754,9 @@ export default function UndecidedAnalysis() {
                           contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
                         />
                         <Legend />
-                        <Bar dataKey="posts" fill="hsl(var(--chart-1))" name="Posts" />
-                        <Bar dataKey="comments" fill="hsl(var(--chart-2))" name="Comentários" />
-                        <Bar dataKey="interactions" fill="hsl(var(--chart-3))" name="Interações" />
+                        <Bar dataKey="mentions" fill="hsl(var(--chart-1))" name="Menções" />
+                        <Bar dataKey="engagement" fill="hsl(var(--chart-2))" name="Engajamento" />
+                        <Bar dataKey="neutralCount" fill="hsl(var(--chart-3))" name="Neutras" />
                       </BarChart>
                     </ResponsiveContainer>
 
@@ -750,20 +764,18 @@ export default function UndecidedAnalysis() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Rede Social</TableHead>
-                          <TableHead className="text-right">Posts</TableHead>
-                          <TableHead className="text-right">Comentários</TableHead>
-                          <TableHead className="text-right">Interações</TableHead>
-                          <TableHead className="text-right">Perfis</TableHead>
+                          <TableHead className="text-right">Menções</TableHead>
+                          <TableHead className="text-right">Engajamento</TableHead>
+                          <TableHead className="text-right">Neutras</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {filteredAnalysis.social_media_breakdown.sources.map((source: any) => (
                           <TableRow key={source.network}>
                             <TableCell className="font-medium">{source.network}</TableCell>
-                            <TableCell className="text-right">{source.posts.toLocaleString('pt-BR')}</TableCell>
-                            <TableCell className="text-right">{source.comments.toLocaleString('pt-BR')}</TableCell>
-                            <TableCell className="text-right">{source.interactions.toLocaleString('pt-BR')}</TableCell>
-                            <TableCell className="text-right">{source.profiles}</TableCell>
+                            <TableCell className="text-right">{Number(source.mentions ?? 0).toLocaleString('pt-BR')}</TableCell>
+                            <TableCell className="text-right">{Number(source.engagement ?? 0).toLocaleString('pt-BR')}</TableCell>
+                            <TableCell className="text-right">{Number(source.neutralCount ?? 0).toLocaleString('pt-BR')}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -771,20 +783,20 @@ export default function UndecidedAnalysis() {
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t">
                       <div className="text-center">
-                        <p className="text-sm text-muted-foreground">Total Posts</p>
-                        <p className="text-2xl font-bold">{filteredAnalysis.social_media_breakdown.total_posts?.toLocaleString('pt-BR')}</p>
+                        <p className="text-sm text-muted-foreground">Total Menções</p>
+                        <p className="text-2xl font-bold">{Number(filteredAnalysis.social_media_breakdown.total_mentions ?? 0).toLocaleString('pt-BR')}</p>
                       </div>
                       <div className="text-center">
-                        <p className="text-sm text-muted-foreground">Total Comentários</p>
-                        <p className="text-2xl font-bold">{filteredAnalysis.social_media_breakdown.total_comments?.toLocaleString('pt-BR')}</p>
+                        <p className="text-sm text-muted-foreground">Total Engajamento</p>
+                        <p className="text-2xl font-bold">{Number(filteredAnalysis.social_media_breakdown.total_engagement ?? 0).toLocaleString('pt-BR')}</p>
                       </div>
                       <div className="text-center">
-                        <p className="text-sm text-muted-foreground">Total Interações</p>
-                        <p className="text-2xl font-bold">{filteredAnalysis.social_media_breakdown.total_interactions?.toLocaleString('pt-BR')}</p>
+                        <p className="text-sm text-muted-foreground">Total Neutras</p>
+                        <p className="text-2xl font-bold">{Number(filteredAnalysis.social_media_breakdown.total_neutral ?? 0).toLocaleString('pt-BR')}</p>
                       </div>
                       <div className="text-center">
-                        <p className="text-sm text-muted-foreground">Total Perfis</p>
-                        <p className="text-2xl font-bold">{filteredAnalysis.social_media_breakdown.total_profiles?.toLocaleString('pt-BR')}</p>
+                        <p className="text-sm text-muted-foreground">Redes</p>
+                        <p className="text-2xl font-bold">{Number(filteredAnalysis.social_media_breakdown.sources?.length ?? 0).toLocaleString('pt-BR')}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -857,7 +869,7 @@ export default function UndecidedAnalysis() {
                             <TableCell className="text-right">
                               <Badge variant="secondary">{candidate.neutral_percentage.toFixed(1)}%</Badge>
                             </TableCell>
-                            <TableCell className="text-right">{candidate.total_mentions.toLocaleString('pt-BR')}</TableCell>
+                            <TableCell className="text-right">{Number(candidate.total_mentions ?? 0).toLocaleString('pt-BR')}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
