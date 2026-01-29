@@ -107,18 +107,23 @@ async function analyzeSentiment(text: string): Promise<SentimentResult> {
   }
 }
 
-async function searchYouTubeVideos(query: string, apiKey: string, maxResults: number = 10): Promise<YouTubeSearchResult> {
+async function searchYouTubeVideos(
+  query: string, 
+  apiKey: string, 
+  maxResults: number = 10,
+  orderBy: 'date' | 'relevance' | 'viewCount' = 'date'
+): Promise<YouTubeSearchResult> {
   const url = new URL('https://www.googleapis.com/youtube/v3/search');
   url.searchParams.set('part', 'snippet');
   url.searchParams.set('q', query);
   url.searchParams.set('type', 'video');
   url.searchParams.set('maxResults', maxResults.toString());
-  url.searchParams.set('order', 'relevance');
+  url.searchParams.set('order', orderBy); // Use date to get newest videos
   url.searchParams.set('relevanceLanguage', 'pt');
   url.searchParams.set('regionCode', 'BR');
   url.searchParams.set('key', apiKey);
 
-  console.log(`Searching YouTube for: "${query}"`);
+  console.log(`Searching YouTube for: "${query}" (order: ${orderBy})`);
   
   const response = await fetch(url.toString());
   
@@ -216,7 +221,7 @@ Deno.serve(async (req) => {
     }
 
     // Parse request body
-    const { candidateId, candidateName, maxVideos = 5, maxCommentsPerVideo = 50 } = await req.json();
+    const { candidateId, candidateName, maxVideos = 10, maxCommentsPerVideo = 100 } = await req.json();
 
     if (!candidateId || !candidateName) {
       return new Response(
@@ -227,18 +232,48 @@ Deno.serve(async (req) => {
 
     console.log(`Starting YouTube collection for candidate: ${candidateName} (${candidateId})`);
 
-    // Search for videos
-    const searchResults = await searchYouTubeVideos(candidateName, youtubeApiKey, maxVideos);
+    // Get already collected comment authors to avoid duplicates
+    const { data: existingComments } = await supabase
+      .from('social_interactions')
+      .select('comment_text, comment_author, original_posted_at')
+      .eq('candidate_id', candidateId)
+      .eq('social_network', 'YouTube');
+
+    // Create a Set of unique identifiers for existing comments
+    const existingCommentsSet = new Set(
+      (existingComments || []).map(c => 
+        `${c.comment_author}:${c.original_posted_at}:${(c.comment_text || '').substring(0, 50)}`
+      )
+    );
     
-    const videosFound = searchResults.items?.length || 0;
-    console.log(`Found ${videosFound} videos`);
+    console.log(`Found ${existingCommentsSet.size} existing comments to skip duplicates`);
+
+    // Search for videos - use 'date' to get newest videos first
+    const searchResults = await searchYouTubeVideos(candidateName, youtubeApiKey, maxVideos, 'date');
+    
+    // Also search by relevance to get popular videos
+    const relevanceResults = await searchYouTubeVideos(candidateName, youtubeApiKey, maxVideos, 'relevance');
+    
+    // Merge and deduplicate video results
+    const allVideoIds = new Set<string>();
+    const allVideos: YouTubeSearchResult['items'] = [];
+    
+    for (const video of [...(searchResults.items || []), ...(relevanceResults.items || [])]) {
+      if (!allVideoIds.has(video.id.videoId)) {
+        allVideoIds.add(video.id.videoId);
+        allVideos.push(video);
+      }
+    }
+    
+    const videosFound = allVideos.length;
+    console.log(`Found ${videosFound} unique videos (date + relevance search)`);
 
     if (videosFound === 0) {
       return new Response(
         JSON.stringify({
           success: true,
           message: 'No videos found for this candidate',
-          stats: { videosFound: 0, commentsCollected: 0, sentimentAnalyzed: 0 }
+          stats: { videosFound: 0, commentsCollected: 0, sentimentAnalyzed: 0, skippedDuplicates: 0 }
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -247,10 +282,11 @@ Deno.serve(async (req) => {
     // Collect comments from each video
     let totalComments = 0;
     let totalAnalyzed = 0;
+    let skippedDuplicates = 0;
     const collectionsToInsert: any[] = [];
     const uniqueAuthors = new Set<string>();
 
-    for (const video of searchResults.items) {
+    for (const video of allVideos) {
       const videoId = video.id.videoId;
       
       try {
@@ -259,8 +295,14 @@ Deno.serve(async (req) => {
         for (const thread of commentsData.items || []) {
           const comment = thread.snippet.topLevelComment.snippet;
           
-          // Skip if comment doesn't mention candidate name (basic filter)
-          const mentionsCandidate = comment.textOriginal.toLowerCase().includes(candidateName.toLowerCase().split(' ')[0]);
+          // Create unique identifier for this comment
+          const commentKey = `${comment.authorDisplayName}:${comment.publishedAt}:${comment.textOriginal.substring(0, 50)}`;
+          
+          // Skip if already collected
+          if (existingCommentsSet.has(commentKey)) {
+            skippedDuplicates++;
+            continue;
+          }
           
           // Analyze sentiment
           const sentiment = await analyzeSentiment(comment.textOriginal);
@@ -301,6 +343,9 @@ Deno.serve(async (req) => {
         // Continue with next video
       }
     }
+    
+    console.log(`Skipped ${skippedDuplicates} duplicate comments`);
+    console.log(`Found ${totalComments} new comments to insert`);
 
     // Batch insert all collected comments
     if (collectionsToInsert.length > 0) {
@@ -327,13 +372,22 @@ Deno.serve(async (req) => {
 
     const totalLikes = collectionsToInsert.reduce((sum, item) => sum + (item.likes_count || 0), 0);
 
+    // Get total count after insertion
+    const { count: totalCount } = await supabase
+      .from('social_interactions')
+      .select('*', { count: 'exact', head: true })
+      .eq('candidate_id', candidateId)
+      .eq('social_network', 'YouTube');
+
     const stats = {
       videosFound,
-      commentsCollected: totalComments,
+      newCommentsCollected: totalComments,
+      skippedDuplicates,
       sentimentAnalyzed: totalAnalyzed,
       uniqueAuthors: uniqueAuthors.size,
       totalEngagement: totalLikes,
-      sentimentDistribution: sentimentCounts
+      sentimentDistribution: sentimentCounts,
+      totalCommentsInDatabase: (totalCount || 0)
     };
 
     console.log('Collection complete:', stats);
@@ -341,7 +395,9 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Collected ${totalComments} comments from ${videosFound} YouTube videos`,
+        message: totalComments > 0 
+          ? `Collected ${totalComments} NEW comments (skipped ${skippedDuplicates} duplicates). Total in database: ${totalCount}`
+          : `No new comments found (${skippedDuplicates} duplicates skipped). Total in database: ${totalCount}`,
         stats
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
