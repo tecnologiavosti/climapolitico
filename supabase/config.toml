@@ -41,3 +41,6 @@ verify_jwt = false
 
 [functions.search-wikipedia]
 verify_jwt = false
+
+[functions.search-youtube-mentions]
+verify_jwt = false

@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowUpRight, ArrowDownRight, Minus, Search, UserPlus, Trash2, Brain, Loader2 } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, Minus, Search, UserPlus, Trash2, Brain, Loader2, Youtube } from "lucide-react";
 
 // Zod validation schema
 const candidateSchema = z.object({
@@ -171,6 +171,35 @@ export default function Candidates() {
         toast.error('Erro ao analisar candidato. Tente novamente.');
       }
       console.error('Analysis error:', error);
+    },
+  });
+
+  // YouTube collection mutation
+  const youtubeCollectionMutation = useMutation({
+    mutationFn: async ({ candidateId, candidateName }: { candidateId: string; candidateName: string }) => {
+      const { data, error } = await supabase.functions.invoke('search-youtube-mentions', {
+        body: { 
+          candidateId, 
+          candidateName,
+          maxVideos: 5,
+          maxCommentsPerVideo: 50
+        }
+      });
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+      toast.success(
+        `YouTube: ${data.stats?.commentsCollected || 0} comentários coletados de ${data.stats?.videosFound || 0} vídeos!`,
+        { duration: 5000 }
+      );
+    },
+    onError: (error: Error) => {
+      console.error('YouTube collection error:', error);
+      toast.error('Erro ao coletar dados do YouTube: ' + error.message);
     },
   });
 
@@ -391,6 +420,35 @@ export default function Candidates() {
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <TooltipProvider>
+                          {/* YouTube Collection Button */}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="bg-destructive/10 hover:bg-destructive/20 border-destructive/30"
+                                onClick={() => youtubeCollectionMutation.mutate({ 
+                                  candidateId: candidate.id, 
+                                  candidateName: candidate.full_name 
+                                })}
+                                disabled={youtubeCollectionMutation.isPending}
+                              >
+                                {youtubeCollectionMutation.isPending ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Youtube className="h-4 w-4 text-destructive" />
+                                )}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Coletar dados do YouTube</p>
+                              <p className="text-xs text-muted-foreground">
+                                Busca vídeos e comentários reais
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+
+                          {/* AI Analysis Button */}
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button
