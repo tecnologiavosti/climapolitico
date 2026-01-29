@@ -183,9 +183,7 @@ export default function Candidates() {
       const { data, error } = await supabase.functions.invoke('search-youtube-mentions', {
         body: { 
           candidateId, 
-          candidateName,
-          maxVideos: 5,
-          maxCommentsPerVideo: 50
+          candidateName
         }
       });
 
@@ -195,8 +193,12 @@ export default function Candidates() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
       queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+
+      const newComments = data?.stats?.newCommentsCollected ?? data?.stats?.commentsCollected ?? 0;
+      const skipped = data?.stats?.skippedDuplicates ?? 0;
+      const total = data?.stats?.totalCommentsInDatabase;
       toast.success(
-        `YouTube: ${data.stats?.commentsCollected || 0} comentários coletados de ${data.stats?.videosFound || 0} vídeos!`,
+        `YouTube: +${newComments} novos comentários (${skipped} duplicados). Total: ${typeof total === 'number' ? total : '—'}.`,
         { duration: 5000 }
       );
     },
