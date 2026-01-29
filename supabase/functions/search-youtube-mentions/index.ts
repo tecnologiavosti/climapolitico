@@ -52,7 +52,7 @@ async function analyzeSentiment(text: string): Promise<SentimentResult> {
   }
 
   try {
-    const response = await fetch('https://api.lovable.dev/v1/chat/completions', {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -188,27 +188,32 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Initialize Supabase client
+    // Initialize Supabase clients
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    // Service client for auth validation (more reliable than anon for token introspection)
+    const supabaseService = createClient(supabaseUrl, supabaseServiceRoleKey);
     
+    // User-scoped client for DB ops (keeps RLS enforced)
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } }
     });
 
     // Validate user
     const token = authHeader.replace('Bearer ', '');
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    
-    if (claimsError || !claimsData?.claims) {
-      console.error('Auth validation failed:', claimsError);
+    const { data: userData, error: authError } = await supabaseService.auth.getUser(token);
+
+    if (authError || !userData?.user) {
+      console.error('Auth validation failed:', authError);
       return new Response(
         JSON.stringify({ error: 'Unauthorized - invalid token' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const userId = claimsData.claims.sub as string;
+    const userId = userData.user.id;
     console.log(`Authenticated user: ${userId}`);
 
     // Get YouTube API key
@@ -378,6 +383,23 @@ Deno.serve(async (req) => {
       .select('*', { count: 'exact', head: true })
       .eq('candidate_id', candidateId)
       .eq('social_network', 'YouTube');
+
+    // Keep the Candidates list in sync: update the cached mentions count for this candidate
+    // (The UI currently reads candidates.mentions, not a live COUNT(*) over social_interactions.)
+    if (typeof totalCount === 'number') {
+      const { error: candidateUpdateError } = await supabase
+        .from('candidates')
+        .update({
+          mentions: totalCount,
+          last_analysis_at: new Date().toISOString(),
+        })
+        .eq('id', candidateId)
+        .eq('user_id', userId);
+
+      if (candidateUpdateError) {
+        console.error('Failed to update candidate mentions:', candidateUpdateError);
+      }
+    }
 
     const stats = {
       videosFound,
