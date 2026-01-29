@@ -107,6 +107,81 @@ async function analyzeSentiment(text: string): Promise<SentimentResult> {
   }
 }
 
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+async function analyzeSentimentBatch(texts: string[]): Promise<SentimentResult[]> {
+  const apiKey = Deno.env.get('LOVABLE_API_KEY');
+
+  // If no API key, default everything to neutral so collection still works.
+  if (!apiKey) {
+    console.warn('LOVABLE_API_KEY not found, defaulting to neutral sentiment (batch)');
+    return texts.map(() => ({ label: 'Neutro', score: 0.5 }));
+  }
+
+  // Safety: keep payload bounded
+  const clipped = texts.map((t) => (t || '').substring(0, 500));
+
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash-lite',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Você é um analisador de sentimento político. Para cada texto, responda APENAS com um JSON array no formato: [{"label":"Positivo|Negativo|Neutro","score":0.0-1.0}, ...] na MESMA ORDEM.\n\nRegras:\n- Positivo: Apoio, elogio, concordância, entusiasmo\n- Negativo: Crítica, desaprovação, raiva, decepção\n- Neutro: Informativo, sem opinião clara, pergunta\n\nScore: 0 = muito negativo, 0.5 = neutro, 1 = muito positivo',
+          },
+          {
+            role: 'user',
+            content: JSON.stringify({ texts: clipped }),
+          },
+        ],
+        temperature: 0.1,
+        max_tokens: 300,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Sentiment API error (batch):', response.status);
+      return texts.map(() => ({ label: 'Neutro', score: 0.5 }));
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || '';
+
+    const jsonMatch = content.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      return texts.map(() => ({ label: 'Neutro', score: 0.5 }));
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(parsed)) {
+      return texts.map(() => ({ label: 'Neutro', score: 0.5 }));
+    }
+
+    // Normalize to correct length
+    const normalized: SentimentResult[] = parsed.slice(0, texts.length).map((p: any) => ({
+      label: p?.label === 'Positivo' || p?.label === 'Negativo' || p?.label === 'Neutro' ? p.label : 'Neutro',
+      score: typeof p?.score === 'number' ? p.score : 0.5,
+    }));
+
+    while (normalized.length < texts.length) normalized.push({ label: 'Neutro', score: 0.5 });
+    return normalized;
+  } catch (error) {
+    console.error('Sentiment analysis error (batch):', error);
+    return texts.map(() => ({ label: 'Neutro', score: 0.5 }));
+  }
+}
+
 async function searchYouTubeVideos(
   query: string, 
   apiKey: string, 
@@ -226,7 +301,16 @@ Deno.serve(async (req) => {
     }
 
     // Parse request body
-    const { candidateId, candidateName, maxVideos = 10, maxCommentsPerVideo = 100 } = await req.json();
+    const {
+      candidateId,
+      candidateName,
+      // how many videos to search per order type (date + relevance)
+      maxVideos = 15,
+      // YouTube API is paged; this is per page. We'll paginate until we hit maxNewComments.
+      maxCommentsPerVideo = 100,
+      // Hard cap per invocation to avoid browser/network timeouts.
+      maxNewComments = 80,
+    } = await req.json();
 
     if (!candidateId || !candidateName) {
       return new Response(
@@ -285,89 +369,122 @@ Deno.serve(async (req) => {
     }
 
     // Collect comments from each video
-    let totalComments = 0;
-    let totalAnalyzed = 0;
+    let totalComments = 0; // new comments inserted
     let skippedDuplicates = 0;
-    const collectionsToInsert: any[] = [];
+    let sentimentAnalyzed = 0;
     const uniqueAuthors = new Set<string>();
 
+    const BATCH_SIZE = 10;
+    const nowIso = new Date().toISOString();
+    const insertedRowsForStats: any[] = [];
+
+    const insertBatch = async (batchItems: any[]) => {
+      if (batchItems.length === 0) return;
+      console.log(`Inserting batch: ${batchItems.length} comments`);
+      const { error: insertError } = await supabase
+        .from('social_interactions')
+        .insert(batchItems);
+      if (insertError) {
+        console.error('Database insert error (batch):', insertError);
+        // Partial success strategy: don't throw; let the run finish and return stats.
+      }
+      insertedRowsForStats.push(...batchItems);
+    };
+
     for (const video of allVideos) {
+      if (totalComments >= maxNewComments) break;
+
       const videoId = video.id.videoId;
-      
+      let pageToken: string | undefined = undefined;
+
       try {
-        const commentsData = await getVideoComments(videoId, youtubeApiKey, maxCommentsPerVideo);
-        
-        for (const thread of commentsData.items || []) {
-          const comment = thread.snippet.topLevelComment.snippet;
-          
-          // Create unique identifier for this comment
-          const commentKey = `${comment.authorDisplayName}:${comment.publishedAt}:${comment.textOriginal.substring(0, 50)}`;
-          
-          // Skip if already collected
-          if (existingCommentsSet.has(commentKey)) {
-            skippedDuplicates++;
-            continue;
+        while (totalComments < maxNewComments) {
+          const commentsData = await getVideoComments(videoId, youtubeApiKey, maxCommentsPerVideo, pageToken);
+          const items = commentsData.items || [];
+          if (items.length === 0) break;
+
+          // Collect new comments for this page
+          const pageCandidates: {
+            commentText: string;
+            author: string;
+            authorChannelId?: string;
+            likeCount: number;
+            publishedAt: string;
+          }[] = [];
+
+          for (const thread of items) {
+            if (totalComments + pageCandidates.length >= maxNewComments) break;
+            const comment = thread.snippet.topLevelComment.snippet;
+            const text = (comment.textOriginal || '').trim();
+            if (!text) continue;
+
+            // Create unique identifier for this comment (compatible with existing stored signature)
+            const commentKey = `${comment.authorDisplayName}:${comment.publishedAt}:${text.substring(0, 50)}`;
+
+            if (existingCommentsSet.has(commentKey)) {
+              skippedDuplicates++;
+              continue;
+            }
+
+            // Mark as seen immediately so we don't duplicate inside the same run
+            existingCommentsSet.add(commentKey);
+
+            uniqueAuthors.add(comment.authorDisplayName);
+
+            pageCandidates.push({
+              commentText: text,
+              author: comment.authorDisplayName,
+              authorChannelId: comment.authorChannelId?.value,
+              likeCount: comment.likeCount || 0,
+              publishedAt: comment.publishedAt,
+            });
           }
-          
-          // Analyze sentiment
-          const sentiment = await analyzeSentiment(comment.textOriginal);
-          totalAnalyzed++;
-          
-          // Track unique authors
-          uniqueAuthors.add(comment.authorDisplayName);
 
-          // Prepare for insertion
-          collectionsToInsert.push({
-            user_id: userId,
-            candidate_id: candidateId,
-            comment_text: comment.textOriginal.substring(0, 5000), // Limit text length
-            comment_author: comment.authorDisplayName,
-            author_profile_url: comment.authorChannelId?.value 
-              ? `https://www.youtube.com/channel/${comment.authorChannelId.value}`
-              : null,
-            social_network: 'YouTube',
-            interaction_type: 'comment',
-            sentiment_label: sentiment.label,
-            sentiment_score: sentiment.score,
-            likes_count: comment.likeCount || 0,
-            replies_count: 0,
-            shares_count: 0,
-            original_posted_at: comment.publishedAt,
-            collected_at: new Date().toISOString()
-          });
+          // Batch sentiment analysis to avoid 429 + speed up
+          for (const chunk of chunkArray(pageCandidates, BATCH_SIZE)) {
+            if (chunk.length === 0) continue;
+            const sentiments = await analyzeSentimentBatch(chunk.map((c) => c.commentText));
+            sentimentAnalyzed += chunk.length;
 
-          totalComments++;
+            const batchToInsert = chunk.map((c, idx) => {
+              const s = sentiments[idx] || { label: 'Neutro', score: 0.5 };
+              return {
+                user_id: userId,
+                candidate_id: candidateId,
+                comment_text: c.commentText.substring(0, 5000),
+                comment_author: c.author,
+                author_profile_url: c.authorChannelId ? `https://www.youtube.com/channel/${c.authorChannelId}` : null,
+                social_network: 'YouTube',
+                interaction_type: 'comment',
+                sentiment_label: s.label,
+                sentiment_score: s.score,
+                likes_count: c.likeCount,
+                replies_count: 0,
+                shares_count: 0,
+                original_posted_at: c.publishedAt,
+                collected_at: nowIso,
+              };
+            });
 
-          // Rate limiting - small delay between sentiment calls
-          if (totalAnalyzed % 10 === 0) {
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await insertBatch(batchToInsert);
+            totalComments += chunk.length;
+
+            if (totalComments >= maxNewComments) break;
           }
+
+          pageToken = commentsData.nextPageToken;
+          if (!pageToken) break;
         }
       } catch (videoError) {
         console.error(`Error processing video ${videoId}:`, videoError);
-        // Continue with next video
       }
     }
     
     console.log(`Skipped ${skippedDuplicates} duplicate comments`);
     console.log(`Found ${totalComments} new comments to insert`);
 
-    // Batch insert all collected comments
-    if (collectionsToInsert.length > 0) {
-      console.log(`Inserting ${collectionsToInsert.length} comments into database`);
-      
-      const { error: insertError } = await supabase
-        .from('social_interactions')
-        .insert(collectionsToInsert);
-
-      if (insertError) {
-        console.error('Database insert error:', insertError);
-        // Don't fail completely - return partial success
-      }
-    }
-
     // Calculate sentiment distribution
-    const sentimentCounts = collectionsToInsert.reduce(
+    const sentimentCounts = insertedRowsForStats.reduce(
       (acc, item) => {
         acc[item.sentiment_label] = (acc[item.sentiment_label] || 0) + 1;
         return acc;
@@ -375,7 +492,7 @@ Deno.serve(async (req) => {
       { Positivo: 0, Negativo: 0, Neutro: 0 } as Record<string, number>
     );
 
-    const totalLikes = collectionsToInsert.reduce((sum, item) => sum + (item.likes_count || 0), 0);
+    const totalLikes = insertedRowsForStats.reduce((sum, item) => sum + (item.likes_count || 0), 0);
 
     // Get total count after insertion
     const { count: totalCount } = await supabase
@@ -405,7 +522,7 @@ Deno.serve(async (req) => {
       videosFound,
       newCommentsCollected: totalComments,
       skippedDuplicates,
-      sentimentAnalyzed: totalAnalyzed,
+      sentimentAnalyzed,
       uniqueAuthors: uniqueAuthors.size,
       totalEngagement: totalLikes,
       sentimentDistribution: sentimentCounts,
