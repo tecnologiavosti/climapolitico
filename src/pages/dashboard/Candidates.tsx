@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -13,7 +13,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowUpRight, ArrowDownRight, Minus, Search, UserPlus, Trash2, Brain, Loader2, Youtube } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ArrowUpRight, ArrowDownRight, Minus, Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, ChevronUp, BarChart3 } from "lucide-react";
+import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 
 // Zod validation schema
 const candidateSchema = z.object({
@@ -36,6 +38,7 @@ export default function Candidates() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [candidateToDelete, setCandidateToDelete] = useState<string | null>(null);
+  const [expandedCandidate, setExpandedCandidate] = useState<string | null>(null);
   const [formData, setFormData] = useState<CandidateFormData>({
     fullName: "",
     region: "",
@@ -348,6 +351,7 @@ export default function Candidates() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10"></TableHead>
                 <TableHead>Candidato</TableHead>
                 <TableHead>Menções</TableHead>
                 <TableHead>Sentimento</TableHead>
@@ -359,134 +363,178 @@ export default function Candidates() {
             <TableBody>
               {filteredCandidates.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                     {searchTerm 
                       ? "Nenhum candidato encontrado com esse critério de busca"
                       : "Nenhum candidato cadastrado. Adicione seu primeiro candidato!"}
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredCandidates.map((candidate) => (
-                  <TableRow key={candidate.id}>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium">{candidate.full_name}</p>
-                        <p className="text-sm text-muted-foreground">{candidate.region || 'N/A'}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell>{candidate.mentions?.toLocaleString() || 0}</TableCell>
-                    <TableCell>
-                      {candidate.sentiment !== null ? (
-                        <div className="flex items-center gap-2">
-                          <Badge variant={
-                            candidate.sentiment >= 60 ? 'default' :
-                            candidate.sentiment >= 40 ? 'secondary' :
-                            'destructive'
-                          }>
-                            {candidate.sentiment}%
-                          </Badge>
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">Não analisado</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {candidate.trend?.toLowerCase() === 'up' || candidate.trend?.toLowerCase() === 'alta' ? (
-                        <div className="flex items-center gap-1 text-green-500">
-                          <ArrowUpRight className="h-4 w-4" />
-                          <span className="text-sm">{candidate.trend}</span>
-                        </div>
-                      ) : candidate.trend?.toLowerCase() === 'down' || candidate.trend?.toLowerCase() === 'baixa' ? (
-                        <div className="flex items-center gap-1 text-red-500">
-                          <ArrowDownRight className="h-4 w-4" />
-                          <span className="text-sm">{candidate.trend}</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1 text-muted-foreground">
-                          <Minus className="h-4 w-4" />
-                          <span className="text-sm">{candidate.trend || 'Neutro'}</span>
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {candidate.last_analysis_at ? (
-                        <span className="text-sm text-muted-foreground">
-                          {new Date(candidate.last_analysis_at).toLocaleDateString('pt-BR')}
-                        </span>
-                      ) : (
-                        <Badge variant="outline" className="text-xs">Nunca analisado</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <TooltipProvider>
-                          {/* YouTube Collection Button */}
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="bg-destructive/10 hover:bg-destructive/20 border-destructive/30"
-                                onClick={() => youtubeCollectionMutation.mutate({ 
-                                  candidateId: candidate.id, 
-                                  candidateName: candidate.full_name 
-                                })}
-                                disabled={youtubeCollectionMutation.isPending}
-                              >
-                                {youtubeCollectionMutation.isPending ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Youtube className="h-4 w-4 text-destructive" />
-                                )}
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Coletar dados do YouTube</p>
-                              <p className="text-xs text-muted-foreground">
-                                Busca vídeos e comentários reais
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
+                filteredCandidates.map((candidate) => {
+                  const isExpanded = expandedCandidate === candidate.id;
+                  return (
+                    <React.Fragment key={candidate.id}>
+                      <TableRow className={isExpanded ? "border-b-0" : ""}>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => setExpandedCandidate(isExpanded ? null : candidate.id)}
+                          >
+                            {isExpanded ? (
+                              <ChevronUp className="h-4 w-4" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{candidate.full_name}</p>
+                            <p className="text-sm text-muted-foreground">{candidate.region || 'N/A'}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>{candidate.mentions?.toLocaleString() || 0}</TableCell>
+                        <TableCell>
+                          {candidate.sentiment !== null ? (
+                            <div className="flex items-center gap-2">
+                              <Badge variant={
+                                candidate.sentiment >= 60 ? 'default' :
+                                candidate.sentiment >= 40 ? 'secondary' :
+                                'destructive'
+                              }>
+                                {candidate.sentiment}%
+                              </Badge>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">Não analisado</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {candidate.trend?.toLowerCase() === 'up' || candidate.trend?.toLowerCase() === 'alta' ? (
+                            <div className="flex items-center gap-1 text-success">
+                              <ArrowUpRight className="h-4 w-4" />
+                              <span className="text-sm">{candidate.trend}</span>
+                            </div>
+                          ) : candidate.trend?.toLowerCase() === 'down' || candidate.trend?.toLowerCase() === 'baixa' ? (
+                            <div className="flex items-center gap-1 text-destructive">
+                              <ArrowDownRight className="h-4 w-4" />
+                              <span className="text-sm">{candidate.trend}</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <Minus className="h-4 w-4" />
+                              <span className="text-sm">{candidate.trend || 'Neutro'}</span>
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {candidate.last_analysis_at ? (
+                            <span className="text-sm text-muted-foreground">
+                              {new Date(candidate.last_analysis_at).toLocaleDateString('pt-BR')}
+                            </span>
+                          ) : (
+                            <Badge variant="outline" className="text-xs">Nunca analisado</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <TooltipProvider>
+                              {/* View Details Button */}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setExpandedCandidate(isExpanded ? null : candidate.id)}
+                                  >
+                                    <BarChart3 className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Ver dados consolidados</p>
+                                </TooltipContent>
+                              </Tooltip>
 
-                          {/* AI Analysis Button */}
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="default"
-                                size="sm"
-                                onClick={() => analyzeCandidateMutation.mutate(candidate.id)}
-                                disabled={analyzeCandidateMutation.isPending}
-                              >
-                                {analyzeCandidateMutation.isPending ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Brain className="h-4 w-4" />
-                                )}
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Análise multi-IA (Gemini Flash, Gemini Pro, GPT-5 Mini)</p>
-                              <p className="text-xs text-muted-foreground">
-                                {subscription ? `${subscription.updates_used_this_month}/${subscription.max_updates_per_month} análises usadas` : ''}
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                        
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setCandidateToDelete(candidate.id);
-                            setDeleteDialogOpen(true);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                              {/* YouTube Collection Button */}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="bg-destructive/10 hover:bg-destructive/20 border-destructive/30"
+                                    onClick={() => youtubeCollectionMutation.mutate({ 
+                                      candidateId: candidate.id, 
+                                      candidateName: candidate.full_name 
+                                    })}
+                                    disabled={youtubeCollectionMutation.isPending}
+                                  >
+                                    {youtubeCollectionMutation.isPending ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Youtube className="h-4 w-4 text-destructive" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Coletar dados do YouTube</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Busca vídeos e comentários reais
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+
+                              {/* AI Analysis Button */}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="default"
+                                    size="sm"
+                                    onClick={() => analyzeCandidateMutation.mutate(candidate.id)}
+                                    disabled={analyzeCandidateMutation.isPending}
+                                  >
+                                    {analyzeCandidateMutation.isPending ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Brain className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Análise multi-IA (Gemini Flash, Gemini Pro, GPT-5 Mini)</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {subscription ? `${subscription.updates_used_this_month}/${subscription.max_updates_per_month} análises usadas` : ''}
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setCandidateToDelete(candidate.id);
+                                setDeleteDialogOpen(true);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                      
+                      {/* Expandable Panel */}
+                      {isExpanded && (
+                        <TableRow>
+                          <TableCell colSpan={7} className="bg-muted/30 p-6">
+                            <CandidateOverviewPanel candidateId={candidate.id} />
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </React.Fragment>
+                  );
+                })
               )}
             </TableBody>
           </Table>
