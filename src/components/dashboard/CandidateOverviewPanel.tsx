@@ -7,39 +7,11 @@ import {
   ThumbsUp, ThumbsDown, Minus, Share2, Heart,
   AlertTriangle, CheckCircle, Info
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
-import { useAdminCheck } from "@/hooks/useAdminCheck";
+import { useCandidateMetrics } from "@/hooks/useCandidateMetrics";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 
 interface CandidateOverviewPanelProps {
   candidateId: string;
-}
-
-interface ConsolidatedMetrics {
-  totalMentions: number;
-  uniqueAuthors: number;
-  totalEngagement: number;
-  totalLikes: number;
-  totalReplies: number;
-  totalShares: number;
-  sentimentDistribution: {
-    positive: number;
-    neutral: number;
-    negative: number;
-  };
-  networkBreakdown: Array<{
-    network: string;
-    mentions: number;
-    engagement: number;
-    sentiment: number;
-  }>;
-  averageSentiment: number;
-  dominantSentiment: "Positivo" | "Negativo" | "Neutro";
-  dataConfidence: "high" | "medium" | "low";
-  lastAnalysisDate: string | null;
-  analysisCount: number;
 }
 
 const SENTIMENT_COLORS = {
@@ -60,187 +32,8 @@ const NETWORK_COLORS: Record<string, string> = {
 };
 
 export function CandidateOverviewPanel({ candidateId }: CandidateOverviewPanelProps) {
-  const { user } = useAuth();
-  const { isAdmin } = useAdminCheck();
-
-  const { data: metrics, isLoading } = useQuery({
-    queryKey: ['candidate-consolidated-metrics', candidateId],
-    queryFn: async (): Promise<ConsolidatedMetrics> => {
-      // Fetch candidate basic info
-      const { data: candidate, error: candidateError } = await supabase
-        .from('candidates')
-        .select('id, full_name, mentions, sentiment, last_analysis_at, analysis_count')
-        .eq('id', candidateId)
-        .single();
-
-      if (candidateError) throw candidateError;
-
-      // Fetch all analyses for this candidate
-      let analysesQuery = supabase
-        .from('candidate_analyses')
-        .select('id, sentiment_score, sentiment_label, mentions_count, unique_profiles_count, created_at, social_network')
-        .eq('candidate_id', candidateId)
-        .order('created_at', { ascending: false });
-
-      if (!isAdmin && user) {
-        analysesQuery = analysesQuery.eq('user_id', user.id);
-      }
-
-      const { data: analyses, error: analysesError } = await analysesQuery;
-      if (analysesError) throw analysesError;
-
-      // Fetch analysis sources for network breakdown
-      const analysisIds = analyses?.map(a => a.id) || [];
-      let sourcesData: any[] = [];
-      
-      if (analysisIds.length > 0) {
-        const { data: sources, error: sourcesError } = await supabase
-          .from('analysis_sources')
-          .select('social_network, posts_collected, comments_collected, interactions_count, profile_unique_id')
-          .in('analysis_id', analysisIds);
-        
-        if (!sourcesError && sources) {
-          sourcesData = sources;
-        }
-      }
-
-      // Fetch social interactions for this candidate
-      // We fetch ALL interactions for the candidate (no user_id filter) to get accurate totals
-      const { data: interactions, error: interactionsError } = await supabase
-        .from('social_interactions')
-        .select('id, sentiment_label, sentiment_score, likes_count, replies_count, shares_count, social_network, comment_author')
-        .eq('candidate_id', candidateId);
-      
-      // Calculate consolidated metrics from interactions (real data)
-      const totalMentions = interactions?.length || candidate?.mentions || 0;
-      
-      // Calculate unique authors from interactions
-      const uniqueAuthorsSet = new Set<string>();
-      interactions?.forEach(i => {
-        if (i.comment_author) uniqueAuthorsSet.add(i.comment_author);
-      });
-      sourcesData.forEach(s => {
-        if (s.profile_unique_id) uniqueAuthorsSet.add(s.profile_unique_id);
-      });
-      const uniqueAuthors = uniqueAuthorsSet.size || analyses?.reduce((sum, a) => sum + (a.unique_profiles_count || 0), 0) || 0;
-
-      // Calculate engagement from interactions
-      const totalLikes = interactions?.reduce((sum, i) => sum + (i.likes_count || 0), 0) || 0;
-      const totalReplies = interactions?.reduce((sum, i) => sum + (i.replies_count || 0), 0) || 0;
-      const totalShares = interactions?.reduce((sum, i) => sum + (i.shares_count || 0), 0) || 0;
-      const interactionsEngagement = totalLikes + totalReplies + totalShares;
-      
-      // Fallback to sources engagement if no interactions
-      const sourcesEngagement = sourcesData.reduce((sum, s) => sum + (s.interactions_count || 0), 0);
-      const totalEngagement = interactionsEngagement > 0 ? interactionsEngagement : sourcesEngagement;
-
-      // Calculate sentiment distribution
-      const sentimentCounts = { positive: 0, neutral: 0, negative: 0 };
-      
-      // From analyses
-      analyses?.forEach(a => {
-        if (a.sentiment_label === 'Positivo') sentimentCounts.positive++;
-        else if (a.sentiment_label === 'Negativo') sentimentCounts.negative++;
-        else sentimentCounts.neutral++;
-      });
-
-      // From interactions (if any)
-      interactions?.forEach(i => {
-        if (i.sentiment_label === 'Positivo') sentimentCounts.positive++;
-        else if (i.sentiment_label === 'Negativo') sentimentCounts.negative++;
-        else sentimentCounts.neutral++;
-      });
-
-      const totalSentimentItems = sentimentCounts.positive + sentimentCounts.neutral + sentimentCounts.negative;
-
-      // Calculate network breakdown from interactions (real data)
-      const networkMap: Record<string, { mentions: number; engagement: number; sentimentSum: number; count: number }> = {};
-      
-      // Build from interactions first (this is our primary real data source now)
-      interactions?.forEach(i => {
-        const network = i.social_network || 'Outro';
-        if (!networkMap[network]) {
-          networkMap[network] = { mentions: 0, engagement: 0, sentimentSum: 0, count: 0 };
-        }
-        networkMap[network].mentions += 1;
-        networkMap[network].engagement += (i.likes_count || 0) + (i.replies_count || 0) + (i.shares_count || 0);
-        networkMap[network].sentimentSum += (i.sentiment_score || 0.5) * 100;
-        networkMap[network].count++;
-      });
-
-      // Fallback to sourcesData if no interactions
-      if (Object.keys(networkMap).length === 0) {
-        sourcesData.forEach(s => {
-          const network = s.social_network || 'Outro';
-          if (!networkMap[network]) {
-            networkMap[network] = { mentions: 0, engagement: 0, sentimentSum: 0, count: 0 };
-          }
-          networkMap[network].mentions += (s.posts_collected || 0) + (s.comments_collected || 0);
-          networkMap[network].engagement += s.interactions_count || 0;
-        });
-
-        // Add from analyses
-        analyses?.forEach(a => {
-          const network = a.social_network || 'Outro';
-          if (!networkMap[network]) {
-            networkMap[network] = { mentions: 0, engagement: 0, sentimentSum: 0, count: 0 };
-          }
-          networkMap[network].mentions += a.mentions_count || 0;
-          networkMap[network].sentimentSum += a.sentiment_score || 0;
-          networkMap[network].count++;
-        });
-      }
-
-      const networkBreakdown = Object.entries(networkMap).map(([network, data]) => ({
-        network,
-        mentions: data.mentions,
-        engagement: data.engagement,
-        sentiment: data.count > 0 ? Math.round(data.sentimentSum / data.count) : 50
-      })).sort((a, b) => b.mentions - a.mentions);
-
-      // Calculate average sentiment from interactions (real data)
-      const avgSentiment = interactions && interactions.length > 0
-        ? Math.round(interactions.reduce((sum, i) => sum + ((i.sentiment_score || 0.5) * 100), 0) / interactions.length)
-        : candidate?.sentiment || 50;
-
-      // Determine dominant sentiment
-      let dominantSentiment: "Positivo" | "Negativo" | "Neutro" = "Neutro";
-      if (sentimentCounts.positive > sentimentCounts.neutral && sentimentCounts.positive > sentimentCounts.negative) {
-        dominantSentiment = "Positivo";
-      } else if (sentimentCounts.negative > sentimentCounts.neutral && sentimentCounts.negative > sentimentCounts.positive) {
-        dominantSentiment = "Negativo";
-      }
-
-      // Determine data confidence
-      let dataConfidence: "high" | "medium" | "low" = "low";
-      if (totalMentions > 500 && uniqueAuthors > 100) {
-        dataConfidence = "high";
-      } else if (totalMentions > 100 && uniqueAuthors > 20) {
-        dataConfidence = "medium";
-      }
-
-      return {
-        totalMentions,
-        uniqueAuthors,
-        totalEngagement,
-        totalLikes,
-        totalReplies,
-        totalShares,
-        sentimentDistribution: {
-          positive: totalSentimentItems > 0 ? Math.round((sentimentCounts.positive / totalSentimentItems) * 100) : 33,
-          neutral: totalSentimentItems > 0 ? Math.round((sentimentCounts.neutral / totalSentimentItems) * 100) : 34,
-          negative: totalSentimentItems > 0 ? Math.round((sentimentCounts.negative / totalSentimentItems) * 100) : 33
-        },
-        networkBreakdown,
-        averageSentiment: avgSentiment,
-        dominantSentiment,
-        dataConfidence,
-        lastAnalysisDate: candidate?.last_analysis_at || (analyses?.[0]?.created_at || null),
-        analysisCount: candidate?.analysis_count || analyses?.length || 0
-      };
-    },
-    enabled: !!candidateId
-  });
+  // Use the single source of truth hook
+  const { data: metrics, isLoading } = useCandidateMetrics(candidateId);
 
   if (isLoading) {
     return (
@@ -262,23 +55,47 @@ export function CandidateOverviewPanel({ candidateId }: CandidateOverviewPanelPr
         <CardContent className="py-12 text-center">
           <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-warning" />
           <p className="text-muted-foreground">Nenhum dado disponível para este candidato.</p>
-          <p className="text-sm text-muted-foreground mt-2">Execute uma análise para começar a coletar dados.</p>
+          <p className="text-sm text-muted-foreground mt-2">Execute uma coleta do YouTube para começar a coletar dados.</p>
         </CardContent>
       </Card>
     );
   }
 
+  // Calculate derived values
+  const totalSentimentItems = metrics.positiveCount + metrics.neutralCount + metrics.negativeCount;
+  const sentimentDistribution = {
+    positive: totalSentimentItems > 0 ? Math.round((metrics.positiveCount / totalSentimentItems) * 100) : 33,
+    neutral: totalSentimentItems > 0 ? Math.round((metrics.neutralCount / totalSentimentItems) * 100) : 34,
+    negative: totalSentimentItems > 0 ? Math.round((metrics.negativeCount / totalSentimentItems) * 100) : 33
+  };
+
+  // Determine dominant sentiment
+  let dominantSentiment: "Positivo" | "Negativo" | "Neutro" = "Neutro";
+  if (metrics.positiveCount > metrics.neutralCount && metrics.positiveCount > metrics.negativeCount) {
+    dominantSentiment = "Positivo";
+  } else if (metrics.negativeCount > metrics.neutralCount && metrics.negativeCount > metrics.positiveCount) {
+    dominantSentiment = "Negativo";
+  }
+
+  // Determine data confidence
+  let dataConfidence: "high" | "medium" | "low" = "low";
+  if (metrics.totalMentions > 500 && metrics.uniqueAuthors > 100) {
+    dataConfidence = "high";
+  } else if (metrics.totalMentions > 100 && metrics.uniqueAuthors > 20) {
+    dataConfidence = "medium";
+  }
+
   const sentimentPieData = [
-    { name: "Positivo", value: metrics.sentimentDistribution.positive, color: SENTIMENT_COLORS.positive },
-    { name: "Neutro", value: metrics.sentimentDistribution.neutral, color: SENTIMENT_COLORS.neutral },
-    { name: "Negativo", value: metrics.sentimentDistribution.negative, color: SENTIMENT_COLORS.negative }
+    { name: "Positivo", value: sentimentDistribution.positive, color: SENTIMENT_COLORS.positive },
+    { name: "Neutro", value: sentimentDistribution.neutral, color: SENTIMENT_COLORS.neutral },
+    { name: "Negativo", value: sentimentDistribution.negative, color: SENTIMENT_COLORS.negative }
   ].filter(d => d.value > 0);
 
   const confidenceLabel = {
     high: { text: "Alta Confiança", icon: CheckCircle, color: "text-success" },
     medium: { text: "Média Confiança", icon: Info, color: "text-warning" },
     low: { text: "Baixa Confiança", icon: AlertTriangle, color: "text-destructive" }
-  }[metrics.dataConfidence];
+  }[dataConfidence];
 
   const ConfidenceIcon = confidenceLabel.icon;
 

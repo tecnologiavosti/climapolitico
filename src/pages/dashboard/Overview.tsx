@@ -15,6 +15,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { AIModelsPanel } from "@/components/dashboard/AIModelsPanel";
 import { AIModelAgreementDashboard } from "@/components/dashboard/AIModelAgreementDashboard";
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
+import { useAllCandidateMetrics, CandidateMetrics } from "@/hooks/useCandidateMetrics";
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--destructive))', 'hsl(var(--warning))', 'hsl(var(--muted))'];
 
@@ -23,7 +24,7 @@ export default function Overview() {
   const { isAdmin } = useAdminCheck();
   const { user } = useAuth();
 
-  // Query: Total de candidatos
+  // Query: Candidatos (for selector and basic info)
   const { data: candidates, isLoading: loadingCandidates } = useQuery({
     queryKey: ['candidates-overview', isAdmin],
     queryFn: async () => {
@@ -41,22 +42,24 @@ export default function Overview() {
     }
   });
 
-  // Query: Interações sociais reais (YouTube, etc.)
+  // Query: Métricas agregadas do cache (fonte única de verdade)
+  const { data: allMetrics, isLoading: loadingMetrics } = useAllCandidateMetrics();
+
+  // Query: Interações sociais para gráfico temporal (últimos 7 dias)
   const { data: socialInteractions, isLoading: loadingInteractions } = useQuery({
-    queryKey: ['social-interactions-overview', isAdmin],
+    queryKey: ['social-interactions-overview', isAdmin, user?.id],
     queryFn: async () => {
+      if (!user) return [];
       let query = supabase
         .from('social_interactions')
-        .select('id, candidate_id, sentiment_label, sentiment_score, likes_count, social_network, created_at, comment_author');
-      
-      if (!isAdmin && user) {
-        query = query.eq('user_id', user.id);
-      }
+        .select('id, candidate_id, sentiment_label, sentiment_score, likes_count, social_network, created_at, comment_author')
+        .eq('user_id', user.id);
       
       const { data, error } = await query;
       if (error) throw error;
       return data || [];
-    }
+    },
+    enabled: !!user
   });
 
   // Query: Análises de fala
@@ -106,17 +109,29 @@ export default function Overview() {
     }
   });
 
-  // Calcular métricas a partir de dados REAIS (social_interactions)
-  const totalMentions = socialInteractions?.length || 0;
-  const uniqueAuthors = new Set(socialInteractions?.map(i => i.comment_author).filter(Boolean)).size;
+  // Aggregate metrics from cache (single source of truth)
+  const aggregatedMetrics = allMetrics?.reduce(
+    (acc, m) => ({
+      totalMentions: acc.totalMentions + m.totalMentions,
+      uniqueAuthors: acc.uniqueAuthors + m.uniqueAuthors,
+      totalEngagement: acc.totalEngagement + m.totalEngagement,
+      positiveCount: acc.positiveCount + m.positiveCount,
+      neutralCount: acc.neutralCount + m.neutralCount,
+      negativeCount: acc.negativeCount + m.negativeCount,
+    }),
+    { totalMentions: 0, uniqueAuthors: 0, totalEngagement: 0, positiveCount: 0, neutralCount: 0, negativeCount: 0 }
+  ) || { totalMentions: 0, uniqueAuthors: 0, totalEngagement: 0, positiveCount: 0, neutralCount: 0, negativeCount: 0 };
+
+  const totalMentions = aggregatedMetrics.totalMentions;
+  const uniqueAuthors = aggregatedMetrics.uniqueAuthors;
   const totalCandidates = candidates?.length || 0;
-  const totalEngagement = socialInteractions?.reduce((sum, i) => sum + (i.likes_count || 0), 0) || 0;
-  const avgSentiment = socialInteractions?.length 
-    ? Math.round(socialInteractions.reduce((sum, i) => sum + ((i.sentiment_score || 0.5) * 100), 0) / socialInteractions.length)
+  const totalSentimentItems = aggregatedMetrics.positiveCount + aggregatedMetrics.neutralCount + aggregatedMetrics.negativeCount;
+  const avgSentiment = totalSentimentItems > 0
+    ? Math.round(((aggregatedMetrics.positiveCount * 100) + (aggregatedMetrics.neutralCount * 50) + (aggregatedMetrics.negativeCount * 0)) / totalSentimentItems)
     : 0;
   const totalSpeeches = speeches?.length || 0;
 
-  // Preparar dados de sentimento por dia (últimos 7 dias) - usando dados REAIS
+  // Preparar dados de sentimento por dia (últimos 7 dias) - usando social_interactions
   const sentimentData = Array.from({ length: 7 }, (_, i) => {
     const date = subDays(new Date(), 6 - i);
     const dayStart = startOfDay(date);
@@ -139,22 +154,26 @@ export default function Overview() {
     };
   });
 
-  // Preparar dados de candidatos (top 5 por menções)
-  const candidateData = candidates
-    ?.sort((a, b) => (b.mentions || 0) - (a.mentions || 0))
-    .slice(0, 5)
-    .map(c => ({
-      name: c.full_name,
-      mentions: c.mentions || 0,
-      sentiment: Math.round((c.sentiment || 0) * 100)
-    })) || [];
+  // Preparar dados de candidatos (top 5 por menções do cache)
+  const metricsMap = new Map<string, CandidateMetrics>();
+  allMetrics?.forEach(m => metricsMap.set(m.candidateId, m));
 
-  // Preparar dados por rede social (dados REAIS)
-  const networkCount = socialInteractions?.reduce((acc, i) => {
-    const network = i.social_network || 'Outro';
-    acc[network] = (acc[network] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>) || {};
+  const candidateData = candidates
+    ?.map(c => ({
+      name: c.full_name,
+      mentions: metricsMap.get(c.id)?.totalMentions || 0,
+      sentiment: metricsMap.get(c.id)?.averageSentiment || 0
+    }))
+    .sort((a, b) => b.mentions - a.mentions)
+    .slice(0, 5) || [];
+
+  // Preparar dados por rede social (agregado de todos os candidatos do cache)
+  const networkCount: Record<string, number> = {};
+  allMetrics?.forEach(m => {
+    m.networkBreakdown.forEach(nb => {
+      networkCount[nb.network] = (networkCount[nb.network] || 0) + nb.mentions;
+    });
+  });
 
   const networkData = Object.entries(networkCount).map(([name, value], index) => ({
     name,
@@ -162,7 +181,7 @@ export default function Overview() {
     color: COLORS[index % COLORS.length]
   })).filter(d => d.value > 0);
 
-  const isLoading = loadingCandidates || loadingInteractions || loadingSpeeches || loadingRankings;
+  const isLoading = loadingCandidates || loadingInteractions || loadingSpeeches || loadingRankings || loadingMetrics;
   return (
     <div className="space-y-6">
       {/* Candidate Selector for Consolidated View */}
