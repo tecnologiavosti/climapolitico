@@ -393,11 +393,14 @@ export default function UndecidedAnalysis() {
     // Insight 3: Top social network
     if (filteredAnalysis.social_media_breakdown?.sources?.length > 0) {
       const topNetwork = [...filteredAnalysis.social_media_breakdown.sources]
-        .sort((a: any, b: any) => b.interactions - a.interactions)[0];
-      insights.push({
-        type: 'info',
-        message: `${topNetwork.network} é a rede mais engajada com ${topNetwork.interactions.toLocaleString('pt-BR')} interações - Priorize investimento nesta plataforma.`
-      });
+        .sort((a: any, b: any) => (b.engagement || b.mentions || 0) - (a.engagement || a.mentions || 0))[0];
+      const engagementValue = topNetwork?.engagement || topNetwork?.mentions || 0;
+      if (topNetwork?.network && engagementValue > 0) {
+        insights.push({
+          type: 'info',
+          message: `${topNetwork.network} é a rede mais engajada com ${engagementValue.toLocaleString('pt-BR')} interações - Priorize investimento nesta plataforma.`
+        });
+      }
     }
 
     // Insight 4: Candidate comparison
