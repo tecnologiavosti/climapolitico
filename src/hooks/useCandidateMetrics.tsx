@@ -211,18 +211,49 @@ export function useAllCandidateMetrics() {
  * Fallback: calculate metrics directly from social_interactions if no cache exists
  */
 async function calculateMetricsOnTheFly(candidateId: string, userId: string): Promise<CandidateMetrics | null> {
-  const { data: interactions, error } = await supabase
+  // Use count() to get total without 1000-row limit, then fetch sample for sentiment breakdown
+  const { count: totalCount, error: countError } = await supabase
     .from('social_interactions')
-    .select('id, sentiment_label, sentiment_score, likes_count, replies_count, shares_count, social_network, comment_author')
+    .select('*', { count: 'exact', head: true })
     .eq('candidate_id', candidateId)
     .eq('user_id', userId);
 
-  if (error || !interactions) {
-    console.error('Failed to calculate metrics on-the-fly:', error);
+  if (countError) {
+    console.error('Failed to count interactions:', countError);
     return null;
   }
 
-  const totalMentions = interactions.length;
+  const totalMentions = totalCount || 0;
+
+  // Fetch all data for accurate metrics (paginated if needed)
+  let allInteractions: any[] = [];
+  let offset = 0;
+  const pageSize = 1000;
+  
+  while (true) {
+    const { data: page, error: pageError } = await supabase
+      .from('social_interactions')
+      .select('id, sentiment_label, sentiment_score, likes_count, replies_count, shares_count, social_network, comment_author')
+      .eq('candidate_id', candidateId)
+      .eq('user_id', userId)
+      .range(offset, offset + pageSize - 1);
+
+    if (pageError) {
+      console.error('Failed to fetch interactions page:', pageError);
+      break;
+    }
+
+    if (!page || page.length === 0) break;
+    
+    allInteractions = [...allInteractions, ...page];
+    
+    if (page.length < pageSize) break; // Last page
+    offset += pageSize;
+  }
+
+  const interactions = allInteractions;
+
+  // Use the fetched count if available, otherwise use array length
   
   const uniqueAuthorsSet = new Set<string>();
   interactions.forEach(i => {

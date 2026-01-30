@@ -85,32 +85,56 @@ export const useRealTimeAnalytics = (
       
       const currentCandidateIds = candidateIdsRef.current;
       
-      // Build query based on whether candidate IDs are provided
-      let query = supabase
+      // First get total count (bypasses 1000 row limit)
+      let countQuery = supabase
         .from('social_interactions')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(500); // Limit for performance
-
-      // If specific candidates are selected, filter by them
-      if (currentCandidateIds.length > 0) {
-        query = query.in('candidate_id', currentCandidateIds);
-      }
-
-      const { data: interactions, error: fetchError } = await query;
-
-      if (fetchError) {
-        console.error('Error fetching interactions:', fetchError);
-        throw fetchError;
-      }
-
-      const data = interactions || [];
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id);
       
-      console.log(`[Monitor] Fetched ${data.length} interactions for user ${user.id}`);
+      if (currentCandidateIds.length > 0) {
+        countQuery = countQuery.in('candidate_id', currentCandidateIds);
+      }
+      
+      const { count: totalCount } = await countQuery;
+      
+      // Then fetch all data with pagination to get accurate metrics
+      let allInteractions: any[] = [];
+      let offset = 0;
+      const pageSize = 1000;
+      
+      while (true) {
+        let query = supabase
+          .from('social_interactions')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .range(offset, offset + pageSize - 1);
+
+        if (currentCandidateIds.length > 0) {
+          query = query.in('candidate_id', currentCandidateIds);
+        }
+
+        const { data: page, error: pageError } = await query;
+        
+        if (pageError) {
+          console.error('Error fetching interactions page:', pageError);
+          break;
+        }
+        
+        if (!page || page.length === 0) break;
+        
+        allInteractions = [...allInteractions, ...page];
+        
+        if (page.length < pageSize) break;
+        offset += pageSize;
+      }
+
+      const data = allInteractions;
+      
+      console.log(`[Monitor] Fetched ${data.length} interactions (total count: ${totalCount}) for user ${user.id}`);
       
       // Calculate metrics from ALL data
-      const totalMentions = data.length;
+      const totalMentions = totalCount || data.length;
       const positiveMentions = data.filter(i => i.sentiment_label === 'Positivo').length;
       const negativeMentions = data.filter(i => i.sentiment_label === 'Negativo').length;
       const neutralMentions = data.filter(i => i.sentiment_label === 'Neutro').length;

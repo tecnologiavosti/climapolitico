@@ -57,17 +57,34 @@ Deno.serve(async (req) => {
 
     console.log(`Recalculating metrics for candidate ${candidateId}, user ${userId}`);
 
-    // Fetch all interactions for this candidate belonging to this user
-    const { data: interactions, error: interactionsError } = await supabase
-      .from('social_interactions')
-      .select('id, sentiment_label, sentiment_score, likes_count, replies_count, shares_count, social_network, comment_author')
-      .eq('candidate_id', candidateId)
-      .eq('user_id', userId);
+    // Fetch ALL interactions with pagination to bypass 1000-row limit
+    let allInteractions: any[] = [];
+    let offset = 0;
+    const pageSize = 1000;
 
-    if (interactionsError) {
-      console.error('Failed to fetch interactions:', interactionsError);
-      throw interactionsError;
+    while (true) {
+      const { data: page, error: pageError } = await supabase
+        .from('social_interactions')
+        .select('id, sentiment_label, sentiment_score, likes_count, replies_count, shares_count, social_network, comment_author')
+        .eq('candidate_id', candidateId)
+        .eq('user_id', userId)
+        .range(offset, offset + pageSize - 1);
+
+      if (pageError) {
+        console.error('Failed to fetch interactions page:', pageError);
+        throw pageError;
+      }
+
+      if (!page || page.length === 0) break;
+
+      allInteractions = [...allInteractions, ...page];
+      console.log(`Fetched page ${Math.floor(offset / pageSize) + 1}: ${page.length} rows (total: ${allInteractions.length})`);
+
+      if (page.length < pageSize) break; // Last page
+      offset += pageSize;
     }
+
+    const interactions = allInteractions;
 
     // Fetch candidate followers for reach score
     const { data: candidate } = await supabase
