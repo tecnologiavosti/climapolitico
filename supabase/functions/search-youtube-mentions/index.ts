@@ -457,15 +457,35 @@ Deno.serve(async (req) => {
     console.log(`Starting YouTube collection for candidate: ${candidateName} (${candidateId})`);
 
     // Get already collected comment authors to avoid duplicates
-    const { data: existingComments } = await supabase
-      .from('social_interactions')
-      .select('comment_text, comment_author, original_posted_at')
-      .eq('candidate_id', candidateId)
-      .eq('social_network', 'YouTube');
+    // Fetch ALL existing comments with pagination to bypass 1000-row limit
+    let allExistingComments: any[] = [];
+    let offset = 0;
+    const pageSize = 1000;
+
+    while (true) {
+      const { data: page, error: pageError } = await supabase
+        .from('social_interactions')
+        .select('comment_text, comment_author, original_posted_at')
+        .eq('candidate_id', candidateId)
+        .eq('social_network', 'YouTube')
+        .range(offset, offset + pageSize - 1);
+
+      if (pageError) {
+        console.error('Error fetching existing comments page:', pageError);
+        break;
+      }
+
+      if (!page || page.length === 0) break;
+
+      allExistingComments = [...allExistingComments, ...page];
+
+      if (page.length < pageSize) break; // Last page
+      offset += pageSize;
+    }
 
     // Create a Set of unique identifiers for existing comments
     const existingCommentsSet = new Set(
-      (existingComments || []).map(c => 
+      allExistingComments.map(c => 
         `${c.comment_author}:${c.original_posted_at}:${(c.comment_text || '').substring(0, 50)}`
       )
     );
