@@ -4,14 +4,15 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { 
   Users, MessageSquare, TrendingUp, TrendingDown, 
-  ThumbsUp, ThumbsDown, Minus, Share2, Heart,
-  AlertTriangle, CheckCircle, Info
+  ThumbsUp, ThumbsDown, Minus, Heart,
+  AlertTriangle, Youtube
 } from "lucide-react";
 import { useCandidateMetrics } from "@/hooks/useCandidateMetrics";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 
 interface CandidateOverviewPanelProps {
   candidateId: string;
+  candidateName?: string;
 }
 
 const SENTIMENT_COLORS = {
@@ -31,7 +32,7 @@ const NETWORK_COLORS: Record<string, string> = {
   "Outro": "#6B7280"
 };
 
-export function CandidateOverviewPanel({ candidateId }: CandidateOverviewPanelProps) {
+export function CandidateOverviewPanel({ candidateId, candidateName }: CandidateOverviewPanelProps) {
   // Use the single source of truth hook
   const { data: metrics, isLoading } = useCandidateMetrics(candidateId);
 
@@ -68,34 +69,37 @@ export function CandidateOverviewPanel({ candidateId }: CandidateOverviewPanelPr
     { name: "Negativo", value: metrics.sentimentDistribution.negative, color: SENTIMENT_COLORS.negative }
   ].filter(d => d.value > 0);
 
-  const confidenceLabel = {
-    high: { text: "Alta Confiança", icon: CheckCircle, color: "text-success" },
-    medium: { text: "Média Confiança", icon: Info, color: "text-warning" },
-    low: { text: "Baixa Confiança", icon: AlertTriangle, color: "text-destructive" }
-  }[metrics.dataConfidence];
-
-  const ConfidenceIcon = confidenceLabel.icon;
+  // Derive primary data source from network breakdown
+  const primarySource = metrics.networkBreakdown.length > 0 
+    ? metrics.networkBreakdown[0].network 
+    : 'YouTube';
 
   return (
     <div className="space-y-6">
-      {/* Data Confidence Banner */}
-      <Card className={`border-l-4 ${metrics.dataConfidence === 'high' ? 'border-l-success' : metrics.dataConfidence === 'medium' ? 'border-l-warning' : 'border-l-destructive'}`}>
+      {/* Data Source Banner */}
+      <Card className="border-l-4 border-l-destructive bg-destructive/5">
         <CardContent className="py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <ConfidenceIcon className={`h-5 w-5 ${confidenceLabel.color}`} />
-              <span className="font-medium">{confidenceLabel.text}</span>
+              <Youtube className="h-5 w-5 text-destructive" />
+              <span className="font-medium">Fonte: {primarySource}</span>
               <span className="text-sm text-muted-foreground">
-                • {metrics.analysisCount} análise(s) • Última: {
-                  metrics.lastAnalysisDate 
-                    ? new Date(metrics.lastAnalysisDate).toLocaleDateString('pt-BR')
+                • Última atualização: {
+                  metrics.lastCalculatedAt 
+                    ? new Date(metrics.lastCalculatedAt).toLocaleDateString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })
                     : 'N/A'
                 }
               </span>
             </div>
-            {metrics.dataConfidence === 'low' && (
-              <span className="text-xs text-muted-foreground">
-                Recomendamos mais análises para resultados mais precisos
+            {candidateName && (
+              <span className="text-sm text-muted-foreground">
+                Palavras-chave: <strong>{candidateName}</strong>
               </span>
             )}
           </div>
@@ -112,7 +116,7 @@ export function CandidateOverviewPanel({ candidateId }: CandidateOverviewPanelPr
                 <p className="text-sm text-muted-foreground">Total de Menções</p>
                 <p className="text-3xl font-bold mt-1">{metrics.totalMentions.toLocaleString('pt-BR')}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Todas as redes sociais
+                  comentários coletados
                 </p>
               </div>
               <div className="p-3 bg-primary/10 rounded-lg">
@@ -130,7 +134,7 @@ export function CandidateOverviewPanel({ candidateId }: CandidateOverviewPanelPr
                 <p className="text-sm text-muted-foreground">Pessoas Citando</p>
                 <p className="text-3xl font-bold mt-1">{metrics.uniqueAuthors.toLocaleString('pt-BR')}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Autores únicos identificados
+                  autores únicos
                 </p>
               </div>
               <div className="p-3 bg-primary/10 rounded-lg">
@@ -140,24 +144,16 @@ export function CandidateOverviewPanel({ candidateId }: CandidateOverviewPanelPr
           </CardContent>
         </Card>
 
-        {/* Engagement */}
+        {/* Engagement - simplified to just likes */}
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Engajamento Total</p>
-                <p className="text-3xl font-bold mt-1">{metrics.totalEngagement.toLocaleString('pt-BR')}</p>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                  <span className="flex items-center gap-1">
-                    <Heart className="h-3 w-3" /> {metrics.totalLikes.toLocaleString('pt-BR')}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <MessageSquare className="h-3 w-3" /> {metrics.totalReplies.toLocaleString('pt-BR')}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Share2 className="h-3 w-3" /> {metrics.totalShares.toLocaleString('pt-BR')}
-                  </span>
-                </div>
+                <p className="text-3xl font-bold mt-1">{metrics.totalLikes.toLocaleString('pt-BR')}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  curtidas nos comentários
+                </p>
               </div>
               <div className="p-3 bg-primary/10 rounded-lg">
                 <Heart className="h-6 w-6 text-primary" />
@@ -275,11 +271,11 @@ export function CandidateOverviewPanel({ candidateId }: CandidateOverviewPanelPr
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Share2 className="h-5 w-5" />
+              <Youtube className="h-5 w-5 text-destructive" />
               Menções por Rede Social
             </CardTitle>
             <CardDescription>
-              Em quais redes o candidato é mais citado
+              Origem dos comentários coletados
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -328,7 +324,7 @@ export function CandidateOverviewPanel({ candidateId }: CandidateOverviewPanelPr
                     <span className="text-sm font-medium">{network.network}</span>
                   </div>
                   <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                    <span>{network.mentions.toLocaleString('pt-BR')} menções</span>
+                    <span>{network.mentions.toLocaleString('pt-BR')} comentários</span>
                     <Badge variant={network.avgSentiment >= 60 ? 'default' : network.avgSentiment >= 40 ? 'secondary' : 'destructive'}>
                       {network.avgSentiment}%
                     </Badge>
@@ -340,18 +336,16 @@ export function CandidateOverviewPanel({ candidateId }: CandidateOverviewPanelPr
         </Card>
       </div>
 
-      {/* Data Notice */}
-      {metrics.dataConfidence === 'low' && (
+      {/* Data Notice - only show if no data */}
+      {metrics.totalMentions === 0 && (
         <Card className="bg-warning/5 border-warning/20">
           <CardContent className="py-4">
             <div className="flex items-start gap-3">
               <AlertTriangle className="h-5 w-5 text-warning mt-0.5" />
               <div>
-                <p className="font-medium text-warning">Dados Limitados</p>
+                <p className="font-medium text-warning">Sem Dados Coletados</p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Os dados exibidos são baseados em análises de IA e podem não refletir o volume real de menções nas redes sociais.
-                  Para obter dados mais precisos, é necessário integrar APIs de coleta de dados sociais como Twitter API, 
-                  Meta Graph API, ou ferramentas especializadas de social listening.
+                  Clique no botão do YouTube para coletar comentários reais sobre este candidato.
                 </p>
               </div>
             </div>

@@ -14,7 +14,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowUpRight, ArrowDownRight, Minus, Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, ChevronUp, BarChart3 } from "lucide-react";
+import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, ChevronUp, BarChart3 } from "lucide-react";
+// ArrowUpRight, ArrowDownRight, Minus removidos temporariamente (coluna Tendência oculta)
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 
 // Zod validation schema
@@ -370,15 +371,14 @@ export default function Candidates() {
                 <TableHead>Candidato</TableHead>
                 <TableHead>Menções</TableHead>
                 <TableHead>Sentimento</TableHead>
-                <TableHead>Tendência</TableHead>
-                <TableHead>Última Análise</TableHead>
+                <TableHead>Última Coleta</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredCandidates.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
                     {searchTerm 
                       ? "Nenhum candidato encontrado com esse critério de busca"
                       : "Nenhum candidato cadastrado. Adicione seu primeiro candidato!"}
@@ -426,31 +426,19 @@ export default function Candidates() {
                             <span className="text-muted-foreground text-sm">Não analisado</span>
                           )}
                         </TableCell>
-                        <TableCell>
-                          {candidate.trend?.toLowerCase() === 'up' || candidate.trend?.toLowerCase() === 'alta' ? (
-                            <div className="flex items-center gap-1 text-success">
-                              <ArrowUpRight className="h-4 w-4" />
-                              <span className="text-sm">{candidate.trend}</span>
-                            </div>
-                          ) : candidate.trend?.toLowerCase() === 'down' || candidate.trend?.toLowerCase() === 'baixa' ? (
-                            <div className="flex items-center gap-1 text-destructive">
-                              <ArrowDownRight className="h-4 w-4" />
-                              <span className="text-sm">{candidate.trend}</span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1 text-muted-foreground">
-                              <Minus className="h-4 w-4" />
-                              <span className="text-sm">{candidate.trend || 'Neutro'}</span>
-                            </div>
-                          )}
-                        </TableCell>
+                        {/* Coluna de Tendência removida temporariamente - só exibir quando houver comparação real de períodos */}
                         <TableCell>
                           {candidate.last_analysis_at ? (
                             <span className="text-sm text-muted-foreground">
-                              {new Date(candidate.last_analysis_at).toLocaleDateString('pt-BR')}
+                              {new Date(candidate.last_analysis_at).toLocaleDateString('pt-BR', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
                             </span>
                           ) : (
-                            <Badge variant="outline" className="text-xs">Nunca analisado</Badge>
+                            <Badge variant="outline" className="text-xs">Nunca coletado</Badge>
                           )}
                         </TableCell>
                         <TableCell className="text-right">
@@ -542,8 +530,11 @@ export default function Candidates() {
                       {/* Expandable Panel */}
                       {isExpanded && (
                         <TableRow>
-                          <TableCell colSpan={7} className="bg-muted/30 p-6">
-                            <CandidateOverviewPanel candidateId={candidate.id} />
+                          <TableCell colSpan={6} className="bg-muted/30 p-6">
+                            <CandidateOverviewPanel 
+                              candidateId={candidate.id} 
+                              candidateName={candidate.full_name}
+                            />
                           </TableCell>
                         </TableRow>
                       )}
