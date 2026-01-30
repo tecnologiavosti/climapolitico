@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.deduplicate-profiles]
 verify_jwt = true
+
+[functions.reanalyze-sentiment]
+verify_jwt = true

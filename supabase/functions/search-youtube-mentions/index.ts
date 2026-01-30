@@ -122,43 +122,48 @@ async function analyzeSentimentBatch(texts: string[]): Promise<SentimentResult[]
     return texts.map(() => ({ label: 'Neutro', score: 0.5 }));
   }
 
-  // Safety: keep payload bounded
-  const clipped = texts.map((t) => (t || '').substring(0, 500));
+  // Safety: keep payload bounded and clean texts
+  const clipped = texts.map((t) => (t || '').substring(0, 400).trim()).filter(t => t.length > 0);
+  
+  if (clipped.length === 0) {
+    return texts.map(() => ({ label: 'Neutro', score: 0.5 }));
+  }
+
+  console.log(`[SENTIMENT] Analyzing ${clipped.length} comments...`);
+  console.log(`[SENTIMENT] Sample: "${clipped[0].substring(0, 80)}..."`);
 
   try {
     const systemPrompt = `Você é um especialista em análise de sentimento para comentários políticos em português brasileiro.
 
-REGRAS CRÍTICAS DE CLASSIFICAÇÃO:
+CLASSIFICAÇÃO OBRIGATÓRIA:
 
-POSITIVO (score 0.7-1.0) - QUALQUER comentário que demonstre:
-- Apoio explícito: "voto nele", "meu candidato", "o melhor", "vai ganhar"
-- Intenção de voto: "22", "13", números de urna mencionados com aprovação
-- Elogios: "mito", "presidente", "parabéns", "orgulho", "honesto"
-- Torcida: "com certeza", "vai dar certo", "confiamos", "força"
-- Defesa: "não fez nada errado", "injustiça", "perseguição"
-- Combinações de candidatos com tom favorável: "Vice X com Y", "chapa perfeita"
-- Emojis positivos: 👏 ❤️ 🇧🇷 💚💛 🙏
+**POSITIVO** (score 0.7-1.0) - Comentários que expressam:
+- Apoio direto: "te amo", "meu presidente", "parabéns", "voto em você"
+- Elogios: "mito", "melhor", "orgulho", "herói"
+- Expressões de torcida: "vai ganhar", "força", "estamos com você"
+- Emojis positivos: ❤️ 👏 🇧🇷 💚💛 🙏 ✊
+- Números de urna com apoio (22, 13, etc)
+- Defesa do candidato contra críticas
 
-NEGATIVO (score 0.0-0.3) - Comentários que demonstrem:
-- Críticas diretas: "ladrão", "corrupto", "mentiroso", "incompetente"
-- Rejeição: "fora", "nunca", "jamais votaria"
-- Insultos ou xingamentos
-- Acusações: "roubou", "destruiu", "acabou com"
-- Desprezo ou sarcasmo negativo
+**NEGATIVO** (score 0.0-0.3) - Comentários que expressam:
+- Críticas: "ladrão", "corrupto", "mentiroso", "vagabundo"
+- Rejeição: "fora", "nunca", "jamais"
+- Xingamentos ou insultos
+- Acusações de crimes ou má conduta
+- Sarcasmo negativo ou ironia crítica
 - Emojis negativos: 🤮 👎 😡 💩
 
-NEUTRO (score 0.4-0.6) - APENAS quando:
-- O comentário é puramente informativo sem opinião
-- Pergunta genuína sem viés aparente
-- Comentário completamente off-topic
+**NEUTRO** (score 0.4-0.6) - APENAS para:
+- Perguntas genuínas sem opinião
+- Comentários puramente informativos
 - Impossível determinar polaridade
 
-IMPORTANTE:
-- Comentários curtos de apoio político são POSITIVOS, não neutros
-- Frases como "Fulano presidente" são POSITIVAS (intenção de voto)
-- Na dúvida entre Neutro e Positivo/Negativo, escolha a polaridade detectada
+REGRA CRÍTICA: Comentários curtos de apoio como "Lula presidente" ou "Parabéns Bolsonaro" são POSITIVOS, NÃO neutros!
 
-Responda APENAS com um JSON array: [{"label":"Positivo|Negativo|Neutro","score":0.0-1.0}, ...] na MESMA ORDEM.`;
+Responda SOMENTE com um JSON array no formato: [{"label":"Positivo","score":0.85},{"label":"Negativo","score":0.15},...] na MESMA ordem dos comentários.`;
+
+    // Format comments as numbered list for better model understanding
+    const userContent = clipped.map((text, i) => `${i + 1}. "${text}"`).join('\n');
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -170,41 +175,73 @@ Responda APENAS com um JSON array: [{"label":"Positivo|Negativo|Neutro","score":
         model: 'google/gemini-2.5-flash',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: JSON.stringify({ texts: clipped }) },
+          { role: 'user', content: `Analise o sentimento político de cada comentário abaixo:\n\n${userContent}` },
         ],
         temperature: 0.1,
-        max_tokens: 500,
+        max_tokens: clipped.length * 50 + 100, // Dynamic based on input size
       }),
     });
 
     if (!response.ok) {
-      console.error('Sentiment API error (batch):', response.status);
+      const errorText = await response.text();
+      console.error(`[SENTIMENT] API error ${response.status}:`, errorText);
       return texts.map(() => ({ label: 'Neutro', score: 0.5 }));
     }
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content || '';
+    
+    console.log(`[SENTIMENT] Raw response (first 500 chars): ${content.substring(0, 500)}`);
 
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
+    // Extract JSON array from response
+    const jsonMatch = content.match(/\[[\s\S]*?\]/);
     if (!jsonMatch) {
+      console.error('[SENTIMENT] No JSON array found in response');
+      console.log('[SENTIMENT] Full response:', content);
       return texts.map(() => ({ label: 'Neutro', score: 0.5 }));
     }
 
-    const parsed = JSON.parse(jsonMatch[0]);
+    let parsed: any[];
+    try {
+      parsed = JSON.parse(jsonMatch[0]);
+    } catch (parseError) {
+      console.error('[SENTIMENT] JSON parse error:', parseError);
+      console.log('[SENTIMENT] Attempted to parse:', jsonMatch[0]);
+      return texts.map(() => ({ label: 'Neutro', score: 0.5 }));
+    }
+
     if (!Array.isArray(parsed)) {
+      console.error('[SENTIMENT] Parsed result is not an array');
       return texts.map(() => ({ label: 'Neutro', score: 0.5 }));
     }
 
+    // Log sentiment distribution for debugging
+    const sentimentCounts = { Positivo: 0, Negativo: 0, Neutro: 0 };
+    
     // Normalize to correct length
-    const normalized: SentimentResult[] = parsed.slice(0, texts.length).map((p: any) => ({
-      label: p?.label === 'Positivo' || p?.label === 'Negativo' || p?.label === 'Neutro' ? p.label : 'Neutro',
-      score: typeof p?.score === 'number' ? p.score : 0.5,
-    }));
+    const normalized: SentimentResult[] = texts.map((_, idx) => {
+      const p = parsed[idx];
+      if (!p) return { label: 'Neutro' as const, score: 0.5 };
+      
+      const label = (p?.label === 'Positivo' || p?.label === 'Negativo' || p?.label === 'Neutro') 
+        ? p.label as 'Positivo' | 'Negativo' | 'Neutro'
+        : 'Neutro';
+      const score = typeof p?.score === 'number' ? Math.max(0, Math.min(1, p.score)) : 0.5;
+      
+      sentimentCounts[label]++;
+      return { label, score };
+    });
 
-    while (normalized.length < texts.length) normalized.push({ label: 'Neutro', score: 0.5 });
+    console.log(`[SENTIMENT] Distribution: Positivo=${sentimentCounts.Positivo}, Negativo=${sentimentCounts.Negativo}, Neutro=${sentimentCounts.Neutro}`);
+    
+    // Log sample results for verification
+    for (let i = 0; i < Math.min(3, normalized.length); i++) {
+      console.log(`[SENTIMENT] "${clipped[i]?.substring(0, 50)}..." -> ${normalized[i].label} (${normalized[i].score})`);
+    }
+
     return normalized;
   } catch (error) {
-    console.error('Sentiment analysis error (batch):', error);
+    console.error('[SENTIMENT] Analysis error:', error);
     return texts.map(() => ({ label: 'Neutro', score: 0.5 }));
   }
 }
