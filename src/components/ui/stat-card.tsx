@@ -2,8 +2,7 @@ import { LucideIcon } from "lucide-react";
 import { Card } from "./card";
 import { TrendingUp, TrendingDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useCountUp } from "@/hooks/useCountUp";
-import { useInView } from "@/hooks/useInView";
+import { useEffect, useState, useRef } from "react";
 
 interface StatCardProps {
   title: string;
@@ -24,21 +23,36 @@ export const StatCard = ({
   animated = true,
   className,
 }: StatCardProps) => {
-  const { ref, isInView } = useInView({ threshold: 0.3 });
-  
-  const numericValue = typeof value === "string" ? parseInt(value.replace(/\D/g, "")) : value;
-  const animatedValue = useCountUp(numericValue, 2000, 0);
-  
-  const displayValue = animated && isInView && typeof value === "number" 
-    ? animatedValue.toLocaleString()
-    : value;
+  const [hasAnimated, setHasAnimated] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Run animation only once when first visible
+  useEffect(() => {
+    if (hasAnimated) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setHasAnimated(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.3 }
+    );
+
+    if (ref.current) {
+      observer.observe(ref.current);
+    }
+
+    return () => observer.disconnect();
+  }, [hasAnimated]);
 
   return (
     <Card
       ref={ref}
       className={cn(
         "p-6 hover-lift hover-glow transition-all duration-300 border-border/50",
-        isInView && "animate-fade-in-up",
+        hasAnimated ? "opacity-100" : "opacity-0",
         className
       )}
     >
@@ -47,7 +61,7 @@ export const StatCard = ({
           <p className="text-sm text-muted-foreground font-medium">
             {title}
           </p>
-          <p className="text-3xl font-bold">{displayValue}</p>
+          <p className="text-3xl font-bold">{value}</p>
           {change && (
             <p className={cn(
               "text-sm flex items-center gap-1",
