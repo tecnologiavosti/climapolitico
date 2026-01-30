@@ -5,165 +5,136 @@ import { DateRange } from "react-day-picker";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingUp, TrendingDown, MessageSquare, FileCheck } from "lucide-react";
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line } from "recharts";
+import { Badge } from "@/components/ui/badge";
+import { TrendingUp, TrendingDown, MessageSquare, ThumbsUp, Youtube, BarChart3, Clock } from "lucide-react";
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line, Area, AreaChart } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { useAuth } from "@/hooks/useAuth";
 
+// Componentes de análise demográfica temporariamente ocultos
+// Motivo: YouTube Data API não fornece idade, gênero ou localização dos usuários
+// Esses dados são tecnicamente inviáveis e foram removidos da interface
+
 export default function Analytics() {
-  const { isAdmin } = useAdminCheck();
   const { user } = useAuth();
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: new Date(new Date().setDate(new Date().getDate() - 30)),
     to: new Date(),
   });
 
-  const { data: analyses, isLoading } = useQuery({
-    queryKey: ['analytics', dateRange, isAdmin],
+  // Query: Buscar dados reais de social_interactions (comentários coletados)
+  const { data: interactions, isLoading } = useQuery({
+    queryKey: ['analytics-interactions', dateRange, user?.id],
     queryFn: async () => {
-      let query = supabase
-        .from('candidate_analyses')
-        .select('*, candidates(full_name, party)')
-        .order('created_at', { ascending: true });
+      if (!user) return [];
 
-      if (!isAdmin && user) {
-        query = query.eq('user_id', user.id);
-      }
+      let query = supabase
+        .from('social_interactions')
+        .select('id, sentiment_label, sentiment_score, likes_count, social_network, created_at, comment_author')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true });
 
       if (dateRange?.from) {
         query = query.gte('created_at', dateRange.from.toISOString());
       }
       if (dateRange?.to) {
-        query = query.lte('created_at', dateRange.to.toISOString());
+        // Add one day to include the full end date
+        const endDate = new Date(dateRange.to);
+        endDate.setDate(endDate.getDate() + 1);
+        query = query.lt('created_at', endDate.toISOString());
       }
 
       const { data, error } = await query;
       if (error) throw error;
-      return data;
+      return data || [];
     },
+    enabled: !!user,
   });
 
-  // Calculate KPIs
-  const averageSentiment = analyses?.length
-    ? (analyses.reduce((sum, a) => sum + (Number(a.sentiment_score) || 0), 0) / analyses.length).toFixed(1)
-    : "0";
+  // Calculate KPIs from real interactions
+  const totalMentions = interactions?.length || 0;
+  
+  const positiveCount = interactions?.filter(i => i.sentiment_label === 'Positivo').length || 0;
+  const negativeCount = interactions?.filter(i => i.sentiment_label === 'Negativo').length || 0;
+  const neutralCount = interactions?.filter(i => i.sentiment_label === 'Neutro').length || 0;
+  
+  const positiveRate = totalMentions > 0 ? Math.round((positiveCount / totalMentions) * 100) : 0;
+  
+  const averageSentiment = totalMentions > 0
+    ? Math.round(((positiveCount * 100) + (neutralCount * 50) + (negativeCount * 0)) / totalMentions)
+    : 50;
 
-  const totalMentions = analyses?.reduce((sum, a) => sum + (a.mentions_count || 0), 0) || 0;
-  const totalAnalyses = analyses?.length || 0;
-
-  const positiveCount = analyses?.filter(a => Number(a.sentiment_score) > 60).length || 0;
-  const negativeCount = analyses?.filter(a => Number(a.sentiment_score) < 40).length || 0;
   const generalTrend = positiveCount > negativeCount ? "positive" : negativeCount > positiveCount ? "negative" : "neutral";
 
-  // Social Network Distribution
-  const socialNetworkData = analyses?.reduce((acc: Record<string, number>, analysis) => {
-    const network = analysis.social_network || 'Outro';
+  // Unique authors
+  const uniqueAuthors = new Set(interactions?.map(i => i.comment_author).filter(Boolean)).size;
+
+  // Total engagement (likes)
+  const totalLikes = interactions?.reduce((sum, i) => sum + (i.likes_count || 0), 0) || 0;
+
+  // Social Network Distribution (from real data)
+  const networkData = interactions?.reduce((acc: Record<string, number>, i) => {
+    const network = i.social_network || 'Outro';
     acc[network] = (acc[network] || 0) + 1;
     return acc;
-  }, {});
+  }, {}) || {};
 
-  const socialNetworkChartData = socialNetworkData
-    ? Object.entries(socialNetworkData).map(([name, value]) => ({
-        name,
-        value,
-      }))
-    : [];
+  const networkChartData = Object.entries(networkData)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
 
-  const SOCIAL_COLORS = {
+  const NETWORK_COLORS: Record<string, string> = {
+    'YouTube': '#FF0000',
     'Instagram': '#E4405F',
     'Twitter/X': '#1DA1F2',
     'Facebook': '#4267B2',
     'TikTok': '#000000',
-    'YouTube': '#FF0000',
     'LinkedIn': '#0077B5',
     'Outro': '#6B7280',
   };
 
-  // Region Distribution
-  const regionData = analyses?.reduce((acc: Record<string, number>, analysis) => {
-    if (analysis.region_distribution) {
-      Object.entries(analysis.region_distribution as Record<string, number>).forEach(([region, percentage]) => {
-        acc[region] = (acc[region] || 0) + percentage;
-      });
-    }
-    return acc;
-  }, {});
+  // Sentiment Distribution (pie chart)
+  const sentimentChartData = [
+    { name: 'Positivo', value: positiveCount, color: 'hsl(var(--success))' },
+    { name: 'Neutro', value: neutralCount, color: 'hsl(var(--warning))' },
+    { name: 'Negativo', value: negativeCount, color: 'hsl(var(--destructive))' },
+  ].filter(d => d.value > 0);
 
-  const regionChartData = regionData
-    ? Object.entries(regionData)
-        .map(([region, value]) => ({
-          region,
-          percentage: Math.round(value / (analyses?.length || 1)),
-        }))
-        .sort((a, b) => b.percentage - a.percentage)
-        .slice(0, 5)
-    : [];
-
-  // Age Distribution
-  const ageData = analyses?.reduce((acc: Record<string, number>, analysis) => {
-    if (analysis.age_distribution) {
-      Object.entries(analysis.age_distribution as Record<string, number>).forEach(([age, percentage]) => {
-        acc[age] = (acc[age] || 0) + percentage;
-      });
-    }
-    return acc;
-  }, {});
-
-  const ageChartData = ageData
-    ? Object.entries(ageData).map(([age, value]) => ({
-        age,
-        percentage: Math.round(value / (analyses?.length || 1)),
-      }))
-    : [];
-
-  // Gender Distribution
-  const genderData = analyses?.reduce((acc: Record<string, number>, analysis) => {
-    if (analysis.gender_distribution) {
-      Object.entries(analysis.gender_distribution as Record<string, number>).forEach(([gender, percentage]) => {
-        acc[gender] = (acc[gender] || 0) + percentage;
-      });
-    }
-    return acc;
-  }, {});
-
-  const genderChartData = genderData
-    ? Object.entries(genderData).map(([name, value]) => ({
-        name,
-        value: Math.round(value / (analyses?.length || 1)),
-      }))
-    : [];
-
-  const GENDER_COLORS = {
-    'Masculino': '#3B82F6',
-    'Feminino': '#EC4899',
-    'Outros': '#8B5CF6',
-  };
-
-  // Temporal Evolution
-  const timelineData = analyses?.reduce((acc: Record<string, { date: string; sentiment: number; count: number }>, analysis) => {
-    const date = new Date(analysis.created_at).toLocaleDateString('pt-BR');
+  // Temporal Evolution - group by day
+  const timelineData = interactions?.reduce((acc: Record<string, { date: string; positive: number; neutral: number; negative: number; total: number }>, i) => {
+    const date = new Date(i.created_at).toLocaleDateString('pt-BR');
     if (!acc[date]) {
-      acc[date] = { date, sentiment: 0, count: 0 };
+      acc[date] = { date, positive: 0, neutral: 0, negative: 0, total: 0 };
     }
-    acc[date].sentiment += Number(analysis.sentiment_score) || 0;
-    acc[date].count += 1;
+    if (i.sentiment_label === 'Positivo') acc[date].positive += 1;
+    else if (i.sentiment_label === 'Negativo') acc[date].negative += 1;
+    else acc[date].neutral += 1;
+    acc[date].total += 1;
     return acc;
-  }, {});
+  }, {}) || {};
 
-  const timelineChartData = timelineData
-    ? Object.values(timelineData).map(item => ({
-        date: item.date,
-        sentiment: Math.round(item.sentiment / item.count),
-      }))
-    : [];
+  const timelineChartData = Object.values(timelineData).map(item => ({
+    date: item.date,
+    positive: item.positive,
+    neutral: item.neutral,
+    negative: item.negative,
+    total: item.total,
+    sentiment: item.total > 0 
+      ? Math.round(((item.positive * 100) + (item.neutral * 50) + (item.negative * 0)) / item.total)
+      : 50,
+  }));
+
+  // Get date range text
+  const dateRangeText = dateRange?.from && dateRange?.to
+    ? `${dateRange.from.toLocaleDateString('pt-BR')} - ${dateRange.to.toLocaleDateString('pt-BR')}`
+    : 'Período não selecionado';
 
   if (isLoading) {
     return (
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold">Analytics Avançado</h1>
-          <p className="text-muted-foreground">Análise temporal e demográfica dos candidatos</p>
+          <p className="text-muted-foreground">Análise estatística baseada em dados reais coletados</p>
         </div>
         <Skeleton className="h-12 w-full" />
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -177,12 +148,33 @@ export default function Analytics() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Analytics Avançado</h1>
-        <p className="text-muted-foreground">Análise temporal e demográfica dos candidatos</p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <BarChart3 className="h-8 w-8 text-primary" />
+            Analytics Avançado
+          </h1>
+          <p className="text-muted-foreground">Análise estatística baseada em dados reais coletados</p>
+        </div>
+        <Badge variant="outline" className="flex items-center gap-2">
+          <Youtube className="h-4 w-4 text-destructive" />
+          Fonte: YouTube
+        </Badge>
       </div>
 
       <DateRangePicker dateRange={dateRange} onDateRangeChange={setDateRange} />
+
+      {/* Period Info */}
+      <Card className="bg-muted/30">
+        <CardContent className="py-3">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Clock className="h-4 w-4" />
+            <span>Período analisado: <strong>{dateRangeText}</strong></span>
+            <span className="mx-2">•</span>
+            <span>{totalMentions.toLocaleString('pt-BR')} comentários encontrados</span>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -190,15 +182,15 @@ export default function Analytics() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Sentimento Médio</CardTitle>
             {generalTrend === "positive" ? (
-              <TrendingUp className="h-4 w-4 text-green-500" />
+              <TrendingUp className="h-4 w-4 text-success" />
             ) : generalTrend === "negative" ? (
-              <TrendingDown className="h-4 w-4 text-red-500" />
+              <TrendingDown className="h-4 w-4 text-destructive" />
             ) : (
-              <TrendingUp className="h-4 w-4 text-yellow-500" />
+              <TrendingUp className="h-4 w-4 text-warning" />
             )}
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{averageSentiment}/100</div>
+            <div className="text-2xl font-bold">{averageSentiment}%</div>
             <p className="text-xs text-muted-foreground">
               {generalTrend === "positive" ? "Tendência positiva" : generalTrend === "negative" ? "Tendência negativa" : "Estável"}
             </p>
@@ -211,32 +203,30 @@ export default function Analytics() {
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalMentions.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">No período selecionado</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Análises Realizadas</CardTitle>
-            <FileCheck className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalAnalyses}</div>
-            <p className="text-xs text-muted-foreground">Candidatos analisados</p>
+            <div className="text-2xl font-bold">{totalMentions.toLocaleString('pt-BR')}</div>
+            <p className="text-xs text-muted-foreground">{uniqueAuthors} autores únicos</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Taxa Positiva</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-500" />
+            <ThumbsUp className="h-4 w-4 text-success" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {totalAnalyses ? Math.round((positiveCount / totalAnalyses) * 100) : 0}%
-            </div>
-            <p className="text-xs text-muted-foreground">{positiveCount} análises positivas</p>
+            <div className="text-2xl font-bold">{positiveRate}%</div>
+            <p className="text-xs text-muted-foreground">{positiveCount} comentários positivos</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Engajamento</CardTitle>
+            <TrendingUp className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalLikes.toLocaleString('pt-BR')}</div>
+            <p className="text-xs text-muted-foreground">curtidas nos comentários</p>
           </CardContent>
         </Card>
       </div>
@@ -245,188 +235,223 @@ export default function Analytics() {
       <Card>
         <CardHeader>
           <CardTitle>Evolução do Sentimento</CardTitle>
-          <CardDescription>Sentimento médio ao longo do tempo</CardDescription>
+          <CardDescription>Distribuição de sentimentos ao longo do tempo (dados reais)</CardDescription>
         </CardHeader>
         <CardContent>
           {timelineChartData.length > 0 ? (
             <ChartContainer
               config={{
-                sentiment: {
-                  label: "Sentimento",
-                  color: "hsl(var(--primary))",
-                },
+                positive: { label: "Positivo", color: "hsl(var(--success))" },
+                neutral: { label: "Neutro", color: "hsl(var(--warning))" },
+                negative: { label: "Negativo", color: "hsl(var(--destructive))" },
               }}
               className="h-[350px]"
             >
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={timelineChartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis domain={[0, 100]} />
+                <AreaChart data={timelineChartData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                  <YAxis />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <Line type="monotone" dataKey="sentiment" stroke="hsl(var(--primary))" strokeWidth={2} />
-                </LineChart>
+                  <Area 
+                    type="monotone" 
+                    dataKey="positive" 
+                    stackId="1" 
+                    stroke="hsl(var(--success))" 
+                    fill="hsl(var(--success))" 
+                    fillOpacity={0.6}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="neutral" 
+                    stackId="1" 
+                    stroke="hsl(var(--warning))" 
+                    fill="hsl(var(--warning))" 
+                    fillOpacity={0.6}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="negative" 
+                    stackId="1" 
+                    stroke="hsl(var(--destructive))" 
+                    fill="hsl(var(--destructive))" 
+                    fillOpacity={0.6}
+                  />
+                  <Legend />
+                </AreaChart>
               </ResponsiveContainer>
             </ChartContainer>
           ) : (
             <div className="h-[350px] flex items-center justify-center text-muted-foreground">
+              <div className="text-center">
+                <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                <p>Sem dados no período selecionado</p>
+                <p className="text-sm mt-2">Colete comentários do YouTube para visualizar a evolução</p>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Charts Row */}
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Sentiment Distribution */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Distribuição de Sentimento</CardTitle>
+            <CardDescription>Proporção de comentários por sentimento</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {sentimentChartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={sentimentChartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={90}
+                    paddingAngle={5}
+                    labelLine={false}
+                    label={({ name, value }) => `${name}: ${value}`}
+                    dataKey="value"
+                  >
+                    {sentimentChartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value: number) => [value, 'Comentários']} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                Sem dados no período selecionado
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Network Distribution - only show if there's data */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Origem dos Dados</CardTitle>
+            <CardDescription>Comentários por rede social</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {networkChartData.length > 0 ? (
+              <>
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={networkChartData} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis type="number" />
+                    <YAxis 
+                      dataKey="name" 
+                      type="category" 
+                      width={80}
+                      tick={{ fontSize: 12 }}
+                    />
+                    <Tooltip formatter={(value: number) => [value.toLocaleString('pt-BR'), 'Comentários']} />
+                    <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                      {networkChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={NETWORK_COLORS[entry.name] || NETWORK_COLORS['Outro']} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+                
+                {/* Network breakdown list */}
+                <div className="space-y-2 mt-4">
+                  {networkChartData.map((network) => (
+                    <div key={network.name} className="flex items-center justify-between p-2 rounded-lg bg-muted/30">
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-3 h-3 rounded-full" 
+                          style={{ backgroundColor: NETWORK_COLORS[network.name] || NETWORK_COLORS['Outro'] }}
+                        />
+                        <span className="text-sm font-medium">{network.name}</span>
+                      </div>
+                      <span className="text-sm text-muted-foreground">
+                        {network.value.toLocaleString('pt-BR')} comentários ({totalMentions > 0 ? Math.round((network.value / totalMentions) * 100) : 0}%)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                Sem dados no período selecionado
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Volume Chart */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Volume de Menções</CardTitle>
+          <CardDescription>Total de comentários coletados por dia</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {timelineChartData.length > 0 ? (
+            <ChartContainer
+              config={{
+                total: { label: "Comentários", color: "hsl(var(--primary))" },
+              }}
+              className="h-[250px]"
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={timelineChartData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                  <YAxis />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Line 
+                    type="monotone" 
+                    dataKey="total" 
+                    stroke="hsl(var(--primary))" 
+                    strokeWidth={2}
+                    dot={{ fill: "hsl(var(--primary))" }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          ) : (
+            <div className="h-[250px] flex items-center justify-center text-muted-foreground">
               Sem dados no período selecionado
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Demographic Analysis Section */}
-      <div className="space-y-4">
-        <div>
-          <h2 className="text-2xl font-bold">Análise Demográfica</h2>
-          <p className="text-muted-foreground">Distribuição do público por plataforma, região, idade e gênero</p>
-        </div>
+      {/* Data Info Footer */}
+      <Card className="bg-muted/30">
+        <CardContent className="py-4">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Youtube className="h-4 w-4 text-destructive" />
+            <span>
+              Todas as métricas são calculadas a partir dos comentários reais coletados do YouTube.
+              Dados demográficos (idade, gênero, localização) não são fornecidos pela API do YouTube.
+            </span>
+          </div>
+        </CardContent>
+      </Card>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          {/* Social Network Distribution */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Distribuição por Rede Social</CardTitle>
-              <CardDescription>Análises por plataforma</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {socialNetworkChartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={socialNetworkChartData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {socialNetworkChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={SOCIAL_COLORS[entry.name as keyof typeof SOCIAL_COLORS] || '#6B7280'} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                  Sem dados no período selecionado
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Regional Distribution */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Distribuição Regional</CardTitle>
-              <CardDescription>Top 5 regiões</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {regionChartData.length > 0 ? (
-                <ChartContainer
-                  config={{
-                    percentage: {
-                      label: "Percentual",
-                      color: "hsl(var(--primary))",
-                    },
-                  }}
-                  className="h-[300px]"
-                >
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={regionChartData} layout="vertical">
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis type="number" />
-                      <YAxis dataKey="region" type="category" width={100} />
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                      <Bar dataKey="percentage" fill="hsl(var(--primary))" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </ChartContainer>
-              ) : (
-                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                  Sem dados disponíveis
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Age Distribution */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Faixa Etária</CardTitle>
-              <CardDescription>Distribuição por idade</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {ageChartData.length > 0 ? (
-                <ChartContainer
-                  config={{
-                    percentage: {
-                      label: "Percentual",
-                      color: "hsl(var(--chart-2))",
-                    },
-                  }}
-                  className="h-[300px]"
-                >
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={ageChartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="age" />
-                      <YAxis />
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                      <Bar dataKey="percentage" fill="hsl(var(--chart-2))" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </ChartContainer>
-              ) : (
-                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                  Sem dados disponíveis
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Gender Distribution */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Distribuição por Gênero</CardTitle>
-              <CardDescription>Público por gênero</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {genderChartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={genderChartData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, value }) => `${name}: ${value}%`}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {genderChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={GENDER_COLORS[entry.name as keyof typeof GENDER_COLORS] || '#8B5CF6'} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                  Sem dados disponíveis
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      {/* 
+        Seção de Análise Demográfica removida temporariamente.
+        
+        Motivo técnico: A YouTube Data API não fornece informações pessoais dos usuários
+        como idade, gênero ou localização geográfica. Essas métricas são tecnicamente 
+        inviáveis de serem calculadas e foram removidas para evitar dados falsos.
+        
+        Os componentes abaixo podem ser reativados quando houver integração com APIs
+        que forneçam esses dados (ex: Meta Graph API para Facebook/Instagram):
+        
+        - Distribuição Regional
+        - Faixa Etária  
+        - Distribuição por Gênero
+      */}
     </div>
   );
 }
