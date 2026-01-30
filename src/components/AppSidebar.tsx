@@ -35,22 +35,27 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
+// Módulos ativos no menu principal
 const mainItems = [
   { title: "Visão Geral", url: "/dashboard", icon: BarChart3 },
   { title: "Monitor Tempo Real", url: "/dashboard/realtime-monitor", icon: Radio },
   { title: "Candidatos", url: "/dashboard/candidates", icon: Users },
-  { title: "Análises", url: "/dashboard/analytics", icon: TrendingUp },
   { title: "Analytics Avançado", url: "/dashboard/analytics-advanced", icon: LineChart },
-  { title: "Análise de Fala", url: "/dashboard/speech-analysis", icon: Mic },
   { title: "Ranking", url: "/dashboard/ranking", icon: Trophy },
-  { title: "Público Indeciso", url: "/dashboard/undecided", icon: UserX },
-  { title: "Relatório por Rede Social", url: "/dashboard/social-media-report", icon: Share2 },
   { title: "Configuração de Coleta", url: "/dashboard/collection-status", icon: Database },
-  { title: "Relatório de Rastreabilidade", url: "/dashboard/traceability-report", icon: ClipboardList },
-  { title: "Relatórios Agendados", url: "/dashboard/scheduled-reports", icon: Calendar },
-  { title: "Templates de Relatório", url: "/dashboard/report-templates", icon: FileText },
-  { title: "IA & Insights", url: "/dashboard/ai", icon: Brain },
 ];
+
+// Módulos temporariamente desativados (mantidos para reativação futura)
+// const inactiveItems = [
+//   { title: "Análises", url: "/dashboard/analytics", icon: TrendingUp },
+//   { title: "Análise de Fala", url: "/dashboard/speech-analysis", icon: Mic },
+//   { title: "Público Indeciso", url: "/dashboard/undecided", icon: UserX },
+//   { title: "Relatório por Rede Social", url: "/dashboard/social-media-report", icon: Share2 },
+//   { title: "Relatório de Rastreabilidade", url: "/dashboard/traceability-report", icon: ClipboardList },
+//   { title: "Relatórios Agendados", url: "/dashboard/scheduled-reports", icon: Calendar },
+//   { title: "Templates de Relatório", url: "/dashboard/report-templates", icon: FileText },
+//   { title: "IA & Insights", url: "/dashboard/ai", icon: Brain },
+// ];
 
 const adminItems = [
   { title: "Administração", url: "/dashboard/admin", icon: Shield },
