@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 
 export interface SocialInteraction {
   id: string;
+  user_id: string;
   candidate_id: string;
   comment_text: string | null;
   comment_author: string | null;
@@ -26,6 +27,7 @@ export interface RealTimeMetrics {
   negativeMentions: number;
   neutralMentions: number;
   sentimentScore: number;
+  totalEngagement: number;
   engagementPerMinute: number;
   trend: 'up' | 'down' | 'stable';
   mentionsByNetwork: { network: string; count: number }[];
@@ -53,47 +55,70 @@ export const useRealTimeAnalytics = (
   const [error, setError] = useState<string | null>(null);
 
   const fetchAggregatedMetrics = useCallback(async () => {
-    if (!user || candidateIds.length === 0) return;
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
 
     try {
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      setIsLoading(true);
       
-      const { data: interactions, error: fetchError } = await supabase
+      // Build query based on whether candidate IDs are provided
+      let query = supabase
         .from('social_interactions')
         .select('*')
-        .in('candidate_id', candidateIds)
-        .gte('created_at', oneHourAgo)
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (fetchError) throw fetchError;
+      // If specific candidates are selected, filter by them
+      if (candidateIds.length > 0) {
+        query = query.in('candidate_id', candidateIds);
+      }
+
+      const { data: interactions, error: fetchError } = await query;
+
+      if (fetchError) {
+        console.error('Error fetching interactions:', fetchError);
+        throw fetchError;
+      }
 
       const data = interactions || [];
       
-      // Calculate metrics
+      console.log(`[Monitor] Fetched ${data.length} interactions for user ${user.id}`);
+      
+      // Calculate metrics from ALL data
       const totalMentions = data.length;
       const positiveMentions = data.filter(i => i.sentiment_label === 'Positivo').length;
       const negativeMentions = data.filter(i => i.sentiment_label === 'Negativo').length;
       const neutralMentions = data.filter(i => i.sentiment_label === 'Neutro').length;
+      
+      // Total engagement (sum of likes)
+      const totalEngagement = data.reduce((sum, i) => sum + (i.likes_count || 0), 0);
       
       // Sentiment score (0-100)
       const sentimentScore = totalMentions > 0 
         ? Math.round(((positiveMentions - negativeMentions) / totalMentions + 1) * 50) 
         : 50;
 
-      // Engagement per minute (last 10 minutes)
-      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-      const recentInteractions = data.filter(i => i.created_at >= tenMinutesAgo);
-      const engagementPerMinute = Math.round(recentInteractions.length / 10 * 10) / 10;
+      // Engagement per minute (based on data from last 60 minutes)
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const recentInteractions = data.filter(i => i.created_at >= oneHourAgo);
+      const engagementPerMinute = recentInteractions.length > 0 
+        ? Math.round(recentInteractions.length / 60 * 10) / 10 
+        : 0;
 
-      // Trend calculation (comparing last 30min to previous 30min)
+      // Trend calculation (comparing recent data to older data)
       const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
       const last30 = data.filter(i => i.created_at >= thirtyMinutesAgo).length;
       const previous30 = data.filter(i => 
         i.created_at < thirtyMinutesAgo && i.created_at >= oneHourAgo
       ).length;
-      const trend: 'up' | 'down' | 'stable' = 
-        last30 > previous30 * 1.1 ? 'up' : 
-        last30 < previous30 * 0.9 ? 'down' : 'stable';
+      
+      let trend: 'up' | 'down' | 'stable' = 'stable';
+      if (last30 > 0 || previous30 > 0) {
+        trend = last30 > previous30 * 1.1 ? 'up' : 
+                last30 < previous30 * 0.9 ? 'down' : 'stable';
+      }
 
       // Mentions by network
       const networkCounts: Record<string, number> = {};
@@ -106,19 +131,51 @@ export const useRealTimeAnalytics = (
 
       // Sentiment history (last 60 minutes, 5-minute buckets)
       const sentimentHistory: { time: string; positive: number; neutral: number; negative: number }[] = [];
-      for (let i = 11; i >= 0; i--) {
-        const bucketStart = new Date(Date.now() - (i + 1) * 5 * 60 * 1000);
-        const bucketEnd = new Date(Date.now() - i * 5 * 60 * 1000);
-        const bucketData = data.filter(d => {
-          const time = new Date(d.created_at);
-          return time >= bucketStart && time < bucketEnd;
-        });
-        sentimentHistory.push({
-          time: bucketEnd.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-          positive: bucketData.filter(d => d.sentiment_label === 'Positivo').length,
-          neutral: bucketData.filter(d => d.sentiment_label === 'Neutro').length,
-          negative: bucketData.filter(d => d.sentiment_label === 'Negativo').length,
-        });
+      
+      if (data.length > 0) {
+        const oldestData = new Date(data[data.length - 1].created_at);
+        const now = new Date();
+        const daysDiff = Math.ceil((now.getTime() - oldestData.getTime()) / (1000 * 60 * 60 * 24));
+        
+        if (daysDiff > 1) {
+          // Use daily buckets for the last 7 days
+          for (let i = 6; i >= 0; i--) {
+            const dayStart = new Date(now);
+            dayStart.setDate(dayStart.getDate() - i);
+            dayStart.setHours(0, 0, 0, 0);
+            
+            const dayEnd = new Date(dayStart);
+            dayEnd.setDate(dayEnd.getDate() + 1);
+            
+            const bucketData = data.filter(d => {
+              const time = new Date(d.created_at);
+              return time >= dayStart && time < dayEnd;
+            });
+            
+            sentimentHistory.push({
+              time: dayStart.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+              positive: bucketData.filter(d => d.sentiment_label === 'Positivo').length,
+              neutral: bucketData.filter(d => d.sentiment_label === 'Neutro').length,
+              negative: bucketData.filter(d => d.sentiment_label === 'Negativo').length,
+            });
+          }
+        } else {
+          // Use hourly buckets for the last 12 hours
+          for (let i = 11; i >= 0; i--) {
+            const bucketStart = new Date(Date.now() - (i + 1) * 60 * 60 * 1000);
+            const bucketEnd = new Date(Date.now() - i * 60 * 60 * 1000);
+            const bucketData = data.filter(d => {
+              const time = new Date(d.created_at);
+              return time >= bucketStart && time < bucketEnd;
+            });
+            sentimentHistory.push({
+              time: bucketEnd.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+              positive: bucketData.filter(d => d.sentiment_label === 'Positivo').length,
+              neutral: bucketData.filter(d => d.sentiment_label === 'Neutro').length,
+              negative: bucketData.filter(d => d.sentiment_label === 'Negativo').length,
+            });
+          }
+        }
       }
 
       setMetrics({
@@ -127,25 +184,27 @@ export const useRealTimeAnalytics = (
         negativeMentions,
         neutralMentions,
         sentimentScore,
+        totalEngagement,
         engagementPerMinute,
         trend,
         mentionsByNetwork,
         sentimentHistory,
       });
 
+      // Set comments (most recent 50)
       setComments(data.slice(0, 50) as SocialInteraction[]);
       setError(null);
     } catch (err) {
       console.error('Error fetching metrics:', err);
-      setError('Erro ao carregar métricas');
+      setError('Erro ao carregar métricas. Verifique a conexão.');
     } finally {
       setIsLoading(false);
     }
   }, [user, candidateIds]);
 
-  // Realtime subscription
+  // Realtime subscription for new data
   useEffect(() => {
-    if (!user || candidateIds.length === 0) {
+    if (!user) {
       setIsConnected(false);
       return;
     }
@@ -161,16 +220,21 @@ export const useRealTimeAnalytics = (
         },
         (payload) => {
           const newInteraction = payload.new as SocialInteraction;
-          if (candidateIds.includes(newInteraction.candidate_id)) {
-            setComments(prev => [newInteraction, ...prev.slice(0, 49)]);
-            // Trigger metrics refresh on new data
-            fetchAggregatedMetrics();
+          // Only process if it belongs to current user
+          if (newInteraction.user_id === user.id) {
+            // If we have specific candidates, check if it matches
+            if (candidateIds.length === 0 || candidateIds.includes(newInteraction.candidate_id)) {
+              console.log('[Monitor] New interaction received:', newInteraction.id);
+              setComments(prev => [newInteraction, ...prev.slice(0, 49)]);
+              // Trigger full metrics refresh
+              fetchAggregatedMetrics();
+            }
           }
         }
       )
       .subscribe((status) => {
         setIsConnected(status === 'SUBSCRIBED');
-        console.log('Realtime subscription status:', status);
+        console.log('[Monitor] Realtime subscription status:', status);
       });
 
     return () => {
