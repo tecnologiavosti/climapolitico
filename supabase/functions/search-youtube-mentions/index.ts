@@ -331,6 +331,8 @@ Deno.serve(async (req) => {
     const {
       candidateId,
       candidateName,
+      // Optional aliases for name matching (e.g., ["Lula", "PT", "Luiz Inácio"])
+      candidateAliases = [] as string[],
       // how many videos to search per order type (date + relevance)
       maxVideos = 25,
       // YouTube API is paged; this is per page. We'll paginate until we hit maxNewComments.
@@ -345,6 +347,53 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // ============================================================
+    // SEMANTIC FILTER: Build list of keywords to match in comments
+    // ============================================================
+    // A comment is only valid if it explicitly mentions the candidate
+    const buildCandidateKeywords = (name: string, aliases: string[]): string[] => {
+      const keywords: string[] = [];
+      
+      // Add full name
+      keywords.push(name.toLowerCase().trim());
+      
+      // Split name into parts (first name, last name, etc.)
+      const nameParts = name.split(/\s+/).filter(part => part.length >= 3);
+      for (const part of nameParts) {
+        keywords.push(part.toLowerCase().trim());
+      }
+      
+      // Add configured aliases
+      for (const alias of aliases) {
+        if (alias && alias.trim().length >= 2) {
+          keywords.push(alias.toLowerCase().trim());
+        }
+      }
+      
+      // Remove duplicates
+      return [...new Set(keywords)];
+    };
+
+    const candidateKeywords = buildCandidateKeywords(candidateName, candidateAliases);
+    console.log(`Semantic filter keywords for "${candidateName}":`, candidateKeywords);
+
+    // Function to check if a comment mentions the candidate
+    const commentMentionsCandidate = (commentText: string): boolean => {
+      if (!commentText) return false;
+      const lowerText = commentText.toLowerCase();
+      
+      // Check if any keyword is found in the comment
+      for (const keyword of candidateKeywords) {
+        // Use word boundary check to avoid partial matches
+        // e.g., "bolso" shouldn't match but "bolsonaro" should
+        const regex = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+        if (regex.test(lowerText)) {
+          return true;
+        }
+      }
+      return false;
+    };
 
     console.log(`Starting YouTube collection for candidate: ${candidateName} (${candidateId})`);
 
@@ -401,6 +450,7 @@ Deno.serve(async (req) => {
     // Collect comments from each video
     let totalComments = 0; // new comments inserted
     let skippedDuplicates = 0;
+    let filteredOutComments = 0; // comments that don't mention the candidate
     let sentimentAnalyzed = 0;
     const uniqueAuthors = new Set<string>();
 
@@ -448,6 +498,14 @@ Deno.serve(async (req) => {
             const comment = thread.snippet.topLevelComment.snippet;
             const text = (comment.textOriginal || '').trim();
             if (!text) continue;
+
+            // ============================================================
+            // SEMANTIC FILTER: Only accept comments that mention the candidate
+            // ============================================================
+            if (!commentMentionsCandidate(text)) {
+              filteredOutComments++;
+              continue;
+            }
 
             // Create unique identifier for this comment (compatible with existing stored signature)
             const commentKey = `${comment.authorDisplayName}:${comment.publishedAt}:${text.substring(0, 50)}`;
@@ -511,8 +569,9 @@ Deno.serve(async (req) => {
       }
     }
     
+    console.log(`Filtered out ${filteredOutComments} comments that don't mention the candidate`);
     console.log(`Skipped ${skippedDuplicates} duplicate comments`);
-    console.log(`Found ${totalComments} new comments to insert`);
+    console.log(`Found ${totalComments} new relevant comments to insert`);
 
     // Calculate sentiment distribution
     const sentimentCounts = insertedRowsForStats.reduce(
@@ -559,12 +618,14 @@ Deno.serve(async (req) => {
     const stats = {
       videosFound,
       newCommentsCollected: totalComments,
+      filteredOutNotMentioningCandidate: filteredOutComments,
       skippedDuplicates,
       sentimentAnalyzed,
       uniqueAuthors: uniqueAuthors.size,
       totalEngagement: totalLikes,
       sentimentDistribution: sentimentCounts,
-      totalCommentsInDatabase: (totalCount || 0)
+      totalCommentsInDatabase: (totalCount || 0),
+      filterKeywordsUsed: candidateKeywords,
     };
 
     console.log('Collection complete:', stats);
@@ -573,8 +634,8 @@ Deno.serve(async (req) => {
       JSON.stringify({
         success: true,
         message: totalComments > 0 
-          ? `Collected ${totalComments} NEW comments (skipped ${skippedDuplicates} duplicates). Total in database: ${totalCount}`
-          : `No new comments found (${skippedDuplicates} duplicates skipped). Total in database: ${totalCount}`,
+          ? `Collected ${totalComments} relevant comments (filtered ${filteredOutComments} off-topic, skipped ${skippedDuplicates} duplicates). Total in database: ${totalCount}`
+          : `No new relevant comments found (filtered ${filteredOutComments} off-topic, ${skippedDuplicates} duplicates skipped). Total in database: ${totalCount}`,
         stats
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
