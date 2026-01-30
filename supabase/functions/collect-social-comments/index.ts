@@ -26,12 +26,16 @@ interface SentimentResult {
   score: number;
 }
 
-async function analyzeSentiment(comments: string[]): Promise<SentimentResult[]> {
+async function analyzeSentiment(comments: string[]): Promise<SentimentResult[] | null> {
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+  const requestId = crypto.randomUUID();
   
-  if (!LOVABLE_API_KEY || comments.length === 0) {
-    return comments.map(() => ({ label: 'Neutro', score: 0.5 }));
+  // Nunca mascarar erro com Neutro/0.5: isso invalida as métricas.
+  if (!LOVABLE_API_KEY) {
+    console.error(`[SENTIMENT:${requestId}] LOVABLE_API_KEY ausente - sentimento indisponível`);
+    return null;
   }
+  if (comments.length === 0) return null;
 
   try {
     const systemPrompt = `Você é um especialista em análise de sentimento para comentários políticos em português brasileiro.
@@ -76,60 +80,91 @@ ${comments.map((c, i) => `${i + 1}. "${c}"`).join('\n')}
 
 Retorne um JSON array com objetos {"label": "Positivo|Negativo|Neutro", "score": 0.0-1.0}:`;
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: prompt }
-        ],
-      }),
-    });
+    console.log(`[SENTIMENT:${requestId}] Entradas=${comments.length} | Exemplo="${comments[0]?.substring(0, 80)}..."`);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('AI Gateway error:', response.status, errorText);
-      return comments.map(() => ({ label: 'Neutro', score: 0.5 }));
+    const maxAttempts = 3;
+    let lastStatus: number | undefined;
+    let lastBody = '';
+    let response: Response | null = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'google/gemini-2.5-flash',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.1,
+          max_tokens: comments.length * 50 + 100,
+        }),
+      });
+
+      if (response.ok) break;
+
+      lastStatus = response.status;
+      lastBody = await response.text().catch(() => '');
+      console.error(`[SENTIMENT:${requestId}] Gateway erro ${response.status} (tentativa ${attempt}/${maxAttempts}): ${lastBody.substring(0, 400)}`);
+
+      if (response.status === 429 && attempt < maxAttempts) {
+        const backoffMs = 1500 * attempt;
+        await new Promise((r) => setTimeout(r, backoffMs));
+        continue;
+      }
+      break;
+    }
+
+    if (!response || !response.ok) {
+      console.error(`[SENTIMENT:${requestId}] Falha definitiva (status=${lastStatus ?? 'desconhecido'}). Sentimento NÃO será persistido.`);
+      return null;
     }
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content || '';
     
-    console.log('AI sentiment response:', content.substring(0, 500));
+    console.log(`[SENTIMENT:${requestId}] Saída bruta (500):`, content.substring(0, 500));
     
     // Extract JSON from response
     const jsonMatch = content.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
-      console.error('No JSON array found in response:', content);
-      return comments.map(() => ({ label: 'Neutro', score: 0.5 }));
+      console.error(`[SENTIMENT:${requestId}] Sem JSON array na resposta; sentimento NÃO será persistido.`);
+      console.log(`[SENTIMENT:${requestId}] Resposta completa:`, content);
+      return null;
     }
 
     const results: SentimentResult[] = JSON.parse(jsonMatch[0]);
+
+    if (!Array.isArray(results) || results.length < comments.length) {
+      console.error(`[SENTIMENT:${requestId}] Resultado inválido/tamanho inesperado (len=${results?.length}).`);
+      return null;
+    }
     
     // Validate and normalize results
     return comments.map((comment, i) => {
       const result = results[i];
       if (!result || !result.label) {
-        console.warn(`No result for comment ${i}: "${comment.substring(0, 50)}"`);
+        console.warn(`[SENTIMENT:${requestId}] Sem item para comentário ${i}: "${comment.substring(0, 50)}"`);
         return { label: 'Neutro', score: 0.5 };
       }
       
       const label = ['Positivo', 'Negativo', 'Neutro'].includes(result.label) ? result.label : 'Neutro';
       const score = typeof result.score === 'number' ? Math.max(0, Math.min(1, result.score)) : 0.5;
       
-      console.log(`Sentiment: "${comment.substring(0, 40)}..." -> ${label} (${score})`);
+      if (i < 3) {
+        console.log(`[SENTIMENT:${requestId}] "${comment.substring(0, 70)}..." -> ${label} (${score})`);
+      }
       
       return { label, score };
     });
 
   } catch (error) {
-    console.error('Sentiment analysis error:', error);
-    return comments.map(() => ({ label: 'Neutro', score: 0.5 }));
+    console.error(`[SENTIMENT:${requestId}] Erro inesperado na análise:`, error);
+    return null;
   }
 }
 
@@ -248,14 +283,21 @@ serve(async (req) => {
 
     // Auto-analyze sentiment if enabled and comments have text
     let sentimentResults: SentimentResult[] = [];
+    let sentimentNotAnalyzed = 0;
     const textsToAnalyze = validComments
       .map(vc => vc.comment.comment_text)
       .filter((text): text is string => !!text && text.trim().length > 0);
 
     if (auto_analyze && textsToAnalyze.length > 0) {
       console.log(`Analyzing sentiment for ${textsToAnalyze.length} comments...`);
-      sentimentResults = await analyzeSentiment(textsToAnalyze);
-      console.log('Sentiment analysis complete');
+      const analyzed = await analyzeSentiment(textsToAnalyze);
+      if (analyzed) {
+        sentimentResults = analyzed;
+        console.log('Sentiment analysis complete');
+      } else {
+        sentimentNotAnalyzed = textsToAnalyze.length;
+        console.warn('Sentiment analysis failed; storing comments with NULL sentiment');
+      }
     }
 
     // Build insert records with sentiment
@@ -271,6 +313,11 @@ serve(async (req) => {
           sentiment_label = result.label;
           sentiment_score = result.score;
         }
+
+        if (sentimentIndex < 3) {
+          console.log(`[SENTIMENT:PERSIST] texto="${(comment.comment_text || '').substring(0, 80)}..." | label=${sentiment_label ?? 'NULL'} | score=${sentiment_score ?? 'NULL'}`);
+        }
+
         sentimentIndex++;
       }
 
@@ -306,13 +353,14 @@ serve(async (req) => {
     }
 
     const analyzedCount = sentimentResults.length;
-    console.log(`Inserted ${inserted?.length || 0} comments, ${analyzedCount} with auto-sentiment`);
+    console.log(`Inserted ${inserted?.length || 0} comments, ${analyzedCount} com auto-sentimento, ${sentimentNotAnalyzed} sem sentimento (NULL)`);
 
     return new Response(
       JSON.stringify({
         success: true,
         inserted: inserted?.length || 0,
         analyzed: analyzedCount,
+        sentiment_not_analyzed: sentimentNotAnalyzed,
         skipped: errors.length,
         errors: errors.length > 0 ? errors : undefined,
       }),

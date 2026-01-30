@@ -20,8 +20,8 @@ async function analyzeSentimentBatch(texts: string[]): Promise<SentimentResult[]
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
 
   if (!apiKey) {
-    console.warn('LOVABLE_API_KEY not found');
-    return texts.map(() => ({ label: 'Neutro', score: 0.5 }));
+    console.error('[SENTIMENT] LOVABLE_API_KEY not found');
+    throw new Error('AI_NOT_CONFIGURED');
   }
 
   const clipped = texts.map((t) => (t || '').substring(0, 400).trim()).filter(t => t.length > 0);
@@ -81,32 +81,34 @@ Responda SOMENTE com um JSON array no formato: [{"label":"Positivo","score":0.85
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[SENTIMENT] API error ${response.status}:`, errorText);
-      return texts.map(() => ({ label: 'Neutro', score: 0.5 }));
-    }
+     if (!response.ok) {
+       const errorText = await response.text().catch(() => '');
+       console.error(`[SENTIMENT] API error ${response.status}:`, errorText);
+       if (response.status === 429) throw new Error(`AI_RATE_LIMITED:${errorText}`);
+       if (response.status === 402) throw new Error(`AI_CREDITS_EXHAUSTED:${errorText}`);
+       throw new Error(`AI_GATEWAY_ERROR:${response.status}:${errorText}`);
+     }
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content || '';
 
     const jsonMatch = content.match(/\[[\s\S]*?\]/);
-    if (!jsonMatch) {
-      console.error('[SENTIMENT] No JSON array found');
-      return texts.map(() => ({ label: 'Neutro', score: 0.5 }));
-    }
+     if (!jsonMatch) {
+       console.error('[SENTIMENT] No JSON array found');
+       throw new Error('AI_BAD_RESPONSE_NO_JSON');
+     }
 
     let parsed: any[];
     try {
       parsed = JSON.parse(jsonMatch[0]);
-    } catch {
-      console.error('[SENTIMENT] JSON parse error');
-      return texts.map(() => ({ label: 'Neutro', score: 0.5 }));
-    }
+     } catch {
+       console.error('[SENTIMENT] JSON parse error');
+       throw new Error('AI_BAD_RESPONSE_JSON_PARSE');
+     }
 
-    if (!Array.isArray(parsed)) {
-      return texts.map(() => ({ label: 'Neutro', score: 0.5 }));
-    }
+     if (!Array.isArray(parsed) || parsed.length < texts.length) {
+       throw new Error('AI_BAD_RESPONSE_SIZE');
+     }
 
     const normalized: SentimentResult[] = texts.map((_, idx) => {
       const p = parsed[idx];
@@ -121,10 +123,10 @@ Responda SOMENTE com um JSON array no formato: [{"label":"Positivo","score":0.85
     });
 
     return normalized;
-  } catch (error) {
-    console.error('[SENTIMENT] Analysis error:', error);
-    return texts.map(() => ({ label: 'Neutro', score: 0.5 }));
-  }
+   } catch (error) {
+     console.error('[SENTIMENT] Analysis error:', error);
+     throw error;
+   }
 }
 
 Deno.serve(async (req) => {
@@ -195,16 +197,41 @@ Deno.serve(async (req) => {
     const sentimentCounts = { Positivo: 0, Negativo: 0, Neutro: 0 };
 
     // Process in batches
-    for (const batch of chunkArray(toProcess, batchSize)) {
-      const texts = batch.map(c => c.comment_text || '');
-      const sentiments = await analyzeSentimentBatch(texts);
+     for (const batch of chunkArray(toProcess, batchSize)) {
+       const texts = batch.map(c => c.comment_text || '');
+       let sentiments: SentimentResult[];
+       try {
+         sentiments = await analyzeSentimentBatch(texts);
+       } catch (e: unknown) {
+         const msg = e instanceof Error ? e.message : String(e);
+         // Não prosseguir gravando "Neutro" por fallback — retornar erro para o cliente.
+         if (msg.startsWith('AI_RATE_LIMITED')) {
+           return new Response(
+             JSON.stringify({ error: 'Rate limit do serviço de IA. Tente novamente em alguns minutos.', details: msg }),
+             { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+           );
+         }
+         if (msg.startsWith('AI_CREDITS_EXHAUSTED')) {
+           return new Response(
+             JSON.stringify({ error: 'Créditos de IA esgotados. Adicione créditos para continuar.', details: msg }),
+             { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+           );
+         }
+         return new Response(
+           JSON.stringify({ error: 'Falha ao analisar sentimento no serviço de IA', details: msg }),
+           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+         );
+       }
 
       // Update each comment
       for (let i = 0; i < batch.length; i++) {
         const comment = batch[i];
         const sentiment = sentiments[i];
         
-        // Only update if sentiment changed from default
+         // Log explícito: entrada -> saída do modelo -> persistência
+         console.log(`[REANALYZE] id=${comment.id} texto="${(comment.comment_text || '').substring(0, 120)}..." modelo=${sentiment.label} (${sentiment.score})`);
+
+         // Only update if sentiment changed from default
         if (sentiment.label !== 'Neutro' || sentiment.score !== 0.5) {
           const { error: updateError } = await supabase
             .from('social_interactions')
@@ -215,6 +242,7 @@ Deno.serve(async (req) => {
             .eq('id', comment.id);
 
           if (!updateError) {
+             console.log(`[REANALYZE] persistido id=${comment.id} label=${sentiment.label} score=${sentiment.score}`);
             updated++;
             sentimentCounts[sentiment.label]++;
           }

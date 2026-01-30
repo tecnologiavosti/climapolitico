@@ -95,37 +95,50 @@ Deno.serve(async (req) => {
     let neutralCount = 0;
     let negativeCount = 0;
     let sentimentSum = 0;
+    let analyzedSentimentCount = 0;
+    let unanalyzedSentimentCount = 0;
 
     interactions?.forEach(i => {
+      // Se não há sentimento (NULL), NÃO contar como Neutro e NÃO usar 0.5 como fallback.
+      if (!i.sentiment_label || i.sentiment_score === null || i.sentiment_score === undefined) {
+        unanalyzedSentimentCount++;
+        return;
+      }
+
+      analyzedSentimentCount++;
       if (i.sentiment_label === 'Positivo') positiveCount++;
       else if (i.sentiment_label === 'Negativo') negativeCount++;
       else neutralCount++;
-      sentimentSum += (i.sentiment_score || 0.5) * 100;
+
+      sentimentSum += i.sentiment_score * 100;
     });
 
-    const averageSentiment = totalMentions > 0 
-      ? Math.round(sentimentSum / totalMentions) 
+    const averageSentiment = analyzedSentimentCount > 0 
+      ? Math.round(sentimentSum / analyzedSentimentCount) 
       : 50;
 
     // Network breakdown
-    const networkMap: Record<string, { mentions: number; engagement: number; sentimentSum: number; count: number }> = {};
+    const networkMap: Record<string, { mentions: number; engagement: number; sentimentSum: number; analyzedCount: number }> = {};
     
     interactions?.forEach(i => {
       const network = i.social_network || 'Outro';
       if (!networkMap[network]) {
-        networkMap[network] = { mentions: 0, engagement: 0, sentimentSum: 0, count: 0 };
+        networkMap[network] = { mentions: 0, engagement: 0, sentimentSum: 0, analyzedCount: 0 };
       }
       networkMap[network].mentions++;
       networkMap[network].engagement += (i.likes_count || 0) + (i.replies_count || 0) + (i.shares_count || 0);
-      networkMap[network].sentimentSum += (i.sentiment_score || 0.5) * 100;
-      networkMap[network].count++;
+
+      if (i.sentiment_label && i.sentiment_score !== null && i.sentiment_score !== undefined) {
+        networkMap[network].sentimentSum += i.sentiment_score * 100;
+        networkMap[network].analyzedCount++;
+      }
     });
 
     const networkBreakdown: NetworkMetrics[] = Object.entries(networkMap).map(([network, data]) => ({
       network,
       mentions: data.mentions,
       engagement: data.engagement,
-      avgSentiment: data.count > 0 ? Math.round(data.sentimentSum / data.count) : 50
+      avgSentiment: data.analyzedCount > 0 ? Math.round(data.sentimentSum / data.analyzedCount) : 50
     })).sort((a, b) => b.mentions - a.mentions);
 
     // Upsert into cache table
@@ -194,6 +207,7 @@ Deno.serve(async (req) => {
     }
 
     console.log('Metrics recalculated:', cacheData);
+    console.log(`Sentimento: analisados=${analyzedSentimentCount}, sem_análise=${unanalyzedSentimentCount} (NULL)`);
 
     return new Response(
       JSON.stringify({
