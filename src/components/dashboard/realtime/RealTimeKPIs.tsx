@@ -1,4 +1,6 @@
-import { TrendingUp, TrendingDown, Minus, MessageSquare, ThumbsUp, ThumbsDown, Activity } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, MessageSquare, ThumbsUp, ThumbsDown } from "lucide-react";
+// Activity icon mantido para uso futuro
+// import { Activity } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useCountUp } from "@/hooks/useCountUp";
 import { cn } from "@/lib/utils";
@@ -75,8 +77,8 @@ const KPICard = ({ title, value, suffix = '', icon, trend, color }: KPICardProps
 export const RealTimeKPIs = ({ metrics }: RealTimeKPIsProps) => {
   if (!metrics) {
     return (
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[...Array(4)].map((_, i) => (
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[...Array(3)].map((_, i) => (
           <Card key={i} className="animate-pulse">
             <CardContent className="p-4 h-24 bg-muted/20" />
           </Card>
@@ -86,7 +88,7 @@ export const RealTimeKPIs = ({ metrics }: RealTimeKPIsProps) => {
   }
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <KPICard
         title="Total de Menções"
         value={metrics.totalMentions}
@@ -106,12 +108,14 @@ export const RealTimeKPIs = ({ metrics }: RealTimeKPIsProps) => {
         icon={<ThumbsDown className="h-5 w-5" />}
         color="red"
       />
+      {/* Métricas removidas temporariamente (mantidas para uso futuro):
       <KPICard
         title="Engajamento/Min"
         value={metrics.engagementPerMinute}
         icon={<Activity className="h-5 w-5" />}
         color="yellow"
       />
+      */}
     </div>
   );
 };

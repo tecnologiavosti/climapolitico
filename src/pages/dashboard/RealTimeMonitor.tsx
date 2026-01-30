@@ -5,11 +5,13 @@ import { useRealTimeAnalytics } from "@/hooks/useRealTimeAnalytics";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Radio } from "lucide-react";
-import { ConnectionStatus } from "@/components/dashboard/realtime/ConnectionStatus";
+import { RefreshCw, Radio, Clock } from "lucide-react";
+// Componente temporariamente oculto (mantido para uso futuro)
+// import { ConnectionStatus } from "@/components/dashboard/realtime/ConnectionStatus";
 import { RealTimeKPIs } from "@/components/dashboard/realtime/RealTimeKPIs";
 import { RealTimeSentimentChart } from "@/components/dashboard/realtime/RealTimeSentimentChart";
-import { RealTimeMentionsChart } from "@/components/dashboard/realtime/RealTimeMentionsChart";
+// Componente temporariamente oculto (mantido para uso futuro)
+// import { RealTimeMentionsChart } from "@/components/dashboard/realtime/RealTimeMentionsChart";
 import { RealTimeSentimentGauge } from "@/components/dashboard/realtime/RealTimeSentimentGauge";
 import { RealTimeCommentsFeed } from "@/components/dashboard/realtime/RealTimeCommentsFeed";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,8 +26,9 @@ const RealTimeMonitor = () => {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>('');
   const [loadingCandidates, setLoadingCandidates] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
-  const { metrics, comments, isConnected, isLoading, error, refreshMetrics } = useRealTimeAnalytics(
+  const { metrics, comments, isLoading, error, refreshMetrics } = useRealTimeAnalytics(
     selectedCandidateId ? [selectedCandidateId] : [],
     60000 // 1 minute refresh
   );
@@ -54,6 +57,18 @@ const RealTimeMonitor = () => {
     fetchCandidates();
   }, [user]);
 
+  // Track last update time
+  useEffect(() => {
+    if (!isLoading && metrics) {
+      setLastUpdate(new Date());
+    }
+  }, [metrics, isLoading]);
+
+  const handleRefresh = async () => {
+    await refreshMetrics();
+    setLastUpdate(new Date());
+  };
+
   const selectedCandidate = candidates.find(c => c.id === selectedCandidateId);
 
   return (
@@ -63,20 +78,24 @@ const RealTimeMonitor = () => {
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <Radio className="h-8 w-8 text-primary" />
-            Monitor em Tempo Real
+            Monitor de Comentários
           </h1>
           <p className="text-muted-foreground mt-1">
-            Acompanhe menções e sentimentos em tempo real
+            Acompanhe menções e sentimentos dos comentários coletados
           </p>
         </div>
 
         <div className="flex items-center gap-3">
-          <ConnectionStatus isConnected={isConnected} />
+          {/* Indicador de última atualização */}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm bg-muted/50 text-muted-foreground">
+            <Clock className="h-4 w-4" />
+            <span>Atualizado: {lastUpdate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+          </div>
           
           <Button
             variant="outline"
             size="sm"
-            onClick={refreshMetrics}
+            onClick={handleRefresh}
             disabled={isLoading}
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
@@ -121,7 +140,7 @@ const RealTimeMonitor = () => {
             <Radio className="h-16 w-16 mx-auto mb-4 text-muted-foreground/30" />
             <h3 className="text-lg font-medium mb-2">Selecione um candidato</h3>
             <p className="text-muted-foreground">
-              Escolha um candidato acima para iniciar o monitoramento em tempo real
+              Escolha um candidato acima para visualizar os comentários coletados
             </p>
           </CardContent>
         </Card>
@@ -138,10 +157,9 @@ const RealTimeMonitor = () => {
           {/* KPIs */}
           <RealTimeKPIs metrics={metrics} />
 
-          {/* Charts Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Charts Grid - apenas sentimento ao longo do tempo */}
+          <div className="grid grid-cols-1 gap-6">
             <RealTimeSentimentChart metrics={metrics} />
-            <RealTimeMentionsChart metrics={metrics} />
           </div>
 
           {/* Gauge and Feed */}
@@ -156,13 +174,10 @@ const RealTimeMonitor = () => {
           <Card className="bg-muted/30">
             <CardContent className="py-4">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-                </span>
+                <Clock className="h-4 w-4" />
                 <span>
                   Métricas atualizadas automaticamente a cada 1 minuto. 
-                  Novos comentários aparecem instantaneamente via WebSocket.
+                  Dados baseados nos comentários coletados do YouTube.
                 </span>
               </div>
             </CardContent>
