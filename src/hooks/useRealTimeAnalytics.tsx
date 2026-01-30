@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -45,14 +45,24 @@ interface UseRealTimeAnalyticsReturn {
 
 export const useRealTimeAnalytics = (
   candidateIds: string[],
-  refreshInterval: number = 60000
+  refreshInterval: number = 600000 // 10 minutes default
 ): UseRealTimeAnalyticsReturn => {
   const { user } = useAuth();
   const [metrics, setMetrics] = useState<RealTimeMetrics | null>(null);
   const [comments, setComments] = useState<SocialInteraction[]>([]);
-  const [isConnected, setIsConnected] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isConnected, setIsConnected] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Use refs to avoid dependency issues
+  const candidateIdsRef = useRef<string[]>(candidateIds);
+  const isFetchingRef = useRef(false);
+  const hasFetchedRef = useRef(false);
+  
+  // Update ref when candidateIds change
+  useEffect(() => {
+    candidateIdsRef.current = candidateIds;
+  }, [candidateIds]);
 
   const fetchAggregatedMetrics = useCallback(async () => {
     if (!user) {
@@ -60,19 +70,29 @@ export const useRealTimeAnalytics = (
       return;
     }
 
+    // Prevent concurrent fetches
+    if (isFetchingRef.current) {
+      console.log('[Monitor] Fetch already in progress, skipping');
+      return;
+    }
+
     try {
+      isFetchingRef.current = true;
       setIsLoading(true);
+      
+      const currentCandidateIds = candidateIdsRef.current;
       
       // Build query based on whether candidate IDs are provided
       let query = supabase
         .from('social_interactions')
         .select('*')
         .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(500); // Limit for performance
 
       // If specific candidates are selected, filter by them
-      if (candidateIds.length > 0) {
-        query = query.in('candidate_id', candidateIds);
+      if (currentCandidateIds.length > 0) {
+        query = query.in('candidate_id', currentCandidateIds);
       }
 
       const { data: interactions, error: fetchError } = await query;
@@ -129,7 +149,7 @@ export const useRealTimeAnalytics = (
         .map(([network, count]) => ({ network, count }))
         .sort((a, b) => b.count - a.count);
 
-      // Sentiment history (last 60 minutes, 5-minute buckets)
+      // Sentiment history
       const sentimentHistory: { time: string; positive: number; neutral: number; negative: number }[] = [];
       
       if (data.length > 0) {
@@ -199,22 +219,35 @@ export const useRealTimeAnalytics = (
       setError('Erro ao carregar métricas. Verifique a conexão.');
     } finally {
       setIsLoading(false);
+      isFetchingRef.current = false;
     }
-  }, [user, candidateIds]);
+  }, [user]); // Only depend on user, not candidateIds
 
-  // Realtime subscription disabled - using polling every 10 minutes instead
-  // to prevent layout bugs and reduce server load
+  // Initial fetch - run once when user is available
   useEffect(() => {
-    setIsConnected(true); // Always show as "connected" since we use polling
-  }, []);
+    if (user && !hasFetchedRef.current) {
+      hasFetchedRef.current = true;
+      fetchAggregatedMetrics();
+    }
+  }, [user, fetchAggregatedMetrics]);
 
-  // Initial fetch and interval refresh
+  // Refetch when candidateIds change
   useEffect(() => {
-    fetchAggregatedMetrics();
+    if (user && hasFetchedRef.current) {
+      fetchAggregatedMetrics();
+    }
+  }, [candidateIds.join(',')]); // Use string comparison to avoid array reference issues
 
-    const interval = setInterval(fetchAggregatedMetrics, refreshInterval);
+  // Interval refresh
+  useEffect(() => {
+    if (!user) return;
+    
+    const interval = setInterval(() => {
+      fetchAggregatedMetrics();
+    }, refreshInterval);
+    
     return () => clearInterval(interval);
-  }, [fetchAggregatedMetrics, refreshInterval]);
+  }, [user, refreshInterval, fetchAggregatedMetrics]);
 
   return {
     metrics,
