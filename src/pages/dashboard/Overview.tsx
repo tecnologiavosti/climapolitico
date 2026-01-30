@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TrendingUp, TrendingDown, Users, MessageSquare, Eye, AlertCircle, Activity, LayoutDashboard } from "lucide-react";
+import { TrendingUp, TrendingDown, Users, MessageSquare, AlertCircle, Activity, LayoutDashboard } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -12,10 +11,12 @@ import { ptBR } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { useAuth } from "@/hooks/useAuth";
-import { AIModelsPanel } from "@/components/dashboard/AIModelsPanel";
-import { AIModelAgreementDashboard } from "@/components/dashboard/AIModelAgreementDashboard";
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 import { useAllCandidateMetrics, CandidateMetrics } from "@/hooks/useCandidateMetrics";
+
+// Componentes temporariamente ocultos da Visão Geral (mantidos para uso futuro)
+// import { AIModelsPanel } from "@/components/dashboard/AIModelsPanel";
+// import { AIModelAgreementDashboard } from "@/components/dashboard/AIModelAgreementDashboard";
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--destructive))', 'hsl(var(--warning))', 'hsl(var(--muted))'];
 
@@ -62,23 +63,8 @@ export default function Overview() {
     enabled: !!user
   });
 
-  // Query: Análises de fala
-  const { data: speeches, isLoading: loadingSpeeches } = useQuery({
-    queryKey: ['speeches-overview', isAdmin],
-    queryFn: async () => {
-      let query = supabase
-        .from('speech_analyses')
-        .select('id, risk_level, negative_perception_score, created_at');
-      
-      if (!isAdmin && user) {
-        query = query.eq('user_id', user.id);
-      }
-      
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
-    }
-  });
+  // Query removida: Análises de fala (não mais exibida na Visão Geral)
+  // const { data: speeches, isLoading: loadingSpeeches } = useQuery({...});
 
   // Query: Rankings
   const { data: rankings, isLoading: loadingRankings } = useQuery({
@@ -129,7 +115,6 @@ export default function Overview() {
   const avgSentiment = totalSentimentItems > 0
     ? Math.round(((aggregatedMetrics.positiveCount * 100) + (aggregatedMetrics.neutralCount * 50) + (aggregatedMetrics.negativeCount * 0)) / totalSentimentItems)
     : 0;
-  const totalSpeeches = speeches?.length || 0;
 
   // Preparar dados de sentimento por dia (últimos 7 dias) - usando social_interactions
   const sentimentData = Array.from({ length: 7 }, (_, i) => {
@@ -181,7 +166,7 @@ export default function Overview() {
     color: COLORS[index % COLORS.length]
   })).filter(d => d.value > 0);
 
-  const isLoading = loadingCandidates || loadingInteractions || loadingSpeeches || loadingRankings || loadingMetrics;
+  const isLoading = loadingCandidates || loadingInteractions || loadingRankings || loadingMetrics;
   return (
     <div className="space-y-6">
       {/* Candidate Selector for Consolidated View */}
@@ -285,29 +270,27 @@ export default function Overview() {
         <Card className="p-6">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm text-muted-foreground">Análises de Fala</p>
+              <p className="text-sm text-muted-foreground">Engajamento Total</p>
               {isLoading ? (
                 <Skeleton className="h-10 w-16 mt-2" />
               ) : (
-                <p className="text-3xl font-bold mt-2">{totalSpeeches}</p>
+                <p className="text-3xl font-bold mt-2">{aggregatedMetrics.totalEngagement.toLocaleString('pt-BR')}</p>
               )}
               <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
                 <Activity className="h-4 w-4" />
-                <span>discursos</span>
+                <span>curtidas</span>
               </div>
             </div>
             <div className="p-3 bg-gradient-primary rounded-lg">
-              <Eye className="h-6 w-6 text-white" />
+              <TrendingUp className="h-6 w-6 text-white" />
             </div>
           </div>
         </Card>
       </div>
 
-      {/* AI Models Panel */}
-      <AIModelsPanel />
-
-      {/* AI Model Agreement Dashboard */}
-      <AIModelAgreementDashboard />
+      {/* Componentes de IA temporariamente ocultos da Visão Geral */}
+      {/* <AIModelsPanel /> */}
+      {/* <AIModelAgreementDashboard /> */}
 
       {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
