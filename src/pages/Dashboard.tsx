@@ -113,30 +113,25 @@ const Dashboard = () => {
           {/* Main Content */}
           <main className="flex-1 p-6 animate-fade-in">
             <Routes>
+              {/* Rotas ativas */}
               <Route path="/" element={<Overview />} />
               <Route path="/candidates" element={<Candidates />} />
-              <Route path="/analytics" element={<AnalysisHistory />} />
               <Route path="/analytics-advanced" element={<Analytics />} />
-              <Route path="/speech-analysis" element={
-                <ErrorBoundary>
-                  <SpeechAnalysis />
-                </ErrorBoundary>
-              } />
               <Route path="/ranking" element={<CandidateRanking />} />
-              <Route path="/undecided" element={
-                <ErrorBoundary>
-                  <UndecidedAnalysis />
-                </ErrorBoundary>
-              } />
-              <Route path="/social-media-report" element={<SocialMediaReport />} />
               <Route path="/collection-status" element={<CollectionStatus />} />
-              <Route path="/traceability-report" element={<TraceabilityReport />} />
-              <Route path="/scheduled-reports" element={<ScheduledReports />} />
-              <Route path="/report-templates" element={<ReportTemplates />} />
               <Route path="/realtime-monitor" element={<RealTimeMonitor />} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/admin/api-settings" element={<AdminApiSettings />} />
-              <Route path="/ai" element={<AIInsights />} />
+              
+              {/* Rotas temporariamente desativadas - código mantido para reativação futura */}
+              {/* <Route path="/analytics" element={<AnalysisHistory />} /> */}
+              {/* <Route path="/speech-analysis" element={<ErrorBoundary><SpeechAnalysis /></ErrorBoundary>} /> */}
+              {/* <Route path="/undecided" element={<ErrorBoundary><UndecidedAnalysis /></ErrorBoundary>} /> */}
+              {/* <Route path="/social-media-report" element={<SocialMediaReport />} /> */}
+              {/* <Route path="/traceability-report" element={<TraceabilityReport />} /> */}
+              {/* <Route path="/scheduled-reports" element={<ScheduledReports />} /> */}
+              {/* <Route path="/report-templates" element={<ReportTemplates />} /> */}
+              {/* <Route path="/ai" element={<AIInsights />} /> */}
               <Route path="/notifications" element={
                 <div className="text-center py-12">
                   <h3 className="text-2xl font-bold mb-2">Notificações</h3>
