@@ -34,13 +34,47 @@ async function analyzeSentiment(comments: string[]): Promise<SentimentResult[]> 
   }
 
   try {
-    const prompt = `Analise o sentimento de cada comentário abaixo sobre candidatos políticos.
-Para cada comentário, retorne APENAS um JSON array com objetos contendo "label" (Positivo, Negativo ou Neutro) e "score" (0 a 1, onde 0 é muito negativo e 1 é muito positivo).
+    const systemPrompt = `Você é um especialista em análise de sentimento para comentários políticos em português brasileiro.
 
-Comentários:
+REGRAS CRÍTICAS DE CLASSIFICAÇÃO:
+
+POSITIVO (score 0.7-1.0) - QUALQUER comentário que demonstre:
+- Apoio explícito: "voto nele", "meu candidato", "o melhor", "vai ganhar"
+- Intenção de voto: "22", "13", números de urna mencionados com aprovação
+- Elogios: "mito", "presidente", "parabéns", "orgulho", "honesto"
+- Torcida: "com certeza", "vai dar certo", "confiamos", "força"
+- Defesa: "não fez nada errado", "injustiça", "perseguição"
+- Combinações de candidatos com tom favorável: "Vice X com Y", "chapa perfeita"
+- Emojis positivos: 👏 ❤️ 🇧🇷 💚💛 🙏
+
+NEGATIVO (score 0.0-0.3) - Comentários que demonstrem:
+- Críticas diretas: "ladrão", "corrupto", "mentiroso", "incompetente"
+- Rejeição: "fora", "nunca", "jamais votaria"
+- Insultos ou xingamentos
+- Acusações: "roubou", "destruiu", "acabou com"
+- Desprezo ou sarcasmo negativo
+- Emojis negativos: 🤮 👎 😡 💩
+
+NEUTRO (score 0.4-0.6) - APENAS quando:
+- O comentário é puramente informativo sem opinião
+- Pergunta genuína sem viés aparente
+- Comentário completamente off-topic
+- Impossível determinar polaridade
+
+IMPORTANTE:
+- Comentários curtos de apoio político são POSITIVOS, não neutros
+- Frases como "Fulano presidente" são POSITIVAS (intenção de voto)
+- Combinações de nomes com cargo desejado são POSITIVAS
+- Na dúvida entre Neutro e Positivo/Negativo, escolha a polaridade detectada
+- Contexto político brasileiro: entenda gírias, números de urna, apelidos
+
+Responda APENAS com um JSON array válido.`;
+
+    const prompt = `Analise o sentimento político de cada comentário:
+
 ${comments.map((c, i) => `${i + 1}. "${c}"`).join('\n')}
 
-Retorne APENAS o JSON array, sem explicações:`;
+Retorne um JSON array com objetos {"label": "Positivo|Negativo|Neutro", "score": 0.0-1.0}:`;
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -51,20 +85,22 @@ Retorne APENAS o JSON array, sem explicações:`;
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [
-          { role: 'system', content: 'Você é um analisador de sentimento especializado em comentários políticos em português brasileiro. Responda apenas com JSON válido.' },
+          { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt }
         ],
-        temperature: 0.1,
       }),
     });
 
     if (!response.ok) {
-      console.error('AI Gateway error:', response.status);
+      const errorText = await response.text();
+      console.error('AI Gateway error:', response.status, errorText);
       return comments.map(() => ({ label: 'Neutro', score: 0.5 }));
     }
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content || '';
+    
+    console.log('AI sentiment response:', content.substring(0, 500));
     
     // Extract JSON from response
     const jsonMatch = content.match(/\[[\s\S]*\]/);
@@ -76,15 +112,19 @@ Retorne APENAS o JSON array, sem explicações:`;
     const results: SentimentResult[] = JSON.parse(jsonMatch[0]);
     
     // Validate and normalize results
-    return comments.map((_, i) => {
+    return comments.map((comment, i) => {
       const result = results[i];
       if (!result || !result.label) {
+        console.warn(`No result for comment ${i}: "${comment.substring(0, 50)}"`);
         return { label: 'Neutro', score: 0.5 };
       }
-      return {
-        label: ['Positivo', 'Negativo', 'Neutro'].includes(result.label) ? result.label : 'Neutro',
-        score: typeof result.score === 'number' ? Math.max(0, Math.min(1, result.score)) : 0.5,
-      };
+      
+      const label = ['Positivo', 'Negativo', 'Neutro'].includes(result.label) ? result.label : 'Neutro';
+      const score = typeof result.score === 'number' ? Math.max(0, Math.min(1, result.score)) : 0.5;
+      
+      console.log(`Sentiment: "${comment.substring(0, 40)}..." -> ${label} (${score})`);
+      
+      return { label, score };
     });
 
   } catch (error) {
