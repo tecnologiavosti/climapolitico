@@ -30,7 +30,7 @@ const RealTimeMonitor = () => {
 
   const { metrics, comments, isLoading, error, refreshMetrics } = useRealTimeAnalytics(
     selectedCandidateId ? [selectedCandidateId] : [],
-    60000 // 1 minute refresh
+    600000 // 10 minutes refresh
   );
 
   // Fetch candidates
@@ -176,7 +176,7 @@ const RealTimeMonitor = () => {
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Clock className="h-4 w-4" />
                 <span>
-                  Métricas atualizadas automaticamente a cada 1 minuto. 
+                  Métricas atualizadas automaticamente a cada 10 minutos. 
                   Dados baseados nos comentários coletados do YouTube.
                 </span>
               </div>
