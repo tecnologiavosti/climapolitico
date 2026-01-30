@@ -1,243 +1,381 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { DateRange } from "react-day-picker";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
-  Trophy, TrendingUp, TrendingDown, ArrowUpRight, 
-  ArrowDownRight, RefreshCw, Loader2, AlertCircle 
+  Trophy, TrendingUp, TrendingDown, Users, MessageSquare, Heart, Youtube, Clock
 } from "lucide-react";
-import { toast } from "sonner";
 import {
-  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  LineChart, Line, ResponsiveContainer
+  ResponsiveContainer
 } from "recharts";
-import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { useAuth } from "@/hooks/useAuth";
 
-const COLORS = ['#8b5cf6', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#3b82f6'];
+// Cores para gráficos
+const CHART_COLORS = {
+  mentions: 'hsl(var(--primary))',
+  authors: 'hsl(var(--chart-2))',
+  sentiment: 'hsl(var(--success))',
+  engagement: 'hsl(var(--warning))',
+};
 
-function TrendIndicator({ value }: { value: number }) {
-  if (value > 60) {
-    return (
-      <Badge variant="default" className="bg-green-500 hover:bg-green-600">
-        <TrendingUp className="w-3 h-3 mr-1" />
-        {value.toFixed(1)}
-      </Badge>
-    );
-  } else if (value < 40) {
-    return (
-      <Badge variant="destructive">
-        <TrendingDown className="w-3 h-3 mr-1" />
-        {value.toFixed(1)}
-      </Badge>
-    );
-  } else {
-    return (
-      <Badge variant="secondary">
-        {value.toFixed(1)}
-      </Badge>
-    );
-  }
+// Interface para ranking calculado
+interface CandidateRankingData {
+  candidateId: string;
+  candidateName: string;
+  party: string | null;
+  region: string | null;
+  totalMentions: number;
+  uniqueAuthors: number;
+  positiveCount: number;
+  negativeCount: number;
+  neutralCount: number;
+  averageSentiment: number;
+  totalEngagement: number;
+  overallScore: number;
+  rankPosition: number;
+}
+
+/**
+ * Fórmula do Score Geral (0-100):
+ * - Menções normalizadas: 30%
+ * - Autores únicos normalizados: 20%
+ * - Sentimento médio: 30%
+ * - Engajamento normalizado: 20%
+ */
+function calculateOverallScore(
+  mentions: number,
+  maxMentions: number,
+  authors: number,
+  maxAuthors: number,
+  sentiment: number,
+  engagement: number,
+  maxEngagement: number
+): number {
+  const mentionsScore = maxMentions > 0 ? (mentions / maxMentions) * 100 : 0;
+  const authorsScore = maxAuthors > 0 ? (authors / maxAuthors) * 100 : 0;
+  const sentimentScore = sentiment; // Já é 0-100
+  const engagementScore = maxEngagement > 0 ? (engagement / maxEngagement) * 100 : 0;
+
+  return Math.round(
+    mentionsScore * 0.30 +
+    authorsScore * 0.20 +
+    sentimentScore * 0.30 +
+    engagementScore * 0.20
+  );
 }
 
 export default function CandidateRanking() {
-  const queryClient = useQueryClient();
-  const { isAdmin } = useAdminCheck();
   const { user } = useAuth();
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: new Date(new Date().setDate(new Date().getDate() - 30)),
     to: new Date(),
   });
 
-  // Query: Fetch existing rankings
-  const { data: rankings, isLoading } = useQuery({
-    queryKey: ['rankings', dateRange, isAdmin],
+  // Query: Buscar candidatos do usuário
+  const { data: candidates, isLoading: loadingCandidates } = useQuery({
+    queryKey: ['ranking-candidates', user?.id],
     queryFn: async () => {
-      if (!dateRange?.from || !dateRange?.to) return [];
+      if (!user) return [];
 
-      let query = supabase
-        .from('candidate_rankings')
-        .select(`
-          *,
-          candidates!candidate_rankings_candidate_id_fkey(
-            id,
-            full_name,
-            party,
-            region
-          )
-        `)
-        .gte('period_start', dateRange.from.toISOString())
-        .lte('period_end', dateRange.to.toISOString())
-        .order('rank_position', { ascending: true });
+      const { data, error } = await supabase
+        .from('candidates')
+        .select('id, full_name, party, region')
+        .eq('user_id', user.id)
+        .eq('status', 'active');
 
-      if (!isAdmin && user) {
-        query = query.eq('user_id', user.id);
-      }
-
-      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
-    enabled: !!dateRange?.from && !!dateRange?.to
+    enabled: !!user,
   });
 
-  // Mutation: Calculate ranking
-  const calculateRankingMutation = useMutation({
-    mutationFn: async () => {
-      if (!dateRange?.from || !dateRange?.to) {
-        throw new Error('Selecione um período válido');
-      }
+  // Query: Buscar interações reais do período
+  const { data: interactions, isLoading: loadingInteractions } = useQuery({
+    queryKey: ['ranking-interactions', dateRange, user?.id],
+    queryFn: async () => {
+      if (!user || !dateRange?.from || !dateRange?.to) return [];
 
-      const { data, error } = await supabase.functions.invoke('calculate-ranking', {
-        body: {
-          period_start: dateRange.from.toISOString(),
-          period_end: dateRange.to.toISOString()
-        }
-      });
+      const endDate = new Date(dateRange.to);
+      endDate.setDate(endDate.getDate() + 1);
+
+      const { data, error } = await supabase
+        .from('social_interactions')
+        .select('candidate_id, sentiment_label, sentiment_score, likes_count, comment_author')
+        .eq('user_id', user.id)
+        .gte('created_at', dateRange.from.toISOString())
+        .lt('created_at', endDate.toISOString());
 
       if (error) throw error;
-      return data;
+      return data || [];
     },
-    onSuccess: () => {
-      toast.success('Ranking calculado com sucesso!');
-      queryClient.invalidateQueries({ queryKey: ['rankings'] });
-    },
-    onError: (error: Error) => {
-      toast.error(`Erro ao calcular ranking: ${error.message}`);
-    }
+    enabled: !!user && !!dateRange?.from && !!dateRange?.to,
   });
 
-  // Calculate insights - VERSÃO CORRIGIDA
-  const topCandidate = rankings?.[0];
+  // Calcular ranking automaticamente a partir dos dados reais
+  const rankings = useMemo<CandidateRankingData[]>(() => {
+    if (!candidates || !interactions) return [];
 
-  // Maior crescimento (apenas se rank_change > 0)
-  const mostImproved = rankings?.filter(r => r.rank_change > 0)
-    .reduce((max, r) => 
-      !max || r.rank_change > max.rank_change ? r : max
-    , null as any);
+    // Agregar métricas por candidato
+    const metricsMap = new Map<string, {
+      totalMentions: number;
+      authors: Set<string>;
+      positiveCount: number;
+      negativeCount: number;
+      neutralCount: number;
+      totalEngagement: number;
+      sentimentSum: number;
+    }>();
 
-  // Maior queda (apenas se rank_change < 0)
-  const mostDeclined = rankings?.filter(r => r.rank_change < 0)
-    .reduce((min, r) => 
-      !min || r.rank_change < min.rank_change ? r : min
-    , null as any);
+    // Inicializar para todos os candidatos
+    candidates.forEach(c => {
+      metricsMap.set(c.id, {
+        totalMentions: 0,
+        authors: new Set(),
+        positiveCount: 0,
+        negativeCount: 0,
+        neutralCount: 0,
+        totalEngagement: 0,
+        sentimentSum: 0,
+      });
+    });
 
-  // Flags para controlar exibição
-  const hasImprovement = mostImproved && mostImproved.rank_change > 0;
-  const hasDecline = mostDeclined && mostDeclined.rank_change < 0;
+    // Agregar interações
+    interactions.forEach(i => {
+      const metrics = metricsMap.get(i.candidate_id);
+      if (!metrics) return;
 
-  // Prepare radar chart data
-  const radarData = [
-    { metric: 'Alcance', ...Object.fromEntries(rankings?.slice(0, 5).map(r => [(r.candidates as any)?.full_name || 'N/A', r.reach_score]) || []) },
-    { metric: 'Engajamento', ...Object.fromEntries(rankings?.slice(0, 5).map(r => [(r.candidates as any)?.full_name || 'N/A', r.engagement_score]) || []) },
-    { metric: 'Percepção+', ...Object.fromEntries(rankings?.slice(0, 5).map(r => [(r.candidates as any)?.full_name || 'N/A', r.positive_perception]) || []) },
-    { metric: 'Impacto Falas', ...Object.fromEntries(rankings?.slice(0, 5).map(r => [(r.candidates as any)?.full_name || 'N/A', r.speech_impact_score || 50]) || []) },
-    { metric: 'Tendência', ...Object.fromEntries(rankings?.slice(0, 5).map(r => [(r.candidates as any)?.full_name || 'N/A', r.trend_score]) || []) },
-  ];
+      metrics.totalMentions++;
+      if (i.comment_author) metrics.authors.add(i.comment_author);
+      metrics.totalEngagement += i.likes_count || 0;
 
-  // Prepare bar chart data
-  const barChartData = rankings?.slice(0, 10).map(r => ({
-    name: ((r.candidates as any)?.full_name || 'N/A').split(' ')[0],
-    Alcance: r.reach_score,
-    Engajamento: r.engagement_score,
-    'Percepção+': r.positive_perception,
-  })) || [];
+      if (i.sentiment_label === 'Positivo') {
+        metrics.positiveCount++;
+        metrics.sentimentSum += 100;
+      } else if (i.sentiment_label === 'Negativo') {
+        metrics.negativeCount++;
+        metrics.sentimentSum += 0;
+      } else {
+        metrics.neutralCount++;
+        metrics.sentimentSum += 50;
+      }
+    });
+
+    // Calcular valores máximos para normalização
+    let maxMentions = 0;
+    let maxAuthors = 0;
+    let maxEngagement = 0;
+
+    metricsMap.forEach(m => {
+      if (m.totalMentions > maxMentions) maxMentions = m.totalMentions;
+      if (m.authors.size > maxAuthors) maxAuthors = m.authors.size;
+      if (m.totalEngagement > maxEngagement) maxEngagement = m.totalEngagement;
+    });
+
+    // Construir array de ranking
+    const rankingData: CandidateRankingData[] = [];
+
+    candidates.forEach(c => {
+      const metrics = metricsMap.get(c.id);
+      if (!metrics) return;
+
+      const uniqueAuthors = metrics.authors.size;
+      const averageSentiment = metrics.totalMentions > 0
+        ? Math.round(metrics.sentimentSum / metrics.totalMentions)
+        : 50;
+
+      const overallScore = calculateOverallScore(
+        metrics.totalMentions,
+        maxMentions,
+        uniqueAuthors,
+        maxAuthors,
+        averageSentiment,
+        metrics.totalEngagement,
+        maxEngagement
+      );
+
+      rankingData.push({
+        candidateId: c.id,
+        candidateName: c.full_name,
+        party: c.party,
+        region: c.region,
+        totalMentions: metrics.totalMentions,
+        uniqueAuthors,
+        positiveCount: metrics.positiveCount,
+        negativeCount: metrics.negativeCount,
+        neutralCount: metrics.neutralCount,
+        averageSentiment,
+        totalEngagement: metrics.totalEngagement,
+        overallScore,
+        rankPosition: 0, // Será preenchido abaixo
+      });
+    });
+
+    // Ordenar por score geral (decrescente)
+    rankingData.sort((a, b) => b.overallScore - a.overallScore);
+
+    // Atribuir posições
+    rankingData.forEach((r, i) => {
+      r.rankPosition = i + 1;
+    });
+
+    return rankingData;
+  }, [candidates, interactions]);
+
+  // Preparar dados para gráfico de barras
+  const barChartData = rankings.slice(0, 10).map(r => ({
+    name: r.candidateName.split(' ')[0],
+    Menções: r.totalMentions,
+    Autores: r.uniqueAuthors,
+    Engajamento: r.totalEngagement,
+  }));
+
+  // Preparar dados para gráfico de sentimento
+  const sentimentChartData = rankings.slice(0, 10).map(r => ({
+    name: r.candidateName.split(' ')[0],
+    Positivo: r.positiveCount,
+    Neutro: r.neutralCount,
+    Negativo: r.negativeCount,
+  }));
+
+  // Top candidate
+  const topCandidate = rankings[0];
+
+  // Get date range text
+  const dateRangeText = dateRange?.from && dateRange?.to
+    ? `${dateRange.from.toLocaleDateString('pt-BR')} - ${dateRange.to.toLocaleDateString('pt-BR')}`
+    : 'Período não selecionado';
+
+  const isLoading = loadingCandidates || loadingInteractions;
+  const totalInteractions = interactions?.length || 0;
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold flex items-center gap-2">
-              <Trophy className="h-8 w-8 text-yellow-500" />
-              Ranking de Candidatos
-            </h1>
-            <p className="text-muted-foreground">
-              Compare o desempenho de todos os candidatos em um período
-            </p>
-          </div>
-          <Button
-            onClick={() => calculateRankingMutation.mutate()}
-            disabled={calculateRankingMutation.isPending}
-          >
-            {calculateRankingMutation.isPending ? (
-              <>
-                <Loader2 className="animate-spin mr-2 h-4 w-4" /> 
-                Calculando...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="mr-2 h-4 w-4" /> 
-                Atualizar Ranking
-              </>
-            )}
-          </Button>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <Trophy className="h-8 w-8 text-yellow-500" />
+            Ranking de Candidatos
+          </h1>
+          <p className="text-muted-foreground">
+            Comparativo automático baseado em dados reais do YouTube
+          </p>
         </div>
-
-        <DateRangePicker dateRange={dateRange} onDateRangeChange={setDateRange} />
+        <Badge variant="outline" className="flex items-center gap-2">
+          <Youtube className="h-4 w-4 text-destructive" />
+          Fonte: YouTube
+        </Badge>
       </div>
 
+      <DateRangePicker dateRange={dateRange} onDateRangeChange={setDateRange} />
+
+      {/* Period Info */}
+      <Card className="bg-muted/30">
+        <CardContent className="py-3">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Clock className="h-4 w-4" />
+            <span>Período: <strong>{dateRangeText}</strong></span>
+            <span className="mx-2">•</span>
+            <span>{totalInteractions.toLocaleString('pt-BR')} comentários analisados</span>
+            <span className="mx-2">•</span>
+            <span>{rankings.length} candidatos ranqueados</span>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Insights Cards */}
-      {rankings && rankings.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {rankings.length > 0 && topCandidate && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Trophy className="w-4 h-4 text-yellow-500" />
-                Melhor Desempenho
+                Líder do Ranking
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{(topCandidate?.candidates as any)?.full_name || 'N/A'}</div>
+              <div className="text-xl font-bold">{topCandidate.candidateName}</div>
               <p className="text-xs text-muted-foreground">
-                Score: {topCandidate?.overall_score.toFixed(1)}
+                Score: {topCandidate.overallScore}
               </p>
             </CardContent>
           </Card>
 
-          {mostImproved && mostImproved.rank_change > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-green-500" />
-                  Maior Crescimento
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{(mostImproved.candidates as any)?.full_name || 'N/A'}</div>
-                <p className="text-xs text-green-600">
-                  +{mostImproved.rank_change} posições
-                </p>
-              </CardContent>
-            </Card>
-          )}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-primary" />
+                Mais Mencionado
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const most = [...rankings].sort((a, b) => b.totalMentions - a.totalMentions)[0];
+                return (
+                  <>
+                    <div className="text-xl font-bold">{most?.candidateName}</div>
+                    <p className="text-xs text-muted-foreground">
+                      {most?.totalMentions.toLocaleString('pt-BR')} menções
+                    </p>
+                  </>
+                );
+              })()}
+            </CardContent>
+          </Card>
 
-          {mostDeclined && mostDeclined.rank_change < 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-red-500" />
-                  Maior Queda
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{(mostDeclined.candidates as any)?.full_name || 'N/A'}</div>
-                <p className="text-xs text-red-600">
-                  {mostDeclined.rank_change} posições
-                </p>
-              </CardContent>
-            </Card>
-          )}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-success" />
+                Melhor Sentimento
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const best = [...rankings].filter(r => r.totalMentions > 0).sort((a, b) => b.averageSentiment - a.averageSentiment)[0];
+                return best ? (
+                  <>
+                    <div className="text-xl font-bold">{best.candidateName}</div>
+                    <p className="text-xs text-success">
+                      {best.averageSentiment}% positivo
+                    </p>
+                  </>
+                ) : (
+                  <div className="text-muted-foreground">N/A</div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Heart className="w-4 h-4 text-pink-500" />
+                Maior Engajamento
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const top = [...rankings].sort((a, b) => b.totalEngagement - a.totalEngagement)[0];
+                return (
+                  <>
+                    <div className="text-xl font-bold">{top?.candidateName}</div>
+                    <p className="text-xs text-muted-foreground">
+                      {top?.totalEngagement.toLocaleString('pt-BR')} curtidas
+                    </p>
+                  </>
+                );
+              })()}
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -246,7 +384,7 @@ export default function CandidateRanking() {
         <CardHeader>
           <CardTitle>Ranking Geral</CardTitle>
           <CardDescription>
-            Ordenado por Score Geral (ponderação de todas as métricas)
+            Score calculado automaticamente: 30% menções + 20% autores + 30% sentimento + 20% engajamento
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -256,14 +394,14 @@ export default function CandidateRanking() {
                 <Skeleton key={i} className="h-12 w-full" />
               ))}
             </div>
-          ) : !rankings || rankings.length === 0 ? (
+          ) : rankings.length === 0 ? (
             <div className="text-center py-12">
               <Trophy className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
               <p className="text-muted-foreground">
-                Nenhum ranking calculado para este período.
+                Nenhum dado encontrado para este período.
               </p>
               <p className="text-sm text-muted-foreground mt-2">
-                Clique em "Atualizar Ranking" para calcular.
+                Colete comentários do YouTube para seus candidatos primeiro.
               </p>
             </div>
           ) : (
@@ -271,69 +409,62 @@ export default function CandidateRanking() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[60px]">Pos.</TableHead>
-                  <TableHead className="w-[80px]">Mudança</TableHead>
                   <TableHead>Candidato</TableHead>
-                  <TableHead className="text-right">Score Geral</TableHead>
-                  <TableHead className="text-right">Alcance</TableHead>
+                  <TableHead className="text-right">Score</TableHead>
+                  <TableHead className="text-right">Menções</TableHead>
+                  <TableHead className="text-right">Autores</TableHead>
+                  <TableHead className="text-right">Sentimento</TableHead>
                   <TableHead className="text-right">Engajamento</TableHead>
-                  <TableHead className="text-right">Percepção+</TableHead>
-                  <TableHead className="text-right">Percepção-</TableHead>
-                  <TableHead className="text-right">Falas</TableHead>
-                  <TableHead className="text-right">Tendência</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rankings.map((rank, index) => (
-                  <TableRow key={rank.id}>
+                {rankings.map((rank) => (
+                  <TableRow key={rank.candidateId}>
                     <TableCell>
-                      <Badge variant={index < 3 ? "default" : "secondary"}>
-                        #{rank.rank_position}
+                      <Badge variant={rank.rankPosition <= 3 ? "default" : "secondary"}>
+                        #{rank.rankPosition}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {rank.rank_change > 0 && (
-                        <div className="flex items-center text-green-600">
-                          <ArrowUpRight className="w-4 h-4" />
-                          <span className="text-sm">+{rank.rank_change}</span>
-                        </div>
-                      )}
-                      {rank.rank_change < 0 && (
-                        <div className="flex items-center text-red-600">
-                          <ArrowDownRight className="w-4 h-4" />
-                          <span className="text-sm">{rank.rank_change}</span>
-                        </div>
-                      )}
-                      {rank.rank_change === 0 && (
-                        <span className="text-muted-foreground text-sm">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
                       <div>
-                        <div className="font-medium">{(rank.candidates as any)?.full_name || 'N/A'}</div>
+                        <div className="font-medium">{rank.candidateName}</div>
                         <div className="text-sm text-muted-foreground">
-                          {(rank.candidates as any)?.party} • {(rank.candidates as any)?.region}
+                          {rank.party || 'Sem partido'} • {rank.region || 'Sem região'}
                         </div>
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <Progress value={rank.overall_score} className="w-16 h-2" />
-                        <span className="font-bold">{rank.overall_score.toFixed(1)}</span>
+                        <Progress value={rank.overallScore} className="w-16 h-2" />
+                        <span className="font-bold w-8">{rank.overallScore}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-right">{rank.reach_score.toFixed(1)}</TableCell>
-                    <TableCell className="text-right">{rank.engagement_score.toFixed(1)}</TableCell>
-                    <TableCell className="text-right text-green-600 font-medium">
-                      {rank.positive_perception.toFixed(1)}%
-                    </TableCell>
-                    <TableCell className="text-right text-red-600 font-medium">
-                      {rank.negative_perception.toFixed(1)}%
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <MessageSquare className="h-3 w-3 text-muted-foreground" />
+                        {rank.totalMentions.toLocaleString('pt-BR')}
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      {rank.speech_impact_score?.toFixed(1) || 'N/A'}
+                      <div className="flex items-center justify-end gap-1">
+                        <Users className="h-3 w-3 text-muted-foreground" />
+                        {rank.uniqueAuthors.toLocaleString('pt-BR')}
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <TrendIndicator value={rank.trend_score} />
+                      <Badge variant={
+                        rank.averageSentiment >= 60 ? 'default' :
+                        rank.averageSentiment <= 40 ? 'destructive' :
+                        'secondary'
+                      }>
+                        {rank.averageSentiment}%
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Heart className="h-3 w-3 text-muted-foreground" />
+                        {rank.totalEngagement.toLocaleString('pt-BR')}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -344,48 +475,17 @@ export default function CandidateRanking() {
       </Card>
 
       {/* Charts */}
-      {rankings && rankings.length > 0 && (
-        <Tabs defaultValue="radar" className="w-full">
+      {rankings.length > 0 && (
+        <Tabs defaultValue="metrics" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="radar">Comparação Radar</TabsTrigger>
-            <TabsTrigger value="bars">Comparação por Métrica</TabsTrigger>
+            <TabsTrigger value="metrics">Comparação por Métrica</TabsTrigger>
+            <TabsTrigger value="sentiment">Distribuição de Sentimento</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="radar">
+          <TabsContent value="metrics">
             <Card>
               <CardHeader>
-                <CardTitle>Comparação Multidimensional - Top 5</CardTitle>
-                <CardDescription>
-                  Visualize múltiplas métricas em um único gráfico
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={400}>
-                  <RadarChart data={radarData}>
-                    <PolarGrid />
-                    <PolarAngleAxis dataKey="metric" />
-                    <PolarRadiusAxis angle={90} domain={[0, 100]} />
-                    {rankings.slice(0, 5).map((rank, i) => (
-                      <Radar
-                        key={rank.id}
-                        name={(rank.candidates as any)?.full_name || 'N/A'}
-                        dataKey={(rank.candidates as any)?.full_name || 'N/A'}
-                        stroke={COLORS[i]}
-                        fill={COLORS[i]}
-                        fillOpacity={0.3}
-                      />
-                    ))}
-                    <Legend />
-                  </RadarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="bars">
-            <Card>
-              <CardHeader>
-                <CardTitle>Comparação Direta por Métrica - Top 10</CardTitle>
+                <CardTitle>Comparação Direta - Top 10</CardTitle>
                 <CardDescription>
                   Compare candidatos lado a lado em cada dimensão
                 </CardDescription>
@@ -393,14 +493,51 @@ export default function CandidateRanking() {
               <CardContent>
                 <ResponsiveContainer width="100%" height={400}>
                   <BarChart data={barChartData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis domain={[0, 100]} />
-                    <Tooltip />
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                    <YAxis />
+                    <Tooltip 
+                      contentStyle={{
+                        backgroundColor: 'hsl(var(--card))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '8px'
+                      }}
+                    />
                     <Legend />
-                    <Bar dataKey="Alcance" fill="#8b5cf6" />
-                    <Bar dataKey="Engajamento" fill="#06b6d4" />
-                    <Bar dataKey="Percepção+" fill="#10b981" />
+                    <Bar dataKey="Menções" fill="hsl(var(--primary))" />
+                    <Bar dataKey="Autores" fill="hsl(var(--chart-2))" />
+                    <Bar dataKey="Engajamento" fill="hsl(var(--warning))" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="sentiment">
+            <Card>
+              <CardHeader>
+                <CardTitle>Distribuição de Sentimento - Top 10</CardTitle>
+                <CardDescription>
+                  Compare a proporção de comentários positivos, neutros e negativos
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={400}>
+                  <BarChart data={sentimentChartData}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                    <YAxis />
+                    <Tooltip 
+                      contentStyle={{
+                        backgroundColor: 'hsl(var(--card))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '8px'
+                      }}
+                    />
+                    <Legend />
+                    <Bar dataKey="Positivo" stackId="a" fill="hsl(var(--success))" />
+                    <Bar dataKey="Neutro" stackId="a" fill="hsl(var(--warning))" />
+                    <Bar dataKey="Negativo" stackId="a" fill="hsl(var(--destructive))" />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -408,6 +545,24 @@ export default function CandidateRanking() {
           </TabsContent>
         </Tabs>
       )}
+
+      {/* Formula Explanation */}
+      <Card className="bg-muted/30">
+        <CardContent className="py-4">
+          <div className="flex items-start gap-2 text-sm text-muted-foreground">
+            <Trophy className="h-4 w-4 mt-0.5 text-yellow-500" />
+            <div>
+              <p className="font-medium text-foreground">Fórmula do Score Geral</p>
+              <p className="mt-1">
+                O ranking é calculado automaticamente a partir dos comentários reais coletados do YouTube.
+                A fórmula do score combina: <strong>30% volume de menções</strong> + <strong>20% diversidade de autores</strong> + 
+                <strong>30% sentimento médio</strong> + <strong>20% engajamento (curtidas)</strong>.
+                Todas as métricas são normalizadas para uma escala de 0-100.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
