@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, ChevronUp, BarChart3 } from "lucide-react";
+import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, ChevronUp, BarChart3, RefreshCw } from "lucide-react";
 // ArrowUpRight, ArrowDownRight, Minus removidos temporariamente (coluna Tendência oculta)
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 
@@ -222,6 +222,38 @@ export default function Candidates() {
     },
   });
 
+  // Reanalyze sentiment mutation
+  const reanalyzeSentimentMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('reanalyze-sentiment', {
+        body: { batchSize: 50, maxToProcess: 500 }
+      });
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+      const stats = data?.stats || {};
+      toast.success(
+        `Reprocessamento concluído! ${stats.processed || 0} comentários analisados, ${stats.updated || 0} corrigidos.`,
+        { duration: 6000 }
+      );
+    },
+    onError: (error: Error) => {
+      console.error('Reanalyze sentiment error:', error);
+      const msg = error.message || '';
+      if (msg.includes('Rate limit') || msg.includes('429')) {
+        toast.error('Rate limit do serviço de IA. Tente novamente em alguns minutos.');
+      } else if (msg.includes('Créditos') || msg.includes('402')) {
+        toast.error('Créditos de IA esgotados.');
+      } else {
+        toast.error('Erro ao reprocessar sentimento: ' + msg);
+      }
+    },
+  });
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setValidationErrors({});
@@ -264,16 +296,42 @@ export default function Candidates() {
             )}
           </p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button 
-              disabled={isLimitReached}
-              title={isLimitReached ? "Limite de candidatos atingido" : ""}
-            >
-              <UserPlus className="mr-2 h-4 w-4" />
-              Adicionar Candidato
-            </Button>
-          </DialogTrigger>
+        <div className="flex gap-2">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  onClick={() => reanalyzeSentimentMutation.mutate()}
+                  disabled={reanalyzeSentimentMutation.isPending}
+                >
+                  {reanalyzeSentimentMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  Corrigir Sentimento
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Reprocessar comentários classificados incorretamente como Neutro</p>
+                <p className="text-xs text-muted-foreground">
+                  Processa até 500 comentários por execução
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button 
+                disabled={isLimitReached}
+                title={isLimitReached ? "Limite de candidatos atingido" : ""}
+              >
+                <UserPlus className="mr-2 h-4 w-4" />
+                Adicionar Candidato
+              </Button>
+            </DialogTrigger>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
               <DialogTitle>Adicionar Novo Candidato</DialogTitle>
@@ -339,7 +397,8 @@ export default function Candidates() {
               </div>
             </form>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        </div>
       </div>
 
       {/* Search */}
