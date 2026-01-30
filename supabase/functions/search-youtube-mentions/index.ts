@@ -126,6 +126,40 @@ async function analyzeSentimentBatch(texts: string[]): Promise<SentimentResult[]
   const clipped = texts.map((t) => (t || '').substring(0, 500));
 
   try {
+    const systemPrompt = `Você é um especialista em análise de sentimento para comentários políticos em português brasileiro.
+
+REGRAS CRÍTICAS DE CLASSIFICAÇÃO:
+
+POSITIVO (score 0.7-1.0) - QUALQUER comentário que demonstre:
+- Apoio explícito: "voto nele", "meu candidato", "o melhor", "vai ganhar"
+- Intenção de voto: "22", "13", números de urna mencionados com aprovação
+- Elogios: "mito", "presidente", "parabéns", "orgulho", "honesto"
+- Torcida: "com certeza", "vai dar certo", "confiamos", "força"
+- Defesa: "não fez nada errado", "injustiça", "perseguição"
+- Combinações de candidatos com tom favorável: "Vice X com Y", "chapa perfeita"
+- Emojis positivos: 👏 ❤️ 🇧🇷 💚💛 🙏
+
+NEGATIVO (score 0.0-0.3) - Comentários que demonstrem:
+- Críticas diretas: "ladrão", "corrupto", "mentiroso", "incompetente"
+- Rejeição: "fora", "nunca", "jamais votaria"
+- Insultos ou xingamentos
+- Acusações: "roubou", "destruiu", "acabou com"
+- Desprezo ou sarcasmo negativo
+- Emojis negativos: 🤮 👎 😡 💩
+
+NEUTRO (score 0.4-0.6) - APENAS quando:
+- O comentário é puramente informativo sem opinião
+- Pergunta genuína sem viés aparente
+- Comentário completamente off-topic
+- Impossível determinar polaridade
+
+IMPORTANTE:
+- Comentários curtos de apoio político são POSITIVOS, não neutros
+- Frases como "Fulano presidente" são POSITIVAS (intenção de voto)
+- Na dúvida entre Neutro e Positivo/Negativo, escolha a polaridade detectada
+
+Responda APENAS com um JSON array: [{"label":"Positivo|Negativo|Neutro","score":0.0-1.0}, ...] na MESMA ORDEM.`;
+
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -133,20 +167,13 @@ async function analyzeSentimentBatch(texts: string[]): Promise<SentimentResult[]
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash-lite',
+        model: 'google/gemini-2.5-flash',
         messages: [
-          {
-            role: 'system',
-            content:
-              'Você é um analisador de sentimento político. Para cada texto, responda APENAS com um JSON array no formato: [{"label":"Positivo|Negativo|Neutro","score":0.0-1.0}, ...] na MESMA ORDEM.\n\nRegras:\n- Positivo: Apoio, elogio, concordância, entusiasmo\n- Negativo: Crítica, desaprovação, raiva, decepção\n- Neutro: Informativo, sem opinião clara, pergunta\n\nScore: 0 = muito negativo, 0.5 = neutro, 1 = muito positivo',
-          },
-          {
-            role: 'user',
-            content: JSON.stringify({ texts: clipped }),
-          },
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: JSON.stringify({ texts: clipped }) },
         ],
         temperature: 0.1,
-        max_tokens: 300,
+        max_tokens: 500,
       }),
     });
 
@@ -305,11 +332,11 @@ Deno.serve(async (req) => {
       candidateId,
       candidateName,
       // how many videos to search per order type (date + relevance)
-      maxVideos = 15,
+      maxVideos = 25,
       // YouTube API is paged; this is per page. We'll paginate until we hit maxNewComments.
       maxCommentsPerVideo = 100,
-      // Hard cap per invocation to avoid browser/network timeouts.
-      maxNewComments = 80,
+      // Hard cap per invocation - INCREASED significantly for better statistical relevance
+      maxNewComments = 500,
     } = await req.json();
 
     if (!candidateId || !candidateName) {
@@ -343,11 +370,14 @@ Deno.serve(async (req) => {
     // Also search by relevance to get popular videos
     const relevanceResults = await searchYouTubeVideos(candidateName, youtubeApiKey, maxVideos, 'relevance');
     
+    // Also search by viewCount to get most viewed videos
+    const viewCountResults = await searchYouTubeVideos(candidateName, youtubeApiKey, maxVideos, 'viewCount');
+    
     // Merge and deduplicate video results
     const allVideoIds = new Set<string>();
     const allVideos: YouTubeSearchResult['items'] = [];
     
-    for (const video of [...(searchResults.items || []), ...(relevanceResults.items || [])]) {
+    for (const video of [...(searchResults.items || []), ...(relevanceResults.items || []), ...(viewCountResults.items || [])]) {
       if (!allVideoIds.has(video.id.videoId)) {
         allVideoIds.add(video.id.videoId);
         allVideos.push(video);
@@ -355,7 +385,7 @@ Deno.serve(async (req) => {
     }
     
     const videosFound = allVideos.length;
-    console.log(`Found ${videosFound} unique videos (date + relevance search)`);
+    console.log(`Found ${videosFound} unique videos (date + relevance + viewCount search)`);
 
     if (videosFound === 0) {
       return new Response(
@@ -374,7 +404,8 @@ Deno.serve(async (req) => {
     let sentimentAnalyzed = 0;
     const uniqueAuthors = new Set<string>();
 
-    const BATCH_SIZE = 10;
+    // Increased batch size for faster processing
+    const BATCH_SIZE = 15;
     const nowIso = new Date().toISOString();
     const insertedRowsForStats: any[] = [];
 
