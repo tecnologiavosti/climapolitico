@@ -59,6 +59,9 @@ export const useRealTimeAnalytics = (
   const isFetchingRef = useRef(false);
   const hasFetchedRef = useRef(false);
   
+  // Compute stable key for candidateIds to use in dependencies
+  const candidateIdsKey = candidateIds.join(',');
+  
   // Update ref when candidateIds change
   useEffect(() => {
     candidateIdsRef.current = candidateIds;
@@ -236,7 +239,7 @@ export const useRealTimeAnalytics = (
     if (user && hasFetchedRef.current) {
       fetchAggregatedMetrics();
     }
-  }, [candidateIds.join(',')]); // Use string comparison to avoid array reference issues
+  }, [candidateIdsKey, user, fetchAggregatedMetrics]);
 
   // Interval refresh
   useEffect(() => {
