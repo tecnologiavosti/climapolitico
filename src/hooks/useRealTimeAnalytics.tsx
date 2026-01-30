@@ -202,45 +202,11 @@ export const useRealTimeAnalytics = (
     }
   }, [user, candidateIds]);
 
-  // Realtime subscription for new data
+  // Realtime subscription disabled - using polling every 10 minutes instead
+  // to prevent layout bugs and reduce server load
   useEffect(() => {
-    if (!user) {
-      setIsConnected(false);
-      return;
-    }
-
-    const channel = supabase
-      .channel('realtime-monitor')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'social_interactions',
-        },
-        (payload) => {
-          const newInteraction = payload.new as SocialInteraction;
-          // Only process if it belongs to current user
-          if (newInteraction.user_id === user.id) {
-            // If we have specific candidates, check if it matches
-            if (candidateIds.length === 0 || candidateIds.includes(newInteraction.candidate_id)) {
-              console.log('[Monitor] New interaction received:', newInteraction.id);
-              setComments(prev => [newInteraction, ...prev.slice(0, 49)]);
-              // Trigger full metrics refresh
-              fetchAggregatedMetrics();
-            }
-          }
-        }
-      )
-      .subscribe((status) => {
-        setIsConnected(status === 'SUBSCRIBED');
-        console.log('[Monitor] Realtime subscription status:', status);
-      });
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user, candidateIds, fetchAggregatedMetrics]);
+    setIsConnected(true); // Always show as "connected" since we use polling
+  }, []);
 
   // Initial fetch and interval refresh
   useEffect(() => {
