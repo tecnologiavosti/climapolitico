@@ -53,3 +53,6 @@ verify_jwt = true
 
 [functions.reanalyze-sentiment]
 verify_jwt = true
+
+[functions.generate-candidate-summary]
+verify_jwt = true
