@@ -45,6 +45,7 @@ const mainItems = [
   { title: "Análise de Rejeição", url: "/dashboard/rejection-analysis", icon: ThumbsDown },
   { title: "Recomendações de Narrativa", url: "/dashboard/narrative-recommendations", icon: Sparkles },
   { title: "Comparação de Candidatos", url: "/dashboard/candidate-comparison", icon: GitCompareArrows },
+  { title: "Relatório de Evento", url: "/dashboard/event-report", icon: Calendar },
   { title: "Monitor Tempo Real", url: "/dashboard/realtime-monitor", icon: Radio },
   { title: "Candidatos", url: "/dashboard/candidates", icon: Users },
   { title: "Analytics Avançado", url: "/dashboard/analytics-advanced", icon: LineChart },
