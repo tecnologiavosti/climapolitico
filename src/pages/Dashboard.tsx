@@ -29,6 +29,7 @@ import ReportTemplates from "./dashboard/ReportTemplates";
 import RealTimeMonitor from "./dashboard/RealTimeMonitor";
 import CandidateSummary from "./dashboard/CandidateSummary";
 import RejectionAnalysis from "./dashboard/RejectionAnalysis";
+import NarrativeRecommendations from "./dashboard/NarrativeRecommendations";
 const onboardingSteps: OnboardingStep[] = [
   {
     target: '[data-onboarding="sidebar"]',
@@ -118,6 +119,7 @@ const Dashboard = () => {
               <Route path="/" element={<Overview />} />
               <Route path="/candidate-summary" element={<CandidateSummary />} />
               <Route path="/rejection-analysis" element={<RejectionAnalysis />} />
+              <Route path="/narrative-recommendations" element={<NarrativeRecommendations />} />
               <Route path="/candidates" element={<Candidates />} />
               <Route path="/analytics-advanced" element={<Analytics />} />
               <Route path="/ranking" element={<CandidateRanking />} />

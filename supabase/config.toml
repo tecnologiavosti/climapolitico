@@ -59,3 +59,6 @@ verify_jwt = true
 
 [functions.analyze-rejection]
 verify_jwt = true
+
+[functions.generate-narrative-recommendations]
+verify_jwt = true
