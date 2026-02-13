@@ -38,6 +38,7 @@ import {
 // Módulos ativos no menu principal
 const mainItems = [
   { title: "Visão Geral", url: "/dashboard", icon: BarChart3 },
+  { title: "Resumo Inteligente", url: "/dashboard/candidate-summary", icon: FileText },
   { title: "Monitor Tempo Real", url: "/dashboard/realtime-monitor", icon: Radio },
   { title: "Candidatos", url: "/dashboard/candidates", icon: Users },
   { title: "Analytics Avançado", url: "/dashboard/analytics-advanced", icon: LineChart },

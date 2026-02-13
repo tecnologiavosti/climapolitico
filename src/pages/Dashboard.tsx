@@ -27,6 +27,7 @@ import TraceabilityReport from "./dashboard/TraceabilityReport";
 import ScheduledReports from "./dashboard/ScheduledReports";
 import ReportTemplates from "./dashboard/ReportTemplates";
 import RealTimeMonitor from "./dashboard/RealTimeMonitor";
+import CandidateSummary from "./dashboard/CandidateSummary";
 
 const onboardingSteps: OnboardingStep[] = [
   {
@@ -115,6 +116,7 @@ const Dashboard = () => {
             <Routes>
               {/* Rotas ativas */}
               <Route path="/" element={<Overview />} />
+              <Route path="/candidate-summary" element={<CandidateSummary />} />
               <Route path="/candidates" element={<Candidates />} />
               <Route path="/analytics-advanced" element={<Analytics />} />
               <Route path="/ranking" element={<CandidateRanking />} />
