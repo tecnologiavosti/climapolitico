@@ -46,20 +46,32 @@ function percentEncode(str: string): string {
     .replace(/\)/g, '%29');
 }
 
-function generateOAuthSignature(
+async function generateOAuthSignature(
   method: string,
   url: string,
   params: Record<string, string>,
   consumerSecret: string,
   tokenSecret: string,
-): string {
+): Promise<string> {
   const sortedKeys = Object.keys(params).sort();
   const paramString = sortedKeys.map(k => `${percentEncode(k)}=${percentEncode(params[k])}`).join('&');
   const baseString = `${method.toUpperCase()}&${percentEncode(url)}&${percentEncode(paramString)}`;
   const signingKey = `${percentEncode(consumerSecret)}&${percentEncode(tokenSecret)}`;
   
-  const signature = hmac('sha1', signingKey, baseString, 'utf8', 'base64') as string;
-  return signature;
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(signingKey);
+  const msgData = encoder.encode(baseString);
+  
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw', keyData, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']
+  );
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, msgData);
+  
+  // Convert ArrayBuffer to base64
+  const bytes = new Uint8Array(signature);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
 }
 
 function buildOAuthHeader(
