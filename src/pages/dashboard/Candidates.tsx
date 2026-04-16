@@ -574,6 +574,34 @@ export default function Candidates() {
                                 </TooltipContent>
                               </Tooltip>
 
+                              {/* Twitter/X Collection Button */}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="bg-sky-500/10 hover:bg-sky-500/20 border-sky-500/30"
+                                    onClick={() => twitterCollectionMutation.mutate({ 
+                                      candidateId: candidate.id, 
+                                      candidateName: candidate.full_name 
+                                    })}
+                                    disabled={twitterCollectionMutation.isPending}
+                                  >
+                                    {twitterCollectionMutation.isPending ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Twitter className="h-4 w-4 text-sky-500" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Coletar dados do Twitter/X</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Busca tweets e menções públicas
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+
                               {/* AI Analysis Button */}
                               <Tooltip>
                                 <TooltipTrigger asChild>
