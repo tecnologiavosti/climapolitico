@@ -287,18 +287,18 @@ export default function CollectionStatus() {
         </div>
       </div>
 
-      {/* Fonte de Dados */}
+      {/* Fontes de Dados */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Youtube className="h-5 w-5 text-destructive" />
-            Fonte de Dados
+            <Settings2 className="h-5 w-5" />
+            Fontes de Dados
           </CardTitle>
           <CardDescription>
-            Plataforma de onde os dados são coletados
+            Plataformas de onde os dados são coletados
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
             <div className="w-12 h-12 rounded-full bg-destructive flex items-center justify-center">
               <Youtube className="h-6 w-6 text-destructive-foreground" />
@@ -309,9 +309,21 @@ export default function CollectionStatus() {
                 Comentários públicos de vídeos relacionados aos candidatos
               </p>
             </div>
-            <Badge variant="outline">
-              Conectado
-            </Badge>
+            <Badge variant="outline">Conectado</Badge>
+          </div>
+          <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
+            <div className="w-12 h-12 rounded-full bg-sky-500 flex items-center justify-center">
+              <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+              </svg>
+            </div>
+            <div className="flex-1">
+              <p className="font-semibold">Twitter/X</p>
+              <p className="text-sm text-muted-foreground">
+                Tweets e menções públicas sobre os candidatos
+              </p>
+            </div>
+            <Badge variant="outline">Conectado</Badge>
           </div>
         </CardContent>
       </Card>
@@ -448,9 +460,10 @@ export default function CollectionStatus() {
             <div className="space-y-2 text-sm">
               <p className="font-medium">Como funciona a Coleta</p>
               <ul className="text-muted-foreground space-y-1 list-disc list-inside">
-                <li>Os dados são coletados automaticamente dos vídeos públicos do YouTube</li>
-                <li>A coleta busca comentários em vídeos que mencionam os candidatos cadastrados</li>
-                <li>Cada comentário passa por análise de sentimento via IA</li>
+                <li>Os dados são coletados automaticamente do YouTube e Twitter/X</li>
+                <li>YouTube: busca comentários em vídeos que mencionam candidatos</li>
+                <li>Twitter/X: busca tweets públicos e menções sobre candidatos</li>
+                <li>Cada comentário/tweet passa por análise de sentimento via IA</li>
                 <li>A coleta manual pode ser iniciada na tela de Candidatos</li>
               </ul>
             </div>

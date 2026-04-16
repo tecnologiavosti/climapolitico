@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, ChevronUp, BarChart3, RefreshCw } from "lucide-react";
+import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, ChevronUp, BarChart3, RefreshCw, Twitter } from "lucide-react";
 // ArrowUpRight, ArrowDownRight, Minus removidos temporariamente (coluna Tendência oculta)
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 
@@ -222,7 +222,34 @@ export default function Candidates() {
     },
   });
 
-  // Reanalyze sentiment mutation
+  // Twitter/X collection mutation
+  const twitterCollectionMutation = useMutation({
+    mutationFn: async ({ candidateId, candidateName }: { candidateId: string; candidateName: string }) => {
+      const { data, error } = await supabase.functions.invoke('search-twitter-mentions', {
+        body: { candidateId, candidateName }
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+      const inserted = data?.inserted ?? 0;
+      const total = data?.totalFound ?? 0;
+      toast.success(
+        `Twitter/X: +${inserted} tweets coletados (${total} encontrados).`,
+        { duration: 5000 }
+      );
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+    },
+    onError: (error: Error) => {
+      console.error('Twitter collection error:', error);
+      toast.error('Erro ao coletar dados do Twitter/X: ' + error.message);
+    },
+  });
   const reanalyzeSentimentMutation = useMutation({
     mutationFn: async () => {
       const { data, error } = await supabase.functions.invoke('reanalyze-sentiment', {
@@ -543,6 +570,34 @@ export default function Candidates() {
                                   <p>Coletar dados do YouTube</p>
                                   <p className="text-xs text-muted-foreground">
                                     Busca vídeos e comentários reais
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+
+                              {/* Twitter/X Collection Button */}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="bg-sky-500/10 hover:bg-sky-500/20 border-sky-500/30"
+                                    onClick={() => twitterCollectionMutation.mutate({ 
+                                      candidateId: candidate.id, 
+                                      candidateName: candidate.full_name 
+                                    })}
+                                    disabled={twitterCollectionMutation.isPending}
+                                  >
+                                    {twitterCollectionMutation.isPending ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Twitter className="h-4 w-4 text-sky-500" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Coletar dados do Twitter/X</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Busca tweets e menções públicas
                                   </p>
                                 </TooltipContent>
                               </Tooltip>
