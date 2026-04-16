@@ -460,9 +460,10 @@ export default function CollectionStatus() {
             <div className="space-y-2 text-sm">
               <p className="font-medium">Como funciona a Coleta</p>
               <ul className="text-muted-foreground space-y-1 list-disc list-inside">
-                <li>Os dados são coletados automaticamente dos vídeos públicos do YouTube</li>
-                <li>A coleta busca comentários em vídeos que mencionam os candidatos cadastrados</li>
-                <li>Cada comentário passa por análise de sentimento via IA</li>
+                <li>Os dados são coletados automaticamente do YouTube e Twitter/X</li>
+                <li>YouTube: busca comentários em vídeos que mencionam candidatos</li>
+                <li>Twitter/X: busca tweets públicos e menções sobre candidatos</li>
+                <li>Cada comentário/tweet passa por análise de sentimento via IA</li>
                 <li>A coleta manual pode ser iniciada na tela de Candidatos</li>
               </ul>
             </div>
