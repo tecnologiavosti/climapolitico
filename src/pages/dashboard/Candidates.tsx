@@ -222,7 +222,34 @@ export default function Candidates() {
     },
   });
 
-  // Reanalyze sentiment mutation
+  // Twitter/X collection mutation
+  const twitterCollectionMutation = useMutation({
+    mutationFn: async ({ candidateId, candidateName }: { candidateId: string; candidateName: string }) => {
+      const { data, error } = await supabase.functions.invoke('search-twitter-mentions', {
+        body: { candidateId, candidateName }
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+      const inserted = data?.inserted ?? 0;
+      const total = data?.totalFound ?? 0;
+      toast.success(
+        `Twitter/X: +${inserted} tweets coletados (${total} encontrados).`,
+        { duration: 5000 }
+      );
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+    },
+    onError: (error: Error) => {
+      console.error('Twitter collection error:', error);
+      toast.error('Erro ao coletar dados do Twitter/X: ' + error.message);
+    },
+  });
   const reanalyzeSentimentMutation = useMutation({
     mutationFn: async () => {
       const { data, error } = await supabase.functions.invoke('reanalyze-sentiment', {
