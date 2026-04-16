@@ -74,7 +74,7 @@ async function generateOAuthSignature(
   return btoa(binary);
 }
 
-function buildOAuthHeader(
+async function buildOAuthHeader(
   method: string,
   url: string,
   queryParams: Record<string, string>,
@@ -82,7 +82,7 @@ function buildOAuthHeader(
   consumerSecret: string,
   accessToken: string,
   accessTokenSecret: string,
-): string {
+): Promise<string> {
   const oauthParams: Record<string, string> = {
     oauth_consumer_key: consumerKey,
     oauth_nonce: crypto.randomUUID().replace(/-/g, ''),
@@ -92,9 +92,8 @@ function buildOAuthHeader(
     oauth_version: '1.0',
   };
 
-  // Combine oauth + query params for signature base
   const allParams = { ...oauthParams, ...queryParams };
-  const signature = generateOAuthSignature(method, url, allParams, consumerSecret, accessTokenSecret);
+  const signature = await generateOAuthSignature(method, url, allParams, consumerSecret, accessTokenSecret);
   oauthParams['oauth_signature'] = signature;
 
   const headerParts = Object.keys(oauthParams)
