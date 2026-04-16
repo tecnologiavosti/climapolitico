@@ -32,7 +32,7 @@ import RejectionAnalysis from "./dashboard/RejectionAnalysis";
 import NarrativeRecommendations from "./dashboard/NarrativeRecommendations";
 import CandidateComparison from "./dashboard/CandidateComparison";
 import EventReport from "./dashboard/EventReport";
-import Brand24Import from "./dashboard/Brand24Import";
+import Brand24Collector from "./dashboard/Brand24Collector";
 const onboardingSteps: OnboardingStep[] = [
   {
     target: '[data-onboarding="sidebar"]',
@@ -130,7 +130,7 @@ const Dashboard = () => {
               <Route path="/ranking" element={<CandidateRanking />} />
               <Route path="/collection-status" element={<CollectionStatus />} />
               <Route path="/realtime-monitor" element={<RealTimeMonitor />} />
-              <Route path="/brand24-import" element={<Brand24Import />} />
+              <Route path="/brand24-collector" element={<Brand24Collector />} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/admin/api-settings" element={<AdminApiSettings />} />
               

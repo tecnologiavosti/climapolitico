@@ -52,7 +52,7 @@ const mainItems = [
   { title: "Analytics Avançado", url: "/dashboard/analytics-advanced", icon: LineChart },
   { title: "Ranking", url: "/dashboard/ranking", icon: Trophy },
   { title: "Configuração de Coleta", url: "/dashboard/collection-status", icon: Database },
-  { title: "Importar Brand24", url: "/dashboard/brand24-import", icon: Import },
+  { title: "Brand24 Coleta", url: "/dashboard/brand24-collector", icon: Import },
 ];
 
 // Módulos temporariamente desativados (mantidos para reativação futura)
