@@ -214,7 +214,7 @@ async function searchTweets(
     queryParams['next_token'] = nextToken;
   }
 
-  const authHeader = buildOAuthHeader(
+  const authHeader = await buildOAuthHeader(
     'GET', baseUrl, queryParams,
     consumerKey, consumerSecret, accessToken, accessTokenSecret,
   );
