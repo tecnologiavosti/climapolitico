@@ -14,6 +14,24 @@ const REQUEST_TIMEOUT_MS = 45_000;
 const MAX_TWEETS_PER_CANDIDATE = 250;
 const MAX_PAGES_PER_CANDIDATE = 6;
 
+function buildCandidateAliases(fullName: string): string[] {
+  const clean = fullName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const parts = clean.split(" ").filter((part) => part.length >= 3);
+  const aliases = new Set<string>();
+
+  if (parts.length >= 2) aliases.add(`${parts[0]} ${parts[parts.length - 1]}`);
+  if (parts.length >= 3) aliases.add(parts.slice(-2).join(" "));
+  for (const part of parts) aliases.add(part);
+
+  aliases.delete(clean);
+  return Array.from(aliases).slice(0, 6);
+}
+
 async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), ms);
@@ -74,6 +92,7 @@ Deno.serve(async (req) => {
             body: JSON.stringify({
               candidateId: candidate.id,
               candidateName: candidate.full_name,
+              candidateAliases: buildCandidateAliases(candidate.full_name),
               userId: candidate.user_id,
               maxTweets: MAX_TWEETS_PER_CANDIDATE,
               maxPages: MAX_PAGES_PER_CANDIDATE,
