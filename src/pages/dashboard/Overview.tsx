@@ -223,9 +223,8 @@ export default function Overview() {
       }
     }
     toast.dismiss(t);
-    if (success > 0) toast.success(`Coleta concluída: ${success} fontes processadas${failed > 0 ? `, ${failed} falharam` : ''}.`);
-    else toast.error("Nenhuma fonte respondeu. Verifique configurações de APIs.");
-    qc.invalidateQueries();
+    toast.success(`Coleta iniciada em background para ${candidates.length} candidato(s) em ${sources.length} fontes. Os dados aparecerão em alguns minutos — recarregue a página para ver o progresso.`);
+    setTimeout(() => qc.invalidateQueries(), 30000);
     setCollecting(false);
   };
 
