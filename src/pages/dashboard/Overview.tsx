@@ -194,8 +194,59 @@ export default function Overview() {
   })).filter(d => d.value > 0);
 
   const isLoading = loadingCandidates || loadingInteractions || loadingRankings || loadingMetrics;
+
+  const handleCollectAll = async () => {
+    if (!candidates || candidates.length === 0) {
+      toast.error("Adicione candidatos antes de coletar dados.");
+      return;
+    }
+    setCollecting(true);
+    const t = toast.loading(`Iniciando coleta para ${candidates.length} candidato(s)...`);
+    let success = 0;
+    let failed = 0;
+    const sources = [
+      { fn: 'collect-social-comments', label: 'YouTube' },
+      { fn: 'search-twitter-mentions', label: 'Twitter/X' },
+      { fn: 'search-google-news', label: 'Google News' },
+      { fn: 'search-youtube-mentions', label: 'YouTube Mentions' },
+    ];
+    for (const c of candidates) {
+      for (const src of sources) {
+        try {
+          const { error } = await supabase.functions.invoke(src.fn, {
+            body: { candidateId: c.id, candidateName: c.full_name }
+          });
+          if (error) { failed++; console.warn(`${src.label} (${c.full_name}):`, error); }
+          else success++;
+        } catch (e) { failed++; console.warn(`${src.label} (${c.full_name}):`, e); }
+      }
+    }
+    toast.dismiss(t);
+    if (success > 0) toast.success(`Coleta concluída: ${success} fontes processadas${failed > 0 ? `, ${failed} falharam` : ''}.`);
+    else toast.error("Nenhuma fonte respondeu. Verifique configurações de APIs.");
+    qc.invalidateQueries();
+    setCollecting(false);
+  };
+
   return (
     <div className="space-y-6">
+      <Card className="p-4 bg-gradient-to-r from-primary/10 to-primary/5 border-primary/20">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="font-semibold flex items-center gap-2">
+              <Download className="h-5 w-5 text-primary" />
+              Coleta global de dados
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Aciona a coleta automática em todas as redes sociais (YouTube, Twitter/X, Google News) para todos os seus candidatos.
+            </p>
+          </div>
+          <Button onClick={handleCollectAll} disabled={collecting || !candidates?.length} size="lg">
+            {collecting ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Coletando...</>) : (<><Download className="mr-2 h-4 w-4" /> Coletar dados</>)}
+          </Button>
+        </div>
+      </Card>
+
       {/* Candidate Selector for Consolidated View */}
       <Card className="p-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
