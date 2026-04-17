@@ -2,11 +2,12 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TrendingUp, TrendingDown, Users, MessageSquare, AlertCircle, Activity, LayoutDashboard } from "lucide-react";
+import { TrendingUp, TrendingDown, Users, MessageSquare, AlertCircle, Activity, LayoutDashboard, Download, Loader2 } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
+import { toast } from "sonner";
 import { ptBR } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
@@ -22,8 +23,10 @@ const COLORS = ['hsl(var(--primary))', 'hsl(var(--destructive))', 'hsl(var(--war
 
 export default function Overview() {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
+  const [collecting, setCollecting] = useState(false);
   const { isAdmin } = useAdminCheck();
   const { user } = useAuth();
+  const qc = useQueryClient();
 
   // Query: Candidatos (for selector and basic info)
   const { data: candidates, isLoading: loadingCandidates } = useQuery({
@@ -139,26 +142,50 @@ export default function Overview() {
     };
   });
 
-  // Preparar dados de candidatos (top 5 por menções do cache)
+  // Preparar dados de candidatos (top 5 por menções) — fallback para interactions se cache vazio
   const metricsMap = new Map<string, CandidateMetrics>();
   allMetrics?.forEach(m => metricsMap.set(m.candidateId, m));
 
+  // Fallback: contar menções por candidato a partir de social_interactions
+  const interactionsByCandidate: Record<string, { mentions: number; sentSum: number; sentCount: number }> = {};
+  socialInteractions?.forEach(i => {
+    const cid = i.candidate_id;
+    if (!cid) return;
+    if (!interactionsByCandidate[cid]) interactionsByCandidate[cid] = { mentions: 0, sentSum: 0, sentCount: 0 };
+    interactionsByCandidate[cid].mentions++;
+    if (typeof i.sentiment_score === 'number') {
+      interactionsByCandidate[cid].sentSum += i.sentiment_score * 100;
+      interactionsByCandidate[cid].sentCount++;
+    }
+  });
+
   const candidateData = candidates
-    ?.map(c => ({
-      name: c.full_name,
-      mentions: metricsMap.get(c.id)?.totalMentions || 0,
-      sentiment: metricsMap.get(c.id)?.averageSentiment || 0
-    }))
+    ?.map(c => {
+      const cached = metricsMap.get(c.id);
+      const fallback = interactionsByCandidate[c.id];
+      const mentions = cached?.totalMentions || fallback?.mentions || 0;
+      const sentiment = cached?.averageSentiment
+        || (fallback && fallback.sentCount > 0 ? Math.round(fallback.sentSum / fallback.sentCount) : 0);
+      return { name: c.full_name, mentions, sentiment };
+    })
+    .filter(d => d.mentions > 0)
     .sort((a, b) => b.mentions - a.mentions)
     .slice(0, 5) || [];
 
-  // Preparar dados por rede social (agregado de todos os candidatos do cache)
+  // Distribuição por rede social (cache + fallback para social_interactions)
   const networkCount: Record<string, number> = {};
   allMetrics?.forEach(m => {
     m.networkBreakdown.forEach(nb => {
       networkCount[nb.network] = (networkCount[nb.network] || 0) + nb.mentions;
     });
   });
+  // Fallback: se cache vazio, agregar de social_interactions
+  if (Object.keys(networkCount).length === 0) {
+    socialInteractions?.forEach(i => {
+      const net = i.social_network || 'Outro';
+      networkCount[net] = (networkCount[net] || 0) + 1;
+    });
+  }
 
   const networkData = Object.entries(networkCount).map(([name, value], index) => ({
     name,
@@ -167,8 +194,59 @@ export default function Overview() {
   })).filter(d => d.value > 0);
 
   const isLoading = loadingCandidates || loadingInteractions || loadingRankings || loadingMetrics;
+
+  const handleCollectAll = async () => {
+    if (!candidates || candidates.length === 0) {
+      toast.error("Adicione candidatos antes de coletar dados.");
+      return;
+    }
+    setCollecting(true);
+    const t = toast.loading(`Iniciando coleta para ${candidates.length} candidato(s)...`);
+    let success = 0;
+    let failed = 0;
+    const sources = [
+      { fn: 'collect-social-comments', label: 'YouTube' },
+      { fn: 'search-twitter-mentions', label: 'Twitter/X' },
+      { fn: 'search-google-news', label: 'Google News' },
+      { fn: 'search-youtube-mentions', label: 'YouTube Mentions' },
+    ];
+    for (const c of candidates) {
+      for (const src of sources) {
+        try {
+          const { error } = await supabase.functions.invoke(src.fn, {
+            body: { candidateId: c.id, candidateName: c.full_name }
+          });
+          if (error) { failed++; console.warn(`${src.label} (${c.full_name}):`, error); }
+          else success++;
+        } catch (e) { failed++; console.warn(`${src.label} (${c.full_name}):`, e); }
+      }
+    }
+    toast.dismiss(t);
+    if (success > 0) toast.success(`Coleta concluída: ${success} fontes processadas${failed > 0 ? `, ${failed} falharam` : ''}.`);
+    else toast.error("Nenhuma fonte respondeu. Verifique configurações de APIs.");
+    qc.invalidateQueries();
+    setCollecting(false);
+  };
+
   return (
     <div className="space-y-6">
+      <Card className="p-4 bg-gradient-to-r from-primary/10 to-primary/5 border-primary/20">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="font-semibold flex items-center gap-2">
+              <Download className="h-5 w-5 text-primary" />
+              Coleta global de dados
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Aciona a coleta automática em todas as redes sociais (YouTube, Twitter/X, Google News) para todos os seus candidatos.
+            </p>
+          </div>
+          <Button onClick={handleCollectAll} disabled={collecting || !candidates?.length} size="lg">
+            {collecting ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Coletando...</>) : (<><Download className="mr-2 h-4 w-4" /> Coletar dados</>)}
+          </Button>
+        </div>
+      </Card>
+
       {/* Candidate Selector for Consolidated View */}
       <Card className="p-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">

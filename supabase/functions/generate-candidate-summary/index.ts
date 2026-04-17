@@ -6,13 +6,121 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+// Models in order of preference (fallback if rate-limited)
+const MODEL_FALLBACKS = [
+  'google/gemini-2.5-flash',
+  'google/gemini-2.5-flash-lite',
+  'google/gemini-2.5-pro',
+];
+
+function buildDeterministicSummary(stats: any, candidate: any, periodLabel: string) {
+  const total = stats.total || 1;
+  const pPct = ((stats.positive / total) * 100).toFixed(1);
+  const nPct = ((stats.negative / total) * 100).toFixed(1);
+  const neuPct = ((stats.neutral / total) * 100).toFixed(1);
+
+  let overall_sentiment = 'mista';
+  if (stats.positive > stats.negative * 2) overall_sentiment = 'muito_positiva';
+  else if (stats.positive > stats.negative) overall_sentiment = 'positiva';
+  else if (stats.negative > stats.positive * 2) overall_sentiment = 'muito_negativa';
+  else if (stats.negative > stats.positive) overall_sentiment = 'negativa';
+
+  return {
+    overall_sentiment,
+    overall_summary: `Análise quantitativa de ${stats.total} comentários sobre ${candidate.full_name} (${periodLabel}): ${pPct}% positivos, ${neuPct}% neutros, ${nPct}% negativos. Resumo gerado em modo offline (IA temporariamente indisponível por limite de uso).`,
+    positive_points: [
+      `${stats.positive} comentários positivos identificados (${pPct}% do total)`,
+      'Engajamento positivo presente nas interações coletadas',
+      'Base de apoiadores ativa nas redes sociais monitoradas',
+    ],
+    negative_points: [
+      `${stats.negative} comentários negativos identificados (${nPct}% do total)`,
+      'Críticas registradas requerem atenção da equipe de campanha',
+      stats.negative > stats.positive ? 'Volume negativo supera o positivo no período' : 'Críticas pontuais distribuídas no período',
+    ],
+    narrative_recommendations: [
+      'Aguarde alguns minutos e gere novamente para obter análise de IA detalhada com os comentários reais',
+      'Monitore os comentários negativos manualmente para identificar temas recorrentes',
+      'Reforce os tópicos com maior receptividade positiva nas próximas comunicações',
+    ],
+    risk_alert: stats.negative > stats.positive ? 'Volume de menções negativas superior ao positivo no período analisado.' : '',
+    opportunity_alert: stats.positive > stats.negative * 1.5 ? 'Sentimento favorável dominante — momento oportuno para amplificar mensagens-chave.' : '',
+  };
+}
+
+async function callAIWithFallback(prompt: string, apiKey: string) {
+  const tools = [{
+    type: 'function',
+    function: {
+      name: 'create_executive_summary',
+      description: 'Gerar resumo executivo estruturado do candidato',
+      parameters: {
+        type: 'object',
+        properties: {
+          overall_sentiment: { type: 'string', enum: ['muito_positiva', 'positiva', 'mista', 'negativa', 'muito_negativa'] },
+          overall_summary: { type: 'string' },
+          positive_points: { type: 'array', items: { type: 'string' } },
+          negative_points: { type: 'array', items: { type: 'string' } },
+          narrative_recommendations: { type: 'array', items: { type: 'string' } },
+          risk_alert: { type: 'string' },
+          opportunity_alert: { type: 'string' }
+        },
+        required: ['overall_sentiment', 'overall_summary', 'positive_points', 'negative_points', 'narrative_recommendations', 'risk_alert', 'opportunity_alert']
+      }
+    }
+  }];
+
+  let lastError: any = null;
+  for (const model of MODEL_FALLBACKS) {
+    try {
+      const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: 'Você é um analista político estratégico brasileiro especializado em comunicação de campanha. Responda sempre em português do Brasil. Seja direto, prático e acionável.' },
+            { role: 'user', content: prompt }
+          ],
+          tools,
+          tool_choice: { type: 'function', function: { name: 'create_executive_summary' } }
+        })
+      });
+
+      if (aiResponse.status === 429 || aiResponse.status === 402) {
+        lastError = { status: aiResponse.status, model };
+        console.warn(`Model ${model} returned ${aiResponse.status}, trying next...`);
+        continue;
+      }
+
+      if (!aiResponse.ok) {
+        const errText = await aiResponse.text();
+        console.error(`Model ${model} error ${aiResponse.status}:`, errText);
+        lastError = { status: aiResponse.status, model };
+        continue;
+      }
+
+      const result = await aiResponse.json();
+      const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
+      if (!toolCall) {
+        lastError = { status: 'no_tool_call', model };
+        continue;
+      }
+      return { summary: JSON.parse(toolCall.function.arguments), model_used: model };
+    } catch (e) {
+      console.error(`Model ${model} exception:`, e);
+      lastError = e;
+    }
+  }
+  throw lastError || new Error('All models failed');
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Use SERVICE_ROLE for JWT validation (per project standard)
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
@@ -33,14 +141,19 @@ serve(async (req) => {
       });
     }
 
-    const { candidateId, daysBack = 7 } = await req.json();
+    // daysBack: number | null. null = todos os tempos
+    const body = await req.json();
+    const candidateId = body.candidateId;
+    const daysBack: number | null = body.daysBack === null || body.daysBack === 'all' || body.daysBack === 0
+      ? null
+      : Number(body.daysBack ?? 7);
+
     if (!candidateId) {
       return new Response(JSON.stringify({ error: 'candidateId é obrigatório' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    // Fetch candidate info
     const { data: candidate, error: candError } = await supabaseClient
       .from('candidates')
       .select('id, full_name, party, region')
@@ -54,27 +167,29 @@ serve(async (req) => {
       });
     }
 
-    // Fetch ALL recent comments with pagination
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - daysBack);
+    let startDate: Date | null = null;
+    let periodLabel = 'período total (todos os tempos)';
+    if (daysBack !== null && daysBack > 0) {
+      startDate = new Date();
+      startDate.setDate(startDate.getDate() - daysBack);
+      periodLabel = `últimos ${daysBack} dias`;
+    }
 
     let allComments: any[] = [];
     let offset = 0;
     const pageSize = 1000;
 
     while (true) {
-      const { data: page, error: pageError } = await supabaseClient
+      let q = supabaseClient
         .from('social_interactions')
         .select('comment_text, comment_author, sentiment_label, sentiment_score, likes_count, social_network, original_posted_at')
         .eq('candidate_id', candidateId)
-        .gte('created_at', startDate.toISOString())
         .order('created_at', { ascending: false })
         .range(offset, offset + pageSize - 1);
+      if (startDate) q = q.gte('created_at', startDate.toISOString());
 
-      if (pageError) {
-        console.error('Error fetching comments:', pageError);
-        break;
-      }
+      const { data: page, error: pageError } = await q;
+      if (pageError) { console.error('Error fetching comments:', pageError); break; }
       if (!page || page.length === 0) break;
       allComments = [...allComments, ...page];
       if (page.length < pageSize) break;
@@ -89,7 +204,6 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // Calculate stats
     const stats = {
       total: allComments.length,
       positive: allComments.filter(c => c.sentiment_label === 'Positivo').length,
@@ -98,39 +212,28 @@ serve(async (req) => {
       withoutSentiment: allComments.filter(c => !c.sentiment_label).length,
     };
 
-    // Sample comments for AI (max 150 to stay within token limits)
-    const sampleSize = Math.min(150, allComments.length);
-    const positiveComments = allComments
-      .filter(c => c.sentiment_label === 'Positivo' && c.comment_text)
-      .slice(0, 50)
-      .map(c => c.comment_text.substring(0, 200));
-    const negativeComments = allComments
-      .filter(c => c.sentiment_label === 'Negativo' && c.comment_text)
-      .slice(0, 50)
-      .map(c => c.comment_text.substring(0, 200));
-    const neutralComments = allComments
-      .filter(c => c.sentiment_label === 'Neutro' && c.comment_text)
-      .slice(0, 50)
-      .map(c => c.comment_text.substring(0, 200));
+    const positiveComments = allComments.filter(c => c.sentiment_label === 'Positivo' && c.comment_text).slice(0, 50).map(c => c.comment_text.substring(0, 200));
+    const negativeComments = allComments.filter(c => c.sentiment_label === 'Negativo' && c.comment_text).slice(0, 50).map(c => c.comment_text.substring(0, 200));
+    const neutralComments = allComments.filter(c => c.sentiment_label === 'Neutro' && c.comment_text).slice(0, 50).map(c => c.comment_text.substring(0, 200));
 
-    const prompt = `Você é um analista político estratégico brasileiro. Analise os seguintes comentários reais sobre o candidato ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}${candidate.region ? ` - ${candidate.region}` : ''} coletados nos últimos ${daysBack} dias.
+    const prompt = `Você é um analista político estratégico brasileiro. Analise os seguintes comentários reais sobre o candidato ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}${candidate.region ? ` - ${candidate.region}` : ''} coletados no ${periodLabel}.
 
 ESTATÍSTICAS:
-- Total de comentários: ${stats.total}
+- Total: ${stats.total}
 - Positivos: ${stats.positive} (${((stats.positive / stats.total) * 100).toFixed(1)}%)
 - Negativos: ${stats.negative} (${((stats.negative / stats.total) * 100).toFixed(1)}%)
 - Neutros: ${stats.neutral} (${((stats.neutral / stats.total) * 100).toFixed(1)}%)
 
-AMOSTRA DE COMENTÁRIOS POSITIVOS (${positiveComments.length}):
+POSITIVOS (${positiveComments.length}):
 ${positiveComments.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
-AMOSTRA DE COMENTÁRIOS NEGATIVOS (${negativeComments.length}):
+NEGATIVOS (${negativeComments.length}):
 ${negativeComments.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
-AMOSTRA DE COMENTÁRIOS NEUTROS (${neutralComments.length}):
+NEUTROS (${neutralComments.length}):
 ${neutralComments.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
-Com base nesses dados REAIS, gere um resumo executivo completo para a equipe de campanha.`;
+Gere um resumo executivo completo para a equipe de campanha.`;
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
@@ -139,102 +242,26 @@ Com base nesses dados REAIS, gere um resumo executivo completo para a equipe de 
       });
     }
 
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-3-flash-preview',
-        messages: [
-          { role: 'system', content: 'Você é um analista político estratégico brasileiro especializado em comunicação de campanha. Responda sempre em português do Brasil. Seja direto, prático e acionável.' },
-          { role: 'user', content: prompt }
-        ],
-        tools: [{
-          type: 'function',
-          function: {
-            name: 'create_executive_summary',
-            description: 'Gerar resumo executivo estruturado do candidato',
-            parameters: {
-              type: 'object',
-              properties: {
-                overall_sentiment: {
-                  type: 'string',
-                  enum: ['muito_positiva', 'positiva', 'mista', 'negativa', 'muito_negativa'],
-                  description: 'Avaliação geral da repercussão'
-                },
-                overall_summary: {
-                  type: 'string',
-                  description: 'Resumo executivo em 2-3 frases sobre a situação geral do candidato'
-                },
-                positive_points: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  description: '3-5 principais pontos positivos mencionados pelo público'
-                },
-                negative_points: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  description: '3-5 principais críticas e pontos negativos identificados'
-                },
-                narrative_recommendations: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  description: '3-5 recomendações práticas de narrativa e comunicação'
-                },
-                risk_alert: {
-                  type: 'string',
-                  description: 'Alerta de risco principal, se houver. Caso contrário, retorne string vazia.'
-                },
-                opportunity_alert: {
-                  type: 'string',
-                  description: 'Principal oportunidade identificada. Caso contrário, retorne string vazia.'
-                }
-              },
-              required: ['overall_sentiment', 'overall_summary', 'positive_points', 'negative_points', 'narrative_recommendations', 'risk_alert', 'opportunity_alert']
-            }
-          }
-        }],
-        tool_choice: { type: 'function', function: { name: 'create_executive_summary' } }
-      })
-    });
-
-    if (!aiResponse.ok) {
-      const errText = await aiResponse.text();
-      console.error('AI API error:', aiResponse.status, errText);
-      if (aiResponse.status === 429) {
-        return new Response(JSON.stringify({ error: 'Limite de requisições excedido. Tente novamente em alguns minutos.' }), {
-          status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
-      }
-      if (aiResponse.status === 402) {
-        return new Response(JSON.stringify({ error: 'Créditos insuficientes. Adicione créditos à sua conta.' }), {
-          status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
-      }
-      return new Response(JSON.stringify({ error: 'Erro ao gerar resumo com IA' }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+    let summary: any;
+    let modelUsed = 'fallback_deterministic';
+    let fallbackUsed = false;
+    try {
+      const aiResult = await callAIWithFallback(prompt, LOVABLE_API_KEY);
+      summary = aiResult.summary;
+      modelUsed = aiResult.model_used;
+    } catch (e: any) {
+      console.warn('All AI models failed, using deterministic fallback:', e);
+      summary = buildDeterministicSummary(stats, candidate, periodLabel);
+      fallbackUsed = true;
     }
-
-    const result = await aiResponse.json();
-    const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
-
-    if (!toolCall) {
-      console.error('No tool call in AI response');
-      return new Response(JSON.stringify({ error: 'Resposta inesperada da IA' }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-
-    const summary = JSON.parse(toolCall.function.arguments);
 
     return new Response(JSON.stringify({
       summary,
       stats,
       candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region },
-      period: { daysBack, startDate: startDate.toISOString(), endDate: new Date().toISOString() }
+      period: { daysBack, startDate: startDate?.toISOString() ?? null, endDate: new Date().toISOString(), label: periodLabel },
+      model_used: modelUsed,
+      fallback_used: fallbackUsed,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
