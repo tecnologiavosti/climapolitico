@@ -334,13 +334,30 @@ Deno.serve(async (req) => {
     });
 
     const token = authHeader.replace('Bearer ', '');
-    const { data: userData, error: authError } = await supabaseService.auth.getUser(token);
-    if (authError || !userData?.user) {
-      return new Response(JSON.stringify({ error: 'Token inválido' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    const requestBody = await req.json();
+    const isInternalCronRequest = token === supabaseServiceKey;
+
+    let userId = '';
+    if (isInternalCronRequest) {
+      if (!requestBody?.userId) {
+        return new Response(JSON.stringify({ error: 'userId obrigatório para execução interna' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      userId = requestBody.userId;
+      console.log(`[TWITTER] Execução interna via cron para user=${userId}`);
+    } else {
+      const { data: userData, error: authError } = await supabaseService.auth.getUser(token);
+      if (authError || !userData?.user) {
+        return new Response(JSON.stringify({ error: 'Token inválido' }), {
+          status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      userId = userData.user.id;
+      console.log(`Authenticated user: ${userId}`);
     }
-    const userId = userData.user.id;
+
+    const db = isInternalCronRequest ? supabaseService : supabase;
 
     const firecrawlKey = Deno.env.get('FIRECRAWL_API_KEY');
     if (!firecrawlKey) {
@@ -355,11 +372,23 @@ Deno.serve(async (req) => {
       candidateAliases = [] as string[],
       maxTweets = 200,
       maxPages = 6,
-    } = await req.json();
+    } = requestBody;
 
     if (!candidateId || !candidateName) {
       return new Response(JSON.stringify({ error: 'candidateId e candidateName obrigatórios' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { data: candidateRecord, error: candidateError } = await db
+      .from('candidates')
+      .select('id, user_id')
+      .eq('id', candidateId)
+      .single();
+
+    if (candidateError || !candidateRecord || candidateRecord.user_id !== userId) {
+      return new Response(JSON.stringify({ error: 'Candidato inválido para este usuário' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
@@ -374,7 +403,7 @@ Deno.serve(async (req) => {
     }
 
     // Existing dedup keys (last 2000)
-    const { data: existing } = await supabase
+    const { data: existing } = await db
       .from('social_interactions')
       .select('comment_text, comment_author, author_profile_url')
       .eq('candidate_id', candidateId)
@@ -468,7 +497,7 @@ Deno.serve(async (req) => {
         };
       });
 
-      const { data: inserted, error: insertError } = await supabase
+      const { data: inserted, error: insertError } = await db
         .from('social_interactions')
         .insert(records)
         .select('id');
