@@ -109,8 +109,6 @@ Deno.serve(async (req) => {
         });
         continue;
       }
-
-      totalInserted += inserted;
     }
 
     return new Response(
