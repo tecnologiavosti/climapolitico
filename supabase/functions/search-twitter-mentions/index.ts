@@ -238,7 +238,7 @@ Deno.serve(async (req) => {
       .from('social_interactions')
       .select('comment_text, comment_author')
       .eq('candidate_id', candidateId)
-      .eq('social_network', 'twitter')
+      .eq('social_network', 'Twitter/X')
       .limit(500);
 
     const existingSet = new Set(
