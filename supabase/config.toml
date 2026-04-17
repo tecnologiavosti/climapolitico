@@ -71,3 +71,6 @@ verify_jwt = false
 
 [functions.search-twitter-mentions]
 verify_jwt = true
+
+[functions.twitter-nitter-scraper]
+verify_jwt = false
