@@ -533,16 +533,54 @@ export type Database = {
           },
         ]
       }
+      email_otp_codes: {
+        Row: {
+          attempts: number
+          code_hash: string
+          consumed_at: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          purpose: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          code_hash: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at: string
+          id?: string
+          purpose?: string
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          code_hash?: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          purpose?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
           created_at: string
           full_name: string | null
           id: string
+          language: string
           notification_preferences: Json | null
           organization: string | null
+          party: string | null
+          party_visible: boolean
           phone: string | null
           role_title: string | null
+          theme: string
+          two_factor_enabled: boolean
           updated_at: string
         }
         Insert: {
@@ -550,10 +588,15 @@ export type Database = {
           created_at?: string
           full_name?: string | null
           id: string
+          language?: string
           notification_preferences?: Json | null
           organization?: string | null
+          party?: string | null
+          party_visible?: boolean
           phone?: string | null
           role_title?: string | null
+          theme?: string
+          two_factor_enabled?: boolean
           updated_at?: string
         }
         Update: {
@@ -561,10 +604,54 @@ export type Database = {
           created_at?: string
           full_name?: string | null
           id?: string
+          language?: string
           notification_preferences?: Json | null
           organization?: string | null
+          party?: string | null
+          party_visible?: boolean
           phone?: string | null
           role_title?: string | null
+          theme?: string
+          two_factor_enabled?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      public_candidates_catalog: {
+        Row: {
+          category: string | null
+          created_at: string
+          description: string | null
+          full_name: string
+          id: string
+          is_active: boolean
+          party: string | null
+          region: string | null
+          social_media_link: string | null
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          full_name: string
+          id?: string
+          is_active?: boolean
+          party?: string | null
+          region?: string | null
+          social_media_link?: string | null
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          full_name?: string
+          id?: string
+          is_active?: boolean
+          party?: string | null
+          region?: string | null
+          social_media_link?: string | null
           updated_at?: string
         }
         Relationships: []

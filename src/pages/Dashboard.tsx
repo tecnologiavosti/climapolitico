@@ -3,7 +3,8 @@ import { useNavigate, Routes, Route } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSessionHealthCheck } from "@/hooks/useSessionHealthCheck";
 import { Button } from "@/components/ui/button";
-import { Loader2, LogOut } from "lucide-react";
+import { Loader2, LogOut, Sun, Moon } from "lucide-react";
+import { useTheme } from "next-themes";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -33,6 +34,8 @@ import NarrativeRecommendations from "./dashboard/NarrativeRecommendations";
 import CandidateComparison from "./dashboard/CandidateComparison";
 import EventReport from "./dashboard/EventReport";
 import Brand24Collector from "./dashboard/Brand24Collector";
+import CandidatesCatalog from "./dashboard/CandidatesCatalog";
+import Settings from "./dashboard/Settings";
 const onboardingSteps: OnboardingStep[] = [
   {
     target: '[data-onboarding="sidebar"]',
@@ -75,6 +78,7 @@ const onboardingSteps: OnboardingStep[] = [
 const Dashboard = () => {
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
+  const { theme, setTheme } = useTheme();
   useSessionHealthCheck();
 
   const onboarding = useOnboarding(onboardingSteps, !!user);
@@ -107,6 +111,14 @@ const Dashboard = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2" data-onboarding="user-menu">
+                <Button
+                  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                  variant="outline"
+                  size="icon"
+                  aria-label="Alternar tema"
+                >
+                  {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                </Button>
                 <Button onClick={signOut} variant="outline" size="sm" className="hover-lift">
                   <LogOut className="mr-2 h-4 w-4" />
                   Sair
@@ -126,6 +138,7 @@ const Dashboard = () => {
               <Route path="/candidate-comparison" element={<CandidateComparison />} />
               <Route path="/event-report" element={<EventReport />} />
               <Route path="/candidates" element={<Candidates />} />
+              <Route path="/candidates-catalog" element={<CandidatesCatalog />} />
               <Route path="/analytics-advanced" element={<Analytics />} />
               <Route path="/ranking" element={<CandidateRanking />} />
               <Route path="/collection-status" element={<CollectionStatus />} />
@@ -155,12 +168,7 @@ const Dashboard = () => {
                   <p className="text-muted-foreground">Em desenvolvimento</p>
                 </div>
               } />
-              <Route path="/settings" element={
-                <div className="text-center py-12">
-                  <h3 className="text-2xl font-bold mb-2">Configurações</h3>
-                  <p className="text-muted-foreground">Em desenvolvimento</p>
-                </div>
-              } />
+              <Route path="/settings" element={<Settings />} />
             </Routes>
           </main>
         </div>

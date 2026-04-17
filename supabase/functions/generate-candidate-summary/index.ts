@@ -12,13 +12,21 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseClient = createClient(
+    // Use SERVICE_ROLE for JWT validation (per project standard)
+    const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
 
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Não autorizado - sem token' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
+    const supabaseClient = supabaseAdmin;
     if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Não autorizado' }), {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }

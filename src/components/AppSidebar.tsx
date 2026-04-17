@@ -24,6 +24,7 @@ import {
   Radio,
   Key,
   Import,
+  BookUser,
 } from "lucide-react";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 
@@ -49,6 +50,7 @@ const mainItems = [
   { title: "Relatório de Evento", url: "/dashboard/event-report", icon: Calendar },
   { title: "Monitor Tempo Real", url: "/dashboard/realtime-monitor", icon: Radio },
   { title: "Candidatos", url: "/dashboard/candidates", icon: Users },
+  { title: "Catálogo de Candidatos", url: "/dashboard/candidates-catalog", icon: BookUser },
   { title: "Analytics Avançado", url: "/dashboard/analytics-advanced", icon: LineChart },
   { title: "Ranking", url: "/dashboard/ranking", icon: Trophy },
   { title: "Configuração de Coleta", url: "/dashboard/collection-status", icon: Database },
