@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useNavigate, Routes, Route } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSessionHealthCheck } from "@/hooks/useSessionHealthCheck";
+import { useAutomaticCollection } from "@/hooks/useAutomaticCollection";
 import { Button } from "@/components/ui/button";
 import { Loader2, LogOut, Sun, Moon } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -81,6 +82,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
   useSessionHealthCheck();
+  useAutomaticCollection();
 
   const onboarding = useOnboarding(onboardingSteps, !!user);
 
@@ -102,7 +104,6 @@ const Dashboard = () => {
         </div>
         
         <div className="flex-1 flex flex-col">
-          {/* Header */}
           <header className="border-b glass sticky top-0 z-10">
             <div className="flex items-center justify-between px-6 py-4">
               <div className="flex items-center gap-4">
@@ -128,10 +129,8 @@ const Dashboard = () => {
             </div>
           </header>
 
-          {/* Main Content */}
           <main className="flex-1 p-6 animate-fade-in">
             <Routes>
-              {/* Rotas ativas */}
               <Route path="/" element={<Overview />} />
               <Route path="/candidate-summary" element={<CandidateSummary />} />
               <Route path="/rejection-analysis" element={<RejectionAnalysis />} />

@@ -219,7 +219,10 @@ export default function Overview() {
           body.maxCommentsPerVideo = 30;
           body.maxNewComments = 80;
         }
-        // Fire-and-forget: evita timeout 504 do Edge (150s)
+        if (src.fn === 'search-twitter-mentions') {
+          body.maxTweets = 200;
+          body.maxPages = 4;
+        }
         supabase.functions.invoke(src.fn, { body })
           .catch((e) => console.warn(`${src.label} (${c.full_name}):`, e));
         dispatched++;
