@@ -36,6 +36,7 @@ import EventReport from "./dashboard/EventReport";
 import Brand24Collector from "./dashboard/Brand24Collector";
 import CandidatesCatalog from "./dashboard/CandidatesCatalog";
 import Settings from "./dashboard/Settings";
+import Notifications from "./dashboard/Notifications";
 const onboardingSteps: OnboardingStep[] = [
   {
     target: '[data-onboarding="sidebar"]',
@@ -156,12 +157,7 @@ const Dashboard = () => {
               {/* <Route path="/scheduled-reports" element={<ScheduledReports />} /> */}
               {/* <Route path="/report-templates" element={<ReportTemplates />} /> */}
               {/* <Route path="/ai" element={<AIInsights />} /> */}
-              <Route path="/notifications" element={
-                <div className="text-center py-12">
-                  <h3 className="text-2xl font-bold mb-2">Notificações</h3>
-                  <p className="text-muted-foreground">Em desenvolvimento</p>
-                </div>
-              } />
+              <Route path="/notifications" element={<Notifications />} />
               <Route path="/subscription" element={
                 <div className="text-center py-12">
                   <h3 className="text-2xl font-bold mb-2">Assinatura</h3>
