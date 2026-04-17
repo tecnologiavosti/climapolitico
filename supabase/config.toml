@@ -65,3 +65,6 @@ verify_jwt = true
 
 [functions.analyze-event-repercussion]
 verify_jwt = true
+
+[functions.search-reddit-mentions]
+verify_jwt = false
