@@ -213,11 +213,12 @@ export default function Overview() {
     for (const c of candidates) {
       for (const src of sources) {
         try {
-          const { error } = await supabase.functions.invoke(src.fn, {
+          // Fire-and-forget: não aguardar resposta evita timeout 504 (limite 150s do Edge).
+          // A função continua processando em background; o usuário verá os dados ao recarregar.
+          supabase.functions.invoke(src.fn, {
             body: { candidateId: c.id, candidateName: c.full_name }
-          });
-          if (error) { failed++; console.warn(`${src.label} (${c.full_name}):`, error); }
-          else success++;
+          }).catch((e) => console.warn(`${src.label} (${c.full_name}):`, e));
+          success++;
         } catch (e) { failed++; console.warn(`${src.label} (${c.full_name}):`, e); }
       }
     }
