@@ -68,3 +68,6 @@ verify_jwt = true
 
 [functions.search-reddit-mentions]
 verify_jwt = false
+
+[functions.search-twitter-mentions]
+verify_jwt = true
