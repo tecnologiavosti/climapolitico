@@ -36,7 +36,7 @@ const sentimentConfig: Record<string, { label: string; color: string; variant: "
 
 const CandidateSummary = () => {
   const [selectedCandidate, setSelectedCandidate] = useState<string>("");
-  const [daysBack, setDaysBack] = useState<string>("7");
+  const [daysBack, setDaysBack] = useState<string>("7"); // "all" = Período Total
 
   const { data: candidates } = useQuery({
     queryKey: ['candidates-for-summary'],
@@ -51,7 +51,7 @@ const CandidateSummary = () => {
   });
 
   const summaryMutation = useMutation({
-    mutationFn: async ({ candidateId, days }: { candidateId: string; days: number }) => {
+    mutationFn: async ({ candidateId, days }: { candidateId: string; days: number | null }) => {
       const { data, error } = await supabase.functions.invoke('generate-candidate-summary', {
         body: { candidateId, daysBack: days }
       });
@@ -69,7 +69,8 @@ const CandidateSummary = () => {
       toast.error('Selecione um candidato');
       return;
     }
-    summaryMutation.mutate({ candidateId: selectedCandidate, days: parseInt(daysBack) });
+    const days = daysBack === 'all' ? null : parseInt(daysBack);
+    summaryMutation.mutate({ candidateId: selectedCandidate, days });
   };
 
   const result = summaryMutation.data;
@@ -120,6 +121,8 @@ const CandidateSummary = () => {
                   <SelectItem value="7">Últimos 7 dias</SelectItem>
                   <SelectItem value="14">Últimos 14 dias</SelectItem>
                   <SelectItem value="30">Últimos 30 dias</SelectItem>
+                  <SelectItem value="90">Últimos 90 dias</SelectItem>
+                  <SelectItem value="all">Período Total (todos os comentários)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -172,7 +175,7 @@ const CandidateSummary = () => {
                     )}
                   </div>
                   <p className="text-muted-foreground text-sm">
-                    {result.stats.total} comentários analisados • Últimos {result.period.daysBack} dias
+                    {result.stats.total} comentários analisados • {result.period.daysBack === null || result.period.daysBack === 0 ? 'Período total' : `Últimos ${result.period.daysBack} dias`}
                   </p>
                 </div>
                 <div className="flex gap-4 text-sm">
