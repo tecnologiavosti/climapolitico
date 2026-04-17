@@ -238,7 +238,7 @@ Deno.serve(async (req) => {
       .from('social_interactions')
       .select('comment_text, comment_author')
       .eq('candidate_id', candidateId)
-      .eq('social_network', 'twitter')
+      .eq('social_network', 'Twitter/X')
       .limit(500);
 
     const existingSet = new Set(
@@ -288,7 +288,7 @@ Deno.serve(async (req) => {
         comment_text: tweet.text,
         comment_author: tweet.author,
         author_profile_url: tweet.authorUrl,
-        social_network: 'twitter',
+        social_network: 'Twitter/X',
         sentiment_label: sentiments?.[idx]?.label || null,
         sentiment_score: sentiments?.[idx]?.score || null,
         likes_count: tweet.likes,

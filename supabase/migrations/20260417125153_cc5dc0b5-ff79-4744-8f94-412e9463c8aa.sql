@@ -1,0 +1,1 @@
+UPDATE public.social_interactions SET social_network = 'Twitter/X' WHERE social_network = 'twitter';
