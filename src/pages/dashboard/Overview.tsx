@@ -205,10 +205,10 @@ export default function Overview() {
     let success = 0;
     let failed = 0;
     const sources = [
-      { fn: 'collect-social-comments', label: 'YouTube' },
+      { fn: 'search-youtube-mentions', label: 'YouTube' },
       { fn: 'search-twitter-mentions', label: 'Twitter/X' },
       { fn: 'search-google-news', label: 'Google News' },
-      { fn: 'search-youtube-mentions', label: 'YouTube Mentions' },
+      { fn: 'search-wikipedia', label: 'Wikipedia' },
     ];
     for (const c of candidates) {
       for (const src of sources) {
