@@ -566,6 +566,53 @@ export type Database = {
         }
         Relationships: []
       }
+      notifications: {
+        Row: {
+          candidate_id: string | null
+          created_at: string
+          id: string
+          is_read: boolean
+          message: string
+          metadata: Json
+          severity: string
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          candidate_id?: string | null
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          message: string
+          metadata?: Json
+          severity?: string
+          title: string
+          type?: string
+          user_id: string
+        }
+        Update: {
+          candidate_id?: string | null
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          message?: string
+          metadata?: Json
+          severity?: string
+          title?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
