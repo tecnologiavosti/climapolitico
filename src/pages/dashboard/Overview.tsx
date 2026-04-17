@@ -202,34 +202,35 @@ export default function Overview() {
     }
     setCollecting(true);
     const t = toast.loading(`Iniciando coleta para ${candidates.length} candidato(s)...`);
-    let success = 0;
-    let failed = 0;
     const sources = [
       { fn: 'search-youtube-mentions', label: 'YouTube' },
       { fn: 'search-twitter-mentions', label: 'Twitter/X' },
       { fn: 'search-google-news', label: 'Google News' },
       { fn: 'search-wikipedia', label: 'Wikipedia' },
+      { fn: 'search-reddit-mentions', label: 'Reddit' },
     ];
+    const totalJobs = candidates.length * sources.length;
+    let dispatched = 0;
     for (const c of candidates) {
       for (const src of sources) {
-        try {
-          // Fire-and-forget: não aguardar resposta evita timeout 504 (limite 150s do Edge).
-          // A função continua processando em background; o usuário verá os dados ao recarregar.
-          // Limites menores para caber no timeout de 150s do Edge Function
-          const body: Record<string, unknown> = { candidateId: c.id, candidateName: c.full_name };
-          if (src.fn === 'search-youtube-mentions') {
-            body.maxVideos = 8;
-            body.maxCommentsPerVideo = 30;
-            body.maxNewComments = 80;
-          }
-          supabase.functions.invoke(src.fn, { body })
-            .catch((e) => console.warn(`${src.label} (${c.full_name}):`, e));
-          success++;
-        } catch (e) { failed++; console.warn(`${src.label} (${c.full_name}):`, e); }
+        const body: Record<string, unknown> = { candidateId: c.id, candidateName: c.full_name };
+        if (src.fn === 'search-youtube-mentions') {
+          body.maxVideos = 8;
+          body.maxCommentsPerVideo = 30;
+          body.maxNewComments = 80;
+        }
+        // Fire-and-forget: evita timeout 504 do Edge (150s)
+        supabase.functions.invoke(src.fn, { body })
+          .catch((e) => console.warn(`${src.label} (${c.full_name}):`, e));
+        dispatched++;
       }
     }
     toast.dismiss(t);
-    toast.success(`Coleta iniciada em background para ${candidates.length} candidato(s) em ${sources.length} fontes. Os dados aparecerão em alguns minutos — recarregue a página para ver o progresso.`);
+    // Notificação de conclusão que some em 5s
+    toast.success(
+      `Coleta concluída! ${dispatched}/${totalJobs} jobs enviados em background. Os dados aparecerão em poucos minutos.`,
+      { duration: 5000 }
+    );
     setTimeout(() => qc.invalidateQueries(), 30000);
     setCollecting(false);
   };

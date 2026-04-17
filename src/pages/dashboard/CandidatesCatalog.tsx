@@ -5,13 +5,26 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Search, Plus, Check, Users, Loader2 } from "lucide-react";
+import { Search, Plus, Check, Users, Loader2, ShieldCheck } from "lucide-react";
+import { useAdminCheck } from "@/hooks/useAdminCheck";
 
 export default function CandidatesCatalog() {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
+  const { isAdmin } = useAdminCheck();
+  const [addOpen, setAddOpen] = useState(false);
+  const [newCand, setNewCand] = useState({
+    full_name: "",
+    party: "",
+    region: "",
+    description: "",
+    social_media_link: "",
+  });
 
   const { data: catalog = [], isLoading } = useQuery({
     queryKey: ["public-catalog"],
