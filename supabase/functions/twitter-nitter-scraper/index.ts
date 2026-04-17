@@ -10,9 +10,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const REQUEST_TIMEOUT_MS = 45_000;
-const MAX_TWEETS_PER_CANDIDATE = 250;
-const MAX_PAGES_PER_CANDIDATE = 6;
+const MAX_TWEETS_PER_CANDIDATE = 200;
+const MAX_PAGES_PER_CANDIDATE = 4;
 
 function buildCandidateAliases(fullName: string): string[] {
   const clean = fullName
@@ -32,18 +31,9 @@ function buildCandidateAliases(fullName: string): string[] {
   return Array.from(aliases).slice(0, 6);
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
-  const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), ms);
-  try {
-    return await fetch(url, {
-      ...init,
-      signal: ctl.signal,
-    });
-  } finally {
-    clearTimeout(t);
-  }
-}
+// Disparo "fire-and-forget": o cron roda a cada 1 min e a coleta profunda
+// pode levar vários minutos por candidato. Em vez de esperar, disparamos
+// em paralelo e respondemos imediatamente para não bater em timeout.
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -78,56 +68,34 @@ Deno.serve(async (req) => {
     const functionUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/search-twitter-mentions`;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-    // 2. Para cada candidato, usar o coletor profundo do Twitter/X
+    // 2. Disparar coleta profunda em paralelo (sem esperar) para cada candidato
     for (const candidate of candidates) {
-      try {
-        const response = await fetchWithTimeout(
-          functionUrl,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${serviceRoleKey}`,
-            },
-            body: JSON.stringify({
-              candidateId: candidate.id,
-              candidateName: candidate.full_name,
-              candidateAliases: buildCandidateAliases(candidate.full_name),
-              userId: candidate.user_id,
-              maxTweets: MAX_TWEETS_PER_CANDIDATE,
-              maxPages: MAX_PAGES_PER_CANDIDATE,
-            }),
-          },
-          REQUEST_TIMEOUT_MS,
+      fetch(functionUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({
+          candidateId: candidate.id,
+          candidateName: candidate.full_name,
+          candidateAliases: buildCandidateAliases(candidate.full_name),
+          userId: candidate.user_id,
+          maxTweets: MAX_TWEETS_PER_CANDIDATE,
+          maxPages: MAX_PAGES_PER_CANDIDATE,
+        }),
+      }).catch((err) => {
+        console.error(
+          `[NITTER] Falha ao disparar coletor para ${candidate.full_name}:`,
+          (err as Error).message,
         );
-
-        const raw = await response.text();
-        const payload = raw ? JSON.parse(raw) : {};
-
-        if (!response.ok) {
-          throw new Error(payload?.details || payload?.error || `HTTP ${response.status}`);
-        }
-
-        const collected = Number(payload?.totalFound ?? 0);
-        const inserted = Number(payload?.inserted ?? 0);
-        totalCollected += collected;
-        totalInserted += inserted;
-        perCandidate.push({
-          name: candidate.full_name,
-          collected,
-          inserted,
-          instance: "search-twitter-mentions",
-        });
-      } catch (err) {
-        console.error(`[NITTER] Erro no coletor profundo para ${candidate.full_name}:`, (err as Error).message);
-        perCandidate.push({
-          name: candidate.full_name,
-          collected: 0,
-          inserted: 0,
-          instance: null,
-        });
-        continue;
-      }
+      });
+      perCandidate.push({
+        name: candidate.full_name,
+        collected: 0,
+        inserted: 0,
+        instance: "search-twitter-mentions (dispatched)",
+      });
     }
 
     return new Response(
