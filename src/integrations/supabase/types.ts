@@ -566,6 +566,36 @@ export type Database = {
         }
         Relationships: []
       }
+      nitter_instances: {
+        Row: {
+          created_at: string
+          health_score: number
+          id: string
+          is_active: boolean
+          last_checked: string | null
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          health_score?: number
+          id?: string
+          is_active?: boolean
+          last_checked?: string | null
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          created_at?: string
+          health_score?: number
+          id?: string
+          is_active?: boolean
+          last_checked?: string | null
+          updated_at?: string
+          url?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           candidate_id: string | null
