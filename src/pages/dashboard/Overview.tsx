@@ -215,9 +215,15 @@ export default function Overview() {
         try {
           // Fire-and-forget: não aguardar resposta evita timeout 504 (limite 150s do Edge).
           // A função continua processando em background; o usuário verá os dados ao recarregar.
-          supabase.functions.invoke(src.fn, {
-            body: { candidateId: c.id, candidateName: c.full_name }
-          }).catch((e) => console.warn(`${src.label} (${c.full_name}):`, e));
+          // Limites menores para caber no timeout de 150s do Edge Function
+          const body: Record<string, unknown> = { candidateId: c.id, candidateName: c.full_name };
+          if (src.fn === 'search-youtube-mentions') {
+            body.maxVideos = 8;
+            body.maxCommentsPerVideo = 30;
+            body.maxNewComments = 80;
+          }
+          supabase.functions.invoke(src.fn, { body })
+            .catch((e) => console.warn(`${src.label} (${c.full_name}):`, e));
           success++;
         } catch (e) { failed++; console.warn(`${src.label} (${c.full_name}):`, e); }
       }
