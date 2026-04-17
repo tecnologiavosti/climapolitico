@@ -747,6 +747,20 @@ Deno.serve(async (req) => {
   } catch (error: unknown) {
     console.error('YouTube collection error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    const isQuotaExceeded = errorMessage.includes('quotaExceeded') || errorMessage.includes('exceeded your');
+    if (isQuotaExceeded) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          fallback: true,
+          error: 'YOUTUBE_QUOTA_EXCEEDED',
+          message: 'A cota diária da API do YouTube foi excedida. Tente novamente amanhã ou use outras fontes.',
+          inserted: 0,
+          videosFound: 0,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     return new Response(
       JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
