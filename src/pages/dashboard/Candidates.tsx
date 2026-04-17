@@ -226,7 +226,7 @@ export default function Candidates() {
   const twitterCollectionMutation = useMutation({
     mutationFn: async ({ candidateId, candidateName }: { candidateId: string; candidateName: string }) => {
       const { data, error } = await supabase.functions.invoke('search-twitter-mentions', {
-        body: { candidateId, candidateName }
+        body: { candidateId, candidateName, maxTweets: 200, maxPages: 4 }
       });
       if (error) throw error;
       return data;
