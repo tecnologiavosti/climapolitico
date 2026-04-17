@@ -2,11 +2,12 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TrendingUp, TrendingDown, Users, MessageSquare, AlertCircle, Activity, LayoutDashboard } from "lucide-react";
+import { TrendingUp, TrendingDown, Users, MessageSquare, AlertCircle, Activity, LayoutDashboard, Download, Loader2 } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
+import { toast } from "sonner";
 import { ptBR } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
@@ -22,8 +23,10 @@ const COLORS = ['hsl(var(--primary))', 'hsl(var(--destructive))', 'hsl(var(--war
 
 export default function Overview() {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
+  const [collecting, setCollecting] = useState(false);
   const { isAdmin } = useAdminCheck();
   const { user } = useAuth();
+  const qc = useQueryClient();
 
   // Query: Candidatos (for selector and basic info)
   const { data: candidates, isLoading: loadingCandidates } = useQuery({
@@ -139,26 +142,50 @@ export default function Overview() {
     };
   });
 
-  // Preparar dados de candidatos (top 5 por menções do cache)
+  // Preparar dados de candidatos (top 5 por menções) — fallback para interactions se cache vazio
   const metricsMap = new Map<string, CandidateMetrics>();
   allMetrics?.forEach(m => metricsMap.set(m.candidateId, m));
 
+  // Fallback: contar menções por candidato a partir de social_interactions
+  const interactionsByCandidate: Record<string, { mentions: number; sentSum: number; sentCount: number }> = {};
+  socialInteractions?.forEach(i => {
+    const cid = i.candidate_id;
+    if (!cid) return;
+    if (!interactionsByCandidate[cid]) interactionsByCandidate[cid] = { mentions: 0, sentSum: 0, sentCount: 0 };
+    interactionsByCandidate[cid].mentions++;
+    if (typeof i.sentiment_score === 'number') {
+      interactionsByCandidate[cid].sentSum += i.sentiment_score * 100;
+      interactionsByCandidate[cid].sentCount++;
+    }
+  });
+
   const candidateData = candidates
-    ?.map(c => ({
-      name: c.full_name,
-      mentions: metricsMap.get(c.id)?.totalMentions || 0,
-      sentiment: metricsMap.get(c.id)?.averageSentiment || 0
-    }))
+    ?.map(c => {
+      const cached = metricsMap.get(c.id);
+      const fallback = interactionsByCandidate[c.id];
+      const mentions = cached?.totalMentions || fallback?.mentions || 0;
+      const sentiment = cached?.averageSentiment
+        || (fallback && fallback.sentCount > 0 ? Math.round(fallback.sentSum / fallback.sentCount) : 0);
+      return { name: c.full_name, mentions, sentiment };
+    })
+    .filter(d => d.mentions > 0)
     .sort((a, b) => b.mentions - a.mentions)
     .slice(0, 5) || [];
 
-  // Preparar dados por rede social (agregado de todos os candidatos do cache)
+  // Distribuição por rede social (cache + fallback para social_interactions)
   const networkCount: Record<string, number> = {};
   allMetrics?.forEach(m => {
     m.networkBreakdown.forEach(nb => {
       networkCount[nb.network] = (networkCount[nb.network] || 0) + nb.mentions;
     });
   });
+  // Fallback: se cache vazio, agregar de social_interactions
+  if (Object.keys(networkCount).length === 0) {
+    socialInteractions?.forEach(i => {
+      const net = i.social_network || 'Outro';
+      networkCount[net] = (networkCount[net] || 0) + 1;
+    });
+  }
 
   const networkData = Object.entries(networkCount).map(([name, value], index) => ({
     name,
