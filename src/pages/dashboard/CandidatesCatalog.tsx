@@ -98,6 +98,30 @@ export default function CandidatesCatalog() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Admin-only: adicionar novo candidato ao catálogo público
+  const createCatalogMutation = useMutation({
+    mutationFn: async () => {
+      if (!isAdmin) throw new Error("Apenas administradores podem adicionar ao catálogo");
+      if (!newCand.full_name.trim()) throw new Error("Nome é obrigatório");
+      const { error } = await supabase.from("public_candidates_catalog").insert({
+        full_name: newCand.full_name.trim(),
+        party: newCand.party.trim() || null,
+        region: newCand.region.trim() || null,
+        description: newCand.description.trim() || null,
+        social_media_link: newCand.social_media_link.trim() || null,
+        is_active: true,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["public-catalog"] });
+      toast.success("Candidato adicionado ao catálogo público!");
+      setAddOpen(false);
+      setNewCand({ full_name: "", party: "", region: "", description: "", social_media_link: "" });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const filtered = catalog.filter(
     (c) =>
       c.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -107,14 +131,88 @@ export default function CandidatesCatalog() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Users className="h-8 w-8 text-primary" />
-          Catálogo de Candidatos
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          Adicione candidatos do catálogo público à sua conta para iniciar o monitoramento
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <Users className="h-8 w-8 text-primary" />
+            Catálogo de Candidatos
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Adicione candidatos do catálogo público à sua conta para iniciar o monitoramento
+          </p>
+        </div>
+        {isAdmin && (
+          <Dialog open={addOpen} onOpenChange={setAddOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <ShieldCheck className="h-4 w-4 mr-2" />
+                Adicionar ao catálogo
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Novo candidato no catálogo público</DialogTitle>
+                <DialogDescription>
+                  Apenas administradores podem incluir candidatos visíveis a todos os usuários.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="cat-name">Nome completo *</Label>
+                  <Input
+                    id="cat-name"
+                    value={newCand.full_name}
+                    onChange={(e) => setNewCand({ ...newCand, full_name: e.target.value })}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="cat-party">Partido</Label>
+                    <Input
+                      id="cat-party"
+                      value={newCand.party}
+                      onChange={(e) => setNewCand({ ...newCand, party: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="cat-region">Região</Label>
+                    <Input
+                      id="cat-region"
+                      value={newCand.region}
+                      onChange={(e) => setNewCand({ ...newCand, region: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="cat-social">Link de rede social</Label>
+                  <Input
+                    id="cat-social"
+                    value={newCand.social_media_link}
+                    onChange={(e) => setNewCand({ ...newCand, social_media_link: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="cat-desc">Descrição</Label>
+                  <Textarea
+                    id="cat-desc"
+                    value={newCand.description}
+                    onChange={(e) => setNewCand({ ...newCand, description: e.target.value })}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setAddOpen(false)}>Cancelar</Button>
+                <Button
+                  onClick={() => createCatalogMutation.mutate()}
+                  disabled={createCatalogMutation.isPending}
+                >
+                  {createCatalogMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  Salvar
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <Card>
