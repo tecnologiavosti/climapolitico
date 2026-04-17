@@ -182,13 +182,14 @@ export default function Candidates() {
   const youtubeCollectionMutation = useMutation({
     mutationFn: async ({ candidateId, candidateName }: { candidateId: string; candidateName: string }) => {
       const { data, error } = await supabase.functions.invoke('search-youtube-mentions', {
-        body: { 
-          candidateId, 
+        body: {
+          candidateId,
           candidateName
         }
       });
 
       if (error) throw error;
+      if (data?.fallback) return data;
       return data;
     },
     onSuccess: (data) => {

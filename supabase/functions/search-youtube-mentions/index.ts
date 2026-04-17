@@ -747,23 +747,48 @@ Deno.serve(async (req) => {
   } catch (error: unknown) {
     console.error('YouTube collection error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
-    const isQuotaExceeded = errorMessage.includes('quotaExceeded') || errorMessage.includes('exceeded your');
-    if (isQuotaExceeded) {
+    const normalized = errorMessage.toLowerCase();
+    const isQuotaExceeded = normalized.includes('quotaexceeded') || normalized.includes('exceeded your') || normalized.includes('youtube api error: 403');
+    const isYouTubeApiFailure = normalized.includes('youtube api error') || normalized.includes('youtube comments api error') || normalized.includes('quota');
+
+    if (isQuotaExceeded || isYouTubeApiFailure) {
       return new Response(
         JSON.stringify({
           success: false,
           fallback: true,
-          error: 'YOUTUBE_QUOTA_EXCEEDED',
-          message: 'A cota diária da API do YouTube foi excedida. Tente novamente amanhã ou use outras fontes.',
+          error: isQuotaExceeded ? 'YOUTUBE_QUOTA_EXCEEDED' : 'YOUTUBE_API_ERROR',
+          message: isQuotaExceeded
+            ? 'A cota diária da API do YouTube foi excedida. Tente novamente amanhã ou use outras fontes.'
+            : 'O YouTube falhou temporariamente. Use outras fontes enquanto esse provedor se recupera.',
           inserted: 0,
           videosFound: 0,
+          stats: {
+            newCommentsCollected: 0,
+            commentsCollected: 0,
+            skippedDuplicates: 0,
+            totalCommentsInDatabase: 0,
+          },
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
     return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        success: false,
+        fallback: true,
+        error: 'SERVICE_FAILED',
+        message: 'A coleta do YouTube falhou temporariamente.',
+        inserted: 0,
+        videosFound: 0,
+        stats: {
+          newCommentsCollected: 0,
+          commentsCollected: 0,
+          skippedDuplicates: 0,
+          totalCommentsInDatabase: 0,
+        },
+      }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
