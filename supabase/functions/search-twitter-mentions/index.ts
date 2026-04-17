@@ -81,34 +81,69 @@ Responda APENAS com JSON array: [{"label":"Positivo","score":0.85},...]`;
 }
 
 // ── Firecrawl scraping ──────────────────────────────────────────────
+const NITTER_INSTANCES = [
+  'https://xcancel.com',
+  'https://nitter.privacydev.net',
+  'https://nitter.poast.org',
+  'https://nitter.net',
+];
+
 async function scrapeTwitterSearch(query: string, firecrawlKey: string): Promise<ScrapedTweet[]> {
-  // Use Nitter (Twitter mirror) which is much more scraper-friendly
-  const searchUrl = `https://nitter.net/search?f=tweets&q=${encodeURIComponent(query)}&since=&until=&near=`;
-  
-  console.log(`[TWITTER] Scraping via Firecrawl: ${searchUrl}`);
+  let lastError: string = '';
+  let html = '';
+  let markdown = '';
+  let usedInstance = '';
 
-  const response = await fetch('https://api.firecrawl.dev/v2/scrape', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${firecrawlKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      url: searchUrl,
-      formats: ['markdown', 'html'],
-      onlyMainContent: true,
-      waitFor: 2000,
-    }),
-  });
+  for (const instance of NITTER_INSTANCES) {
+    const searchUrl = `${instance}/search?f=tweets&q=${encodeURIComponent(query)}`;
+    console.log(`[TWITTER] Tentando: ${searchUrl}`);
 
-  if (!response.ok) {
-    const errBody = await response.text();
-    throw new Error(`Firecrawl error ${response.status}: ${errBody.substring(0, 300)}`);
+    try {
+      const response = await fetch('https://api.firecrawl.dev/v2/scrape', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${firecrawlKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: searchUrl,
+          formats: ['markdown', 'html'],
+          onlyMainContent: false,
+          waitFor: 3000,
+          timeout: 30000,
+        }),
+      });
+
+      if (!response.ok) {
+        lastError = `Firecrawl ${response.status} em ${instance}: ${(await response.text()).substring(0, 200)}`;
+        console.warn(`[TWITTER] ${lastError}`);
+        continue;
+      }
+
+      const data = await response.json();
+      html = data.html || data.data?.html || '';
+      markdown = data.markdown || data.data?.markdown || '';
+
+      // Check if instance returned actual tweet content (not error/blocked page)
+      if (html.includes('timeline-item') || html.includes('tweet-content') || markdown.length > 500) {
+        usedInstance = instance;
+        console.log(`[TWITTER] ✓ Instância funcional: ${instance}`);
+        break;
+      } else {
+        lastError = `${instance} retornou conteúdo vazio/bloqueado (html=${html.length}b, md=${markdown.length}b)`;
+        console.warn(`[TWITTER] ${lastError}`);
+        html = '';
+        markdown = '';
+      }
+    } catch (err) {
+      lastError = `Erro em ${instance}: ${err instanceof Error ? err.message : String(err)}`;
+      console.warn(`[TWITTER] ${lastError}`);
+    }
   }
 
-  const data = await response.json();
-  const html: string = data.html || data.data?.html || '';
-  const markdown: string = data.markdown || data.data?.markdown || '';
+  if (!html && !markdown) {
+    throw new Error(`Todas as instâncias Nitter falharam. Último erro: ${lastError}`);
+  }
 
   const tweets: ScrapedTweet[] = [];
 
