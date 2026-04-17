@@ -16,7 +16,8 @@ interface RealTimeCommentsFeedProps {
 
 const networkIcons: Record<string, string> = {
   'Instagram': '📸',
-  'Twitter': '🐦',
+  'Twitter': '𝕏',
+  'Twitter/X': '𝕏',
   'X': '𝕏',
   'Facebook': '📘',
   'TikTok': '🎵',
