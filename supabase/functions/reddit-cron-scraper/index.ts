@@ -1,6 +1,6 @@
-// Edge function: Coleta automática do Reddit via RSS nativo (gratuito, sem OAuth).
+// Edge function: Coleta automática do Reddit via RSS-Bridge (instâncias públicas).
+// Bypass do bloqueio 403 do Reddit em IPs de cloud — RSS-Bridge faz o fetch por nós.
 // Disparada por cron a cada 10 minutos para todos os candidatos ativos.
-// Insere em social_interactions com deduplicação por URL única.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -10,15 +10,18 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-// Rotação de User-Agents de navegadores reais — bypass do anti-bot do Reddit em IPs de cloud.
+// Instâncias públicas do RSS-Bridge — fallback automático em caso de falha.
+const RSS_BRIDGE_INSTANCES = [
+  "https://rss-bridge.org/bridge01",
+  "https://bridge.sysadmins.ws",
+  "https://rssbridge.pw",
+  "https://rss.nixnet.services",
+];
+
 const USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edg/120.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Safari/605.1.15",
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
-  "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
 ];
 function randomUA(): string {
   return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
@@ -33,12 +36,15 @@ interface Candidate {
 function stripHtml(s: string): string {
   if (!s) return "";
   return s
+    .replace(/<!\[CDATA\[/g, "")
+    .replace(/\]\]>/g, "")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
     .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -49,7 +55,6 @@ function semanticMatch(text: string, fullName: string): boolean {
   const t = norm(text);
   const parts = norm(fullName).split(/\s+/).filter((p) => p.length >= 3);
   if (parts.length === 0) return false;
-  // Exige pelo menos primeiro+último nome OU nome completo
   if (parts.length >= 2) {
     return t.includes(`${parts[0]} ${parts[parts.length - 1]}`) ||
       t.includes(norm(fullName));
@@ -57,74 +62,82 @@ function semanticMatch(text: string, fullName: string): boolean {
   return t.includes(parts[0]);
 }
 
+// Parser RSS 2.0 minimalista (regex) — RSS-Bridge devolve <item> tags simples.
+function parseRssItems(xml: string): Array<Record<string, string>> {
+  const items: Array<Record<string, string>> = [];
+  const itemRe = /<item\b[^>]*>([\s\S]*?)<\/item>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = itemRe.exec(xml)) !== null) {
+    const block = m[1];
+    const pick = (tag: string): string => {
+      const re = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i");
+      const r = block.match(re);
+      return r ? stripHtml(r[1]) : "";
+    };
+    items.push({
+      title: pick("title"),
+      link: pick("link"),
+      description: pick("description"),
+      author: pick("author") || pick("dc:creator"),
+      pubDate: pick("pubDate") || pick("published") || pick("updated"),
+    });
+  }
+  return items;
+}
+
+async function fetchViaRssBridge(query: string): Promise<Array<Record<string, string>>> {
+  for (const instance of RSS_BRIDGE_INSTANCES) {
+    const url =
+      `${instance}/?action=display&bridge=RedditBridge&context=Search+query&q=${encodeURIComponent(query)}&format=Mrss`;
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": randomUA(),
+          "Accept": "application/rss+xml, application/xml, text/xml, */*",
+        },
+        signal: AbortSignal.timeout(12000),
+      });
+      if (!res.ok) {
+        console.warn(`[REDDIT-CRON] ${instance}: HTTP ${res.status}`);
+        continue;
+      }
+      const xml = await res.text();
+      const items = parseRssItems(xml);
+      if (items.length > 0) {
+        console.log(`[REDDIT-CRON] ${instance}: ${items.length} itens para "${query}"`);
+        return items;
+      }
+      console.warn(`[REDDIT-CRON] ${instance}: 0 itens para "${query}"`);
+    } catch (e) {
+      console.warn(
+        `[REDDIT-CRON] ${instance} falhou: ${(e as Error).message}`,
+      );
+    }
+  }
+  return [];
+}
+
 async function collectRedditForCandidate(
   supabase: ReturnType<typeof createClient>,
   candidate: Candidate,
-): Promise<{ collected: number; skipped: number }> {
-  const query = encodeURIComponent(`"${candidate.full_name}"`);
-  // JSON API pública — funciona melhor que .rss em 2025 com UA correto
-  const url =
-    `https://www.reddit.com/search.json?q=${query}&sort=new&limit=50&t=week&raw_json=1`;
+): Promise<{ collected: number; skipped: number; raw: number }> {
+  const items = await fetchViaRssBridge(`"${candidate.full_name}"`);
 
-  let json: any;
-  try {
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": randomUA(),
-        "Accept":
-          "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
-        "Connection": "keep-alive",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Upgrade-Insecure-Requests": "1",
-      },
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!res.ok) {
-      console.warn(
-        `[REDDIT-CRON] ${candidate.full_name}: HTTP ${res.status}`,
-      );
-      return { collected: 0, skipped: 0 };
-    }
-    json = await res.json();
-  } catch (e) {
-    console.warn(
-      `[REDDIT-CRON] fetch falhou ${candidate.full_name}: ${(e as Error).message}`,
-    );
-    return { collected: 0, skipped: 0 };
-  }
-
-  const children: any[] = json?.data?.children ?? [];
-
-  if (children.length === 0) {
-    console.log(`[REDDIT-CRON] ${candidate.full_name}: 0 itens no feed`);
-    return { collected: 0, skipped: 0 };
+  if (items.length === 0) {
+    console.log(`[REDDIT-CRON] ${candidate.full_name}: 0 itens em todas as instâncias`);
+    return { collected: 0, skipped: 0, raw: 0 };
   }
 
   const rows: any[] = [];
   let skipped = 0;
 
-  for (const child of children) {
-    const d = child?.data;
-    if (!d) {
-      skipped++;
-      continue;
-    }
-    const title = d.title ?? "";
-    const selftext = d.selftext ?? "";
-    const content = stripHtml(`${title}\n${selftext}`).slice(0, 4000);
-    const link = d.permalink ? `https://www.reddit.com${d.permalink}` : (d.url ?? "");
-    const author = d.author ?? "Reddit user";
-    const created = d.created_utc
-      ? new Date(d.created_utc * 1000).toISOString()
+  for (const it of items) {
+    const content = `${it.title}\n${it.description}`.slice(0, 4000).trim();
+    const link = it.link;
+    const author = it.author || "Reddit user";
+    const created = it.pubDate
+      ? new Date(it.pubDate).toISOString()
       : new Date().toISOString();
-    const score = typeof d.score === "number" ? d.score : 0;
-    const numComments = typeof d.num_comments === "number" ? d.num_comments : 0;
 
     if (!link || !content) {
       skipped++;
@@ -145,8 +158,8 @@ async function collectRedditForCandidate(
       author_profile_url: link,
       original_posted_at: created,
       collected_at: new Date().toISOString(),
-      likes_count: score,
-      replies_count: numComments,
+      likes_count: 0,
+      replies_count: 0,
       shares_count: 0,
     });
   }
@@ -155,10 +168,9 @@ async function collectRedditForCandidate(
     console.log(
       `[REDDIT-CRON] ${candidate.full_name}: bruto=${items.length} novos=0 skipped=${skipped}`,
     );
-    return { collected: 0, skipped };
+    return { collected: 0, skipped, raw: items.length };
   }
 
-  // Dedup contra existentes (por author_profile_url)
   const urls = rows.map((r) => r.author_profile_url);
   const { data: existing } = await supabase
     .from("social_interactions")
@@ -176,7 +188,7 @@ async function collectRedditForCandidate(
     console.log(
       `[REDDIT-CRON] ${candidate.full_name}: bruto=${items.length} novos=0 (todos duplicados)`,
     );
-    return { collected: 0, skipped };
+    return { collected: 0, skipped, raw: items.length };
   }
 
   const { error } = await supabase.from("social_interactions").insert(fresh);
@@ -184,13 +196,13 @@ async function collectRedditForCandidate(
     console.error(
       `[REDDIT-CRON] insert falhou ${candidate.full_name}: ${error.message}`,
     );
-    return { collected: 0, skipped };
+    return { collected: 0, skipped, raw: items.length };
   }
 
   console.log(
     `[REDDIT-CRON] ${candidate.full_name}: bruto=${items.length} novos=${fresh.length} skipped=${skipped}`,
   );
-  return { collected: fresh.length, skipped };
+  return { collected: fresh.length, skipped, raw: items.length };
 }
 
 Deno.serve(async (req) => {
@@ -224,12 +236,11 @@ Deno.serve(async (req) => {
     let totalCollected = 0;
     const results: any[] = [];
 
-    // Sequencial com pequeno delay para respeitar rate limit (~60req/min)
     for (const c of candidates as Candidate[]) {
       const r = await collectRedditForCandidate(supabase, c);
       totalCollected += r.collected;
       results.push({ candidate: c.full_name, ...r });
-      await new Promise((res) => setTimeout(res, 1200));
+      await new Promise((res) => setTimeout(res, 1500));
     }
 
     return new Response(
