@@ -89,7 +89,7 @@ const EventReportPage = () => {
       if (error) throw error;
       return data || [];
     },
-    enabled: !!user,
+    
   });
 
   const handleGenerate = async () => {
