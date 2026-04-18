@@ -671,14 +671,14 @@ Deno.serve(async (req) => {
     
     console.log(`Found ${existingCommentsSet.size} existing comments to skip duplicates`);
 
-    // Search for videos - use 'date' to get newest videos first
-    const searchResults = await searchYouTubeVideos(candidateName, youtubeApiKey, maxVideos, 'date');
+    // Search for videos - use 'date' to get newest videos first (with key rotation)
+    const searchResults = await callYoutube((k) => searchYouTubeVideos(candidateName, k, maxVideos, 'date'));
     
     // Also search by relevance to get popular videos
-    const relevanceResults = await searchYouTubeVideos(candidateName, youtubeApiKey, maxVideos, 'relevance');
+    const relevanceResults = await callYoutube((k) => searchYouTubeVideos(candidateName, k, maxVideos, 'relevance'));
     
     // Also search by viewCount to get most viewed videos
-    const viewCountResults = await searchYouTubeVideos(candidateName, youtubeApiKey, maxVideos, 'viewCount');
+    const viewCountResults = await callYoutube((k) => searchYouTubeVideos(candidateName, k, maxVideos, 'viewCount'));
     
     // Merge and deduplicate video results
     const allVideoIds = new Set<string>();
