@@ -284,7 +284,7 @@ Deno.serve(async (req) => {
       userId = userData.user.id;
     }
 
-    const db = isInternalCronRequest ? supabaseService : supabase;
+    let db = isInternalCronRequest ? supabaseService : supabase;
 
     const {
       candidateId,
