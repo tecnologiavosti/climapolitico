@@ -50,20 +50,27 @@ export default function Overview() {
   const { data: allMetrics, isLoading: loadingMetrics } = useAllCandidateMetrics();
 
   // Query: Interações sociais para gráfico temporal (últimos 7 dias)
+  // Atualiza a cada 60s para refletir coletas em andamento.
   const { data: socialInteractions, isLoading: loadingInteractions } = useQuery({
     queryKey: ['social-interactions-overview', isAdmin, user?.id],
     queryFn: async () => {
       if (!user) return [];
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       let query = supabase
         .from('social_interactions')
         .select('id, candidate_id, sentiment_label, sentiment_score, likes_count, social_network, created_at, comment_author')
-        .eq('user_id', user.id);
-      
+        .gte('created_at', sevenDaysAgo)
+        .order('created_at', { ascending: false })
+        .limit(10000);
+      if (!isAdmin) query = query.eq('user_id', user.id);
       const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
-    enabled: !!user
+    enabled: !!user,
+    refetchInterval: 60000,
+    refetchOnWindowFocus: true,
+    staleTime: 30000,
   });
 
   // Query removida: Análises de fala (não mais exibida na Visão Geral)
