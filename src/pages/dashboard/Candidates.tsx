@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, ChevronUp, BarChart3, RefreshCw, Twitter } from "lucide-react";
+import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, ChevronUp, BarChart3, RefreshCw, Twitter, MessageCircle } from "lucide-react";
 // ArrowUpRight, ArrowDownRight, Minus removidos temporariamente (coluna Tendência oculta)
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 
@@ -251,6 +251,35 @@ export default function Candidates() {
       toast.error('Erro ao coletar dados do Twitter/X: ' + error.message);
     },
   });
+
+  // Reddit collection mutation
+  const redditCollectionMutation = useMutation({
+    mutationFn: async ({ candidateId, candidateName }: { candidateId: string; candidateName: string }) => {
+      const { data, error } = await supabase.functions.invoke('search-reddit-mentions', {
+        body: { candidateId, candidateName }
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+      const inserted = data?.inserted ?? data?.collected ?? data?.total_collected ?? 0;
+      toast.success(
+        `Reddit: +${inserted} posts coletados.`,
+        { duration: 5000 }
+      );
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+    },
+    onError: (error: Error) => {
+      console.error('Reddit collection error:', error);
+      toast.error('Erro ao coletar dados do Reddit: ' + error.message);
+    },
+  });
+
   const reanalyzeSentimentMutation = useMutation({
     mutationFn: async () => {
       const { data, error } = await supabase.functions.invoke('reanalyze-sentiment', {
@@ -599,6 +628,34 @@ export default function Candidates() {
                                   <p>Coletar dados do Twitter/X</p>
                                   <p className="text-xs text-muted-foreground">
                                     Busca tweets e menções públicas
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+
+                              {/* Reddit Collection Button */}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="bg-orange-500/10 hover:bg-orange-500/20 border-orange-500/30"
+                                    onClick={() => redditCollectionMutation.mutate({
+                                      candidateId: candidate.id,
+                                      candidateName: candidate.full_name
+                                    })}
+                                    disabled={redditCollectionMutation.isPending}
+                                  >
+                                    {redditCollectionMutation.isPending ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <MessageCircle className="h-4 w-4 text-orange-500" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Coletar dados do Reddit</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Busca posts e comentários públicos
                                   </p>
                                 </TooltipContent>
                               </Tooltip>
