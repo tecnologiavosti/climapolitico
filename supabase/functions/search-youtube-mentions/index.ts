@@ -358,24 +358,39 @@ Deno.serve(async (req) => {
     const supabaseService = createClient(supabaseUrl, supabaseServiceRoleKey);
     
     // User-scoped client for DB ops (keeps RLS enforced)
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    // NOTE: redefined to service client below if request is internal cron
+    let supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } }
     });
 
-    // Validate user
+    // Validate user — supports internal cron via service-role token
     const token = authHeader.replace('Bearer ', '');
-    const { data: userData, error: authError } = await supabaseService.auth.getUser(token);
+    const requestBody = await req.json();
+    const isInternalCronRequest = token === supabaseServiceRoleKey;
 
-    if (authError || !userData?.user) {
-      console.error('Auth validation failed:', authError);
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized - invalid token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    let userId = '';
+    if (isInternalCronRequest) {
+      if (!requestBody?.userId) {
+        return new Response(
+          JSON.stringify({ error: 'userId obrigatório para execução interna' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      userId = requestBody.userId;
+      supabase = supabaseService; // bypass RLS for trusted cron
+      console.log(`[YOUTUBE] Cron interno user=${userId}`);
+    } else {
+      const { data: userData, error: authError } = await supabaseService.auth.getUser(token);
+      if (authError || !userData?.user) {
+        console.error('Auth validation failed:', authError);
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized - invalid token' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      userId = userData.user.id;
+      console.log(`Authenticated user: ${userId}`);
     }
-
-    const userId = userData.user.id;
-    console.log(`Authenticated user: ${userId}`);
 
     // Get YouTube API key
     const youtubeApiKey = Deno.env.get('YOUTUBE_API_KEY');
@@ -386,19 +401,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Parse request body
+    // Parse request body (already consumed above)
     const {
       candidateId,
       candidateName,
-      // Optional aliases for name matching (e.g., ["Lula", "PT", "Luiz Inácio"])
       candidateAliases = [] as string[],
-      // how many videos to search per order type (date + relevance)
       maxVideos = 25,
-      // YouTube API is paged; this is per page. We'll paginate until we hit maxNewComments.
       maxCommentsPerVideo = 100,
-      // Hard cap per invocation - INCREASED significantly for better statistical relevance
       maxNewComments = 500,
-    } = await req.json();
+    } = requestBody;
 
     if (!candidateId || !candidateName) {
       return new Response(
