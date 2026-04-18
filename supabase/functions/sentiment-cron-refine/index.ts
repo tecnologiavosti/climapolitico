@@ -28,6 +28,55 @@ function heuristic(text: string): SentimentResult {
   return { label: "Neutro", score: 0.5 };
 }
 
+async function callGroq(texts: string[], groqKey: string): Promise<SentimentResult[] | null> {
+  const clipped = texts.map((t) => (t || "").substring(0, 400).trim());
+  const userContent = clipped.map((t, i) => `${i + 1}. "${t}"`).join("\n");
+
+  const systemPrompt = `Você é um analista político brasileiro especialista em sentimento.
+CLASSIFIQUE cada comentário: POSITIVO (apoio, elogio, "mito", emojis ❤️👏), NEGATIVO (crítica, sarcasmo, xingamento, "ladrão", "fora", emojis 🤮👎), NEUTRO (apenas notícia factual sem viés).
+Sarcasmo é NEGATIVO. Em dúvida, escolha o predominante (saia do muro).
+Gírias BR: "mitou"/"faz o L"=positivo, "gado"/"mortadela"/"petralha"/"bolsominion"=negativo.
+Responda APENAS JSON array na mesma ordem: [{"label":"Positivo|Negativo|Neutro","score":0.0-1.0},...]`;
+
+  try {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${groqKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "llama-3.1-8b-instant",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent },
+        ],
+        temperature: 0.1,
+        max_tokens: clipped.length * 40 + 100,
+        response_format: { type: "json_object" },
+      }),
+    });
+    if (!res.ok) {
+      console.warn(`[REFINE] Groq ${res.status}`);
+      return null;
+    }
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content || "";
+    const m = content.match(/\[[\s\S]*\]/);
+    if (!m) return null;
+    const parsed = JSON.parse(m[0]);
+    if (!Array.isArray(parsed) || parsed.length < texts.length) return null;
+    return texts.map((_, i) => {
+      const p = parsed[i];
+      const label =
+        p?.label === "Positivo" || p?.label === "Negativo" || p?.label === "Neutro"
+          ? p.label : "Neutro";
+      const score = typeof p?.score === "number" ? Math.max(0, Math.min(1, p.score)) : 0.5;
+      return { label, score };
+    });
+  } catch (e) {
+    console.warn("[REFINE] Groq exceção:", e);
+    return null;
+  }
+}
+
 async function callAI(texts: string[], apiKey: string): Promise<SentimentResult[] | null> {
   const clipped = texts.map((t) => (t || "").substring(0, 400).trim());
   const userContent = clipped.map((t, i) => `${i + 1}. "${t}"`).join("\n");
@@ -35,7 +84,7 @@ async function callAI(texts: string[], apiKey: string): Promise<SentimentResult[
   const systemPrompt = `Você é especialista em análise de sentimento político BR.
 Para cada comentário responda em JSON array: [{"label":"Positivo|Negativo|Neutro","score":0.0-1.0},...] na MESMA ordem.
 Positivo (0.7-1.0): apoio, elogio, torcida, emojis ❤️👏🙏.
-Negativo (0.0-0.3): crítica, xingamento, rejeição, emojis 🤮👎.
+Negativo (0.0-0.3): crítica, xingamento, rejeição, sarcasmo, emojis 🤮👎.
 Neutro (0.4-0.6): pergunta, informativo, indeterminado.`;
 
   // Backoff exponencial: 3s, 9s, 27s, 60s
