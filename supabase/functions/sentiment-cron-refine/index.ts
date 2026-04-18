@@ -153,20 +153,20 @@ Deno.serve(async (req) => {
     { auth: { persistSession: false } },
   );
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
+  const groqKey = Deno.env.get("GROQ_API_KEY");
 
   try {
-    // Pega até 30 comentários recentes que estão Neutro/0.5 (provável heurística)
-    // dos últimos 60 minutos. Lote pequeno = respeita rate limit.
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    // Pega até 50 comentários recentes Neutro/0.5 dos últimos 6h.
+    const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
     const { data: pending, error } = await supabase
       .from("social_interactions")
       .select("id, comment_text")
       .eq("sentiment_label", "Neutro")
       .eq("sentiment_score", 0.5)
-      .gte("created_at", oneHourAgo)
+      .gte("created_at", sixHoursAgo)
       .not("comment_text", "is", null)
       .order("created_at", { ascending: false })
-      .limit(30);
+      .limit(50);
 
     if (error) throw error;
 
@@ -179,37 +179,42 @@ Deno.serve(async (req) => {
 
     let refined = 0;
     const counts = { Positivo: 0, Negativo: 0, Neutro: 0 };
+    const texts = pending.map((p) => p.comment_text || "");
 
-    if (apiKey) {
-      const texts = pending.map((p) => p.comment_text || "");
-      const results = await callAI(texts, apiKey);
+    // 1) Groq primeiro (rápido, alto rate limit)
+    let results: SentimentResult[] | null = null;
+    if (groqKey) {
+      results = await callGroq(texts, groqKey);
+      if (results) console.log("[REFINE] ✅ Groq OK");
+    }
+    // 2) Fallback Lovable AI
+    if (!results && apiKey) {
+      results = await callAI(texts, apiKey);
+      if (results) console.log("[REFINE] ✅ Lovable AI OK");
+    }
 
-      if (results) {
-        for (let i = 0; i < pending.length; i++) {
-          const r = results[i];
-          if (!r) continue;
-          // Só atualiza se IA mudou de Neutro
-          if (r.label !== "Neutro") {
-            await supabase
-              .from("social_interactions")
-              .update({ sentiment_label: r.label, sentiment_score: r.score })
-              .eq("id", pending[i].id);
-            refined++;
-            counts[r.label]++;
-          }
-        }
-      } else {
-        // IA falhou — pelo menos roda heurística para garantir não-neutro nos óbvios
-        for (const p of pending) {
-          const h = heuristic(p.comment_text || "");
-          if (h.label !== "Neutro") {
-            await supabase
-              .from("social_interactions")
-              .update({ sentiment_label: h.label, sentiment_score: h.score })
-              .eq("id", p.id);
-            refined++;
-            counts[h.label]++;
-          }
+    if (results) {
+      for (let i = 0; i < pending.length; i++) {
+        const r = results[i];
+        if (!r || r.label === "Neutro") continue;
+        await supabase
+          .from("social_interactions")
+          .update({ sentiment_label: r.label, sentiment_score: r.score })
+          .eq("id", pending[i].id);
+        refined++;
+        counts[r.label]++;
+      }
+    } else {
+      // 3) Heurística pura
+      for (const p of pending) {
+        const h = heuristic(p.comment_text || "");
+        if (h.label !== "Neutro") {
+          await supabase
+            .from("social_interactions")
+            .update({ sentiment_label: h.label, sentiment_score: h.score })
+            .eq("id", p.id);
+          refined++;
+          counts[h.label]++;
         }
       }
     }
