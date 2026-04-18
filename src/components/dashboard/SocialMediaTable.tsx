@@ -2,7 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Instagram, Twitter, Facebook, Youtube, Linkedin, Globe } from "lucide-react";
+import { Instagram, Twitter, Facebook, Youtube, Linkedin, Globe, MessageCircle } from "lucide-react";
 import { SocialMediaReportData } from "@/pages/dashboard/SocialMediaReport";
 
 interface SocialMediaTableProps {
@@ -16,6 +16,7 @@ const networkIcons: Record<string, any> = {
   'YouTube': Youtube,
   'LinkedIn': Linkedin,
   'TikTok': Globe,
+  'Reddit': MessageCircle,
   'Outro': Globe
 };
 
