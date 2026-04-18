@@ -340,12 +340,41 @@ Deno.serve(async (req) => {
       }
     });
 
+    // Carrega instâncias Nitter ativas do banco (saudáveis primeiro)
+    const { data: instanceRows } = await supabaseService
+      .from('nitter_instances')
+      .select('id, url, last_error_at')
+      .eq('is_active', true)
+      .order('last_error_at', { ascending: true, nullsFirst: true })
+      .limit(8);
+    const hosts = (instanceRows && instanceRows.length > 0)
+      ? instanceRows.map((r: any) => r.url as string)
+      : FALLBACK_NITTER_HOSTS;
+    const hostIdByUrl = new Map<string, string>();
+    (instanceRows || []).forEach((r: any) => hostIdByUrl.set(r.url, r.id));
+
+    const onHostResult = async (host: string, ok: boolean, error?: string) => {
+      const id = hostIdByUrl.get(host);
+      if (!id) return;
+      if (ok) {
+        await supabaseService.from('nitter_instances').update({
+          last_checked: new Date().toISOString(),
+        }).eq('id', id);
+      } else {
+        await supabaseService.from('nitter_instances').update({
+          last_error_at: new Date().toISOString(),
+          last_error_message: (error || 'unknown').substring(0, 200),
+          last_checked: new Date().toISOString(),
+        }).eq('id', id);
+      }
+    };
+
     const collected: ScrapedTweet[] = [];
     const seen = new Set<string>();
-    const perQuery = Math.max(20, Math.ceil(maxTweets / queries.size));
+    const perQuery = Math.max(40, Math.ceil(maxTweets / queries.size));
 
     for (const q of queries) {
-      const partial = await scrapeTwitter(q, perQuery);
+      const partial = await scrapeTwitter(q, perQuery, hosts, onHostResult);
       for (const t of partial) {
         const k = t.tweetId ? `tweet:${t.tweetId}` : `${t.author}:${t.text.substring(0, 80)}`;
         if (seen.has(k)) continue;
