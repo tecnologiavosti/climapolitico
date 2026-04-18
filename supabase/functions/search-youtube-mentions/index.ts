@@ -127,21 +127,94 @@ function heuristicSentiment(text: string): SentimentResult {
   return { label: 'Neutro', score: 0.5 };
 }
 
-async function analyzeSentimentBatch(texts: string[]): Promise<SentimentResult[]> {
-  const apiKey = Deno.env.get('LOVABLE_API_KEY');
-  const requestId = crypto.randomUUID();
+// === GROQ — provider primário (rápido + 30 RPM / 14.4k RPD grátis) ===
+async function analyzeSentimentGroq(texts: string[], requestId: string): Promise<SentimentResult[] | null> {
+  const groqKey = Deno.env.get('GROQ_API_KEY');
+  if (!groqKey) return null;
 
-  // Sem API key — usa heurística e segue.
-  if (!apiKey) {
-    console.warn(`[SENTIMENT:${requestId}] sem LOVABLE_API_KEY — usando heurística local`);
-    return texts.map(heuristicSentiment);
+  const clipped = texts.map((t) => (t || '').substring(0, 400).trim());
+  const userContent = clipped.map((t, i) => `${i + 1}. "${t}"`).join('\n');
+
+  const systemPrompt = `Você é um analista político brasileiro especialista em sentimento de redes sociais.
+
+CLASSIFIQUE cada comentário como POSITIVO, NEGATIVO ou NEUTRO:
+- POSITIVO: apoio, elogio, defesa, hashtags de campanha, intenção de voto, "mito", "presidente", emojis ❤️👏🙏✊🇧🇷
+- NEGATIVO: crítica, denúncia, xingamento, sarcasmo (ex: "lá vem o salvador... sqn"), oposição, "ladrão", "fora", emojis 🤮👎😡💩🤡
+- NEUTRO: APENAS notícia factual sem viés ou pergunta puramente informativa
+
+REGRAS:
+1. Sarcasmo é SEMPRE negativo
+2. Em caso de dúvida entre Neutro e outro, escolha o sentimento predominante (saia do muro)
+3. Gírias políticas BR contam: "mitou"=positivo, "faz o L"=positivo, "gado"=negativo, "mortadela"=negativo, "petralha"=negativo, "bolsominion"=negativo
+
+Responda APENAS um JSON array na MESMA ordem: [{"label":"Positivo","score":0.85},{"label":"Negativo","score":0.15},...]
+Score: 0.7-1.0=positivo, 0.0-0.3=negativo, 0.4-0.6=neutro.`;
+
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${groqKey}` },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userContent },
+        ],
+        temperature: 0.1,
+        max_tokens: clipped.length * 40 + 100,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.warn(`[SENTIMENT:${requestId}] Groq falhou ${res.status}: ${body.substring(0, 150)}`);
+      return null;
+    }
+
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content || '';
+    const m = content.match(/\[[\s\S]*\]/);
+    if (!m) return null;
+    const parsed = JSON.parse(m[0]);
+    if (!Array.isArray(parsed)) return null;
+
+    return texts.map((_, i) => {
+      const p = parsed[i];
+      if (!p) return heuristicSentiment(texts[i] || '');
+      const label = (p?.label === 'Positivo' || p?.label === 'Negativo' || p?.label === 'Neutro')
+        ? p.label : heuristicSentiment(texts[i] || '').label;
+      const score = typeof p?.score === 'number' ? Math.max(0, Math.min(1, p.score)) : 0.5;
+      return { label, score };
+    });
+  } catch (e) {
+    console.warn(`[SENTIMENT:${requestId}] Groq exceção:`, e);
+    return null;
   }
+}
 
-  // Safety: keep payload bounded and clean texts
+async function analyzeSentimentBatch(texts: string[]): Promise<SentimentResult[]> {
+  const requestId = crypto.randomUUID();
   const clipped = texts.map((t) => (t || '').substring(0, 400).trim()).filter(t => t.length > 0);
   if (clipped.length === 0) return texts.map(heuristicSentiment);
 
-  console.log(`[SENTIMENT:${requestId}] Entradas=${clipped.length} | Exemplo="${clipped[0].substring(0, 80)}..."`);
+  console.log(`[SENTIMENT:${requestId}] Entradas=${texts.length} | Exemplo="${clipped[0].substring(0, 80)}..."`);
+
+  // 1) Tenta Groq (rápido, 14.4k req/dia grátis)
+  const groqResult = await analyzeSentimentGroq(texts, requestId);
+  if (groqResult) {
+    const counts = { Positivo: 0, Negativo: 0, Neutro: 0 };
+    groqResult.forEach(r => counts[r.label]++);
+    console.log(`[SENTIMENT:${requestId}] ✅ Groq OK — Distribuição: P=${counts.Positivo} N=${counts.Negativo} Nt=${counts.Neutro}`);
+    return groqResult;
+  }
+
+  // 2) Fallback: Lovable AI Gateway
+  const apiKey = Deno.env.get('LOVABLE_API_KEY');
+  if (!apiKey) {
+    console.warn(`[SENTIMENT:${requestId}] sem Groq nem LOVABLE_API_KEY — heurística`);
+    return texts.map(heuristicSentiment);
+  }
 
   try {
     const systemPrompt = `Você é um especialista em análise de sentimento para comentários políticos em português brasileiro.
