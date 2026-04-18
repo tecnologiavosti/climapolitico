@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -45,6 +45,38 @@ export default function Overview() {
       return data || [];
     }
   });
+
+  // Auto-recalcula o cache de métricas para todos os candidatos ao montar a página
+  // e a cada 2 minutos, garantindo que os KPIs reflitam os dados mais recentes.
+  const recalcLockRef = useRef(false);
+  useEffect(() => {
+    if (!candidates || candidates.length === 0) return;
+
+    const recalcAll = async () => {
+      if (recalcLockRef.current) return;
+      recalcLockRef.current = true;
+      try {
+        await Promise.allSettled(
+          candidates.map((c) =>
+            supabase.functions.invoke('recalculate-candidate-metrics', {
+              body: { candidateId: c.id },
+            })
+          )
+        );
+        // Invalida queries para puxar o cache atualizado
+        qc.invalidateQueries({ queryKey: ['all-candidate-metrics-cache'] });
+        qc.invalidateQueries({ queryKey: ['candidate-metrics-cache'] });
+      } catch (e) {
+        console.warn('Falha ao recalcular métricas:', e);
+      } finally {
+        recalcLockRef.current = false;
+      }
+    };
+
+    recalcAll();
+    const interval = setInterval(recalcAll, 120000);
+    return () => clearInterval(interval);
+  }, [candidates, qc]);
 
   // Query: Métricas agregadas do cache (fonte única de verdade)
   const { data: allMetrics, isLoading: loadingMetrics } = useAllCandidateMetrics();
