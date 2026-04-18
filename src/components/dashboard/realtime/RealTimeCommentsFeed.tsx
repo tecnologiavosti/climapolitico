@@ -24,6 +24,7 @@ const networkIcons: Record<string, string> = {
   'YouTube': '▶️',
   'LinkedIn': '💼',
   'Threads': '🧵',
+  'Reddit': '👽',
 };
 
 const sentimentConfig = {

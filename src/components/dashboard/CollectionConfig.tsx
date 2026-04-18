@@ -23,6 +23,7 @@ const SOCIAL_NETWORKS = [
   { id: "youtube", name: "YouTube", color: "bg-red-600" },
   { id: "linkedin", name: "LinkedIn", color: "bg-blue-700" },
   { id: "threads", name: "Threads", color: "bg-gray-800" },
+  { id: "reddit", name: "Reddit", color: "bg-orange-600" },
 ];
 
 const BRAZILIAN_STATES = [

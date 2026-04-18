@@ -13,7 +13,8 @@ import {
   Twitter,
   Facebook,
   Youtube,
-  Globe
+  Globe,
+  MessageCircle
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -51,6 +52,7 @@ const NETWORK_ICONS: Record<string, any> = {
   'Twitter/X': Twitter,
   'Facebook': Facebook,
   'YouTube': Youtube,
+  'Reddit': MessageCircle,
 };
 
 export const SocialMediaInfluencers = ({ 

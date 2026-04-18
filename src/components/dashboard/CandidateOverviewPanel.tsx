@@ -29,6 +29,7 @@ const NETWORK_COLORS: Record<string, string> = {
   "YouTube": "#FF0000",
   "LinkedIn": "#0A66C2",
   "Threads": "#000000",
+  "Reddit": "#FF4500",
   "Outro": "#6B7280"
 };
 

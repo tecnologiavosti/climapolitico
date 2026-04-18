@@ -250,6 +250,7 @@ export default function SocialMediaReport() {
                   <SelectItem value="YouTube">YouTube</SelectItem>
                   <SelectItem value="Threads">Threads</SelectItem>
                   <SelectItem value="LinkedIn">LinkedIn</SelectItem>
+                  <SelectItem value="Reddit">Reddit</SelectItem>
                 </SelectContent>
               </Select>
             </div>

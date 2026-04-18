@@ -7,6 +7,7 @@ import {
   Facebook, 
   Youtube, 
   Globe,
+  MessageCircle,
   TrendingUp,
   Users,
   MessageSquare,
@@ -27,6 +28,7 @@ const NETWORK_ICONS: Record<string, any> = {
   'YouTube': Youtube,
   'Threads': Globe,
   'LinkedIn': Globe,
+  'Reddit': MessageCircle,
   'Outro': Globe,
 };
 
@@ -38,6 +40,7 @@ const NETWORK_COLORS: Record<string, string> = {
   'YouTube': 'hsl(0, 100%, 50%)',
   'Threads': 'hsl(0, 0%, 20%)',
   'LinkedIn': 'hsl(201, 100%, 35%)',
+  'Reddit': 'hsl(16, 100%, 50%)',
   'Outro': 'hsl(0, 0%, 42%)',
 };
 
