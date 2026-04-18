@@ -299,13 +299,25 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: candidateRecord, error: candidateError } = await db
+    // Use service-role client for ownership lookup (we manually enforce user_id check below)
+    const { data: candidateRecord, error: candidateError } = await supabaseService
       .from('candidates')
       .select('id, user_id')
       .eq('id', candidateId)
-      .single();
-    if (candidateError || !candidateRecord || candidateRecord.user_id !== userId) {
-      return new Response(JSON.stringify({ error: 'Candidato inválido' }), {
+      .maybeSingle();
+    if (candidateError) {
+      console.error('[TWITTER] erro lookup candidato:', candidateError);
+      return new Response(JSON.stringify({ error: 'Erro ao validar candidato', details: candidateError.message }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    if (!candidateRecord) {
+      return new Response(JSON.stringify({ error: 'Candidato não encontrado', candidateId }), {
+        status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    if (candidateRecord.user_id !== userId) {
+      return new Response(JSON.stringify({ error: 'Candidato pertence a outro usuário' }), {
         status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
