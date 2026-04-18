@@ -41,9 +41,12 @@ const CandidateSummary = () => {
   const { data: candidates } = useQuery({
     queryKey: ['candidates-for-summary'],
     queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
       const { data, error } = await supabase
         .from('candidates')
         .select('id, full_name, party, region')
+        .eq('user_id', user.id)
         .order('full_name');
       if (error) throw error;
       return data;
