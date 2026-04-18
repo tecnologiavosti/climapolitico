@@ -477,13 +477,96 @@ Deno.serve(async (req) => {
       console.log(`Authenticated user: ${userId}`);
     }
 
-    // Get YouTube API key
-    const youtubeApiKey = Deno.env.get('YOUTUBE_API_KEY');
-    if (!youtubeApiKey) {
+    // ============================================================
+    // YOUTUBE API KEY ROTATION
+    // Picks the least-recently-used active key from youtube_api_keys.
+    // Falls back to YOUTUBE_API_KEY env secret if no DB rows exist.
+    // Marks a key as inactive (24h cooldown) when quota is exceeded.
+    // ============================================================
+    async function getNextYoutubeKey(): Promise<{ id: string | null; key: string } | null> {
+      // Try to reactivate any keys whose cooldown elapsed
+      try { await supabaseService.rpc('reactivate_youtube_keys'); } catch (_) {}
+
+      const { data: rows } = await supabaseService
+        .from('youtube_api_keys')
+        .select('id, api_key')
+        .eq('is_active', true)
+        .order('last_used_at', { ascending: true, nullsFirst: true })
+        .limit(1);
+
+      if (rows && rows.length > 0) {
+        return { id: rows[0].id, key: rows[0].api_key as string };
+      }
+      const envKey = Deno.env.get('YOUTUBE_API_KEY');
+      if (envKey) return { id: null, key: envKey };
+      return null;
+    }
+
+    async function markYoutubeKeyUsed(keyId: string | null) {
+      if (!keyId) return;
+      await supabaseService
+        .from('youtube_api_keys')
+        .update({ last_used_at: new Date().toISOString() })
+        .eq('id', keyId);
+    }
+
+    async function markYoutubeKeyQuotaExceeded(keyId: string | null) {
+      if (!keyId) return;
+      await supabaseService.rpc('exec_sql' as any).catch(() => {});
+      await supabaseService
+        .from('youtube_api_keys')
+        .update({
+          is_active: false,
+          last_quota_exceeded_at: new Date().toISOString(),
+        })
+        .eq('id', keyId);
+      // increment counter via raw update
+      await supabaseService
+        .from('youtube_api_keys')
+        .select('quota_exceeded_count')
+        .eq('id', keyId)
+        .single()
+        .then(async ({ data }) => {
+          if (data) {
+            await supabaseService
+              .from('youtube_api_keys')
+              .update({ quota_exceeded_count: (data.quota_exceeded_count || 0) + 1 })
+              .eq('id', keyId);
+          }
+        });
+    }
+
+    const initialKey = await getNextYoutubeKey();
+    if (!initialKey) {
       return new Response(
-        JSON.stringify({ error: 'YouTube API key not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Nenhuma chave YouTube disponível (todas em cooldown)' }),
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+    let youtubeApiKey = initialKey.key;
+    let youtubeKeyId = initialKey.id;
+
+    // Helper: rotate key automatically on quota errors and retry once
+    async function callYoutube<T>(fn: (k: string) => Promise<T>): Promise<T> {
+      try {
+        const result = await fn(youtubeApiKey);
+        await markYoutubeKeyUsed(youtubeKeyId);
+        return result;
+      } catch (err) {
+        const msg = (err as Error).message || '';
+        if (msg.includes('quotaExceeded') || msg.includes('403')) {
+          console.warn(`[YOUTUBE] Quota exceeded em key=${youtubeKeyId}. Rotacionando...`);
+          await markYoutubeKeyQuotaExceeded(youtubeKeyId);
+          const next = await getNextYoutubeKey();
+          if (!next || next.key === youtubeApiKey) throw err;
+          youtubeApiKey = next.key;
+          youtubeKeyId = next.id;
+          const retry = await fn(youtubeApiKey);
+          await markYoutubeKeyUsed(youtubeKeyId);
+          return retry;
+        }
+        throw err;
+      }
     }
 
     // Parse request body (already consumed above)
@@ -588,14 +671,14 @@ Deno.serve(async (req) => {
     
     console.log(`Found ${existingCommentsSet.size} existing comments to skip duplicates`);
 
-    // Search for videos - use 'date' to get newest videos first
-    const searchResults = await searchYouTubeVideos(candidateName, youtubeApiKey, maxVideos, 'date');
+    // Search for videos - use 'date' to get newest videos first (with key rotation)
+    const searchResults = await callYoutube((k) => searchYouTubeVideos(candidateName, k, maxVideos, 'date'));
     
     // Also search by relevance to get popular videos
-    const relevanceResults = await searchYouTubeVideos(candidateName, youtubeApiKey, maxVideos, 'relevance');
+    const relevanceResults = await callYoutube((k) => searchYouTubeVideos(candidateName, k, maxVideos, 'relevance'));
     
     // Also search by viewCount to get most viewed videos
-    const viewCountResults = await searchYouTubeVideos(candidateName, youtubeApiKey, maxVideos, 'viewCount');
+    const viewCountResults = await callYoutube((k) => searchYouTubeVideos(candidateName, k, maxVideos, 'viewCount'));
     
     // Merge and deduplicate video results
     const allVideoIds = new Set<string>();
@@ -656,7 +739,7 @@ Deno.serve(async (req) => {
 
       try {
         while (totalComments < maxNewComments) {
-          const commentsData = await getVideoComments(videoId, youtubeApiKey, maxCommentsPerVideo, pageToken);
+          const commentsData = await callYoutube((k) => getVideoComments(videoId, k, maxCommentsPerVideo, pageToken));
           const items = commentsData.items || [];
           if (items.length === 0) break;
 

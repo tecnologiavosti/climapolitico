@@ -25,10 +25,17 @@ interface ScrapedTweet {
   tweetId: string | null;
 }
 
-const NITTER_RSS_HOSTS = [
+// Hosts fallback estáticos (usados se o banco estiver vazio)
+const FALLBACK_NITTER_HOSTS = [
   'https://xcancel.com',
   'https://nitter.privacydev.net',
   'https://nitter.poast.org',
+  'https://nitter.privacyredirect.com',
+  'https://nitter.tiekoetter.com',
+  'https://nitter.space',
+  'https://nitter.kareem.one',
+  'https://nitter.lucabased.xyz',
+  'https://nitter.lunar.icu',
 ];
 
 const UA = 'Mozilla/5.0 (compatible; ClimaPoliticoBot/1.0)';
@@ -85,70 +92,138 @@ function parseRss(xml: string): ScrapedTweet[] {
   return out;
 }
 
-async function fetchRss(host: string, query: string): Promise<string | null> {
+async function fetchRss(host: string, query: string): Promise<{ ok: boolean; xml: string | null; error?: string }> {
   const url = `${host}/search/rss?f=tweets&q=${encodeURIComponent(query)}`;
   try {
     const res = await fetch(url, {
       headers: { 'User-Agent': UA, 'Accept': 'application/rss+xml, application/xml, text/xml' },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(12000),
     });
     if (!res.ok) {
-      console.warn(`[TWITTER] ${host} RSS HTTP ${res.status}`);
-      return null;
+      return { ok: false, xml: null, error: `HTTP ${res.status}` };
     }
     const txt = await res.text();
-    if (!txt.includes('<item') && !txt.includes('<rss')) return null;
-    return txt;
+    if (!txt.includes('<item') && !txt.includes('<rss')) {
+      return { ok: false, xml: null, error: 'no rss content' };
+    }
+    return { ok: true, xml: txt };
   } catch (err) {
-    console.warn(`[TWITTER] ${host} RSS erro:`, err instanceof Error ? err.message : err);
-    return null;
+    return { ok: false, xml: null, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
-async function scrapeTwitter(query: string, hardLimit: number): Promise<ScrapedTweet[]> {
-  for (const host of NITTER_RSS_HOSTS) {
-    console.log(`[TWITTER] RSS ${host} → "${query}"`);
-    const xml = await fetchRss(host, query);
-    if (!xml) continue;
-    const tweets = parseRss(xml).slice(0, hardLimit);
-    console.log(`[TWITTER] ${host} retornou ${tweets.length} tweets`);
-    if (tweets.length > 0) return tweets;
+// Coleta paralela: dispara várias instâncias ao mesmo tempo, agrega e dedup.
+async function scrapeTwitter(
+  query: string,
+  hardLimit: number,
+  hosts: string[],
+  onHostResult?: (host: string, ok: boolean, error?: string) => Promise<void>,
+): Promise<ScrapedTweet[]> {
+  const results = await Promise.all(
+    hosts.map(async (host) => {
+      const r = await fetchRss(host, query);
+      if (onHostResult) await onHostResult(host, r.ok, r.error);
+      if (!r.ok || !r.xml) {
+        console.warn(`[TWITTER] ${host} falhou: ${r.error}`);
+        return [] as ScrapedTweet[];
+      }
+      const tweets = parseRss(r.xml);
+      console.log(`[TWITTER] ${host} → ${tweets.length} tweets para "${query}"`);
+      return tweets;
+    })
+  );
+
+  // Dedup por tweetId / link / texto
+  const seen = new Set<string>();
+  const merged: ScrapedTweet[] = [];
+  for (const arr of results) {
+    for (const t of arr) {
+      const key = t.tweetId || t.tweetUrl || `${t.author}::${t.text.substring(0, 80)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(t);
+      if (merged.length >= hardLimit) break;
+    }
+    if (merged.length >= hardLimit) break;
   }
-  return [];
+  return merged;
 }
 
-// Sentiment batch via Lovable AI Gateway
+// Sentiment batch — usa Groq (rápido, alto rate limit) com fallback Lovable AI Gateway.
 async function analyzeSentimentBatch(texts: string[]): Promise<SentimentResult[] | null> {
-  const apiKey = Deno.env.get('LOVABLE_API_KEY');
-  if (!apiKey || texts.length === 0) return null;
+  if (texts.length === 0) return null;
   const clipped = texts.map(t => (t || '').substring(0, 400).trim());
   if (clipped.every(t => t.length === 0)) return null;
 
-  const systemPrompt = `Você é especialista em análise de sentimento de tweets políticos em PT-BR.
+  const systemPrompt = `Você é especialista em análise de sentimento de tweets políticos brasileiros.
 Para CADA tweet, retorne {"label":"Positivo|Negativo|Neutro","score":0.0-1.0}.
-- POSITIVO (0.65-1.0): apoio, elogio, intenção de voto, defesa.
-- NEGATIVO (0.0-0.35): crítica, rejeição, insulto, acusação, raiva, deboche.
-- NEUTRO (0.36-0.64): SOMENTE notícias factuais sem opinião.
+- POSITIVO: apoio, elogio, defesa, intenção de voto, hashtag de campanha, gírias positivas (mitou, mito).
+- NEGATIVO: crítica, denúncia, xingamento, sarcasmo, oposição, gírias negativas (gado, mortadela, ladrão).
+- NEUTRO: SOMENTE notícias factuais sem opinião.
+REGRA: Sarcasmo é SEMPRE Negativo. Em caso de dúvida entre Neutro e outro, escolha o outro.
 Responda APENAS um array JSON com EXATAMENTE ${clipped.length} itens, na MESMA ordem.`;
 
+  const userPrompt = clipped.map((t, i) => `${i + 1}. ${t || '[vazio]'}`).join('\n');
+
+  // 1) Tenta Groq
+  const groqKey = Deno.env.get('GROQ_API_KEY');
+  if (groqKey) {
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${groqKey}` },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: 0.1,
+          max_tokens: clipped.length * 60 + 200,
+        }),
+        signal: AbortSignal.timeout(20000),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content || '';
+        const jsonMatch = content.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (Array.isArray(parsed)) {
+            return clipped.map((_, idx) => {
+              const p = parsed[idx];
+              const label = ['Positivo', 'Negativo', 'Neutro'].includes(p?.label) ? p.label : 'Neutro';
+              const score = Math.max(0, Math.min(1, typeof p?.score === 'number' ? p.score : 0.5));
+              return { label, score } as SentimentResult;
+            });
+          }
+        }
+      } else {
+        console.warn(`[SENTIMENT-GROQ] HTTP ${response.status}`);
+      }
+    } catch (err) {
+      console.warn('[SENTIMENT-GROQ] erro:', err instanceof Error ? err.message : err);
+    }
+  }
+
+  // 2) Fallback: Lovable AI Gateway
+  const apiKey = Deno.env.get('LOVABLE_API_KEY');
+  if (!apiKey) return null;
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'google/gemini-2.5-flash-lite',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: clipped.map((t, i) => `${i + 1}. ${t || '[vazio]'}`).join('\n') },
+          { role: 'user', content: userPrompt },
         ],
         temperature: 0.1,
         max_tokens: clipped.length * 60 + 200,
       }),
     });
-    if (!response.ok) {
-      console.warn(`[SENTIMENT] gateway ${response.status}`);
-      return null;
-    }
+    if (!response.ok) return null;
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content || '';
     const jsonMatch = content.match(/\[[\s\S]*\]/);
@@ -265,12 +340,41 @@ Deno.serve(async (req) => {
       }
     });
 
+    // Carrega instâncias Nitter ativas do banco (saudáveis primeiro)
+    const { data: instanceRows } = await supabaseService
+      .from('nitter_instances')
+      .select('id, url, last_error_at')
+      .eq('is_active', true)
+      .order('last_error_at', { ascending: true, nullsFirst: true })
+      .limit(8);
+    const hosts = (instanceRows && instanceRows.length > 0)
+      ? instanceRows.map((r: any) => r.url as string)
+      : FALLBACK_NITTER_HOSTS;
+    const hostIdByUrl = new Map<string, string>();
+    (instanceRows || []).forEach((r: any) => hostIdByUrl.set(r.url, r.id));
+
+    const onHostResult = async (host: string, ok: boolean, error?: string) => {
+      const id = hostIdByUrl.get(host);
+      if (!id) return;
+      if (ok) {
+        await supabaseService.from('nitter_instances').update({
+          last_checked: new Date().toISOString(),
+        }).eq('id', id);
+      } else {
+        await supabaseService.from('nitter_instances').update({
+          last_error_at: new Date().toISOString(),
+          last_error_message: (error || 'unknown').substring(0, 200),
+          last_checked: new Date().toISOString(),
+        }).eq('id', id);
+      }
+    };
+
     const collected: ScrapedTweet[] = [];
     const seen = new Set<string>();
-    const perQuery = Math.max(20, Math.ceil(maxTweets / queries.size));
+    const perQuery = Math.max(40, Math.ceil(maxTweets / queries.size));
 
     for (const q of queries) {
-      const partial = await scrapeTwitter(q, perQuery);
+      const partial = await scrapeTwitter(q, perQuery, hosts, onHostResult);
       for (const t of partial) {
         const k = t.tweetId ? `tweet:${t.tweetId}` : `${t.author}:${t.text.substring(0, 80)}`;
         if (seen.has(k)) continue;

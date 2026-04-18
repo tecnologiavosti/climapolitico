@@ -573,6 +573,8 @@ export type Database = {
           id: string
           is_active: boolean
           last_checked: string | null
+          last_error_at: string | null
+          last_error_message: string | null
           updated_at: string
           url: string
         }
@@ -582,6 +584,8 @@ export type Database = {
           id?: string
           is_active?: boolean
           last_checked?: string | null
+          last_error_at?: string | null
+          last_error_message?: string | null
           updated_at?: string
           url: string
         }
@@ -591,6 +595,8 @@ export type Database = {
           id?: string
           is_active?: boolean
           last_checked?: string | null
+          last_error_at?: string | null
+          last_error_message?: string | null
           updated_at?: string
           url?: string
         }
@@ -1203,6 +1209,42 @@ export type Database = {
         }
         Relationships: []
       }
+      youtube_api_keys: {
+        Row: {
+          api_key: string
+          created_at: string
+          id: string
+          is_active: boolean
+          label: string | null
+          last_quota_exceeded_at: string | null
+          last_used_at: string | null
+          quota_exceeded_count: number
+          updated_at: string
+        }
+        Insert: {
+          api_key: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          last_quota_exceeded_at?: string | null
+          last_used_at?: string | null
+          quota_exceeded_count?: number
+          updated_at?: string
+        }
+        Update: {
+          api_key?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          last_quota_exceeded_at?: string | null
+          last_used_at?: string | null
+          quota_exceeded_count?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       network_profiles_deduplicated: {
@@ -1234,6 +1276,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      reactivate_youtube_keys: { Args: never; Returns: undefined }
       refresh_network_profiles_deduplicated: { Args: never; Returns: undefined }
     }
     Enums: {
