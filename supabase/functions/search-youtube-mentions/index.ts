@@ -739,7 +739,7 @@ Deno.serve(async (req) => {
 
       try {
         while (totalComments < maxNewComments) {
-          const commentsData = await getVideoComments(videoId, youtubeApiKey, maxCommentsPerVideo, pageToken);
+          const commentsData = await callYoutube((k) => getVideoComments(videoId, k, maxCommentsPerVideo, pageToken));
           const items = commentsData.items || [];
           if (items.length === 0) break;
 
