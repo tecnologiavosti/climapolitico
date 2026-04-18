@@ -432,7 +432,7 @@ Deno.serve(async (req) => {
       const records = batch.map((t, idx) => {
         const s = sentiments?.[idx];
         return {
-          user_id: userId,
+          user_id: ownerUserId,
           candidate_id: candidateId,
           comment_text: t.text,
           comment_author: t.author,
