@@ -176,8 +176,8 @@ Responda SOMENTE com um JSON array no formato: [{"label":"Positivo","score":0.85
     // Format comments as numbered list for better model understanding
     const userContent = clipped.map((text, i) => `${i + 1}. "${text}"`).join('\n');
 
-    // Retry simples para 429 (rate limit), sem mascarar o erro.
-    const maxAttempts = 3;
+    // Backoff exponencial agressivo + jitter para conviver com rate limit do gateway.
+    const maxAttempts = 4;
     let lastStatus: number | undefined;
     let lastBody = '';
     let response: Response | null = null;
@@ -190,7 +190,7 @@ Responda SOMENTE com um JSON array no formato: [{"label":"Positivo","score":0.85
           'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: 'google/gemini-2.5-flash',
+          model: 'google/gemini-2.5-flash-lite', // mais barato/rápido = menos rate limit
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: `Analise o sentimento político de cada comentário abaixo:\n\n${userContent}` },
@@ -204,10 +204,12 @@ Responda SOMENTE com um JSON array no formato: [{"label":"Positivo","score":0.85
 
       lastStatus = response.status;
       lastBody = await response.text().catch(() => '');
-      console.error(`[SENTIMENT:${requestId}] Gateway erro ${response.status} (tentativa ${attempt}/${maxAttempts}): ${lastBody.substring(0, 400)}`);
+      console.error(`[SENTIMENT:${requestId}] Gateway erro ${response.status} (tentativa ${attempt}/${maxAttempts}): ${lastBody.substring(0, 200)}`);
 
-      if (response.status === 429 && attempt < maxAttempts) {
-        const backoffMs = 1500 * attempt;
+      if ((response.status === 429 || response.status >= 500) && attempt < maxAttempts) {
+        // 3s, 9s, 27s + jitter aleatório até 2s
+        const backoffMs = Math.pow(3, attempt) * 1000 + Math.floor(Math.random() * 2000);
+        console.log(`[SENTIMENT:${requestId}] aguardando ${backoffMs}ms antes da próxima tentativa`);
         await new Promise((r) => setTimeout(r, backoffMs));
         continue;
       }
@@ -217,8 +219,8 @@ Responda SOMENTE com um JSON array no formato: [{"label":"Positivo","score":0.85
     }
 
     if (!response || !response.ok) {
-      console.error(`[SENTIMENT:${requestId}] Falha definitiva (status=${lastStatus ?? 'desconhecido'}). Sentimento NÃO será persistido.`);
-      return null;
+      console.warn(`[SENTIMENT:${requestId}] Gateway indisponível (status=${lastStatus ?? '?'}) — caindo para heurística local.`);
+      return texts.map(heuristicSentiment);
     }
 
     const data = await response.json();
