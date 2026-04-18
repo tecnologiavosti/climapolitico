@@ -358,7 +358,8 @@ Deno.serve(async (req) => {
     const supabaseService = createClient(supabaseUrl, supabaseServiceRoleKey);
     
     // User-scoped client for DB ops (keeps RLS enforced)
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    // NOTE: redefined to service client below if request is internal cron
+    let supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } }
     });
 
