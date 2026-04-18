@@ -30,16 +30,25 @@ serve(async (req) => {
       });
     }
 
-    const { data: candidate } = await supabaseClient
+    const supabaseService = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    const { data: candidate } = await supabaseService
       .from('candidates')
-      .select('id, full_name, party, region')
+      .select('id, full_name, party, region, user_id')
       .eq('id', candidateId)
-      .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (!candidate) {
       return new Response(JSON.stringify({ error: 'Candidato não encontrado' }), {
         status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    if (candidate.user_id !== user.id) {
+      return new Response(JSON.stringify({ error: 'Candidato pertence a outro usuário' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
