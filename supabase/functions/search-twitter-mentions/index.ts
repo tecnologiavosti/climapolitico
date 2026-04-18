@@ -333,7 +333,9 @@ Deno.serve(async (req) => {
       }
     }
     // Atribui inserts ao dono do candidato (não ao admin executor)
+    // Atribui inserts ao dono do candidato (não ao admin executor)
     const ownerUserId = candidateRecord.user_id;
+    if (ownerUserId !== userId) db = supabaseService;
 
     console.log(`[TWITTER] === "${candidateName}" (max=${maxTweets}) ===`);
 
