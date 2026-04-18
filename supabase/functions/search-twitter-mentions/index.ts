@@ -316,11 +316,24 @@ Deno.serve(async (req) => {
         status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-    if (candidateRecord.user_id !== userId) {
-      return new Response(JSON.stringify({ error: 'Candidato pertence a outro usuário' }), {
-        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    // Permite admins coletarem para qualquer candidato; senão exige ownership
+    let isAdmin = false;
+    if (!isInternalCronRequest && candidateRecord.user_id !== userId) {
+      const { data: roleRow } = await supabaseService
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .eq('role', 'admin')
+        .maybeSingle();
+      isAdmin = !!roleRow;
+      if (!isAdmin) {
+        return new Response(JSON.stringify({ error: 'Candidato pertence a outro usuário' }), {
+          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     }
+    // Atribui inserts ao dono do candidato (não ao admin executor)
+    const ownerUserId = candidateRecord.user_id;
 
     console.log(`[TWITTER] === "${candidateName}" (max=${maxTweets}) ===`);
 
