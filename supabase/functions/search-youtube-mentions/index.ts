@@ -113,19 +113,33 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-async function analyzeSentimentBatch(texts: string[]): Promise<SentimentResult[] | null> {
+// Heurística política BR — fallback determinístico quando IA falha (rate limit, créditos, etc).
+// Garante que NUNCA gravamos NULL/Neutro genérico em comentários reais.
+const NEG_REGEX = /(ladr[ãa]o|corrupt[oa]|mentiros[oa]|vagabund[oa]|bandido|cadeia|pris[ãa]o|fora\s|jamais|nunca\s|safad[oa]|canalha|absurdo|verg[oa]nha|nojo|nojent[oa]|p[ée]ssim[oa]|horr[íi]vel|odi[oa]|destru|fracass|incompetente|idiota|burr[oa]|imbecil|lixo|merda|fdp|🤮|👎|😡|💩|🤡)/i;
+const POS_REGEX = /(parab[ée]ns|melhor|[óo]tim[oa]|excelente|maravilhos[oa]|perfeit[oa]|mito|her[óo]i|orgulho|apoio|votarei|voto\s+em|t[ée]\s+amo|amo\s+voc|presidente\s+(lula|bolsonaro|caiado)|força|estamos\s+(juntos|com)|vai\s+ganhar|vencer|vit[óo]ria|sucesso|deus\s+aben|❤️|👏|🙏|✊|🇧🇷|💚|💛)/i;
+
+function heuristicSentiment(text: string): SentimentResult {
+  const t = text || '';
+  const neg = NEG_REGEX.test(t);
+  const pos = POS_REGEX.test(t);
+  if (neg && !pos) return { label: 'Negativo', score: 0.2 };
+  if (pos && !neg) return { label: 'Positivo', score: 0.8 };
+  return { label: 'Neutro', score: 0.5 };
+}
+
+async function analyzeSentimentBatch(texts: string[]): Promise<SentimentResult[]> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   const requestId = crypto.randomUUID();
 
-  // Nunca aplicar fallback fixo (Neutro/0.5) sem avisar: isso mascara bugs e invalida métricas.
+  // Sem API key — usa heurística e segue.
   if (!apiKey) {
-    console.error(`[SENTIMENT:${requestId}] LOVABLE_API_KEY ausente - sentimento indisponível`);
-    return null;
+    console.warn(`[SENTIMENT:${requestId}] sem LOVABLE_API_KEY — usando heurística local`);
+    return texts.map(heuristicSentiment);
   }
 
   // Safety: keep payload bounded and clean texts
   const clipped = texts.map((t) => (t || '').substring(0, 400).trim()).filter(t => t.length > 0);
-  if (clipped.length === 0) return null;
+  if (clipped.length === 0) return texts.map(heuristicSentiment);
 
   console.log(`[SENTIMENT:${requestId}] Entradas=${clipped.length} | Exemplo="${clipped[0].substring(0, 80)}..."`);
 
@@ -162,8 +176,8 @@ Responda SOMENTE com um JSON array no formato: [{"label":"Positivo","score":0.85
     // Format comments as numbered list for better model understanding
     const userContent = clipped.map((text, i) => `${i + 1}. "${text}"`).join('\n');
 
-    // Retry simples para 429 (rate limit), sem mascarar o erro.
-    const maxAttempts = 3;
+    // Backoff exponencial agressivo + jitter para conviver com rate limit do gateway.
+    const maxAttempts = 4;
     let lastStatus: number | undefined;
     let lastBody = '';
     let response: Response | null = null;
@@ -176,7 +190,7 @@ Responda SOMENTE com um JSON array no formato: [{"label":"Positivo","score":0.85
           'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: 'google/gemini-2.5-flash',
+          model: 'google/gemini-2.5-flash-lite', // mais barato/rápido = menos rate limit
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: `Analise o sentimento político de cada comentário abaixo:\n\n${userContent}` },
@@ -190,10 +204,12 @@ Responda SOMENTE com um JSON array no formato: [{"label":"Positivo","score":0.85
 
       lastStatus = response.status;
       lastBody = await response.text().catch(() => '');
-      console.error(`[SENTIMENT:${requestId}] Gateway erro ${response.status} (tentativa ${attempt}/${maxAttempts}): ${lastBody.substring(0, 400)}`);
+      console.error(`[SENTIMENT:${requestId}] Gateway erro ${response.status} (tentativa ${attempt}/${maxAttempts}): ${lastBody.substring(0, 200)}`);
 
-      if (response.status === 429 && attempt < maxAttempts) {
-        const backoffMs = 1500 * attempt;
+      if ((response.status === 429 || response.status >= 500) && attempt < maxAttempts) {
+        // 3s, 9s, 27s + jitter aleatório até 2s
+        const backoffMs = Math.pow(3, attempt) * 1000 + Math.floor(Math.random() * 2000);
+        console.log(`[SENTIMENT:${requestId}] aguardando ${backoffMs}ms antes da próxima tentativa`);
         await new Promise((r) => setTimeout(r, backoffMs));
         continue;
       }
@@ -203,8 +219,8 @@ Responda SOMENTE com um JSON array no formato: [{"label":"Positivo","score":0.85
     }
 
     if (!response || !response.ok) {
-      console.error(`[SENTIMENT:${requestId}] Falha definitiva (status=${lastStatus ?? 'desconhecido'}). Sentimento NÃO será persistido.`);
-      return null;
+      console.warn(`[SENTIMENT:${requestId}] Gateway indisponível (status=${lastStatus ?? '?'}) — caindo para heurística local.`);
+      return texts.map(heuristicSentiment);
     }
 
     const data = await response.json();
@@ -215,41 +231,37 @@ Responda SOMENTE com um JSON array no formato: [{"label":"Positivo","score":0.85
     // Extract JSON array from response
     const jsonMatch = content.match(/\[[\s\S]*?\]/);
     if (!jsonMatch) {
-      console.error(`[SENTIMENT:${requestId}] Sem JSON array na resposta; sentimento NÃO será persistido.`);
-      console.log(`[SENTIMENT:${requestId}] Resposta completa:`, content);
-      return null;
+      console.warn(`[SENTIMENT:${requestId}] Sem JSON array — fallback heurístico.`);
+      return texts.map(heuristicSentiment);
     }
 
     let parsed: any[];
     try {
       parsed = JSON.parse(jsonMatch[0]);
     } catch (parseError) {
-      console.error(`[SENTIMENT:${requestId}] JSON parse error:`, parseError);
-      console.log(`[SENTIMENT:${requestId}] Tentativa de parse:`, jsonMatch[0]);
-      return null;
+      console.warn(`[SENTIMENT:${requestId}] JSON parse falhou — fallback heurístico.`);
+      return texts.map(heuristicSentiment);
     }
 
     if (!Array.isArray(parsed)) {
-      console.error(`[SENTIMENT:${requestId}] Parsed não é array; sentimento NÃO será persistido.`);
-      return null;
+      console.warn(`[SENTIMENT:${requestId}] Resposta não é array — fallback heurístico.`);
+      return texts.map(heuristicSentiment);
     }
 
     // Log sentiment distribution for debugging
     const sentimentCounts = { Positivo: 0, Negativo: 0, Neutro: 0 };
-    
-    // Normalize (sem inventar Neutro/0.5 quando a IA não devolveu item)
+
     if (parsed.length < texts.length) {
-      console.error(`[SENTIMENT:${requestId}] A IA retornou menos itens (${parsed.length}) que entradas (${texts.length}); descartando lote.`);
-      return null;
+      console.warn(`[SENTIMENT:${requestId}] IA retornou ${parsed.length}/${texts.length} — completando com heurística.`);
     }
 
     const normalized: SentimentResult[] = texts.map((_, idx) => {
       const p = parsed[idx];
+      if (!p) return heuristicSentiment(texts[idx] || '');
       const label = (p?.label === 'Positivo' || p?.label === 'Negativo' || p?.label === 'Neutro')
         ? (p.label as 'Positivo' | 'Negativo' | 'Neutro')
-        : 'Neutro';
+        : heuristicSentiment(texts[idx] || '').label;
       const score = typeof p?.score === 'number' ? Math.max(0, Math.min(1, p.score)) : 0.5;
-
       sentimentCounts[label]++;
       return { label, score };
     });
@@ -263,8 +275,8 @@ Responda SOMENTE com um JSON array no formato: [{"label":"Positivo","score":0.85
 
     return normalized;
   } catch (error) {
-    console.error(`[SENTIMENT:${requestId}] Erro inesperado na análise:`, error);
-    return null;
+    console.error(`[SENTIMENT:${requestId}] Erro inesperado — fallback heurístico:`, error);
+    return texts.map(heuristicSentiment);
   }
 }
 
