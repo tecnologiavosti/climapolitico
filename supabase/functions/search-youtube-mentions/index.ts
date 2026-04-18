@@ -231,41 +231,37 @@ Responda SOMENTE com um JSON array no formato: [{"label":"Positivo","score":0.85
     // Extract JSON array from response
     const jsonMatch = content.match(/\[[\s\S]*?\]/);
     if (!jsonMatch) {
-      console.error(`[SENTIMENT:${requestId}] Sem JSON array na resposta; sentimento NÃO será persistido.`);
-      console.log(`[SENTIMENT:${requestId}] Resposta completa:`, content);
-      return null;
+      console.warn(`[SENTIMENT:${requestId}] Sem JSON array — fallback heurístico.`);
+      return texts.map(heuristicSentiment);
     }
 
     let parsed: any[];
     try {
       parsed = JSON.parse(jsonMatch[0]);
     } catch (parseError) {
-      console.error(`[SENTIMENT:${requestId}] JSON parse error:`, parseError);
-      console.log(`[SENTIMENT:${requestId}] Tentativa de parse:`, jsonMatch[0]);
-      return null;
+      console.warn(`[SENTIMENT:${requestId}] JSON parse falhou — fallback heurístico.`);
+      return texts.map(heuristicSentiment);
     }
 
     if (!Array.isArray(parsed)) {
-      console.error(`[SENTIMENT:${requestId}] Parsed não é array; sentimento NÃO será persistido.`);
-      return null;
+      console.warn(`[SENTIMENT:${requestId}] Resposta não é array — fallback heurístico.`);
+      return texts.map(heuristicSentiment);
     }
 
     // Log sentiment distribution for debugging
     const sentimentCounts = { Positivo: 0, Negativo: 0, Neutro: 0 };
-    
-    // Normalize (sem inventar Neutro/0.5 quando a IA não devolveu item)
+
     if (parsed.length < texts.length) {
-      console.error(`[SENTIMENT:${requestId}] A IA retornou menos itens (${parsed.length}) que entradas (${texts.length}); descartando lote.`);
-      return null;
+      console.warn(`[SENTIMENT:${requestId}] IA retornou ${parsed.length}/${texts.length} — completando com heurística.`);
     }
 
     const normalized: SentimentResult[] = texts.map((_, idx) => {
       const p = parsed[idx];
+      if (!p) return heuristicSentiment(texts[idx] || '');
       const label = (p?.label === 'Positivo' || p?.label === 'Negativo' || p?.label === 'Neutro')
         ? (p.label as 'Positivo' | 'Negativo' | 'Neutro')
-        : 'Neutro';
+        : heuristicSentiment(texts[idx] || '').label;
       const score = typeof p?.score === 'number' ? Math.max(0, Math.min(1, p.score)) : 0.5;
-
       sentimentCounts[label]++;
       return { label, score };
     });
