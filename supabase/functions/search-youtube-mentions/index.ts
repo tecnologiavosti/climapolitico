@@ -377,6 +377,7 @@ Deno.serve(async (req) => {
         );
       }
       userId = requestBody.userId;
+      supabase = supabaseService; // bypass RLS for trusted cron
       console.log(`[YOUTUBE] Cron interno user=${userId}`);
     } else {
       const { data: userData, error: authError } = await supabaseService.auth.getUser(token);
