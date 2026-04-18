@@ -439,20 +439,37 @@ Deno.serve(async (req) => {
       if (collected.length >= maxTweets) break;
     }
 
-    // Filter: must mention candidate OR alias (case-insensitive), drop chrome
+    // Filter: must mention candidate OR alias (case + accent-insensitive)
+    const normalize = (s: string) =>
+      (s || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+
     const nameTerms = [candidateName, ...candidateAliases]
-      .map(t => (t || '').trim().toLowerCase())
+      .map(t => normalize((t || '').trim()))
       .filter(t => t.length >= 3);
+
+    // Also accept individual significant words (first/last name) as match
+    const wordTerms = new Set<string>();
+    for (const full of [candidateName, ...candidateAliases]) {
+      for (const part of normalize(full).split(/\s+/)) {
+        if (part.length >= 4) wordTerms.add(part);
+      }
+    }
+    const allTerms = Array.from(new Set([...nameTerms, ...wordTerms]));
 
     const meaningful = collected.filter(t => {
       if (looksLikeChrome(t.text)) return false;
       if (t.author === 'unknown' || !t.author) return false;
-      const lower = t.text.toLowerCase();
-      const mentioned = nameTerms.some(term => lower.includes(term));
+      const lower = normalize(t.text);
+      const mentioned = allTerms.some(term => lower.includes(term));
       if (!mentioned) return false;
       const dedupKey = t.tweetId ? `tweet:${t.tweetId}` : `${t.author}:${t.text.substring(0, 80)}`;
       return !existingKeys.has(dedupKey);
     });
+
+    console.log(`[TWITTER] Bruto=${collected.length} | Filtrado=${meaningful.length} | termos=${allTerms.slice(0,5).join(',')}`);
 
     const newTweets = meaningful.slice(0, maxTweets);
     console.log(`[TWITTER] Bruto=${collected.length} | Filtrado=${meaningful.length} | Novos=${newTweets.length}`);
