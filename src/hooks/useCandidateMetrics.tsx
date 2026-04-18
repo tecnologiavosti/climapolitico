@@ -128,6 +128,9 @@ export function useCandidateMetrics(candidateId: string | null) {
       };
     },
     enabled: !!candidateId && !!user,
+    refetchInterval: 60000,
+    refetchOnWindowFocus: true,
+    staleTime: 30000,
   });
 }
 
