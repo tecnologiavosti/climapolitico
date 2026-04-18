@@ -25,10 +25,17 @@ interface ScrapedTweet {
   tweetId: string | null;
 }
 
-const NITTER_RSS_HOSTS = [
+// Hosts fallback estáticos (usados se o banco estiver vazio)
+const FALLBACK_NITTER_HOSTS = [
   'https://xcancel.com',
   'https://nitter.privacydev.net',
   'https://nitter.poast.org',
+  'https://nitter.privacyredirect.com',
+  'https://nitter.tiekoetter.com',
+  'https://nitter.space',
+  'https://nitter.kareem.one',
+  'https://nitter.lucabased.xyz',
+  'https://nitter.lunar.icu',
 ];
 
 const UA = 'Mozilla/5.0 (compatible; ClimaPoliticoBot/1.0)';
@@ -85,36 +92,61 @@ function parseRss(xml: string): ScrapedTweet[] {
   return out;
 }
 
-async function fetchRss(host: string, query: string): Promise<string | null> {
+async function fetchRss(host: string, query: string): Promise<{ ok: boolean; xml: string | null; error?: string }> {
   const url = `${host}/search/rss?f=tweets&q=${encodeURIComponent(query)}`;
   try {
     const res = await fetch(url, {
       headers: { 'User-Agent': UA, 'Accept': 'application/rss+xml, application/xml, text/xml' },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(12000),
     });
     if (!res.ok) {
-      console.warn(`[TWITTER] ${host} RSS HTTP ${res.status}`);
-      return null;
+      return { ok: false, xml: null, error: `HTTP ${res.status}` };
     }
     const txt = await res.text();
-    if (!txt.includes('<item') && !txt.includes('<rss')) return null;
-    return txt;
+    if (!txt.includes('<item') && !txt.includes('<rss')) {
+      return { ok: false, xml: null, error: 'no rss content' };
+    }
+    return { ok: true, xml: txt };
   } catch (err) {
-    console.warn(`[TWITTER] ${host} RSS erro:`, err instanceof Error ? err.message : err);
-    return null;
+    return { ok: false, xml: null, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
-async function scrapeTwitter(query: string, hardLimit: number): Promise<ScrapedTweet[]> {
-  for (const host of NITTER_RSS_HOSTS) {
-    console.log(`[TWITTER] RSS ${host} → "${query}"`);
-    const xml = await fetchRss(host, query);
-    if (!xml) continue;
-    const tweets = parseRss(xml).slice(0, hardLimit);
-    console.log(`[TWITTER] ${host} retornou ${tweets.length} tweets`);
-    if (tweets.length > 0) return tweets;
+// Coleta paralela: dispara várias instâncias ao mesmo tempo, agrega e dedup.
+async function scrapeTwitter(
+  query: string,
+  hardLimit: number,
+  hosts: string[],
+  onHostResult?: (host: string, ok: boolean, error?: string) => Promise<void>,
+): Promise<ScrapedTweet[]> {
+  const results = await Promise.all(
+    hosts.map(async (host) => {
+      const r = await fetchRss(host, query);
+      if (onHostResult) await onHostResult(host, r.ok, r.error);
+      if (!r.ok || !r.xml) {
+        console.warn(`[TWITTER] ${host} falhou: ${r.error}`);
+        return [] as ScrapedTweet[];
+      }
+      const tweets = parseRss(r.xml);
+      console.log(`[TWITTER] ${host} → ${tweets.length} tweets para "${query}"`);
+      return tweets;
+    })
+  );
+
+  // Dedup por tweetId / link / texto
+  const seen = new Set<string>();
+  const merged: ScrapedTweet[] = [];
+  for (const arr of results) {
+    for (const t of arr) {
+      const key = t.tweetId || t.tweetUrl || `${t.author}::${t.text.substring(0, 80)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(t);
+      if (merged.length >= hardLimit) break;
+    }
+    if (merged.length >= hardLimit) break;
   }
-  return [];
+  return merged;
 }
 
 // Sentiment batch via Lovable AI Gateway
