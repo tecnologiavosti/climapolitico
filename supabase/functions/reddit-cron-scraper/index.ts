@@ -3,7 +3,6 @@
 // Insere em social_interactions com deduplicação por URL única.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { parse } from "https://deno.land/x/xml@2.1.1/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,7 +10,9 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const USER_AGENT = "ClimaPolitico/1.0 (Political Sentiment Monitor)";
+// Reddit exige UA no formato <platform>:<app-id>:<version> (by /u/<username>)
+// UA genérico/fetch é bloqueado com 403 desde 2024.
+const USER_AGENT = "web:climapolitico:v1.0.0 (by /u/climapolitico)";
 
 interface Candidate {
   id: string;
