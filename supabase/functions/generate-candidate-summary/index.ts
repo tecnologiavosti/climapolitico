@@ -156,14 +156,26 @@ serve(async (req) => {
 
     const { data: candidate, error: candError } = await supabaseClient
       .from('candidates')
-      .select('id, full_name, party, region')
+      .select('id, full_name, party, region, user_id')
       .eq('id', candidateId)
-      .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
-    if (candError || !candidate) {
-      return new Response(JSON.stringify({ error: 'Candidato não encontrado' }), {
+    if (candError) {
+      console.error('[SUMMARY] DB error:', candError);
+      return new Response(JSON.stringify({ error: 'Erro ao buscar candidato', details: candError.message }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    if (!candidate) {
+      console.warn(`[SUMMARY] Candidato ${candidateId} não existe na base`);
+      return new Response(JSON.stringify({ error: 'Candidato não encontrado', candidateId }), {
         status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    if (candidate.user_id !== user.id) {
+      console.warn(`[SUMMARY] Candidato ${candidateId} pertence a ${candidate.user_id}, requisitado por ${user.id}`);
+      return new Response(JSON.stringify({ error: 'Candidato pertence a outro usuário' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
