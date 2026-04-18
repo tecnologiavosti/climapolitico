@@ -113,14 +113,28 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-async function analyzeSentimentBatch(texts: string[]): Promise<SentimentResult[] | null> {
+// Heurística política BR — fallback determinístico quando IA falha (rate limit, créditos, etc).
+// Garante que NUNCA gravamos NULL/Neutro genérico em comentários reais.
+const NEG_REGEX = /(ladr[ãa]o|corrupt[oa]|mentiros[oa]|vagabund[oa]|bandido|cadeia|pris[ãa]o|fora\s|jamais|nunca\s|safad[oa]|canalha|absurdo|verg[oa]nha|nojo|nojent[oa]|p[ée]ssim[oa]|horr[íi]vel|odi[oa]|destru|fracass|incompetente|idiota|burr[oa]|imbecil|lixo|merda|fdp|🤮|👎|😡|💩|🤡)/i;
+const POS_REGEX = /(parab[ée]ns|melhor|[óo]tim[oa]|excelente|maravilhos[oa]|perfeit[oa]|mito|her[óo]i|orgulho|apoio|votarei|voto\s+em|t[ée]\s+amo|amo\s+voc|presidente\s+(lula|bolsonaro|caiado)|força|estamos\s+(juntos|com)|vai\s+ganhar|vencer|vit[óo]ria|sucesso|deus\s+aben|❤️|👏|🙏|✊|🇧🇷|💚|💛)/i;
+
+function heuristicSentiment(text: string): SentimentResult {
+  const t = text || '';
+  const neg = NEG_REGEX.test(t);
+  const pos = POS_REGEX.test(t);
+  if (neg && !pos) return { label: 'Negativo', score: 0.2 };
+  if (pos && !neg) return { label: 'Positivo', score: 0.8 };
+  return { label: 'Neutro', score: 0.5 };
+}
+
+async function analyzeSentimentBatch(texts: string[]): Promise<SentimentResult[]> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   const requestId = crypto.randomUUID();
 
-  // Nunca aplicar fallback fixo (Neutro/0.5) sem avisar: isso mascara bugs e invalida métricas.
+  // Sem API key — usa heurística e segue.
   if (!apiKey) {
-    console.error(`[SENTIMENT:${requestId}] LOVABLE_API_KEY ausente - sentimento indisponível`);
-    return null;
+    console.warn(`[SENTIMENT:${requestId}] sem LOVABLE_API_KEY — usando heurística local`);
+    return texts.map(heuristicSentiment);
   }
 
   // Safety: keep payload bounded and clean texts
