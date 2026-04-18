@@ -275,8 +275,8 @@ Responda SOMENTE com um JSON array no formato: [{"label":"Positivo","score":0.85
 
     return normalized;
   } catch (error) {
-    console.error(`[SENTIMENT:${requestId}] Erro inesperado na análise:`, error);
-    return null;
+    console.error(`[SENTIMENT:${requestId}] Erro inesperado — fallback heurístico:`, error);
+    return texts.map(heuristicSentiment);
   }
 }
 
