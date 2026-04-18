@@ -52,13 +52,17 @@ async function collectRedditForCandidate(
   candidate: Candidate,
 ): Promise<{ collected: number; skipped: number }> {
   const query = encodeURIComponent(`"${candidate.full_name}"`);
+  // JSON API pública — funciona melhor que .rss em 2025 com UA correto
   const url =
-    `https://www.reddit.com/search.rss?q=${query}&sort=new&limit=50&restrict_sr=&t=week`;
+    `https://www.reddit.com/search.json?q=${query}&sort=new&limit=50&t=week&raw_json=1`;
 
-  let xmlText: string;
+  let json: any;
   try {
     const res = await fetch(url, {
-      headers: { "User-Agent": USER_AGENT, Accept: "application/atom+xml" },
+      headers: {
+        "User-Agent": USER_AGENT,
+        Accept: "application/json",
+      },
       signal: AbortSignal.timeout(15000),
     });
     if (!res.ok) {
@@ -67,7 +71,7 @@ async function collectRedditForCandidate(
       );
       return { collected: 0, skipped: 0 };
     }
-    xmlText = await res.text();
+    json = await res.json();
   } catch (e) {
     console.warn(
       `[REDDIT-CRON] fetch falhou ${candidate.full_name}: ${(e as Error).message}`,
@@ -75,21 +79,9 @@ async function collectRedditForCandidate(
     return { collected: 0, skipped: 0 };
   }
 
-  let parsed: any;
-  try {
-    parsed = parse(xmlText);
-  } catch (e) {
-    console.warn(
-      `[REDDIT-CRON] parse falhou ${candidate.full_name}: ${(e as Error).message}`,
-    );
-    return { collected: 0, skipped: 0 };
-  }
+  const children: any[] = json?.data?.children ?? [];
 
-  // Reddit RSS = Atom feed
-  const entries = parsed?.feed?.entry;
-  const items: any[] = Array.isArray(entries) ? entries : entries ? [entries] : [];
-
-  if (items.length === 0) {
+  if (children.length === 0) {
     console.log(`[REDDIT-CRON] ${candidate.full_name}: 0 itens no feed`);
     return { collected: 0, skipped: 0 };
   }
@@ -97,24 +89,27 @@ async function collectRedditForCandidate(
   const rows: any[] = [];
   let skipped = 0;
 
-  for (const item of items) {
-    const title = typeof item.title === "string"
-      ? item.title
-      : item.title?.["#text"] ?? "";
-    const contentRaw = typeof item.content === "string"
-      ? item.content
-      : item.content?.["#text"] ?? "";
-    const content = stripHtml(`${title}\n${contentRaw}`).slice(0, 4000);
-
-    const link = item.link?.["@href"] ?? item.link?.href ?? item.link ?? "";
-    const author = item.author?.name ?? "Reddit user";
-    const updated = item.updated ?? item.published ?? new Date().toISOString();
+  for (const child of children) {
+    const d = child?.data;
+    if (!d) {
+      skipped++;
+      continue;
+    }
+    const title = d.title ?? "";
+    const selftext = d.selftext ?? "";
+    const content = stripHtml(`${title}\n${selftext}`).slice(0, 4000);
+    const link = d.permalink ? `https://www.reddit.com${d.permalink}` : (d.url ?? "");
+    const author = d.author ?? "Reddit user";
+    const created = d.created_utc
+      ? new Date(d.created_utc * 1000).toISOString()
+      : new Date().toISOString();
+    const score = typeof d.score === "number" ? d.score : 0;
+    const numComments = typeof d.num_comments === "number" ? d.num_comments : 0;
 
     if (!link || !content) {
       skipped++;
       continue;
     }
-    // Filtro semântico — evita falsos positivos
     if (!semanticMatch(content, candidate.full_name)) {
       skipped++;
       continue;
@@ -128,10 +123,10 @@ async function collectRedditForCandidate(
       comment_text: content,
       comment_author: author,
       author_profile_url: link,
-      original_posted_at: new Date(updated).toISOString(),
+      original_posted_at: created,
       collected_at: new Date().toISOString(),
-      likes_count: 0,
-      replies_count: 0,
+      likes_count: score,
+      replies_count: numComments,
       shares_count: 0,
     });
   }
