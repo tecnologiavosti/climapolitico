@@ -83,8 +83,9 @@ const EventReportPage = () => {
 
   const { data: candidates = [] } = useQuery({
     queryKey: ['candidates-for-event', user?.id],
+    enabled: !!user?.id,
     queryFn: async () => {
-      const { data, error } = await supabase.from('candidates').select('id, full_name, party').order('full_name');
+      const { data, error } = await supabase.from('candidates').select('id, full_name, party').eq('user_id', user!.id).order('full_name');
       if (error) throw error;
       return data || [];
     },
