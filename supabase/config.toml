@@ -74,3 +74,6 @@ verify_jwt = true
 
 [functions.twitter-nitter-scraper]
 verify_jwt = false
+
+[functions.sentiment-cron-refine]
+verify_jwt = false
