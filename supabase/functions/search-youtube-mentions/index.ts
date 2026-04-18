@@ -139,7 +139,7 @@ async function analyzeSentimentBatch(texts: string[]): Promise<SentimentResult[]
 
   // Safety: keep payload bounded and clean texts
   const clipped = texts.map((t) => (t || '').substring(0, 400).trim()).filter(t => t.length > 0);
-  if (clipped.length === 0) return null;
+  if (clipped.length === 0) return texts.map(heuristicSentiment);
 
   console.log(`[SENTIMENT:${requestId}] Entradas=${clipped.length} | Exemplo="${clipped[0].substring(0, 80)}..."`);
 
