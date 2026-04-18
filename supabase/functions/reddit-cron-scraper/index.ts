@@ -70,8 +70,18 @@ async function collectRedditForCandidate(
   try {
     const res = await fetch(url, {
       headers: {
-        "User-Agent": USER_AGENT,
-        Accept: "application/json",
+        "User-Agent": randomUA(),
+        "Accept":
+          "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "Connection": "keep-alive",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Upgrade-Insecure-Requests": "1",
       },
       signal: AbortSignal.timeout(15000),
     });
