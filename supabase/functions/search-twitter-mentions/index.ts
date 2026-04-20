@@ -129,6 +129,66 @@ async function fetchRss(host: string, query: string): Promise<{ ok: boolean; xml
   }
 }
 
+// ====== Coleta de REPLIES de um tweet via página HTML do Nitter ======
+interface NitterReply {
+  text: string;
+  author: string;
+  postedAt: string;
+  url: string | null;
+  likes: number;
+}
+
+function parseNitterReplies(html: string, host: string): NitterReply[] {
+  const out: NitterReply[] = [];
+  // Nitter renderiza replies em <div class="timeline-item"> dentro de .replies / .conversation
+  // Cada bloco contém .username, .tweet-content e .tweet-stats
+  const blocks = html.match(/<div class="timeline-item[^"]*"[\s\S]*?(?=<div class="timeline-item|<\/div>\s*<\/div>\s*<\/main>)/gi) || [];
+  for (const block of blocks) {
+    const userMatch = block.match(/class="username"[^>]*>@?([A-Za-z0-9_]{2,20})/);
+    const textMatch = block.match(/class="tweet-content[^"]*"[^>]*>([\s\S]*?)<\/div>/);
+    const dateMatch = block.match(/class="tweet-date"[^>]*>\s*<a[^>]*title="([^"]+)"[^>]*href="([^"]+)"/);
+    const likesMatch = block.match(/class="icon-heart"[^>]*>\s*<\/span>\s*([\d,\.]+)/);
+    if (!userMatch || !textMatch) continue;
+    const text = decodeHtml(textMatch[1]);
+    if (!text || text.length < 5) continue;
+    const author = userMatch[1];
+    let postedAt = new Date().toISOString();
+    if (dateMatch) {
+      const d = new Date(dateMatch[1]);
+      if (!isNaN(d.getTime())) postedAt = d.toISOString();
+    }
+    const path = dateMatch?.[2] || "";
+    const url = path ? (path.startsWith("http") ? path : `${host}${path}`) : null;
+    const likes = likesMatch ? parseInt(likesMatch[1].replace(/[,.]/g, ""), 10) || 0 : 0;
+    out.push({ text, author, postedAt, url, likes });
+  }
+  return out;
+}
+
+async function fetchTweetReplies(tweetUrl: string, hosts: string[]): Promise<NitterReply[]> {
+  // Converte x.com/twitter.com URL para path /<user>/status/<id>
+  const m = tweetUrl.match(/(?:x\.com|twitter\.com|xcancel\.com|nitter\.[^/]+)\/([A-Za-z0-9_]+\/status\/\d+)/);
+  if (!m) return [];
+  const path = `/${m[1]}`;
+  for (const host of hosts) {
+    try {
+      const url = `${host}${path}`;
+      const res = await fetch(url, {
+        headers: { "User-Agent": randomUA(), "Accept": "text/html" },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) continue;
+      const html = await res.text();
+      const replies = parseNitterReplies(html, host);
+      if (replies.length > 0) {
+        // Primeiro item geralmente é o tweet original — descarta duplicata do autor original se aplicável
+        return replies;
+      }
+    } catch (_e) { /* tenta próximo */ }
+  }
+  return [];
+}
+
 // Coleta paralela: dispara várias instâncias ao mesmo tempo, agrega e dedup.
 async function scrapeTwitter(
   query: string,
@@ -471,6 +531,71 @@ Deno.serve(async (req) => {
 
     console.log(`[TWITTER] === Inseridos=${totalInserted} | Analisados=${totalAnalyzed} ===`);
 
+    // ========= COLETA DE REPLIES via Nitter para tweets coletados =========
+    let repliesInserted = 0;
+    const tweetsForReplies = fresh.filter(t => t.tweetUrl).slice(0, 25); // até 25 threads
+    if (tweetsForReplies.length > 0) {
+      console.log(`[TWITTER-Replies] Buscando replies de ${tweetsForReplies.length} threads`);
+      const replyArrays = await Promise.all(
+        tweetsForReplies.map(t => fetchTweetReplies(t.tweetUrl!, hosts))
+      );
+      const allReplies: any[] = [];
+      for (let i = 0; i < tweetsForReplies.length; i++) {
+        const parent = tweetsForReplies[i];
+        for (const r of replyArrays[i]) {
+          // Pula reply do próprio autor (geralmente é o tweet original repetido)
+          if (r.author.toLowerCase() === parent.author.toLowerCase() && r.text === parent.text) continue;
+          allReplies.push({
+            user_id: ownerUserId,
+            candidate_id: candidateId,
+            social_network: 'Twitter/X',
+            interaction_type: 'reply',
+            comment_text: r.text.slice(0, 4000),
+            comment_author: r.author,
+            author_profile_url: r.url || `https://x.com/${r.author}`,
+            original_posted_at: r.postedAt,
+            collected_at: new Date().toISOString(),
+            likes_count: r.likes,
+            replies_count: 0,
+            shares_count: 0,
+          });
+        }
+      }
+      if (allReplies.length > 0) {
+        // Dedup
+        const replyUrls = allReplies.map(r => r.author_profile_url);
+        const { data: existingReplies } = await db
+          .from('social_interactions')
+          .select('author_profile_url')
+          .eq('candidate_id', candidateId)
+          .eq('social_network', 'Twitter/X')
+          .eq('interaction_type', 'reply')
+          .in('author_profile_url', replyUrls);
+        const exSet = new Set((existingReplies ?? []).map((e: any) => e.author_profile_url));
+        const freshReplies = allReplies.filter(r => !exSet.has(r.author_profile_url));
+        // Analisa sentimento em batches
+        for (let i = 0; i < freshReplies.length; i += 20) {
+          const batch = freshReplies.slice(i, i + 20);
+          const sentiments = await analyzeSentimentBatch(batch.map(r => r.comment_text));
+          batch.forEach((r, idx) => {
+            const s = sentiments?.[idx];
+            r.sentiment_label = s?.label ?? 'Neutro';
+            r.sentiment_score = s?.score ?? 0.5;
+          });
+          const { data: ins, error: repErr } = await db
+            .from('social_interactions')
+            .insert(batch)
+            .select('id');
+          if (repErr) {
+            console.error('[TWITTER-Replies] insert falhou:', repErr.message);
+          } else {
+            repliesInserted += ins?.length || 0;
+          }
+        }
+        console.log(`[TWITTER-Replies] Inseridos=${repliesInserted}`);
+      }
+    }
+
     try {
       await supabaseService.functions.invoke('recalculate-candidate-metrics', {
         body: { candidateId },
@@ -484,6 +609,7 @@ Deno.serve(async (req) => {
       totalFound: collected.length,
       newTweets: fresh.length,
       inserted: totalInserted,
+      repliesInserted,
       analyzed: totalAnalyzed,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 

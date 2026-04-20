@@ -75,6 +75,74 @@ function parseRssItems(xml: string): Array<Record<string, string>> {
   return items;
 }
 
+// Extrai o ID do post Reddit a partir da URL (ex: /r/sub/comments/abc123/titulo/)
+function extractRedditPostId(url: string): string | null {
+  const m = url.match(/\/comments\/([a-z0-9]+)/i);
+  return m ? m[1] : null;
+}
+
+// Coleta comentários de um post via JSON público do Reddit
+// Endpoint: https://www.reddit.com/comments/<id>.json
+interface RedditComment {
+  text: string;
+  author: string;
+  permalink: string;
+  created: string;
+  score: number;
+}
+
+async function fetchRedditComments(postUrl: string, postId: string): Promise<RedditComment[]> {
+  // Reddit retorna 403 para Supabase Edge IPs no domínio principal,
+  // mas .json funciona melhor com User-Agent realista. Tentamos antigos espelhos também.
+  const endpoints = [
+    `https://www.reddit.com/comments/${postId}.json?limit=100&depth=2`,
+    `https://old.reddit.com/comments/${postId}.json?limit=100&depth=2`,
+  ];
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": randomUA(),
+          "Accept": "application/json",
+        },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) {
+        console.warn(`[Reddit-Replies] ${url}: HTTP ${res.status}`);
+        continue;
+      }
+      const data = await res.json();
+      // data[1] = comments listing
+      const listing = Array.isArray(data) ? data[1]?.data?.children : null;
+      if (!Array.isArray(listing)) continue;
+      const out: RedditComment[] = [];
+      const walk = (children: any[]) => {
+        for (const ch of children) {
+          if (ch.kind !== "t1") continue;
+          const d = ch.data;
+          if (!d?.body || d.body === "[deleted]" || d.body === "[removed]") continue;
+          out.push({
+            text: stripHtml(d.body).slice(0, 4000),
+            author: d.author || "anônimo",
+            permalink: `https://reddit.com${d.permalink || ""}`,
+            created: d.created_utc ? new Date(d.created_utc * 1000).toISOString() : new Date().toISOString(),
+            score: d.score || 0,
+          });
+          if (d.replies?.data?.children) walk(d.replies.data.children);
+        }
+      };
+      walk(listing);
+      if (out.length > 0) {
+        console.log(`[Reddit-Replies] ${postId}: ${out.length} comentários`);
+        return out;
+      }
+    } catch (e) {
+      console.warn(`[Reddit-Replies] ${url} falhou: ${(e as Error).message}`);
+    }
+  }
+  return [];
+}
+
 async function fetchViaRssBridge(query: string): Promise<Array<Record<string, string>>> {
   for (const instance of RSS_BRIDGE_INSTANCES) {
     const url =
@@ -220,6 +288,62 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ========= COLETA DE COMENTÁRIOS dos posts inseridos/encontrados =========
+    let repliesInserted = 0;
+    const postsForReplies = rows.slice(0, Math.min(rows.length, 30)); // até 30 posts por execução
+    if (postsForReplies.length > 0) {
+      const allReplies: any[] = [];
+      const replyResults = await Promise.all(
+        postsForReplies.map(async (p) => {
+          const postId = extractRedditPostId(p.author_profile_url);
+          if (!postId) return [];
+          return fetchRedditComments(p.author_profile_url, postId);
+        }),
+      );
+      for (let i = 0; i < postsForReplies.length; i++) {
+        const parent = postsForReplies[i];
+        for (const r of replyResults[i]) {
+          allReplies.push({
+            user_id: userId,
+            candidate_id: candidateId,
+            social_network: "Reddit",
+            interaction_type: "reply",
+            comment_text: r.text,
+            comment_author: `u/${r.author}`,
+            author_profile_url: r.permalink,
+            original_posted_at: r.created,
+            collected_at: new Date().toISOString(),
+            likes_count: r.score,
+            replies_count: 0,
+            shares_count: 0,
+          });
+        }
+      }
+      if (allReplies.length > 0) {
+        const replyUrls = allReplies.map((r) => r.author_profile_url);
+        const { data: existingReplies } = await supabase
+          .from("social_interactions")
+          .select("author_profile_url")
+          .eq("candidate_id", candidateId)
+          .eq("social_network", "Reddit")
+          .eq("interaction_type", "reply")
+          .in("author_profile_url", replyUrls);
+        const exSet = new Set((existingReplies ?? []).map((e: any) => e.author_profile_url));
+        const freshReplies = allReplies.filter((r) => !exSet.has(r.author_profile_url));
+        if (freshReplies.length > 0) {
+          const { error: repErr } = await supabase
+            .from("social_interactions")
+            .insert(freshReplies);
+          if (repErr) {
+            console.error("[Reddit-Replies] insert falhou:", repErr.message);
+          } else {
+            repliesInserted = freshReplies.length;
+            console.log(`[Reddit-Replies] ${candidateName}: ${repliesInserted} comentários inseridos`);
+          }
+        }
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -227,6 +351,7 @@ Deno.serve(async (req) => {
         candidateName,
         total: items.length,
         inserted,
+        repliesInserted,
         skipped,
         duplicates: rows.length - fresh.length,
       }),

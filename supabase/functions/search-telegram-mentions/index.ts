@@ -224,6 +224,79 @@ function parseTelegramHtml(html: string, channel: string): Array<Record<string, 
   return items;
 }
 
+// ====== Coleta de COMENTÁRIOS de um post via discussão linkada ======
+// Telegram canais com grupo de discussão expõem comentários no embed:
+// https://t.me/<canal>/<msg_id>?embed=1&discussion=1&comments_limit=20
+interface TelegramReply {
+  text: string;
+  author: string;
+  url: string;
+  postedAt: string;
+}
+
+function parseTelegramReplies(html: string, channel: string, msgId: string): TelegramReply[] {
+  const out: TelegramReply[] = [];
+  // Cada reply: <div class="tgme_widget_message ..." data-post="discussionGroup/ID">
+  const msgRe = /<div[^>]*class="[^"]*tgme_widget_message\b[^"]*"[^>]*data-post="([^"]+)"[\s\S]*?(?=<div[^>]*class="[^"]*tgme_widget_message\b|<\/section)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = msgRe.exec(html)) !== null) {
+    const block = m[0];
+    const postId = m[1];
+    // Pula o post original (mesmo canal/msgId)
+    if (postId === `${channel}/${msgId}`) continue;
+    const textMatch = block.match(/<div[^>]*class="[^"]*tgme_widget_message_text[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+    const text = textMatch ? stripHtml(textMatch[1]) : "";
+    if (!text || text.length < 5) continue;
+    const authorMatch = block.match(/class="[^"]*tgme_widget_message_author_name[^"]*"[^>]*>([\s\S]*?)<\/a>/i)
+      || block.match(/class="[^"]*tgme_widget_message_owner_name[^"]*"[^>]*>([\s\S]*?)<\/a>/i)
+      || block.match(/class="[^"]*tgme_widget_message_from_author[^"]*"[^>]*>([\s\S]*?)<\/span>/i);
+    const author = authorMatch ? stripHtml(authorMatch[1]) : "Telegram user";
+    const dateMatch = block.match(/<time[^>]*datetime="([^"]+)"/i);
+    const postedAt = dateMatch ? dateMatch[1] : new Date().toISOString();
+    out.push({
+      text: text.slice(0, 4000),
+      author,
+      url: `https://t.me/${postId}`,
+      postedAt,
+    });
+  }
+  return out;
+}
+
+async function fetchTelegramReplies(channel: string, msgId: string): Promise<TelegramReply[]> {
+  const url = `https://t.me/${channel}/${msgId}?embed=1&discussion=1&comments_limit=20&mode=tme`;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": randomUA(),
+        "Accept": "text/html,application/xhtml+xml",
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) {
+      console.warn(`[Telegram-Replies] ${channel}/${msgId}: HTTP ${res.status}`);
+      return [];
+    }
+    const html = await res.text();
+    // Verifica se a página tem widget de comentários (canal precisa ter discussão linkada)
+    if (!html.includes("tgme_widget_message")) return [];
+    const replies = parseTelegramReplies(html, channel, msgId);
+    if (replies.length > 0) {
+      console.log(`[Telegram-Replies] ${channel}/${msgId}: ${replies.length} comentários`);
+    }
+    return replies;
+  } catch (e) {
+    console.warn(`[Telegram-Replies] ${channel}/${msgId} falhou: ${(e as Error).message}`);
+    return [];
+  }
+}
+
+function extractTelegramMsgId(url: string): { channel: string; msgId: string } | null {
+  const m = url.match(/t\.me\/(?:s\/)?([a-zA-Z0-9_]{4,32})\/(\d+)/i);
+  if (!m) return null;
+  return { channel: m[1].toLowerCase(), msgId: m[2] };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -362,6 +435,60 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ========= COLETA DE COMENTÁRIOS via discussão linkada =========
+    let repliesInserted = 0;
+    const postsForReplies = rows.slice(0, Math.min(rows.length, 20));
+    if (postsForReplies.length > 0) {
+      const replyArrays = await Promise.all(
+        postsForReplies.map((p) => {
+          const ref = extractTelegramMsgId(p.author_profile_url);
+          return ref ? fetchTelegramReplies(ref.channel, ref.msgId) : Promise.resolve([]);
+        }),
+      );
+      const allReplies: any[] = [];
+      for (let i = 0; i < postsForReplies.length; i++) {
+        for (const r of replyArrays[i]) {
+          allReplies.push({
+            user_id: userId,
+            candidate_id: candidateId,
+            social_network: "Telegram",
+            interaction_type: "reply",
+            comment_text: r.text,
+            comment_author: r.author,
+            author_profile_url: r.url,
+            original_posted_at: r.postedAt,
+            collected_at: new Date().toISOString(),
+            likes_count: 0,
+            replies_count: 0,
+            shares_count: 0,
+          });
+        }
+      }
+      if (allReplies.length > 0) {
+        const replyUrls = allReplies.map((r) => r.author_profile_url);
+        const { data: existingReplies } = await supabase
+          .from("social_interactions")
+          .select("author_profile_url")
+          .eq("candidate_id", candidateId)
+          .eq("social_network", "Telegram")
+          .eq("interaction_type", "reply")
+          .in("author_profile_url", replyUrls);
+        const exSet = new Set((existingReplies ?? []).map((e: any) => e.author_profile_url));
+        const freshReplies = allReplies.filter((r) => !exSet.has(r.author_profile_url));
+        if (freshReplies.length > 0) {
+          const { error: repErr } = await supabase
+            .from("social_interactions")
+            .insert(freshReplies);
+          if (repErr) {
+            console.error("[Telegram-Replies] insert falhou:", repErr.message);
+          } else {
+            repliesInserted = freshReplies.length;
+            console.log(`[Telegram-Replies] ${candidateName}: ${repliesInserted} comentários inseridos`);
+          }
+        }
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -371,6 +498,7 @@ Deno.serve(async (req) => {
         totalItemsFound: totalItems,
         matched: rows.length,
         inserted,
+        repliesInserted,
         skipped,
         duplicates: rows.length - fresh.length,
       }),
