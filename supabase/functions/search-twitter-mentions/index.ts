@@ -1,5 +1,6 @@
-// Coleta tweets via RSS de instâncias Nitter (xcancel/nitter) — leve, rápido e estável.
-// Mantém a mesma API: { candidateId, candidateName, candidateAliases?, userId?, maxTweets? }
+// Coleta tweets via RSS-Bridge (TwitterBridge) — mesma estratégia do Reddit.
+// Resolve 403/502/503 das instâncias Nitter. API mantida:
+// { candidateId, candidateName, candidateAliases?, userId?, maxTweets? }
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -25,20 +26,25 @@ interface ScrapedTweet {
   tweetId: string | null;
 }
 
-// Hosts fallback estáticos (usados se o banco estiver vazio)
-const FALLBACK_NITTER_HOSTS = [
-  'https://xcancel.com',
-  'https://nitter.privacydev.net',
-  'https://nitter.poast.org',
-  'https://nitter.privacyredirect.com',
-  'https://nitter.tiekoetter.com',
-  'https://nitter.space',
-  'https://nitter.kareem.one',
-  'https://nitter.lucabased.xyz',
-  'https://nitter.lunar.icu',
+// Instâncias públicas RSS-Bridge (mesmas do Reddit, todas suportam TwitterBridge)
+const RSS_BRIDGE_INSTANCES = [
+  'https://rss-bridge.org/bridge01',
+  'https://wtf.roflcopter.fr/rss-bridge',
+  'https://rss-bridge.lewd.tech',
+  'https://rssbridge.flossboxin.org.in',
+  'https://rss.nixnet.services',
+  'https://bridge.suumitsu.eu',
 ];
 
-const UA = 'Mozilla/5.0 (compatible; ClimaPoliticoBot/1.0)';
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+];
+
+function randomUA(): string {
+  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+}
 
 function decodeHtml(s: string): string {
   return (s || '')
@@ -71,7 +77,7 @@ function parseRss(xml: string): ScrapedTweet[] {
     const description = decodeHtml(pick(it, 'description'));
     const text = description || titleRaw;
     if (!text || text.length < 10) continue;
-    const author = creator || (link.match(/(?:x\.com|twitter\.com|xcancel\.com|nitter\.[^/]+)\/([A-Za-z0-9_]{2,15})/)?.[1] || '');
+    const author = creator || (link.match(/(?:x\.com|twitter\.com|nitter\.[^/]+)\/([A-Za-z0-9_]{2,15})/)?.[1] || '');
     if (!author) continue;
     let postedAt = new Date().toISOString();
     const d = new Date(pubDate);
@@ -92,64 +98,49 @@ function parseRss(xml: string): ScrapedTweet[] {
   return out;
 }
 
-async function fetchRss(host: string, query: string): Promise<{ ok: boolean; xml: string | null; error?: string }> {
-  const url = `${host}/search/rss?f=tweets&q=${encodeURIComponent(query)}`;
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': UA, 'Accept': 'application/rss+xml, application/xml, text/xml' },
-      signal: AbortSignal.timeout(12000),
-    });
-    if (!res.ok) {
-      return { ok: false, xml: null, error: `HTTP ${res.status}` };
-    }
-    const txt = await res.text();
-    if (!txt.includes('<item') && !txt.includes('<rss')) {
-      return { ok: false, xml: null, error: 'no rss content' };
-    }
-    return { ok: true, xml: txt };
-  } catch (err) {
-    return { ok: false, xml: null, error: err instanceof Error ? err.message : String(err) };
-  }
+function semanticMatch(text: string, query: string): boolean {
+  const t = text.toLowerCase();
+  const tokens = query.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
+  if (tokens.length === 0) return true;
+  return tokens.every(tok => t.includes(tok));
 }
 
-// Coleta paralela: dispara várias instâncias ao mesmo tempo, agrega e dedup.
-async function scrapeTwitter(
-  query: string,
-  hardLimit: number,
-  hosts: string[],
-  onHostResult?: (host: string, ok: boolean, error?: string) => Promise<void>,
-): Promise<ScrapedTweet[]> {
-  const results = await Promise.all(
-    hosts.map(async (host) => {
-      const r = await fetchRss(host, query);
-      if (onHostResult) await onHostResult(host, r.ok, r.error);
-      if (!r.ok || !r.xml) {
-        console.warn(`[TWITTER] ${host} falhou: ${r.error}`);
-        return [] as ScrapedTweet[];
+// Coleta via RSS-Bridge TwitterBridge — tenta cada instância com fallback
+async function fetchViaRssBridge(query: string): Promise<ScrapedTweet[]> {
+  for (const instance of RSS_BRIDGE_INSTANCES) {
+    // TwitterBridge "By keyword/hashtag": context=By+keyword%2Fhashtag&q=...
+    const url = `${instance}/?action=display&bridge=TwitterBridge&context=By+keyword%2Fhashtag&q=${encodeURIComponent(query)}&format=Mrss`;
+    try {
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': randomUA(),
+          'Accept': 'application/rss+xml, application/xml, text/xml',
+        },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) {
+        console.warn(`[TWITTER-RSS] ${instance} HTTP ${res.status}`);
+        continue;
       }
-      const tweets = parseRss(r.xml);
-      console.log(`[TWITTER] ${host} → ${tweets.length} tweets para "${query}"`);
-      return tweets;
-    })
-  );
-
-  // Dedup por tweetId / link / texto
-  const seen = new Set<string>();
-  const merged: ScrapedTweet[] = [];
-  for (const arr of results) {
-    for (const t of arr) {
-      const key = t.tweetId || t.tweetUrl || `${t.author}::${t.text.substring(0, 80)}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      merged.push(t);
-      if (merged.length >= hardLimit) break;
+      const xml = await res.text();
+      if (!xml.includes('<item') && !xml.includes('<rss')) {
+        console.warn(`[TWITTER-RSS] ${instance} sem conteúdo RSS`);
+        continue;
+      }
+      const tweets = parseRss(xml);
+      if (tweets.length > 0) {
+        console.log(`[TWITTER-RSS] ${instance} → ${tweets.length} tweets para "${query}"`);
+        return tweets;
+      }
+    } catch (err) {
+      console.warn(`[TWITTER-RSS] ${instance} erro:`, err instanceof Error ? err.message : err);
     }
-    if (merged.length >= hardLimit) break;
   }
-  return merged;
+  console.warn(`[TWITTER-RSS] todas as instâncias falharam para "${query}"`);
+  return [];
 }
 
-// Sentiment batch — usa Groq (rápido, alto rate limit) com fallback Lovable AI Gateway.
+// Sentiment batch — Groq com fallback Lovable AI Gateway.
 async function analyzeSentimentBatch(texts: string[]): Promise<SentimentResult[] | null> {
   if (texts.length === 0) return null;
   const clipped = texts.map(t => (t || '').substring(0, 400).trim());
@@ -165,7 +156,6 @@ Responda APENAS um array JSON com EXATAMENTE ${clipped.length} itens, na MESMA o
 
   const userPrompt = clipped.map((t, i) => `${i + 1}. ${t || '[vazio]'}`).join('\n');
 
-  // 1) Tenta Groq
   const groqKey = Deno.env.get('GROQ_API_KEY');
   if (groqKey) {
     try {
@@ -206,7 +196,6 @@ Responda APENAS um array JSON com EXATAMENTE ${clipped.length} itens, na MESMA o
     }
   }
 
-  // 2) Fallback: Lovable AI Gateway
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) return null;
   try {
@@ -273,7 +262,6 @@ Deno.serve(async (req) => {
         });
       }
       userId = requestBody.userId;
-      console.log(`[TWITTER] Cron interno user=${userId}`);
     } else {
       const { data: userData, error: authError } = await supabaseService.auth.getUser(token);
       if (authError || !userData?.user) {
@@ -299,14 +287,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Use service-role client for ownership lookup (we manually enforce user_id check below)
     const { data: candidateRecord, error: candidateError } = await supabaseService
       .from('candidates')
       .select('id, user_id')
       .eq('id', candidateId)
       .maybeSingle();
     if (candidateError) {
-      console.error('[TWITTER] erro lookup candidato:', candidateError);
       return new Response(JSON.stringify({ error: 'Erro ao validar candidato', details: candidateError.message }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -316,7 +302,6 @@ Deno.serve(async (req) => {
         status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-    // Permite admins coletarem para qualquer candidato; senão exige ownership
     let isAdmin = false;
     if (!isInternalCronRequest && candidateRecord.user_id !== userId) {
       const { data: roleRow } = await supabaseService
@@ -332,14 +317,12 @@ Deno.serve(async (req) => {
         });
       }
     }
-    // Atribui inserts ao dono do candidato (não ao admin executor)
-    // Atribui inserts ao dono do candidato (não ao admin executor)
     const ownerUserId = candidateRecord.user_id;
     if (ownerUserId !== userId) db = supabaseService;
 
-    console.log(`[TWITTER] === "${candidateName}" (max=${maxTweets}) ===`);
+    console.log(`[TWITTER] === "${candidateName}" via RSS-Bridge (max=${maxTweets}) ===`);
 
-    // Build queries: nome completo + aliases (cada um vira uma busca RSS separada)
+    // Queries: nome principal + aliases
     const queries = new Set<string>();
     queries.add(candidateName);
     for (const a of candidateAliases) {
@@ -347,7 +330,7 @@ Deno.serve(async (req) => {
       if (v && v !== candidateName) queries.add(v);
     }
 
-    // dedup com últimos 2000 tweets já no banco
+    // Dedup com últimos 2000 tweets já no banco
     const { data: existing } = await db
       .from('social_interactions')
       .select('comment_text, comment_author, author_profile_url')
@@ -367,51 +350,26 @@ Deno.serve(async (req) => {
       }
     });
 
-    // Carrega instâncias Nitter ativas do banco (saudáveis primeiro)
-    const { data: instanceRows } = await supabaseService
-      .from('nitter_instances')
-      .select('id, url, last_error_at')
-      .eq('is_active', true)
-      .order('last_error_at', { ascending: true, nullsFirst: true })
-      .limit(8);
-    const hosts = (instanceRows && instanceRows.length > 0)
-      ? instanceRows.map((r: any) => r.url as string)
-      : FALLBACK_NITTER_HOSTS;
-    const hostIdByUrl = new Map<string, string>();
-    (instanceRows || []).forEach((r: any) => hostIdByUrl.set(r.url, r.id));
-
-    const onHostResult = async (host: string, ok: boolean, error?: string) => {
-      const id = hostIdByUrl.get(host);
-      if (!id) return;
-      if (ok) {
-        await supabaseService.from('nitter_instances').update({
-          last_checked: new Date().toISOString(),
-        }).eq('id', id);
-      } else {
-        await supabaseService.from('nitter_instances').update({
-          last_error_at: new Date().toISOString(),
-          last_error_message: (error || 'unknown').substring(0, 200),
-          last_checked: new Date().toISOString(),
-        }).eq('id', id);
-      }
-    };
-
+    // Coleta paralela via RSS-Bridge para cada query
     const collected: ScrapedTweet[] = [];
     const seen = new Set<string>();
-    const perQuery = Math.max(40, Math.ceil(maxTweets / queries.size));
 
-    for (const q of queries) {
-      const partial = await scrapeTwitter(q, perQuery, hosts, onHostResult);
-      for (const t of partial) {
+    const results = await Promise.all(
+      Array.from(queries).map(q => fetchViaRssBridge(q).then(tweets => ({ q, tweets })))
+    );
+
+    for (const { q, tweets } of results) {
+      for (const t of tweets) {
+        if (!semanticMatch(t.text, q) && !semanticMatch(t.text, candidateName)) continue;
         const k = t.tweetId ? `tweet:${t.tweetId}` : `${t.author}:${t.text.substring(0, 80)}`;
         if (seen.has(k)) continue;
         seen.add(k);
         collected.push(t);
+        if (collected.length >= maxTweets) break;
       }
       if (collected.length >= maxTweets) break;
     }
 
-    // Filter: dedupe contra banco; menção é garantida (RSS é por busca exata)
     const fresh = collected.filter(t => {
       const k = t.tweetId ? `tweet:${t.tweetId}` : `${t.author}:${t.text.substring(0, 80)}`;
       return !existingKeys.has(k);
