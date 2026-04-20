@@ -406,6 +406,9 @@ Deno.serve(async (req) => {
 
     console.log(`[TWITTER] === "${candidateName}" via Nitter (max=${maxTweets}) ===`);
 
+    // === Background job: coleta + análise + replies ===
+    const backgroundJob = (async () => {
+     try {
     const queries = new Set<string>();
     queries.add(candidateName);
     for (const a of candidateAliases) {
@@ -604,14 +607,22 @@ Deno.serve(async (req) => {
       console.warn('[TWITTER] recalc falhou:', err);
     }
 
+    console.log(`[TWITTER-BG] complete: inserted=${totalInserted} replies=${repliesInserted}`);
+     } catch (bgErr) {
+       console.error('[TWITTER-BG] erro:', bgErr);
+     }
+    })();
+
+    // @ts-ignore EdgeRuntime is provided by Supabase Edge Runtime
+    if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
+      // @ts-ignore
+      EdgeRuntime.waitUntil(backgroundJob);
+    }
+
     return new Response(JSON.stringify({
-      success: true,
-      totalFound: collected.length,
-      newTweets: fresh.length,
-      inserted: totalInserted,
-      repliesInserted,
-      analyzed: totalAnalyzed,
-    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      success: true, accepted: true,
+      message: 'Coleta Twitter/X iniciada em background',
+    }), { status: 202, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error: unknown) {
     console.error('[TWITTER] erro fatal:', error);

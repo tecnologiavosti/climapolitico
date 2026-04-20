@@ -366,6 +366,9 @@ Deno.serve(async (req) => {
 
     console.log(`[Telegram] Varrendo ${channelsToScan.size} canais para "${candidateName}"`);
 
+    // === Background job ===
+    const backgroundJob = (async () => {
+     try {
     // Busca todos os feeds em paralelo
     const channels = [...channelsToScan];
     const results = await Promise.all(channels.map((c) => fetchChannelRss(c)));
@@ -414,21 +417,8 @@ Deno.serve(async (req) => {
     }
 
     if (rows.length === 0) {
-      return new Response(
-        JSON.stringify({
-          success: true,
-          source: "telegram",
-          candidateName,
-          channelsScanned: channels.length,
-          totalItemsFound: totalItems,
-          inserted: 0,
-          skipped,
-          message: totalItems === 0
-            ? "Nenhum canal retornou itens via RSSHub/RSS-Bridge."
-            : "Nenhuma menção encontrada nos canais varridos.",
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      console.log(`[Telegram-BG] 0 matches em ${channels.length} canais`);
+      return;
     }
 
     // Dedup por author_profile_url (URL do post)
@@ -509,20 +499,21 @@ Deno.serve(async (req) => {
       }
     }
 
+    console.log(`[Telegram-BG] complete: inserted=${inserted} replies=${repliesInserted}`);
+     } catch (bgErr) {
+       console.error('[Telegram-BG] erro:', bgErr);
+     }
+    })();
+
+    // @ts-ignore EdgeRuntime
+    if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
+      // @ts-ignore
+      EdgeRuntime.waitUntil(backgroundJob);
+    }
+
     return new Response(
-      JSON.stringify({
-        success: true,
-        source: "telegram",
-        candidateName,
-        channelsScanned: channels.length,
-        totalItemsFound: totalItems,
-        matched: rows.length,
-        inserted,
-        repliesInserted,
-        skipped,
-        duplicates: rows.length - fresh.length,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      JSON.stringify({ success: true, accepted: true, message: 'Coleta Telegram iniciada em background' }),
+      { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Erro desconhecido";
