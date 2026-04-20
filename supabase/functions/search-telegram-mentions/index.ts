@@ -224,7 +224,78 @@ function parseTelegramHtml(html: string, channel: string): Array<Record<string, 
   return items;
 }
 
-Deno.serve(async (req) => {
+// ====== Coleta de COMENTÁRIOS de um post via discussão linkada ======
+// Telegram canais com grupo de discussão expõem comentários no embed:
+// https://t.me/<canal>/<msg_id>?embed=1&discussion=1&comments_limit=20
+interface TelegramReply {
+  text: string;
+  author: string;
+  url: string;
+  postedAt: string;
+}
+
+function parseTelegramReplies(html: string, channel: string, msgId: string): TelegramReply[] {
+  const out: TelegramReply[] = [];
+  // Cada reply: <div class="tgme_widget_message ..." data-post="discussionGroup/ID">
+  const msgRe = /<div[^>]*class="[^"]*tgme_widget_message\b[^"]*"[^>]*data-post="([^"]+)"[\s\S]*?(?=<div[^>]*class="[^"]*tgme_widget_message\b|<\/section)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = msgRe.exec(html)) !== null) {
+    const block = m[0];
+    const postId = m[1];
+    // Pula o post original (mesmo canal/msgId)
+    if (postId === `${channel}/${msgId}`) continue;
+    const textMatch = block.match(/<div[^>]*class="[^"]*tgme_widget_message_text[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+    const text = textMatch ? stripHtml(textMatch[1]) : "";
+    if (!text || text.length < 5) continue;
+    const authorMatch = block.match(/class="[^"]*tgme_widget_message_author_name[^"]*"[^>]*>([\s\S]*?)<\/a>/i)
+      || block.match(/class="[^"]*tgme_widget_message_owner_name[^"]*"[^>]*>([\s\S]*?)<\/a>/i)
+      || block.match(/class="[^"]*tgme_widget_message_from_author[^"]*"[^>]*>([\s\S]*?)<\/span>/i);
+    const author = authorMatch ? stripHtml(authorMatch[1]) : "Telegram user";
+    const dateMatch = block.match(/<time[^>]*datetime="([^"]+)"/i);
+    const postedAt = dateMatch ? dateMatch[1] : new Date().toISOString();
+    out.push({
+      text: text.slice(0, 4000),
+      author,
+      url: `https://t.me/${postId}`,
+      postedAt,
+    });
+  }
+  return out;
+}
+
+async function fetchTelegramReplies(channel: string, msgId: string): Promise<TelegramReply[]> {
+  const url = `https://t.me/${channel}/${msgId}?embed=1&discussion=1&comments_limit=20&mode=tme`;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": randomUA(),
+        "Accept": "text/html,application/xhtml+xml",
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) {
+      console.warn(`[Telegram-Replies] ${channel}/${msgId}: HTTP ${res.status}`);
+      return [];
+    }
+    const html = await res.text();
+    // Verifica se a página tem widget de comentários (canal precisa ter discussão linkada)
+    if (!html.includes("tgme_widget_message")) return [];
+    const replies = parseTelegramReplies(html, channel, msgId);
+    if (replies.length > 0) {
+      console.log(`[Telegram-Replies] ${channel}/${msgId}: ${replies.length} comentários`);
+    }
+    return replies;
+  } catch (e) {
+    console.warn(`[Telegram-Replies] ${channel}/${msgId} falhou: ${(e as Error).message}`);
+    return [];
+  }
+}
+
+function extractTelegramMsgId(url: string): { channel: string; msgId: string } | null {
+  const m = url.match(/t\.me\/(?:s\/)?([a-zA-Z0-9_]{4,32})\/(\d+)/i);
+  if (!m) return null;
+  return { channel: m[1].toLowerCase(), msgId: m[2] };
+}
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
