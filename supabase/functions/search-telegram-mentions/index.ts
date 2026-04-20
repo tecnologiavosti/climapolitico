@@ -433,6 +433,60 @@ function extractTelegramMsgId(url: string): { channel: string; msgId: string } |
       }
     }
 
+    // ========= COLETA DE COMENTÁRIOS via discussão linkada =========
+    let repliesInserted = 0;
+    const postsForReplies = rows.slice(0, Math.min(rows.length, 20));
+    if (postsForReplies.length > 0) {
+      const replyArrays = await Promise.all(
+        postsForReplies.map((p) => {
+          const ref = extractTelegramMsgId(p.author_profile_url);
+          return ref ? fetchTelegramReplies(ref.channel, ref.msgId) : Promise.resolve([]);
+        }),
+      );
+      const allReplies: any[] = [];
+      for (let i = 0; i < postsForReplies.length; i++) {
+        for (const r of replyArrays[i]) {
+          allReplies.push({
+            user_id: userId,
+            candidate_id: candidateId,
+            social_network: "Telegram",
+            interaction_type: "reply",
+            comment_text: r.text,
+            comment_author: r.author,
+            author_profile_url: r.url,
+            original_posted_at: r.postedAt,
+            collected_at: new Date().toISOString(),
+            likes_count: 0,
+            replies_count: 0,
+            shares_count: 0,
+          });
+        }
+      }
+      if (allReplies.length > 0) {
+        const replyUrls = allReplies.map((r) => r.author_profile_url);
+        const { data: existingReplies } = await supabase
+          .from("social_interactions")
+          .select("author_profile_url")
+          .eq("candidate_id", candidateId)
+          .eq("social_network", "Telegram")
+          .eq("interaction_type", "reply")
+          .in("author_profile_url", replyUrls);
+        const exSet = new Set((existingReplies ?? []).map((e: any) => e.author_profile_url));
+        const freshReplies = allReplies.filter((r) => !exSet.has(r.author_profile_url));
+        if (freshReplies.length > 0) {
+          const { error: repErr } = await supabase
+            .from("social_interactions")
+            .insert(freshReplies);
+          if (repErr) {
+            console.error("[Telegram-Replies] insert falhou:", repErr.message);
+          } else {
+            repliesInserted = freshReplies.length;
+            console.log(`[Telegram-Replies] ${candidateName}: ${repliesInserted} comentários inseridos`);
+          }
+        }
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -442,6 +496,7 @@ function extractTelegramMsgId(url: string): { channel: string; msgId: string } |
         totalItemsFound: totalItems,
         matched: rows.length,
         inserted,
+        repliesInserted,
         skipped,
         duplicates: rows.length - fresh.length,
       }),
