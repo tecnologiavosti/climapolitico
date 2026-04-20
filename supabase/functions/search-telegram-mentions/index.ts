@@ -296,6 +296,8 @@ function extractTelegramMsgId(url: string): { channel: string; msgId: string } |
   if (!m) return null;
   return { channel: m[1].toLowerCase(), msgId: m[2] };
 }
+
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
