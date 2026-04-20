@@ -183,7 +183,7 @@ Deno.serve(async (req) => {
       .select('id')
       .eq('user_id', userId)
       .eq('candidate_id', candidateId)
-      .single();
+      .maybeSingle();
 
     if (existingCache) {
       // Update existing
