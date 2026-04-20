@@ -91,7 +91,7 @@ Deno.serve(async (req) => {
       .from('candidates')
       .select('followers')
       .eq('id', candidateId)
-      .single();
+      .maybeSingle();
 
     // Calculate metrics
     const totalMentions = interactions?.length || 0;
