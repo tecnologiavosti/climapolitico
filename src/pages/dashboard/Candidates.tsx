@@ -333,6 +333,8 @@ export default function Candidates() {
       toast.error('Erro ao buscar comentários: ' + error.message);
     },
   });
+
+  const reanalyzeSentimentMutation = useMutation({
     mutationFn: async () => {
       const { data, error } = await supabase.functions.invoke('reanalyze-sentiment', {
         body: { batchSize: 50, maxToProcess: 500 }
