@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, ChevronUp, BarChart3, RefreshCw, Twitter, MessageCircle, Send } from "lucide-react";
+import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, ChevronUp, BarChart3, RefreshCw, Twitter, MessageCircle, Send, MessagesSquare } from "lucide-react";
 // ArrowUpRight, ArrowDownRight, Minus removidos temporariamente (coluna Tendência oculta)
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 
@@ -309,7 +309,30 @@ export default function Candidates() {
     },
   });
 
-  const reanalyzeSentimentMutation = useMutation({
+  // Backfill replies sobre posts existentes (Reddit/Twitter/Telegram)
+  const backfillRepliesMutation = useMutation({
+    mutationFn: async ({ candidateId }: { candidateId: string }) => {
+      const { data, error } = await supabase.functions.invoke('backfill-replies', {
+        body: { candidateId, days: 7, perNetworkLimit: 30 }
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+      const s = data?.summary || {};
+      const total = (s.Reddit?.replies || 0) + (s["Twitter/X"]?.replies || 0) + (s.Telegram?.replies || 0);
+      toast.success(
+        `Backfill concluído: +${total} comentários (Reddit ${s.Reddit?.replies || 0} | Twitter ${s["Twitter/X"]?.replies || 0} | Telegram ${s.Telegram?.replies || 0})`,
+        { duration: 6000 }
+      );
+    },
+    onError: (error: Error) => {
+      console.error('Backfill error:', error);
+      toast.error('Erro ao buscar comentários: ' + error.message);
+    },
+  });
     mutationFn: async () => {
       const { data, error } = await supabase.functions.invoke('reanalyze-sentiment', {
         body: { batchSize: 50, maxToProcess: 500 }
