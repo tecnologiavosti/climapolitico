@@ -282,6 +282,7 @@ export default function Overview() {
       { fn: 'search-google-news', label: 'Google News' },
       { fn: 'search-wikipedia', label: 'Wikipedia' },
       { fn: 'search-reddit-mentions', label: 'Reddit' },
+      { fn: 'search-telegram-mentions', label: 'Telegram' },
     ];
     const totalJobs = candidates.length * sources.length;
     let dispatched = 0;
