@@ -22,14 +22,18 @@ const RSSHUB_INSTANCES = [
   "https://rsshub.rssforever.com",
   "https://rss.shab.fun",
   "https://rsshub.pseudoyu.com",
+  "https://rsshub.atgw.io",
+  "https://rsshub.kt.gy",
+  "https://rss.injahow.cn",
 ];
 
 // RSS-Bridge instances (público). Endpoint: TelegramBridge by @username
 const RSS_BRIDGE_INSTANCES = [
   "https://rss-bridge.org/bridge01",
   "https://bridge.sysadmins.ws",
-  "https://rssbridge.pw",
   "https://rss.nixnet.services",
+  "https://wtf.roflcopter.fr/rss-bridge",
+  "https://rss.0v0.email",
 ];
 
 // Canais brasileiros de imprensa/política para varrer em busca de menções.
@@ -164,7 +168,60 @@ async function fetchChannelRss(channel: string): Promise<Array<Record<string, st
       console.warn(`[Telegram] Bridge ${inst}/${channel} falhou: ${(e as Error).message}`);
     }
   }
+  // Fallback final: scrape HTML público de t.me/s/<canal>
+  // Esta página é renderizada pelo próprio Telegram e é sempre pública.
+  try {
+    const url = `https://t.me/s/${channel}`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": randomUA(),
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+      },
+      signal: AbortSignal.timeout(12000),
+    });
+    if (res.ok) {
+      const html = await res.text();
+      const items = parseTelegramHtml(html, channel);
+      if (items.length > 0) {
+        console.log(`[Telegram] t.me/s/${channel}: ${items.length} itens (HTML)`);
+        return items;
+      }
+      console.warn(`[Telegram] t.me/s/${channel}: HTML sem mensagens (canal privado?)`);
+    } else {
+      console.warn(`[Telegram] t.me/s/${channel}: HTTP ${res.status}`);
+    }
+  } catch (e) {
+    console.warn(`[Telegram] t.me/s/${channel} falhou: ${(e as Error).message}`);
+  }
   return [];
+}
+
+// Parser para a página pública t.me/s/<canal>
+function parseTelegramHtml(html: string, channel: string): Array<Record<string, string>> {
+  const items: Array<Record<string, string>> = [];
+  // Cada mensagem fica em <div class="tgme_widget_message ..." data-post="canal/ID">
+  const msgRe = /<div[^>]*class="[^"]*tgme_widget_message\b[^"]*"[^>]*data-post="([^"]+)"[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = msgRe.exec(html)) !== null) {
+    const block = m[0];
+    const postId = m[1]; // ex: "g1noticias/12345"
+    // Texto da mensagem
+    const textMatch = block.match(/<div[^>]*class="[^"]*tgme_widget_message_text[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+    const text = textMatch ? stripHtml(textMatch[1]) : "";
+    if (!text || text.length < 10) continue;
+    // Data do post
+    const dateMatch = block.match(/<time[^>]*datetime="([^"]+)"/i);
+    const pubDate = dateMatch ? dateMatch[1] : new Date().toISOString();
+    items.push({
+      title: text.slice(0, 200),
+      link: `https://t.me/${postId}`,
+      description: text,
+      author: `@${channel}`,
+      pubDate,
+    });
+  }
+  return items;
 }
 
 Deno.serve(async (req) => {
