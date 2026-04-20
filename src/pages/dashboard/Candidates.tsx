@@ -742,7 +742,30 @@ export default function Candidates() {
                                 </TooltipContent>
                               </Tooltip>
 
-                              {/* AI Analysis Button */}
+                              {/* Backfill Replies Button */}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="bg-violet-500/10 hover:bg-violet-500/20 border-violet-500/30"
+                                    onClick={() => backfillRepliesMutation.mutate({ candidateId: candidate.id })}
+                                    disabled={backfillRepliesMutation.isPending}
+                                  >
+                                    {backfillRepliesMutation.isPending ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <MessagesSquare className="h-4 w-4 text-violet-500" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Backfill de comentários (7 dias)</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Busca replies em posts já coletados (Reddit, Twitter, Telegram)
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Button
