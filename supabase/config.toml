@@ -77,3 +77,6 @@ verify_jwt = false
 
 [functions.sentiment-cron-refine]
 verify_jwt = false
+
+[functions.search-telegram-mentions]
+verify_jwt = false

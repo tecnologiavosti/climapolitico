@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, ChevronUp, BarChart3, RefreshCw, Twitter, MessageCircle } from "lucide-react";
+import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, ChevronUp, BarChart3, RefreshCw, Twitter, MessageCircle, Send } from "lucide-react";
 // ArrowUpRight, ArrowDownRight, Minus removidos temporariamente (coluna Tendência oculta)
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 
@@ -277,6 +277,35 @@ export default function Candidates() {
     onError: (error: Error) => {
       console.error('Reddit collection error:', error);
       toast.error('Erro ao coletar dados do Reddit: ' + error.message);
+    },
+  });
+
+  // Telegram collection mutation
+  const telegramCollectionMutation = useMutation({
+    mutationFn: async ({ candidateId, candidateName }: { candidateId: string; candidateName: string }) => {
+      const { data, error } = await supabase.functions.invoke('search-telegram-mentions', {
+        body: { candidateId, candidateName }
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+      const inserted = data?.inserted ?? 0;
+      const scanned = data?.channelsScanned ?? 0;
+      toast.success(
+        `Telegram: +${inserted} posts coletados (${scanned} canais varridos).`,
+        { duration: 5000 }
+      );
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+    },
+    onError: (error: Error) => {
+      console.error('Telegram collection error:', error);
+      toast.error('Erro ao coletar dados do Telegram: ' + error.message);
     },
   });
 
@@ -656,6 +685,34 @@ export default function Candidates() {
                                   <p>Coletar dados do Reddit</p>
                                   <p className="text-xs text-muted-foreground">
                                     Busca posts e comentários públicos
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+
+                              {/* Telegram Collection Button */}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30"
+                                    onClick={() => telegramCollectionMutation.mutate({
+                                      candidateId: candidate.id,
+                                      candidateName: candidate.full_name
+                                    })}
+                                    disabled={telegramCollectionMutation.isPending}
+                                  >
+                                    {telegramCollectionMutation.isPending ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Send className="h-4 w-4 text-cyan-500" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Coletar dados do Telegram</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Lê canais públicos via RSSHub/RSS-Bridge
                                   </p>
                                 </TooltipContent>
                               </Tooltip>

@@ -251,6 +251,7 @@ export default function SocialMediaReport() {
                   <SelectItem value="Threads">Threads</SelectItem>
                   <SelectItem value="LinkedIn">LinkedIn</SelectItem>
                   <SelectItem value="Reddit">Reddit</SelectItem>
+                  <SelectItem value="Telegram">Telegram</SelectItem>
                 </SelectContent>
               </Select>
             </div>
