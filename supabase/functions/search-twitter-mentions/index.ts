@@ -531,6 +531,71 @@ Deno.serve(async (req) => {
 
     console.log(`[TWITTER] === Inseridos=${totalInserted} | Analisados=${totalAnalyzed} ===`);
 
+    // ========= COLETA DE REPLIES via Nitter para tweets coletados =========
+    let repliesInserted = 0;
+    const tweetsForReplies = fresh.filter(t => t.tweetUrl).slice(0, 25); // até 25 threads
+    if (tweetsForReplies.length > 0) {
+      console.log(`[TWITTER-Replies] Buscando replies de ${tweetsForReplies.length} threads`);
+      const replyArrays = await Promise.all(
+        tweetsForReplies.map(t => fetchTweetReplies(t.tweetUrl!, hosts))
+      );
+      const allReplies: any[] = [];
+      for (let i = 0; i < tweetsForReplies.length; i++) {
+        const parent = tweetsForReplies[i];
+        for (const r of replyArrays[i]) {
+          // Pula reply do próprio autor (geralmente é o tweet original repetido)
+          if (r.author.toLowerCase() === parent.author.toLowerCase() && r.text === parent.text) continue;
+          allReplies.push({
+            user_id: ownerUserId,
+            candidate_id: candidateId,
+            social_network: 'Twitter/X',
+            interaction_type: 'reply',
+            comment_text: r.text.slice(0, 4000),
+            comment_author: r.author,
+            author_profile_url: r.url || `https://x.com/${r.author}`,
+            original_posted_at: r.postedAt,
+            collected_at: new Date().toISOString(),
+            likes_count: r.likes,
+            replies_count: 0,
+            shares_count: 0,
+          });
+        }
+      }
+      if (allReplies.length > 0) {
+        // Dedup
+        const replyUrls = allReplies.map(r => r.author_profile_url);
+        const { data: existingReplies } = await db
+          .from('social_interactions')
+          .select('author_profile_url')
+          .eq('candidate_id', candidateId)
+          .eq('social_network', 'Twitter/X')
+          .eq('interaction_type', 'reply')
+          .in('author_profile_url', replyUrls);
+        const exSet = new Set((existingReplies ?? []).map((e: any) => e.author_profile_url));
+        const freshReplies = allReplies.filter(r => !exSet.has(r.author_profile_url));
+        // Analisa sentimento em batches
+        for (let i = 0; i < freshReplies.length; i += 20) {
+          const batch = freshReplies.slice(i, i + 20);
+          const sentiments = await analyzeSentimentBatch(batch.map(r => r.comment_text));
+          batch.forEach((r, idx) => {
+            const s = sentiments?.[idx];
+            r.sentiment_label = s?.label ?? 'Neutro';
+            r.sentiment_score = s?.score ?? 0.5;
+          });
+          const { data: ins, error: repErr } = await db
+            .from('social_interactions')
+            .insert(batch)
+            .select('id');
+          if (repErr) {
+            console.error('[TWITTER-Replies] insert falhou:', repErr.message);
+          } else {
+            repliesInserted += ins?.length || 0;
+          }
+        }
+        console.log(`[TWITTER-Replies] Inseridos=${repliesInserted}`);
+      }
+    }
+
     try {
       await supabaseService.functions.invoke('recalculate-candidate-metrics', {
         body: { candidateId },
@@ -544,6 +609,7 @@ Deno.serve(async (req) => {
       totalFound: collected.length,
       newTweets: fresh.length,
       inserted: totalInserted,
+      repliesInserted,
       analyzed: totalAnalyzed,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
