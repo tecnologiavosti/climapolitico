@@ -78,6 +78,41 @@ export default function Overview() {
     return () => clearInterval(interval);
   }, [candidates, qc]);
 
+  // Realtime: invalida queries quando cache de métricas ou interações sociais mudam
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel('overview-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'candidate_metrics_cache' },
+        () => {
+          qc.invalidateQueries({ queryKey: ['all-candidate-metrics-cache'] });
+          qc.invalidateQueries({ queryKey: ['candidate-metrics-cache'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'social_interactions' },
+        () => {
+          qc.invalidateQueries({ queryKey: ['social-interactions-overview'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'candidates' },
+        () => {
+          qc.invalidateQueries({ queryKey: ['candidates-overview'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, qc]);
+
   // Query: Métricas agregadas do cache (fonte única de verdade)
   const { data: allMetrics, isLoading: loadingMetrics } = useAllCandidateMetrics();
 
