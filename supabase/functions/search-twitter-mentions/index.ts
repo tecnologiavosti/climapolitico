@@ -129,6 +129,66 @@ async function fetchRss(host: string, query: string): Promise<{ ok: boolean; xml
   }
 }
 
+// ====== Coleta de REPLIES de um tweet via página HTML do Nitter ======
+interface NitterReply {
+  text: string;
+  author: string;
+  postedAt: string;
+  url: string | null;
+  likes: number;
+}
+
+function parseNitterReplies(html: string, host: string): NitterReply[] {
+  const out: NitterReply[] = [];
+  // Nitter renderiza replies em <div class="timeline-item"> dentro de .replies / .conversation
+  // Cada bloco contém .username, .tweet-content e .tweet-stats
+  const blocks = html.match(/<div class="timeline-item[^"]*"[\s\S]*?(?=<div class="timeline-item|<\/div>\s*<\/div>\s*<\/main>)/gi) || [];
+  for (const block of blocks) {
+    const userMatch = block.match(/class="username"[^>]*>@?([A-Za-z0-9_]{2,20})/);
+    const textMatch = block.match(/class="tweet-content[^"]*"[^>]*>([\s\S]*?)<\/div>/);
+    const dateMatch = block.match(/class="tweet-date"[^>]*>\s*<a[^>]*title="([^"]+)"[^>]*href="([^"]+)"/);
+    const likesMatch = block.match(/class="icon-heart"[^>]*>\s*<\/span>\s*([\d,\.]+)/);
+    if (!userMatch || !textMatch) continue;
+    const text = decodeHtml(textMatch[1]);
+    if (!text || text.length < 5) continue;
+    const author = userMatch[1];
+    let postedAt = new Date().toISOString();
+    if (dateMatch) {
+      const d = new Date(dateMatch[1]);
+      if (!isNaN(d.getTime())) postedAt = d.toISOString();
+    }
+    const path = dateMatch?.[2] || "";
+    const url = path ? (path.startsWith("http") ? path : `${host}${path}`) : null;
+    const likes = likesMatch ? parseInt(likesMatch[1].replace(/[,.]/g, ""), 10) || 0 : 0;
+    out.push({ text, author, postedAt, url, likes });
+  }
+  return out;
+}
+
+async function fetchTweetReplies(tweetUrl: string, hosts: string[]): Promise<NitterReply[]> {
+  // Converte x.com/twitter.com URL para path /<user>/status/<id>
+  const m = tweetUrl.match(/(?:x\.com|twitter\.com|xcancel\.com|nitter\.[^/]+)\/([A-Za-z0-9_]+\/status\/\d+)/);
+  if (!m) return [];
+  const path = `/${m[1]}`;
+  for (const host of hosts) {
+    try {
+      const url = `${host}${path}`;
+      const res = await fetch(url, {
+        headers: { "User-Agent": randomUA(), "Accept": "text/html" },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) continue;
+      const html = await res.text();
+      const replies = parseNitterReplies(html, host);
+      if (replies.length > 0) {
+        // Primeiro item geralmente é o tweet original — descarta duplicata do autor original se aplicável
+        return replies;
+      }
+    } catch (_e) { /* tenta próximo */ }
+  }
+  return [];
+}
+
 // Coleta paralela: dispara várias instâncias ao mesmo tempo, agrega e dedup.
 async function scrapeTwitter(
   query: string,
