@@ -162,17 +162,23 @@ Deno.serve(async (req) => {
     console.log(`[REANALYZE] User: ${userId}`);
 
     // Parse request
-    const { batchSize = 50, maxToProcess = 500 } = await req.json().catch(() => ({}));
+    const { batchSize = 50, maxToProcess = 500, includeNull = true } = await req.json().catch(() => ({}));
 
-    // Fetch broken comments (Neutro with score 0.5)
-    const { data: brokenComments, error: fetchError } = await supabase
+    // Fetch broken comments: Neutros padrão (score 0.5) E também sentimentos NULL
+    let query = supabase
       .from('social_interactions')
-      .select('id, comment_text')
+      .select('id, comment_text, candidate_id')
       .eq('user_id', userId)
-      .eq('sentiment_label', 'Neutro')
-      .eq('sentiment_score', 0.5)
-      .not('comment_text', 'is', null)
-      .limit(maxToProcess);
+      .not('comment_text', 'is', null);
+
+    if (includeNull) {
+      // Inclui tanto Neutros default (0.5) quanto NULL (não analisados)
+      query = query.or('and(sentiment_label.eq.Neutro,sentiment_score.eq.0.5),sentiment_label.is.null');
+    } else {
+      query = query.eq('sentiment_label', 'Neutro').eq('sentiment_score', 0.5);
+    }
+
+    const { data: brokenComments, error: fetchError } = await query.limit(maxToProcess);
 
     if (fetchError) {
       console.error('Fetch error:', fetchError);
