@@ -702,6 +702,12 @@ Deno.serve(async (req) => {
       );
     }
 
+    // ============================================================
+    // BACKGROUND PROCESSING — avoid 150s edge timeout
+    // The heavy comment-collection + sentiment loop can take minutes.
+    // We kick it off via EdgeRuntime.waitUntil and return immediately.
+    // ============================================================
+    const backgroundJob = (async () => {
     // Collect comments from each video
     let totalComments = 0; // new comments inserted
     let skippedDuplicates = 0;
