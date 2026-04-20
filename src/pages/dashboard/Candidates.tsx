@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, ChevronUp, BarChart3, RefreshCw, Twitter, MessageCircle, Send } from "lucide-react";
+import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, ChevronUp, BarChart3, RefreshCw, Twitter, MessageCircle, Send, MessagesSquare } from "lucide-react";
 // ArrowUpRight, ArrowDownRight, Minus removidos temporariamente (coluna Tendência oculta)
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 
@@ -306,6 +306,31 @@ export default function Candidates() {
     onError: (error: Error) => {
       console.error('Telegram collection error:', error);
       toast.error('Erro ao coletar dados do Telegram: ' + error.message);
+    },
+  });
+
+  // Backfill replies sobre posts existentes (Reddit/Twitter/Telegram)
+  const backfillRepliesMutation = useMutation({
+    mutationFn: async ({ candidateId }: { candidateId: string }) => {
+      const { data, error } = await supabase.functions.invoke('backfill-replies', {
+        body: { candidateId, days: 7, perNetworkLimit: 30 }
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+      const s = data?.summary || {};
+      const total = (s.Reddit?.replies || 0) + (s["Twitter/X"]?.replies || 0) + (s.Telegram?.replies || 0);
+      toast.success(
+        `Backfill concluído: +${total} comentários (Reddit ${s.Reddit?.replies || 0} | Twitter ${s["Twitter/X"]?.replies || 0} | Telegram ${s.Telegram?.replies || 0})`,
+        { duration: 6000 }
+      );
+    },
+    onError: (error: Error) => {
+      console.error('Backfill error:', error);
+      toast.error('Erro ao buscar comentários: ' + error.message);
     },
   });
 
@@ -717,7 +742,30 @@ export default function Candidates() {
                                 </TooltipContent>
                               </Tooltip>
 
-                              {/* AI Analysis Button */}
+                              {/* Backfill Replies Button */}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="bg-violet-500/10 hover:bg-violet-500/20 border-violet-500/30"
+                                    onClick={() => backfillRepliesMutation.mutate({ candidateId: candidate.id })}
+                                    disabled={backfillRepliesMutation.isPending}
+                                  >
+                                    {backfillRepliesMutation.isPending ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <MessagesSquare className="h-4 w-4 text-violet-500" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Backfill de comentários (7 dias)</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Busca replies em posts já coletados (Reddit, Twitter, Telegram)
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Button

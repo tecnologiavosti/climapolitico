@@ -512,28 +512,25 @@ Deno.serve(async (req) => {
 
     async function markYoutubeKeyQuotaExceeded(keyId: string | null) {
       if (!keyId) return;
-      await supabaseService.rpc('exec_sql' as any).catch(() => {});
-      await supabaseService
-        .from('youtube_api_keys')
-        .update({
-          is_active: false,
-          last_quota_exceeded_at: new Date().toISOString(),
-        })
-        .eq('id', keyId);
-      // increment counter via raw update
-      await supabaseService
-        .from('youtube_api_keys')
-        .select('quota_exceeded_count')
-        .eq('id', keyId)
-        .single()
-        .then(async ({ data }) => {
-          if (data) {
-            await supabaseService
-              .from('youtube_api_keys')
-              .update({ quota_exceeded_count: (data.quota_exceeded_count || 0) + 1 })
-              .eq('id', keyId);
-          }
-        });
+      try {
+        // Lê contador atual
+        const { data: current } = await supabaseService
+          .from('youtube_api_keys')
+          .select('quota_exceeded_count')
+          .eq('id', keyId)
+          .single();
+        // Marca como inativa e incrementa contador
+        await supabaseService
+          .from('youtube_api_keys')
+          .update({
+            is_active: false,
+            last_quota_exceeded_at: new Date().toISOString(),
+            quota_exceeded_count: (current?.quota_exceeded_count || 0) + 1,
+          })
+          .eq('id', keyId);
+      } catch (e) {
+        console.error('[YOUTUBE] markYoutubeKeyQuotaExceeded falhou:', e);
+      }
     }
 
     const initialKey = await getNextYoutubeKey();
