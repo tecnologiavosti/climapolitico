@@ -210,6 +210,9 @@ Deno.serve(async (req) => {
     const userId = candidate.user_id as string;
     const since = new Date(Date.now() - days * 86400_000).toISOString();
 
+    // === Background job ===
+    const backgroundJob = (async () => {
+     try {
     // Carrega instâncias Nitter saudáveis (para Twitter)
     const { data: nitterRows } = await supabase
       .from("nitter_instances")
@@ -310,9 +313,21 @@ Deno.serve(async (req) => {
       }
     }
 
+    console.log('[Backfill-BG] complete:', JSON.stringify(summary));
+     } catch (bgErr) {
+       console.error('[Backfill-BG] erro:', bgErr);
+     }
+    })();
+
+    // @ts-ignore EdgeRuntime
+    if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
+      // @ts-ignore
+      EdgeRuntime.waitUntil(backgroundJob);
+    }
+
     return new Response(
-      JSON.stringify({ success: true, candidateId, days, summary }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      JSON.stringify({ success: true, accepted: true, candidateId, days, message: 'Backfill iniciado em background' }),
+      { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro desconhecido";

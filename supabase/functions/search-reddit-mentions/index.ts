@@ -209,20 +209,14 @@ Deno.serve(async (req) => {
 
     console.log(`[Reddit] Buscando menções via RSS-Bridge: ${candidateName}`);
 
+    // === Background job ===
+    const backgroundJob = (async () => {
+     try {
     const items = await fetchViaRssBridge(`"${candidateName}"`);
 
     if (items.length === 0) {
-      return new Response(
-        JSON.stringify({
-          success: true,
-          source: "reddit",
-          candidateName,
-          total: 0,
-          inserted: 0,
-          message: "Nenhum item retornado por nenhuma instância RSS-Bridge.",
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      console.log('[Reddit-BG] nenhum item retornado');
+      return;
     }
 
     const rows: any[] = [];
@@ -255,13 +249,8 @@ Deno.serve(async (req) => {
     }
 
     if (rows.length === 0) {
-      return new Response(
-        JSON.stringify({
-          success: true, source: "reddit", candidateName,
-          total: items.length, inserted: 0, skipped,
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      console.log('[Reddit-BG] 0 rows após filtro semântico');
+      return;
     }
 
     // Dedup por author_profile_url (URL do post)
@@ -344,18 +333,21 @@ Deno.serve(async (req) => {
       }
     }
 
+    console.log(`[Reddit-BG] complete: inserted=${inserted} replies=${repliesInserted} skipped=${skipped}`);
+     } catch (bgErr) {
+       console.error('[Reddit-BG] erro:', bgErr);
+     }
+    })();
+
+    // @ts-ignore EdgeRuntime
+    if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
+      // @ts-ignore
+      EdgeRuntime.waitUntil(backgroundJob);
+    }
+
     return new Response(
-      JSON.stringify({
-        success: true,
-        source: "reddit",
-        candidateName,
-        total: items.length,
-        inserted,
-        repliesInserted,
-        skipped,
-        duplicates: rows.length - fresh.length,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      JSON.stringify({ success: true, accepted: true, message: 'Coleta Reddit iniciada em background' }),
+      { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Erro desconhecido";
