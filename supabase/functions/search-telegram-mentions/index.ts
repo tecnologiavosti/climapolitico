@@ -22,14 +22,18 @@ const RSSHUB_INSTANCES = [
   "https://rsshub.rssforever.com",
   "https://rss.shab.fun",
   "https://rsshub.pseudoyu.com",
+  "https://rsshub.atgw.io",
+  "https://rsshub.kt.gy",
+  "https://rss.injahow.cn",
 ];
 
 // RSS-Bridge instances (público). Endpoint: TelegramBridge by @username
 const RSS_BRIDGE_INSTANCES = [
   "https://rss-bridge.org/bridge01",
   "https://bridge.sysadmins.ws",
-  "https://rssbridge.pw",
   "https://rss.nixnet.services",
+  "https://wtf.roflcopter.fr/rss-bridge",
+  "https://rss.0v0.email",
 ];
 
 // Canais brasileiros de imprensa/política para varrer em busca de menções.
