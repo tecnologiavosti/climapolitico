@@ -162,17 +162,23 @@ Deno.serve(async (req) => {
     console.log(`[REANALYZE] User: ${userId}`);
 
     // Parse request
-    const { batchSize = 50, maxToProcess = 500 } = await req.json().catch(() => ({}));
+    const { batchSize = 50, maxToProcess = 500, includeNull = true } = await req.json().catch(() => ({}));
 
-    // Fetch broken comments (Neutro with score 0.5)
-    const { data: brokenComments, error: fetchError } = await supabase
+    // Fetch broken comments: Neutros padrão (score 0.5) E também sentimentos NULL
+    let query = supabase
       .from('social_interactions')
-      .select('id, comment_text')
+      .select('id, comment_text, candidate_id')
       .eq('user_id', userId)
-      .eq('sentiment_label', 'Neutro')
-      .eq('sentiment_score', 0.5)
-      .not('comment_text', 'is', null)
-      .limit(maxToProcess);
+      .not('comment_text', 'is', null);
+
+    if (includeNull) {
+      // Inclui tanto Neutros default (0.5) quanto NULL (não analisados)
+      query = query.or('and(sentiment_label.eq.Neutro,sentiment_score.eq.0.5),sentiment_label.is.null');
+    } else {
+      query = query.eq('sentiment_label', 'Neutro').eq('sentiment_score', 0.5);
+    }
+
+    const { data: brokenComments, error: fetchError } = await query.limit(maxToProcess);
 
     if (fetchError) {
       console.error('Fetch error:', fetchError);
@@ -192,88 +198,76 @@ Deno.serve(async (req) => {
       );
     }
 
-    let processed = 0;
-    let updated = 0;
-    const sentimentCounts = { Positivo: 0, Negativo: 0, Neutro: 0 };
+    // Background job: processa em chunks sem segurar a request
+    const backgroundJob = (async () => {
+      let processed = 0;
+      let updated = 0;
+      const sentimentCounts = { Positivo: 0, Negativo: 0, Neutro: 0 };
 
-    // Process in batches
-     for (const batch of chunkArray(toProcess, batchSize)) {
-       const texts = batch.map(c => c.comment_text || '');
-       let sentiments: SentimentResult[];
-       try {
-         sentiments = await analyzeSentimentBatch(texts);
-       } catch (e: unknown) {
-         const msg = e instanceof Error ? e.message : String(e);
-         // Não prosseguir gravando "Neutro" por fallback — retornar erro para o cliente.
-         if (msg.startsWith('AI_RATE_LIMITED')) {
-           return new Response(
-             JSON.stringify({ error: 'Rate limit do serviço de IA. Tente novamente em alguns minutos.', details: msg }),
-             { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-           );
-         }
-         if (msg.startsWith('AI_CREDITS_EXHAUSTED')) {
-           return new Response(
-             JSON.stringify({ error: 'Créditos de IA esgotados. Adicione créditos para continuar.', details: msg }),
-             { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-           );
-         }
-         return new Response(
-           JSON.stringify({ error: 'Falha ao analisar sentimento no serviço de IA', details: msg }),
-           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-         );
-       }
-
-      // Update each comment
-      for (let i = 0; i < batch.length; i++) {
-        const comment = batch[i];
-        const sentiment = sentiments[i];
-        
-         // Log explícito: entrada -> saída do modelo -> persistência
-         console.log(`[REANALYZE] id=${comment.id} texto="${(comment.comment_text || '').substring(0, 120)}..." modelo=${sentiment.label} (${sentiment.score})`);
-
-         // Only update if sentiment changed from default
-        if (sentiment.label !== 'Neutro' || sentiment.score !== 0.5) {
-          const { error: updateError } = await supabase
-            .from('social_interactions')
-            .update({
-              sentiment_label: sentiment.label,
-              sentiment_score: sentiment.score,
-            })
-            .eq('id', comment.id);
-
-          if (!updateError) {
-             console.log(`[REANALYZE] persistido id=${comment.id} label=${sentiment.label} score=${sentiment.score}`);
-            updated++;
-            sentimentCounts[sentiment.label]++;
+      for (const batch of chunkArray(toProcess, batchSize)) {
+        const texts = batch.map(c => c.comment_text || '');
+        let sentiments: SentimentResult[];
+        try {
+          sentiments = await analyzeSentimentBatch(texts);
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          console.error('[REANALYZE-BG] AI batch failed:', msg);
+          // Para o background: pula este batch e continua
+          if (msg.startsWith('AI_RATE_LIMITED') || msg.startsWith('AI_CREDITS_EXHAUSTED')) {
+            console.warn('[REANALYZE-BG] Stop: ', msg);
+            break;
           }
-        } else {
-          // Still neutro but now validated
-          sentimentCounts.Neutro++;
+          continue;
         }
-        processed++;
+
+        for (let i = 0; i < batch.length; i++) {
+          const comment = batch[i];
+          const sentiment = sentiments[i];
+          if (sentiment.label !== 'Neutro' || sentiment.score !== 0.5) {
+            const { error: updateError } = await supabase
+              .from('social_interactions')
+              .update({ sentiment_label: sentiment.label, sentiment_score: sentiment.score })
+              .eq('id', comment.id);
+            if (!updateError) {
+              updated++;
+              sentimentCounts[sentiment.label]++;
+            }
+          } else {
+            sentimentCounts.Neutro++;
+          }
+          processed++;
+        }
+        console.log(`[REANALYZE-BG] Progress ${processed}/${toProcess.length}`);
+        await new Promise(r => setTimeout(r, 1500));
       }
 
-      console.log(`[REANALYZE] Processed ${processed}/${toProcess.length}`);
-      
-      // Longer delay to avoid rate limits (2 seconds between batches)
-      await new Promise(r => setTimeout(r, 2000));
-    }
+      // Recalcula métricas dos candidatos afetados
+      const candidateIds = [...new Set(toProcess.map(c => (c as any).candidate_id).filter(Boolean))];
+      console.log(`[REANALYZE-BG] complete: processed=${processed} updated=${updated} candidates=${candidateIds.length}`, sentimentCounts);
 
-    // Recalculate metrics for affected candidates
-    const candidateIds = [...new Set(toProcess.map(c => (c as any).candidate_id).filter(Boolean))];
-    console.log(`[REANALYZE] Triggering metrics recalculation for ${candidateIds.length} candidates`);
+      for (const cid of candidateIds) {
+        try {
+          await supabase.functions.invoke('recalculate-candidate-metrics', {
+            body: { candidateId: cid, userId },
+          });
+        } catch (e) {
+          console.warn('[REANALYZE-BG] recalc failed for', cid, e);
+        }
+      }
+    })();
+
+    if (typeof (globalThis as any).EdgeRuntime !== 'undefined' && (globalThis as any).EdgeRuntime.waitUntil) {
+      (globalThis as any).EdgeRuntime.waitUntil(backgroundJob.catch(e => console.error('[REANALYZE-BG] failed:', e)));
+    }
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Reanalyzed ${processed} comments, updated ${updated}`,
-        stats: {
-          processed,
-          updated,
-          sentimentDistribution: sentimentCounts,
-        }
+        accepted: true,
+        message: `Reanálise iniciada em background para ${toProcess.length} comentários.`,
+        toProcess: toProcess.length,
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 202, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error: unknown) {
