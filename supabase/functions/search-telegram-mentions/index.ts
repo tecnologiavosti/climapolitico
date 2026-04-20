@@ -72,17 +72,37 @@ function stripHtml(s: string): string {
     .trim();
 }
 
+// Stop-words comuns em nomes brasileiros que NÃO devem ser usadas como match isolado.
+const NAME_STOP = new Set(["da","de","do","das","dos","e","di","du","junior","jr","filho","neto","sobrinho"]);
+
 function semanticMatch(text: string, fullName: string): boolean {
   const norm = (s: string) =>
     s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const t = norm(text);
-  const parts = norm(fullName).split(/\s+/).filter((p) => p.length >= 3);
+  const allParts = norm(fullName).split(/\s+/).filter(Boolean);
+  const parts = allParts.filter((p) => p.length >= 3 && !NAME_STOP.has(p));
   if (parts.length === 0) return false;
+
+  // 1) Match exato do nome completo normalizado (mais forte)
+  if (t.includes(norm(fullName))) return true;
+
+  // 2) Primeiro + último nome significativos juntos (ex: "luiz silva")
   if (parts.length >= 2) {
-    return t.includes(`${parts[0]} ${parts[parts.length - 1]}`) ||
-      t.includes(norm(fullName));
+    const first = parts[0];
+    const last = parts[parts.length - 1];
+    if (t.includes(`${first} ${last}`)) return true;
   }
-  return t.includes(parts[0]);
+
+  // 3) Sobrenome único e distintivo (≥4 chars, evita "silva"/"souza" comuns)
+  // Para nomes compostos longos (3+ partes), aceita qualquer parte significativa
+  // de pelo menos 4 caracteres como suficiente (ex: "Lula", "Bolsonaro").
+  const COMMON_SURNAMES = new Set(["silva","souza","santos","oliveira","pereira","costa","lima","gomes","ribeiro","alves"]);
+  for (const p of parts) {
+    if (p.length >= 4 && !COMMON_SURNAMES.has(p) && new RegExp(`\\b${p}\\b`).test(t)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function parseRssItems(xml: string): Array<Record<string, string>> {
