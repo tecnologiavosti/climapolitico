@@ -913,17 +913,30 @@ Deno.serve(async (req) => {
       filterKeywordsUsed: candidateKeywords,
     };
 
-    console.log('Collection complete:', stats);
+    console.log('[YOUTUBE-BG] Collection complete:', stats);
+    })(); // end backgroundJob
+
+    // Fire-and-forget on the edge runtime
+    try {
+      // @ts-ignore — EdgeRuntime provided by Supabase edge runtime
+      if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
+        // @ts-ignore
+        EdgeRuntime.waitUntil(backgroundJob.catch((e) => console.error('[YOUTUBE-BG] failed:', e)));
+      } else {
+        backgroundJob.catch((e) => console.error('[YOUTUBE-BG] failed:', e));
+      }
+    } catch (e) {
+      console.error('[YOUTUBE-BG] schedule failed:', e);
+    }
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: totalComments > 0 
-          ? `Collected ${totalComments} relevant comments (filtered ${filteredOutComments} off-topic, skipped ${skippedDuplicates} duplicates). Total in database: ${totalCount}`
-          : `No new relevant comments found (filtered ${filteredOutComments} off-topic, ${skippedDuplicates} duplicates skipped). Total in database: ${totalCount}`,
-        stats
+        accepted: true,
+        message: `Coleta iniciada em background para ${candidateName}. ${videosFound} vídeos sendo processados. Atualize a página em alguns minutos.`,
+        stats: { videosFound, status: 'processing' },
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 202, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error: unknown) {
