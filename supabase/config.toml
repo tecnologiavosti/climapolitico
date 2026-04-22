@@ -80,3 +80,6 @@ verify_jwt = false
 
 [functions.search-telegram-mentions]
 verify_jwt = false
+
+[functions.google-news-collector]
+verify_jwt = false
