@@ -13,7 +13,7 @@ const NETWORKS = [
   { key: "Reddit", color: "#FF4500", aliases: ["reddit"] },
   { key: "Telegram", color: "#0088CC", aliases: ["telegram"] },
   { key: "Wikipedia", color: "#636363", aliases: ["wikipedia"] },
-  { key: "Threads", color: "#1F2937", aliases: ["threads"] },
+  
   { key: "YouTube", color: "#FF0000", aliases: ["youtube"] },
   { key: "Twitter/X", color: "#1DA1F2", aliases: ["twitter", "x", "twitter/x"] },
 ];

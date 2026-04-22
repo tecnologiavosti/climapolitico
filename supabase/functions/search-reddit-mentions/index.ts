@@ -143,6 +143,47 @@ async function fetchRedditComments(postUrl: string, postId: string): Promise<Red
   return [];
 }
 
+// Estratégia primária: JSON público do Reddit (search.json) — funciona sem auth
+async function fetchViaRedditJson(query: string, limit: number): Promise<Array<Record<string, string>>> {
+  const endpoints = [
+    `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=new&limit=${limit}&t=month`,
+    `https://old.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=new&limit=${limit}&t=month`,
+  ];
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": randomUA(),
+          "Accept": "application/json",
+        },
+        signal: AbortSignal.timeout(12000),
+      });
+      if (!res.ok) {
+        console.warn(`[Reddit] ${url}: HTTP ${res.status}`);
+        continue;
+      }
+      const data = await res.json();
+      const children = data?.data?.children || [];
+      if (children.length === 0) continue;
+      const items = children.map((c: any) => {
+        const d = c.data || {};
+        return {
+          title: d.title || "",
+          link: `https://reddit.com${d.permalink || ""}`,
+          description: d.selftext ? stripHtml(d.selftext).slice(0, 4000) : (d.title || ""),
+          author: d.author ? `u/${d.author}` : "Reddit user",
+          pubDate: d.created_utc ? new Date(d.created_utc * 1000).toUTCString() : new Date().toUTCString(),
+        };
+      });
+      console.log(`[Reddit] reddit.json: ${items.length} itens para "${query}"`);
+      return items;
+    } catch (e) {
+      console.warn(`[Reddit] ${url} falhou: ${(e as Error).message}`);
+    }
+  }
+  return [];
+}
+
 async function fetchViaRssBridge(query: string): Promise<Array<Record<string, string>>> {
   for (const instance of RSS_BRIDGE_INSTANCES) {
     const url =
@@ -212,16 +253,17 @@ Deno.serve(async (req) => {
     // === Background job ===
     const backgroundJob = (async () => {
      try {
-    const items = await fetchViaRssBridge(`"${candidateName}"`);
+    const items = await fetchViaRedditJson(`"${candidateName}"`, limit) ;
+    const finalItems = items.length > 0 ? items : await fetchViaRssBridge(`"${candidateName}"`);
 
-    if (items.length === 0) {
+    if (finalItems.length === 0) {
       console.log('[Reddit-BG] nenhum item retornado');
       return;
     }
 
     const rows: any[] = [];
     let skipped = 0;
-    for (const it of items.slice(0, limit)) {
+    for (const it of finalItems.slice(0, limit)) {
       const content = `${it.title}\n${it.description}`.slice(0, 4000).trim();
       const link = it.link;
       const author = it.author || "Reddit user";

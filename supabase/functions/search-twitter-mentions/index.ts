@@ -25,7 +25,7 @@ interface ScrapedTweet {
   tweetId: string | null;
 }
 
-// Hosts fallback estáticos (lista expandida e atualizada — usados se o banco estiver vazio)
+// Hosts fallback estáticos (lista expandida e atualizada — usados se o banco/discovery falharem)
 const FALLBACK_NITTER_HOSTS = [
   'https://xcancel.com',
   'https://nitter.privacydev.net',
@@ -45,6 +45,97 @@ const FALLBACK_NITTER_HOSTS = [
   'https://nitter.adminforge.de',
   'https://nitter.1d4.us',
 ];
+
+// Descobre instâncias Nitter ativas a partir da lista pública mantida pela comunidade.
+// Fontes: status.d420.de e GitHub wiki Zedeus/nitter. Caches simples em memória da invocação.
+async function discoverNitterHosts(): Promise<string[]> {
+  const sources = [
+    'https://status.d420.de/api/v1/instances',
+    'https://raw.githubusercontent.com/wiki/zedeus/nitter/Instances.md',
+  ];
+  const found = new Set<string>();
+  for (const src of sources) {
+    try {
+      const r = await fetch(src, { signal: AbortSignal.timeout(8000) });
+      if (!r.ok) continue;
+      if (src.endsWith('.md')) {
+        const md = await r.text();
+        const urls = md.match(/https?:\/\/[a-z0-9.\-]+(?:\.[a-z]{2,})/gi) || [];
+        urls.forEach(u => {
+          try {
+            const url = new URL(u);
+            if (/nitter|xcancel|opnxng/.test(url.host)) found.add(`https://${url.host}`);
+          } catch {}
+        });
+      } else {
+        const j = await r.json();
+        const list = Array.isArray(j) ? j : (j?.hosts || j?.instances || []);
+        for (const item of list) {
+          const host = typeof item === 'string' ? item : (item?.url || item?.host);
+          if (typeof host === 'string') {
+            const clean = host.startsWith('http') ? host : `https://${host}`;
+            try {
+              const url = new URL(clean);
+              const isUp = !item?.healthy || item.healthy === true;
+              if (isUp) found.add(`https://${url.host}`);
+            } catch {}
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[NITTER-DISCOVERY] falhou', src, (e as Error).message);
+    }
+  }
+  return Array.from(found);
+}
+
+// Fallback oficial via X API v2 quando todas as instâncias Nitter falharem.
+async function fetchViaXApi(query: string, maxResults: number): Promise<ScrapedTweet[]> {
+  const bearer = Deno.env.get('TWITTER_BEARER_TOKEN');
+  // Bearer token é o ideal. Se não existir, tenta consumer key como app-only token (raro).
+  if (!bearer) {
+    console.warn('[X-API] sem TWITTER_BEARER_TOKEN — fallback indisponível');
+    return [];
+  }
+  const url = new URL('https://api.x.com/2/tweets/search/recent');
+  url.searchParams.set('query', `${query} lang:pt -is:retweet`);
+  url.searchParams.set('max_results', String(Math.min(Math.max(10, maxResults), 100)));
+  url.searchParams.set('tweet.fields', 'created_at,public_metrics,author_id');
+  url.searchParams.set('expansions', 'author_id');
+  url.searchParams.set('user.fields', 'username');
+  try {
+    const res = await fetch(url.toString(), {
+      headers: { 'Authorization': `Bearer ${bearer}` },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) {
+      console.warn(`[X-API] HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      return [];
+    }
+    const json = await res.json();
+    const users = new Map<string, string>();
+    (json?.includes?.users || []).forEach((u: any) => users.set(u.id, u.username));
+    const tweets = (json?.data || []) as any[];
+    return tweets.map((t) => {
+      const username = users.get(t.author_id) || 'user';
+      return {
+        text: t.text || '',
+        author: username,
+        authorUrl: `https://x.com/${username}`,
+        postedAt: t.created_at || new Date().toISOString(),
+        likes: t.public_metrics?.like_count || 0,
+        replies: t.public_metrics?.reply_count || 0,
+        retweets: t.public_metrics?.retweet_count || 0,
+        tweetUrl: `https://x.com/${username}/status/${t.id}`,
+        tweetId: String(t.id),
+      } as ScrapedTweet;
+    });
+  } catch (e) {
+    console.warn('[X-API] erro:', (e as Error).message);
+    return [];
+  }
+}
+
 
 const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -221,6 +312,19 @@ async function scrapeTwitter(
       if (merged.length >= hardLimit) break;
     }
     if (merged.length >= hardLimit) break;
+  }
+
+  // Fallback: se nenhuma instância retornou, tenta X API oficial
+  if (merged.length === 0) {
+    console.log('[TWITTER] Todas as instâncias Nitter falharam — usando X API v2');
+    const apiTweets = await fetchViaXApi(query, hardLimit);
+    for (const t of apiTweets) {
+      const key = t.tweetId || `${t.author}::${t.text.substring(0, 80)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(t);
+      if (merged.length >= hardLimit) break;
+    }
   }
   return merged;
 }
@@ -443,9 +547,12 @@ Deno.serve(async (req) => {
       .order('last_error_at', { ascending: true, nullsFirst: true })
       .limit(15);
     const dbHosts = (instanceRows || []).map((r: any) => r.url as string);
-    // Mescla DB + fallback para maximizar chance de sucesso
-    const hostSet = new Set<string>([...dbHosts, ...FALLBACK_NITTER_HOSTS]);
-    const hosts = Array.from(hostSet).slice(0, 15);
+    // Descobre dinamicamente novas instâncias Nitter (status.d420.de + wiki)
+    const discovered = await discoverNitterHosts();
+    if (discovered.length > 0) console.log(`[TWITTER] Descobertas ${discovered.length} instâncias dinâmicas`);
+    // Mescla DB + descobertas + fallback estático para maximizar chance de sucesso
+    const hostSet = new Set<string>([...dbHosts, ...discovered, ...FALLBACK_NITTER_HOSTS]);
+    const hosts = Array.from(hostSet).slice(0, 20);
     const hostIdByUrl = new Map<string, string>();
     (instanceRows || []).forEach((r: any) => hostIdByUrl.set(r.url, r.id));
 
