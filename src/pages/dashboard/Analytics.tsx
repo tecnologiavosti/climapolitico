@@ -72,9 +72,33 @@ export default function Analytics() {
   // Total engagement (likes)
   const totalLikes = interactions?.reduce((sum, i) => sum + (i.likes_count || 0), 0) || 0;
 
+  // Normalize network names for consistent display
+  const normalizeNetwork = (n: string | null | undefined): string => {
+    if (!n) return 'Outro';
+    const map: Record<string, string> = {
+      google_news: 'Google News',
+      googlenews: 'Google News',
+      'google news': 'Google News',
+      youtube: 'YouTube',
+      twitter: 'Twitter/X',
+      x: 'Twitter/X',
+      'twitter/x': 'Twitter/X',
+      instagram: 'Instagram',
+      facebook: 'Facebook',
+      tiktok: 'TikTok',
+      tik_tok: 'TikTok',
+      linkedin: 'LinkedIn',
+      threads: 'Threads',
+      telegram: 'Telegram',
+      reddit: 'Reddit',
+      wikipedia: 'Wikipedia',
+    };
+    return map[n.toLowerCase()] || n;
+  };
+
   // Social Network Distribution (from real data)
   const networkData = interactions?.reduce((acc: Record<string, number>, i) => {
-    const network = i.social_network || 'Outro';
+    const network = normalizeNetwork(i.social_network);
     acc[network] = (acc[network] || 0) + 1;
     return acc;
   }, {}) || {};
@@ -90,8 +114,17 @@ export default function Analytics() {
     'Facebook': '#4267B2',
     'TikTok': '#000000',
     'LinkedIn': '#0077B5',
+    'Google News': '#22C55E',
+    'Threads': '#1F2937',
+    'Telegram': '#0088CC',
+    'Reddit': '#FF4500',
+    'Wikipedia': '#636363',
     'Outro': '#6B7280',
   };
+
+  // Top network for the source badge
+  const topNetwork = networkChartData[0]?.name;
+  const sourcesCount = networkChartData.length;
 
   // Sentiment Distribution (pie chart)
   const sentimentChartData = [
@@ -157,8 +190,10 @@ export default function Analytics() {
           <p className="text-muted-foreground">Análise estatística baseada em dados reais coletados</p>
         </div>
         <Badge variant="outline" className="flex items-center gap-2">
-          <Youtube className="h-4 w-4 text-destructive" />
-          Fonte: YouTube
+          <BarChart3 className="h-4 w-4 text-primary" />
+          {sourcesCount > 0
+            ? `${sourcesCount} ${sourcesCount === 1 ? 'fonte' : 'fontes'}${topNetwork ? ` • principal: ${topNetwork}` : ''}`
+            : 'Multi-fonte: YouTube, Google News, TikTok, Reddit, Telegram, Wikipedia, X'}
         </Badge>
       </div>
 
@@ -286,7 +321,7 @@ export default function Analytics() {
               <div className="text-center">
                 <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-30" />
                 <p>Sem dados no período selecionado</p>
-                <p className="text-sm mt-2">Colete comentários do YouTube para visualizar a evolução</p>
+                <p className="text-sm mt-2">Colete dados das redes sociais (YouTube, Google News, TikTok, Reddit, Telegram, Wikipedia, X) para visualizar a evolução</p>
               </div>
             </div>
           )}
