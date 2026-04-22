@@ -10,6 +10,7 @@ import { TrendingUp, TrendingDown, MessageSquare, ThumbsUp, Youtube, BarChart3, 
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line, Area, AreaChart } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { useAuth } from "@/hooks/useAuth";
+import { CollectionStatusPanel } from "@/components/dashboard/CollectionStatusPanel";
 
 // Componentes de análise demográfica temporariamente ocultos
 // Motivo: YouTube Data API não fornece idade, gênero ou localização dos usuários
