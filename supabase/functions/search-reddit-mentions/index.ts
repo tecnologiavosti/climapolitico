@@ -256,14 +256,14 @@ Deno.serve(async (req) => {
     const items = await fetchViaRedditJson(`"${candidateName}"`, limit) ;
     const finalItems = items.length > 0 ? items : await fetchViaRssBridge(`"${candidateName}"`);
 
-    if (items.length === 0) {
+    if (finalItems.length === 0) {
       console.log('[Reddit-BG] nenhum item retornado');
       return;
     }
 
     const rows: any[] = [];
     let skipped = 0;
-    for (const it of items.slice(0, limit)) {
+    for (const it of finalItems.slice(0, limit)) {
       const content = `${it.title}\n${it.description}`.slice(0, 4000).trim();
       const link = it.link;
       const author = it.author || "Reddit user";
