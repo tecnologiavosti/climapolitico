@@ -321,6 +321,7 @@ export default function Overview() {
       { fn: 'search-wikipedia', label: 'Wikipedia' },
       { fn: 'search-reddit-mentions', label: 'Reddit' },
       { fn: 'search-telegram-mentions', label: 'Telegram' },
+      { fn: 'tiktok-collector', label: 'TikTok' },
     ];
     const totalJobs = candidates.length * sources.length;
     let dispatched = 0;
