@@ -89,3 +89,6 @@ verify_jwt = false
 
 [functions.tiktok-resolve-handle]
 verify_jwt = true
+
+[functions.tiktok-resolve-batch]
+verify_jwt = false
