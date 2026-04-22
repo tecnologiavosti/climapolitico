@@ -143,7 +143,38 @@ async function fetchRedditComments(postUrl: string, postId: string): Promise<Red
   return [];
 }
 
-// Estratégia primária: JSON público do Reddit (search.json) — funciona sem auth
+// Estratégia primária: Arctic Shift (arquivo histórico do Reddit, sem 403 em IPs cloud).
+// Endpoint: https://arctic-shift.photon-reddit.com/api/posts/search
+async function fetchViaArcticShift(query: string, limit: number): Promise<Array<Record<string, string>>> {
+  const url = `https://arctic-shift.photon-reddit.com/api/posts/search?title=${encodeURIComponent(query)}&limit=${Math.min(limit, 100)}&sort=desc`;
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": randomUA(), "Accept": "application/json" },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) {
+      console.warn(`[Reddit-ArcticShift] HTTP ${res.status}`);
+      return [];
+    }
+    const json = await res.json();
+    const data = Array.isArray(json?.data) ? json.data : [];
+    if (data.length === 0) return [];
+    const items = data.map((d: any) => ({
+      title: d.title || "",
+      link: d.permalink ? `https://reddit.com${d.permalink}` : (d.url || ""),
+      description: d.selftext ? stripHtml(d.selftext).slice(0, 4000) : (d.title || ""),
+      author: d.author ? `u/${d.author}` : "Reddit user",
+      pubDate: d.created_utc ? new Date(d.created_utc * 1000).toUTCString() : new Date().toUTCString(),
+    }));
+    console.log(`[Reddit-ArcticShift] ${items.length} itens para "${query}"`);
+    return items;
+  } catch (e) {
+    console.warn(`[Reddit-ArcticShift] erro: ${(e as Error).message}`);
+    return [];
+  }
+}
+
+// Fallback secundário: JSON público do Reddit (frequentemente bloqueado por IP cloud)
 async function fetchViaRedditJson(query: string, limit: number): Promise<Array<Record<string, string>>> {
   const endpoints = [
     `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=new&limit=${limit}&t=month`,
@@ -152,16 +183,10 @@ async function fetchViaRedditJson(query: string, limit: number): Promise<Array<R
   for (const url of endpoints) {
     try {
       const res = await fetch(url, {
-        headers: {
-          "User-Agent": randomUA(),
-          "Accept": "application/json",
-        },
+        headers: { "User-Agent": randomUA(), "Accept": "application/json" },
         signal: AbortSignal.timeout(12000),
       });
-      if (!res.ok) {
-        console.warn(`[Reddit] ${url}: HTTP ${res.status}`);
-        continue;
-      }
+      if (!res.ok) { console.warn(`[Reddit] ${url}: HTTP ${res.status}`); continue; }
       const data = await res.json();
       const children = data?.data?.children || [];
       if (children.length === 0) continue;
@@ -253,8 +278,10 @@ Deno.serve(async (req) => {
     // === Background job ===
     const backgroundJob = (async () => {
      try {
-    const items = await fetchViaRedditJson(`"${candidateName}"`, limit) ;
-    const finalItems = items.length > 0 ? items : await fetchViaRssBridge(`"${candidateName}"`);
+    // Cascata: Arctic Shift → Reddit JSON → RSS-Bridge
+    let finalItems = await fetchViaArcticShift(`"${candidateName}"`, limit);
+    if (finalItems.length === 0) finalItems = await fetchViaRedditJson(`"${candidateName}"`, limit);
+    if (finalItems.length === 0) finalItems = await fetchViaRssBridge(`"${candidateName}"`);
 
     if (finalItems.length === 0) {
       console.log('[Reddit-BG] nenhum item retornado');

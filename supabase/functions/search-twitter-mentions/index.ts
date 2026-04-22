@@ -552,7 +552,22 @@ Deno.serve(async (req) => {
     if (discovered.length > 0) console.log(`[TWITTER] Descobertas ${discovered.length} instâncias dinâmicas`);
     // Mescla DB + descobertas + fallback estático para maximizar chance de sucesso
     const hostSet = new Set<string>([...dbHosts, ...discovered, ...FALLBACK_NITTER_HOSTS]);
-    const hosts = Array.from(hostSet).slice(0, 20);
+    const allHosts = Array.from(hostSet).slice(0, 30);
+
+    // Health-check ativo paralelo: ping em /about (3s timeout) — descarta hosts mortos antes de gastar query
+    const pingResults = await Promise.allSettled(
+      allHosts.map(async (h) => {
+        try {
+          const r = await fetch(`${h}/about`, { method: 'GET', signal: AbortSignal.timeout(3500), headers: { 'User-Agent': randomUA() } });
+          return { host: h, ok: r.ok };
+        } catch { return { host: h, ok: false }; }
+      })
+    );
+    const aliveHosts = pingResults
+      .filter((p): p is PromiseFulfilledResult<{host: string; ok: boolean}> => p.status === 'fulfilled' && p.value.ok)
+      .map((p) => p.value.host);
+    console.log(`[TWITTER] Health-check: ${aliveHosts.length}/${allHosts.length} instâncias vivas`);
+    const hosts = aliveHosts.length > 0 ? aliveHosts.slice(0, 12) : allHosts.slice(0, 8);
     const hostIdByUrl = new Map<string, string>();
     (instanceRows || []).forEach((r: any) => hostIdByUrl.set(r.url, r.id));
 
