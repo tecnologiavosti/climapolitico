@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, ChevronUp, BarChart3, RefreshCw, Twitter, MessageCircle, Send, MessagesSquare, Newspaper, Music2 } from "lucide-react";
+import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, ChevronUp, BarChart3, RefreshCw, Twitter, MessageCircle, Send, MessagesSquare, Newspaper, Music2, Wand2 } from "lucide-react";
 // ArrowUpRight, ArrowDownRight, Minus removidos temporariamente (coluna Tendência oculta)
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 
@@ -375,6 +375,33 @@ export default function Candidates() {
       toast.error('Erro ao coletar dados do TikTok: ' + error.message);
     },
   });
+
+  // Fila em lote para resolver @handles do TikTok automaticamente
+  const tiktokResolveBatchMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('tiktok-resolve-batch', {
+        body: { onlyMissing: true }
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      if (data?.queued === 0) {
+        toast.info(data?.message || 'Todos os candidatos já têm @handle do TikTok configurado.', { duration: 6000 });
+      } else {
+        toast.success(
+          `Fila iniciada: ${data?.queued} candidatos serão processados em ~${data?.estimatedMinutes || 1} min. Você receberá uma notificação ao concluir.`,
+          { duration: 8000 }
+        );
+      }
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+    },
+    onError: (error: Error) => {
+      console.error('TikTok resolve batch error:', error);
+      toast.error('Erro ao iniciar fila de resolução: ' + error.message);
+    },
+  });
+
   const backfillRepliesMutation = useMutation({
     mutationFn: async ({ candidateId }: { candidateId: string }) => {
       const { data, error } = await supabase.functions.invoke('backfill-replies', {
@@ -497,7 +524,32 @@ export default function Candidates() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  onClick={() => tiktokResolveBatchMutation.mutate()}
+                  disabled={tiktokResolveBatchMutation.isPending || candidates.length === 0}
+                >
+                  {tiktokResolveBatchMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Wand2 className="mr-2 h-4 w-4" />
+                  )}
+                  Resolver TikTok em Lote
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Descobrir o @handle do TikTok de todos os candidatos sem link configurado</p>
+                <p className="text-xs text-muted-foreground">
+                  Processa em background com rate-limit (~25/min) para evitar bloqueios
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button 
