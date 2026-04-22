@@ -246,17 +246,38 @@ export default function Overview() {
     .sort((a, b) => b.mentions - a.mentions)
     .slice(0, 5) || [];
 
+  // Normaliza nomes de rede social (banco usa 'google_news', UI exibe 'Google News')
+  const normalizeNetwork = (n: string): string => {
+    const map: Record<string, string> = {
+      'google_news': 'Google News',
+      'googlenews': 'Google News',
+      'youtube': 'YouTube',
+      'twitter': 'Twitter/X',
+      'x': 'Twitter/X',
+      'reddit': 'Reddit',
+      'telegram': 'Telegram',
+      'instagram': 'Instagram',
+      'facebook': 'Facebook',
+      'tiktok': 'TikTok',
+      'linkedin': 'LinkedIn',
+      'threads': 'Threads',
+      'wikipedia': 'Wikipedia',
+    };
+    return map[n?.toLowerCase?.()] || n || 'Outro';
+  };
+
   // Distribuição por rede social (cache + fallback para social_interactions)
   const networkCount: Record<string, number> = {};
   allMetrics?.forEach(m => {
     m.networkBreakdown.forEach(nb => {
-      networkCount[nb.network] = (networkCount[nb.network] || 0) + nb.mentions;
+      const key = normalizeNetwork(nb.network);
+      networkCount[key] = (networkCount[key] || 0) + nb.mentions;
     });
   });
   // Fallback: se cache vazio, agregar de social_interactions
   if (Object.keys(networkCount).length === 0) {
     socialInteractions?.forEach(i => {
-      const net = i.social_network || 'Outro';
+      const net = normalizeNetwork(i.social_network || 'Outro');
       networkCount[net] = (networkCount[net] || 0) + 1;
     });
   }
@@ -274,7 +295,7 @@ export default function Overview() {
     'LinkedIn': '#0A66C2',
     'Threads': '#1F2937',
     'Wikipedia': '#636363',
-    'Google News': '#4285F4',
+    'Google News': '#22C55E',
   };
 
   const networkData = Object.entries(networkCount).map(([name, value], index) => ({
