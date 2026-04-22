@@ -39,8 +39,30 @@ function deriveTikTokHandle(candidate: { full_name: string; social_media_link: s
   const link = candidate.social_media_link || "";
   const m = link.match(/tiktok\.com\/@([A-Za-z0-9_.]+)/i);
   if (m?.[1]) return m[1];
-  const slug = candidate.full_name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
-   return slug || null;
+  return null;
+}
+
+async function autoResolveHandle(
+  supabase: ReturnType<typeof createClient>,
+  candidate: { id: string; full_name: string; social_media_link: string | null },
+): Promise<string | null> {
+  try {
+    console.log(`[tiktok-collector] Auto-resolvendo handle de ${candidate.full_name} via Firecrawl...`);
+    const { data, error } = await supabase.functions.invoke("tiktok-resolve-handle", {
+      body: { candidateId: candidate.id, autoSave: true },
+    });
+    if (error) {
+      console.warn(`[tiktok-collector] auto-resolve erro:`, error.message);
+      return null;
+    }
+    if (data?.handle) {
+      console.log(`[tiktok-collector] Handle resolvido: @${data.handle} (${data.reason || ""})`);
+    }
+    return data?.handle || null;
+  } catch (e) {
+    console.warn(`[tiktok-collector] auto-resolve exceção:`, e instanceof Error ? e.message : e);
+    return null;
+  }
 }
 
 async function fetchTikwmPosts(handle: string): Promise<TikwmPost[]> {
