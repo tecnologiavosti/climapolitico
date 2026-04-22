@@ -292,7 +292,7 @@ export default function Overview() {
     'Telegram': '#0088CC',
     'Instagram': '#E4405F',
     'Facebook': '#1877F2',
-    'TikTok': '#1F2937',
+    'TikTok': '#000000',
     'LinkedIn': '#0A66C2',
     'Threads': '#1F2937',
     'Wikipedia': '#636363',
