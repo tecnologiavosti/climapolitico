@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TrendingUp, TrendingDown, Users, MessageSquare, AlertCircle, Activity, LayoutDashboard, Download, Loader2, Newspaper } from "lucide-react";
+import { TrendingUp, TrendingDown, Users, MessageSquare, AlertCircle, Activity, LayoutDashboard, Download, Loader2 } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
