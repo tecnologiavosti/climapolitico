@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TrendingUp, TrendingDown, Users, MessageSquare, AlertCircle, Activity, LayoutDashboard, Download, Loader2 } from "lucide-react";
+import { TrendingUp, TrendingDown, Users, MessageSquare, AlertCircle, Activity, LayoutDashboard, Download, Loader2, Newspaper } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -24,6 +24,7 @@ const COLORS = ['hsl(var(--primary))', 'hsl(var(--destructive))', 'hsl(var(--war
 export default function Overview() {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
   const [collecting, setCollecting] = useState(false);
+  const [collectingNews, setCollectingNews] = useState(false);
   const { isAdmin } = useAdminCheck();
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -246,17 +247,38 @@ export default function Overview() {
     .sort((a, b) => b.mentions - a.mentions)
     .slice(0, 5) || [];
 
+  // Normaliza nomes de rede social (banco usa 'google_news', UI exibe 'Google News')
+  const normalizeNetwork = (n: string): string => {
+    const map: Record<string, string> = {
+      'google_news': 'Google News',
+      'googlenews': 'Google News',
+      'youtube': 'YouTube',
+      'twitter': 'Twitter/X',
+      'x': 'Twitter/X',
+      'reddit': 'Reddit',
+      'telegram': 'Telegram',
+      'instagram': 'Instagram',
+      'facebook': 'Facebook',
+      'tiktok': 'TikTok',
+      'linkedin': 'LinkedIn',
+      'threads': 'Threads',
+      'wikipedia': 'Wikipedia',
+    };
+    return map[n?.toLowerCase?.()] || n || 'Outro';
+  };
+
   // Distribuição por rede social (cache + fallback para social_interactions)
   const networkCount: Record<string, number> = {};
   allMetrics?.forEach(m => {
     m.networkBreakdown.forEach(nb => {
-      networkCount[nb.network] = (networkCount[nb.network] || 0) + nb.mentions;
+      const key = normalizeNetwork(nb.network);
+      networkCount[key] = (networkCount[key] || 0) + nb.mentions;
     });
   });
   // Fallback: se cache vazio, agregar de social_interactions
   if (Object.keys(networkCount).length === 0) {
     socialInteractions?.forEach(i => {
-      const net = i.social_network || 'Outro';
+      const net = normalizeNetwork(i.social_network || 'Outro');
       networkCount[net] = (networkCount[net] || 0) + 1;
     });
   }
@@ -274,7 +296,7 @@ export default function Overview() {
     'LinkedIn': '#0A66C2',
     'Threads': '#1F2937',
     'Wikipedia': '#636363',
-    'Google News': '#4285F4',
+    'Google News': '#22C55E',
   };
 
   const networkData = Object.entries(networkCount).map(([name, value], index) => ({
@@ -329,6 +351,33 @@ export default function Overview() {
     setCollecting(false);
   };
 
+  // Coleta manual focada apenas em Google News (RSS oficial, sem API key)
+  const handleCollectGoogleNews = async () => {
+    if (!candidates || candidates.length === 0) {
+      toast.error("Adicione candidatos antes de coletar notícias.");
+      return;
+    }
+    setCollectingNews(true);
+    const t = toast.loading(`Coletando notícias do Google News para ${candidates.length} candidato(s)...`);
+    try {
+      // Dispara a edge function global que itera sobre todos candidatos ativos
+      const { error } = await supabase.functions.invoke('google-news-collector', { body: {} });
+      if (error) throw error;
+      toast.dismiss(t);
+      toast.success(
+        `Coleta do Google News iniciada em background. As notícias aparecerão em poucos minutos.`,
+        { duration: 5000 }
+      );
+      setTimeout(() => qc.invalidateQueries(), 20000);
+    } catch (e) {
+      toast.dismiss(t);
+      const msg = e instanceof Error ? e.message : 'Erro desconhecido';
+      toast.error(`Falha ao iniciar coleta do Google News: ${msg}`);
+    } finally {
+      setCollectingNews(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Card className="p-4 bg-gradient-to-r from-primary/10 to-primary/5 border-primary/20">
@@ -339,12 +388,27 @@ export default function Overview() {
               Coleta global de dados
             </h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Aciona a coleta automática em todas as redes sociais (YouTube, Twitter/X, Google News) para todos os seus candidatos.
+              Aciona a coleta automática em todas as redes sociais (YouTube, Twitter/X, Google News, Reddit, Telegram, Wikipedia) para todos os seus candidatos.
             </p>
           </div>
-          <Button onClick={handleCollectAll} disabled={collecting || !candidates?.length} size="lg">
-            {collecting ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Coletando...</>) : (<><Download className="mr-2 h-4 w-4" /> Coletar dados</>)}
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Button
+              onClick={handleCollectGoogleNews}
+              disabled={collectingNews || !candidates?.length}
+              variant="outline"
+              size="lg"
+              className="border-success/50 text-success hover:bg-success/10 hover:text-success"
+            >
+              {collectingNews ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Coletando notícias...</>
+              ) : (
+                <><Newspaper className="mr-2 h-4 w-4" /> Coletar Google News</>
+              )}
+            </Button>
+            <Button onClick={handleCollectAll} disabled={collecting || !candidates?.length} size="lg">
+              {collecting ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Coletando...</>) : (<><Download className="mr-2 h-4 w-4" /> Coletar tudo</>)}
+            </Button>
+          </div>
         </div>
       </Card>
 
