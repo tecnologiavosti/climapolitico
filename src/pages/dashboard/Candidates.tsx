@@ -598,11 +598,14 @@ export default function Candidates() {
                 <Label htmlFor="socialMedia">Link de Rede Social</Label>
                 <Input
                   id="socialMedia"
-                  placeholder="Ex: https://twitter.com/usuario"
+                  placeholder="Ex: https://www.tiktok.com/@usuario ou https://twitter.com/usuario"
                   value={formData.socialMedia}
                   onChange={(e) => setFormData({ ...formData, socialMedia: e.target.value })}
                   disabled={addCandidateMutation.isPending}
                 />
+                <p className="text-xs text-muted-foreground">
+                  Para coletas do TikTok funcionarem, cole o link completo do perfil no formato <code>https://www.tiktok.com/@handle</code>. Se deixar em branco, o sistema tenta descobrir automaticamente.
+                </p>
                 {validationErrors.socialMedia && (
                   <p className="text-sm text-destructive">{validationErrors.socialMedia}</p>
                 )}
