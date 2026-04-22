@@ -190,8 +190,10 @@ export default function Analytics() {
           <p className="text-muted-foreground">Análise estatística baseada em dados reais coletados</p>
         </div>
         <Badge variant="outline" className="flex items-center gap-2">
-          <Youtube className="h-4 w-4 text-destructive" />
-          Fonte: YouTube
+          <BarChart3 className="h-4 w-4 text-primary" />
+          {sourcesCount > 0
+            ? `${sourcesCount} ${sourcesCount === 1 ? 'fonte' : 'fontes'}${topNetwork ? ` • principal: ${topNetwork}` : ''}`
+            : 'Multi-fonte: YouTube, Google News, TikTok, Reddit, Telegram, Wikipedia, X'}
         </Badge>
       </div>
 
