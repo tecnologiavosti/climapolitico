@@ -351,33 +351,6 @@ export default function Overview() {
     setCollecting(false);
   };
 
-  // Coleta manual focada apenas em Google News (RSS oficial, sem API key)
-  const handleCollectGoogleNews = async () => {
-    if (!candidates || candidates.length === 0) {
-      toast.error("Adicione candidatos antes de coletar notícias.");
-      return;
-    }
-    setCollectingNews(true);
-    const t = toast.loading(`Coletando notícias do Google News para ${candidates.length} candidato(s)...`);
-    try {
-      // Dispara a edge function global que itera sobre todos candidatos ativos
-      const { error } = await supabase.functions.invoke('google-news-collector', { body: {} });
-      if (error) throw error;
-      toast.dismiss(t);
-      toast.success(
-        `Coleta do Google News iniciada em background. As notícias aparecerão em poucos minutos.`,
-        { duration: 5000 }
-      );
-      setTimeout(() => qc.invalidateQueries(), 20000);
-    } catch (e) {
-      toast.dismiss(t);
-      const msg = e instanceof Error ? e.message : 'Erro desconhecido';
-      toast.error(`Falha ao iniciar coleta do Google News: ${msg}`);
-    } finally {
-      setCollectingNews(false);
-    }
-  };
-
   return (
     <div className="space-y-6">
       <Card className="p-4 bg-gradient-to-r from-primary/10 to-primary/5 border-primary/20">
@@ -388,27 +361,12 @@ export default function Overview() {
               Coleta global de dados
             </h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Aciona a coleta automática em todas as redes sociais (YouTube, Twitter/X, Google News, Reddit, Telegram, Wikipedia) para todos os seus candidatos.
+              Aciona a coleta automática em todas as redes sociais (YouTube, Twitter/X, Google News, Reddit, Telegram, TikTok, Wikipedia) para todos os seus candidatos.
             </p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <Button
-              onClick={handleCollectGoogleNews}
-              disabled={collectingNews || !candidates?.length}
-              variant="outline"
-              size="lg"
-              className="border-success/50 text-success hover:bg-success/10 hover:text-success"
-            >
-              {collectingNews ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Coletando notícias...</>
-              ) : (
-                <><Newspaper className="mr-2 h-4 w-4" /> Coletar Google News</>
-              )}
-            </Button>
-            <Button onClick={handleCollectAll} disabled={collecting || !candidates?.length} size="lg">
-              {collecting ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Coletando...</>) : (<><Download className="mr-2 h-4 w-4" /> Coletar tudo</>)}
-            </Button>
-          </div>
+          <Button onClick={handleCollectAll} disabled={collecting || !candidates?.length} size="lg">
+            {collecting ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Coletando...</>) : (<><Download className="mr-2 h-4 w-4" /> Coletar tudo</>)}
+          </Button>
         </div>
       </Card>
 
