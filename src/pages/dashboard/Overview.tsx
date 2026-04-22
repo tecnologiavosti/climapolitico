@@ -24,7 +24,6 @@ const COLORS = ['hsl(var(--primary))', 'hsl(var(--destructive))', 'hsl(var(--war
 export default function Overview() {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
   const [collecting, setCollecting] = useState(false);
-  const [collectingNews, setCollectingNews] = useState(false);
   const { isAdmin } = useAdminCheck();
   const { user } = useAuth();
   const qc = useQueryClient();
