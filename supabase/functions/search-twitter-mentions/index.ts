@@ -313,6 +313,19 @@ async function scrapeTwitter(
     }
     if (merged.length >= hardLimit) break;
   }
+
+  // Fallback: se nenhuma instância retornou, tenta X API oficial
+  if (merged.length === 0) {
+    console.log('[TWITTER] Todas as instâncias Nitter falharam — usando X API v2');
+    const apiTweets = await fetchViaXApi(query, hardLimit);
+    for (const t of apiTweets) {
+      const key = t.tweetId || `${t.author}::${t.text.substring(0, 80)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(t);
+      if (merged.length >= hardLimit) break;
+    }
+  }
   return merged;
 }
 
