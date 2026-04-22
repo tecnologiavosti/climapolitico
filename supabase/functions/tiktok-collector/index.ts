@@ -87,8 +87,11 @@ async function collectForCandidate(
   supabase: ReturnType<typeof createClient>,
   candidate: { id: string; full_name: string; user_id: string; social_media_link: string | null },
 ): Promise<{ posts: number; comments: number; handle: string | null; error?: string }> {
-  const handle = deriveTikTokHandle(candidate);
-  if (!handle) return { posts: 0, comments: 0, handle: null, error: "handle não encontrado" };
+  let handle = deriveTikTokHandle(candidate);
+  if (!handle) {
+    handle = await autoResolveHandle(supabase, candidate);
+  }
+  if (!handle) return { posts: 0, comments: 0, handle: null, error: "Handle não encontrado nem via Firecrawl. Preencha o link do TikTok manualmente." };
 
   let postsInserted = 0;
   let commentsInserted = 0;
