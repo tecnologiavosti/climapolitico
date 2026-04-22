@@ -260,6 +260,7 @@ export default function Overview() {
       'instagram': 'Instagram',
       'facebook': 'Facebook',
       'tiktok': 'TikTok',
+      'tik_tok': 'TikTok',
       'linkedin': 'LinkedIn',
       'threads': 'Threads',
       'wikipedia': 'Wikipedia',
