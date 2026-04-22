@@ -321,7 +321,7 @@ export default function Analytics() {
               <div className="text-center">
                 <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-30" />
                 <p>Sem dados no período selecionado</p>
-                <p className="text-sm mt-2">Colete comentários do YouTube para visualizar a evolução</p>
+                <p className="text-sm mt-2">Colete dados das redes sociais (YouTube, Google News, TikTok, Reddit, Telegram, Wikipedia, X) para visualizar a evolução</p>
               </div>
             </div>
           )}
