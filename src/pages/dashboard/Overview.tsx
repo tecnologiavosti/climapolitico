@@ -261,10 +261,26 @@ export default function Overview() {
     });
   }
 
+  const NETWORK_COLORS: Record<string, string> = {
+    'YouTube': '#FF0000',
+    'Twitter': '#6B7280',
+    'Twitter/X': '#6B7280',
+    'X': '#6B7280',
+    'Reddit': '#FF4500',
+    'Telegram': '#0088CC',
+    'Instagram': '#E4405F',
+    'Facebook': '#1877F2',
+    'TikTok': '#1F2937',
+    'LinkedIn': '#0A66C2',
+    'Threads': '#1F2937',
+    'Wikipedia': '#636363',
+    'Google News': '#4285F4',
+  };
+
   const networkData = Object.entries(networkCount).map(([name, value], index) => ({
     name,
     value,
-    color: COLORS[index % COLORS.length]
+    color: NETWORK_COLORS[name] || COLORS[index % COLORS.length]
   })).filter(d => d.value > 0);
 
   const isLoading = loadingCandidates || loadingInteractions || loadingRankings || loadingMetrics;
