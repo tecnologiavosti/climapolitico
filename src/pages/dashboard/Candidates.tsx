@@ -795,6 +795,62 @@ export default function Candidates() {
                                 </TooltipContent>
                               </Tooltip>
 
+                              {/* Google News Collection Button */}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="bg-success/10 hover:bg-success/20 border-success/30"
+                                    onClick={() => googleNewsCollectionMutation.mutate({
+                                      candidateId: candidate.id,
+                                      candidateName: candidate.full_name
+                                    })}
+                                    disabled={googleNewsCollectionMutation.isPending}
+                                  >
+                                    {googleNewsCollectionMutation.isPending ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Newspaper className="h-4 w-4 text-success" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Coletar notícias do Google News</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    RSS oficial, sem API key
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+
+                              {/* TikTok Collection Button */}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="bg-foreground/10 hover:bg-foreground/20 border-foreground/30"
+                                    onClick={() => tiktokCollectionMutation.mutate({
+                                      candidateId: candidate.id,
+                                      candidateName: candidate.full_name
+                                    })}
+                                    disabled={tiktokCollectionMutation.isPending}
+                                  >
+                                    {tiktokCollectionMutation.isPending ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Music2 className="h-4 w-4 text-foreground" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Coletar dados do TikTok</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Scraping via Urlebird (visualizador público)
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+
                               {/* Backfill Replies Button */}
                               <Tooltip>
                                 <TooltipTrigger asChild>
