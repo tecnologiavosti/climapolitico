@@ -9,6 +9,7 @@ interface RealTimeMentionsChartProps {
 const networkColors: Record<string, string> = {
   'Instagram': '#E4405F',
   'Twitter': '#6B7280',
+  'Twitter/X': '#6B7280',
   'X': '#6B7280',
   'Facebook': '#1877F2',
   'TikTok': '#1F2937',
@@ -18,7 +19,8 @@ const networkColors: Record<string, string> = {
   'Telegram': '#0088CC',
   'Reddit': '#FF4500',
   'Wikipedia': '#636363',
-  'Google News': '#4285F4',
+  'Google News': '#22C55E',
+  'google_news': '#22C55E',
 };
 
 export const RealTimeMentionsChart = ({ metrics }: RealTimeMentionsChartProps) => {
