@@ -318,15 +318,21 @@ export default function Candidates() {
       if (error) throw error;
       return data;
     },
-    onSuccess: (data) => {
+    onSuccess: async (data, vars) => {
+      try {
+        await supabase.functions.invoke('recalculate-candidate-metrics', { body: { candidateId: vars.candidateId } });
+      } catch (e) { console.warn('recalc falhou:', e); }
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
       queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-metrics-cache'] });
+      queryClient.invalidateQueries({ queryKey: ['all-candidate-metrics-cache'] });
       const total = data?.total ?? data?.news?.length ?? 0;
       toast.success(`Google News: ${total} notícias coletadas e indexadas.`, { duration: 5000 });
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
       queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-metrics-cache'] });
     },
     onError: (error: Error) => {
       console.error('Google News collection error:', error);
