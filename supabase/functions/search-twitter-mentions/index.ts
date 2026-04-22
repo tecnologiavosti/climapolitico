@@ -547,9 +547,12 @@ Deno.serve(async (req) => {
       .order('last_error_at', { ascending: true, nullsFirst: true })
       .limit(15);
     const dbHosts = (instanceRows || []).map((r: any) => r.url as string);
-    // Mescla DB + fallback para maximizar chance de sucesso
-    const hostSet = new Set<string>([...dbHosts, ...FALLBACK_NITTER_HOSTS]);
-    const hosts = Array.from(hostSet).slice(0, 15);
+    // Descobre dinamicamente novas instâncias Nitter (status.d420.de + wiki)
+    const discovered = await discoverNitterHosts();
+    if (discovered.length > 0) console.log(`[TWITTER] Descobertas ${discovered.length} instâncias dinâmicas`);
+    // Mescla DB + descobertas + fallback estático para maximizar chance de sucesso
+    const hostSet = new Set<string>([...dbHosts, ...discovered, ...FALLBACK_NITTER_HOSTS]);
+    const hosts = Array.from(hostSet).slice(0, 20);
     const hostIdByUrl = new Map<string, string>();
     (instanceRows || []).forEach((r: any) => hostIdByUrl.set(r.url, r.id));
 
