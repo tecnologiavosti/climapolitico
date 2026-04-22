@@ -43,6 +43,7 @@ export const RealTimeMentionsChart = ({ metrics }: RealTimeMentionsChartProps) =
       google_news: 'Google News', googlenews: 'Google News',
       youtube: 'YouTube', twitter: 'Twitter/X', x: 'Twitter/X',
       reddit: 'Reddit', telegram: 'Telegram', wikipedia: 'Wikipedia',
+      tiktok: 'TikTok', tik_tok: 'TikTok',
     };
     return map[n?.toLowerCase?.()] || n;
   };
