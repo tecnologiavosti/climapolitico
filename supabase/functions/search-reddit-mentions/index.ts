@@ -253,7 +253,8 @@ Deno.serve(async (req) => {
     // === Background job ===
     const backgroundJob = (async () => {
      try {
-    const items = await fetchViaRssBridge(`"${candidateName}"`);
+    const items = await fetchViaRedditJson(`"${candidateName}"`, limit) ;
+    const finalItems = items.length > 0 ? items : await fetchViaRssBridge(`"${candidateName}"`);
 
     if (items.length === 0) {
       console.log('[Reddit-BG] nenhum item retornado');
