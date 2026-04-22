@@ -86,3 +86,6 @@ verify_jwt = false
 
 [functions.tiktok-collector]
 verify_jwt = false
+
+[functions.tiktok-resolve-handle]
+verify_jwt = true
