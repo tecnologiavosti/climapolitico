@@ -397,7 +397,7 @@ export default function Overview() {
               disabled={collectingNews || !candidates?.length}
               variant="outline"
               size="lg"
-              className="border-green-500/50 text-green-600 hover:bg-green-500/10 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300"
+              className="border-success/50 text-success hover:bg-success/10 hover:text-success"
             >
               {collectingNews ? (
                 <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Coletando notícias...</>
