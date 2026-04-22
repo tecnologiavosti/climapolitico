@@ -309,7 +309,60 @@ export default function Candidates() {
     },
   });
 
-  // Backfill replies sobre posts existentes (Reddit/Twitter/Telegram)
+  // Google News collection mutation (RSS oficial, sem API key)
+  const googleNewsCollectionMutation = useMutation({
+    mutationFn: async ({ candidateId, candidateName }: { candidateId: string; candidateName: string }) => {
+      const { data, error } = await supabase.functions.invoke('search-google-news', {
+        body: { candidateId, candidateName }
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+      const total = data?.total ?? data?.news?.length ?? 0;
+      toast.success(`Google News: ${total} notícias coletadas e indexadas.`, { duration: 5000 });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+    },
+    onError: (error: Error) => {
+      console.error('Google News collection error:', error);
+      toast.error('Erro ao coletar notícias do Google News: ' + error.message);
+    },
+  });
+
+  // TikTok collection mutation (Urlebird scraping, sem API key)
+  const tiktokCollectionMutation = useMutation({
+    mutationFn: async ({ candidateId }: { candidateId: string; candidateName: string }) => {
+      const { data, error } = await supabase.functions.invoke('tiktok-collector', {
+        body: { candidateId }
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+      const posts = data?.posts ?? 0;
+      const comments = data?.comments ?? 0;
+      if (posts === 0 && comments === 0) {
+        toast.info('TikTok: nenhum post novo encontrado. Verifique se o link social do candidato aponta para o perfil correto.', { duration: 6000 });
+      } else {
+        toast.success(`TikTok: +${posts} posts, +${comments} comentários coletados.`, { duration: 5000 });
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+    },
+    onError: (error: Error) => {
+      console.error('TikTok collection error:', error);
+      toast.error('Erro ao coletar dados do TikTok: ' + error.message);
+    },
+  });
   const backfillRepliesMutation = useMutation({
     mutationFn: async ({ candidateId }: { candidateId: string }) => {
       const { data, error } = await supabase.functions.invoke('backfill-replies', {
