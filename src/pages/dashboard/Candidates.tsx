@@ -349,9 +349,14 @@ export default function Candidates() {
       if (error) throw error;
       return data;
     },
-    onSuccess: (data) => {
+    onSuccess: async (data, vars) => {
+      try {
+        await supabase.functions.invoke('recalculate-candidate-metrics', { body: { candidateId: vars.candidateId } });
+      } catch (e) { console.warn('recalc falhou:', e); }
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
       queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-metrics-cache'] });
+      queryClient.invalidateQueries({ queryKey: ['all-candidate-metrics-cache'] });
       const posts = data?.posts ?? 0;
       const comments = data?.comments ?? 0;
       if (posts === 0 && comments === 0) {
@@ -363,6 +368,7 @@ export default function Candidates() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
       queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-metrics-cache'] });
     },
     onError: (error: Error) => {
       console.error('TikTok collection error:', error);
