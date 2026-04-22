@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, ChevronUp, BarChart3, RefreshCw, Twitter, MessageCircle, Send, MessagesSquare } from "lucide-react";
+import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, ChevronUp, BarChart3, RefreshCw, Twitter, MessageCircle, Send, MessagesSquare, Newspaper, Music2 } from "lucide-react";
 // ArrowUpRight, ArrowDownRight, Minus removidos temporariamente (coluna Tendência oculta)
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 
@@ -309,7 +309,72 @@ export default function Candidates() {
     },
   });
 
-  // Backfill replies sobre posts existentes (Reddit/Twitter/Telegram)
+  // Google News collection mutation (RSS oficial, sem API key)
+  const googleNewsCollectionMutation = useMutation({
+    mutationFn: async ({ candidateId, candidateName }: { candidateId: string; candidateName: string }) => {
+      const { data, error } = await supabase.functions.invoke('search-google-news', {
+        body: { candidateId, candidateName }
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: async (data, vars) => {
+      try {
+        await supabase.functions.invoke('recalculate-candidate-metrics', { body: { candidateId: vars.candidateId } });
+      } catch (e) { console.warn('recalc falhou:', e); }
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-metrics-cache'] });
+      queryClient.invalidateQueries({ queryKey: ['all-candidate-metrics-cache'] });
+      const total = data?.total ?? data?.news?.length ?? 0;
+      toast.success(`Google News: ${total} notícias coletadas e indexadas.`, { duration: 5000 });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-metrics-cache'] });
+    },
+    onError: (error: Error) => {
+      console.error('Google News collection error:', error);
+      toast.error('Erro ao coletar notícias do Google News: ' + error.message);
+    },
+  });
+
+  // TikTok collection mutation (Urlebird scraping, sem API key)
+  const tiktokCollectionMutation = useMutation({
+    mutationFn: async ({ candidateId }: { candidateId: string; candidateName: string }) => {
+      const { data, error } = await supabase.functions.invoke('tiktok-collector', {
+        body: { candidateId }
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: async (data, vars) => {
+      try {
+        await supabase.functions.invoke('recalculate-candidate-metrics', { body: { candidateId: vars.candidateId } });
+      } catch (e) { console.warn('recalc falhou:', e); }
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-metrics-cache'] });
+      queryClient.invalidateQueries({ queryKey: ['all-candidate-metrics-cache'] });
+      const posts = data?.posts ?? 0;
+      const comments = data?.comments ?? 0;
+      if (posts === 0 && comments === 0) {
+        toast.info('TikTok: nenhum post novo encontrado. Verifique se o link social do candidato aponta para o perfil correto.', { duration: 6000 });
+      } else {
+        toast.success(`TikTok: +${posts} posts, +${comments} comentários coletados.`, { duration: 5000 });
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-consolidated-metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate-metrics-cache'] });
+    },
+    onError: (error: Error) => {
+      console.error('TikTok collection error:', error);
+      toast.error('Erro ao coletar dados do TikTok: ' + error.message);
+    },
+  });
   const backfillRepliesMutation = useMutation({
     mutationFn: async ({ candidateId }: { candidateId: string }) => {
       const { data, error } = await supabase.functions.invoke('backfill-replies', {
@@ -738,6 +803,62 @@ export default function Candidates() {
                                   <p>Coletar dados do Telegram</p>
                                   <p className="text-xs text-muted-foreground">
                                     Lê canais públicos via RSSHub/RSS-Bridge
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+
+                              {/* Google News Collection Button */}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="bg-success/10 hover:bg-success/20 border-success/30"
+                                    onClick={() => googleNewsCollectionMutation.mutate({
+                                      candidateId: candidate.id,
+                                      candidateName: candidate.full_name
+                                    })}
+                                    disabled={googleNewsCollectionMutation.isPending}
+                                  >
+                                    {googleNewsCollectionMutation.isPending ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Newspaper className="h-4 w-4 text-success" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Coletar notícias do Google News</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    RSS oficial, sem API key
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+
+                              {/* TikTok Collection Button */}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="bg-foreground/10 hover:bg-foreground/20 border-foreground/30"
+                                    onClick={() => tiktokCollectionMutation.mutate({
+                                      candidateId: candidate.id,
+                                      candidateName: candidate.full_name
+                                    })}
+                                    disabled={tiktokCollectionMutation.isPending}
+                                  >
+                                    {tiktokCollectionMutation.isPending ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Music2 className="h-4 w-4 text-foreground" />
+                                    )}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Coletar dados do TikTok</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Scraping via Urlebird (visualizador público)
                                   </p>
                                 </TooltipContent>
                               </Tooltip>

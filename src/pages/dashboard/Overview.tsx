@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TrendingUp, TrendingDown, Users, MessageSquare, AlertCircle, Activity, LayoutDashboard, Download, Loader2, Newspaper } from "lucide-react";
+import { TrendingUp, TrendingDown, Users, MessageSquare, AlertCircle, Activity, LayoutDashboard, Download, Loader2 } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -24,7 +24,6 @@ const COLORS = ['hsl(var(--primary))', 'hsl(var(--destructive))', 'hsl(var(--war
 export default function Overview() {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
   const [collecting, setCollecting] = useState(false);
-  const [collectingNews, setCollectingNews] = useState(false);
   const { isAdmin } = useAdminCheck();
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -260,6 +259,7 @@ export default function Overview() {
       'instagram': 'Instagram',
       'facebook': 'Facebook',
       'tiktok': 'TikTok',
+      'tik_tok': 'TikTok',
       'linkedin': 'LinkedIn',
       'threads': 'Threads',
       'wikipedia': 'Wikipedia',
@@ -292,7 +292,7 @@ export default function Overview() {
     'Telegram': '#0088CC',
     'Instagram': '#E4405F',
     'Facebook': '#1877F2',
-    'TikTok': '#1F2937',
+    'TikTok': '#000000',
     'LinkedIn': '#0A66C2',
     'Threads': '#1F2937',
     'Wikipedia': '#636363',
@@ -321,6 +321,7 @@ export default function Overview() {
       { fn: 'search-wikipedia', label: 'Wikipedia' },
       { fn: 'search-reddit-mentions', label: 'Reddit' },
       { fn: 'search-telegram-mentions', label: 'Telegram' },
+      { fn: 'tiktok-collector', label: 'TikTok' },
     ];
     const totalJobs = candidates.length * sources.length;
     let dispatched = 0;
@@ -351,33 +352,6 @@ export default function Overview() {
     setCollecting(false);
   };
 
-  // Coleta manual focada apenas em Google News (RSS oficial, sem API key)
-  const handleCollectGoogleNews = async () => {
-    if (!candidates || candidates.length === 0) {
-      toast.error("Adicione candidatos antes de coletar notícias.");
-      return;
-    }
-    setCollectingNews(true);
-    const t = toast.loading(`Coletando notícias do Google News para ${candidates.length} candidato(s)...`);
-    try {
-      // Dispara a edge function global que itera sobre todos candidatos ativos
-      const { error } = await supabase.functions.invoke('google-news-collector', { body: {} });
-      if (error) throw error;
-      toast.dismiss(t);
-      toast.success(
-        `Coleta do Google News iniciada em background. As notícias aparecerão em poucos minutos.`,
-        { duration: 5000 }
-      );
-      setTimeout(() => qc.invalidateQueries(), 20000);
-    } catch (e) {
-      toast.dismiss(t);
-      const msg = e instanceof Error ? e.message : 'Erro desconhecido';
-      toast.error(`Falha ao iniciar coleta do Google News: ${msg}`);
-    } finally {
-      setCollectingNews(false);
-    }
-  };
-
   return (
     <div className="space-y-6">
       <Card className="p-4 bg-gradient-to-r from-primary/10 to-primary/5 border-primary/20">
@@ -388,27 +362,12 @@ export default function Overview() {
               Coleta global de dados
             </h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Aciona a coleta automática em todas as redes sociais (YouTube, Twitter/X, Google News, Reddit, Telegram, Wikipedia) para todos os seus candidatos.
+              Aciona a coleta automática em todas as redes sociais (YouTube, Twitter/X, Google News, Reddit, Telegram, TikTok, Wikipedia) para todos os seus candidatos.
             </p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <Button
-              onClick={handleCollectGoogleNews}
-              disabled={collectingNews || !candidates?.length}
-              variant="outline"
-              size="lg"
-              className="border-success/50 text-success hover:bg-success/10 hover:text-success"
-            >
-              {collectingNews ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Coletando notícias...</>
-              ) : (
-                <><Newspaper className="mr-2 h-4 w-4" /> Coletar Google News</>
-              )}
-            </Button>
-            <Button onClick={handleCollectAll} disabled={collecting || !candidates?.length} size="lg">
-              {collecting ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Coletando...</>) : (<><Download className="mr-2 h-4 w-4" /> Coletar tudo</>)}
-            </Button>
-          </div>
+          <Button onClick={handleCollectAll} disabled={collecting || !candidates?.length} size="lg">
+            {collecting ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Coletando...</>) : (<><Download className="mr-2 h-4 w-4" /> Coletar tudo</>)}
+          </Button>
         </div>
       </Card>
 

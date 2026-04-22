@@ -12,7 +12,8 @@ const networkColors: Record<string, string> = {
   'Twitter/X': '#6B7280',
   'X': '#6B7280',
   'Facebook': '#1877F2',
-  'TikTok': '#1F2937',
+  'TikTok': '#000000',
+  'tiktok': '#000000',
   'YouTube': '#FF0000',
   'LinkedIn': '#0A66C2',
   'Threads': '#1F2937',
@@ -42,6 +43,7 @@ export const RealTimeMentionsChart = ({ metrics }: RealTimeMentionsChartProps) =
       google_news: 'Google News', googlenews: 'Google News',
       youtube: 'YouTube', twitter: 'Twitter/X', x: 'Twitter/X',
       reddit: 'Reddit', telegram: 'Telegram', wikipedia: 'Wikipedia',
+      tiktok: 'TikTok', tik_tok: 'TikTok',
     };
     return map[n?.toLowerCase?.()] || n;
   };
