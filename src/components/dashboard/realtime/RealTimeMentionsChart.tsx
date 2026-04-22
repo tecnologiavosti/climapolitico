@@ -8,8 +8,8 @@ interface RealTimeMentionsChartProps {
 
 const networkColors: Record<string, string> = {
   'Instagram': '#E4405F',
-  'Twitter': '#1DA1F2',
-  'X': '#1F2937',
+  'Twitter': '#6B7280',
+  'X': '#6B7280',
   'Facebook': '#1877F2',
   'TikTok': '#1F2937',
   'YouTube': '#FF0000',
