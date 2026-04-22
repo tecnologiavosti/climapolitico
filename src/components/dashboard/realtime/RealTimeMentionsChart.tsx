@@ -37,7 +37,15 @@ export const RealTimeMentionsChart = ({ metrics }: RealTimeMentionsChartProps) =
     );
   }
 
-  const data = metrics.mentionsByNetwork.slice(0, 6);
+  const normalize = (n: string): string => {
+    const map: Record<string, string> = {
+      google_news: 'Google News', googlenews: 'Google News',
+      youtube: 'YouTube', twitter: 'Twitter/X', x: 'Twitter/X',
+      reddit: 'Reddit', telegram: 'Telegram', wikipedia: 'Wikipedia',
+    };
+    return map[n?.toLowerCase?.()] || n;
+  };
+  const data = metrics.mentionsByNetwork.slice(0, 6).map(d => ({ ...d, network: normalize(d.network) }));
 
   return (
     <Card>
