@@ -543,15 +543,15 @@ export default function Overview() {
               <p>Nenhum dado coletado ainda</p>
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={340}>
               <PieChart>
                 <Pie
                   data={networkData}
                   cx="50%"
-                  cy="50%"
+                  cy="42%"
                   labelLine={false}
-                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={100}
+                  label={false}
+                  outerRadius={90}
                   fill="#8884d8"
                   dataKey="value"
                 >
@@ -565,8 +565,24 @@ export default function Overview() {
                     border: '1px solid hsl(var(--border))',
                     borderRadius: '8px'
                   }}
+                  formatter={(value: number, name: string) => {
+                    const total = networkData.reduce((s, d) => s + d.value, 0);
+                    const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
+                    return [`${value.toLocaleString('pt-BR')} (${pct}%)`, name];
+                  }}
                 />
-                <Legend />
+                <Legend
+                  verticalAlign="bottom"
+                  height={64}
+                  iconSize={10}
+                  wrapperStyle={{ fontSize: '12px', paddingTop: '8px', lineHeight: '20px' }}
+                  formatter={(value: string) => {
+                    const item = networkData.find(d => d.name === value);
+                    const total = networkData.reduce((s, d) => s + d.value, 0);
+                    const pct = item && total > 0 ? ((item.value / total) * 100).toFixed(0) : '0';
+                    return `${value} (${pct}%)`;
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
           )}
