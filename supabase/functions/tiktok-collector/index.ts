@@ -74,6 +74,15 @@ async function fetchTikwmPosts(handle: string): Promise<TikwmPost[]> {
   return (json?.data?.videos || []) as TikwmPost[];
 }
 
+async function fetchTikwmSearch(keyword: string, count = 20): Promise<TikwmPost[]> {
+  const url = `https://www.tikwm.com/api/feed/search?keywords=${encodeURIComponent(keyword)}&count=${count}&cursor=0`;
+  const resp = await fetch(url, { headers: { "User-Agent": randomUA(), "Accept": "application/json" } });
+  if (!resp.ok) throw new Error(`tikwm search HTTP ${resp.status}`);
+  const json = await resp.json();
+  if (json?.code !== 0) throw new Error(`tikwm search code ${json?.code}: ${json?.msg}`);
+  return (json?.data?.videos || []) as TikwmPost[];
+}
+
 async function fetchTikwmComments(videoId: string): Promise<TikwmComment[]> {
   const url = `https://www.tikwm.com/api/comment/list?aweme_id=${encodeURIComponent(videoId)}&count=30&cursor=0`;
   const resp = await fetch(url, { headers: { "User-Agent": randomUA(), "Accept": "application/json" } });
@@ -89,29 +98,49 @@ async function collectForCandidate(
 ): Promise<{ posts: number; comments: number; handle: string | null; error?: string }> {
   let handle = deriveTikTokHandle(candidate);
   if (!handle) {
+    // Tenta resolver via Firecrawl (não bloqueia se falhar)
     handle = await autoResolveHandle(supabase, candidate);
   }
-  if (!handle) return { posts: 0, comments: 0, handle: null, error: "Handle não encontrado nem via Firecrawl. Preencha o link do TikTok manualmente." };
 
   let postsInserted = 0;
   let commentsInserted = 0;
+  let posts: TikwmPost[] = [];
+  let sourceMode: "profile" | "search" = "profile";
 
   try {
-    let posts: TikwmPost[] = [];
-    try {
-      posts = await fetchTikwmPosts(handle);
-    } catch (e) {
-      console.warn(`[tiktok-collector] tikwm falhou para @${handle}:`, e instanceof Error ? e.message : e);
-      return { posts: 0, comments: 0, handle, error: `Tikwm falhou: ${e instanceof Error ? e.message : e}` };
+    if (handle) {
+      try {
+        posts = await fetchTikwmPosts(handle);
+      } catch (e) {
+        console.warn(`[tiktok-collector] tikwm posts @${handle} falhou:`, e instanceof Error ? e.message : e);
+      }
+    }
+
+    // Fallback: busca por nome do candidato (sempre que perfil retornar 0 ou não houver handle)
+    if (posts.length === 0) {
+      sourceMode = "search";
+      try {
+        console.log(`[tiktok-collector] Fallback: buscando "${candidate.full_name}" na Tikwm...`);
+        posts = await fetchTikwmSearch(candidate.full_name, 20);
+        console.log(`[tiktok-collector] Search retornou ${posts.length} vídeos para "${candidate.full_name}"`);
+      } catch (e) {
+        console.warn(`[tiktok-collector] tikwm search falhou:`, e instanceof Error ? e.message : e);
+        return { posts: 0, comments: 0, handle, error: `Sem vídeos (perfil e busca falharam)` };
+      }
     }
 
     if (posts.length === 0) {
-      console.warn(`[tiktok-collector] @${handle}: 0 posts retornados (perfil pode estar vazio/privado/inexistente)`);
-      return { posts: 0, comments: 0, handle, error: "Nenhum post no perfil" };
+      return { posts: 0, comments: 0, handle, error: "Nenhum vídeo encontrado (perfil ou busca)" };
     }
 
-    // Dedup posts por video_id
-    const videoUrls = posts.map((p) => `https://www.tiktok.com/@${handle}/video/${p.video_id}`);
+    // Builder de URL: usa handle do post (modo search) ou handle do candidato (modo profile)
+    const buildUrl = (p: TikwmPost) => {
+      const author = p.author?.unique_id || handle || "tiktok";
+      return `https://www.tiktok.com/@${author}/video/${p.video_id}`;
+    };
+
+    // Dedup posts por URL
+    const videoUrls = posts.map(buildUrl);
     const { data: existing } = await supabase
       .from("social_interactions")
       .select("author_profile_url")
@@ -120,16 +149,16 @@ async function collectForCandidate(
       .in("author_profile_url", videoUrls);
     const existingSet = new Set((existing || []).map((e) => e.author_profile_url));
 
-    const newPosts = posts.filter((p) => !existingSet.has(`https://www.tiktok.com/@${handle}/video/${p.video_id}`));
+    const newPosts = posts.filter((p) => !existingSet.has(buildUrl(p)));
     if (newPosts.length > 0) {
       const rows = newPosts.map((p) => ({
         user_id: candidate.user_id,
         candidate_id: candidate.id,
         social_network: "tiktok",
-        interaction_type: "post",
+        interaction_type: sourceMode === "search" ? "mention" : "post",
         comment_text: p.title || "Vídeo do TikTok",
-        comment_author: p.author?.unique_id || handle,
-        author_profile_url: `https://www.tiktok.com/@${handle}/video/${p.video_id}`,
+        comment_author: p.author?.unique_id || p.author?.nickname || handle || "tiktok",
+        author_profile_url: buildUrl(p),
         likes_count: p.digg_count || 0,
         replies_count: p.comment_count || 0,
         shares_count: p.share_count || 0,
@@ -190,8 +219,8 @@ async function collectForCandidate(
     return { posts: postsInserted, comments: commentsInserted, handle, error: err instanceof Error ? err.message : "erro desconhecido" };
   }
 
-  console.log(`[tiktok-collector] ${candidate.full_name} (@${handle}): +${postsInserted} posts, +${commentsInserted} comentários`);
-  return { posts: postsInserted, comments: commentsInserted, handle };
+  console.log(`[tiktok-collector] ${candidate.full_name} [${sourceMode}${handle ? ` @${handle}` : ""}]: +${postsInserted} posts, +${commentsInserted} comentários`);
+  return { posts: postsInserted, comments: commentsInserted, handle, mode: sourceMode };
 }
 
 serve(async (req) => {
