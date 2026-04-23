@@ -144,6 +144,77 @@ Neutro (0.4-0.6): pergunta, informativo, indeterminado.`;
   return null;
 }
 
+async function callGeminiDirect(texts: string[], geminiKey: string): Promise<SentimentResult[] | null> {
+  const clipped = texts.map((t) => (t || "").substring(0, 400).trim());
+  const userContent = clipped.map((t, i) => `${i + 1}. "${t}"`).join("\n");
+
+  const systemPrompt = `Você é especialista em análise de sentimento político BR.
+Para cada comentário responda em JSON array: [{"label":"Positivo|Negativo|Neutro","score":0.0-1.0},...] na MESMA ordem.
+Positivo (0.7-1.0): apoio, elogio, torcida, emojis ❤️👏🙏.
+Negativo (0.0-0.3): crítica, xingamento, rejeição, sarcasmo, gírias "gado/mortadela/petralha/bolsominion", emojis 🤮👎.
+Neutro (0.4-0.6): pergunta, informativo, indeterminado.`;
+
+  const models = ["gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-2.5-flash"];
+  for (const model of models) {
+    // Retry com backoff em 503 (sobrecarga)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            contents: [{ role: "user", parts: [{ text: `Analise:\n${userContent}` }] }],
+            generationConfig: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    label: { type: "string", enum: ["Positivo", "Negativo", "Neutro"] },
+                    score: { type: "number" },
+                  },
+                  required: ["label", "score"],
+                },
+              },
+              temperature: 0.1,
+            },
+          }),
+        });
+        if (res.status === 503 || res.status === 429) {
+          const wait = (attempt + 1) * 4000 + Math.floor(Math.random() * 2000);
+          console.warn(`[REFINE] Gemini Direct ${model} ${res.status} — aguardando ${wait}ms`);
+          await new Promise((r) => setTimeout(r, wait));
+          continue;
+        }
+        if (!res.ok) {
+          console.warn(`[REFINE] Gemini Direct ${model} ${res.status}`);
+          break;
+        }
+        const data = await res.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) break;
+        const parsed = JSON.parse(text);
+        if (!Array.isArray(parsed) || parsed.length < texts.length) break;
+        return texts.map((_, i) => {
+          const p = parsed[i];
+          const label =
+            p?.label === "Positivo" || p?.label === "Negativo" || p?.label === "Neutro"
+              ? p.label : "Neutro";
+          const score = typeof p?.score === "number" ? Math.max(0, Math.min(1, p.score)) : 0.5;
+          return { label, score };
+        });
+      } catch (e) {
+        console.warn(`[REFINE] Gemini Direct ${model} exceção:`, e);
+        break;
+      }
+    }
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -154,19 +225,20 @@ Deno.serve(async (req) => {
   );
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   const groqKey = Deno.env.get("GROQ_API_KEY");
+  const geminiKey = Deno.env.get("GEMINI_API_KEY");
 
   try {
-    // Pega até 50 comentários recentes Neutro/0.5 dos últimos 6h.
-    const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+    // Pega até 100 comentários recentes Neutro/0.5 das últimas 48h.
+    const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
     const { data: pending, error } = await supabase
       .from("social_interactions")
       .select("id, comment_text")
       .eq("sentiment_label", "Neutro")
       .eq("sentiment_score", 0.5)
-      .gte("created_at", sixHoursAgo)
+      .gte("created_at", since)
       .not("comment_text", "is", null)
       .order("created_at", { ascending: false })
-      .limit(50);
+      .limit(30);
 
     if (error) throw error;
 
@@ -183,14 +255,20 @@ Deno.serve(async (req) => {
 
     // 1) Groq primeiro (rápido, alto rate limit)
     let results: SentimentResult[] | null = null;
+    let providerUsed = "none";
     if (groqKey) {
       results = await callGroq(texts, groqKey);
-      if (results) console.log("[REFINE] ✅ Groq OK");
+      if (results) { console.log("[REFINE] ✅ Groq OK"); providerUsed = "groq"; }
     }
-    // 2) Fallback Lovable AI
+    // 2) Lovable AI Gateway
     if (!results && apiKey) {
       results = await callAI(texts, apiKey);
-      if (results) console.log("[REFINE] ✅ Lovable AI OK");
+      if (results) { console.log("[REFINE] ✅ Lovable AI OK"); providerUsed = "lovable"; }
+    }
+    // 3) Gemini Direct API (cota gratuita generosa)
+    if (!results && geminiKey) {
+      results = await callGeminiDirect(texts, geminiKey);
+      if (results) { console.log("[REFINE] ✅ Gemini Direct OK"); providerUsed = "gemini-direct"; }
     }
 
     if (results) {
@@ -219,9 +297,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`[REFINE] refined=${refined} dist=${JSON.stringify(counts)}`);
+    console.log(`[REFINE] provider=${providerUsed} refined=${refined} dist=${JSON.stringify(counts)}`);
     return new Response(
-      JSON.stringify({ success: true, candidates: pending.length, refined, distribution: counts }),
+      JSON.stringify({ success: true, provider: providerUsed, candidates: pending.length, refined, distribution: counts }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
     );
   } catch (err) {
