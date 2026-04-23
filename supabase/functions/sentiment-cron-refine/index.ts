@@ -238,7 +238,7 @@ Deno.serve(async (req) => {
       .gte("created_at", since)
       .not("comment_text", "is", null)
       .order("created_at", { ascending: false })
-      .limit(100);
+      .limit(30);
 
     if (error) throw error;
 
