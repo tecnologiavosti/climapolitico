@@ -191,30 +191,20 @@ export default function Overview() {
       if (!user) return [];
       // Mesma janela usada por padrão na aba Ranking:
       // from = hoje - 30 dias (sem zerar horas), to = hoje + 1 dia (exclusivo via .lt)
+      // EXATAMENTE a mesma query da aba Ranking (CandidateRanking.tsx):
+      // single select sem paginação, escopado por user_id, janela hoje-30d até hoje+1d
       const from = new Date();
       from.setDate(from.getDate() - 30);
       const to = new Date();
       to.setDate(to.getDate() + 1);
-      const PAGE_SIZE = 1000;
-      const MAX_ROWS = 100000;
-      const all: any[] = [];
-      let offset = 0;
-      while (offset < MAX_ROWS) {
-        let q = supabase
-          .from('social_interactions')
-          .select('candidate_id, sentiment_label, sentiment_score, likes_count, comment_author')
-          .gte('created_at', from.toISOString())
-          .lt('created_at', to.toISOString())
-          .range(offset, offset + PAGE_SIZE - 1);
-        if (!isAdmin) q = q.eq('user_id', user.id);
-        const { data, error } = await q;
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-        all.push(...data);
-        if (data.length < PAGE_SIZE) break;
-        offset += PAGE_SIZE;
-      }
-      return all;
+      const { data, error } = await supabase
+        .from('social_interactions')
+        .select('candidate_id, sentiment_label, sentiment_score, likes_count, comment_author')
+        .eq('user_id', user.id)
+        .gte('created_at', from.toISOString())
+        .lt('created_at', to.toISOString());
+      if (error) throw error;
+      return data || [];
     },
     enabled: !!user,
     staleTime: 60000,
