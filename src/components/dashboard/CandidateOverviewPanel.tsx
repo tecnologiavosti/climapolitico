@@ -135,7 +135,7 @@ export function CandidateOverviewPanel({ candidateId, candidateName }: Candidate
                 <p className="text-sm text-muted-foreground">Pessoas Citando</p>
                 <p className="text-3xl font-bold mt-1">{metrics.uniqueAuthors.toLocaleString('pt-BR')}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  autores únicos
+                  autores únicos · all-time
                 </p>
               </div>
               <div className="p-3 bg-primary/10 rounded-lg">
