@@ -231,16 +231,17 @@ export default function Overview() {
       m.mentions++;
       if (i.comment_author) m.authors.add(i.comment_author);
       m.engagement += i.likes_count || 0;
-      const lbl = (i.sentiment_label || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-      if (lbl.startsWith('pos')) m.sentSum += 100;
-      else if (lbl.startsWith('neg')) m.sentSum += 0;
+      // Mesma classificação da aba Ranking (case-sensitive, sem fallback de score)
+      if (i.sentiment_label === 'Positivo') m.sentSum += 100;
+      else if (i.sentiment_label === 'Negativo') m.sentSum += 0;
       else m.sentSum += 50;
     });
     let maxM = 0, maxA = 0, maxE = 0;
     map.forEach(m => { if (m.mentions > maxM) maxM = m.mentions; if (m.authors.size > maxA) maxA = m.authors.size; if (m.engagement > maxE) maxE = m.engagement; });
     const arr = candidates.map((c: any) => {
       const m = map.get(c.id)!;
-      const avgSent = m.mentions > 0 ? m.sentSum / m.mentions : 50;
+      // Mesma lógica da aba Ranking: avg arredondado ANTES de entrar no score
+      const avgSent = m.mentions > 0 ? Math.round(m.sentSum / m.mentions) : 50;
       const mScore = maxM > 0 ? (m.mentions / maxM) * 100 : 0;
       const aScore = maxA > 0 ? (m.authors.size / maxA) * 100 : 0;
       const eScore = maxE > 0 ? (m.engagement / maxE) * 100 : 0;
