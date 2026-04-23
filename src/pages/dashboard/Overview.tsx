@@ -354,23 +354,6 @@ export default function Overview() {
 
   return (
     <div className="space-y-6">
-      <Card className="p-4 bg-gradient-to-r from-primary/10 to-primary/5 border-primary/20">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="font-semibold flex items-center gap-2">
-              <Download className="h-5 w-5 text-primary" />
-              Coleta global de dados
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Aciona a coleta automática em todas as redes sociais (YouTube, Twitter/X, Google News, Reddit, Telegram, TikTok, Wikipedia) para todos os seus candidatos.
-            </p>
-          </div>
-          <Button onClick={handleCollectAll} disabled={collecting || !candidates?.length} size="lg">
-            {collecting ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Coletando...</>) : (<><Download className="mr-2 h-4 w-4" /> Coletar tudo</>)}
-          </Button>
-        </div>
-      </Card>
-
       {/* Candidate Selector for Consolidated View */}
       <Card className="p-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
