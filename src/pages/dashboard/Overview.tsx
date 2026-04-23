@@ -51,12 +51,14 @@ export default function Overview() {
   };
 
   // Query: Candidatos (for selector and basic info)
+  // IMPORTANTE: filtra status='active' para bater EXATAMENTE com a aba Ranking
   const { data: candidates, isLoading: loadingCandidates } = useQuery({
-    queryKey: ['candidates-overview', isAdmin],
+    queryKey: ['candidates-overview', isAdmin, user?.id],
     queryFn: async () => {
       let query = supabase
         .from('candidates')
-        .select('id, full_name, mentions, sentiment, party, region');
+        .select('id, full_name, mentions, sentiment, party, region, status')
+        .eq('status', 'active');
       
       if (!isAdmin && user) {
         query = query.eq('user_id', user.id);
@@ -65,7 +67,8 @@ export default function Overview() {
       const { data, error } = await query;
       if (error) throw error;
       return data || [];
-    }
+    },
+    enabled: !!user,
   });
 
   // Auto-recalcula o cache de métricas para todos os candidatos ao montar a página
