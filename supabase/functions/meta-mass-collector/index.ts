@@ -91,12 +91,31 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Carrega links extras (IG/FB) da tabela candidate_social_links
+    const { data: extraLinks } = await supabase
+      .from("candidate_social_links")
+      .select("candidate_id, platform, url, handle")
+      .in("platform", ["instagram", "facebook"]);
+
+    const linksByCandidate = new Map<string, { ig?: string; fb?: string }>();
+    for (const l of extraLinks ?? []) {
+      const entry = linksByCandidate.get(l.candidate_id) ?? {};
+      if (l.platform === "instagram" && !entry.ig) {
+        entry.ig = l.handle || extractInstagramHandle(l.url) || undefined;
+      }
+      if (l.platform === "facebook" && !entry.fb) {
+        entry.fb = l.handle || extractFacebookHandle(l.url) || undefined;
+      }
+      linksByCandidate.set(l.candidate_id, entry);
+    }
+
     const interactions: any[] = [];
     const stats = { instagram: 0, facebook: 0, igCandidates: 0, fbCandidates: 0, errors: [] as string[] };
 
     for (const c of candidates) {
-      const igHandle = extractInstagramHandle(c.social_media_link);
-      const fbHandle = extractFacebookHandle(c.social_media_link);
+      const extra = linksByCandidate.get(c.id) ?? {};
+      const igHandle = extra.ig ?? extractInstagramHandle(c.social_media_link);
+      const fbHandle = extra.fb ?? extractFacebookHandle(c.social_media_link);
 
       // ---------- INSTAGRAM ----------
       if (igHandle) {

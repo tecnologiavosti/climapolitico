@@ -441,6 +441,47 @@ export type Database = {
           },
         ]
       }
+      candidate_social_links: {
+        Row: {
+          candidate_id: string
+          created_at: string
+          handle: string | null
+          id: string
+          platform: string
+          updated_at: string
+          url: string
+          user_id: string
+        }
+        Insert: {
+          candidate_id: string
+          created_at?: string
+          handle?: string | null
+          id?: string
+          platform: string
+          updated_at?: string
+          url: string
+          user_id: string
+        }
+        Update: {
+          candidate_id?: string
+          created_at?: string
+          handle?: string | null
+          id?: string
+          platform?: string
+          updated_at?: string
+          url?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_social_links_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidates: {
         Row: {
           analysis_count: number | null

@@ -19,18 +19,24 @@ import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, Chevron
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 
 // Zod validation schema
+const urlOpt = z.string().trim().refine((val) => !val || val.startsWith("http://") || val.startsWith("https://"), {
+  message: "Link deve começar com http:// ou https://"
+}).optional().or(z.literal(""));
+
 const candidateSchema = z.object({
   fullName: z.string().trim().min(3, "Nome deve ter no mínimo 3 caracteres").max(100, "Nome deve ter no máximo 100 caracteres"),
   region: z.string().trim().max(50, "Região deve ter no máximo 50 caracteres").optional().or(z.literal("")),
-  socialMedia: z.string().trim().refine((val) => !val || val.startsWith("http://") || val.startsWith("https://"), {
-    message: "Link deve começar com http:// ou https://"
-  }).optional().or(z.literal(""))
+  socialMedia: urlOpt,
+  instagramUrl: urlOpt,
+  facebookUrl: urlOpt,
 });
 
 type CandidateFormData = {
   fullName: string;
   region: string;
   socialMedia: string;
+  instagramUrl: string;
+  facebookUrl: string;
 };
 
 export default function Candidates() {
@@ -44,6 +50,8 @@ export default function Candidates() {
     fullName: "",
     region: "",
     socialMedia: "",
+    instagramUrl: "",
+    facebookUrl: "",
   });
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
@@ -107,13 +115,35 @@ export default function Candidates() {
         .single();
 
       if (error) throw error;
+
+      // Insere links extras (IG/FB) na tabela relacionada
+      const extraLinks: Array<{ candidate_id: string; user_id: string; platform: string; url: string; handle: string | null }> = [];
+      if (validatedData.instagramUrl) {
+        const m = validatedData.instagramUrl.match(/instagram\.com\/([A-Za-z0-9_.]+)/i);
+        extraLinks.push({
+          candidate_id: data.id, user_id: user.id, platform: 'instagram',
+          url: validatedData.instagramUrl, handle: m?.[1] ?? null,
+        });
+      }
+      if (validatedData.facebookUrl) {
+        const m = validatedData.facebookUrl.match(/facebook\.com\/([A-Za-z0-9.\-]+)/i);
+        extraLinks.push({
+          candidate_id: data.id, user_id: user.id, platform: 'facebook',
+          url: validatedData.facebookUrl, handle: m?.[1] ?? null,
+        });
+      }
+      if (extraLinks.length > 0) {
+        const { error: linksErr } = await supabase.from('candidate_social_links').insert(extraLinks);
+        if (linksErr) console.error('Erro ao salvar links extras:', linksErr);
+      }
+
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
       toast.success('Candidato adicionado com sucesso!');
       setDialogOpen(false);
-      setFormData({ fullName: "", region: "", socialMedia: "" });
+      setFormData({ fullName: "", region: "", socialMedia: "", instagramUrl: "", facebookUrl: "" });
       setValidationErrors({});
     },
     onError: (error: Error) => {
@@ -608,6 +638,35 @@ export default function Candidates() {
                 </p>
                 {validationErrors.socialMedia && (
                   <p className="text-sm text-destructive">{validationErrors.socialMedia}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="instagramUrl">Instagram (opcional)</Label>
+                <Input
+                  id="instagramUrl"
+                  placeholder="https://www.instagram.com/usuario/"
+                  value={formData.instagramUrl}
+                  onChange={(e) => setFormData({ ...formData, instagramUrl: e.target.value })}
+                  disabled={addCandidateMutation.isPending}
+                />
+                {validationErrors.instagramUrl && (
+                  <p className="text-sm text-destructive">{validationErrors.instagramUrl}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="facebookUrl">Facebook (opcional)</Label>
+                <Input
+                  id="facebookUrl"
+                  placeholder="https://www.facebook.com/pagina/"
+                  value={formData.facebookUrl}
+                  onChange={(e) => setFormData({ ...formData, facebookUrl: e.target.value })}
+                  disabled={addCandidateMutation.isPending}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Adicionar IG/FB habilita a coleta via Apify para essas redes.
+                </p>
+                {validationErrors.facebookUrl && (
+                  <p className="text-sm text-destructive">{validationErrors.facebookUrl}</p>
                 )}
               </div>
               <div className="flex justify-end gap-2 pt-4">
