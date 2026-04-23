@@ -98,25 +98,39 @@ async function collectForCandidate(
 ): Promise<{ posts: number; comments: number; handle: string | null; error?: string }> {
   let handle = deriveTikTokHandle(candidate);
   if (!handle) {
+    // Tenta resolver via Firecrawl (não bloqueia se falhar)
     handle = await autoResolveHandle(supabase, candidate);
   }
-  if (!handle) return { posts: 0, comments: 0, handle: null, error: "Handle não encontrado nem via Firecrawl. Preencha o link do TikTok manualmente." };
 
   let postsInserted = 0;
   let commentsInserted = 0;
+  let posts: TikwmPost[] = [];
+  let sourceMode: "profile" | "search" = "profile";
 
   try {
-    let posts: TikwmPost[] = [];
-    try {
-      posts = await fetchTikwmPosts(handle);
-    } catch (e) {
-      console.warn(`[tiktok-collector] tikwm falhou para @${handle}:`, e instanceof Error ? e.message : e);
-      return { posts: 0, comments: 0, handle, error: `Tikwm falhou: ${e instanceof Error ? e.message : e}` };
+    if (handle) {
+      try {
+        posts = await fetchTikwmPosts(handle);
+      } catch (e) {
+        console.warn(`[tiktok-collector] tikwm posts @${handle} falhou:`, e instanceof Error ? e.message : e);
+      }
+    }
+
+    // Fallback: busca por nome do candidato (sempre que perfil retornar 0 ou não houver handle)
+    if (posts.length === 0) {
+      sourceMode = "search";
+      try {
+        console.log(`[tiktok-collector] Fallback: buscando "${candidate.full_name}" na Tikwm...`);
+        posts = await fetchTikwmSearch(candidate.full_name, 20);
+        console.log(`[tiktok-collector] Search retornou ${posts.length} vídeos para "${candidate.full_name}"`);
+      } catch (e) {
+        console.warn(`[tiktok-collector] tikwm search falhou:`, e instanceof Error ? e.message : e);
+        return { posts: 0, comments: 0, handle, error: `Sem vídeos (perfil e busca falharam)` };
+      }
     }
 
     if (posts.length === 0) {
-      console.warn(`[tiktok-collector] @${handle}: 0 posts retornados (perfil pode estar vazio/privado/inexistente)`);
-      return { posts: 0, comments: 0, handle, error: "Nenhum post no perfil" };
+      return { posts: 0, comments: 0, handle, error: "Nenhum vídeo encontrado (perfil ou busca)" };
     }
 
     // Dedup posts por video_id
