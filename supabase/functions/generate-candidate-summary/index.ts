@@ -297,21 +297,36 @@ ${neutralComments.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 Gere um resumo executivo completo para a equipe de campanha.`;
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      return new Response(JSON.stringify({ error: 'Chave de API não configurada' }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
+    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
 
     let summary: any;
     let modelUsed = 'fallback_deterministic';
     let fallbackUsed = false;
-    try {
-      const aiResult = await callAIWithFallback(prompt, LOVABLE_API_KEY);
-      summary = aiResult.summary;
-      modelUsed = aiResult.model_used;
-    } catch (e: any) {
-      console.warn('All AI models failed, using deterministic fallback:', e);
+
+    // 1. Tenta Lovable AI Gateway
+    if (LOVABLE_API_KEY) {
+      try {
+        const aiResult = await callLovableAI(prompt, LOVABLE_API_KEY);
+        summary = aiResult.summary;
+        modelUsed = aiResult.model_used;
+      } catch (e: any) {
+        console.warn('[SUMMARY] Lovable AI falhou, tentando Gemini direto...', e?.status || e);
+      }
+    }
+
+    // 2. Fallback: Google Gemini API direta
+    if (!summary && GEMINI_API_KEY) {
+      try {
+        const aiResult = await callGeminiDirect(prompt, GEMINI_API_KEY);
+        summary = aiResult.summary;
+        modelUsed = aiResult.model_used;
+      } catch (e: any) {
+        console.warn('[SUMMARY] Gemini direto falhou, usando fallback determinístico:', e?.status || e);
+      }
+    }
+
+    // 3. Fallback determinístico (offline)
+    if (!summary) {
       summary = buildDeterministicSummary(stats, candidate, periodLabel);
       fallbackUsed = true;
     }
