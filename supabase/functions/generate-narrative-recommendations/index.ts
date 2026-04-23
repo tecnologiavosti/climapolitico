@@ -259,7 +259,8 @@ Com base nos dados REAIS acima, gere recomendações concretas e específicas de
       recommendations,
       stats,
       candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region },
-      period: { daysBack, startDate: startDate.toISOString(), endDate: new Date().toISOString() }
+      period: { daysBack, startDate: startDate.toISOString(), endDate: new Date().toISOString() },
+      ai_provider: aiProvider
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
