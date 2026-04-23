@@ -220,32 +220,43 @@ Com base nos dados REAIS acima, gere recomendações concretas e específicas de
       }
     }
 
-    // Fallback: Gemini direct API
+    // Fallback: Gemini direct API — tenta múltiplos modelos em cascata
     if (!recommendations && GEMINI_API_KEY) {
-      try {
-        aiProvider = 'gemini-direct';
-        const geminiResponse = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              systemInstruction: { parts: [{ text: systemMsg }] },
-              contents: [{ role: 'user', parts: [{ text: prompt }] }],
-              tools: [{ functionDeclarations: [{ name: 'create_narrative_recommendations', description: 'Gerar recomendações de narrativa', parameters: toolSchema }] }],
-              toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: ['create_narrative_recommendations'] } }
-            })
+      const geminiModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest', 'gemini-2.0-flash'];
+      for (const model of geminiModels) {
+        try {
+          aiProvider = `gemini-direct:${model}`;
+          const geminiResponse = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                systemInstruction: { parts: [{ text: systemMsg }] },
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                tools: [{ functionDeclarations: [{ name: 'create_narrative_recommendations', description: 'Gerar recomendações de narrativa', parameters: toolSchema }] }],
+                toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: ['create_narrative_recommendations'] } }
+              })
+            }
+          );
+          if (geminiResponse.ok) {
+            const gResult = await geminiResponse.json();
+            const fnCall = gResult.candidates?.[0]?.content?.parts?.find((p: any) => p.functionCall)?.functionCall;
+            if (fnCall?.args) {
+              recommendations = fnCall.args;
+              console.log(`✅ Gemini fallback sucesso com modelo: ${model}`);
+              break;
+            } else {
+              console.warn(`Gemini ${model}: sem functionCall na resposta`);
+            }
+          } else {
+            const errTxt = await geminiResponse.text();
+            console.error(`Gemini ${model} error:`, geminiResponse.status, errTxt.substring(0, 200));
+            if (geminiResponse.status !== 503 && geminiResponse.status !== 429) break;
           }
-        );
-        if (geminiResponse.ok) {
-          const gResult = await geminiResponse.json();
-          const fnCall = gResult.candidates?.[0]?.content?.parts?.find((p: any) => p.functionCall)?.functionCall;
-          if (fnCall?.args) recommendations = fnCall.args;
-        } else {
-          console.error('Gemini fallback error:', geminiResponse.status, await geminiResponse.text());
+        } catch (e) {
+          console.error(`Gemini ${model} exception:`, e);
         }
-      } catch (e) {
-        console.error('Gemini fallback exception:', e);
       }
     }
 
