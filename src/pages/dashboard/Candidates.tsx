@@ -640,6 +640,35 @@ export default function Candidates() {
                   <p className="text-sm text-destructive">{validationErrors.socialMedia}</p>
                 )}
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="instagramUrl">Instagram (opcional)</Label>
+                <Input
+                  id="instagramUrl"
+                  placeholder="https://www.instagram.com/usuario/"
+                  value={formData.instagramUrl}
+                  onChange={(e) => setFormData({ ...formData, instagramUrl: e.target.value })}
+                  disabled={addCandidateMutation.isPending}
+                />
+                {validationErrors.instagramUrl && (
+                  <p className="text-sm text-destructive">{validationErrors.instagramUrl}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="facebookUrl">Facebook (opcional)</Label>
+                <Input
+                  id="facebookUrl"
+                  placeholder="https://www.facebook.com/pagina/"
+                  value={formData.facebookUrl}
+                  onChange={(e) => setFormData({ ...formData, facebookUrl: e.target.value })}
+                  disabled={addCandidateMutation.isPending}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Adicionar IG/FB habilita a coleta via Apify para essas redes.
+                </p>
+                {validationErrors.facebookUrl && (
+                  <p className="text-sm text-destructive">{validationErrors.facebookUrl}</p>
+                )}
+              </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button 
                   type="button" 
