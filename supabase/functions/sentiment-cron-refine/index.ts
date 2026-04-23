@@ -214,43 +214,6 @@ Neutro (0.4-0.6): pergunta, informativo, indeterminado.`;
   }
   return null;
 }
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  label: { type: "string", enum: ["Positivo", "Negativo", "Neutro"] },
-                  score: { type: "number" },
-                },
-                required: ["label", "score"],
-              },
-            },
-            temperature: 0.1,
-          },
-        }),
-      });
-      if (!res.ok) {
-        console.warn(`[REFINE] Gemini Direct ${model} ${res.status}`);
-        continue;
-      }
-      const data = await res.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) continue;
-      const parsed = JSON.parse(text);
-      if (!Array.isArray(parsed) || parsed.length < texts.length) continue;
-      return texts.map((_, i) => {
-        const p = parsed[i];
-        const label =
-          p?.label === "Positivo" || p?.label === "Negativo" || p?.label === "Neutro"
-            ? p.label : "Neutro";
-        const score = typeof p?.score === "number" ? Math.max(0, Math.min(1, p.score)) : 0.5;
-        return { label, score };
-      });
-    } catch (e) {
-      console.warn(`[REFINE] Gemini Direct ${model} exceção:`, e);
-    }
-  }
-  return null;
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
