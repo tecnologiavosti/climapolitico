@@ -144,6 +144,67 @@ Neutro (0.4-0.6): pergunta, informativo, indeterminado.`;
   return null;
 }
 
+async function callGeminiDirect(texts: string[], geminiKey: string): Promise<SentimentResult[] | null> {
+  const clipped = texts.map((t) => (t || "").substring(0, 400).trim());
+  const userContent = clipped.map((t, i) => `${i + 1}. "${t}"`).join("\n");
+
+  const systemPrompt = `Você é especialista em análise de sentimento político BR.
+Para cada comentário responda em JSON array: [{"label":"Positivo|Negativo|Neutro","score":0.0-1.0},...] na MESMA ordem.
+Positivo (0.7-1.0): apoio, elogio, torcida, emojis ❤️👏🙏.
+Negativo (0.0-0.3): crítica, xingamento, rejeição, sarcasmo, gírias "gado/mortadela/petralha/bolsominion", emojis 🤮👎.
+Neutro (0.4-0.6): pergunta, informativo, indeterminado.`;
+
+  const models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"];
+  for (const model of models) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: "user", parts: [{ text: `Analise:\n${userContent}` }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  label: { type: "string", enum: ["Positivo", "Negativo", "Neutro"] },
+                  score: { type: "number" },
+                },
+                required: ["label", "score"],
+              },
+            },
+            temperature: 0.1,
+          },
+        }),
+      });
+      if (!res.ok) {
+        console.warn(`[REFINE] Gemini Direct ${model} ${res.status}`);
+        continue;
+      }
+      const data = await res.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) continue;
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed) || parsed.length < texts.length) continue;
+      return texts.map((_, i) => {
+        const p = parsed[i];
+        const label =
+          p?.label === "Positivo" || p?.label === "Negativo" || p?.label === "Neutro"
+            ? p.label : "Neutro";
+        const score = typeof p?.score === "number" ? Math.max(0, Math.min(1, p.score)) : 0.5;
+        return { label, score };
+      });
+    } catch (e) {
+      console.warn(`[REFINE] Gemini Direct ${model} exceção:`, e);
+    }
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
