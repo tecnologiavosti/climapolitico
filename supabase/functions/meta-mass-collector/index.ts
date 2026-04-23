@@ -11,7 +11,7 @@ const corsHeaders = {
 
 const APIFY_BASE = "https://api.apify.com/v2";
 const IG_ACTOR = "apify~instagram-scraper";
-const FB_ACTOR = "apify~facebook-pages-scraper";
+const FB_ACTOR = "apify~facebook-posts-scraper";
 const RESULTS_PER_PROFILE = 30;
 
 function extractInstagramHandle(link?: string | null): string | null {
@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
 
       if (igHandle) {
         const runId = await startApifyRun(IG_ACTOR, {
-          usernames: [igHandle],
+          directUrls: [`https://www.instagram.com/${igHandle}/`],
           resultsType: "posts",
           resultsLimit: RESULTS_PER_PROFILE,
           addParentData: false,
@@ -118,6 +118,7 @@ Deno.serve(async (req) => {
         const runId = await startApifyRun(FB_ACTOR, {
           startUrls: [{ url: `https://www.facebook.com/${fbHandle}/` }],
           resultsLimit: RESULTS_PER_PROFILE,
+          maxPosts: RESULTS_PER_PROFILE,
         }, APIFY_TOKEN);
         if (runId) {
           await supabase.from("apify_runs").insert({

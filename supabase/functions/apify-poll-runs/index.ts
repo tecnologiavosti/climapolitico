@@ -41,15 +41,19 @@ function normalizeIG(item: any) {
   };
 }
 function normalizeFB(item: any) {
+  // Ignora resposta da página (sem post_id real)
+  if (item?.error || (!item?.postId && !item?.text && !item?.message && item?.pageName)) {
+    return { post_id: null } as any;
+  }
   return {
-    post_id: item.postId || item.id || item.url || item.postUrl,
-    author: item.user?.name ?? item.pageName ?? "",
-    content: item.text ?? item.message ?? "",
-    likes: Number(item.likes ?? item.likesCount ?? 0) || 0,
+    post_id: item.postId || item.id || item.topLevelUrl || item.url || item.postUrl,
+    author: item.user?.name ?? item.pageName ?? item.authorName ?? "",
+    content: item.text ?? item.message ?? item.postText ?? "",
+    likes: Number(item.likes ?? item.likesCount ?? item.reactions ?? 0) || 0,
     comments_count: Number(item.comments ?? item.commentsCount ?? 0) || 0,
     shares_count: Number(item.shares ?? item.sharesCount ?? 0) || 0,
-    url: item.url ?? item.postUrl ?? null,
-    posted_at: item.time ?? item.timestamp ?? null,
+    url: item.topLevelUrl ?? item.url ?? item.postUrl ?? null,
+    posted_at: item.time ?? item.timestamp ?? item.publishedTime ?? null,
     type: "post" as const,
   };
 }
