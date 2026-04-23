@@ -145,16 +145,29 @@ export default function Overview() {
     queryFn: async () => {
       if (!user) return [];
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      let query = supabase
-        .from('social_interactions')
-        .select('id, candidate_id, sentiment_label, sentiment_score, likes_count, social_network, created_at, original_posted_at, comment_author')
-        .gte('created_at', sevenDaysAgo)
-        .order('created_at', { ascending: false })
-        .limit(10000);
-      if (!isAdmin) query = query.eq('user_id', user.id);
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
+      // Pagina em lotes de 1000 (limite padrão do Supabase) para garantir
+      // que TODAS as interações dos últimos 7 dias sejam carregadas, mesmo
+      // quando o volume passa de dezenas de milhares.
+      const PAGE_SIZE = 1000;
+      const MAX_ROWS = 100000; // teto de segurança
+      const all: any[] = [];
+      let from = 0;
+      while (from < MAX_ROWS) {
+        let query = supabase
+          .from('social_interactions')
+          .select('id, candidate_id, sentiment_label, sentiment_score, likes_count, social_network, created_at, original_posted_at, comment_author')
+          .gte('created_at', sevenDaysAgo)
+          .order('created_at', { ascending: false })
+          .range(from, from + PAGE_SIZE - 1);
+        if (!isAdmin) query = query.eq('user_id', user.id);
+        const { data, error } = await query;
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        all.push(...data);
+        if (data.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
+      }
+      return all;
     },
     enabled: !!user,
     refetchInterval: 60000,
