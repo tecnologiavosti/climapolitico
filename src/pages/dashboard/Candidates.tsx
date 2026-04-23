@@ -19,18 +19,24 @@ import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, Chevron
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 
 // Zod validation schema
+const urlOpt = z.string().trim().refine((val) => !val || val.startsWith("http://") || val.startsWith("https://"), {
+  message: "Link deve começar com http:// ou https://"
+}).optional().or(z.literal(""));
+
 const candidateSchema = z.object({
   fullName: z.string().trim().min(3, "Nome deve ter no mínimo 3 caracteres").max(100, "Nome deve ter no máximo 100 caracteres"),
   region: z.string().trim().max(50, "Região deve ter no máximo 50 caracteres").optional().or(z.literal("")),
-  socialMedia: z.string().trim().refine((val) => !val || val.startsWith("http://") || val.startsWith("https://"), {
-    message: "Link deve começar com http:// ou https://"
-  }).optional().or(z.literal(""))
+  socialMedia: urlOpt,
+  instagramUrl: urlOpt,
+  facebookUrl: urlOpt,
 });
 
 type CandidateFormData = {
   fullName: string;
   region: string;
   socialMedia: string;
+  instagramUrl: string;
+  facebookUrl: string;
 };
 
 export default function Candidates() {
@@ -44,6 +50,8 @@ export default function Candidates() {
     fullName: "",
     region: "",
     socialMedia: "",
+    instagramUrl: "",
+    facebookUrl: "",
   });
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
