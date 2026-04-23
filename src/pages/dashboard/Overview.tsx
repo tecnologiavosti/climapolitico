@@ -656,39 +656,60 @@ export default function Overview() {
           </div>
         ) : rankings && rankings.length > 0 ? (
           <div className="space-y-3">
-            {rankings.slice(0, 5).map((rank) => {
-              const candidate = rank.candidates as any;
-              const changeColor = rank.rank_change > 0 
-                ? 'text-success' 
-                : rank.rank_change < 0 
-                ? 'text-destructive' 
-                : 'text-muted-foreground';
-              
-              return (
-                <div key={rank.id} className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-muted/50 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-gradient-primary flex items-center justify-center text-white font-bold text-sm">
-                      {rank.rank_position}
+            {(() => {
+              // Deduplica por nome do candidato (case-insensitive, sem acentos), mantendo o de maior score
+              const norm = (s: string) => (s || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .trim();
+              const bestByName = new Map<string, typeof rankings[number]>();
+              for (const r of rankings) {
+                const name = norm(((r.candidates as any)?.full_name) || '');
+                if (!name) continue;
+                const existing = bestByName.get(name);
+                if (!existing || (r.overall_score ?? 0) > (existing.overall_score ?? 0)) {
+                  bestByName.set(name, r);
+                }
+              }
+              const unique = Array.from(bestByName.values())
+                .sort((a, b) => (b.overall_score ?? 0) - (a.overall_score ?? 0))
+                .slice(0, 5);
+
+              return unique.map((rank, idx) => {
+                const candidate = rank.candidates as any;
+                const changeColor = rank.rank_change > 0
+                  ? 'text-success'
+                  : rank.rank_change < 0
+                  ? 'text-destructive'
+                  : 'text-muted-foreground';
+
+                return (
+                  <div key={rank.id} className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-muted/50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-gradient-primary flex items-center justify-center text-white font-bold text-sm">
+                        {idx + 1}
+                      </div>
+                      <div>
+                        <p className="font-medium">{candidate?.full_name || 'N/A'}</p>
+                        <p className="text-sm text-muted-foreground">
+                          Score: {rank.overall_score.toFixed(1)}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium">{candidate?.full_name || 'N/A'}</p>
-                      <p className="text-sm text-muted-foreground">
-                        Score: {rank.overall_score.toFixed(1)}
-                      </p>
+                    <div className={`flex items-center gap-1 ${changeColor}`}>
+                      {rank.rank_change > 0 && <TrendingUp className="h-4 w-4" />}
+                      {rank.rank_change < 0 && <TrendingDown className="h-4 w-4" />}
+                      {rank.rank_change !== 0 && (
+                        <span className="text-sm font-medium">
+                          {Math.abs(rank.rank_change)}
+                        </span>
+                      )}
                     </div>
                   </div>
-                  <div className={`flex items-center gap-1 ${changeColor}`}>
-                    {rank.rank_change > 0 && <TrendingUp className="h-4 w-4" />}
-                    {rank.rank_change < 0 && <TrendingDown className="h-4 w-4" />}
-                    {rank.rank_change !== 0 && (
-                      <span className="text-sm font-medium">
-                        {Math.abs(rank.rank_change)}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                );
+              });
+            })()}
           </div>
         ) : (
           <div className="h-40 flex flex-col items-center justify-center text-center text-muted-foreground p-6 gap-3">
