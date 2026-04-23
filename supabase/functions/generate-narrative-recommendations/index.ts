@@ -121,136 +121,146 @@ ${neuSample.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 Com base nos dados REAIS acima, gere recomendações concretas e específicas de narrativa. NÃO faça sugestões genéricas. Cada recomendação deve ser baseada em padrões encontrados nos comentários.`;
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      return new Response(JSON.stringify({ error: 'Chave de API não configurada' }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
+    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
 
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-3-flash-preview',
-        messages: [
-          { role: 'system', content: 'Você é um consultor de comunicação política brasileiro de alto nível. Gere recomendações práticas, específicas e acionáveis baseadas exclusivamente nos dados reais fornecidos. Responda sempre em português do Brasil.' },
-          { role: 'user', content: prompt }
-        ],
-        tools: [{
-          type: 'function',
-          function: {
-            name: 'create_narrative_recommendations',
-            description: 'Gerar recomendações estruturadas de narrativa para o candidato',
-            parameters: {
-              type: 'object',
-              properties: {
-                situation_summary: {
-                  type: 'string',
-                  description: 'Resumo em 2-3 frases da situação atual de percepção pública do candidato'
-                },
-                topics_to_avoid: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      topic: { type: 'string', description: 'Tema a evitar' },
-                      reason: { type: 'string', description: 'Por que evitar, baseado nos comentários reais' },
-                      urgency: { type: 'string', enum: ['imediata', 'alta', 'moderada'], description: 'Urgência' }
-                    },
-                    required: ['topic', 'reason', 'urgency']
-                  },
-                  description: '2-5 temas que o candidato deve evitar nas próximas falas'
-                },
-                topics_to_reinforce: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      topic: { type: 'string', description: 'Tema a reforçar' },
-                      reason: { type: 'string', description: 'Por que reforçar, baseado nos comentários reais' },
-                      suggested_approach: { type: 'string', description: 'Como abordar o tema de forma eficaz' }
-                    },
-                    required: ['topic', 'reason', 'suggested_approach']
-                  },
-                  description: '2-5 temas que o candidato deve reforçar'
-                },
-                responses_to_criticism: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      criticism: { type: 'string', description: 'A crítica recorrente identificada' },
-                      suggested_response: { type: 'string', description: 'Como responder ou endereçar a crítica' },
-                      tone: { type: 'string', enum: ['firme', 'conciliador', 'educativo', 'empático'], description: 'Tom recomendado' }
-                    },
-                    required: ['criticism', 'suggested_response', 'tone']
-                  },
-                  description: '2-5 respostas recomendadas para críticas recorrentes'
-                },
-                communication_plan: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      action: { type: 'string', description: 'Ação concreta de comunicação' },
-                      channel: { type: 'string', description: 'Canal recomendado (rede social, imprensa, evento, etc.)' },
-                      priority: { type: 'string', enum: ['critica', 'alta', 'media', 'baixa'], description: 'Prioridade' },
-                      expected_impact: { type: 'string', description: 'Impacto esperado da ação' }
-                    },
-                    required: ['action', 'channel', 'priority', 'expected_impact']
-                  },
-                  description: '3-6 ações concretas de comunicação priorizadas'
-                },
-                key_message: {
-                  type: 'string',
-                  description: 'A mensagem-chave principal que deve nortear toda a comunicação do candidato neste momento'
-                }
-              },
-              required: ['situation_summary', 'topics_to_avoid', 'topics_to_reinforce', 'responses_to_criticism', 'communication_plan', 'key_message']
-            }
+    const systemMsg = 'Você é um consultor de comunicação política brasileiro de alto nível. Gere recomendações práticas, específicas e acionáveis baseadas exclusivamente nos dados reais fornecidos. Responda sempre em português do Brasil.';
+
+    const toolSchema = {
+      type: 'object',
+      properties: {
+        situation_summary: { type: 'string' },
+        topics_to_avoid: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              topic: { type: 'string' },
+              reason: { type: 'string' },
+              urgency: { type: 'string', enum: ['imediata', 'alta', 'moderada'] }
+            },
+            required: ['topic', 'reason', 'urgency']
           }
-        }],
-        tool_choice: { type: 'function', function: { name: 'create_narrative_recommendations' } }
-      })
-    });
+        },
+        topics_to_reinforce: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              topic: { type: 'string' },
+              reason: { type: 'string' },
+              suggested_approach: { type: 'string' }
+            },
+            required: ['topic', 'reason', 'suggested_approach']
+          }
+        },
+        responses_to_criticism: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              criticism: { type: 'string' },
+              suggested_response: { type: 'string' },
+              tone: { type: 'string', enum: ['firme', 'conciliador', 'educativo', 'empático'] }
+            },
+            required: ['criticism', 'suggested_response', 'tone']
+          }
+        },
+        communication_plan: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              action: { type: 'string' },
+              channel: { type: 'string' },
+              priority: { type: 'string', enum: ['critica', 'alta', 'media', 'baixa'] },
+              expected_impact: { type: 'string' }
+            },
+            required: ['action', 'channel', 'priority', 'expected_impact']
+          }
+        },
+        key_message: { type: 'string' }
+      },
+      required: ['situation_summary', 'topics_to_avoid', 'topics_to_reinforce', 'responses_to_criticism', 'communication_plan', 'key_message']
+    };
 
-    if (!aiResponse.ok) {
-      const errText = await aiResponse.text();
-      console.error('AI API error:', aiResponse.status, errText);
-      if (aiResponse.status === 429) {
-        return new Response(JSON.stringify({ error: 'Limite de requisições excedido. Tente novamente em alguns minutos.' }), {
-          status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    let recommendations: any = null;
+    let aiProvider = 'lovable';
+
+    // Try Lovable AI first
+    if (LOVABLE_API_KEY) {
+      try {
+        const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'google/gemini-3-flash-preview',
+            messages: [
+              { role: 'system', content: systemMsg },
+              { role: 'user', content: prompt }
+            ],
+            tools: [{ type: 'function', function: { name: 'create_narrative_recommendations', description: 'Gerar recomendações de narrativa', parameters: toolSchema } }],
+            tool_choice: { type: 'function', function: { name: 'create_narrative_recommendations' } }
+          })
         });
+
+        if (aiResponse.ok) {
+          const result = await aiResponse.json();
+          const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
+          if (toolCall) {
+            recommendations = JSON.parse(toolCall.function.arguments);
+          } else {
+            console.warn('Lovable AI: resposta sem tool_call, tentando Gemini fallback');
+          }
+        } else {
+          const errText = await aiResponse.text();
+          console.error('Lovable AI error:', aiResponse.status, errText, '— tentando Gemini fallback');
+        }
+      } catch (e) {
+        console.error('Lovable AI exception:', e, '— tentando Gemini fallback');
       }
-      if (aiResponse.status === 402) {
-        return new Response(JSON.stringify({ error: 'Créditos insuficientes.' }), {
-          status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
-      }
-      return new Response(JSON.stringify({ error: 'Erro ao gerar recomendações com IA' }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
     }
 
-    const result = await aiResponse.json();
-    const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
-
-    if (!toolCall) {
-      return new Response(JSON.stringify({ error: 'Resposta inesperada da IA' }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+    // Fallback: Gemini direct API
+    if (!recommendations && GEMINI_API_KEY) {
+      try {
+        aiProvider = 'gemini-direct';
+        const geminiResponse = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: systemMsg }] },
+              contents: [{ role: 'user', parts: [{ text: prompt }] }],
+              tools: [{ functionDeclarations: [{ name: 'create_narrative_recommendations', description: 'Gerar recomendações de narrativa', parameters: toolSchema }] }],
+              toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: ['create_narrative_recommendations'] } }
+            })
+          }
+        );
+        if (geminiResponse.ok) {
+          const gResult = await geminiResponse.json();
+          const fnCall = gResult.candidates?.[0]?.content?.parts?.find((p: any) => p.functionCall)?.functionCall;
+          if (fnCall?.args) recommendations = fnCall.args;
+        } else {
+          console.error('Gemini fallback error:', geminiResponse.status, await geminiResponse.text());
+        }
+      } catch (e) {
+        console.error('Gemini fallback exception:', e);
+      }
     }
 
-    const recommendations = JSON.parse(toolCall.function.arguments);
+    if (!recommendations) {
+      return new Response(JSON.stringify({ error: 'Serviço de IA temporariamente indisponível. Tente novamente em instantes.' }), {
+        status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
 
     return new Response(JSON.stringify({
       recommendations,
       stats,
       candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region },
-      period: { daysBack, startDate: startDate.toISOString(), endDate: new Date().toISOString() }
+      period: { daysBack, startDate: startDate.toISOString(), endDate: new Date().toISOString() },
+      ai_provider: aiProvider
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {

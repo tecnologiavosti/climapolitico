@@ -140,109 +140,114 @@ ${sampleForAI.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 Analise profundamente esses comentários negativos e identifique padrões de rejeição.`;
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      return new Response(JSON.stringify({ error: 'Chave de API não configurada' }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
+    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
 
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-3-flash-preview',
-        messages: [
-          { role: 'system', content: 'Você é um analista político estratégico brasileiro especializado em gestão de crises e comunicação de campanha. Analise padrões de rejeição e críticas. Responda sempre em português do Brasil.' },
-          { role: 'user', content: prompt }
-        ],
-        tools: [{
-          type: 'function',
-          function: {
-            name: 'create_rejection_analysis',
-            description: 'Gerar análise estruturada de rejeição do candidato',
-            parameters: {
-              type: 'object',
-              properties: {
-                rejection_summary: {
-                  type: 'string',
-                  description: 'Resumo executivo de 2-3 frases explicando o panorama geral da rejeição'
-                },
-                rejection_themes: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      theme: { type: 'string', description: 'Nome do tema de crítica (ex: economia, saúde, declaração polêmica)' },
-                      description: { type: 'string', description: 'Descrição detalhada do motivo da crítica neste tema' },
-                      frequency: { type: 'string', enum: ['alta', 'media', 'baixa'], description: 'Frequência com que este tema aparece' },
-                      severity: { type: 'string', enum: ['critica', 'alta', 'moderada', 'baixa'], description: 'Severidade do impacto eleitoral' }
-                    },
-                    required: ['theme', 'description', 'frequency', 'severity']
-                  },
-                  description: '3-7 temas principais de crítica agrupados'
-                },
-                recurring_keywords: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  description: '5-10 palavras-chave mais recorrentes nos comentários negativos'
-                },
-                crisis_points: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  description: '2-4 pontos críticos que precisam de atenção imediata'
-                },
-                mitigation_strategies: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  description: '3-5 estratégias para mitigar a rejeição identificada'
-                },
-                risk_level: {
-                  type: 'string',
-                  enum: ['critico', 'alto', 'moderado', 'baixo'],
-                  description: 'Nível geral de risco da rejeição para a campanha'
-                }
-              },
-              required: ['rejection_summary', 'rejection_themes', 'recurring_keywords', 'crisis_points', 'mitigation_strategies', 'risk_level']
-            }
+    const systemMsg = 'Você é um analista político estratégico brasileiro especializado em gestão de crises e comunicação de campanha. Analise padrões de rejeição e críticas. Responda sempre em português do Brasil.';
+
+    const toolSchema = {
+      type: 'object',
+      properties: {
+        rejection_summary: { type: 'string', description: 'Resumo executivo de 2-3 frases explicando o panorama geral da rejeição' },
+        rejection_themes: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              theme: { type: 'string' },
+              description: { type: 'string' },
+              frequency: { type: 'string', enum: ['alta', 'media', 'baixa'] },
+              severity: { type: 'string', enum: ['critica', 'alta', 'moderada', 'baixa'] }
+            },
+            required: ['theme', 'description', 'frequency', 'severity']
           }
-        }],
-        tool_choice: { type: 'function', function: { name: 'create_rejection_analysis' } }
-      })
-    });
+        },
+        recurring_keywords: { type: 'array', items: { type: 'string' } },
+        crisis_points: { type: 'array', items: { type: 'string' } },
+        mitigation_strategies: { type: 'array', items: { type: 'string' } },
+        risk_level: { type: 'string', enum: ['critico', 'alto', 'moderado', 'baixo'] }
+      },
+      required: ['rejection_summary', 'rejection_themes', 'recurring_keywords', 'crisis_points', 'mitigation_strategies', 'risk_level']
+    };
 
-    if (!aiResponse.ok) {
-      const errText = await aiResponse.text();
-      console.error('AI API error:', aiResponse.status, errText);
-      if (aiResponse.status === 429) {
-        return new Response(JSON.stringify({ error: 'Limite de requisições excedido. Tente novamente em alguns minutos.' }), {
-          status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    let analysis: any = null;
+    let aiProvider = 'lovable';
+
+    // Try Lovable AI first
+    if (LOVABLE_API_KEY) {
+      try {
+        const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'google/gemini-3-flash-preview',
+            messages: [
+              { role: 'system', content: systemMsg },
+              { role: 'user', content: prompt }
+            ],
+            tools: [{ type: 'function', function: { name: 'create_rejection_analysis', description: 'Gerar análise estruturada de rejeição', parameters: toolSchema } }],
+            tool_choice: { type: 'function', function: { name: 'create_rejection_analysis' } }
+          })
         });
+
+        if (aiResponse.ok) {
+          const result = await aiResponse.json();
+          const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
+          if (toolCall) {
+            analysis = JSON.parse(toolCall.function.arguments);
+          } else {
+            console.warn('Lovable AI: resposta sem tool_call, tentando Gemini fallback');
+          }
+        } else {
+          const errText = await aiResponse.text();
+          console.error('Lovable AI error:', aiResponse.status, errText, '— tentando Gemini fallback');
+        }
+      } catch (e) {
+        console.error('Lovable AI exception:', e, '— tentando Gemini fallback');
       }
-      return new Response(JSON.stringify({ error: 'Erro ao gerar análise com IA' }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
     }
 
-    const result = await aiResponse.json();
-    const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
-
-    if (!toolCall) {
-      return new Response(JSON.stringify({ error: 'Resposta inesperada da IA' }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+    // Fallback: Gemini direct API
+    if (!analysis && GEMINI_API_KEY) {
+      try {
+        aiProvider = 'gemini-direct';
+        const geminiResponse = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: systemMsg }] },
+              contents: [{ role: 'user', parts: [{ text: prompt }] }],
+              tools: [{ functionDeclarations: [{ name: 'create_rejection_analysis', description: 'Gerar análise estruturada de rejeição', parameters: toolSchema }] }],
+              toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: ['create_rejection_analysis'] } }
+            })
+          }
+        );
+        if (geminiResponse.ok) {
+          const gResult = await geminiResponse.json();
+          const fnCall = gResult.candidates?.[0]?.content?.parts?.find((p: any) => p.functionCall)?.functionCall;
+          if (fnCall?.args) analysis = fnCall.args;
+        } else {
+          console.error('Gemini fallback error:', geminiResponse.status, await geminiResponse.text());
+        }
+      } catch (e) {
+        console.error('Gemini fallback exception:', e);
+      }
     }
 
-    const analysis = JSON.parse(toolCall.function.arguments);
+    if (!analysis) {
+      return new Response(JSON.stringify({ error: 'Serviço de IA temporariamente indisponível. Tente novamente em instantes.' }), {
+        status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
 
     return new Response(JSON.stringify({
       analysis,
       stats,
       topNegativeComments: topNegative,
       candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region },
-      period: { daysBack, startDate: startDate.toISOString(), endDate: new Date().toISOString() }
+      period: { daysBack, startDate: startDate.toISOString(), endDate: new Date().toISOString() },
+      ai_provider: aiProvider
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
