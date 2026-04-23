@@ -201,8 +201,7 @@ export default function Overview() {
         .from('social_interactions')
         .select('candidate_id, sentiment_label, sentiment_score, likes_count, comment_author')
         .eq('user_id', user.id)
-        .gte('created_at', from.toISOString())
-        .lt('created_at', to.toISOString());
+        .or(`and(original_posted_at.gte.${from.toISOString()},original_posted_at.lt.${to.toISOString()}),and(original_posted_at.is.null,created_at.gte.${from.toISOString()},created_at.lt.${to.toISOString()})`);
       if (error) throw error;
       return data || [];
     },
