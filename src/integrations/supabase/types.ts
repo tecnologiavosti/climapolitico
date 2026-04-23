@@ -192,6 +192,56 @@ export type Database = {
         }
         Relationships: []
       }
+      apify_runs: {
+        Row: {
+          actor_id: string
+          candidate_id: string
+          created_at: string
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          items_collected: number
+          platform: string
+          run_id: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          actor_id: string
+          candidate_id: string
+          created_at?: string
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          items_collected?: number
+          platform: string
+          run_id?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          actor_id?: string
+          candidate_id?: string
+          created_at?: string
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          items_collected?: number
+          platform?: string
+          run_id?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "apify_runs_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       candidate_analyses: {
         Row: {
           age_distribution: Json | null
@@ -950,6 +1000,75 @@ export type Database = {
           },
           {
             foreignKeyName: "social_interactions_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      social_posts: {
+        Row: {
+          apify_run_id: string | null
+          author: string | null
+          candidate_id: string
+          collected_at: string
+          comments_count: number
+          content: string | null
+          id: string
+          likes: number
+          platform: string
+          post_id: string | null
+          posted_at: string | null
+          shares_count: number
+          type: string
+          url: string | null
+          user_id: string
+        }
+        Insert: {
+          apify_run_id?: string | null
+          author?: string | null
+          candidate_id: string
+          collected_at?: string
+          comments_count?: number
+          content?: string | null
+          id?: string
+          likes?: number
+          platform: string
+          post_id?: string | null
+          posted_at?: string | null
+          shares_count?: number
+          type?: string
+          url?: string | null
+          user_id: string
+        }
+        Update: {
+          apify_run_id?: string | null
+          author?: string | null
+          candidate_id?: string
+          collected_at?: string
+          comments_count?: number
+          content?: string | null
+          id?: string
+          likes?: number
+          platform?: string
+          post_id?: string | null
+          posted_at?: string | null
+          shares_count?: number
+          type?: string
+          url?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_posts_apify_run_id_fkey"
+            columns: ["apify_run_id"]
+            isOneToOne: false
+            referencedRelation: "apify_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_posts_candidate_id_fkey"
             columns: ["candidate_id"]
             isOneToOne: false
             referencedRelation: "candidates"
