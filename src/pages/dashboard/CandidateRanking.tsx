@@ -97,7 +97,7 @@ export default function CandidateRanking() {
     enabled: !!user,
   });
 
-  // Query: Buscar interações reais do período
+  // Query: Buscar interações reais do período (paginado para evitar limite de 1000 linhas)
   const { data: interactions, isLoading: loadingInteractions } = useQuery({
     queryKey: ['ranking-interactions', dateRange, user?.id],
     queryFn: async () => {
@@ -106,15 +106,27 @@ export default function CandidateRanking() {
       const endDate = new Date(dateRange.to);
       endDate.setDate(endDate.getDate() + 1);
 
-      // Filtra pela data real do comentário (original_posted_at), com fallback para created_at
-      const { data, error } = await supabase
-        .from('social_interactions')
-        .select('candidate_id, sentiment_label, sentiment_score, likes_count, comment_author')
-        .eq('user_id', user.id)
-        .or(`and(original_posted_at.gte.${dateRange.from.toISOString()},original_posted_at.lt.${endDate.toISOString()}),and(original_posted_at.is.null,created_at.gte.${dateRange.from.toISOString()},created_at.lt.${endDate.toISOString()})`);
+      // Filtra pela data real do comentário (original_posted_at) com fallback para created_at
+      const orFilter = `and(original_posted_at.gte.${dateRange.from.toISOString()},original_posted_at.lt.${endDate.toISOString()}),and(original_posted_at.is.null,created_at.gte.${dateRange.from.toISOString()},created_at.lt.${endDate.toISOString()})`;
 
-      if (error) throw error;
-      return data || [];
+      const PAGE_SIZE = 1000;
+      const MAX_ROWS = 200000;
+      const all: any[] = [];
+      let offset = 0;
+      while (offset < MAX_ROWS) {
+        const { data, error } = await supabase
+          .from('social_interactions')
+          .select('candidate_id, sentiment_label, sentiment_score, likes_count, comment_author')
+          .eq('user_id', user.id)
+          .or(orFilter)
+          .range(offset, offset + PAGE_SIZE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        all.push(...data);
+        if (data.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+      }
+      return all;
     },
     enabled: !!user && !!dateRange?.from && !!dateRange?.to,
   });
