@@ -601,6 +601,29 @@ export default function Candidates() {
             </Tooltip>
           </TooltipProvider>
 
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  onClick={() => discoverSocialLinksMutation.mutate()}
+                  disabled={discoverSocialLinksMutation.isPending || candidates.length === 0}
+                >
+                  {discoverSocialLinksMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Search className="mr-2 h-4 w-4" />
+                  )}
+                  Descobrir IG/FB
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Descobre automaticamente Instagram e Facebook dos candidatos via busca</p>
+                <p className="text-xs text-muted-foreground">Resultados são salvos em links extras e usados pelo coletor Apify</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button 
