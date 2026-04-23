@@ -24,9 +24,31 @@ const COLORS = ['hsl(var(--primary))', 'hsl(var(--destructive))', 'hsl(var(--war
 export default function Overview() {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
   const [collecting, setCollecting] = useState(false);
+  const [calculatingRanking, setCalculatingRanking] = useState(false);
   const { isAdmin } = useAdminCheck();
   const { user } = useAuth();
   const qc = useQueryClient();
+
+  const handleCalculateRanking = async () => {
+    setCalculatingRanking(true);
+    const t = toast.loading("Calculando rankings dos últimos 30 dias...");
+    try {
+      const period_end = new Date().toISOString();
+      const period_start = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await supabase.functions.invoke('calculate-ranking', {
+        body: { period_start, period_end },
+      });
+      if (error) throw error;
+      toast.dismiss(t);
+      toast.success(`Ranking calculado! ${data?.rankings?.length ?? data?.count ?? ''} candidatos processados.`);
+      qc.invalidateQueries({ queryKey: ['rankings-overview'] });
+    } catch (e: any) {
+      toast.dismiss(t);
+      toast.error(`Falha ao calcular ranking: ${e.message || e}`);
+    } finally {
+      setCalculatingRanking(false);
+    }
+  };
 
   // Query: Candidatos (for selector and basic info)
   const { data: candidates, isLoading: loadingCandidates } = useQuery({
@@ -609,11 +631,22 @@ export default function Overview() {
 
       {/* Rankings */}
       <Card className="p-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
           <div>
             <h3 className="text-lg font-bold">Rankings Recentes</h3>
-            <p className="text-sm text-muted-foreground">Últimas posições calculadas</p>
+            <p className="text-sm text-muted-foreground">Últimas posições calculadas (30 dias)</p>
           </div>
+          <Button
+            onClick={handleCalculateRanking}
+            disabled={calculatingRanking || !candidates?.length}
+            size="sm"
+          >
+            {calculatingRanking ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Calculando...</>
+            ) : (
+              <><Activity className="mr-2 h-4 w-4" /> Calcular ranking</>
+            )}
+          </Button>
         </div>
         {isLoading ? (
           <div className="space-y-3">
@@ -658,10 +691,21 @@ export default function Overview() {
             })}
           </div>
         ) : (
-          <div className="h-40 flex flex-col items-center justify-center text-center text-muted-foreground p-6">
-            <AlertCircle className="h-8 w-8 mb-2 opacity-50" />
+          <div className="h-40 flex flex-col items-center justify-center text-center text-muted-foreground p-6 gap-3">
+            <AlertCircle className="h-8 w-8 opacity-50" />
             <p>Nenhum ranking disponível</p>
-            <p className="text-sm mt-1">Execute o cálculo de ranking para visualizar</p>
+            <Button
+              onClick={handleCalculateRanking}
+              disabled={calculatingRanking || !candidates?.length}
+              size="sm"
+              variant="outline"
+            >
+              {calculatingRanking ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Calculando...</>
+              ) : (
+                <><Activity className="mr-2 h-4 w-4" /> Calcular ranking agora</>
+              )}
+            </Button>
           </div>
         )}
       </Card>
