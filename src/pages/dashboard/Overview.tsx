@@ -51,12 +51,14 @@ export default function Overview() {
   };
 
   // Query: Candidatos (for selector and basic info)
+  // IMPORTANTE: filtra status='active' para bater EXATAMENTE com a aba Ranking
   const { data: candidates, isLoading: loadingCandidates } = useQuery({
-    queryKey: ['candidates-overview', isAdmin],
+    queryKey: ['candidates-overview', isAdmin, user?.id],
     queryFn: async () => {
       let query = supabase
         .from('candidates')
-        .select('id, full_name, mentions, sentiment, party, region');
+        .select('id, full_name, mentions, sentiment, party, region, status')
+        .eq('status', 'active');
       
       if (!isAdmin && user) {
         query = query.eq('user_id', user.id);
@@ -65,7 +67,8 @@ export default function Overview() {
       const { data, error } = await query;
       if (error) throw error;
       return data || [];
-    }
+    },
+    enabled: !!user,
   });
 
   // Auto-recalcula o cache de métricas para todos os candidatos ao montar a página
@@ -186,24 +189,30 @@ export default function Overview() {
     queryKey: ['rankings-overview-interactions', isAdmin, user?.id],
     queryFn: async () => {
       if (!user) return [];
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      // Mesma janela usada por padrão na aba Ranking:
+      // from = hoje - 30 dias (sem zerar horas), to = hoje + 1 dia (exclusivo via .lt)
+      const from = new Date();
+      from.setDate(from.getDate() - 30);
+      const to = new Date();
+      to.setDate(to.getDate() + 1);
       const PAGE_SIZE = 1000;
       const MAX_ROWS = 100000;
       const all: any[] = [];
-      let from = 0;
-      while (from < MAX_ROWS) {
+      let offset = 0;
+      while (offset < MAX_ROWS) {
         let q = supabase
           .from('social_interactions')
           .select('candidate_id, sentiment_label, sentiment_score, likes_count, comment_author')
-          .gte('created_at', thirtyDaysAgo)
-          .range(from, from + PAGE_SIZE - 1);
+          .gte('created_at', from.toISOString())
+          .lt('created_at', to.toISOString())
+          .range(offset, offset + PAGE_SIZE - 1);
         if (!isAdmin) q = q.eq('user_id', user.id);
         const { data, error } = await q;
         if (error) throw error;
         if (!data || data.length === 0) break;
         all.push(...data);
         if (data.length < PAGE_SIZE) break;
-        from += PAGE_SIZE;
+        offset += PAGE_SIZE;
       }
       return all;
     },
@@ -222,16 +231,17 @@ export default function Overview() {
       m.mentions++;
       if (i.comment_author) m.authors.add(i.comment_author);
       m.engagement += i.likes_count || 0;
-      const lbl = (i.sentiment_label || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-      if (lbl.startsWith('pos')) m.sentSum += 100;
-      else if (lbl.startsWith('neg')) m.sentSum += 0;
+      // Mesma classificação da aba Ranking (case-sensitive, sem fallback de score)
+      if (i.sentiment_label === 'Positivo') m.sentSum += 100;
+      else if (i.sentiment_label === 'Negativo') m.sentSum += 0;
       else m.sentSum += 50;
     });
     let maxM = 0, maxA = 0, maxE = 0;
     map.forEach(m => { if (m.mentions > maxM) maxM = m.mentions; if (m.authors.size > maxA) maxA = m.authors.size; if (m.engagement > maxE) maxE = m.engagement; });
     const arr = candidates.map((c: any) => {
       const m = map.get(c.id)!;
-      const avgSent = m.mentions > 0 ? m.sentSum / m.mentions : 50;
+      // Mesma lógica da aba Ranking: avg arredondado ANTES de entrar no score
+      const avgSent = m.mentions > 0 ? Math.round(m.sentSum / m.mentions) : 50;
       const mScore = maxM > 0 ? (m.mentions / maxM) * 100 : 0;
       const aScore = maxA > 0 ? (m.authors.size / maxA) * 100 : 0;
       const eScore = maxE > 0 ? (m.engagement / maxE) * 100 : 0;
