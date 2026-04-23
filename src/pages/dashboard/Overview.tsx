@@ -197,13 +197,25 @@ export default function Overview() {
       from.setDate(from.getDate() - 30);
       const to = new Date();
       to.setDate(to.getDate() + 1);
-      const { data, error } = await supabase
-        .from('social_interactions')
-        .select('candidate_id, sentiment_label, sentiment_score, likes_count, comment_author')
-        .eq('user_id', user.id)
-        .or(`and(original_posted_at.gte.${from.toISOString()},original_posted_at.lt.${to.toISOString()}),and(original_posted_at.is.null,created_at.gte.${from.toISOString()},created_at.lt.${to.toISOString()})`);
-      if (error) throw error;
-      return data || [];
+      const orFilter = `and(original_posted_at.gte.${from.toISOString()},original_posted_at.lt.${to.toISOString()}),and(original_posted_at.is.null,created_at.gte.${from.toISOString()},created_at.lt.${to.toISOString()})`;
+      const PAGE_SIZE = 1000;
+      const MAX_ROWS = 200000;
+      const all: any[] = [];
+      let offset = 0;
+      while (offset < MAX_ROWS) {
+        const { data, error } = await supabase
+          .from('social_interactions')
+          .select('candidate_id, sentiment_label, sentiment_score, likes_count, comment_author')
+          .eq('user_id', user.id)
+          .or(orFilter)
+          .range(offset, offset + PAGE_SIZE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        all.push(...data);
+        if (data.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+      }
+      return all;
     },
     enabled: !!user,
     staleTime: 60000,
