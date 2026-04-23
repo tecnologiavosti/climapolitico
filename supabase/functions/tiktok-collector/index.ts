@@ -219,8 +219,8 @@ async function collectForCandidate(
     return { posts: postsInserted, comments: commentsInserted, handle, error: err instanceof Error ? err.message : "erro desconhecido" };
   }
 
-  console.log(`[tiktok-collector] ${candidate.full_name} (@${handle}): +${postsInserted} posts, +${commentsInserted} comentários`);
-  return { posts: postsInserted, comments: commentsInserted, handle };
+  console.log(`[tiktok-collector] ${candidate.full_name} [${sourceMode}${handle ? ` @${handle}` : ""}]: +${postsInserted} posts, +${commentsInserted} comentários`);
+  return { posts: postsInserted, comments: commentsInserted, handle, mode: sourceMode };
 }
 
 serve(async (req) => {
