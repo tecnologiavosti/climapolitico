@@ -143,35 +143,44 @@ async function fetchRedditComments(postUrl: string, postId: string): Promise<Red
   return [];
 }
 
-// Estratégia primária: Arctic Shift (arquivo histórico do Reddit, sem 403 em IPs cloud).
-// Endpoint: https://arctic-shift.photon-reddit.com/api/posts/search
-async function fetchViaArcticShift(query: string, limit: number): Promise<Array<Record<string, string>>> {
-  const url = `https://arctic-shift.photon-reddit.com/api/posts/search?title=${encodeURIComponent(query)}&limit=${Math.min(limit, 100)}&sort=desc`;
-  try {
-    const res = await fetch(url, {
-      headers: { "User-Agent": randomUA(), "Accept": "application/json" },
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!res.ok) {
-      console.warn(`[Reddit-ArcticShift] HTTP ${res.status}`);
-      return [];
+// Estratégia primária: PullPush.io (espelho público do Reddit/Pushshift, sem bloqueio cloud).
+// Endpoints: /reddit/search/submission e /reddit/search/comment
+async function fetchViaPullPush(query: string, limit: number): Promise<Array<Record<string, string>>> {
+  const out: Array<Record<string, string>> = [];
+  const endpoints = [
+    `https://api.pullpush.io/reddit/search/submission?q=${encodeURIComponent(query)}&size=${Math.min(limit, 100)}&sort=desc&sort_type=created_utc`,
+    `https://api.pullpush.io/reddit/search/comment?q=${encodeURIComponent(query)}&size=${Math.min(limit, 100)}&sort=desc&sort_type=created_utc`,
+  ];
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, {
+        headers: { "User-Agent": randomUA(), "Accept": "application/json" },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) {
+        console.warn(`[Reddit-PullPush] ${url.split("?")[0]}: HTTP ${res.status}`);
+        continue;
+      }
+      const json = await res.json();
+      const data = Array.isArray(json?.data) ? json.data : [];
+      for (const d of data) {
+        const isComment = typeof d.body === "string";
+        const text = isComment ? d.body : (d.selftext || d.title || "");
+        if (!text) continue;
+        out.push({
+          title: d.title || (isComment ? `Comentário em r/${d.subreddit || "?"}` : ""),
+          link: d.permalink ? (d.permalink.startsWith("http") ? d.permalink : `https://reddit.com${d.permalink}`) : (d.url || ""),
+          description: stripHtml(text).slice(0, 4000),
+          author: d.author ? `u/${d.author}` : "Reddit user",
+          pubDate: d.created_utc ? new Date(d.created_utc * 1000).toUTCString() : new Date().toUTCString(),
+        });
+      }
+    } catch (e) {
+      console.warn(`[Reddit-PullPush] erro: ${(e as Error).message}`);
     }
-    const json = await res.json();
-    const data = Array.isArray(json?.data) ? json.data : [];
-    if (data.length === 0) return [];
-    const items = data.map((d: any) => ({
-      title: d.title || "",
-      link: d.permalink ? `https://reddit.com${d.permalink}` : (d.url || ""),
-      description: d.selftext ? stripHtml(d.selftext).slice(0, 4000) : (d.title || ""),
-      author: d.author ? `u/${d.author}` : "Reddit user",
-      pubDate: d.created_utc ? new Date(d.created_utc * 1000).toUTCString() : new Date().toUTCString(),
-    }));
-    console.log(`[Reddit-ArcticShift] ${items.length} itens para "${query}"`);
-    return items;
-  } catch (e) {
-    console.warn(`[Reddit-ArcticShift] erro: ${(e as Error).message}`);
-    return [];
   }
+  console.log(`[Reddit-PullPush] ${out.length} itens para "${query}"`);
+  return out;
 }
 
 // Fallback secundário: JSON público do Reddit (frequentemente bloqueado por IP cloud)
@@ -278,8 +287,8 @@ Deno.serve(async (req) => {
     // === Background job ===
     const backgroundJob = (async () => {
      try {
-    // Cascata: Arctic Shift → Reddit JSON → RSS-Bridge
-    let finalItems = await fetchViaArcticShift(`"${candidateName}"`, limit);
+    // Cascata: PullPush → Reddit JSON → RSS-Bridge
+    let finalItems = await fetchViaPullPush(`"${candidateName}"`, limit);
     if (finalItems.length === 0) finalItems = await fetchViaRedditJson(`"${candidateName}"`, limit);
     if (finalItems.length === 0) finalItems = await fetchViaRssBridge(`"${candidateName}"`);
 
