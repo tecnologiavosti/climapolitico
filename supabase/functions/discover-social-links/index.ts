@@ -55,8 +55,26 @@ async function ddgSearch(query: string): Promise<string> {
   });
   if (!res.ok) return "";
   const raw = await res.text();
-  // Substitui links DDG por suas URLs reais antes de regex
   return raw.replace(/\/\/duckduckgo\.com\/l\/\?uddg=[^"'\s]+/g, (m) => decodeDdg(m));
+}
+
+async function firecrawlSearch(query: string): Promise<string> {
+  const key = Deno.env.get("FIRECRAWL_API_KEY");
+  if (!key) return "";
+  try {
+    const res = await fetch("https://api.firecrawl.dev/v1/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify({ query, limit: 10 }),
+    });
+    if (!res.ok) return "";
+    const j = await res.json();
+    const items = j?.data ?? [];
+    return items.map((it: any) => `${it.url ?? ""} ${it.title ?? ""} ${it.description ?? ""}`).join("\n");
+  } catch (e) {
+    console.error("firecrawl:", (e as Error).message);
+    return "";
+  }
 }
 
 async function discoverFor(
@@ -71,13 +89,15 @@ async function discoverFor(
   ];
   for (const q of queries) {
     try {
-      const html = await ddgSearch(q);
+      // Primeiro tenta Firecrawl (mais estável); fallback para DDG
+      let html = await firecrawlSearch(q);
+      if (!html) html = await ddgSearch(q);
       const found = extractFirstHandle(html, domain, blocked);
       if (found) return found;
     } catch (e) {
-      console.error(`ddg ${q}: ${(e as Error).message}`);
+      console.error(`search ${q}: ${(e as Error).message}`);
     }
-    await new Promise((r) => setTimeout(r, 500)); // gentil
+    await new Promise((r) => setTimeout(r, 400));
   }
   return null;
 }
