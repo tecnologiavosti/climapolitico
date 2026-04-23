@@ -125,7 +125,7 @@ export default function Overview() {
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       let query = supabase
         .from('social_interactions')
-        .select('id, candidate_id, sentiment_label, sentiment_score, likes_count, social_network, created_at, comment_author')
+        .select('id, candidate_id, sentiment_label, sentiment_score, likes_count, social_network, created_at, original_posted_at, comment_author')
         .gte('created_at', sevenDaysAgo)
         .order('created_at', { ascending: false })
         .limit(10000);
