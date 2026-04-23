@@ -287,8 +287,8 @@ Deno.serve(async (req) => {
     // === Background job ===
     const backgroundJob = (async () => {
      try {
-    // Cascata: Arctic Shift → Reddit JSON → RSS-Bridge
-    let finalItems = await fetchViaArcticShift(`"${candidateName}"`, limit);
+    // Cascata: PullPush → Reddit JSON → RSS-Bridge
+    let finalItems = await fetchViaPullPush(`"${candidateName}"`, limit);
     if (finalItems.length === 0) finalItems = await fetchViaRedditJson(`"${candidateName}"`, limit);
     if (finalItems.length === 0) finalItems = await fetchViaRssBridge(`"${candidateName}"`);
 
