@@ -74,6 +74,15 @@ async function fetchTikwmPosts(handle: string): Promise<TikwmPost[]> {
   return (json?.data?.videos || []) as TikwmPost[];
 }
 
+async function fetchTikwmSearch(keyword: string, count = 20): Promise<TikwmPost[]> {
+  const url = `https://www.tikwm.com/api/feed/search?keywords=${encodeURIComponent(keyword)}&count=${count}&cursor=0`;
+  const resp = await fetch(url, { headers: { "User-Agent": randomUA(), "Accept": "application/json" } });
+  if (!resp.ok) throw new Error(`tikwm search HTTP ${resp.status}`);
+  const json = await resp.json();
+  if (json?.code !== 0) throw new Error(`tikwm search code ${json?.code}: ${json?.msg}`);
+  return (json?.data?.videos || []) as TikwmPost[];
+}
+
 async function fetchTikwmComments(videoId: string): Promise<TikwmComment[]> {
   const url = `https://www.tikwm.com/api/comment/list?aweme_id=${encodeURIComponent(videoId)}&count=30&cursor=0`;
   const resp = await fetch(url, { headers: { "User-Agent": randomUA(), "Accept": "application/json" } });
