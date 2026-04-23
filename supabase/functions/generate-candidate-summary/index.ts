@@ -48,25 +48,27 @@ function buildDeterministicSummary(stats: any, candidate: any, periodLabel: stri
   };
 }
 
-async function callAIWithFallback(prompt: string, apiKey: string) {
+const SUMMARY_SCHEMA = {
+  type: 'object',
+  properties: {
+    overall_sentiment: { type: 'string', enum: ['muito_positiva', 'positiva', 'mista', 'negativa', 'muito_negativa'] },
+    overall_summary: { type: 'string' },
+    positive_points: { type: 'array', items: { type: 'string' } },
+    negative_points: { type: 'array', items: { type: 'string' } },
+    narrative_recommendations: { type: 'array', items: { type: 'string' } },
+    risk_alert: { type: 'string' },
+    opportunity_alert: { type: 'string' }
+  },
+  required: ['overall_sentiment', 'overall_summary', 'positive_points', 'negative_points', 'narrative_recommendations', 'risk_alert', 'opportunity_alert']
+};
+
+async function callLovableAI(prompt: string, apiKey: string) {
   const tools = [{
     type: 'function',
     function: {
       name: 'create_executive_summary',
       description: 'Gerar resumo executivo estruturado do candidato',
-      parameters: {
-        type: 'object',
-        properties: {
-          overall_sentiment: { type: 'string', enum: ['muito_positiva', 'positiva', 'mista', 'negativa', 'muito_negativa'] },
-          overall_summary: { type: 'string' },
-          positive_points: { type: 'array', items: { type: 'string' } },
-          negative_points: { type: 'array', items: { type: 'string' } },
-          narrative_recommendations: { type: 'array', items: { type: 'string' } },
-          risk_alert: { type: 'string' },
-          opportunity_alert: { type: 'string' }
-        },
-        required: ['overall_sentiment', 'overall_summary', 'positive_points', 'negative_points', 'narrative_recommendations', 'risk_alert', 'opportunity_alert']
-      }
+      parameters: SUMMARY_SCHEMA
     }
   }];
 
@@ -89,13 +91,13 @@ async function callAIWithFallback(prompt: string, apiKey: string) {
 
       if (aiResponse.status === 429 || aiResponse.status === 402) {
         lastError = { status: aiResponse.status, model };
-        console.warn(`Model ${model} returned ${aiResponse.status}, trying next...`);
+        console.warn(`[Lovable AI] ${model} returned ${aiResponse.status}, trying next...`);
         continue;
       }
 
       if (!aiResponse.ok) {
         const errText = await aiResponse.text();
-        console.error(`Model ${model} error ${aiResponse.status}:`, errText);
+        console.error(`[Lovable AI] ${model} error ${aiResponse.status}:`, errText);
         lastError = { status: aiResponse.status, model };
         continue;
       }
@@ -106,13 +108,60 @@ async function callAIWithFallback(prompt: string, apiKey: string) {
         lastError = { status: 'no_tool_call', model };
         continue;
       }
-      return { summary: JSON.parse(toolCall.function.arguments), model_used: model };
+      return { summary: JSON.parse(toolCall.function.arguments), model_used: `lovable/${model}` };
     } catch (e) {
-      console.error(`Model ${model} exception:`, e);
+      console.error(`[Lovable AI] ${model} exception:`, e);
       lastError = e;
     }
   }
-  throw lastError || new Error('All models failed');
+  throw lastError || new Error('All Lovable AI models failed');
+}
+
+// Direct Google Gemini API fallback (uses GEMINI_API_KEY from aistudio.google.com)
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
+
+async function callGeminiDirect(prompt: string, geminiKey: string) {
+  let lastError: any = null;
+  for (const model of GEMINI_MODELS) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: 'Você é um analista político estratégico brasileiro especializado em comunicação de campanha. Responda sempre em português do Brasil. Seja direto, prático e acionável.' }]
+          },
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: SUMMARY_SCHEMA,
+            temperature: 0.7,
+          }
+        })
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        console.warn(`[Gemini Direct] ${model} returned ${resp.status}:`, errText.substring(0, 300));
+        lastError = { status: resp.status, model };
+        continue;
+      }
+
+      const data = await resp.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) {
+        lastError = { status: 'no_text', model };
+        continue;
+      }
+      const parsed = JSON.parse(text);
+      return { summary: parsed, model_used: `gemini-direct/${model}` };
+    } catch (e) {
+      console.error(`[Gemini Direct] ${model} exception:`, e);
+      lastError = e;
+    }
+  }
+  throw lastError || new Error('All Gemini Direct models failed');
 }
 
 serve(async (req) => {
