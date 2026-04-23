@@ -193,15 +193,16 @@ export default function Overview() {
     ? Math.round(((aggregatedMetrics.positiveCount * 100) + (aggregatedMetrics.neutralCount * 50) + (aggregatedMetrics.negativeCount * 0)) / totalSentimentItems)
     : 0;
 
-  // Preparar dados de sentimento por dia (últimos 7 dias) - usando social_interactions
+  // Preparar dados de sentimento por dia (últimos 7 dias) - usa data de publicação original quando disponível
   const sentimentData = Array.from({ length: 7 }, (_, i) => {
     const date = subDays(new Date(), 6 - i);
     const dayStart = startOfDay(date);
     const dayEnd = endOfDay(date);
     
     const dayInteractions = socialInteractions?.filter(interaction => {
-      const createdAt = new Date(interaction.created_at || '');
-      return createdAt >= dayStart && createdAt <= dayEnd;
+      const refDate = (interaction as any).original_posted_at || interaction.created_at;
+      const d = new Date(refDate || '');
+      return d >= dayStart && d <= dayEnd;
     }) || [];
 
     const positive = dayInteractions.filter(i => i.sentiment_label === 'Positivo').length;
@@ -209,7 +210,7 @@ export default function Overview() {
     const neutral = dayInteractions.filter(i => i.sentiment_label === 'Neutro').length;
 
     return {
-      name: format(date, 'EEE', { locale: ptBR }),
+      name: format(date, 'EEE dd/MM', { locale: ptBR }),
       positive,
       negative,
       neutral
