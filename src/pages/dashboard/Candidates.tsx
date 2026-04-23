@@ -115,13 +115,35 @@ export default function Candidates() {
         .single();
 
       if (error) throw error;
+
+      // Insere links extras (IG/FB) na tabela relacionada
+      const extraLinks: Array<{ candidate_id: string; user_id: string; platform: string; url: string; handle: string | null }> = [];
+      if (validatedData.instagramUrl) {
+        const m = validatedData.instagramUrl.match(/instagram\.com\/([A-Za-z0-9_.]+)/i);
+        extraLinks.push({
+          candidate_id: data.id, user_id: user.id, platform: 'instagram',
+          url: validatedData.instagramUrl, handle: m?.[1] ?? null,
+        });
+      }
+      if (validatedData.facebookUrl) {
+        const m = validatedData.facebookUrl.match(/facebook\.com\/([A-Za-z0-9.\-]+)/i);
+        extraLinks.push({
+          candidate_id: data.id, user_id: user.id, platform: 'facebook',
+          url: validatedData.facebookUrl, handle: m?.[1] ?? null,
+        });
+      }
+      if (extraLinks.length > 0) {
+        const { error: linksErr } = await supabase.from('candidate_social_links').insert(extraLinks);
+        if (linksErr) console.error('Erro ao salvar links extras:', linksErr);
+      }
+
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
       toast.success('Candidato adicionado com sucesso!');
       setDialogOpen(false);
-      setFormData({ fullName: "", region: "", socialMedia: "" });
+      setFormData({ fullName: "", region: "", socialMedia: "", instagramUrl: "", facebookUrl: "" });
       setValidationErrors({});
     },
     onError: (error: Error) => {
