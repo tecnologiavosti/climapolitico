@@ -631,11 +631,22 @@ export default function Overview() {
 
       {/* Rankings */}
       <Card className="p-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
           <div>
             <h3 className="text-lg font-bold">Rankings Recentes</h3>
-            <p className="text-sm text-muted-foreground">Últimas posições calculadas</p>
+            <p className="text-sm text-muted-foreground">Últimas posições calculadas (30 dias)</p>
           </div>
+          <Button
+            onClick={handleCalculateRanking}
+            disabled={calculatingRanking || !candidates?.length}
+            size="sm"
+          >
+            {calculatingRanking ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Calculando...</>
+            ) : (
+              <><Activity className="mr-2 h-4 w-4" /> Calcular ranking</>
+            )}
+          </Button>
         </div>
         {isLoading ? (
           <div className="space-y-3">
