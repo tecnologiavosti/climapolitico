@@ -432,6 +432,27 @@ export default function Candidates() {
     },
   });
 
+  // Descobre automaticamente URLs de IG/FB para todos os candidatos
+  const discoverSocialLinksMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('discover-social-links', { body: {} });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      const added = data?.added ?? 0;
+      if (added === 0) {
+        toast.info('Nenhum novo link encontrado (talvez todos já estejam configurados).', { duration: 6000 });
+      } else {
+        toast.success(`${added} link(s) de Instagram/Facebook descoberto(s) e salvo(s)!`, { duration: 6000 });
+      }
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+    },
+    onError: (error: Error) => {
+      toast.error('Erro ao descobrir links: ' + error.message);
+    },
+  });
+
   const backfillRepliesMutation = useMutation({
     mutationFn: async ({ candidateId }: { candidateId: string }) => {
       const { data, error } = await supabase.functions.invoke('backfill-replies', {
