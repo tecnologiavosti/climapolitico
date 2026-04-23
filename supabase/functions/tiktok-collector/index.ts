@@ -133,8 +133,14 @@ async function collectForCandidate(
       return { posts: 0, comments: 0, handle, error: "Nenhum vídeo encontrado (perfil ou busca)" };
     }
 
-    // Dedup posts por video_id
-    const videoUrls = posts.map((p) => `https://www.tiktok.com/@${handle}/video/${p.video_id}`);
+    // Builder de URL: usa handle do post (modo search) ou handle do candidato (modo profile)
+    const buildUrl = (p: TikwmPost) => {
+      const author = p.author?.unique_id || handle || "tiktok";
+      return `https://www.tiktok.com/@${author}/video/${p.video_id}`;
+    };
+
+    // Dedup posts por URL
+    const videoUrls = posts.map(buildUrl);
     const { data: existing } = await supabase
       .from("social_interactions")
       .select("author_profile_url")
@@ -143,16 +149,16 @@ async function collectForCandidate(
       .in("author_profile_url", videoUrls);
     const existingSet = new Set((existing || []).map((e) => e.author_profile_url));
 
-    const newPosts = posts.filter((p) => !existingSet.has(`https://www.tiktok.com/@${handle}/video/${p.video_id}`));
+    const newPosts = posts.filter((p) => !existingSet.has(buildUrl(p)));
     if (newPosts.length > 0) {
       const rows = newPosts.map((p) => ({
         user_id: candidate.user_id,
         candidate_id: candidate.id,
         social_network: "tiktok",
-        interaction_type: "post",
+        interaction_type: sourceMode === "search" ? "mention" : "post",
         comment_text: p.title || "Vídeo do TikTok",
-        comment_author: p.author?.unique_id || handle,
-        author_profile_url: `https://www.tiktok.com/@${handle}/video/${p.video_id}`,
+        comment_author: p.author?.unique_id || p.author?.nickname || handle || "tiktok",
+        author_profile_url: buildUrl(p),
         likes_count: p.digg_count || 0,
         replies_count: p.comment_count || 0,
         shares_count: p.share_count || 0,
