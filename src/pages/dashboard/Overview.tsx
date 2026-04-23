@@ -691,10 +691,21 @@ export default function Overview() {
             })}
           </div>
         ) : (
-          <div className="h-40 flex flex-col items-center justify-center text-center text-muted-foreground p-6">
-            <AlertCircle className="h-8 w-8 mb-2 opacity-50" />
+          <div className="h-40 flex flex-col items-center justify-center text-center text-muted-foreground p-6 gap-3">
+            <AlertCircle className="h-8 w-8 opacity-50" />
             <p>Nenhum ranking disponível</p>
-            <p className="text-sm mt-1">Execute o cálculo de ranking para visualizar</p>
+            <Button
+              onClick={handleCalculateRanking}
+              disabled={calculatingRanking || !candidates?.length}
+              size="sm"
+              variant="outline"
+            >
+              {calculatingRanking ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Calculando...</>
+              ) : (
+                <><Activity className="mr-2 h-4 w-4" /> Calcular ranking agora</>
+              )}
+            </Button>
           </div>
         )}
       </Card>
