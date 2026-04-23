@@ -6,136 +6,99 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Normalize region name to standard format
-function normalizeRegion(region: string | null): string {
-  if (!region) return 'NACIONAL';
-  const normalized = region.trim().toUpperCase();
-  
-  const regionMap: Record<string, string> = {
-    'BRASIL': 'NACIONAL', 'BR': 'NACIONAL', 'NACIONAL': 'NACIONAL',
-    'DF': 'DISTRITO FEDERAL', 'SP': 'SÃO PAULO', 'SAO PAULO': 'SÃO PAULO',
-    'RJ': 'RIO DE JANEIRO', 'MG': 'MINAS GERAIS', 'BA': 'BAHIA',
-    'PR': 'PARANÁ', 'RS': 'RIO GRANDE DO SUL', 'PE': 'PERNAMBUCO',
-    'CE': 'CEARÁ', 'PA': 'PARÁ', 'SC': 'SANTA CATARINA'
-  };
-  
-  return regionMap[normalized] || normalized;
-}
+/**
+ * Ranking score (0-100) baseado em comentários reais coletados (social_interactions).
+ * Fórmula:
+ *   30% volume de menções
+ * + 20% diversidade de autores únicos
+ * + 30% sentimento médio
+ * + 20% engajamento (curtidas)
+ *
+ * Cada métrica é normalizada de 0 a 100 RELATIVAMENTE ao maior valor entre os
+ * candidatos do usuário no período (max-normalization). Isso garante a escala
+ * 0-100 mesmo com volumes muito diferentes entre coletas.
+ */
 
-// Helper: Parse follower count string to number
-function parseFollowerCount(followers: string | null): number {
-  if (!followers) return 0;
-  
-  const str = followers.toLowerCase().trim();
-  const match = str.match(/^([\d.]+)([km]?)$/);
-  if (!match) return 0;
-  
-  const num = parseFloat(match[1]);
-  const multiplier = match[2] === 'k' ? 1000 : match[2] === 'm' ? 1000000 : 1;
-  
-  return num * multiplier;
-}
-
-// 1. Reach Score (0-100)
-function calculateReachScore(followers: string | null): number {
-  if (!followers) return 0;
-  
-  const num = parseFollowerCount(followers);
-  const maxFollowers = 10_000_000;
-  const score = Math.min(100, (Math.log10(num + 1) / Math.log10(maxFollowers)) * 100);
-  
-  return Math.round(score * 100) / 100;
-}
-
-// 2. Engagement Score (0-100)
-function calculateEngagementScore(mentions: number, analysesCount: number): number {
-  if (analysesCount === 0) return 0;
-  
-  const avgMentionsPerAnalysis = mentions / analysesCount;
-  const maxMentions = 2000;
-  const score = Math.min(100, (avgMentionsPerAnalysis / maxMentions) * 100);
-  
-  return Math.round(score * 100) / 100;
-}
-
-// 3. Sentiment Score (0-100)
-function calculateSentimentScore(
-  positiveCount: number,
-  negativeCount: number,
-  neutralCount: number
-): { positive: number; negative: number; sentimentScore: number } {
-  const total = positiveCount + negativeCount + neutralCount;
-  if (total === 0) return { positive: 0, negative: 0, sentimentScore: 50 };
-  
-  const positivePercent = (positiveCount / total) * 100;
-  const negativePercent = (negativeCount / total) * 100;
-  
-  const sentimentScore = positivePercent - (negativePercent * 0.5);
-  
-  return {
-    positive: Math.round(positivePercent * 100) / 100,
-    negative: Math.round(negativePercent * 100) / 100,
-    sentimentScore: Math.max(0, Math.min(100, sentimentScore))
-  };
-}
-
-// 4. Speech Impact Score (0-100)
-function calculateSpeechImpactScore(speeches: any[]): number {
-  if (speeches.length === 0) return 50;
-  
-  const avgRisk = speeches.reduce((sum, s) => sum + (s.risk_level || 5), 0) / speeches.length;
-  const score = 100 - (avgRisk * 9);
-  
-  return Math.max(0, Math.min(100, Math.round(score * 100) / 100));
-}
-
-// 5. Trend Score (0-100)
-function calculateTrendScore(analyses: any[]): number {
-  if (analyses.length < 2) return 50;
-  
-  const sortedAnalyses = analyses.sort((a, b) => 
-    new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  );
-  
-  const halfPoint = Math.floor(sortedAnalyses.length / 2);
-  const firstHalf = sortedAnalyses.slice(0, halfPoint);
-  const secondHalf = sortedAnalyses.slice(halfPoint);
-  
-  if (firstHalf.length === 0 || secondHalf.length === 0) return 50;
-  
-  const avgFirst = firstHalf.reduce((sum, a) => sum + (a.sentiment_score || 50), 0) / firstHalf.length;
-  const avgSecond = secondHalf.reduce((sum, a) => sum + (a.sentiment_score || 50), 0) / secondHalf.length;
-  
-  const change = avgSecond - avgFirst;
-  const score = 50 + change;
-  
-  return Math.max(0, Math.min(100, Math.round(score * 100) / 100));
-}
-
-// 6. Overall Score (Weighted Average)
 const WEIGHTS = {
-  reach: 0.15,
-  engagement: 0.25,
+  mentions: 0.30,
+  authors: 0.20,
   sentiment: 0.30,
-  speechImpact: 0.15,
-  trend: 0.15
+  engagement: 0.20,
 };
 
-function calculateOverallScore(scores: {
-  reach: number;
-  engagement: number;
-  sentiment: number;
-  speechImpact: number;
-  trend: number;
-}): number {
-  const overall = 
-    scores.reach * WEIGHTS.reach +
-    scores.engagement * WEIGHTS.engagement +
-    scores.sentiment * WEIGHTS.sentiment +
-    scores.speechImpact * WEIGHTS.speechImpact +
-    scores.trend * WEIGHTS.trend;
-  
-  return Math.round(overall * 100) / 100;
+interface RawMetrics {
+  candidate_id: string;
+  mentions: number;       // total de comentários
+  uniqueAuthors: number;  // autores distintos
+  avgSentiment: number;   // 0-100 (já em escala)
+  likes: number;          // total de likes
+  positivePct: number;    // % positivos (0-100)
+  negativePct: number;    // % negativos (0-100)
+}
+
+function normalize(value: number, max: number): number {
+  if (max <= 0) return 0;
+  return Math.max(0, Math.min(100, (value / max) * 100));
+}
+
+async function fetchPage(supabase: any, candidateId: string, periodStart?: string, periodEnd?: string) {
+  const PAGE = 1000;
+  const all: any[] = [];
+  let from = 0;
+  while (true) {
+    let q = supabase
+      .from('social_interactions')
+      .select('id, comment_author, sentiment_score, sentiment_label, likes_count, social_network, created_at, original_posted_at', { count: 'exact' })
+      .eq('candidate_id', candidateId)
+      .range(from, from + PAGE - 1);
+    if (periodStart) q = q.gte('created_at', periodStart);
+    if (periodEnd) q = q.lte('created_at', periodEnd);
+    const { data, error } = await q;
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+    if (all.length > 50000) break; // safety
+  }
+  return all;
+}
+
+function aggregateMetrics(candidateId: string, interactions: any[]): RawMetrics {
+  const mentions = interactions.length;
+  const authors = new Set<string>();
+  let likes = 0;
+  let sentSum = 0;
+  let sentCount = 0;
+  let pos = 0, neg = 0, total = 0;
+
+  for (const i of interactions) {
+    if (i.comment_author) authors.add(String(i.comment_author).toLowerCase().trim());
+    likes += Number(i.likes_count || 0);
+    if (typeof i.sentiment_score === 'number') {
+      // sentiment_score no banco está em 0-1 (algumas vezes 0-100). Normalizamos.
+      const s = i.sentiment_score > 1 ? i.sentiment_score : i.sentiment_score * 100;
+      sentSum += s;
+      sentCount++;
+    }
+    if (i.sentiment_label) {
+      total++;
+      if (i.sentiment_label === 'Positivo') pos++;
+      else if (i.sentiment_label === 'Negativo') neg++;
+    }
+  }
+
+  const avgSentiment = sentCount > 0 ? sentSum / sentCount : 50;
+
+  return {
+    candidate_id: candidateId,
+    mentions,
+    uniqueAuthors: authors.size,
+    avgSentiment: Math.max(0, Math.min(100, avgSentiment)),
+    likes,
+    positivePct: total > 0 ? (pos / total) * 100 : 0,
+    negativePct: total > 0 ? (neg / total) * 100 : 0,
+  };
 }
 
 serve(async (req) => {
@@ -147,183 +110,130 @@ serve(async (req) => {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_ANON_KEY')!,
-      {
-        global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
-        },
-      }
+      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
     );
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      throw new Error('Não autenticado');
-    }
+    if (authError || !user) throw new Error('Não autenticado');
 
-    const { period_start, period_end } = await req.json();
-    
-    console.log('Calculating rankings for period:', period_start, 'to', period_end);
+    const body = await req.json().catch(() => ({}));
+    const period_end = body.period_end || new Date().toISOString();
+    const period_start = body.period_start || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    // 1. Fetch user's candidates
+    console.log(`[calculate-ranking] user=${user.id} period=${period_start}..${period_end}`);
+
+    // 1. Candidatos do usuário
     const { data: candidates, error: candidatesError } = await supabase
       .from('candidates')
-      .select('*')
+      .select('id, full_name, followers')
       .eq('user_id', user.id);
-
     if (candidatesError) throw candidatesError;
-
-    console.log(`Found ${candidates?.length || 0} candidates`);
-
-    // Calculate scores for each candidate with geographic validation
-    const rankings = [];
-    
-    for (const candidate of candidates || []) {
-      const candidateRegion = normalizeRegion(candidate.region);
-      const isNationalCandidate = candidateRegion === 'NACIONAL';
-      const geoScope = isNationalCandidate 
-        ? 'nacional' 
-        : `regional_${candidateRegion.toLowerCase().replace(/ /g, '_')}`;
-      
-      console.log(`📊 Ranking ${candidate.full_name} - Region: ${candidateRegion}, Scope: ${geoScope}`);
-      
-      // Fetch analyses in period - filter by geographic scope
-      let analysisQuery = supabase
-        .from('candidate_analyses')
-        .select('*')
-        .eq('candidate_id', candidate.id)
-        .eq('geographic_scope', geoScope); // CRITICAL: Only use analyses from correct region
-
-      if (period_start) {
-        analysisQuery = analysisQuery.gte('created_at', period_start);
-      }
-      if (period_end) {
-        analysisQuery = analysisQuery.lte('created_at', period_end);
-      }
-
-      const { data: analyses } = await analysisQuery;
-      
-      if (!analyses || analyses.length === 0) {
-        console.warn(`⚠️ No analyses found for ${candidate.full_name} in region ${candidateRegion} (${geoScope})`);
-      } else {
-        console.log(`✓ Found ${analyses.length} analyses for ${candidate.full_name} in ${candidateRegion}`);
-      }
-
-      // Fetch speeches in period
-      const { data: speeches } = await supabase
-        .from('speech_analyses')
-        .select('*')
-        .eq('candidate_id', candidate.id)
-        .gte('created_at', period_start)
-        .lte('created_at', period_end);
-
-      console.log(`Candidate ${candidate.full_name}: ${analyses?.length || 0} analyses, ${speeches?.length || 0} speeches`);
-
-      // Calculate scores
-      const reachScore = calculateReachScore(candidate.followers);
-      const totalMentions = analyses?.reduce((sum, a) => sum + (a.mentions_count || 0), 0) || 0;
-      const engagementScore = calculateEngagementScore(totalMentions, analyses?.length || 0);
-
-      const positiveCount = analyses?.filter(a => a.sentiment_score > 60).length || 0;
-      const negativeCount = analyses?.filter(a => a.sentiment_score < 40).length || 0;
-      const neutralCount = (analyses?.length || 0) - positiveCount - negativeCount;
-
-      const { positive, negative, sentimentScore } = calculateSentimentScore(
-        positiveCount,
-        negativeCount,
-        neutralCount
+    if (!candidates || candidates.length === 0) {
+      return new Response(
+        JSON.stringify({ success: true, rankings: [], message: 'Nenhum candidato encontrado.' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
-
-      const speechImpactScore = calculateSpeechImpactScore(speeches || []);
-      const trendScore = calculateTrendScore(analyses || []);
-
-      const overallScore = calculateOverallScore({
-        reach: reachScore,
-        engagement: engagementScore,
-        sentiment: sentimentScore,
-        speechImpact: speechImpactScore,
-        trend: trendScore
-      });
-
-      rankings.push({
-        candidate_id: candidate.id,
-        overall_score: overallScore,
-        reach_score: reachScore,
-        engagement_score: engagementScore,
-        positive_perception: positive,
-        negative_perception: negative,
-        speech_impact_score: speechImpactScore,
-        trend_score: trendScore
-      });
     }
 
-    // 3. Sort and assign positions
+    // 2. Métricas brutas por candidato a partir de social_interactions
+    const rawMetrics: RawMetrics[] = [];
+    for (const c of candidates) {
+      const interactions = await fetchPage(supabase, c.id, period_start, period_end);
+      const m = aggregateMetrics(c.id, interactions);
+      console.log(`[calculate-ranking] ${c.full_name}: mentions=${m.mentions} authors=${m.uniqueAuthors} likes=${m.likes} sent=${m.avgSentiment.toFixed(1)}`);
+      rawMetrics.push(m);
+    }
+
+    // 3. Max para normalização relativa
+    const maxMentions = Math.max(...rawMetrics.map(m => m.mentions), 0);
+    const maxAuthors = Math.max(...rawMetrics.map(m => m.uniqueAuthors), 0);
+    const maxLikes = Math.max(...rawMetrics.map(m => m.likes), 0);
+
+    // 4. Normaliza e calcula score final
+    const rankings = rawMetrics.map(m => {
+      const mentionsScore = normalize(m.mentions, maxMentions);
+      const authorsScore = normalize(m.uniqueAuthors, maxAuthors);
+      const sentimentScore = m.avgSentiment; // já 0-100
+      const engagementScore = normalize(m.likes, maxLikes);
+
+      const overall =
+        mentionsScore * WEIGHTS.mentions +
+        authorsScore * WEIGHTS.authors +
+        sentimentScore * WEIGHTS.sentiment +
+        engagementScore * WEIGHTS.engagement;
+
+      return {
+        candidate_id: m.candidate_id,
+        overall_score: Math.round(overall * 100) / 100,
+        reach_score: Math.round(mentionsScore * 100) / 100,        // volume de menções
+        engagement_score: Math.round(engagementScore * 100) / 100, // curtidas
+        trend_score: Math.round(authorsScore * 100) / 100,         // diversidade de autores
+        speech_impact_score: Math.round(sentimentScore * 100) / 100, // sentimento
+        positive_perception: Math.round(m.positivePct * 100) / 100,
+        negative_perception: Math.round(m.negativePct * 100) / 100,
+      };
+    });
+
+    // 5. Ordena e atribui posição
     rankings.sort((a, b) => b.overall_score - a.overall_score);
-    
-    // 4. Get previous rankings to calculate rank_change
-    const previousPeriodEnd = new Date(period_start);
+
+    // 6. rank_change vs período anterior (mesmo tamanho, anterior ao atual)
     const periodLength = new Date(period_end).getTime() - new Date(period_start).getTime();
+    const previousPeriodEnd = new Date(period_start);
     const previousPeriodStart = new Date(previousPeriodEnd.getTime() - periodLength);
 
     const { data: previousRankings } = await supabase
       .from('candidate_rankings')
-      .select('*')
+      .select('candidate_id, rank_position')
       .eq('user_id', user.id)
-      .eq('period_start', previousPeriodStart.toISOString())
-      .eq('period_end', previousPeriodEnd.toISOString());
+      .gte('period_start', previousPeriodStart.toISOString())
+      .lte('period_end', previousPeriodEnd.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(candidates.length);
 
-    const previousRankMap = new Map(
-      previousRankings?.map(r => [r.candidate_id, r.rank_position]) || []
+    const previousRankMap = new Map<string, number>(
+      (previousRankings || []).map((r: any) => [r.candidate_id, r.rank_position])
     );
 
-    const rankedData = rankings.map((rank, index) => {
-      const currentPosition = index + 1;
-      const previousPosition = previousRankMap.get(rank.candidate_id);
-      const rankChange = previousPosition ? previousPosition - currentPosition : 0;
-
+    const rankedData = rankings.map((r, idx) => {
+      const currentPosition = idx + 1;
+      const previousPosition = previousRankMap.get(r.candidate_id);
+      const rank_change = previousPosition ? previousPosition - currentPosition : 0;
       return {
-        ...rank,
+        ...r,
         rank_position: currentPosition,
-        rank_change: rankChange,
+        rank_change,
         user_id: user.id,
         period_start,
-        period_end
+        period_end,
       };
     });
 
-    console.log('Inserting rankings:', rankedData.length);
-
-    // 5. Delete existing rankings for this period before inserting new ones
+    // 7. Substitui rankings do período
     const { error: deleteError } = await supabase
       .from('candidate_rankings')
       .delete()
       .eq('user_id', user.id)
       .eq('period_start', period_start)
       .eq('period_end', period_end);
+    if (deleteError) console.warn('[calculate-ranking] delete warning:', deleteError);
 
-    if (deleteError) {
-      console.error('Delete error:', deleteError);
-    }
-
-    // 6. Insert new rankings
     const { error: insertError } = await supabase
       .from('candidate_rankings')
       .insert(rankedData);
-
-    if (insertError) {
-      console.error('Insert error:', insertError);
-      throw insertError;
-    }
+    if (insertError) throw insertError;
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         success: true,
         rankings: rankedData,
-        message: `Ranking calculado com sucesso para ${rankedData.length} candidatos`
+        message: `Ranking calculado para ${rankedData.length} candidatos a partir de comentários reais.`,
+        formula: '30% menções + 20% autores únicos + 30% sentimento + 20% curtidas',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
-
   } catch (error) {
-    console.error('Error:', error);
+    console.error('[calculate-ranking] error:', error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
