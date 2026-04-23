@@ -287,9 +287,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`[REFINE] refined=${refined} dist=${JSON.stringify(counts)}`);
+    console.log(`[REFINE] provider=${providerUsed} refined=${refined} dist=${JSON.stringify(counts)}`);
     return new Response(
-      JSON.stringify({ success: true, candidates: pending.length, refined, distribution: counts }),
+      JSON.stringify({ success: true, provider: providerUsed, candidates: pending.length, refined, distribution: counts }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
     );
   } catch (err) {
