@@ -432,6 +432,27 @@ export default function Candidates() {
     },
   });
 
+  // Descobre automaticamente URLs de IG/FB para todos os candidatos
+  const discoverSocialLinksMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('discover-social-links', { body: {} });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      const added = data?.added ?? 0;
+      if (added === 0) {
+        toast.info('Nenhum novo link encontrado (talvez todos já estejam configurados).', { duration: 6000 });
+      } else {
+        toast.success(`${added} link(s) de Instagram/Facebook descoberto(s) e salvo(s)!`, { duration: 6000 });
+      }
+      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+    },
+    onError: (error: Error) => {
+      toast.error('Erro ao descobrir links: ' + error.message);
+    },
+  });
+
   const backfillRepliesMutation = useMutation({
     mutationFn: async ({ candidateId }: { candidateId: string }) => {
       const { data, error } = await supabase.functions.invoke('backfill-replies', {
@@ -576,6 +597,29 @@ export default function Candidates() {
                 <p className="text-xs text-muted-foreground">
                   Processa em background com rate-limit (~25/min) para evitar bloqueios
                 </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  onClick={() => discoverSocialLinksMutation.mutate()}
+                  disabled={discoverSocialLinksMutation.isPending || candidates.length === 0}
+                >
+                  {discoverSocialLinksMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Search className="mr-2 h-4 w-4" />
+                  )}
+                  Descobrir IG/FB
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Descobre automaticamente Instagram e Facebook dos candidatos via busca</p>
+                <p className="text-xs text-muted-foreground">Resultados são salvos em links extras e usados pelo coletor Apify</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
