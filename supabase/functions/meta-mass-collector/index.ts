@@ -1,11 +1,10 @@
-// Coletor "best-effort" de Instagram (Picuki/Dumpor/Imginn) e Facebook (RSS-Bridge).
+// Coletor Instagram + Facebook via Apify (run-sync-get-dataset-items).
 // Reusa colunas existentes:
-//   - candidates.social_media_link → de onde extraímos o handle do IG e/ou da página FB.
-//   - social_interactions.interaction_type → 'post' ou 'comment'.
+//   - candidates.social_media_link → de onde extraímos handle IG e/ou página FB
+//   - social_interactions.interaction_type → 'post' ou 'comment'
+//   - social_interactions.social_network → 'instagram' | 'facebook'
 //
-// AVISO: as fontes públicas usadas aqui são instáveis e bloqueiam IPs de datacenter
-// com frequência. O coletor é tolerante a falhas: se uma fonte responder, registra; se
-// nenhuma responder, retorna 0 sem quebrar.
+// Requer secret: APIFY_API_TOKEN
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -14,231 +13,221 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const INSTAGRAM_SOURCES = [
-  "https://www.picuki.com/profile/",
-  "https://dumpor.io/v/",
-  "https://imginn.com/",
-];
+// Actors públicos populares e gratuitos no Apify Store
+const IG_ACTOR = "apify~instagram-scraper";
+const FB_ACTOR = "apify~facebook-posts-scraper";
 
-const FB_RSS_BRIDGES = [
-  "https://rss-bridge.org/bridge01/",
-  "https://rss-bridge.lewd.tech/",
-  "https://rssbridge.flossboxin.org.in/",
-  "https://wtf.roflcopter.fr/rss-bridge/",
-];
+const RESULTS_PER_PROFILE = 20; // posts por perfil/run
+const APIFY_TIMEOUT_MS = 90_000; // run síncrono limitado
 
-const USER_AGENTS = [
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",
-];
-const ua = () => USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+function extractInstagramHandle(link?: string | null): string | null {
+  if (!link) return null;
+  const m = link.match(/instagram\.com\/([A-Za-z0-9_.]+)/i);
+  if (m) return m[1].replace(/\/$/, "");
+  if (/^@?[A-Za-z0-9_.]+$/.test(link.trim())) return link.trim().replace(/^@/, "");
+  return null;
+}
 
-const FETCH_TIMEOUT_MS = 12000;
-async function fetchWithTimeout(url: string): Promise<Response | null> {
+function extractFacebookHandle(link?: string | null): string | null {
+  if (!link) return null;
+  const m = link.match(/facebook\.com\/([A-Za-z0-9.\-]+)/i);
+  if (m && !["sharer", "dialog", "plugins"].includes(m[1].toLowerCase())) {
+    return m[1].replace(/\/$/, "");
+  }
+  return null;
+}
+
+async function runApifyActor(actorId: string, input: unknown, token: string): Promise<any[]> {
+  const url = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${token}&timeout=${Math.floor(APIFY_TIMEOUT_MS / 1000)}`;
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), APIFY_TIMEOUT_MS + 10_000);
   try {
-    return await fetch(url, {
-      headers: { "User-Agent": ua(), "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8" },
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
       signal: ctrl.signal,
     });
+    if (!res.ok) {
+      const txt = await res.text();
+      console.error(`Apify ${actorId} ${res.status}: ${txt.slice(0, 300)}`);
+      return [];
+    }
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
   } catch (e) {
-    console.warn(`[meta] fetch falhou ${url}: ${(e as Error).message}`);
-    return null;
+    console.error(`Apify ${actorId} fetch error: ${(e as Error).message}`);
+    return [];
   } finally {
-    clearTimeout(t);
+    clearTimeout(timer);
   }
-}
-
-function extractInstagramHandle(link: string | null): string | null {
-  if (!link) return null;
-  const m = link.match(/instagram\.com\/(?:p\/)?@?([A-Za-z0-9_.]+)/i);
-  return m?.[1] && m[1] !== "p" ? m[1] : null;
-}
-
-function extractFacebookHandle(link: string | null): string | null {
-  if (!link) return null;
-  const m = link.match(/facebook\.com\/([A-Za-z0-9.\-_]+)/i);
-  return m?.[1] || null;
-}
-
-function decodeHtml(s: string): string {
-  return s
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ");
-}
-
-function stripHtml(s: string): string {
-  return decodeHtml(s.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
-}
-
-// --- Instagram via Picuki/Dumpor/Imginn (extrai legendas como "posts") ---
-async function collectInstagram(handle: string): Promise<Array<{ text: string; url: string }>> {
-  const out: Array<{ text: string; url: string }> = [];
-  for (const base of INSTAGRAM_SOURCES) {
-    const url = `${base}${handle}`;
-    const res = await fetchWithTimeout(url);
-    if (!res || !res.ok) continue;
-    const html = await res.text();
-    // Captura legendas de posts (heurística genérica que funciona em vários mirrors)
-    const captionRegex = /<(?:p|div)[^>]*class="[^"]*(?:caption|post-caption|photo-description)[^"]*"[^>]*>([\s\S]*?)<\/(?:p|div)>/gi;
-    let m: RegExpExecArray | null;
-    while ((m = captionRegex.exec(html)) !== null) {
-      const text = stripHtml(m[1]).slice(0, 1000);
-      if (text.length > 5) out.push({ text, url });
-      if (out.length >= 30) break;
-    }
-    if (out.length > 0) break; // Sucesso nesta fonte
-  }
-  return out;
-}
-
-// --- Facebook via RSS-Bridge (Facebook Bridge) ---
-async function collectFacebook(pageHandle: string): Promise<Array<{ text: string; url: string; date?: string }>> {
-  const out: Array<{ text: string; url: string; date?: string }> = [];
-  for (const bridge of FB_RSS_BRIDGES) {
-    const url = `${bridge}?action=display&bridge=Facebook&u=${encodeURIComponent(pageHandle)}&format=Json`;
-    const res = await fetchWithTimeout(url);
-    if (!res || !res.ok) continue;
-    try {
-      const data = await res.json();
-      const items = (data?.items || []) as Array<{ content_text?: string; content_html?: string; title?: string; url?: string; date_published?: string }>;
-      for (const it of items) {
-        const text = (it.content_text || stripHtml(it.content_html || "") || it.title || "").slice(0, 2000);
-        if (text && it.url) out.push({ text, url: it.url, date: it.date_published });
-      }
-      if (out.length > 0) break;
-    } catch {
-      // tenta próxima instância
-    }
-  }
-  return out;
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  const startedAt = Date.now();
+
+  const APIFY_TOKEN = Deno.env.get("APIFY_API_TOKEN");
+  if (!APIFY_TOKEN) {
+    return new Response(JSON.stringify({ error: "APIFY_API_TOKEN não configurado" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
 
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      { auth: { persistSession: false } },
-    );
-
-    // Permite chamada manual com candidateId específico
-    let candidateId: string | undefined;
-    try {
-      if (req.method === "POST") {
-        const body = await req.json().catch(() => ({}));
-        candidateId = body?.candidateId;
-      }
-    } catch { /* noop */ }
-
-    let q = supabase
+    const { data: candidates, error: candErr } = await supabase
       .from("candidates")
-      .select("id, full_name, user_id, social_media_link")
-      .eq("status", "active");
-    if (candidateId) q = q.eq("id", candidateId);
+      .select("id, full_name, social_media_link, user_id");
 
-    const { data: candidates, error } = await q.limit(500);
-    if (error) throw error;
-    const list = candidates || [];
-    if (list.length === 0) {
-      return new Response(JSON.stringify({ message: "Sem candidatos ativos." }), {
-        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    if (candErr) throw candErr;
+    if (!candidates || candidates.length === 0) {
+      return new Response(JSON.stringify({ message: "Sem candidatos.", inserted: 0 }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const summary: Record<string, { ig: number; fb: number; igFail: number; fbFail: number }> = {};
+    const interactions: any[] = [];
+    const stats = { instagram: 0, facebook: 0, igCandidates: 0, fbCandidates: 0, errors: [] as string[] };
 
-    const job = (async () => {
-      for (const c of list) {
-        const igHandle = extractInstagramHandle(c.social_media_link);
-        const fbHandle = extractFacebookHandle(c.social_media_link);
-        const stat = (summary[c.full_name] = { ig: 0, fb: 0, igFail: 0, fbFail: 0 });
+    for (const c of candidates) {
+      const igHandle = extractInstagramHandle(c.social_media_link);
+      const fbHandle = extractFacebookHandle(c.social_media_link);
 
-        const rows: Array<Record<string, unknown>> = [];
+      // ---------- INSTAGRAM ----------
+      if (igHandle) {
+        stats.igCandidates++;
+        try {
+          const items = await runApifyActor(
+            IG_ACTOR,
+            {
+              directUrls: [`https://www.instagram.com/${igHandle}/`],
+              resultsType: "posts",
+              resultsLimit: RESULTS_PER_PROFILE,
+              addParentData: false,
+            },
+            APIFY_TOKEN,
+          );
 
-        if (igHandle) {
-          try {
-            const igPosts = await collectInstagram(igHandle);
-            stat.ig = igPosts.length;
-            for (const p of igPosts) {
-              rows.push({
+          for (const it of items) {
+            const url = it.url || it.shortCode ? (it.url ?? `https://www.instagram.com/p/${it.shortCode}/`) : null;
+            if (!url) continue;
+            interactions.push({
+              candidate_id: c.id,
+              user_id: c.user_id,
+              social_network: "instagram",
+              interaction_type: "post",
+              comment_text: it.caption ?? "",
+              comment_author: it.ownerUsername ?? igHandle,
+              author_profile_url: `https://www.instagram.com/${it.ownerUsername ?? igHandle}/`,
+              likes_count: Number(it.likesCount ?? 0) || 0,
+              replies_count: Number(it.commentsCount ?? 0) || 0,
+              shares_count: 0,
+              original_posted_at: it.timestamp ?? null,
+              collected_at: new Date().toISOString(),
+            });
+            stats.instagram++;
+
+            // Comentários top-level se o actor já trouxer (alguns trazem em latestComments)
+            const comments = Array.isArray(it.latestComments) ? it.latestComments : [];
+            for (const cm of comments.slice(0, 10)) {
+              interactions.push({
                 candidate_id: c.id,
                 user_id: c.user_id,
                 social_network: "instagram",
-                interaction_type: "post",
-                comment_text: p.text,
-                comment_author: igHandle,
-                author_profile_url: `https://www.instagram.com/${igHandle}`,
-                original_posted_at: new Date().toISOString(),
+                interaction_type: "comment",
+                comment_text: cm.text ?? "",
+                comment_author: cm.ownerUsername ?? "",
+                author_profile_url: cm.ownerUsername
+                  ? `https://www.instagram.com/${cm.ownerUsername}/`
+                  : null,
+                likes_count: Number(cm.likesCount ?? 0) || 0,
+                replies_count: 0,
+                shares_count: 0,
+                original_posted_at: cm.timestamp ?? null,
+                collected_at: new Date().toISOString(),
               });
+              stats.instagram++;
             }
-            if (igPosts.length === 0) stat.igFail = 1;
-          } catch (e) {
-            stat.igFail = 1;
-            console.warn(`[meta] IG ${c.full_name}:`, (e as Error).message);
           }
+        } catch (e) {
+          stats.errors.push(`IG ${c.full_name}: ${(e as Error).message}`);
         }
-
-        if (fbHandle) {
-          try {
-            const fbPosts = await collectFacebook(fbHandle);
-            stat.fb = fbPosts.length;
-            for (const p of fbPosts) {
-              rows.push({
-                candidate_id: c.id,
-                user_id: c.user_id,
-                social_network: "facebook",
-                interaction_type: "post",
-                comment_text: p.text,
-                comment_author: fbHandle,
-                author_profile_url: p.url,
-                original_posted_at: p.date || new Date().toISOString(),
-              });
-            }
-            if (fbPosts.length === 0) stat.fbFail = 1;
-          } catch (e) {
-            stat.fbFail = 1;
-            console.warn(`[meta] FB ${c.full_name}:`, (e as Error).message);
-          }
-        }
-
-        if (rows.length > 0) {
-          const { error: insErr } = await supabase.from("social_interactions").insert(rows);
-          if (insErr) console.warn(`[meta] insert ${c.full_name}: ${insErr.message}`);
-        }
-
-        await new Promise((r) => setTimeout(r, 600));
       }
-      console.log(`[meta] concluído em ${(Date.now() - startedAt) / 1000}s | ${JSON.stringify(summary)}`);
-    })();
 
-    // @ts-ignore EdgeRuntime
-    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
-      // @ts-ignore
-      EdgeRuntime.waitUntil(job);
+      // ---------- FACEBOOK ----------
+      if (fbHandle) {
+        stats.fbCandidates++;
+        try {
+          const items = await runApifyActor(
+            FB_ACTOR,
+            {
+              startUrls: [{ url: `https://www.facebook.com/${fbHandle}/` }],
+              resultsLimit: RESULTS_PER_PROFILE,
+            },
+            APIFY_TOKEN,
+          );
+
+          for (const it of items) {
+            const url = it.url || it.postUrl || null;
+            if (!url) continue;
+            interactions.push({
+              candidate_id: c.id,
+              user_id: c.user_id,
+              social_network: "facebook",
+              interaction_type: "post",
+              comment_text: it.text ?? it.message ?? "",
+              comment_author: it.user?.name ?? fbHandle,
+              author_profile_url: it.user?.profileUrl ?? `https://www.facebook.com/${fbHandle}/`,
+              likes_count: Number(it.likes ?? it.likesCount ?? 0) || 0,
+              replies_count: Number(it.comments ?? it.commentsCount ?? 0) || 0,
+              shares_count: Number(it.shares ?? it.sharesCount ?? 0) || 0,
+              original_posted_at: it.time ?? it.timestamp ?? null,
+              collected_at: new Date().toISOString(),
+            });
+            stats.facebook++;
+          }
+        } catch (e) {
+          stats.errors.push(`FB ${c.full_name}: ${(e as Error).message}`);
+        }
+      }
     }
 
-    return new Response(JSON.stringify({
-      success: true,
-      accepted: true,
-      candidates: list.length,
-      message: "Coleta Meta iniciada em background",
-    }), { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Erro desconhecido";
-    console.error("[meta] erro fatal:", msg);
-    return new Response(JSON.stringify({ error: msg }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    let inserted = 0;
+    if (interactions.length > 0) {
+      // Insere em lotes de 500
+      for (let i = 0; i < interactions.length; i += 500) {
+        const batch = interactions.slice(i, i + 500);
+        const { error: insErr, count } = await supabase
+          .from("social_interactions")
+          .insert(batch, { count: "exact" });
+        if (insErr) {
+          console.error("Insert error:", insErr.message);
+          stats.errors.push(`insert: ${insErr.message}`);
+        } else {
+          inserted += count ?? batch.length;
+        }
+      }
+    }
+
+    return new Response(
+      JSON.stringify({
+        message: "Coleta Apify concluída",
+        inserted,
+        candidates_processed: candidates.length,
+        ...stats,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  } catch (e) {
+    console.error("meta-mass-collector fatal:", (e as Error).message);
+    return new Response(JSON.stringify({ error: (e as Error).message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
