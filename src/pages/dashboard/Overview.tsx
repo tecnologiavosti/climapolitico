@@ -178,34 +178,69 @@ export default function Overview() {
   // Query removida: Análises de fala (não mais exibida na Visão Geral)
   // const { data: speeches, isLoading: loadingSpeeches } = useQuery({...});
 
-  // Query: Rankings
-  const { data: rankings, isLoading: loadingRankings } = useQuery({
-    queryKey: ['rankings-overview', isAdmin],
+  // Query: Rankings calculados em tempo real (últimos 30 dias)
+  // Usa exatamente a mesma fórmula da página "Ranking de Candidatos"
+  // (30% menções + 20% autores + 30% sentimento + 20% engajamento)
+  // para garantir consistência entre Visão Geral e a aba de Ranking.
+  const { data: rankingInteractions, isLoading: loadingRankings } = useQuery({
+    queryKey: ['rankings-overview-interactions', isAdmin, user?.id],
     queryFn: async () => {
-      let query = supabase
-        .from('candidate_rankings')
-        .select(`
-          id,
-          candidate_id,
-          overall_score,
-          rank_position,
-          rank_change,
-          created_at,
-          user_id,
-          candidates!candidate_rankings_candidate_id_fkey(full_name)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(10);
-      
-      if (!isAdmin && user) {
-        query = query.eq('user_id', user.id);
+      if (!user) return [];
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const PAGE_SIZE = 1000;
+      const MAX_ROWS = 100000;
+      const all: any[] = [];
+      let from = 0;
+      while (from < MAX_ROWS) {
+        let q = supabase
+          .from('social_interactions')
+          .select('candidate_id, sentiment_label, sentiment_score, likes_count, comment_author')
+          .gte('created_at', thirtyDaysAgo)
+          .range(from, from + PAGE_SIZE - 1);
+        if (!isAdmin) q = q.eq('user_id', user.id);
+        const { data, error } = await q;
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        all.push(...data);
+        if (data.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
       }
-      
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
-    }
+      return all;
+    },
+    enabled: !!user,
+    staleTime: 60000,
   });
+
+  // Calcula ranking com a mesma fórmula da página Ranking
+  const rankings = (() => {
+    if (!candidates || !rankingInteractions) return [] as Array<{ id: string; candidate_id: string; overall_score: number; rank_change: number; candidates: { full_name: string } }>;
+    const map = new Map<string, { mentions: number; authors: Set<string>; engagement: number; sentSum: number }>();
+    candidates.forEach((c: any) => map.set(c.id, { mentions: 0, authors: new Set(), engagement: 0, sentSum: 0 }));
+    rankingInteractions.forEach((i: any) => {
+      const m = map.get(i.candidate_id);
+      if (!m) return;
+      m.mentions++;
+      if (i.comment_author) m.authors.add(i.comment_author);
+      m.engagement += i.likes_count || 0;
+      const lbl = (i.sentiment_label || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      if (lbl.startsWith('pos')) m.sentSum += 100;
+      else if (lbl.startsWith('neg')) m.sentSum += 0;
+      else m.sentSum += 50;
+    });
+    let maxM = 0, maxA = 0, maxE = 0;
+    map.forEach(m => { if (m.mentions > maxM) maxM = m.mentions; if (m.authors.size > maxA) maxA = m.authors.size; if (m.engagement > maxE) maxE = m.engagement; });
+    const arr = candidates.map((c: any) => {
+      const m = map.get(c.id)!;
+      const avgSent = m.mentions > 0 ? m.sentSum / m.mentions : 50;
+      const mScore = maxM > 0 ? (m.mentions / maxM) * 100 : 0;
+      const aScore = maxA > 0 ? (m.authors.size / maxA) * 100 : 0;
+      const eScore = maxE > 0 ? (m.engagement / maxE) * 100 : 0;
+      const overall = Math.round(mScore * 0.3 + aScore * 0.2 + avgSent * 0.3 + eScore * 0.2);
+      return { id: c.id, candidate_id: c.id, overall_score: overall, rank_change: 0, candidates: { full_name: c.full_name } };
+    });
+    arr.sort((a, b) => b.overall_score - a.overall_score);
+    return arr;
+  })();
 
   // Aggregate metrics from cache (single source of truth)
   const aggregatedMetrics = allMetrics?.reduce(
@@ -671,7 +706,7 @@ export default function Overview() {
         <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
           <div>
             <h3 className="text-lg font-bold">Rankings Recentes</h3>
-            <p className="text-sm text-muted-foreground">Últimas posições calculadas (30 dias)</p>
+            <p className="text-sm text-muted-foreground">Mesma fórmula da aba Ranking · últimos 30 dias</p>
           </div>
           <Button
             onClick={handleCalculateRanking}
