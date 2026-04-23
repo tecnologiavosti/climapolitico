@@ -189,24 +189,30 @@ export default function Overview() {
     queryKey: ['rankings-overview-interactions', isAdmin, user?.id],
     queryFn: async () => {
       if (!user) return [];
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      // Mesma janela usada por padrão na aba Ranking:
+      // from = hoje - 30 dias (sem zerar horas), to = hoje + 1 dia (exclusivo via .lt)
+      const from = new Date();
+      from.setDate(from.getDate() - 30);
+      const to = new Date();
+      to.setDate(to.getDate() + 1);
       const PAGE_SIZE = 1000;
       const MAX_ROWS = 100000;
       const all: any[] = [];
-      let from = 0;
-      while (from < MAX_ROWS) {
+      let offset = 0;
+      while (offset < MAX_ROWS) {
         let q = supabase
           .from('social_interactions')
           .select('candidate_id, sentiment_label, sentiment_score, likes_count, comment_author')
-          .gte('created_at', thirtyDaysAgo)
-          .range(from, from + PAGE_SIZE - 1);
+          .gte('created_at', from.toISOString())
+          .lt('created_at', to.toISOString())
+          .range(offset, offset + PAGE_SIZE - 1);
         if (!isAdmin) q = q.eq('user_id', user.id);
         const { data, error } = await q;
         if (error) throw error;
         if (!data || data.length === 0) break;
         all.push(...data);
         if (data.length < PAGE_SIZE) break;
-        from += PAGE_SIZE;
+        offset += PAGE_SIZE;
       }
       return all;
     },
