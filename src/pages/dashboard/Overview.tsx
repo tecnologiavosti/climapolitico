@@ -24,9 +24,31 @@ const COLORS = ['hsl(var(--primary))', 'hsl(var(--destructive))', 'hsl(var(--war
 export default function Overview() {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
   const [collecting, setCollecting] = useState(false);
+  const [calculatingRanking, setCalculatingRanking] = useState(false);
   const { isAdmin } = useAdminCheck();
   const { user } = useAuth();
   const qc = useQueryClient();
+
+  const handleCalculateRanking = async () => {
+    setCalculatingRanking(true);
+    const t = toast.loading("Calculando rankings dos últimos 30 dias...");
+    try {
+      const period_end = new Date().toISOString();
+      const period_start = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await supabase.functions.invoke('calculate-ranking', {
+        body: { period_start, period_end },
+      });
+      if (error) throw error;
+      toast.dismiss(t);
+      toast.success(`Ranking calculado! ${data?.rankings?.length ?? data?.count ?? ''} candidatos processados.`);
+      qc.invalidateQueries({ queryKey: ['rankings-overview'] });
+    } catch (e: any) {
+      toast.dismiss(t);
+      toast.error(`Falha ao calcular ranking: ${e.message || e}`);
+    } finally {
+      setCalculatingRanking(false);
+    }
+  };
 
   // Query: Candidatos (for selector and basic info)
   const { data: candidates, isLoading: loadingCandidates } = useQuery({
