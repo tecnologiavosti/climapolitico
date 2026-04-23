@@ -215,19 +215,20 @@ Deno.serve(async (req) => {
   );
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   const groqKey = Deno.env.get("GROQ_API_KEY");
+  const geminiKey = Deno.env.get("GEMINI_API_KEY");
 
   try {
-    // Pega até 50 comentários recentes Neutro/0.5 dos últimos 6h.
-    const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+    // Pega até 100 comentários recentes Neutro/0.5 das últimas 48h.
+    const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
     const { data: pending, error } = await supabase
       .from("social_interactions")
       .select("id, comment_text")
       .eq("sentiment_label", "Neutro")
       .eq("sentiment_score", 0.5)
-      .gte("created_at", sixHoursAgo)
+      .gte("created_at", since)
       .not("comment_text", "is", null)
       .order("created_at", { ascending: false })
-      .limit(50);
+      .limit(100);
 
     if (error) throw error;
 
@@ -244,14 +245,20 @@ Deno.serve(async (req) => {
 
     // 1) Groq primeiro (rápido, alto rate limit)
     let results: SentimentResult[] | null = null;
+    let providerUsed = "none";
     if (groqKey) {
       results = await callGroq(texts, groqKey);
-      if (results) console.log("[REFINE] ✅ Groq OK");
+      if (results) { console.log("[REFINE] ✅ Groq OK"); providerUsed = "groq"; }
     }
-    // 2) Fallback Lovable AI
+    // 2) Lovable AI Gateway
     if (!results && apiKey) {
       results = await callAI(texts, apiKey);
-      if (results) console.log("[REFINE] ✅ Lovable AI OK");
+      if (results) { console.log("[REFINE] ✅ Lovable AI OK"); providerUsed = "lovable"; }
+    }
+    // 3) Gemini Direct API (cota gratuita generosa)
+    if (!results && geminiKey) {
+      results = await callGeminiDirect(texts, geminiKey);
+      if (results) { console.log("[REFINE] ✅ Gemini Direct OK"); providerUsed = "gemini-direct"; }
     }
 
     if (results) {
