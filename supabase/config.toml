@@ -95,3 +95,6 @@ verify_jwt = false
 
 [functions.orchestrate-all-collectors]
 verify_jwt = false
+
+[functions.meta-mass-collector]
+verify_jwt = false
