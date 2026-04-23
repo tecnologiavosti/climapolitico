@@ -215,27 +215,51 @@ export default function Overview() {
     ? Math.round(((aggregatedMetrics.positiveCount * 100) + (aggregatedMetrics.neutralCount * 50) + (aggregatedMetrics.negativeCount * 0)) / totalSentimentItems)
     : 0;
 
-  // Preparar dados de sentimento por dia (últimos 7 dias) - usa data de publicação original quando disponível
+  // Preparar dados de sentimento por dia (últimos 7 dias)
+  // Usa created_at (data de coleta) para garantir que toda interação coletada
+  // nos últimos 7 dias apareça no gráfico, independentemente de quando foi postada.
+  // Normaliza labels (case-insensitive + acentos) para não perder linhas com
+  // variações como "positivo", "POSITIVO", "Positive", etc.
+  const normalizeSentiment = (label?: string | null, score?: number | null): 'positive' | 'negative' | 'neutral' | null => {
+    if (label) {
+      const l = label
+        .toString()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+      if (l.startsWith('pos')) return 'positive';
+      if (l.startsWith('neg')) return 'negative';
+      if (l.startsWith('neu')) return 'neutral';
+    }
+    if (typeof score === 'number') {
+      if (score >= 0.6) return 'positive';
+      if (score <= 0.4) return 'negative';
+      return 'neutral';
+    }
+    return null;
+  };
+
   const sentimentData = Array.from({ length: 7 }, (_, i) => {
     const date = subDays(new Date(), 6 - i);
     const dayStart = startOfDay(date);
     const dayEnd = endOfDay(date);
-    
-    const dayInteractions = socialInteractions?.filter(interaction => {
-      const refDate = (interaction as any).original_posted_at || interaction.created_at;
-      const d = new Date(refDate || '');
-      return d >= dayStart && d <= dayEnd;
-    }) || [];
 
-    const positive = dayInteractions.filter(i => i.sentiment_label === 'Positivo').length;
-    const negative = dayInteractions.filter(i => i.sentiment_label === 'Negativo').length;
-    const neutral = dayInteractions.filter(i => i.sentiment_label === 'Neutro').length;
+    let positive = 0, negative = 0, neutral = 0;
+    socialInteractions?.forEach(interaction => {
+      const d = new Date(interaction.created_at || '');
+      if (isNaN(d.getTime()) || d < dayStart || d > dayEnd) return;
+      const s = normalizeSentiment(interaction.sentiment_label, interaction.sentiment_score as number | null);
+      if (s === 'positive') positive++;
+      else if (s === 'negative') negative++;
+      else if (s === 'neutral') neutral++;
+    });
 
     return {
       name: format(date, 'EEE dd/MM', { locale: ptBR }),
       positive,
       negative,
-      neutral
+      neutral,
     };
   });
 
