@@ -106,12 +106,12 @@ export default function CandidateRanking() {
       const endDate = new Date(dateRange.to);
       endDate.setDate(endDate.getDate() + 1);
 
+      // Filtra pela data real do comentário (original_posted_at), com fallback para created_at
       const { data, error } = await supabase
         .from('social_interactions')
         .select('candidate_id, sentiment_label, sentiment_score, likes_count, comment_author')
         .eq('user_id', user.id)
-        .gte('created_at', dateRange.from.toISOString())
-        .lt('created_at', endDate.toISOString());
+        .or(`and(original_posted_at.gte.${dateRange.from.toISOString()},original_posted_at.lt.${endDate.toISOString()}),and(original_posted_at.is.null,created_at.gte.${dateRange.from.toISOString()},created_at.lt.${endDate.toISOString()})`);
 
       if (error) throw error;
       return data || [];
