@@ -46,7 +46,10 @@ interface NarrativeRecommendations {
 interface RecommendationResult {
   recommendations: NarrativeRecommendations | null;
   message?: string;
-  stats: { total: number; positive: number; negative: number; neutral: number };
+  error?: string;
+  fallback?: boolean;
+  ai_provider?: string;
+  stats?: { total: number; positive: number; negative: number; neutral: number };
   candidate?: { full_name: string; party: string; region: string };
   period?: { daysBack: number; startDate: string; endDate: string };
 }
@@ -108,9 +111,14 @@ const NarrativeRecommendationsPage = () => {
         body: { candidateId: selectedCandidate, daysBack: parseInt(selectedPeriod) },
       });
       if (error) throw error;
-      setResult(data);
-      if (!data.recommendations) {
-        toast.info(data.message || "Nenhum comentário encontrado.");
+
+      const payload = data as RecommendationResult;
+      setResult(payload);
+
+      if (payload.fallback || payload.error) {
+        toast.error(payload.message || "Serviço de IA temporariamente indisponível.");
+      } else if (!payload.recommendations) {
+        toast.info(payload.message || "Nenhum comentário encontrado.");
       } else {
         toast.success("Recomendações geradas com sucesso!");
       }
@@ -172,12 +180,14 @@ const NarrativeRecommendationsPage = () => {
         </CardContent>
       </Card>
 
-      {/* No data */}
+      {/* No data / fallback */}
       {result && !rec && (
         <Card>
           <CardContent className="py-12 text-center">
             <MessageCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Sem dados suficientes</h3>
+            <h3 className="text-lg font-semibold mb-2">
+              {result.fallback ? "Serviço temporariamente indisponível" : "Sem dados suficientes"}
+            </h3>
             <p className="text-muted-foreground">{result.message}</p>
           </CardContent>
         </Card>

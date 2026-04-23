@@ -261,13 +261,23 @@ Com base nos dados REAIS acima, gere recomendações concretas e específicas de
     }
 
     if (!recommendations) {
-      return new Response(JSON.stringify({ error: 'Serviço de IA temporariamente indisponível. Tente novamente em instantes.' }), {
-        status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      return new Response(JSON.stringify({
+        recommendations: null,
+        fallback: true,
+        error: 'SERVICE_UNAVAILABLE',
+        message: 'Serviço de IA temporariamente indisponível. Tente novamente em instantes.',
+        stats,
+        candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region },
+        period: { daysBack, startDate: startDate.toISOString(), endDate: new Date().toISOString() },
+        ai_provider: aiProvider
+      }), {
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
     return new Response(JSON.stringify({
       recommendations,
+      fallback: false,
       stats,
       candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region },
       period: { daysBack, startDate: startDate.toISOString(), endDate: new Date().toISOString() },
@@ -276,8 +286,13 @@ Com base nos dados REAIS acima, gere recomendações concretas e específicas de
 
   } catch (error) {
     console.error('Error:', error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Erro desconhecido' }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    return new Response(JSON.stringify({
+      recommendations: null,
+      fallback: true,
+      error: 'UNEXPECTED_ERROR',
+      message: error instanceof Error ? error.message : 'Erro desconhecido'
+    }), {
+      status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
 });
