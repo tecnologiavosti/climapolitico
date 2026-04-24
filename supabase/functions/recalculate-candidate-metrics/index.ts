@@ -134,11 +134,21 @@ Deno.serve(async (req) => {
       ? Math.round(sentimentSum / analyzedSentimentCount) 
       : 50;
 
-    // Network breakdown
+    // Network breakdown (normaliza nomes para a UI)
+    const normalizeNet = (n: string): string => {
+      const map: Record<string, string> = {
+        'instagram': 'Instagram', 'facebook': 'Facebook', 'tiktok': 'TikTok',
+        'tik_tok': 'TikTok', 'youtube': 'YouTube', 'twitter': 'Twitter/X',
+        'x': 'Twitter/X', 'reddit': 'Reddit', 'telegram': 'Telegram',
+        'google_news': 'Google News', 'googlenews': 'Google News',
+        'wikipedia': 'Wikipedia', 'linkedin': 'LinkedIn', 'threads': 'Threads',
+      };
+      return map[(n || '').toLowerCase()] || n || 'Outro';
+    };
     const networkMap: Record<string, { mentions: number; engagement: number; sentimentSum: number; analyzedCount: number }> = {};
     
     interactions?.forEach(i => {
-      const network = i.social_network || 'Outro';
+      const network = normalizeNet(i.social_network || 'Outro');
       if (!networkMap[network]) {
         networkMap[network] = { mentions: 0, engagement: 0, sentimentSum: 0, analyzedCount: 0 };
       }
