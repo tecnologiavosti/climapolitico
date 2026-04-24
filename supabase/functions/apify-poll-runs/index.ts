@@ -133,9 +133,10 @@ Deno.serve(async (req) => {
         shares_count: n.shares_count, url: n.url, posted_at: n.posted_at, type: "post",
       });
 
+      const networkLabel = r.platform === "instagram" ? "Instagram" : r.platform === "facebook" ? "Facebook" : r.platform;
       interactions.push({
         candidate_id: r.candidate_id, user_id: r.user_id,
-        social_network: r.platform, interaction_type: "post",
+        social_network: networkLabel, interaction_type: "post",
         comment_text: n.content, comment_author: n.author,
         author_profile_url: r.platform === "instagram"
           ? (n.author ? `https://www.instagram.com/${n.author}/` : null)
@@ -157,7 +158,7 @@ Deno.serve(async (req) => {
           });
           interactions.push({
             candidate_id: r.candidate_id, user_id: r.user_id,
-            social_network: "instagram", interaction_type: "comment",
+            social_network: "Instagram", interaction_type: "comment",
             comment_text: cm.text ?? "", comment_author: cm.ownerUsername ?? "",
             author_profile_url: cm.ownerUsername ? `https://www.instagram.com/${cm.ownerUsername}/` : null,
             likes_count: Number(cm.likesCount ?? 0) || 0, replies_count: 0, shares_count: 0,
