@@ -38,7 +38,7 @@ Sarcasmo é NEGATIVO. Em dúvida, escolha o predominante.
 Gírias BR: "mitou"/"faz o L"=positivo, "gado"/"mortadela"/"petralha"/"bolsominion"=negativo.
 Responda APENAS JSON object com chave "results" contendo array na MESMA ordem: {"results":[{"label":"Positivo|Negativo|Neutro","score":0.0-1.0},...]}`;
 
-  const models = ["llama-3.3-70b", "llama3.1-8b"];
+  const models = ["gpt-oss-120b", "llama3.1-8b"];
   for (const model of models) {
     try {
       const res = await fetch("https://api.cerebras.ai/v1/chat/completions", {
