@@ -13,7 +13,7 @@ interface NetworkMetrics {
 }
 
 async function processMetricsInBackground(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   userId: string,
   candidateId: string,
 ) {
