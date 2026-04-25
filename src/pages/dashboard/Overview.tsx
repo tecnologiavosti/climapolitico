@@ -142,43 +142,29 @@ export default function Overview() {
   // const { data: speeches, isLoading: loadingSpeeches } = useQuery({...});
 
   // Query: Rankings calculados em tempo real (últimos 30 dias)
-  // Usa exatamente a mesma fórmula da página "Ranking de Candidatos"
-  // (30% menções + 20% autores + 30% sentimento + 20% engajamento)
-  // para garantir consistência entre Visão Geral e a aba de Ranking.
+  // Limitada a 5000 linhas — mais que suficiente para o top-5 da Visão Geral.
+  // Para a aba Ranking completa, a query original (paginada) continua.
   const { data: rankingInteractions, isLoading: loadingRankings } = useQuery({
     queryKey: ['rankings-overview-interactions', isAdmin, user?.id],
     queryFn: async () => {
       if (!user) return [];
-      // Mesma janela usada por padrão na aba Ranking:
-      // from = hoje - 30 dias (sem zerar horas), to = hoje + 1 dia (exclusivo via .lt)
-      // EXATAMENTE a mesma query da aba Ranking (CandidateRanking.tsx):
-      // single select sem paginação, escopado por user_id, janela hoje-30d até hoje+1d
       const from = new Date();
       from.setDate(from.getDate() - 30);
       const to = new Date();
       to.setDate(to.getDate() + 1);
       const orFilter = `and(original_posted_at.gte.${from.toISOString()},original_posted_at.lt.${to.toISOString()}),and(original_posted_at.is.null,created_at.gte.${from.toISOString()},created_at.lt.${to.toISOString()})`;
-      const PAGE_SIZE = 1000;
-      const MAX_ROWS = 200000;
-      const all: any[] = [];
-      let offset = 0;
-      while (offset < MAX_ROWS) {
-        const { data, error } = await supabase
-          .from('social_interactions')
-          .select('candidate_id, sentiment_label, sentiment_score, likes_count, comment_author')
-          .eq('user_id', user.id)
-          .or(orFilter)
-          .range(offset, offset + PAGE_SIZE - 1);
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-        all.push(...data);
-        if (data.length < PAGE_SIZE) break;
-        offset += PAGE_SIZE;
-      }
-      return all;
+      const { data, error } = await supabase
+        .from('social_interactions')
+        .select('candidate_id, sentiment_label, sentiment_score, likes_count, comment_author')
+        .eq('user_id', user.id)
+        .or(orFilter)
+        .order('created_at', { ascending: false })
+        .limit(5000);
+      if (error) throw error;
+      return data || [];
     },
     enabled: !!user,
-    staleTime: 60000,
+    staleTime: 5 * 60 * 1000,
   });
 
   // Calcula ranking com a mesma fórmula da página Ranking
