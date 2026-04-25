@@ -508,6 +508,127 @@ async function scrapeTwitter(
   return merged;
 }
 
+function parseSentimentArray(content: string, expected: number): SentimentResult[] | null {
+  const jsonMatch = content.match(/\[[\s\S]*\]/);
+  if (!jsonMatch) return null;
+  let parsed: any;
+  try { parsed = JSON.parse(jsonMatch[0]); } catch { return null; }
+  if (!Array.isArray(parsed) || parsed.length === 0) return null;
+  return Array.from({ length: expected }, (_, idx) => {
+    const p = parsed[idx];
+    const label = ['Positivo', 'Negativo', 'Neutro'].includes(p?.label) ? p.label : 'Neutro';
+    const score = Math.max(0, Math.min(1, typeof p?.score === 'number' ? p.score : 0.5));
+    return { label, score } as SentimentResult;
+  });
+}
+
+async function tryGroq(systemPrompt: string, userPrompt: string, expected: number): Promise<SentimentResult[] | null> {
+  const groqKey = Deno.env.get('GROQ_API_KEY');
+  if (!groqKey) return null;
+  const models = ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile'];
+  for (const model of models) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${groqKey}` },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            temperature: 0.1,
+            max_tokens: expected * 60 + 200,
+          }),
+          signal: AbortSignal.timeout(20000),
+        });
+        if (response.status === 429) {
+          const retryAfter = parseFloat(response.headers.get('retry-after') || '0');
+          const wait = Math.min(15000, (retryAfter > 0 ? retryAfter * 1000 : 3000) + Math.random() * 500);
+          console.warn(`[SENTIMENT-GROQ] ${model} 429 — aguardando ${wait.toFixed(0)}ms (tentativa ${attempt + 1}/2)`);
+          await new Promise(r => setTimeout(r, wait));
+          continue;
+        }
+        if (!response.ok) {
+          console.warn(`[SENTIMENT-GROQ] ${model} HTTP ${response.status}`);
+          break;
+        }
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content || '';
+        const result = parseSentimentArray(content, expected);
+        if (result) {
+          console.log(`[SENTIMENT-GROQ] ${model} → ${expected} análises OK`);
+          return result;
+        }
+        break;
+      } catch (err) {
+        console.warn(`[SENTIMENT-GROQ] ${model} erro:`, err instanceof Error ? err.message : err);
+        break;
+      }
+    }
+  }
+  return null;
+}
+
+async function tryGemini(systemPrompt: string, userPrompt: string, expected: number): Promise<SentimentResult[] | null> {
+  const apiKey = Deno.env.get('LOVABLE_API_KEY');
+  if (!apiKey) return null;
+  // Cascata: flash (mais robusto) → flash-lite (cota maior) → gemini-3-flash (preview)
+  const models = [
+    'google/gemini-2.5-flash',
+    'google/gemini-2.5-flash-lite',
+    'google/gemini-3-flash-preview',
+  ];
+  for (const model of models) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            temperature: 0.1,
+            max_tokens: expected * 60 + 200,
+          }),
+          signal: AbortSignal.timeout(25000),
+        });
+        if (response.status === 429) {
+          const retryAfter = parseFloat(response.headers.get('retry-after') || '0');
+          const wait = Math.min(20000, (retryAfter > 0 ? retryAfter * 1000 : 5000) + Math.random() * 1000);
+          console.warn(`[SENTIMENT-GEMINI] ${model} 429 — aguardando ${wait.toFixed(0)}ms (tentativa ${attempt + 1}/2)`);
+          await new Promise(r => setTimeout(r, wait));
+          continue;
+        }
+        if (response.status === 402) {
+          console.error(`[SENTIMENT-GEMINI] créditos esgotados (402)`);
+          return null;
+        }
+        if (!response.ok) {
+          console.warn(`[SENTIMENT-GEMINI] ${model} HTTP ${response.status}`);
+          break;
+        }
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content || '';
+        const result = parseSentimentArray(content, expected);
+        if (result) {
+          console.log(`[SENTIMENT-GEMINI] ${model} → ${expected} análises OK`);
+          return result;
+        }
+        break;
+      } catch (err) {
+        console.warn(`[SENTIMENT-GEMINI] ${model} erro:`, err instanceof Error ? err.message : err);
+        break;
+      }
+    }
+  }
+  return null;
+}
+
 async function analyzeSentimentBatch(texts: string[]): Promise<SentimentResult[] | null> {
   if (texts.length === 0) return null;
   const clipped = texts.map(t => (t || '').substring(0, 400).trim());
@@ -523,79 +644,17 @@ Responda APENAS um array JSON com EXATAMENTE ${clipped.length} itens, na MESMA o
 
   const userPrompt = clipped.map((t, i) => `${i + 1}. ${t || '[vazio]'}`).join('\n');
 
-  const groqKey = Deno.env.get('GROQ_API_KEY');
-  if (groqKey) {
-    try {
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${groqKey}` },
-        body: JSON.stringify({
-          model: 'llama-3.1-8b-instant',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
-          temperature: 0.1,
-          max_tokens: clipped.length * 60 + 200,
-        }),
-        signal: AbortSignal.timeout(20000),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        const content = data.choices?.[0]?.message?.content || '';
-        const jsonMatch = content.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          if (Array.isArray(parsed)) {
-            return clipped.map((_, idx) => {
-              const p = parsed[idx];
-              const label = ['Positivo', 'Negativo', 'Neutro'].includes(p?.label) ? p.label : 'Neutro';
-              const score = Math.max(0, Math.min(1, typeof p?.score === 'number' ? p.score : 0.5));
-              return { label, score } as SentimentResult;
-            });
-          }
-        }
-      } else {
-        console.warn(`[SENTIMENT-GROQ] HTTP ${response.status}`);
-      }
-    } catch (err) {
-      console.warn('[SENTIMENT-GROQ] erro:', err instanceof Error ? err.message : err);
-    }
-  }
+  // 1) Groq (rápido e barato)
+  const groqResult = await tryGroq(systemPrompt, userPrompt, clipped.length);
+  if (groqResult) return groqResult;
 
-  const apiKey = Deno.env.get('LOVABLE_API_KEY');
-  if (!apiKey) return null;
-  try {
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash-lite',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.1,
-        max_tokens: clipped.length * 60 + 200,
-      }),
-    });
-    if (!response.ok) return null;
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || '';
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) return null;
-    const parsed = JSON.parse(jsonMatch[0]);
-    if (!Array.isArray(parsed)) return null;
-    return clipped.map((_, idx) => {
-      const p = parsed[idx];
-      const label = ['Positivo', 'Negativo', 'Neutro'].includes(p?.label) ? p.label : 'Neutro';
-      const score = Math.max(0, Math.min(1, typeof p?.score === 'number' ? p.score : 0.5));
-      return { label, score } as SentimentResult;
-    });
-  } catch (err) {
-    console.error('[SENTIMENT] erro:', err);
-    return null;
-  }
+  // 2) Gemini fallback via Lovable AI Gateway
+  console.log('[SENTIMENT] Groq falhou, usando Gemini fallback');
+  const geminiResult = await tryGemini(systemPrompt, userPrompt, clipped.length);
+  if (geminiResult) return geminiResult;
+
+  console.warn('[SENTIMENT] Todos os fallbacks falharam — deixando para o cron de refinamento');
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -859,8 +918,8 @@ Deno.serve(async (req) => {
           comment_author: t.author,
           author_profile_url: t.tweetUrl ?? t.authorUrl,
           social_network: 'Twitter/X',
-          sentiment_label: s?.label ?? 'Neutro',
-          sentiment_score: s?.score ?? 0.5,
+          sentiment_label: s?.label ?? null,
+          sentiment_score: s?.score ?? null,
           likes_count: t.likes,
           replies_count: t.replies,
           shares_count: t.retweets,
@@ -931,8 +990,8 @@ Deno.serve(async (req) => {
           const sentiments = await analyzeSentimentBatch(batch.map(r => r.comment_text));
           batch.forEach((r, idx) => {
             const s = sentiments?.[idx];
-            r.sentiment_label = s?.label ?? 'Neutro';
-            r.sentiment_score = s?.score ?? 0.5;
+            r.sentiment_label = s?.label ?? null;
+            r.sentiment_score = s?.score ?? null;
           });
           const { data: ins, error: repErr } = await db
             .from('social_interactions')
