@@ -259,7 +259,9 @@ export default function Overview() {
 
     let positive = 0, negative = 0, neutral = 0;
     socialInteractions?.forEach(interaction => {
-      const d = new Date(interaction.created_at || '');
+      // Prioriza a data de postagem original; cai para created_at se ausente
+      const ref = interaction.original_posted_at || interaction.created_at || '';
+      const d = new Date(ref);
       if (isNaN(d.getTime()) || d < dayStart || d > dayEnd) return;
       const s = normalizeSentiment(interaction.sentiment_label, interaction.sentiment_score as number | null);
       if (s === 'positive') positive++;
