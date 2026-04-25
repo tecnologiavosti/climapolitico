@@ -312,10 +312,15 @@ Deno.serve(async (req) => {
     const counts = { Positivo: 0, Negativo: 0, Neutro: 0 };
     const texts = pending.map((p) => p.comment_text || "");
 
-    // 1) Groq primeiro (rápido, alto rate limit)
+    // 1) Cerebras primeiro (PRIMÁRIO — Llama 3.3 70B, 1M tokens/dia grátis, ~2000 tok/s)
     let results: SentimentResult[] | null = null;
     let providerUsed = "none";
-    if (groqKey) {
+    if (cerebrasKey) {
+      results = await callCerebras(texts, cerebrasKey);
+      if (results) { console.log("[REFINE] ✅ Cerebras OK"); providerUsed = "cerebras"; }
+    }
+    // 2) Groq (fallback rápido)
+    if (!results && groqKey) {
       results = await callGroq(texts, groqKey);
       if (results) { console.log("[REFINE] ✅ Groq OK"); providerUsed = "groq"; }
     }
