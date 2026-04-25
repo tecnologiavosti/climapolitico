@@ -434,52 +434,66 @@ async function fetchTweetReplies(tweetUrl: string, hosts: string[]): Promise<Nit
   return [];
 }
 
-// Coleta paralela: dispara várias instâncias ao mesmo tempo, agrega e dedup.
+// Coleta em CASCATA paralela: Bluesky + Mastodon + Firecrawl primeiro (gratuitos e estáveis),
+// só cai para Nitter/X-API se as fontes principais não trouxerem nada suficiente.
 async function scrapeTwitter(
   query: string,
   hardLimit: number,
   hosts: string[],
   onHostResult?: (host: string, ok: boolean, error?: string) => Promise<void>,
 ): Promise<ScrapedTweet[]> {
-  const results = await Promise.all(
-    hosts.map(async (host) => {
-      const r = await fetchRss(host, query);
-      if (onHostResult) await onHostResult(host, r.ok, r.error);
-      if (!r.ok || !r.xml) {
-        console.warn(`[TWITTER] ${host} falhou: ${r.error}`);
-        return [] as ScrapedTweet[];
-      }
-      const tweets = parseRss(r.xml);
-      console.log(`[TWITTER] ${host} → ${tweets.length} tweets para "${query}"`);
-      return tweets;
-    })
-  );
-
   const seen = new Set<string>();
   const merged: ScrapedTweet[] = [];
-  for (const arr of results) {
+  const addBatch = (arr: ScrapedTweet[], source: string) => {
+    let added = 0;
     for (const t of arr) {
       const key = t.tweetId || t.tweetUrl || `${t.author}::${t.text.substring(0, 80)}`;
       if (seen.has(key)) continue;
       seen.add(key);
       merged.push(t);
+      added++;
       if (merged.length >= hardLimit) break;
     }
-    if (merged.length >= hardLimit) break;
+    if (added > 0) console.log(`[TWITTER] ${source} → +${added} (total ${merged.length})`);
+  };
+
+  // === Etapa 1: fontes principais em paralelo ===
+  const [bskyRes, mastoRes, firecrawlRes] = await Promise.allSettled([
+    fetchViaBluesky(query, hardLimit),
+    fetchViaMastodon(query, hardLimit),
+    fetchViaFirecrawl(query, Math.min(20, hardLimit)),
+  ]);
+  if (bskyRes.status === 'fulfilled') addBatch(bskyRes.value, 'Bluesky');
+  if (mastoRes.status === 'fulfilled') addBatch(mastoRes.value, 'Mastodon');
+  if (firecrawlRes.status === 'fulfilled') addBatch(firecrawlRes.value, 'Firecrawl/X');
+
+  if (merged.length >= hardLimit) return merged;
+
+  // === Etapa 2: fallback Nitter (último recurso, normalmente morto) ===
+  if (hosts.length > 0) {
+    const results = await Promise.all(
+      hosts.map(async (host) => {
+        const r = await fetchRss(host, query);
+        if (onHostResult) await onHostResult(host, r.ok, r.error);
+        if (!r.ok || !r.xml) {
+          console.warn(`[TWITTER] ${host} falhou: ${r.error}`);
+          return [] as ScrapedTweet[];
+        }
+        const tweets = parseRss(r.xml);
+        console.log(`[TWITTER] Nitter ${host} → ${tweets.length} tweets para "${query}"`);
+        return tweets;
+      })
+    );
+    for (const arr of results) addBatch(arr, 'Nitter');
   }
 
-  // Fallback: se nenhuma instância retornou, tenta X API oficial
+  // === Etapa 3: X API oficial (se houver bearer) ===
   if (merged.length === 0) {
-    console.log('[TWITTER] Todas as instâncias Nitter falharam — usando X API v2');
+    console.log('[TWITTER] Tentando X API v2 como último fallback');
     const apiTweets = await fetchViaXApi(query, hardLimit);
-    for (const t of apiTweets) {
-      const key = t.tweetId || `${t.author}::${t.text.substring(0, 80)}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      merged.push(t);
-      if (merged.length >= hardLimit) break;
-    }
+    addBatch(apiTweets, 'X-API');
   }
+
   return merged;
 }
 
