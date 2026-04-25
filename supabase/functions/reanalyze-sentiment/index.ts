@@ -10,6 +10,15 @@ interface SentimentResult {
   score: number;
 }
 
+function heuristicSentiment(text: string): SentimentResult | null {
+  const t = (text || '').toLowerCase();
+  const negative = /(ladr[ãa]o|corrupt|mentiros|vagabund|bandido|fora\b|jamais|nunca|safad|canalha|vergonha|nojo|p[ée]ssim|horr[íi]vel|odio|ódio|fracass|incompetente|idiota|burro|imbecil|lixo|merda|fdp|gado|petralha|bolsominion|🤮|👎|😡|💩|🤡)/i.test(text);
+  const positive = /(parab[ée]ns|melhor|[óo]tim|excelente|maravilh|perfeit|mito|her[óo]i|orgulho|apoio|votarei|voto\s+em|te\s+amo|amo\s+voc|presidente\b|força|estamos\s+juntos|vai\s+ganhar|vencer|vit[óo]ria|sucesso|deus\s+aben|❤️|👏|🙏|✊|🇧🇷|💚|💛)/i.test(text);
+  if (negative && !positive) return { label: 'Negativo', score: 0.2 };
+  if (positive && !negative) return { label: 'Positivo', score: 0.8 };
+  return null;
+}
+
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -28,6 +37,11 @@ async function analyzeSentimentBatch(texts: string[]): Promise<SentimentResult[]
   
   if (clipped.length === 0) {
     return texts.map(() => ({ label: 'Neutro', score: 0.5 }));
+  }
+
+  if (texts.length <= 5) {
+    const heuristicOnly = texts.map((t) => heuristicSentiment(t));
+    if (heuristicOnly.every(Boolean)) return heuristicOnly as SentimentResult[];
   }
 
   console.log(`[SENTIMENT] Analyzing ${clipped.length} comments...`);
