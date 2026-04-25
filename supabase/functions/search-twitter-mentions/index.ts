@@ -525,6 +525,57 @@ function parseSentimentArray(content: string, expected: number): SentimentResult
   });
 }
 
+async function tryCerebras(systemPrompt: string, userPrompt: string, expected: number): Promise<SentimentResult[] | null> {
+  const cerebrasKey = Deno.env.get('CEREBRAS_API_KEY');
+  if (!cerebrasKey) return null;
+  // Cerebras: ~2000 tok/s, 1M tokens/dia grátis. Llama 3.3 70B excelente para PT-BR.
+  const models = ['llama-3.3-70b', 'llama3.1-8b'];
+  for (const model of models) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const response = await fetch('https://api.cerebras.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cerebrasKey}` },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            temperature: 0.1,
+            max_tokens: expected * 60 + 200,
+            response_format: { type: 'json_object' },
+          }),
+          signal: AbortSignal.timeout(20000),
+        });
+        if (response.status === 429) {
+          const retryAfter = parseFloat(response.headers.get('retry-after') || '0');
+          const wait = Math.min(15000, (retryAfter > 0 ? retryAfter * 1000 : 3000) + Math.random() * 500);
+          console.warn(`[SENTIMENT-CEREBRAS] ${model} 429 — aguardando ${wait.toFixed(0)}ms (tentativa ${attempt + 1}/2)`);
+          await new Promise(r => setTimeout(r, wait));
+          continue;
+        }
+        if (!response.ok) {
+          console.warn(`[SENTIMENT-CEREBRAS] ${model} HTTP ${response.status}`);
+          break;
+        }
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content || '';
+        const result = parseSentimentArray(content, expected);
+        if (result) {
+          console.log(`[SENTIMENT-CEREBRAS] ${model} → ${expected} análises OK`);
+          return result;
+        }
+        break;
+      } catch (err) {
+        console.warn(`[SENTIMENT-CEREBRAS] ${model} erro:`, err instanceof Error ? err.message : err);
+        break;
+      }
+    }
+  }
+  return null;
+}
+
 async function tryGroq(systemPrompt: string, userPrompt: string, expected: number): Promise<SentimentResult[] | null> {
   const groqKey = Deno.env.get('GROQ_API_KEY');
   if (!groqKey) return null;
