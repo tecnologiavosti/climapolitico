@@ -28,6 +28,65 @@ function heuristic(text: string): SentimentResult {
   return { label: "Neutro", score: 0.5 };
 }
 
+async function callCerebras(texts: string[], cerebrasKey: string): Promise<SentimentResult[] | null> {
+  const clipped = texts.map((t) => (t || "").substring(0, 400).trim());
+  const userContent = clipped.map((t, i) => `${i + 1}. "${t}"`).join("\n");
+
+  const systemPrompt = `Você é especialista brasileiro em análise de sentimento político.
+CLASSIFIQUE cada comentário: POSITIVO (apoio, elogio, "mito", emojis ❤️👏), NEGATIVO (crítica, sarcasmo, xingamento, "ladrão", "fora", emojis 🤮👎), NEUTRO (apenas notícia factual sem viés).
+Sarcasmo é NEGATIVO. Em dúvida, escolha o predominante.
+Gírias BR: "mitou"/"faz o L"=positivo, "gado"/"mortadela"/"petralha"/"bolsominion"=negativo.
+Responda APENAS JSON object com chave "results" contendo array na MESMA ordem: {"results":[{"label":"Positivo|Negativo|Neutro","score":0.0-1.0},...]}`;
+
+  const models = ["llama-3.3-70b", "llama3.1-8b"];
+  for (const model of models) {
+    try {
+      const res = await fetch("https://api.cerebras.ai/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${cerebrasKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userContent },
+          ],
+          temperature: 0.1,
+          max_tokens: clipped.length * 50 + 200,
+          response_format: { type: "json_object" },
+        }),
+      });
+      if (!res.ok) {
+        console.warn(`[REFINE] Cerebras ${model} ${res.status}`);
+        continue;
+      }
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content || "";
+      let parsed: any;
+      try {
+        parsed = JSON.parse(content);
+      } catch {
+        const m = content.match(/\[[\s\S]*\]/);
+        if (!m) continue;
+        parsed = JSON.parse(m[0]);
+      }
+      const arr = Array.isArray(parsed) ? parsed : (parsed.results || parsed.data || parsed.sentiments);
+      if (!Array.isArray(arr) || arr.length < texts.length) continue;
+      console.log(`[REFINE] Cerebras ${model} OK (${arr.length} resultados)`);
+      return texts.map((_, i) => {
+        const p = arr[i];
+        const label =
+          p?.label === "Positivo" || p?.label === "Negativo" || p?.label === "Neutro"
+            ? p.label : "Neutro";
+        const score = typeof p?.score === "number" ? Math.max(0, Math.min(1, p.score)) : 0.5;
+        return { label, score };
+      });
+    } catch (e) {
+      console.warn(`[REFINE] Cerebras ${model} exceção:`, e);
+    }
+  }
+  return null;
+}
+
 async function callGroq(texts: string[], groqKey: string): Promise<SentimentResult[] | null> {
   const clipped = texts.map((t) => (t || "").substring(0, 400).trim());
   const userContent = clipped.map((t, i) => `${i + 1}. "${t}"`).join("\n");
