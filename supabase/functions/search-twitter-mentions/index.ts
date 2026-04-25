@@ -529,7 +529,7 @@ async function tryCerebras(systemPrompt: string, userPrompt: string, expected: n
   const cerebrasKey = Deno.env.get('CEREBRAS_API_KEY');
   if (!cerebrasKey) return null;
   // Cerebras: ~2000 tok/s, 1M tokens/dia grátis. Llama 3.3 70B excelente para PT-BR.
-  const models = ['llama-3.3-70b', 'llama3.1-8b'];
+  const models = ['gpt-oss-120b', 'llama3.1-8b'];
   for (const model of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
