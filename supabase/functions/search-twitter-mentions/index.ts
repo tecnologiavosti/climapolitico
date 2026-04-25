@@ -1,4 +1,10 @@
-// Coleta tweets via RSS de instâncias Nitter (xcancel/nitter) — leve, rápido e estável.
+// Coleta de "tweets" em larga escala e GRATUITA, com cascata de fontes resilientes:
+//   1) Bluesky (public AppView, sem auth) — alta disponibilidade
+//   2) Mastodon federated search (sem auth) — pega cross-posts de bridges do X
+//   3) Firecrawl Search com filtro site:x.com / site:twitter.com — pega tweets indexados pelo Google
+//   4) Nitter RSS (último recurso, normalmente morto em 2025)
+//   5) X API v2 Recent Search (se TWITTER_BEARER_TOKEN existir)
+// Tudo é gravado como social_network = 'Twitter/X' para compatibilidade com gráficos e histórico.
 // Mantém a mesma API: { candidateId, candidateName, candidateAliases?, userId?, maxTweets? }
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
