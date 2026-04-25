@@ -285,6 +285,7 @@ Deno.serve(async (req) => {
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   const groqKey = Deno.env.get("GROQ_API_KEY");
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
+  const cerebrasKey = Deno.env.get("CEREBRAS_API_KEY");
 
   try {
     // Pega comentários recentes com sentimento pendente ou neutro padrão das últimas 48h.
