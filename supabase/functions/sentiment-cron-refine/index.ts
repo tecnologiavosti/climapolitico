@@ -56,7 +56,8 @@ Responda APENAS JSON object com chave "results" contendo array na MESMA ordem: {
         }),
       });
       if (!res.ok) {
-        console.warn(`[REFINE] Cerebras ${model} ${res.status}`);
+        const errBody = await res.text().catch(() => "");
+        console.warn(`[REFINE] Cerebras ${model} ${res.status}: ${errBody.substring(0, 300)}`);
         continue;
       }
       const data = await res.json();
