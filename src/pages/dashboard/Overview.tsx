@@ -128,7 +128,7 @@ export default function Overview() {
         .select('id, candidate_id, sentiment_label, sentiment_score, likes_count, social_network, created_at, original_posted_at, comment_author')
         .or(`original_posted_at.gte.${sevenDaysAgo},and(original_posted_at.is.null,created_at.gte.${sevenDaysAgo})`)
         .order('created_at', { ascending: false })
-        .limit(2000);
+        .limit(10000);
       if (!isAdmin) query = query.eq('user_id', user.id);
       const { data, error } = await query;
       if (error) throw error;
