@@ -724,17 +724,17 @@ Deno.serve(async (req) => {
     }
 
     // Tokens obrigatórios para pós-filtro: TODAS as palavras do nome (>=2 letras) precisam aparecer no texto
-    const requiredTokens = candidateName
+    const requiredTokens: string[] = candidateName
       .toLowerCase()
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .split(/\s+/)
-      .filter(w => w.length >= 2 && !/^(de|da|do|dos|das|e)$/i.test(w));
+      .filter((w: string) => w.length >= 2 && !/^(de|da|do|dos|das|e)$/i.test(w));
     const matchesCandidate = (text: string): boolean => {
       if (requiredTokens.length === 0) return true;
       const norm = (text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       // Para nome composto (>=2 tokens significativos), TODOS devem aparecer
       if (requiredTokens.length >= 2) {
-        return requiredTokens.every(t => new RegExp(`\\b${t}\\b`, 'i').test(norm));
+        return requiredTokens.every((t: string) => new RegExp(`\\b${t}\\b`, 'i').test(norm));
       }
       // Nome único: exige token + ao menos um desambiguador político
       const hasName = new RegExp(`\\b${requiredTokens[0]}\\b`, 'i').test(norm);
