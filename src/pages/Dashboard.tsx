@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense } from "react";
 import { useNavigate, Routes, Route } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSessionHealthCheck } from "@/hooks/useSessionHealthCheck";
@@ -13,31 +13,34 @@ import { Breadcrumbs } from "@/components/layout/Breadcrumbs";
 import { PageLoader } from "@/components/ui/page-loader";
 import { useOnboarding, OnboardingStep } from "@/hooks/useOnboarding";
 import { OnboardingTour } from "@/components/onboarding/OnboardingTour";
-import Overview from "./dashboard/Overview";
-import Candidates from "./dashboard/Candidates";
-import AnalysisHistory from "./dashboard/AnalysisHistory";
-import Analytics from "./dashboard/Analytics";
-import SpeechAnalysis from "./dashboard/SpeechAnalysis";
-import CandidateRanking from "./dashboard/CandidateRanking";
-import Admin from "./dashboard/Admin";
-import AdminApiSettings from "./dashboard/AdminApiSettings";
-import UndecidedAnalysis from "./dashboard/UndecidedAnalysis";
-import SocialMediaReport from "./dashboard/SocialMediaReport";
-import AIInsights from "./dashboard/AIInsights";
-import CollectionStatus from "./dashboard/CollectionStatus";
-import TraceabilityReport from "./dashboard/TraceabilityReport";
-import ScheduledReports from "./dashboard/ScheduledReports";
-import ReportTemplates from "./dashboard/ReportTemplates";
-import RealTimeMonitor from "./dashboard/RealTimeMonitor";
-import CandidateSummary from "./dashboard/CandidateSummary";
-import RejectionAnalysis from "./dashboard/RejectionAnalysis";
-import NarrativeRecommendations from "./dashboard/NarrativeRecommendations";
-import CandidateComparison from "./dashboard/CandidateComparison";
-import EventReport from "./dashboard/EventReport";
-import Brand24Collector from "./dashboard/Brand24Collector";
-import CandidatesCatalog from "./dashboard/CandidatesCatalog";
-import Settings from "./dashboard/Settings";
-import Notifications from "./dashboard/Notifications";
+
+// Lazy-load das rotas: cada página só baixa o JS quando o usuário entra nela.
+// Reduz drasticamente o bundle inicial do dashboard.
+const Overview = lazy(() => import("./dashboard/Overview"));
+const Candidates = lazy(() => import("./dashboard/Candidates"));
+const AnalysisHistory = lazy(() => import("./dashboard/AnalysisHistory"));
+const Analytics = lazy(() => import("./dashboard/Analytics"));
+const SpeechAnalysis = lazy(() => import("./dashboard/SpeechAnalysis"));
+const CandidateRanking = lazy(() => import("./dashboard/CandidateRanking"));
+const Admin = lazy(() => import("./dashboard/Admin"));
+const AdminApiSettings = lazy(() => import("./dashboard/AdminApiSettings"));
+const UndecidedAnalysis = lazy(() => import("./dashboard/UndecidedAnalysis"));
+const SocialMediaReport = lazy(() => import("./dashboard/SocialMediaReport"));
+const AIInsights = lazy(() => import("./dashboard/AIInsights"));
+const CollectionStatus = lazy(() => import("./dashboard/CollectionStatus"));
+const TraceabilityReport = lazy(() => import("./dashboard/TraceabilityReport"));
+const ScheduledReports = lazy(() => import("./dashboard/ScheduledReports"));
+const ReportTemplates = lazy(() => import("./dashboard/ReportTemplates"));
+const RealTimeMonitor = lazy(() => import("./dashboard/RealTimeMonitor"));
+const CandidateSummary = lazy(() => import("./dashboard/CandidateSummary"));
+const RejectionAnalysis = lazy(() => import("./dashboard/RejectionAnalysis"));
+const NarrativeRecommendations = lazy(() => import("./dashboard/NarrativeRecommendations"));
+const CandidateComparison = lazy(() => import("./dashboard/CandidateComparison"));
+const EventReport = lazy(() => import("./dashboard/EventReport"));
+const Brand24Collector = lazy(() => import("./dashboard/Brand24Collector"));
+const CandidatesCatalog = lazy(() => import("./dashboard/CandidatesCatalog"));
+const Settings = lazy(() => import("./dashboard/Settings"));
+const Notifications = lazy(() => import("./dashboard/Notifications"));
 const onboardingSteps: OnboardingStep[] = [
   {
     target: '[data-onboarding="sidebar"]',
