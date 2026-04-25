@@ -692,12 +692,55 @@ Deno.serve(async (req) => {
     // === Background job: coleta + análise + replies ===
     const backgroundJob = (async () => {
      try {
+    // === Construção de queries ESTRITAS para evitar homônimos ===
+    // Regra: nomes compostos vão SEMPRE entre aspas. Nomes únicos (raro) recebem desambiguador político.
+    // Aliases só são aceitos se tiverem >= 2 palavras OU forem hashtag/handle conhecido.
+    const POLITICAL_DISAMBIGUATORS = '(presidente OR senador OR deputado OR governador OR prefeito OR ministro OR político OR eleição OR campanha OR partido OR PT OR PL OR PSDB OR MDB OR PSOL OR Republicanos OR PP OR União OR Podemos)';
+    const buildQuery = (raw: string): string | null => {
+      const name = (raw || '').trim().replace(/\s+/g, ' ');
+      if (!name) return null;
+      const wordCount = name.split(' ').length;
+      if (wordCount >= 2) {
+        // Nome composto: aspas exatas + filtro de língua/retweet aplicado a jusante
+        return `"${name}"`;
+      }
+      // Nome único (ex: "Lula"): exige termo político co-ocorrente para reduzir ruído
+      return `"${name}" ${POLITICAL_DISAMBIGUATORS}`;
+    };
+
     const queries = new Set<string>();
-    queries.add(candidateName);
+    const mainQ = buildQuery(candidateName);
+    if (mainQ) queries.add(mainQ);
     for (const a of candidateAliases) {
       const v = (a || '').trim();
-      if (v && v !== candidateName) queries.add(v);
+      if (!v || v === candidateName) continue;
+      // Aceita alias só se for nome composto, hashtag (#algo) ou handle (@algo)
+      if (v.startsWith('#') || v.startsWith('@')) {
+        queries.add(v);
+        continue;
+      }
+      const q = buildQuery(v);
+      if (q && v.split(' ').length >= 2) queries.add(q);
     }
+
+    // Tokens obrigatórios para pós-filtro: TODAS as palavras do nome (>=2 letras) precisam aparecer no texto
+    const requiredTokens = candidateName
+      .toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .split(/\s+/)
+      .filter(w => w.length >= 2 && !/^(de|da|do|dos|das|e)$/i.test(w));
+    const matchesCandidate = (text: string): boolean => {
+      if (requiredTokens.length === 0) return true;
+      const norm = (text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      // Para nome composto (>=2 tokens significativos), TODOS devem aparecer
+      if (requiredTokens.length >= 2) {
+        return requiredTokens.every(t => new RegExp(`\\b${t}\\b`, 'i').test(norm));
+      }
+      // Nome único: exige token + ao menos um desambiguador político
+      const hasName = new RegExp(`\\b${requiredTokens[0]}\\b`, 'i').test(norm);
+      const hasPolitical = /\b(presidente|senador|deputado|governador|prefeito|ministro|politic|elei[cç][aã]o|campanha|partido|pt|pl|psdb|mdb|psol|republicanos|\bpp\b|uni[aã]o|podemos)\b/i.test(norm);
+      return hasName && hasPolitical;
+    };
 
     const { data: existing } = await db
       .from('social_interactions')
