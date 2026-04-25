@@ -133,41 +133,33 @@ const Dashboard = () => {
           </header>
 
           <main className="flex-1 p-6 animate-fade-in">
-            <Routes>
-              <Route path="/" element={<Overview />} />
-              <Route path="/candidate-summary" element={<CandidateSummary />} />
-              <Route path="/rejection-analysis" element={<RejectionAnalysis />} />
-              <Route path="/narrative-recommendations" element={<NarrativeRecommendations />} />
-              <Route path="/candidate-comparison" element={<CandidateComparison />} />
-              <Route path="/event-report" element={<EventReport />} />
-              <Route path="/candidates" element={<Candidates />} />
-              <Route path="/candidates-catalog" element={<CandidatesCatalog />} />
-              <Route path="/analytics-advanced" element={<Analytics />} />
-              <Route path="/ranking" element={<CandidateRanking />} />
-              <Route path="/collection-status" element={<CollectionStatus />} />
-              <Route path="/realtime-monitor" element={<RealTimeMonitor />} />
-              <Route path="/brand24-collector" element={<Brand24Collector />} />
-              <Route path="/admin" element={<Admin />} />
-              <Route path="/admin/api-settings" element={<AdminApiSettings />} />
-              
-              {/* Rotas temporariamente desativadas - código mantido para reativação futura */}
-              {/* <Route path="/analytics" element={<AnalysisHistory />} /> */}
-              {/* <Route path="/speech-analysis" element={<ErrorBoundary><SpeechAnalysis /></ErrorBoundary>} /> */}
-              {/* <Route path="/undecided" element={<ErrorBoundary><UndecidedAnalysis /></ErrorBoundary>} /> */}
-              {/* <Route path="/social-media-report" element={<SocialMediaReport />} /> */}
-              {/* <Route path="/traceability-report" element={<TraceabilityReport />} /> */}
-              {/* <Route path="/scheduled-reports" element={<ScheduledReports />} /> */}
-              {/* <Route path="/report-templates" element={<ReportTemplates />} /> */}
-              {/* <Route path="/ai" element={<AIInsights />} /> */}
-              <Route path="/notifications" element={<Notifications />} />
-              <Route path="/subscription" element={
-                <div className="text-center py-12">
-                  <h3 className="text-2xl font-bold mb-2">Assinatura</h3>
-                  <p className="text-muted-foreground">Em desenvolvimento</p>
-                </div>
-              } />
-              <Route path="/settings" element={<Settings />} />
-            </Routes>
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route path="/" element={<Overview />} />
+                <Route path="/candidate-summary" element={<CandidateSummary />} />
+                <Route path="/rejection-analysis" element={<RejectionAnalysis />} />
+                <Route path="/narrative-recommendations" element={<NarrativeRecommendations />} />
+                <Route path="/candidate-comparison" element={<CandidateComparison />} />
+                <Route path="/event-report" element={<EventReport />} />
+                <Route path="/candidates" element={<Candidates />} />
+                <Route path="/candidates-catalog" element={<CandidatesCatalog />} />
+                <Route path="/analytics-advanced" element={<Analytics />} />
+                <Route path="/ranking" element={<CandidateRanking />} />
+                <Route path="/collection-status" element={<CollectionStatus />} />
+                <Route path="/realtime-monitor" element={<RealTimeMonitor />} />
+                <Route path="/brand24-collector" element={<Brand24Collector />} />
+                <Route path="/admin" element={<Admin />} />
+                <Route path="/admin/api-settings" element={<AdminApiSettings />} />
+                <Route path="/notifications" element={<Notifications />} />
+                <Route path="/subscription" element={
+                  <div className="text-center py-12">
+                    <h3 className="text-2xl font-bold mb-2">Assinatura</h3>
+                    <p className="text-muted-foreground">Em desenvolvimento</p>
+                  </div>
+                } />
+                <Route path="/settings" element={<Settings />} />
+              </Routes>
+            </Suspense>
           </main>
         </div>
       </div>
