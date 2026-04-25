@@ -116,8 +116,8 @@ export default function Overview() {
   const { data: allMetrics, isLoading: loadingMetrics } = useAllCandidateMetrics();
 
   // Query: Interações sociais para gráfico temporal (últimos 7 dias)
-  // Limitada às 2000 mais recentes — suficiente para tendência visual e
-  // dramaticamente mais rápida que paginar 100k linhas.
+  // Considera tanto a data de postagem original (original_posted_at) quanto a
+  // data de coleta (created_at) para capturar tudo que aconteceu na janela.
   const { data: socialInteractions, isLoading: loadingInteractions } = useQuery({
     queryKey: ['social-interactions-overview', isAdmin, user?.id],
     queryFn: async () => {
@@ -126,7 +126,7 @@ export default function Overview() {
       let query = supabase
         .from('social_interactions')
         .select('id, candidate_id, sentiment_label, sentiment_score, likes_count, social_network, created_at, original_posted_at, comment_author')
-        .gte('created_at', sevenDaysAgo)
+        .or(`original_posted_at.gte.${sevenDaysAgo},and(original_posted_at.is.null,created_at.gte.${sevenDaysAgo})`)
         .order('created_at', { ascending: false })
         .limit(2000);
       if (!isAdmin) query = query.eq('user_id', user.id);
