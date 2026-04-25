@@ -826,12 +826,17 @@ Deno.serve(async (req) => {
       if (collected.length >= maxTweets) break;
     }
 
-    const fresh = collected.filter(t => {
+    // Pós-filtro de RELEVÂNCIA: descarta posts que não citam claramente o candidato
+    const relevant = collected.filter((t: ScrapedTweet) => matchesCandidate(t.text));
+    const dropped = collected.length - relevant.length;
+    if (dropped > 0) console.log(`[TWITTER] Filtro de relevância removeu ${dropped}/${collected.length} posts irrelevantes`);
+
+    const fresh = relevant.filter((t: ScrapedTweet) => {
       const k = t.tweetId ? `tweet:${t.tweetId}` : `${t.author}:${t.text.substring(0, 80)}`;
       return !existingKeys.has(k);
     }).slice(0, maxTweets);
 
-    console.log(`[TWITTER] Bruto=${collected.length} | Novos=${fresh.length}`);
+    console.log(`[TWITTER] Bruto=${collected.length} | Relevantes=${relevant.length} | Novos=${fresh.length}`);
 
     if (fresh.length === 0) {
       return new Response(JSON.stringify({
