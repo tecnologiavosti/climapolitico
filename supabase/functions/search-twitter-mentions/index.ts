@@ -513,11 +513,14 @@ function parseSentimentArray(content: string, expected: number): SentimentResult
   if (!jsonMatch) return null;
   let parsed: any;
   try { parsed = JSON.parse(jsonMatch[0]); } catch { return null; }
-  if (!Array.isArray(parsed) || parsed.length === 0) return null;
+  if (!Array.isArray(parsed) || parsed.length !== expected) return null;
   return Array.from({ length: expected }, (_, idx) => {
     const p = parsed[idx];
-    const label = ['Positivo', 'Negativo', 'Neutro'].includes(p?.label) ? p.label : 'Neutro';
-    const score = Math.max(0, Math.min(1, typeof p?.score === 'number' ? p.score : 0.5));
+    if (!['Positivo', 'Negativo', 'Neutro'].includes(p?.label) || typeof p?.score !== 'number') {
+      throw new Error('invalid sentiment item');
+    }
+    const label = p.label;
+    const score = Math.max(0, Math.min(1, p.score));
     return { label, score } as SentimentResult;
   });
 }

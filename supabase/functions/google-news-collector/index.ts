@@ -16,6 +16,17 @@ interface NewsItem {
   description: string;
 }
 
+interface CandidateRow {
+  id: string;
+  full_name: string;
+  user_id: string;
+  status: string | null;
+}
+
+interface ExistingInteractionRow {
+  author_profile_url: string | null;
+}
+
 function parseRSSFeed(xmlText: string): NewsItem[] {
   const items: NewsItem[] = [];
   const itemRegex = /<item>([\s\S]*?)<\/item>/g;
@@ -43,7 +54,7 @@ function parseRSSFeed(xmlText: string): NewsItem[] {
   return items;
 }
 
-async function collectForAllCandidates(supabase: ReturnType<typeof createClient>) {
+async function collectForAllCandidates(supabase: any) {
   const startedAt = Date.now();
   const { data: candidates, error: candErr } = await supabase
     .from("candidates")
@@ -63,7 +74,7 @@ async function collectForAllCandidates(supabase: ReturnType<typeof createClient>
 
   let totalInserted = 0;
 
-  for (const candidate of candidates) {
+  for (const candidate of (candidates as CandidateRow[])) {
     try {
       const firstName = (candidate.full_name as string).split(" ")[0];
       const query = encodeURIComponent(`"${candidate.full_name}" OR ${firstName}`);
@@ -90,7 +101,7 @@ async function collectForAllCandidates(supabase: ReturnType<typeof createClient>
         .eq("social_network", "google_news")
         .in("author_profile_url", links);
 
-      const existingSet = new Set((existing || []).map((e) => e.author_profile_url));
+      const existingSet = new Set(((existing || []) as ExistingInteractionRow[]).map((e) => e.author_profile_url));
       const newItems = items.filter((i) => !existingSet.has(i.link));
       if (newItems.length === 0) continue;
 

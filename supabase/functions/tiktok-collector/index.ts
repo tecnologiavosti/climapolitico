@@ -35,6 +35,10 @@ interface TikwmComment {
   create_time?: number;
 }
 
+interface ExistingInteractionRow {
+  author_profile_url: string | null;
+}
+
 function deriveTikTokHandle(candidate: { full_name: string; social_media_link: string | null }): string | null {
   const link = candidate.social_media_link || "";
   const m = link.match(/tiktok\.com\/@([A-Za-z0-9_.]+)/i);
@@ -43,7 +47,7 @@ function deriveTikTokHandle(candidate: { full_name: string; social_media_link: s
 }
 
 async function autoResolveHandle(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   candidate: { id: string; full_name: string; social_media_link: string | null },
 ): Promise<string | null> {
   try {
@@ -93,9 +97,9 @@ async function fetchTikwmComments(videoId: string): Promise<TikwmComment[]> {
 }
 
 async function collectForCandidate(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   candidate: { id: string; full_name: string; user_id: string; social_media_link: string | null },
-): Promise<{ posts: number; comments: number; handle: string | null; error?: string }> {
+): Promise<{ posts: number; comments: number; handle: string | null; mode?: string; error?: string }> {
   let handle = deriveTikTokHandle(candidate);
   if (!handle) {
     // Tenta resolver via Firecrawl (não bloqueia se falhar)
@@ -147,7 +151,7 @@ async function collectForCandidate(
       .eq("candidate_id", candidate.id)
       .eq("social_network", "tiktok")
       .in("author_profile_url", videoUrls);
-    const existingSet = new Set((existing || []).map((e) => e.author_profile_url));
+    const existingSet = new Set(((existing || []) as ExistingInteractionRow[]).map((e) => e.author_profile_url));
 
     const newPosts = posts.filter((p) => !existingSet.has(buildUrl(p)));
     if (newPosts.length > 0) {
@@ -184,7 +188,7 @@ async function collectForCandidate(
           .eq("social_network", "tiktok")
           .eq("interaction_type", "comment")
           .in("author_profile_url", fingerprints);
-        const existSet = new Set((existCom || []).map((e) => e.author_profile_url));
+        const existSet = new Set(((existCom || []) as ExistingInteractionRow[]).map((e) => e.author_profile_url));
 
         const newComs = comments
           .map((c) => ({ c, fp: `tt-c-${p.video_id}-${c.id || c.cid || c.text.substring(0, 40)}` }))
