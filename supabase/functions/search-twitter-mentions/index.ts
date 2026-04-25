@@ -142,6 +142,154 @@ async function fetchViaXApi(query: string, maxResults: number): Promise<ScrapedT
   }
 }
 
+// ============================================================
+// FONTE 1: BLUESKY (público, sem auth) — alta disponibilidade
+// ============================================================
+async function fetchViaBluesky(query: string, maxResults: number): Promise<ScrapedTweet[]> {
+  try {
+    const url = new URL('https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts');
+    url.searchParams.set('q', query);
+    url.searchParams.set('limit', String(Math.min(Math.max(10, maxResults), 100)));
+    url.searchParams.set('lang', 'pt');
+    url.searchParams.set('sort', 'latest');
+    const res = await fetch(url.toString(), {
+      headers: { 'Accept': 'application/json', 'User-Agent': randomUA() },
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!res.ok) {
+      console.warn(`[BLUESKY] HTTP ${res.status}`);
+      return [];
+    }
+    const json = await res.json();
+    const posts = (json?.posts || []) as any[];
+    return posts.map((p) => {
+      const handle = p?.author?.handle || 'user.bsky.social';
+      const rkey = (p?.uri || '').split('/').pop() || '';
+      const url = `https://bsky.app/profile/${handle}/post/${rkey}`;
+      return {
+        text: p?.record?.text || '',
+        author: handle,
+        authorUrl: `https://bsky.app/profile/${handle}`,
+        postedAt: p?.record?.createdAt || p?.indexedAt || new Date().toISOString(),
+        likes: p?.likeCount || 0,
+        replies: p?.replyCount || 0,
+        retweets: p?.repostCount || 0,
+        tweetUrl: url,
+        tweetId: rkey ? `bsky:${rkey}` : null,
+      } as ScrapedTweet;
+    }).filter(t => t.text && t.text.length >= 5);
+  } catch (e) {
+    console.warn('[BLUESKY] erro:', (e as Error).message);
+    return [];
+  }
+}
+
+// ============================================================
+// FONTE 2: MASTODON federated search — sem auth, agrega bridges do X
+// ============================================================
+const MASTODON_INSTANCES = [
+  'https://mastodon.social',
+  'https://mastodon.world',
+  'https://masto.ai',
+  'https://mas.to',
+];
+
+async function fetchViaMastodon(query: string, maxResults: number): Promise<ScrapedTweet[]> {
+  const out: ScrapedTweet[] = [];
+  const seen = new Set<string>();
+  await Promise.all(MASTODON_INSTANCES.map(async (instance) => {
+    try {
+      const url = new URL(`${instance}/api/v2/search`);
+      url.searchParams.set('q', query);
+      url.searchParams.set('type', 'statuses');
+      url.searchParams.set('limit', String(Math.min(40, maxResults)));
+      url.searchParams.set('resolve', 'false');
+      const res = await fetch(url.toString(), {
+        headers: { 'Accept': 'application/json', 'User-Agent': randomUA() },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) return;
+      const json = await res.json();
+      const statuses = (json?.statuses || []) as any[];
+      for (const s of statuses) {
+        const id = s?.uri || s?.url;
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        const text = decodeHtml(s?.content || '');
+        if (!text || text.length < 10) continue;
+        const author = s?.account?.acct || s?.account?.username || 'user';
+        out.push({
+          text,
+          author,
+          authorUrl: s?.account?.url || `${instance}/@${author}`,
+          postedAt: s?.created_at || new Date().toISOString(),
+          likes: s?.favourites_count || 0,
+          replies: s?.replies_count || 0,
+          retweets: s?.reblogs_count || 0,
+          tweetUrl: s?.url || s?.uri,
+          tweetId: `masto:${s?.id || id}`,
+        });
+      }
+    } catch { /* ignore */ }
+  }));
+  return out.slice(0, maxResults);
+}
+
+// ============================================================
+// FONTE 3: FIRECRAWL search com filtro site:x.com — pega tweets indexados
+// ============================================================
+async function fetchViaFirecrawl(query: string, maxResults: number): Promise<ScrapedTweet[]> {
+  const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
+  if (!apiKey) return [];
+  try {
+    const res = await fetch('https://api.firecrawl.dev/v2/search', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query: `${query} (site:x.com OR site:twitter.com)`,
+        limit: Math.min(Math.max(5, maxResults), 30),
+        lang: 'pt',
+        country: 'br',
+        tbs: 'qdr:w', // última semana
+      }),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) {
+      console.warn(`[FIRECRAWL] HTTP ${res.status}`);
+      return [];
+    }
+    const json = await res.json();
+    const results = (json?.data?.web || json?.data || json?.results || []) as any[];
+    const out: ScrapedTweet[] = [];
+    for (const r of results) {
+      const url: string = r?.url || r?.link || '';
+      const m = url.match(/(?:x\.com|twitter\.com)\/([A-Za-z0-9_]{2,15})\/status\/(\d+)/);
+      if (!m) continue;
+      const author = m[1];
+      const tweetId = m[2];
+      const text = (r?.description || r?.snippet || r?.title || '').trim();
+      if (!text || text.length < 10) continue;
+      out.push({
+        text: decodeHtml(text),
+        author,
+        authorUrl: `https://x.com/${author}`,
+        postedAt: r?.publishedDate || new Date().toISOString(),
+        likes: 0,
+        replies: 0,
+        retweets: 0,
+        tweetUrl: `https://x.com/${author}/status/${tweetId}`,
+        tweetId,
+      });
+    }
+    return out;
+  } catch (e) {
+    console.warn('[FIRECRAWL] erro:', (e as Error).message);
+    return [];
+  }
+}
 
 const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
