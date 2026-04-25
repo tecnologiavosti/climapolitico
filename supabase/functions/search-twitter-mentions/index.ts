@@ -144,44 +144,55 @@ async function fetchViaXApi(query: string, maxResults: number): Promise<ScrapedT
 
 // ============================================================
 // FONTE 1: BLUESKY (público, sem auth) — alta disponibilidade
+// Usa hosts alternativos pois public.api.bsky.app tem rate-limit agressivo por IP.
 // ============================================================
+const BLUESKY_HOSTS = [
+  'https://api.bsky.app',
+  'https://public.api.bsky.app',
+];
 async function fetchViaBluesky(query: string, maxResults: number): Promise<ScrapedTweet[]> {
-  try {
-    const url = new URL('https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts');
-    url.searchParams.set('q', query);
-    url.searchParams.set('limit', String(Math.min(Math.max(10, maxResults), 100)));
-    url.searchParams.set('lang', 'pt');
-    url.searchParams.set('sort', 'latest');
-    const res = await fetch(url.toString(), {
-      headers: { 'Accept': 'application/json', 'User-Agent': randomUA() },
-      signal: AbortSignal.timeout(12000),
-    });
-    if (!res.ok) {
-      console.warn(`[BLUESKY] HTTP ${res.status}`);
-      return [];
+  for (const host of BLUESKY_HOSTS) {
+    try {
+      const url = new URL(`${host}/xrpc/app.bsky.feed.searchPosts`);
+      url.searchParams.set('q', query);
+      url.searchParams.set('limit', String(Math.min(Math.max(10, maxResults), 100)));
+      url.searchParams.set('lang', 'pt');
+      url.searchParams.set('sort', 'latest');
+      const res = await fetch(url.toString(), {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'ClimaPolitico/1.0 (+https://climapolitico.lovable.app)',
+        },
+        signal: AbortSignal.timeout(12000),
+      });
+      if (!res.ok) {
+        console.warn(`[BLUESKY] ${host} HTTP ${res.status}`);
+        continue;
+      }
+      const json = await res.json();
+      const posts = (json?.posts || []) as any[];
+      const out = posts.map((p) => {
+        const handle = p?.author?.handle || 'user.bsky.social';
+        const rkey = (p?.uri || '').split('/').pop() || '';
+        const u = `https://bsky.app/profile/${handle}/post/${rkey}`;
+        return {
+          text: p?.record?.text || '',
+          author: handle,
+          authorUrl: `https://bsky.app/profile/${handle}`,
+          postedAt: p?.record?.createdAt || p?.indexedAt || new Date().toISOString(),
+          likes: p?.likeCount || 0,
+          replies: p?.replyCount || 0,
+          retweets: p?.repostCount || 0,
+          tweetUrl: u,
+          tweetId: rkey ? `bsky:${rkey}` : null,
+        } as ScrapedTweet;
+      }).filter(t => t.text && t.text.length >= 5);
+      if (out.length > 0) return out;
+    } catch (e) {
+      console.warn(`[BLUESKY] ${host} erro:`, (e as Error).message);
     }
-    const json = await res.json();
-    const posts = (json?.posts || []) as any[];
-    return posts.map((p) => {
-      const handle = p?.author?.handle || 'user.bsky.social';
-      const rkey = (p?.uri || '').split('/').pop() || '';
-      const url = `https://bsky.app/profile/${handle}/post/${rkey}`;
-      return {
-        text: p?.record?.text || '',
-        author: handle,
-        authorUrl: `https://bsky.app/profile/${handle}`,
-        postedAt: p?.record?.createdAt || p?.indexedAt || new Date().toISOString(),
-        likes: p?.likeCount || 0,
-        replies: p?.replyCount || 0,
-        retweets: p?.repostCount || 0,
-        tweetUrl: url,
-        tweetId: rkey ? `bsky:${rkey}` : null,
-      } as ScrapedTweet;
-    }).filter(t => t.text && t.text.length >= 5);
-  } catch (e) {
-    console.warn('[BLUESKY] erro:', (e as Error).message);
-    return [];
   }
+  return [];
 }
 
 // ============================================================
