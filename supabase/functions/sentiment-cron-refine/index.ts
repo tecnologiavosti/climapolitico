@@ -228,13 +228,12 @@ Deno.serve(async (req) => {
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
 
   try {
-    // Pega até 100 comentários recentes Neutro/0.5 das últimas 48h.
+    // Pega comentários recentes com sentimento pendente ou neutro padrão das últimas 48h.
     const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
     const { data: pending, error } = await supabase
       .from("social_interactions")
       .select("id, comment_text")
-      .eq("sentiment_label", "Neutro")
-      .eq("sentiment_score", 0.5)
+      .or("and(sentiment_label.eq.Neutro,sentiment_score.eq.0.5),sentiment_label.is.null")
       .gte("created_at", since)
       .not("comment_text", "is", null)
       .order("created_at", { ascending: false })
@@ -274,7 +273,7 @@ Deno.serve(async (req) => {
     if (results) {
       for (let i = 0; i < pending.length; i++) {
         const r = results[i];
-        if (!r || r.label === "Neutro") continue;
+        if (!r || (r.label === "Neutro" && r.score === 0.5)) continue;
         await supabase
           .from("social_interactions")
           .update({ sentiment_label: r.label, sentiment_score: r.score })
