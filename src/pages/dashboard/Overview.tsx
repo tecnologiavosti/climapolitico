@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -71,37 +71,11 @@ export default function Overview() {
     enabled: !!user,
   });
 
-  // Auto-recalcula o cache de métricas para todos os candidatos ao montar a página
-  // e a cada 2 minutos, garantindo que os KPIs reflitam os dados mais recentes.
-  const recalcLockRef = useRef(false);
-  useEffect(() => {
-    if (!candidates || candidates.length === 0) return;
-
-    const recalcAll = async () => {
-      if (recalcLockRef.current) return;
-      recalcLockRef.current = true;
-      try {
-        await Promise.allSettled(
-          candidates.map((c) =>
-            supabase.functions.invoke('recalculate-candidate-metrics', {
-              body: { candidateId: c.id },
-            })
-          )
-        );
-        // Invalida queries para puxar o cache atualizado
-        qc.invalidateQueries({ queryKey: ['all-candidate-metrics-cache'] });
-        qc.invalidateQueries({ queryKey: ['candidate-metrics-cache'] });
-      } catch (e) {
-        console.warn('Falha ao recalcular métricas:', e);
-      } finally {
-        recalcLockRef.current = false;
-      }
-    };
-
-    recalcAll();
-    const interval = setInterval(recalcAll, 120000);
-    return () => clearInterval(interval);
-  }, [candidates, qc]);
+  // Auto-recálculo de métricas REMOVIDO da Visão Geral.
+  // Causava lentidão massiva: disparava 1 edge function por candidato (cada uma
+  // paginando 16k+ linhas) ao montar a página e a cada 2min. O cron de 6h e o
+  // botão "Coletar agora" já mantêm o cache atualizado. Caso o usuário precise
+  // forçar recálculo manual, use o botão "Calcular ranking".
 
   // Realtime: invalida queries quando cache de métricas ou interações sociais mudam
   useEffect(() => {
@@ -142,83 +116,55 @@ export default function Overview() {
   const { data: allMetrics, isLoading: loadingMetrics } = useAllCandidateMetrics();
 
   // Query: Interações sociais para gráfico temporal (últimos 7 dias)
-  // Atualiza a cada 60s para refletir coletas em andamento.
+  // Limitada às 2000 mais recentes — suficiente para tendência visual e
+  // dramaticamente mais rápida que paginar 100k linhas.
   const { data: socialInteractions, isLoading: loadingInteractions } = useQuery({
     queryKey: ['social-interactions-overview', isAdmin, user?.id],
     queryFn: async () => {
       if (!user) return [];
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      // Pagina em lotes de 1000 (limite padrão do Supabase) para garantir
-      // que TODAS as interações dos últimos 7 dias sejam carregadas, mesmo
-      // quando o volume passa de dezenas de milhares.
-      const PAGE_SIZE = 1000;
-      const MAX_ROWS = 100000; // teto de segurança
-      const all: any[] = [];
-      let from = 0;
-      while (from < MAX_ROWS) {
-        let query = supabase
-          .from('social_interactions')
-          .select('id, candidate_id, sentiment_label, sentiment_score, likes_count, social_network, created_at, original_posted_at, comment_author')
-          .gte('created_at', sevenDaysAgo)
-          .order('created_at', { ascending: false })
-          .range(from, from + PAGE_SIZE - 1);
-        if (!isAdmin) query = query.eq('user_id', user.id);
-        const { data, error } = await query;
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-        all.push(...data);
-        if (data.length < PAGE_SIZE) break;
-        from += PAGE_SIZE;
-      }
-      return all;
+      let query = supabase
+        .from('social_interactions')
+        .select('id, candidate_id, sentiment_label, sentiment_score, likes_count, social_network, created_at, original_posted_at, comment_author')
+        .gte('created_at', sevenDaysAgo)
+        .order('created_at', { ascending: false })
+        .limit(2000);
+      if (!isAdmin) query = query.eq('user_id', user.id);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
     },
     enabled: !!user,
-    refetchInterval: 60000,
-    refetchOnWindowFocus: true,
-    staleTime: 30000,
+    staleTime: 5 * 60 * 1000,
   });
 
   // Query removida: Análises de fala (não mais exibida na Visão Geral)
   // const { data: speeches, isLoading: loadingSpeeches } = useQuery({...});
 
   // Query: Rankings calculados em tempo real (últimos 30 dias)
-  // Usa exatamente a mesma fórmula da página "Ranking de Candidatos"
-  // (30% menções + 20% autores + 30% sentimento + 20% engajamento)
-  // para garantir consistência entre Visão Geral e a aba de Ranking.
+  // Limitada a 5000 linhas — mais que suficiente para o top-5 da Visão Geral.
+  // Para a aba Ranking completa, a query original (paginada) continua.
   const { data: rankingInteractions, isLoading: loadingRankings } = useQuery({
     queryKey: ['rankings-overview-interactions', isAdmin, user?.id],
     queryFn: async () => {
       if (!user) return [];
-      // Mesma janela usada por padrão na aba Ranking:
-      // from = hoje - 30 dias (sem zerar horas), to = hoje + 1 dia (exclusivo via .lt)
-      // EXATAMENTE a mesma query da aba Ranking (CandidateRanking.tsx):
-      // single select sem paginação, escopado por user_id, janela hoje-30d até hoje+1d
       const from = new Date();
       from.setDate(from.getDate() - 30);
       const to = new Date();
       to.setDate(to.getDate() + 1);
       const orFilter = `and(original_posted_at.gte.${from.toISOString()},original_posted_at.lt.${to.toISOString()}),and(original_posted_at.is.null,created_at.gte.${from.toISOString()},created_at.lt.${to.toISOString()})`;
-      const PAGE_SIZE = 1000;
-      const MAX_ROWS = 200000;
-      const all: any[] = [];
-      let offset = 0;
-      while (offset < MAX_ROWS) {
-        const { data, error } = await supabase
-          .from('social_interactions')
-          .select('candidate_id, sentiment_label, sentiment_score, likes_count, comment_author')
-          .eq('user_id', user.id)
-          .or(orFilter)
-          .range(offset, offset + PAGE_SIZE - 1);
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-        all.push(...data);
-        if (data.length < PAGE_SIZE) break;
-        offset += PAGE_SIZE;
-      }
-      return all;
+      const { data, error } = await supabase
+        .from('social_interactions')
+        .select('candidate_id, sentiment_label, sentiment_score, likes_count, comment_author')
+        .eq('user_id', user.id)
+        .or(orFilter)
+        .order('created_at', { ascending: false })
+        .limit(5000);
+      if (error) throw error;
+      return data || [];
     },
     enabled: !!user,
-    staleTime: 60000,
+    staleTime: 5 * 60 * 1000,
   });
 
   // Calcula ranking com a mesma fórmula da página Ranking

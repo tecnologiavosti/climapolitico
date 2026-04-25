@@ -12,7 +12,17 @@ import Dashboard from "./pages/Dashboard";
 import TestAI from "./pages/TestAI";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000,        // 5min: dados ficam "frescos" e não refazem fetch
+      gcTime: 30 * 60 * 1000,          // 30min: mantém em cache mesmo sem observers
+      refetchOnWindowFocus: false,     // evita refetch toda vez que volta pra aba
+      refetchOnMount: false,           // se já tem dado fresco, não refaz
+      retry: 1,                        // 1 retry só
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
