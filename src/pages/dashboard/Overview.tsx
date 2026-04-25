@@ -280,6 +280,13 @@ export default function Overview() {
   // Normaliza labels (case-insensitive + acentos) para não perder linhas com
   // variações como "positivo", "POSITIVO", "Positive", etc.
   const normalizeSentiment = (label?: string | null, score?: number | null): 'positive' | 'negative' | 'neutral' | null => {
+    const numericScore = typeof score === 'number' ? score : null;
+
+    // "Neutro 0.5" é usado pelo pipeline como valor padrão/pendente quando a IA falha.
+    // Não entra no gráfico temporal para evitar uma curva artificialmente gigante de neutros.
+    if (!label && numericScore === null) return null;
+    if (label?.trim().toLowerCase() === 'neutro' && numericScore === 0.5) return null;
+
     if (label) {
       const l = label
         .toString()
@@ -291,9 +298,9 @@ export default function Overview() {
       if (l.startsWith('neg')) return 'negative';
       if (l.startsWith('neu')) return 'neutral';
     }
-    if (typeof score === 'number') {
-      if (score >= 0.6) return 'positive';
-      if (score <= 0.4) return 'negative';
+    if (numericScore !== null) {
+      if (numericScore >= 0.6) return 'positive';
+      if (numericScore <= 0.4) return 'negative';
       return 'neutral';
     }
     return null;
