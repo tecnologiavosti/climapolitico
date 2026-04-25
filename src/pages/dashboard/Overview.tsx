@@ -71,37 +71,11 @@ export default function Overview() {
     enabled: !!user,
   });
 
-  // Auto-recalcula o cache de métricas para todos os candidatos ao montar a página
-  // e a cada 2 minutos, garantindo que os KPIs reflitam os dados mais recentes.
-  const recalcLockRef = useRef(false);
-  useEffect(() => {
-    if (!candidates || candidates.length === 0) return;
-
-    const recalcAll = async () => {
-      if (recalcLockRef.current) return;
-      recalcLockRef.current = true;
-      try {
-        await Promise.allSettled(
-          candidates.map((c) =>
-            supabase.functions.invoke('recalculate-candidate-metrics', {
-              body: { candidateId: c.id },
-            })
-          )
-        );
-        // Invalida queries para puxar o cache atualizado
-        qc.invalidateQueries({ queryKey: ['all-candidate-metrics-cache'] });
-        qc.invalidateQueries({ queryKey: ['candidate-metrics-cache'] });
-      } catch (e) {
-        console.warn('Falha ao recalcular métricas:', e);
-      } finally {
-        recalcLockRef.current = false;
-      }
-    };
-
-    recalcAll();
-    const interval = setInterval(recalcAll, 120000);
-    return () => clearInterval(interval);
-  }, [candidates, qc]);
+  // Auto-recálculo de métricas REMOVIDO da Visão Geral.
+  // Causava lentidão massiva: disparava 1 edge function por candidato (cada uma
+  // paginando 16k+ linhas) ao montar a página e a cada 2min. O cron de 6h e o
+  // botão "Coletar agora" já mantêm o cache atualizado. Caso o usuário precise
+  // forçar recálculo manual, use o botão "Calcular ranking".
 
   // Realtime: invalida queries quando cache de métricas ou interações sociais mudam
   useEffect(() => {
