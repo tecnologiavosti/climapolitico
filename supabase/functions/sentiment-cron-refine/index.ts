@@ -28,6 +28,67 @@ function heuristic(text: string): SentimentResult {
   return { label: "Neutro", score: 0.5 };
 }
 
+async function callCerebras(texts: string[], cerebrasKey: string): Promise<SentimentResult[] | null> {
+  const clipped = texts.map((t) => (t || "").substring(0, 400).trim());
+  const userContent = clipped.map((t, i) => `${i + 1}. "${t}"`).join("\n");
+
+  const systemPrompt = `Você é especialista brasileiro em análise de sentimento político.
+CLASSIFIQUE cada comentário: POSITIVO (apoio, elogio, "mito", emojis ❤️👏), NEGATIVO (crítica, sarcasmo, xingamento, "ladrão", "fora", emojis 🤮👎), NEUTRO (apenas notícia factual sem viés).
+Sarcasmo é NEGATIVO. Em dúvida, escolha o predominante.
+Gírias BR: "mitou"/"faz o L"=positivo, "gado"/"mortadela"/"petralha"/"bolsominion"=negativo.
+Responda APENAS JSON object com chave "results" contendo array na MESMA ordem: {"results":[{"label":"Positivo|Negativo|Neutro","score":0.0-1.0},...]}`;
+
+  // gpt-oss-120b e qwen-3-235b são preview/pago e podem dar 404 no free tier; llama3.1-8b é garantido.
+  const models = ["llama3.1-8b", "qwen-3-235b-a22b-instruct-2507", "gpt-oss-120b"];
+  for (const model of models) {
+    try {
+      const res = await fetch("https://api.cerebras.ai/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${cerebrasKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userContent },
+          ],
+          temperature: 0.1,
+          max_tokens: clipped.length * 50 + 200,
+          response_format: { type: "json_object" },
+        }),
+      });
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        console.warn(`[REFINE] Cerebras ${model} ${res.status}: ${errBody.substring(0, 300)}`);
+        continue;
+      }
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content || "";
+      let parsed: any;
+      try {
+        parsed = JSON.parse(content);
+      } catch {
+        const m = content.match(/\[[\s\S]*\]/);
+        if (!m) continue;
+        parsed = JSON.parse(m[0]);
+      }
+      const arr = Array.isArray(parsed) ? parsed : (parsed.results || parsed.data || parsed.sentiments);
+      if (!Array.isArray(arr) || arr.length < texts.length) continue;
+      console.log(`[REFINE] Cerebras ${model} OK (${arr.length} resultados)`);
+      return texts.map((_, i) => {
+        const p = arr[i];
+        const label =
+          p?.label === "Positivo" || p?.label === "Negativo" || p?.label === "Neutro"
+            ? p.label : "Neutro";
+        const score = typeof p?.score === "number" ? Math.max(0, Math.min(1, p.score)) : 0.5;
+        return { label, score };
+      });
+    } catch (e) {
+      console.warn(`[REFINE] Cerebras ${model} exceção:`, e);
+    }
+  }
+  return null;
+}
+
 async function callGroq(texts: string[], groqKey: string): Promise<SentimentResult[] | null> {
   const clipped = texts.map((t) => (t || "").substring(0, 400).trim());
   const userContent = clipped.map((t, i) => `${i + 1}. "${t}"`).join("\n");
@@ -226,6 +287,7 @@ Deno.serve(async (req) => {
   const apiKey = Deno.env.get("LOVABLE_API_KEY");
   const groqKey = Deno.env.get("GROQ_API_KEY");
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
+  const cerebrasKey = Deno.env.get("CEREBRAS_API_KEY");
 
   try {
     // Pega comentários recentes com sentimento pendente ou neutro padrão das últimas 48h.
@@ -252,10 +314,15 @@ Deno.serve(async (req) => {
     const counts = { Positivo: 0, Negativo: 0, Neutro: 0 };
     const texts = pending.map((p) => p.comment_text || "");
 
-    // 1) Groq primeiro (rápido, alto rate limit)
+    // 1) Cerebras primeiro (PRIMÁRIO — Llama 3.3 70B, 1M tokens/dia grátis, ~2000 tok/s)
     let results: SentimentResult[] | null = null;
     let providerUsed = "none";
-    if (groqKey) {
+    if (cerebrasKey) {
+      results = await callCerebras(texts, cerebrasKey);
+      if (results) { console.log("[REFINE] ✅ Cerebras OK"); providerUsed = "cerebras"; }
+    }
+    // 2) Groq (fallback rápido)
+    if (!results && groqKey) {
       results = await callGroq(texts, groqKey);
       if (results) { console.log("[REFINE] ✅ Groq OK"); providerUsed = "groq"; }
     }
