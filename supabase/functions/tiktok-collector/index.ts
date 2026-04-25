@@ -151,7 +151,7 @@ async function collectForCandidate(
       .eq("candidate_id", candidate.id)
       .eq("social_network", "tiktok")
       .in("author_profile_url", videoUrls);
-    const existingSet = new Set((existing || []).map((e) => e.author_profile_url));
+    const existingSet = new Set(((existing || []) as ExistingInteractionRow[]).map((e) => e.author_profile_url));
 
     const newPosts = posts.filter((p) => !existingSet.has(buildUrl(p)));
     if (newPosts.length > 0) {
@@ -188,7 +188,7 @@ async function collectForCandidate(
           .eq("social_network", "tiktok")
           .eq("interaction_type", "comment")
           .in("author_profile_url", fingerprints);
-        const existSet = new Set((existCom || []).map((e) => e.author_profile_url));
+        const existSet = new Set(((existCom || []) as ExistingInteractionRow[]).map((e) => e.author_profile_url));
 
         const newComs = comments
           .map((c) => ({ c, fp: `tt-c-${p.video_id}-${c.id || c.cid || c.text.substring(0, 40)}` }))
