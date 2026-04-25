@@ -698,11 +698,16 @@ Responda APENAS um array JSON com EXATAMENTE ${clipped.length} itens, na MESMA o
 
   const userPrompt = clipped.map((t, i) => `${i + 1}. ${t || '[vazio]'}`).join('\n');
 
-  // 1) Groq (rápido e barato)
+  // 1) Cerebras (PRIMÁRIO — ~2000 tok/s, Llama 3.3 70B, 1M tokens/dia grátis)
+  const cerebrasResult = await tryCerebras(systemPrompt, userPrompt, clipped.length);
+  if (cerebrasResult) return cerebrasResult;
+
+  // 2) Groq (fallback rápido e barato)
+  console.log('[SENTIMENT] Cerebras falhou, tentando Groq');
   const groqResult = await tryGroq(systemPrompt, userPrompt, clipped.length);
   if (groqResult) return groqResult;
 
-  // 2) Gemini fallback via Lovable AI Gateway
+  // 3) Gemini fallback via Lovable AI Gateway
   console.log('[SENTIMENT] Groq falhou, usando Gemini fallback');
   const geminiResult = await tryGemini(systemPrompt, userPrompt, clipped.length);
   if (geminiResult) return geminiResult;
