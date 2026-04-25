@@ -990,8 +990,8 @@ Deno.serve(async (req) => {
           const sentiments = await analyzeSentimentBatch(batch.map(r => r.comment_text));
           batch.forEach((r, idx) => {
             const s = sentiments?.[idx];
-            r.sentiment_label = s?.label ?? 'Neutro';
-            r.sentiment_score = s?.score ?? 0.5;
+            r.sentiment_label = s?.label ?? null;
+            r.sentiment_score = s?.score ?? null;
           });
           const { data: ins, error: repErr } = await db
             .from('social_interactions')
