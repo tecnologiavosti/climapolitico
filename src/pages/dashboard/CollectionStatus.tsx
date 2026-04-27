@@ -280,23 +280,27 @@ export default function CollectionStatus() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Badge variant={isActive ? "default" : "secondary"}>
-            {isActive ? (
-              <><CheckCircle2 className="mr-1 h-3 w-3" /> Ativa</>
-            ) : (
-              <><Pause className="mr-1 h-3 w-3" /> Pausada</>
-            )}
-          </Badge>
+          <HelpTooltip text="Mostra se a coleta automática está ligada (verde) ou pausada (cinza).">
+            <Badge variant={isActive ? "default" : "secondary"}>
+              {isActive ? (
+                <><CheckCircle2 className="mr-1 h-3 w-3" /> Ativa</>
+              ) : (
+                <><Pause className="mr-1 h-3 w-3" /> Pausada</>
+              )}
+            </Badge>
+          </HelpTooltip>
         </div>
       </div>
 
       {/* Fontes de Dados */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Settings2 className="h-5 w-5" />
-            Fontes de Dados
-          </CardTitle>
+          <HelpTooltip text="As redes sociais de onde estamos pegando os comentários sobre seus candidatos.">
+            <CardTitle className="flex items-center gap-2">
+              <Settings2 className="h-5 w-5" />
+              Fontes de Dados
+            </CardTitle>
+          </HelpTooltip>
           <CardDescription>
             Plataformas de onde os dados são coletados
           </CardDescription>
@@ -334,10 +338,12 @@ export default function CollectionStatus() {
       {/* Status e Controle */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Settings2 className="h-5 w-5" />
-            Status da Coleta
-          </CardTitle>
+          <HelpTooltip text="Liga ou desliga a coleta automática. Quando desligado, nada novo é coletado.">
+            <CardTitle className="flex items-center gap-2">
+              <Settings2 className="h-5 w-5" />
+              Status da Coleta
+            </CardTitle>
+          </HelpTooltip>
           <CardDescription>
             Ative ou pause a coleta automática de dados
           </CardDescription>
@@ -352,30 +358,38 @@ export default function CollectionStatus() {
                   : "A coleta está pausada. Nenhum dado novo será coletado automaticamente."}
               </p>
             </div>
-            <Switch
-              checked={isActive}
-              onCheckedChange={handleToggleStatus}
-            />
+            <HelpTooltip text="Aperta pra ligar ou desligar a coleta automática de comentários.">
+              <Switch
+                checked={isActive}
+                onCheckedChange={handleToggleStatus}
+              />
+            </HelpTooltip>
           </div>
 
           {/* Estatísticas Atuais */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 border rounded-lg text-center">
-              <p className="text-2xl font-bold">{stats.totalComments.toLocaleString('pt-BR')}</p>
-              <p className="text-sm text-muted-foreground">Comentários Coletados</p>
-            </div>
-            <div className="p-4 border rounded-lg text-center">
-              <p className="text-2xl font-bold">{stats.candidatesWithData}</p>
-              <p className="text-sm text-muted-foreground">Candidatos com Dados</p>
-            </div>
-            <div className="p-4 border rounded-lg text-center">
-              <p className="text-2xl font-bold">
-                {stats.lastCollection 
-                  ? format(new Date(stats.lastCollection), "dd/MM HH:mm", { locale: ptBR })
-                  : "—"}
-              </p>
-              <p className="text-sm text-muted-foreground">Última Coleta</p>
-            </div>
+            <HelpTooltip text="Total de comentários e posts já coletados pela plataforma.">
+              <div className="p-4 border rounded-lg text-center">
+                <p className="text-2xl font-bold">{stats.totalComments.toLocaleString('pt-BR')}</p>
+                <p className="text-sm text-muted-foreground">Comentários Coletados</p>
+              </div>
+            </HelpTooltip>
+            <HelpTooltip text="Quantos dos seus candidatos já têm dados coletados.">
+              <div className="p-4 border rounded-lg text-center">
+                <p className="text-2xl font-bold">{stats.candidatesWithData}</p>
+                <p className="text-sm text-muted-foreground">Candidatos com Dados</p>
+              </div>
+            </HelpTooltip>
+            <HelpTooltip text="Quando o sistema buscou comentários novos pela última vez.">
+              <div className="p-4 border rounded-lg text-center">
+                <p className="text-2xl font-bold">
+                  {stats.lastCollection 
+                    ? format(new Date(stats.lastCollection), "dd/MM HH:mm", { locale: ptBR })
+                    : "—"}
+                </p>
+                <p className="text-sm text-muted-foreground">Última Coleta</p>
+              </div>
+            </HelpTooltip>
           </div>
         </CardContent>
       </Card>
@@ -383,10 +397,12 @@ export default function CollectionStatus() {
       {/* Configuração de Frequência */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="h-5 w-5" />
-            Frequência de Coleta
-          </CardTitle>
+          <HelpTooltip text="De quanto em quanto tempo o sistema vai buscar comentários novos.">
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              Frequência de Coleta
+            </CardTitle>
+          </HelpTooltip>
           <CardDescription>
             Define com que frequência os dados do YouTube serão atualizados
           </CardDescription>
@@ -423,10 +439,12 @@ export default function CollectionStatus() {
       {/* Período de Análise */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <RefreshCw className="h-5 w-5" />
-            Período de Análise
-          </CardTitle>
+          <HelpTooltip text="O quão pra trás no tempo a gente vai pegar comentários em cada coleta.">
+            <CardTitle className="flex items-center gap-2">
+              <RefreshCw className="h-5 w-5" />
+              Período de Análise
+            </CardTitle>
+          </HelpTooltip>
           <CardDescription>
             Define o intervalo de tempo para buscar comentários em cada coleta
           </CardDescription>
@@ -476,16 +494,18 @@ export default function CollectionStatus() {
 
       {/* Botão Salvar */}
       <div className="flex justify-end">
-        <Button onClick={handleSaveConfig} disabled={isSaving} size="lg">
-          {isSaving ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Salvando...
-            </>
-          ) : (
-            "Salvar Configuração"
-          )}
-        </Button>
+        <HelpTooltip text="Salva as alterações que você fez aqui na página.">
+          <Button onClick={handleSaveConfig} disabled={isSaving} size="lg">
+            {isSaving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Salvando...
+              </>
+            ) : (
+              "Salvar Configuração"
+            )}
+          </Button>
+        </HelpTooltip>
       </div>
     </div>
   );
