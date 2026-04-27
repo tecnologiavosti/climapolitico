@@ -90,20 +90,24 @@ const RealTimeMonitor = () => {
 
         <div className="flex items-center gap-3">
           {/* Indicador de última atualização */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm bg-muted/50 text-muted-foreground">
-            <Clock className="h-4 w-4" />
-            <span>Atualizado: {lastUpdate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-          </div>
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={isLoading}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            Atualizar
-          </Button>
+          <HelpTooltip text="Hora em que os dados foram atualizados pela última vez aqui na tela.">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm bg-muted/50 text-muted-foreground">
+              <Clock className="h-4 w-4" />
+              <span>Atualizado: {lastUpdate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+          </HelpTooltip>
+
+          <HelpTooltip text="Clica pra buscar os comentários mais novos agora mesmo.">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isLoading}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              Atualizar
+            </Button>
+          </HelpTooltip>
         </div>
       </div>
 
@@ -115,18 +119,20 @@ const RealTimeMonitor = () => {
             {loadingCandidates ? (
               <Skeleton className="h-10 w-64" />
             ) : (
-              <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
-                <SelectTrigger className="w-64">
-                  <SelectValue placeholder="Selecione um candidato" />
-                </SelectTrigger>
-                <SelectContent>
-                  {candidates.map((candidate) => (
-                    <SelectItem key={candidate.id} value={candidate.id}>
-                      {candidate.full_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <HelpTooltip text="Escolha qual candidato você quer ficar de olho ao vivo.">
+                <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
+                  <SelectTrigger className="w-64">
+                    <SelectValue placeholder="Selecione um candidato" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {candidates.map((candidate) => (
+                      <SelectItem key={candidate.id} value={candidate.id}>
+                        {candidate.full_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </HelpTooltip>
             )}
             {selectedCandidate && (
               <span className="text-sm text-muted-foreground">
