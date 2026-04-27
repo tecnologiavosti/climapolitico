@@ -15,6 +15,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 import { useAllCandidateMetrics, CandidateMetrics } from "@/hooks/useCandidateMetrics";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { NetworkLegendWithTooltips } from "@/components/dashboard/NetworkLegendWithTooltips";
 
 // Componentes temporariamente ocultos da Visão Geral (mantidos para uso futuro)
 // import { AIModelsPanel } from "@/components/dashboard/AIModelsPanel";
