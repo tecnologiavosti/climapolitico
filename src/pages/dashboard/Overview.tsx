@@ -424,22 +424,26 @@ export default function Overview() {
             <LayoutDashboard className="h-5 w-5 text-primary" />
             <span className="font-medium">Visão Consolidada do Candidato</span>
           </div>
-          <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
-            <SelectTrigger className="w-64">
-              <SelectValue placeholder="Selecione um candidato para análise detalhada" />
-            </SelectTrigger>
-            <SelectContent>
-              {candidates?.map((candidate) => (
-                <SelectItem key={candidate.id} value={candidate.id}>
-                  {candidate.full_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <HelpTooltip text="Escolha um candidato para abrir o painel detalhado só dele com todas as métricas consolidadas.">
+            <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="Selecione um candidato para análise detalhada" />
+              </SelectTrigger>
+              <SelectContent>
+                {candidates?.map((candidate) => (
+                  <SelectItem key={candidate.id} value={candidate.id}>
+                    {candidate.full_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </HelpTooltip>
           {selectedCandidateId && (
-            <Button variant="ghost" size="sm" onClick={() => setSelectedCandidateId("")}>
-              Limpar seleção
-            </Button>
+            <HelpTooltip text="Volta para a visão geral de todos os candidatos.">
+              <Button variant="ghost" size="sm" onClick={() => setSelectedCandidateId("")}>
+                Limpar seleção
+              </Button>
+            </HelpTooltip>
           )}
         </div>
       </Card>
