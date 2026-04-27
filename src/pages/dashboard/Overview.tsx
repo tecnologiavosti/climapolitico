@@ -556,10 +556,12 @@ export default function Overview() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Sentiment Over Time */}
         <Card className="p-6">
-          <div className="mb-4">
-            <h3 className="text-lg font-bold">Sentimento ao Longo do Tempo</h3>
-            <p className="text-sm text-muted-foreground">Últimos 7 dias</p>
-          </div>
+          <HelpTooltip text="Mostra como o sentimento positivo, negativo e neutro variou em cada um dos últimos 7 dias.">
+            <div className="mb-4 cursor-help">
+              <h3 className="text-lg font-bold">Sentimento ao Longo do Tempo</h3>
+              <p className="text-sm text-muted-foreground">Últimos 7 dias</p>
+            </div>
+          </HelpTooltip>
           {isLoading ? (
             <Skeleton className="h-[300px] w-full" />
           ) : sentimentData.every(d => d.positive === 0 && d.negative === 0 && d.neutral === 0) ? (
@@ -590,10 +592,12 @@ export default function Overview() {
 
         {/* Network Distribution */}
         <Card className="p-6">
-          <div className="mb-4">
-            <h3 className="text-lg font-bold">Distribuição por Rede Social</h3>
-            <p className="text-sm text-muted-foreground">Fontes de dados reais</p>
-          </div>
+          <HelpTooltip text="Quanto cada rede social (YouTube, Twitter, etc.) contribui para o total de menções coletadas.">
+            <div className="mb-4 cursor-help">
+              <h3 className="text-lg font-bold">Distribuição por Rede Social</h3>
+              <p className="text-sm text-muted-foreground">Fontes de dados reais</p>
+            </div>
+          </HelpTooltip>
           {isLoading ? (
             <Skeleton className="h-[300px] w-full" />
           ) : networkData.length === 0 ? (
@@ -649,10 +653,12 @@ export default function Overview() {
 
       {/* Candidates Performance */}
       <Card className="p-6">
-        <div className="mb-4">
-          <h3 className="text-lg font-bold">Performance dos Candidatos (Top 5)</h3>
-          <p className="text-sm text-muted-foreground">Menções vs Sentimento</p>
-        </div>
+        <HelpTooltip text="Os 5 candidatos com mais menções, comparando volume e sentimento médio lado a lado.">
+          <div className="mb-4 cursor-help">
+            <h3 className="text-lg font-bold">Performance dos Candidatos (Top 5)</h3>
+            <p className="text-sm text-muted-foreground">Menções vs Sentimento</p>
+          </div>
+        </HelpTooltip>
         {isLoading ? (
           <Skeleton className="h-[300px] w-full" />
         ) : candidateData.length === 0 ? (
@@ -688,17 +694,19 @@ export default function Overview() {
             <h3 className="text-lg font-bold">Rankings Recentes</h3>
             <p className="text-sm text-muted-foreground">Mesma fórmula da aba Ranking · últimos 30 dias</p>
           </div>
-          <Button
-            onClick={handleCalculateRanking}
-            disabled={calculatingRanking || !candidates?.length}
-            size="sm"
-          >
-            {calculatingRanking ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Calculando...</>
-            ) : (
-              <><Activity className="mr-2 h-4 w-4" /> Calcular ranking</>
-            )}
-          </Button>
+          <HelpTooltip text="Recalcula o ranking geral dos seus candidatos com base nos dados dos últimos 30 dias.">
+            <Button
+              onClick={handleCalculateRanking}
+              disabled={calculatingRanking || !candidates?.length}
+              size="sm"
+            >
+              {calculatingRanking ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Calculando...</>
+              ) : (
+                <><Activity className="mr-2 h-4 w-4" /> Calcular ranking</>
+              )}
+            </Button>
+          </HelpTooltip>
         </div>
         {isLoading ? (
           <div className="space-y-3">
