@@ -154,14 +154,16 @@ export function AppSidebar() {
                 {adminItems.map((item) => (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton asChild>
-                      <NavLink
-                        to={item.url}
-                        className="hover:bg-muted/50"
-                        activeClassName="bg-muted text-primary font-medium"
-                      >
-                        <item.icon className="h-4 w-4" />
-                        {!isCollapsed && <span>{item.title}</span>}
-                      </NavLink>
+                      <HelpTooltip text={item.tip} side="right">
+                        <NavLink
+                          to={item.url}
+                          className="hover:bg-muted/50"
+                          activeClassName="bg-muted text-primary font-medium"
+                        >
+                          <item.icon className="h-4 w-4" />
+                          {!isCollapsed && <span>{item.title}</span>}
+                        </NavLink>
+                      </HelpTooltip>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
@@ -178,14 +180,16 @@ export function AppSidebar() {
               {settingsItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
-                    <NavLink
-                      to={item.url}
-                      className="hover:bg-muted/50"
-                      activeClassName="bg-muted text-primary font-medium"
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {!isCollapsed && <span>{item.title}</span>}
-                    </NavLink>
+                    <HelpTooltip text={item.tip} side="right">
+                      <NavLink
+                        to={item.url}
+                        className="hover:bg-muted/50"
+                        activeClassName="bg-muted text-primary font-medium"
+                      >
+                        <item.icon className="h-4 w-4" />
+                        {!isCollapsed && <span>{item.title}</span>}
+                      </NavLink>
+                    </HelpTooltip>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
