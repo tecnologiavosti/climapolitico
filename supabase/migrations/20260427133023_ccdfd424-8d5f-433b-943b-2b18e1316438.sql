@@ -1,0 +1,2 @@
+ALTER TABLE public.profiles
+ADD COLUMN IF NOT EXISTS show_tooltips BOOLEAN NOT NULL DEFAULT false;

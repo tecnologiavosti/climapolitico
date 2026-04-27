@@ -753,6 +753,7 @@ export type Database = {
           party_visible: boolean
           phone: string | null
           role_title: string | null
+          show_tooltips: boolean
           theme: string
           two_factor_enabled: boolean
           updated_at: string
@@ -769,6 +770,7 @@ export type Database = {
           party_visible?: boolean
           phone?: string | null
           role_title?: string | null
+          show_tooltips?: boolean
           theme?: string
           two_factor_enabled?: boolean
           updated_at?: string
@@ -785,6 +787,7 @@ export type Database = {
           party_visible?: boolean
           phone?: string | null
           role_title?: string | null
+          show_tooltips?: boolean
           theme?: string
           two_factor_enabled?: boolean
           updated_at?: string
