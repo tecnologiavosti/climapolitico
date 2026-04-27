@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Plus, Calendar, Pause, Play, Trash2, Mail } from "lucide-react";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 interface ScheduledReport {
   id: string;
@@ -221,7 +222,9 @@ export default function ScheduledReports() {
     <div className="space-y-6 p-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Relatórios Agendados</h1>
+          <HelpTooltip text="Configure relatórios automáticos pra chegar no seu e-mail no dia e horário que você quiser.">
+        <h1 className="text-3xl font-bold tracking-tight">Relatórios Agendados</h1>
+      </HelpTooltip>
           <p className="text-muted-foreground">
             Configure a geração automática de relatórios
           </p>

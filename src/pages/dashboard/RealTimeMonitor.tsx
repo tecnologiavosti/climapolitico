@@ -15,6 +15,7 @@ import { RealTimeSentimentChart } from "@/components/dashboard/realtime/RealTime
 import { RealTimeSentimentGauge } from "@/components/dashboard/realtime/RealTimeSentimentGauge";
 import { RealTimeCommentsFeed } from "@/components/dashboard/realtime/RealTimeCommentsFeed";
 import { Skeleton } from "@/components/ui/skeleton";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 interface Candidate {
   id: string;
@@ -76,10 +77,12 @@ const RealTimeMonitor = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
+          <HelpTooltip text="Acompanhe os comentários chegando ao vivo, na hora em que o povo posta nas redes.">
+        <h1 className="text-3xl font-bold flex items-center gap-2">
             <Radio className="h-8 w-8 text-primary" />
             Monitor de Comentários
           </h1>
+      </HelpTooltip>
           <p className="text-muted-foreground mt-1">
             Acompanhe menções e sentimentos dos comentários coletados
           </p>

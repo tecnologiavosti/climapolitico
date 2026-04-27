@@ -145,7 +145,7 @@ export default function CandidatesCatalog() {
         {isAdmin && (
           <Dialog open={addOpen} onOpenChange={setAddOpen}>
             <DialogTrigger asChild>
-              <HelpTooltip text="Apenas administradores: cadastra um novo candidato no catálogo público para todos os usuários verem.">
+              <HelpTooltip text="Só admin: cadastra um candidato novo pra todo mundo poder usar.">
                 <Button>
                   <ShieldCheck className="h-4 w-4 mr-2" />
                   Adicionar ao catálogo
@@ -222,7 +222,7 @@ export default function CandidatesCatalog() {
         <CardContent className="pt-6">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <HelpTooltip text="Filtra os candidatos do catálogo por nome, partido ou região conforme você digita.">
+            <HelpTooltip text="Digite aqui pra achar um candidato pelo nome, partido ou região.">
               <Input
                 placeholder="Buscar por nome, partido ou região..."
                 value={searchTerm}
@@ -263,7 +263,7 @@ export default function CandidatesCatalog() {
                   {c.description && (
                     <p className="text-sm text-muted-foreground line-clamp-2">{c.description}</p>
                   )}
-                  <HelpTooltip text={alreadyAdded ? "Esse candidato já está na sua conta. Vá em Candidatos para gerenciá-lo." : "Adiciona o candidato à sua conta para começar a coletar dados e analisar o sentimento."}>
+                  <HelpTooltip text={alreadyAdded ? "Esse já está na sua conta. Pra mexer nele, vai na aba Candidatos." : "Clique aqui pra começar a acompanhar esse candidato na sua conta."}>
                     <Button
                       className="w-full"
                       variant={alreadyAdded ? "outline" : "default"}

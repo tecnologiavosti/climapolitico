@@ -1,3 +1,4 @@
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import React, { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -540,7 +541,9 @@ export default function Candidates() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-bold">Candidatos</h2>
+          <HelpTooltip text="Aqui você adiciona, remove e cuida dos candidatos que está acompanhando.">
+            <h2 className="text-3xl font-bold">Candidatos</h2>
+          </HelpTooltip>
           <p className="text-muted-foreground">
             Gerencie e monitore candidatos políticos
             {subscription && (
