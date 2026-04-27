@@ -606,15 +606,15 @@ export default function Overview() {
               <p>Nenhum dado coletado ainda</p>
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={340}>
+          <ResponsiveContainer width="100%" height={280}>
               <PieChart>
                 <Pie
                   data={networkData}
                   cx="50%"
-                  cy="42%"
+                  cy="45%"
                   labelLine={false}
                   label={false}
-                  outerRadius={90}
+                  outerRadius={85}
                   fill="#8884d8"
                   dataKey="value"
                 >
@@ -634,21 +634,11 @@ export default function Overview() {
                     return [`${value.toLocaleString('pt-BR')} (${pct}%)`, name];
                   }}
                 />
-                <Legend
-                  verticalAlign="bottom"
-                  height={64}
-                  iconSize={10}
-                  wrapperStyle={{ fontSize: '12px', paddingTop: '8px', lineHeight: '20px' }}
-                  formatter={(value: string) => {
-                    const item = networkData.find(d => d.name === value);
-                    const total = networkData.reduce((s, d) => s + d.value, 0);
-                    const pct = item && total > 0 ? ((item.value / total) * 100).toFixed(0) : '0';
-                    return `${value} (${pct}%)`;
-                  }}
-                />
               </PieChart>
             </ResponsiveContainer>
-          )}
+            <NetworkLegendWithTooltips data={networkData} />
+          </>
+        )}
         </Card>
       </div>
 
