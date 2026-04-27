@@ -220,10 +220,12 @@ const CandidateSummary = () => {
           {/* Executive Summary */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <FileText className="h-5 w-5 text-primary" />
-                Resumo Executivo
-              </CardTitle>
+              <HelpTooltip text="Parágrafo curto escrito pela IA resumindo a percepção pública geral do candidato no período.">
+                <CardTitle className="text-lg flex items-center gap-2 cursor-help">
+                  <FileText className="h-5 w-5 text-primary" />
+                  Resumo Executivo
+                </CardTitle>
+              </HelpTooltip>
             </CardHeader>
             <CardContent>
               <p className="text-base leading-relaxed">{summary.overall_summary}</p>
@@ -234,30 +236,34 @@ const CandidateSummary = () => {
           {(summary.risk_alert || summary.opportunity_alert) && (
             <div className="grid gap-4 md:grid-cols-2">
               {summary.risk_alert && (
-                <Card className="border-red-200 dark:border-red-900">
-                  <CardContent className="pt-6">
-                    <div className="flex gap-3">
-                      <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
-                      <div>
-                        <h3 className="font-semibold text-red-600 dark:text-red-400 mb-1">Alerta de Risco</h3>
-                        <p className="text-sm">{summary.risk_alert}</p>
+                <HelpTooltip text="Sinal de atenção: situação que pode prejudicar a imagem do candidato e merece resposta rápida.">
+                  <Card className="border-red-200 dark:border-red-900 cursor-help">
+                    <CardContent className="pt-6">
+                      <div className="flex gap-3">
+                        <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+                        <div>
+                          <h3 className="font-semibold text-red-600 dark:text-red-400 mb-1">Alerta de Risco</h3>
+                          <p className="text-sm">{summary.risk_alert}</p>
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+                </HelpTooltip>
               )}
               {summary.opportunity_alert && (
-                <Card className="border-green-200 dark:border-green-900">
-                  <CardContent className="pt-6">
-                    <div className="flex gap-3">
-                      <TrendingUp className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
-                      <div>
-                        <h3 className="font-semibold text-green-600 dark:text-green-400 mb-1">Oportunidade</h3>
-                        <p className="text-sm">{summary.opportunity_alert}</p>
+                <HelpTooltip text="Oportunidade detectada: tema ou momento que o candidato pode aproveitar a favor da campanha.">
+                  <Card className="border-green-200 dark:border-green-900 cursor-help">
+                    <CardContent className="pt-6">
+                      <div className="flex gap-3">
+                        <TrendingUp className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
+                        <div>
+                          <h3 className="font-semibold text-green-600 dark:text-green-400 mb-1">Oportunidade</h3>
+                          <p className="text-sm">{summary.opportunity_alert}</p>
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+                </HelpTooltip>
               )}
             </div>
           )}
@@ -266,10 +272,12 @@ const CandidateSummary = () => {
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <ThumbsUp className="h-5 w-5 text-green-500" />
-                  Pontos Positivos
-                </CardTitle>
+                <HelpTooltip text="Aspectos elogiados pelo público nos comentários: elogios, apoios e reconhecimentos.">
+                  <CardTitle className="text-lg flex items-center gap-2 cursor-help">
+                    <ThumbsUp className="h-5 w-5 text-green-500" />
+                    Pontos Positivos
+                  </CardTitle>
+                </HelpTooltip>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-3">
@@ -285,10 +293,12 @@ const CandidateSummary = () => {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <ThumbsDown className="h-5 w-5 text-red-500" />
-                  Pontos Negativos
-                </CardTitle>
+                <HelpTooltip text="Aspectos criticados pelo público: queixas, ataques e pontos de tensão recorrentes nos comentários.">
+                  <CardTitle className="text-lg flex items-center gap-2 cursor-help">
+                    <ThumbsDown className="h-5 w-5 text-red-500" />
+                    Pontos Negativos
+                  </CardTitle>
+                </HelpTooltip>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-3">
