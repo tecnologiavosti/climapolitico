@@ -121,7 +121,9 @@ const CandidateComparisonPage = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Comparação de Candidatos</h1>
+          <HelpTooltip text="Coloca seus candidatos lado a lado pra ver, num olhar só, quem está melhor em cada coisa.">
+            <h1 className="text-3xl font-bold">Comparação de Candidatos</h1>
+          </HelpTooltip>
           <p className="text-muted-foreground mt-1">Visualização comparativa rápida baseada em dados reais.</p>
         </div>
         <HelpTooltip text="Escolha como ordenar a lista: por menções, por sentimento, etc.">
@@ -158,10 +160,12 @@ const CandidateComparisonPage = () => {
             return (
               <Card key={metric.key}>
                 <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <metric.icon className="h-5 w-5" />
-                    {metric.title}
-                  </CardTitle>
+                  <HelpTooltip text="Ranking dos candidatos por essa métrica. Quem aparece em cima está se saindo melhor nela.">
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <metric.icon className="h-5 w-5" />
+                      {metric.title}
+                    </CardTitle>
+                  </HelpTooltip>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
@@ -187,10 +191,12 @@ const CandidateComparisonPage = () => {
           {/* Sentiment Comparison */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <TrendingUp className="h-5 w-5" />
-                Sentimento
-              </CardTitle>
+              <HelpTooltip text="Mostra a mistura de elogios (verde), neutros (amarelo) e críticas (vermelho) de cada candidato.">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <TrendingUp className="h-5 w-5" />
+                  Sentimento
+                </CardTitle>
+              </HelpTooltip>
               <CardDescription className="flex gap-4 mt-1">
                 <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500 inline-block" /> Positivo</span>
                 <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-yellow-400 inline-block" /> Neutro</span>
@@ -226,7 +232,9 @@ const CandidateComparisonPage = () => {
           {/* Summary Table */}
           <Card>
             <CardHeader>
-              <CardTitle>Resumo Geral</CardTitle>
+              <HelpTooltip text="Tabela com todos os números importantes de cada candidato, na ordem que você escolheu.">
+                <CardTitle>Resumo Geral</CardTitle>
+              </HelpTooltip>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
