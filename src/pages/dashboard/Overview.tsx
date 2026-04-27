@@ -606,39 +606,40 @@ export default function Overview() {
               <p>Nenhum dado coletado ainda</p>
             </div>
           ) : (
-          <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie
-                  data={networkData}
-                  cx="50%"
-                  cy="45%"
-                  labelLine={false}
-                  label={false}
-                  outerRadius={85}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {networkData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'hsl(var(--card))', 
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px'
-                  }}
-                  formatter={(value: number, name: string) => {
-                    const total = networkData.reduce((s, d) => s + d.value, 0);
-                    const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
-                    return [`${value.toLocaleString('pt-BR')} (${pct}%)`, name];
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            <NetworkLegendWithTooltips data={networkData} />
-          </>
-        )}
+            <>
+              <ResponsiveContainer width="100%" height={280}>
+                <PieChart>
+                  <Pie
+                    data={networkData}
+                    cx="50%"
+                    cy="45%"
+                    labelLine={false}
+                    label={false}
+                    outerRadius={85}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {networkData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--card))', 
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px'
+                    }}
+                    formatter={(value: number, name: string) => {
+                      const total = networkData.reduce((s, d) => s + d.value, 0);
+                      const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
+                      return [`${value.toLocaleString('pt-BR')} (${pct}%)`, name];
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <NetworkLegendWithTooltips data={networkData} />
+            </>
+          )}
         </Card>
       </div>
 
