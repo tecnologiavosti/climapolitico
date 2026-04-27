@@ -25,8 +25,10 @@ import {
   Key,
   Import,
   BookUser,
+  Database as DatabaseIcon,
 } from "lucide-react";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
+import { useTooltipsEnabled } from "@/hooks/useTooltipsEnabled";
 
 import {
   Sidebar,
