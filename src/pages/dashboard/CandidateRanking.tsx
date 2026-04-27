@@ -309,95 +309,105 @@ export default function CandidateRanking() {
       {/* Insights Cards */}
       {rankings.length > 0 && topCandidate && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Trophy className="w-4 h-4 text-yellow-500" />
-                Líder do Ranking
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-xl font-bold">{topCandidate.candidateName}</div>
-              <p className="text-xs text-muted-foreground">
-                Score: {topCandidate.overallScore}
-              </p>
-            </CardContent>
-          </Card>
+          <HelpTooltip text="Quem está em primeiro lugar no ranking geral.">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Trophy className="w-4 h-4 text-yellow-500" />
+                  Líder do Ranking
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-xl font-bold">{topCandidate.candidateName}</div>
+                <p className="text-xs text-muted-foreground">
+                  Score: {topCandidate.overallScore}
+                </p>
+              </CardContent>
+            </Card>
+          </HelpTooltip>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-primary" />
-                Mais Mencionado
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {(() => {
-                const most = [...rankings].sort((a, b) => b.totalMentions - a.totalMentions)[0];
-                return (
-                  <>
-                    <div className="text-xl font-bold">{most?.candidateName}</div>
-                    <p className="text-xs text-muted-foreground">
-                      {most?.totalMentions.toLocaleString('pt-BR')} menções
-                    </p>
-                  </>
-                );
-              })()}
-            </CardContent>
-          </Card>
+          <HelpTooltip text="Quem teve mais comentários sobre ele no período.">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-primary" />
+                  Mais Mencionado
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  const most = [...rankings].sort((a, b) => b.totalMentions - a.totalMentions)[0];
+                  return (
+                    <>
+                      <div className="text-xl font-bold">{most?.candidateName}</div>
+                      <p className="text-xs text-muted-foreground">
+                        {most?.totalMentions.toLocaleString('pt-BR')} menções
+                      </p>
+                    </>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+          </HelpTooltip>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-success" />
-                Melhor Sentimento
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {(() => {
-                const best = [...rankings].filter(r => r.totalMentions > 0).sort((a, b) => b.averageSentiment - a.averageSentiment)[0];
-                return best ? (
-                  <>
-                    <div className="text-xl font-bold">{best.candidateName}</div>
-                    <p className="text-xs text-success">
-                      {best.averageSentiment}% positivo
-                    </p>
-                  </>
-                ) : (
-                  <div className="text-muted-foreground">N/A</div>
-                );
-              })()}
-            </CardContent>
-          </Card>
+          <HelpTooltip text="Quem o povo mais elogiou no período.">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-success" />
+                  Melhor Sentimento
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  const best = [...rankings].filter(r => r.totalMentions > 0).sort((a, b) => b.averageSentiment - a.averageSentiment)[0];
+                  return best ? (
+                    <>
+                      <div className="text-xl font-bold">{best.candidateName}</div>
+                      <p className="text-xs text-success">
+                        {best.averageSentiment}% positivo
+                      </p>
+                    </>
+                  ) : (
+                    <div className="text-muted-foreground">N/A</div>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+          </HelpTooltip>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Heart className="w-4 h-4 text-pink-500" />
-                Maior Engajamento
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {(() => {
-                const top = [...rankings].sort((a, b) => b.totalEngagement - a.totalEngagement)[0];
-                return (
-                  <>
-                    <div className="text-xl font-bold">{top?.candidateName}</div>
-                    <p className="text-xs text-muted-foreground">
-                      {top?.totalEngagement.toLocaleString('pt-BR')} curtidas
-                    </p>
-                  </>
-                );
-              })()}
-            </CardContent>
-          </Card>
+          <HelpTooltip text="Quem mais teve curtidas, respostas e compartilhamentos.">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Heart className="w-4 h-4 text-pink-500" />
+                  Maior Engajamento
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  const top = [...rankings].sort((a, b) => b.totalEngagement - a.totalEngagement)[0];
+                  return (
+                    <>
+                      <div className="text-xl font-bold">{top?.candidateName}</div>
+                      <p className="text-xs text-muted-foreground">
+                        {top?.totalEngagement.toLocaleString('pt-BR')} curtidas
+                      </p>
+                    </>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+          </HelpTooltip>
         </div>
       )}
 
       {/* Ranking Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Ranking Geral</CardTitle>
+          <HelpTooltip text="Tabela completa: cada candidato com sua nota e os números que entram no cálculo.">
+            <CardTitle>Ranking Geral</CardTitle>
+          </HelpTooltip>
           <CardDescription>
             Score calculado automaticamente: 30% menções + 20% autores + 30% sentimento + 20% engajamento
           </CardDescription>

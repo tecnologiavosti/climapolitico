@@ -629,13 +629,15 @@ export default function Candidates() {
 
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button 
-                disabled={isLimitReached}
-                title={isLimitReached ? "Limite de candidatos atingido" : ""}
-              >
-                <UserPlus className="mr-2 h-4 w-4" />
-                Adicionar Candidato
-              </Button>
+              <HelpTooltip text="Cadastra um novo candidato pra você começar a acompanhar.">
+                <Button 
+                  disabled={isLimitReached}
+                  title={isLimitReached ? "Limite de candidatos atingido" : ""}
+                >
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  Adicionar Candidato
+                </Button>
+              </HelpTooltip>
             </DialogTrigger>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
@@ -742,12 +744,14 @@ export default function Candidates() {
       <Card className="p-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por nome ou região..."
-            className="pl-10"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+          <HelpTooltip text="Digite aqui pra achar um candidato pelo nome ou pela região.">
+            <Input
+              placeholder="Buscar por nome ou região..."
+              className="pl-10"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </HelpTooltip>
         </div>
       </Card>
 

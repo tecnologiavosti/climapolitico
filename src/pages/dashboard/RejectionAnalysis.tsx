@@ -133,7 +133,9 @@ const RejectionAnalysisPage = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Análise de Rejeição</h1>
+        <HelpTooltip text="Aqui você descobre por que o povo está criticando seu candidato e o que fazer pra melhorar.">
+          <h1 className="text-3xl font-bold">Análise de Rejeição</h1>
+        </HelpTooltip>
         <p className="text-muted-foreground mt-1">
           Entenda os principais motivos da rejeição ao candidato com base em comentários reais.
         </p>
@@ -143,43 +145,49 @@ const RejectionAnalysisPage = () => {
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-col sm:flex-row gap-4">
-            <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
-              <SelectTrigger className="w-full sm:w-[280px]">
-                <SelectValue placeholder="Selecione um candidato" />
-              </SelectTrigger>
-              <SelectContent>
-                {candidates.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.full_name}{c.party ? ` (${c.party})` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <HelpTooltip text="Escolha de qual candidato você quer ver os motivos de rejeição.">
+              <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
+                <SelectTrigger className="w-full sm:w-[280px]">
+                  <SelectValue placeholder="Selecione um candidato" />
+                </SelectTrigger>
+                <SelectContent>
+                  {candidates.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.full_name}{c.party ? ` (${c.party})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </HelpTooltip>
 
-            <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-              <SelectTrigger className="w-full sm:w-[200px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PERIOD_OPTIONS.map((p) => (
-                  <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <HelpTooltip text="De quantos dias atrás a IA vai pegar os comentários pra analisar.">
+              <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                <SelectTrigger className="w-full sm:w-[200px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PERIOD_OPTIONS.map((p) => (
+                    <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </HelpTooltip>
 
-            <Button onClick={handleAnalyze} disabled={isAnalyzing || !selectedCandidate}>
-              {isAnalyzing ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Analisando...
-                </>
-              ) : (
-                <>
-                  <TrendingDown className="mr-2 h-4 w-4" />
-                  Analisar Rejeição
-                </>
-              )}
-            </Button>
+            <HelpTooltip text="Clica aqui e a IA mostra os motivos da rejeição e o que fazer pra mudar isso.">
+              <Button onClick={handleAnalyze} disabled={isAnalyzing || !selectedCandidate}>
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Analisando...
+                  </>
+                ) : (
+                  <>
+                    <TrendingDown className="mr-2 h-4 w-4" />
+                    Analisar Rejeição
+                  </>
+                )}
+              </Button>
+            </HelpTooltip>
           </div>
         </CardContent>
       </Card>
@@ -200,38 +208,46 @@ const RejectionAnalysisPage = () => {
         <div className="space-y-6">
           {/* Stats Bar */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Card>
-              <CardContent className="pt-6 text-center">
-                <p className="text-sm text-muted-foreground">Comentários Negativos</p>
-                <p className="text-3xl font-bold text-destructive">{stats.negativeCount}</p>
-                <p className="text-xs text-muted-foreground">de {stats.totalComments} totais</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6 text-center">
-                <p className="text-sm text-muted-foreground">Taxa de Rejeição</p>
-                <p className="text-3xl font-bold text-destructive">{stats.rejectionRate.toFixed(1)}%</p>
-                <p className="text-xs text-muted-foreground">do total de comentários</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6 flex flex-col items-center justify-center">
-                <p className="text-sm text-muted-foreground mb-2">Nível de Risco</p>
-                <Badge className={`text-base px-4 py-1 ${risk?.color}`}>
-                  {risk?.icon}
-                  <span className="ml-1">{risk?.label}</span>
-                </Badge>
-              </CardContent>
-            </Card>
+            <HelpTooltip text="Quantos comentários negativos a IA encontrou no período.">
+              <Card>
+                <CardContent className="pt-6 text-center">
+                  <p className="text-sm text-muted-foreground">Comentários Negativos</p>
+                  <p className="text-3xl font-bold text-destructive">{stats.negativeCount}</p>
+                  <p className="text-xs text-muted-foreground">de {stats.totalComments} totais</p>
+                </CardContent>
+              </Card>
+            </HelpTooltip>
+            <HelpTooltip text="Porcentagem dos comentários que estão criticando seu candidato.">
+              <Card>
+                <CardContent className="pt-6 text-center">
+                  <p className="text-sm text-muted-foreground">Taxa de Rejeição</p>
+                  <p className="text-3xl font-bold text-destructive">{stats.rejectionRate.toFixed(1)}%</p>
+                  <p className="text-xs text-muted-foreground">do total de comentários</p>
+                </CardContent>
+              </Card>
+            </HelpTooltip>
+            <HelpTooltip text="Resumo: o quão perigosa é a rejeição agora. Vermelho = preocupante, verde = tranquilo.">
+              <Card>
+                <CardContent className="pt-6 flex flex-col items-center justify-center">
+                  <p className="text-sm text-muted-foreground mb-2">Nível de Risco</p>
+                  <Badge className={`text-base px-4 py-1 ${risk?.color}`}>
+                    {risk?.icon}
+                    <span className="ml-1">{risk?.label}</span>
+                  </Badge>
+                </CardContent>
+              </Card>
+            </HelpTooltip>
           </div>
 
           {/* Summary */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-destructive" />
-                Resumo da Rejeição
-              </CardTitle>
+              <HelpTooltip text="Resumão em texto dos motivos pelos quais o povo está criticando seu candidato.">
+                <CardTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                  Resumo da Rejeição
+                </CardTitle>
+              </HelpTooltip>
             </CardHeader>
             <CardContent>
               <p className="text-foreground leading-relaxed">{analysis.rejection_summary}</p>
@@ -241,10 +257,12 @@ const RejectionAnalysisPage = () => {
           {/* Rejection Themes */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Tag className="h-5 w-5" />
-                Temas de Crítica
-              </CardTitle>
+              <HelpTooltip text="As críticas agrupadas por assunto, pra ficar fácil ver quais temas mais incomodam o povo.">
+                <CardTitle className="flex items-center gap-2">
+                  <Tag className="h-5 w-5" />
+                  Temas de Crítica
+                </CardTitle>
+              </HelpTooltip>
               <CardDescription>Principais motivos agrupados por tema</CardDescription>
             </CardHeader>
             <CardContent>
@@ -270,10 +288,12 @@ const RejectionAnalysisPage = () => {
           {/* Keywords */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MessageSquare className="h-5 w-5" />
-                Palavras-chave Recorrentes
-              </CardTitle>
+              <HelpTooltip text="As palavras que mais aparecem nas críticas. Ajudam a entender o tom da revolta.">
+                <CardTitle className="flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5" />
+                  Palavras-chave Recorrentes
+                </CardTitle>
+              </HelpTooltip>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
@@ -289,10 +309,12 @@ const RejectionAnalysisPage = () => {
           {/* Crisis Points */}
           <Card className="border-destructive/30">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-destructive">
-                <ShieldAlert className="h-5 w-5" />
-                Pontos Críticos
-              </CardTitle>
+              <HelpTooltip text="Coisas urgentes que precisam de atenção AGORA pra não virar uma crise maior.">
+                <CardTitle className="flex items-center gap-2 text-destructive">
+                  <ShieldAlert className="h-5 w-5" />
+                  Pontos Críticos
+                </CardTitle>
+              </HelpTooltip>
               <CardDescription>Itens que exigem atenção imediata</CardDescription>
             </CardHeader>
             <CardContent>
@@ -310,10 +332,12 @@ const RejectionAnalysisPage = () => {
           {/* Mitigation Strategies */}
           <Card className="border-primary/30">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-primary">
-                <Lightbulb className="h-5 w-5" />
-                Estratégias de Mitigação
-              </CardTitle>
+              <HelpTooltip text="Sugestões práticas do que fazer pra diminuir essa rejeição.">
+                <CardTitle className="flex items-center gap-2 text-primary">
+                  <Lightbulb className="h-5 w-5" />
+                  Estratégias de Mitigação
+                </CardTitle>
+              </HelpTooltip>
               <CardDescription>Recomendações para reduzir a rejeição</CardDescription>
             </CardHeader>
             <CardContent>

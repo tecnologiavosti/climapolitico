@@ -220,63 +220,73 @@ export default function Analytics() {
 
       {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Sentimento Médio</CardTitle>
-            {generalTrend === "positive" ? (
-              <TrendingUp className="h-4 w-4 text-success" />
-            ) : generalTrend === "negative" ? (
-              <TrendingDown className="h-4 w-4 text-destructive" />
-            ) : (
-              <TrendingUp className="h-4 w-4 text-warning" />
-            )}
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{averageSentiment}%</div>
-            <p className="text-xs text-muted-foreground">
-              {generalTrend === "positive" ? "Tendência positiva" : generalTrend === "negative" ? "Tendência negativa" : "Estável"}
-            </p>
-          </CardContent>
-        </Card>
+        <HelpTooltip text="Como o povo está se sentindo na média. Quanto maior, mais elogios; quanto menor, mais críticas.">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Sentimento Médio</CardTitle>
+              {generalTrend === "positive" ? (
+                <TrendingUp className="h-4 w-4 text-success" />
+              ) : generalTrend === "negative" ? (
+                <TrendingDown className="h-4 w-4 text-destructive" />
+              ) : (
+                <TrendingUp className="h-4 w-4 text-warning" />
+              )}
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{averageSentiment}%</div>
+              <p className="text-xs text-muted-foreground">
+                {generalTrend === "positive" ? "Tendência positiva" : generalTrend === "negative" ? "Tendência negativa" : "Estável"}
+              </p>
+            </CardContent>
+          </Card>
+        </HelpTooltip>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Menções</CardTitle>
-            <MessageSquare className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalMentions.toLocaleString('pt-BR')}</div>
-            <p className="text-xs text-muted-foreground">{uniqueAuthors} autores únicos</p>
-          </CardContent>
-        </Card>
+        <HelpTooltip text="Quantas vezes seus candidatos foram citados nas redes nesse período.">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total de Menções</CardTitle>
+              <MessageSquare className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalMentions.toLocaleString('pt-BR')}</div>
+              <p className="text-xs text-muted-foreground">{uniqueAuthors} autores únicos</p>
+            </CardContent>
+          </Card>
+        </HelpTooltip>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Taxa Positiva</CardTitle>
-            <ThumbsUp className="h-4 w-4 text-success" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{positiveRate}%</div>
-            <p className="text-xs text-muted-foreground">{positiveCount} comentários positivos</p>
-          </CardContent>
-        </Card>
+        <HelpTooltip text="De cada 100 comentários, quantos foram elogios.">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Taxa Positiva</CardTitle>
+              <ThumbsUp className="h-4 w-4 text-success" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{positiveRate}%</div>
+              <p className="text-xs text-muted-foreground">{positiveCount} comentários positivos</p>
+            </CardContent>
+          </Card>
+        </HelpTooltip>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Engajamento</CardTitle>
-            <TrendingUp className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalLikes.toLocaleString('pt-BR')}</div>
-            <p className="text-xs text-muted-foreground">curtidas nos comentários</p>
-          </CardContent>
-        </Card>
+        <HelpTooltip text="Soma de curtidas que os comentários sobre seus candidatos receberam.">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Engajamento</CardTitle>
+              <TrendingUp className="h-4 w-4 text-primary" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalLikes.toLocaleString('pt-BR')}</div>
+              <p className="text-xs text-muted-foreground">curtidas nos comentários</p>
+            </CardContent>
+          </Card>
+        </HelpTooltip>
       </div>
 
       {/* Temporal Evolution - Full Width */}
       <Card>
         <CardHeader>
-          <CardTitle>Evolução do Sentimento</CardTitle>
+          <HelpTooltip text="Mostra dia a dia se o povo está elogiando ou criticando mais ao longo do tempo.">
+            <CardTitle>Evolução do Sentimento</CardTitle>
+          </HelpTooltip>
           <CardDescription>Distribuição de sentimentos ao longo do tempo (dados reais)</CardDescription>
         </CardHeader>
         <CardContent>
@@ -340,7 +350,9 @@ export default function Analytics() {
         {/* Sentiment Distribution */}
         <Card>
           <CardHeader>
-            <CardTitle>Distribuição de Sentimento</CardTitle>
+            <HelpTooltip text="Pizza com a divisão entre comentários positivos, negativos e neutros.">
+              <CardTitle>Distribuição de Sentimento</CardTitle>
+            </HelpTooltip>
             <CardDescription>Proporção de comentários por sentimento</CardDescription>
           </CardHeader>
           <CardContent>
@@ -377,7 +389,9 @@ export default function Analytics() {
         {/* Network Distribution - only show if there's data */}
         <Card>
           <CardHeader>
-            <CardTitle>Origem dos Dados</CardTitle>
+            <HelpTooltip text="De qual rede social vem cada parte dos comentários.">
+              <CardTitle>Origem dos Dados</CardTitle>
+            </HelpTooltip>
             <CardDescription>Comentários por rede social</CardDescription>
           </CardHeader>
           <CardContent>
@@ -432,7 +446,9 @@ export default function Analytics() {
       {/* Volume Chart */}
       <Card>
         <CardHeader>
-          <CardTitle>Volume de Menções</CardTitle>
+          <HelpTooltip text="Quantos comentários foram coletados em cada dia. Picos = momentos de mais barulho nas redes.">
+            <CardTitle>Volume de Menções</CardTitle>
+          </HelpTooltip>
           <CardDescription>Total de comentários coletados por dia</CardDescription>
         </CardHeader>
         <CardContent>
