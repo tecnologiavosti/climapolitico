@@ -43,18 +43,18 @@ import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 // Módulos ativos no menu principal
 const mainItems = [
-  { title: "Visão Geral", url: "/dashboard", icon: BarChart3, tip: "Painel inicial com indicadores resumidos de todos os candidatos monitorados." },
-  { title: "Resumo Inteligente", url: "/dashboard/candidate-summary", icon: FileText, tip: "Resumo executivo gerado por IA a partir dos comentários reais coletados." },
-  { title: "Análise de Rejeição", url: "/dashboard/rejection-analysis", icon: ThumbsDown, tip: "Mostra os principais motivos pelos quais o público rejeita o candidato." },
-  { title: "Recomendações de Narrativa", url: "/dashboard/narrative-recommendations", icon: Sparkles, tip: "Sugestões de discurso e posicionamento baseadas na percepção pública." },
-  { title: "Comparação de Candidatos", url: "/dashboard/candidate-comparison", icon: GitCompareArrows, tip: "Compare métricas e percepção entre dois ou mais candidatos lado a lado." },
-  { title: "Relatório de Evento", url: "/dashboard/event-report", icon: Calendar, tip: "Veja como um evento específico (entrevista, debate) impactou a percepção pública." },
-  { title: "Monitor Tempo Real", url: "/dashboard/realtime-monitor", icon: Radio, tip: "Acompanhe os comentários e o sentimento sendo coletados em tempo real." },
-  { title: "Candidatos", url: "/dashboard/candidates", icon: Users, tip: "Gerencie seus candidatos: adicionar, remover, analisar e coletar dados." },
-  { title: "Catálogo de Candidatos", url: "/dashboard/candidates-catalog", icon: BookUser, tip: "Catálogo público de candidatos prontos para você adicionar à sua conta." },
-  { title: "Analytics Avançado", url: "/dashboard/analytics-advanced", icon: LineChart, tip: "Gráficos detalhados de evolução temporal, redes sociais e palavras-chave." },
-  { title: "Ranking", url: "/dashboard/ranking", icon: Trophy, tip: "Ranking dos candidatos pelo desempenho geral nos últimos 30 dias." },
-  { title: "Configuração de Coleta", url: "/dashboard/collection-status", icon: Database, tip: "Acompanhe o status das coletas automáticas em cada rede social." },
+  { title: "Visão Geral", url: "/dashboard", icon: BarChart3, tip: "Tela inicial. Mostra um resumão de como seus candidatos estão indo nas redes." },
+  { title: "Resumo Inteligente", url: "/dashboard/candidate-summary", icon: FileText, tip: "A IA lê tudo que falaram do seu candidato e te entrega um resumo pronto." },
+  { title: "Análise de Rejeição", url: "/dashboard/rejection-analysis", icon: ThumbsDown, tip: "Mostra por que as pessoas estão criticando seu candidato." },
+  { title: "Recomendações de Narrativa", url: "/dashboard/narrative-recommendations", icon: Sparkles, tip: "Dicas de fala e postura para o seu candidato, com base no que o povo comenta." },
+  { title: "Comparação de Candidatos", url: "/dashboard/candidate-comparison", icon: GitCompareArrows, tip: "Coloque dois ou mais candidatos lado a lado pra ver quem está melhor." },
+  { title: "Relatório de Evento", url: "/dashboard/event-report", icon: Calendar, tip: "Veja se um debate, entrevista ou ato ajudou ou atrapalhou seu candidato." },
+  { title: "Monitor Tempo Real", url: "/dashboard/realtime-monitor", icon: Radio, tip: "Acompanhe os comentários chegando ao vivo, na hora em que o povo posta." },
+  { title: "Candidatos", url: "/dashboard/candidates", icon: Users, tip: "Onde você adiciona, remove e cuida dos candidatos que está acompanhando." },
+  { title: "Catálogo de Candidatos", url: "/dashboard/candidates-catalog", icon: BookUser, tip: "Lista de candidatos já prontos. Escolha um e adicione na sua conta com 1 clique." },
+  { title: "Analytics Avançado", url: "/dashboard/analytics-advanced", icon: LineChart, tip: "Gráficos detalhados pra quem quer entender tudo a fundo." },
+  { title: "Ranking", url: "/dashboard/ranking", icon: Trophy, tip: "Quem está ganhando e quem está perdendo nas redes nos últimos 30 dias." },
+  { title: "Configuração de Coleta", url: "/dashboard/collection-status", icon: Database, tip: "Veja se a coleta de dados em cada rede social está funcionando direitinho." },
 ];
 
 // Módulos temporariamente desativados (mantidos para reativação futura)
@@ -70,14 +70,14 @@ const mainItems = [
 // ];
 
 const adminItems = [
-  { title: "Administração", url: "/dashboard/admin", icon: Shield, tip: "Painel administrativo: gerenciar usuários, planos e métricas globais." },
-  { title: "APIs & Integrações", url: "/dashboard/admin/api-settings", icon: Key, tip: "Configurar chaves de API das redes sociais e serviços externos." },
+  { title: "Administração", url: "/dashboard/admin", icon: Shield, tip: "Área só pra administradores: cuidar de usuários, planos e da plataforma toda." },
+  { title: "APIs & Integrações", url: "/dashboard/admin/api-settings", icon: Key, tip: "Liga e desliga as conexões com as redes sociais (YouTube, Twitter etc.)." },
 ];
 
 const settingsItems = [
-  { title: "Notificações", url: "/dashboard/notifications", icon: Bell, tip: "Veja alertas sobre mudanças de sentimento, novas menções e novidades." },
-  { title: "Assinatura", url: "/dashboard/subscription", icon: CreditCard, tip: "Consulte seu plano atual, limites de uso e faça upgrade se precisar." },
-  { title: "Configurações", url: "/dashboard/settings", icon: Settings, tip: "Ajuste seu perfil, preferências de idioma, tema e segurança da conta." },
+  { title: "Notificações", url: "/dashboard/notifications", icon: Bell, tip: "Avisos importantes: quando algo mudar, você fica sabendo aqui." },
+  { title: "Assinatura", url: "/dashboard/subscription", icon: CreditCard, tip: "Veja seu plano, quanto já usou no mês e troque de plano se quiser." },
+  { title: "Configurações", url: "/dashboard/settings", icon: Settings, tip: "Mexa no seu perfil, troque a senha, mude o tema e ajuste suas preferências." },
 ];
 
 export function AppSidebar() {
