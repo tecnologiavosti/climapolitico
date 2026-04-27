@@ -25,8 +25,10 @@ import {
   Key,
   Import,
   BookUser,
+  Database as DatabaseIcon,
 } from "lucide-react";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
+import { useTooltipsEnabled } from "@/hooks/useTooltipsEnabled";
 
 import {
   Sidebar,
@@ -86,6 +88,7 @@ export function AppSidebar() {
   const currentPath = location.pathname;
   const isCollapsed = state === "collapsed";
   const { isAdmin } = useAdminCheck();
+  const tooltipsEnabled = useTooltipsEnabled();
 
   const isActive = (path: string) => {
     if (path === "/dashboard") {
@@ -167,6 +170,34 @@ export function AppSidebar() {
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {/* Documentação — visível só para a conta demo de tooltips */}
+        {tooltipsEnabled && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Documentação</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <HelpTooltip
+                      text="Entenda como cada rede social é monitorada: método, frequência e o que coletamos."
+                      side="right"
+                    >
+                      <NavLink
+                        to="/dashboard/data-collection-methodology"
+                        className="hover:bg-muted/50"
+                        activeClassName="bg-muted text-primary font-medium"
+                      >
+                        <DatabaseIcon className="h-4 w-4" />
+                        {!isCollapsed && <span>Como Coletamos os Dados</span>}
+                      </NavLink>
+                    </HelpTooltip>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
