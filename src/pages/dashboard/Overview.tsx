@@ -424,7 +424,7 @@ export default function Overview() {
             <LayoutDashboard className="h-5 w-5 text-primary" />
             <span className="font-medium">Visão Consolidada do Candidato</span>
           </div>
-          <HelpTooltip text="Escolha um candidato para abrir o painel detalhado só dele com todas as métricas consolidadas.">
+          <HelpTooltip text="Clique aqui pra ver os números só de um candidato específico.">
             <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
               <SelectTrigger className="w-64">
                 <SelectValue placeholder="Selecione um candidato para análise detalhada" />
@@ -439,7 +439,7 @@ export default function Overview() {
             </Select>
           </HelpTooltip>
           {selectedCandidateId && (
-            <HelpTooltip text="Volta para a visão geral de todos os candidatos.">
+            <HelpTooltip text="Volta pra tela que mostra todos os candidatos juntos.">
               <Button variant="ghost" size="sm" onClick={() => setSelectedCandidateId("")}>
                 Limpar seleção
               </Button>
@@ -455,7 +455,7 @@ export default function Overview() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <HelpTooltip text="Total de comentários, posts e menções coletados em todas as redes sociais sobre seus candidatos.">
+        <HelpTooltip text="Quantas vezes seus candidatos foram citados nas redes sociais.">
           <Card className="p-6 cursor-help">
             <div className="flex items-start justify-between">
               <div>
@@ -477,7 +477,7 @@ export default function Overview() {
           </Card>
         </HelpTooltip>
 
-        <HelpTooltip text="Quantidade de candidatos que você está monitorando ativamente na plataforma.">
+        <HelpTooltip text="Quantos candidatos você está acompanhando agora.">
           <Card className="p-6 cursor-help">
             <div className="flex items-start justify-between">
               <div>
@@ -499,7 +499,7 @@ export default function Overview() {
           </Card>
         </HelpTooltip>
 
-        <HelpTooltip text="Sentimento médio dos comentários: 100% é totalmente positivo, 0% totalmente negativo e 50% neutro.">
+        <HelpTooltip text="Como o povo está se sentindo: perto de 100% é elogio, perto de 0% é crítica.">
           <Card className="p-6 cursor-help">
             <div className="flex items-start justify-between">
               <div>
@@ -525,7 +525,7 @@ export default function Overview() {
           </Card>
         </HelpTooltip>
 
-        <HelpTooltip text="Soma de curtidas, respostas e compartilhamentos recebidos pelas menções coletadas.">
+        <HelpTooltip text="Quantas curtidas, respostas e compartilhamentos seus candidatos receberam no total.">
           <Card className="p-6 cursor-help">
             <div className="flex items-start justify-between">
               <div>
@@ -556,7 +556,7 @@ export default function Overview() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Sentiment Over Time */}
         <Card className="p-6">
-          <HelpTooltip text="Mostra como o sentimento positivo, negativo e neutro variou em cada um dos últimos 7 dias.">
+          <HelpTooltip text="Mostra dia a dia se o povo elogiou ou criticou mais nos últimos 7 dias.">
             <div className="mb-4 cursor-help">
               <h3 className="text-lg font-bold">Sentimento ao Longo do Tempo</h3>
               <p className="text-sm text-muted-foreground">Últimos 7 dias</p>
@@ -592,7 +592,7 @@ export default function Overview() {
 
         {/* Network Distribution */}
         <Card className="p-6">
-          <HelpTooltip text="Quanto cada rede social (YouTube, Twitter, etc.) contribui para o total de menções coletadas.">
+          <HelpTooltip text="Mostra de qual rede social vem a maior parte dos comentários.">
             <div className="mb-4 cursor-help">
               <h3 className="text-lg font-bold">Distribuição por Rede Social</h3>
               <p className="text-sm text-muted-foreground">Fontes de dados reais</p>
@@ -653,7 +653,7 @@ export default function Overview() {
 
       {/* Candidates Performance */}
       <Card className="p-6">
-        <HelpTooltip text="Os 5 candidatos com mais menções, comparando volume e sentimento médio lado a lado.">
+        <HelpTooltip text="Os 5 candidatos mais comentados agora, lado a lado.">
           <div className="mb-4 cursor-help">
             <h3 className="text-lg font-bold">Performance dos Candidatos (Top 5)</h3>
             <p className="text-sm text-muted-foreground">Menções vs Sentimento</p>
@@ -694,7 +694,7 @@ export default function Overview() {
             <h3 className="text-lg font-bold">Rankings Recentes</h3>
             <p className="text-sm text-muted-foreground">Mesma fórmula da aba Ranking · últimos 30 dias</p>
           </div>
-          <HelpTooltip text="Recalcula o ranking geral dos seus candidatos com base nos dados dos últimos 30 dias.">
+          <HelpTooltip text="Atualiza o ranking com os dados mais recentes do último mês.">
             <Button
               onClick={handleCalculateRanking}
               disabled={calculatingRanking || !candidates?.length}

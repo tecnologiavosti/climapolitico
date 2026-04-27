@@ -124,7 +124,7 @@ const CandidateComparisonPage = () => {
           <h1 className="text-3xl font-bold">Comparação de Candidatos</h1>
           <p className="text-muted-foreground mt-1">Visualização comparativa rápida baseada em dados reais.</p>
         </div>
-        <HelpTooltip text="Define o critério usado para ordenar os candidatos na comparação (menções, sentimento, etc.).">
+        <HelpTooltip text="Escolha como ordenar a lista: por menções, por sentimento, etc.">
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortKey)}>
             <SelectTrigger className="w-[200px]">
               <SelectValue placeholder="Ordenar por" />

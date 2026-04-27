@@ -100,7 +100,7 @@ const CandidateSummary = () => {
           <div className="flex flex-col sm:flex-row gap-4 items-end">
             <div className="flex-1 space-y-2">
               <label className="text-sm font-medium">Candidato</label>
-              <HelpTooltip text="Escolha qual candidato você quer resumir. Aparecem aqui apenas os que você adicionou na sua conta.">
+              <HelpTooltip text="Escolha de qual candidato você quer ver o resumo.">
                 <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione um candidato" />
@@ -117,7 +117,7 @@ const CandidateSummary = () => {
             </div>
             <div className="w-40 space-y-2">
               <label className="text-sm font-medium">Período</label>
-              <HelpTooltip text="Define a janela de tempo dos comentários analisados. Quanto maior, mais dados, porém mais lento.">
+              <HelpTooltip text="Quantos dias atrás a IA vai olhar pra montar o resumo.">
                 <Select value={daysBack} onValueChange={setDaysBack}>
                   <SelectTrigger>
                     <SelectValue />
@@ -134,7 +134,7 @@ const CandidateSummary = () => {
                 </Select>
               </HelpTooltip>
             </div>
-            <HelpTooltip text="A IA lê todos os comentários do período e devolve um resumo executivo com pontos fortes, fracos e recomendações.">
+            <HelpTooltip text="Clica aqui e a IA monta um resumo pronto pra você ler.">
               <Button onClick={handleGenerate} disabled={summaryMutation.isPending || !selectedCandidate}>
                 {summaryMutation.isPending ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Gerando...</>
@@ -220,7 +220,7 @@ const CandidateSummary = () => {
           {/* Executive Summary */}
           <Card>
             <CardHeader>
-              <HelpTooltip text="Parágrafo curto escrito pela IA resumindo a percepção pública geral do candidato no período.">
+              <HelpTooltip text="Em poucas linhas: como o povo está vendo seu candidato agora.">
                 <CardTitle className="text-lg flex items-center gap-2 cursor-help">
                   <FileText className="h-5 w-5 text-primary" />
                   Resumo Executivo
@@ -236,7 +236,7 @@ const CandidateSummary = () => {
           {(summary.risk_alert || summary.opportunity_alert) && (
             <div className="grid gap-4 md:grid-cols-2">
               {summary.risk_alert && (
-                <HelpTooltip text="Sinal de atenção: situação que pode prejudicar a imagem do candidato e merece resposta rápida.">
+                <HelpTooltip text="Cuidado! Algo que pode prejudicar seu candidato e precisa de resposta rápida.">
                   <Card className="border-red-200 dark:border-red-900 cursor-help">
                     <CardContent className="pt-6">
                       <div className="flex gap-3">
@@ -251,7 +251,7 @@ const CandidateSummary = () => {
                 </HelpTooltip>
               )}
               {summary.opportunity_alert && (
-                <HelpTooltip text="Oportunidade detectada: tema ou momento que o candidato pode aproveitar a favor da campanha.">
+                <HelpTooltip text="Boa chance pra seu candidato usar a favor dele.">
                   <Card className="border-green-200 dark:border-green-900 cursor-help">
                     <CardContent className="pt-6">
                       <div className="flex gap-3">
@@ -272,7 +272,7 @@ const CandidateSummary = () => {
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>
-                <HelpTooltip text="Aspectos elogiados pelo público nos comentários: elogios, apoios e reconhecimentos.">
+                <HelpTooltip text="O que o povo está elogiando no seu candidato.">
                   <CardTitle className="text-lg flex items-center gap-2 cursor-help">
                     <ThumbsUp className="h-5 w-5 text-green-500" />
                     Pontos Positivos
@@ -293,7 +293,7 @@ const CandidateSummary = () => {
 
             <Card>
               <CardHeader>
-                <HelpTooltip text="Aspectos criticados pelo público: queixas, ataques e pontos de tensão recorrentes nos comentários.">
+                <HelpTooltip text="O que o povo está reclamando do seu candidato.">
                   <CardTitle className="text-lg flex items-center gap-2 cursor-help">
                     <ThumbsDown className="h-5 w-5 text-red-500" />
                     Pontos Negativos
@@ -316,7 +316,7 @@ const CandidateSummary = () => {
           {/* Recommendations */}
           <Card>
             <CardHeader>
-              <HelpTooltip text="Sugestões práticas de discurso e posicionamento que a IA recomenda com base nos comentários analisados.">
+              <HelpTooltip text="Dicas práticas do que falar e como agir, baseadas no que o povo comenta.">
                 <CardTitle className="text-lg flex items-center gap-2 cursor-help">
                   <Lightbulb className="h-5 w-5 text-yellow-500" />
                   Recomendações de Narrativa

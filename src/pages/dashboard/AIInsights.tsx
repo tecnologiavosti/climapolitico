@@ -101,7 +101,7 @@ const AIInsights = () => {
             Inteligência estratégica gerada automaticamente
           </p>
         </div>
-        <HelpTooltip text="Pede para a IA varrer os dados recentes e gerar novos alertas, riscos e oportunidades estratégicas.">
+        <HelpTooltip text="Pede pra IA olhar os dados novos e te avisar sobre o que merece atenção.">
           <Button 
             onClick={() => generateInsightsMutation.mutate(undefined)}
             disabled={generateInsightsMutation.isPending}
@@ -123,7 +123,7 @@ const AIInsights = () => {
 
       {/* KPIs */}
       <div className="grid gap-4 md:grid-cols-4">
-        <HelpTooltip text="Quantidade total de insights ativos gerados pela IA nos últimos 30 dias.">
+        <HelpTooltip text="Quantas dicas a IA já te deu no último mês.">
           <Card className="cursor-help">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total de Insights</CardTitle>
@@ -136,7 +136,7 @@ const AIInsights = () => {
           </Card>
         </HelpTooltip>
 
-        <HelpTooltip text="Insights de prioridade alta que pedem atenção imediata da equipe de campanha.">
+        <HelpTooltip text="Coisas urgentes que a IA achou e que você deveria olhar agora.">
           <Card className="cursor-help">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Alertas Críticos</CardTitle>
@@ -149,7 +149,7 @@ const AIInsights = () => {
           </Card>
         </HelpTooltip>
 
-        <HelpTooltip text="Pontos positivos detectados pela IA que podem ser explorados para fortalecer a campanha.">
+        <HelpTooltip text="Boas chances que a IA encontrou pra você aproveitar na campanha.">
           <Card className="cursor-help">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Oportunidades</CardTitle>
@@ -162,7 +162,7 @@ const AIInsights = () => {
           </Card>
         </HelpTooltip>
 
-        <HelpTooltip text="Quanto a IA confia, em média, nos insights gerados — quanto maior, mais sólidos os dados.">
+        <HelpTooltip text="O quanto a IA tem certeza do que está te dizendo. Quanto maior, melhor.">
           <Card className="cursor-help">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Confiança Média</CardTitle>
