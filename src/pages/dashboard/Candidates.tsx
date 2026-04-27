@@ -629,13 +629,15 @@ export default function Candidates() {
 
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button 
-                disabled={isLimitReached}
-                title={isLimitReached ? "Limite de candidatos atingido" : ""}
-              >
-                <UserPlus className="mr-2 h-4 w-4" />
-                Adicionar Candidato
-              </Button>
+              <HelpTooltip text="Cadastra um novo candidato pra você começar a acompanhar.">
+                <Button 
+                  disabled={isLimitReached}
+                  title={isLimitReached ? "Limite de candidatos atingido" : ""}
+                >
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  Adicionar Candidato
+                </Button>
+              </HelpTooltip>
             </DialogTrigger>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
