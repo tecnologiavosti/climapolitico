@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Loader2, AlertTriangle, ThumbsDown, MessageSquare, ShieldAlert, Lightbulb, Tag, TrendingDown } from "lucide-react";
 import { toast } from "sonner";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 interface RejectionTheme {
   theme: string;

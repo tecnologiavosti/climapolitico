@@ -14,6 +14,7 @@ import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { useAuth } from "@/hooks/useAuth";
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 import { useAllCandidateMetrics, CandidateMetrics } from "@/hooks/useCandidateMetrics";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 // Componentes temporariamente ocultos da Visão Geral (mantidos para uso futuro)
 // import { AIModelsPanel } from "@/components/dashboard/AIModelsPanel";
@@ -423,22 +424,26 @@ export default function Overview() {
             <LayoutDashboard className="h-5 w-5 text-primary" />
             <span className="font-medium">Visão Consolidada do Candidato</span>
           </div>
-          <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
-            <SelectTrigger className="w-64">
-              <SelectValue placeholder="Selecione um candidato para análise detalhada" />
-            </SelectTrigger>
-            <SelectContent>
-              {candidates?.map((candidate) => (
-                <SelectItem key={candidate.id} value={candidate.id}>
-                  {candidate.full_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <HelpTooltip text="Escolha um candidato para abrir o painel detalhado só dele com todas as métricas consolidadas.">
+            <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="Selecione um candidato para análise detalhada" />
+              </SelectTrigger>
+              <SelectContent>
+                {candidates?.map((candidate) => (
+                  <SelectItem key={candidate.id} value={candidate.id}>
+                    {candidate.full_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </HelpTooltip>
           {selectedCandidateId && (
-            <Button variant="ghost" size="sm" onClick={() => setSelectedCandidateId("")}>
-              Limpar seleção
-            </Button>
+            <HelpTooltip text="Volta para a visão geral de todos os candidatos.">
+              <Button variant="ghost" size="sm" onClick={() => setSelectedCandidateId("")}>
+                Limpar seleção
+              </Button>
+            </HelpTooltip>
           )}
         </div>
       </Card>
@@ -450,89 +455,97 @@ export default function Overview() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Menções Total</p>
-              {isLoading ? (
-                <Skeleton className="h-10 w-24 mt-2" />
-              ) : (
-                <p className="text-3xl font-bold mt-2">{totalMentions.toLocaleString('pt-BR')}</p>
-              )}
-              <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
-                <Activity className="h-4 w-4" />
-                <span>{uniqueAuthors} autores únicos</span>
-              </div>
-            </div>
-            <div className="p-3 bg-gradient-primary rounded-lg">
-              <MessageSquare className="h-6 w-6 text-white" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Candidatos</p>
-              {isLoading ? (
-                <Skeleton className="h-10 w-16 mt-2" />
-              ) : (
-                <p className="text-3xl font-bold mt-2">{totalCandidates}</p>
-              )}
-              <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
-                <Activity className="h-4 w-4" />
-                <span>monitorados</span>
-              </div>
-            </div>
-            <div className="p-3 bg-gradient-primary rounded-lg">
-              <Users className="h-6 w-6 text-white" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Sentimento Médio</p>
-              {isLoading ? (
-                <Skeleton className="h-10 w-20 mt-2" />
-              ) : (
-                <p className="text-3xl font-bold mt-2">{avgSentiment}%</p>
-              )}
-              <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
-                {avgSentiment >= 50 ? (
-                  <TrendingUp className="h-4 w-4 text-success" />
+        <HelpTooltip text="Total de comentários, posts e menções coletados em todas as redes sociais sobre seus candidatos.">
+          <Card className="p-6 cursor-help">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Menções Total</p>
+                {isLoading ? (
+                  <Skeleton className="h-10 w-24 mt-2" />
                 ) : (
-                  <TrendingDown className="h-4 w-4 text-destructive" />
+                  <p className="text-3xl font-bold mt-2">{totalMentions.toLocaleString('pt-BR')}</p>
                 )}
-                <span>{avgSentiment >= 50 ? 'Positivo' : 'Atenção'}</span>
+                <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
+                  <Activity className="h-4 w-4" />
+                  <span>{uniqueAuthors} autores únicos</span>
+                </div>
+              </div>
+              <div className="p-3 bg-gradient-primary rounded-lg">
+                <MessageSquare className="h-6 w-6 text-white" />
               </div>
             </div>
-            <div className="p-3 bg-gradient-primary rounded-lg">
-              <TrendingUp className="h-6 w-6 text-white" />
-            </div>
-          </div>
-        </Card>
+          </Card>
+        </HelpTooltip>
 
-        <Card className="p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Engajamento Total</p>
-              {isLoading ? (
-                <Skeleton className="h-10 w-16 mt-2" />
-              ) : (
-                <p className="text-3xl font-bold mt-2">{aggregatedMetrics.totalEngagement.toLocaleString('pt-BR')}</p>
-              )}
-              <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
-                <Activity className="h-4 w-4" />
-                <span>curtidas</span>
+        <HelpTooltip text="Quantidade de candidatos que você está monitorando ativamente na plataforma.">
+          <Card className="p-6 cursor-help">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Candidatos</p>
+                {isLoading ? (
+                  <Skeleton className="h-10 w-16 mt-2" />
+                ) : (
+                  <p className="text-3xl font-bold mt-2">{totalCandidates}</p>
+                )}
+                <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
+                  <Activity className="h-4 w-4" />
+                  <span>monitorados</span>
+                </div>
+              </div>
+              <div className="p-3 bg-gradient-primary rounded-lg">
+                <Users className="h-6 w-6 text-white" />
               </div>
             </div>
-            <div className="p-3 bg-gradient-primary rounded-lg">
-              <TrendingUp className="h-6 w-6 text-white" />
+          </Card>
+        </HelpTooltip>
+
+        <HelpTooltip text="Sentimento médio dos comentários: 100% é totalmente positivo, 0% totalmente negativo e 50% neutro.">
+          <Card className="p-6 cursor-help">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Sentimento Médio</p>
+                {isLoading ? (
+                  <Skeleton className="h-10 w-20 mt-2" />
+                ) : (
+                  <p className="text-3xl font-bold mt-2">{avgSentiment}%</p>
+                )}
+                <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
+                  {avgSentiment >= 50 ? (
+                    <TrendingUp className="h-4 w-4 text-success" />
+                  ) : (
+                    <TrendingDown className="h-4 w-4 text-destructive" />
+                  )}
+                  <span>{avgSentiment >= 50 ? 'Positivo' : 'Atenção'}</span>
+                </div>
+              </div>
+              <div className="p-3 bg-gradient-primary rounded-lg">
+                <TrendingUp className="h-6 w-6 text-white" />
+              </div>
             </div>
-          </div>
-        </Card>
+          </Card>
+        </HelpTooltip>
+
+        <HelpTooltip text="Soma de curtidas, respostas e compartilhamentos recebidos pelas menções coletadas.">
+          <Card className="p-6 cursor-help">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Engajamento Total</p>
+                {isLoading ? (
+                  <Skeleton className="h-10 w-16 mt-2" />
+                ) : (
+                  <p className="text-3xl font-bold mt-2">{aggregatedMetrics.totalEngagement.toLocaleString('pt-BR')}</p>
+                )}
+                <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
+                  <Activity className="h-4 w-4" />
+                  <span>curtidas</span>
+                </div>
+              </div>
+              <div className="p-3 bg-gradient-primary rounded-lg">
+                <TrendingUp className="h-6 w-6 text-white" />
+              </div>
+            </div>
+          </Card>
+        </HelpTooltip>
       </div>
 
       {/* Componentes de IA temporariamente ocultos da Visão Geral */}
@@ -543,10 +556,12 @@ export default function Overview() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Sentiment Over Time */}
         <Card className="p-6">
-          <div className="mb-4">
-            <h3 className="text-lg font-bold">Sentimento ao Longo do Tempo</h3>
-            <p className="text-sm text-muted-foreground">Últimos 7 dias</p>
-          </div>
+          <HelpTooltip text="Mostra como o sentimento positivo, negativo e neutro variou em cada um dos últimos 7 dias.">
+            <div className="mb-4 cursor-help">
+              <h3 className="text-lg font-bold">Sentimento ao Longo do Tempo</h3>
+              <p className="text-sm text-muted-foreground">Últimos 7 dias</p>
+            </div>
+          </HelpTooltip>
           {isLoading ? (
             <Skeleton className="h-[300px] w-full" />
           ) : sentimentData.every(d => d.positive === 0 && d.negative === 0 && d.neutral === 0) ? (
@@ -577,10 +592,12 @@ export default function Overview() {
 
         {/* Network Distribution */}
         <Card className="p-6">
-          <div className="mb-4">
-            <h3 className="text-lg font-bold">Distribuição por Rede Social</h3>
-            <p className="text-sm text-muted-foreground">Fontes de dados reais</p>
-          </div>
+          <HelpTooltip text="Quanto cada rede social (YouTube, Twitter, etc.) contribui para o total de menções coletadas.">
+            <div className="mb-4 cursor-help">
+              <h3 className="text-lg font-bold">Distribuição por Rede Social</h3>
+              <p className="text-sm text-muted-foreground">Fontes de dados reais</p>
+            </div>
+          </HelpTooltip>
           {isLoading ? (
             <Skeleton className="h-[300px] w-full" />
           ) : networkData.length === 0 ? (
@@ -636,10 +653,12 @@ export default function Overview() {
 
       {/* Candidates Performance */}
       <Card className="p-6">
-        <div className="mb-4">
-          <h3 className="text-lg font-bold">Performance dos Candidatos (Top 5)</h3>
-          <p className="text-sm text-muted-foreground">Menções vs Sentimento</p>
-        </div>
+        <HelpTooltip text="Os 5 candidatos com mais menções, comparando volume e sentimento médio lado a lado.">
+          <div className="mb-4 cursor-help">
+            <h3 className="text-lg font-bold">Performance dos Candidatos (Top 5)</h3>
+            <p className="text-sm text-muted-foreground">Menções vs Sentimento</p>
+          </div>
+        </HelpTooltip>
         {isLoading ? (
           <Skeleton className="h-[300px] w-full" />
         ) : candidateData.length === 0 ? (
@@ -675,17 +694,19 @@ export default function Overview() {
             <h3 className="text-lg font-bold">Rankings Recentes</h3>
             <p className="text-sm text-muted-foreground">Mesma fórmula da aba Ranking · últimos 30 dias</p>
           </div>
-          <Button
-            onClick={handleCalculateRanking}
-            disabled={calculatingRanking || !candidates?.length}
-            size="sm"
-          >
-            {calculatingRanking ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Calculando...</>
-            ) : (
-              <><Activity className="mr-2 h-4 w-4" /> Calcular ranking</>
-            )}
-          </Button>
+          <HelpTooltip text="Recalcula o ranking geral dos seus candidatos com base nos dados dos últimos 30 dias.">
+            <Button
+              onClick={handleCalculateRanking}
+              disabled={calculatingRanking || !candidates?.length}
+              size="sm"
+            >
+              {calculatingRanking ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Calculando...</>
+              ) : (
+                <><Activity className="mr-2 h-4 w-4" /> Calcular ranking</>
+              )}
+            </Button>
+          </HelpTooltip>
         </div>
         {isLoading ? (
           <div className="space-y-3">

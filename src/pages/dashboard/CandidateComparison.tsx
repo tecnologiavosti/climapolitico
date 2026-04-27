@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Users, MessageSquare, Heart, TrendingUp } from "lucide-react";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 type SortKey = "mentions" | "sentiment" | "engagement" | "authors";
 
@@ -123,16 +124,18 @@ const CandidateComparisonPage = () => {
           <h1 className="text-3xl font-bold">Comparação de Candidatos</h1>
           <p className="text-muted-foreground mt-1">Visualização comparativa rápida baseada em dados reais.</p>
         </div>
-        <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortKey)}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="Ordenar por" />
-          </SelectTrigger>
-          <SelectContent>
-            {SORT_OPTIONS.map(o => (
-              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <HelpTooltip text="Define o critério usado para ordenar os candidatos na comparação (menções, sentimento, etc.).">
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortKey)}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Ordenar por" />
+            </SelectTrigger>
+            <SelectContent>
+              {SORT_OPTIONS.map(o => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </HelpTooltip>
       </div>
 
       {isLoading && (
