@@ -316,10 +316,12 @@ const CandidateSummary = () => {
           {/* Recommendations */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Lightbulb className="h-5 w-5 text-yellow-500" />
-                Recomendações de Narrativa
-              </CardTitle>
+              <HelpTooltip text="Sugestões práticas de discurso e posicionamento que a IA recomenda com base nos comentários analisados.">
+                <CardTitle className="text-lg flex items-center gap-2 cursor-help">
+                  <Lightbulb className="h-5 w-5 text-yellow-500" />
+                  Recomendações de Narrativa
+                </CardTitle>
+              </HelpTooltip>
             </CardHeader>
             <CardContent>
               <ul className="space-y-3">
