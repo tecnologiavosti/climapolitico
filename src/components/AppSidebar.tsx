@@ -70,14 +70,14 @@ const mainItems = [
 // ];
 
 const adminItems = [
-  { title: "Administração", url: "/dashboard/admin", icon: Shield },
-  { title: "APIs & Integrações", url: "/dashboard/admin/api-settings", icon: Key },
+  { title: "Administração", url: "/dashboard/admin", icon: Shield, tip: "Painel administrativo: gerenciar usuários, planos e métricas globais." },
+  { title: "APIs & Integrações", url: "/dashboard/admin/api-settings", icon: Key, tip: "Configurar chaves de API das redes sociais e serviços externos." },
 ];
 
 const settingsItems = [
-  { title: "Notificações", url: "/dashboard/notifications", icon: Bell },
-  { title: "Assinatura", url: "/dashboard/subscription", icon: CreditCard },
-  { title: "Configurações", url: "/dashboard/settings", icon: Settings },
+  { title: "Notificações", url: "/dashboard/notifications", icon: Bell, tip: "Veja alertas sobre mudanças de sentimento, novas menções e novidades." },
+  { title: "Assinatura", url: "/dashboard/subscription", icon: CreditCard, tip: "Consulte seu plano atual, limites de uso e faça upgrade se precisar." },
+  { title: "Configurações", url: "/dashboard/settings", icon: Settings, tip: "Ajuste seu perfil, preferências de idioma, tema e segurança da conta." },
 ];
 
 export function AppSidebar() {
