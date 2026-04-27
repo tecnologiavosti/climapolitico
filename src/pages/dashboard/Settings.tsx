@@ -20,6 +20,7 @@ import {
 import { toast } from "sonner";
 import { useTheme } from "next-themes";
 import { Loader2, User, Settings as SettingsIcon, Shield, CreditCard, Camera, Eye, EyeOff, KeyRound, Mail } from "lucide-react";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 export default function Settings() {
   const { user } = useAuth();
@@ -261,10 +262,12 @@ export default function Settings() {
   return (
     <div className="space-y-6 max-w-5xl">
       <div>
+        <HelpTooltip text="Mexa no seu perfil, troque a senha, ajuste o tema e configure suas preferências.">
         <h1 className="text-3xl font-bold flex items-center gap-2">
           <SettingsIcon className="h-8 w-8 text-primary" />
           Configurações
         </h1>
+      </HelpTooltip>
         <p className="text-muted-foreground mt-1">
           Gerencie seu perfil, preferências, segurança e assinatura
         </p>

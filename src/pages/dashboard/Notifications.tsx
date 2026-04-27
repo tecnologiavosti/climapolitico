@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useAuth } from "@/hooks/useAuth";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 interface Notification {
   id: string;
@@ -93,11 +94,13 @@ export default function Notifications() {
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
+          <HelpTooltip text="Avisos importantes pra você: mudanças no sentimento, novos comentários e novidades do sistema.">
+        <h1 className="text-3xl font-bold flex items-center gap-2">
             <Bell className="h-8 w-8 text-primary" />
             Notificações
             {unreadCount > 0 && <Badge variant="destructive">{unreadCount} não lidas</Badge>}
           </h1>
+      </HelpTooltip>
           <p className="text-muted-foreground mt-1">
             Alertas em tempo real sobre alterações nos seus candidatos e na plataforma.
           </p>

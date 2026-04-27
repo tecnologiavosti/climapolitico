@@ -11,6 +11,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Ba
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { useAuth } from "@/hooks/useAuth";
 import { CollectionStatusPanel } from "@/components/dashboard/CollectionStatusPanel";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 // Componentes de análise demográfica temporariamente ocultos
 // Motivo: YouTube Data API não fornece idade, gênero ou localização dos usuários
@@ -167,7 +168,9 @@ export default function Analytics() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">Analytics Avançado</h1>
+          <HelpTooltip text="Gráficos detalhados pra você entender tudo a fundo: tendências, redes e palavras mais usadas.">
+        <h1 className="text-3xl font-bold">Analytics Avançado</h1>
+      </HelpTooltip>
           <p className="text-muted-foreground">Análise estatística baseada em dados reais coletados</p>
         </div>
         <Skeleton className="h-12 w-full" />

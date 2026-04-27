@@ -17,6 +17,7 @@ import {
   ResponsiveContainer
 } from "recharts";
 import { useAuth } from "@/hooks/useAuth";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 // Cores para gráficos
 const CHART_COLORS = {
@@ -273,10 +274,12 @@ export default function CandidateRanking() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
+          <HelpTooltip text="Quem está ganhando e quem está perdendo nas redes nos últimos 30 dias.">
+        <h1 className="text-3xl font-bold flex items-center gap-2">
             <Trophy className="h-8 w-8 text-yellow-500" />
             Ranking de Candidatos
           </h1>
+      </HelpTooltip>
           <p className="text-muted-foreground">
             Comparativo automático baseado em dados reais do YouTube
           </p>

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Shield, Users, TrendingUp, BarChart3, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 interface UserWithDetails {
   id: string;
@@ -154,10 +155,12 @@ export default function Admin() {
   return (
     <div className="space-y-6 p-6">
       <div>
+        <HelpTooltip text="Painel só pra administradores: cuidar de usuários, planos e da plataforma toda.">
         <h1 className="text-3xl font-bold flex items-center gap-2">
           <Shield className="h-8 w-8" />
           Administração
         </h1>
+      </HelpTooltip>
         <p className="text-muted-foreground mt-2">
           Gerencie usuários, planos e monitore o uso da plataforma
         </p>

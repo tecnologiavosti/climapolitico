@@ -15,6 +15,7 @@ import { DateRange } from "react-day-picker";
 import { DateRangePicker } from "@/components/DateRangePicker";
 
 import { AnalysisSourceMetadata } from "@/components/dashboard/AnalysisSourceMetadata";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 export default function AnalysisHistory() {
   const [sentimentFilter, setSentimentFilter] = useState<string>("all");
@@ -112,7 +113,9 @@ export default function AnalysisHistory() {
   return (
     <div className="space-y-6">
       <div>
+        <HelpTooltip text="Veja todos os resumos e análises que a IA já fez pra você antes.">
         <h1 className="text-3xl font-bold">Histórico de Análises</h1>
+      </HelpTooltip>
         <p className="text-muted-foreground">Visualize todas as análises multi-IA realizadas</p>
       </div>
 

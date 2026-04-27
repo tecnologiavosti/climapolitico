@@ -13,6 +13,7 @@ import { DateRange } from "react-day-picker";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FileDown, RefreshCw, FileText } from "lucide-react";
 import { exportReport, ExportFormat } from "@/lib/reportExporter";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 export default function TraceabilityReport() {
   const { user } = useAuth();
@@ -110,7 +111,9 @@ export default function TraceabilityReport() {
   return (
     <div className="space-y-6 p-6">
       <div>
+        <HelpTooltip text="Veja exatamente de onde vem cada dado: link, perfil e data do comentário original.">
         <h1 className="text-3xl font-bold tracking-tight">Relatório de Rastreabilidade</h1>
+      </HelpTooltip>
         <p className="text-muted-foreground">
           Análise completa da origem, metodologia e métricas dos dados coletados
         </p>

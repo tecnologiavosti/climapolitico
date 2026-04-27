@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Loader2, MessageCircle, Ban, Megaphone, Shield, Sparkles, Target, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 interface TopicToAvoid {
   topic: string;
@@ -135,7 +136,9 @@ const NarrativeRecommendationsPage = () => {
   return (
     <div className="space-y-6">
       <div>
+        <HelpTooltip text="Aqui a IA te dá ideias de fala e postura pro seu candidato, baseadas no que o povo está comentando.">
         <h1 className="text-3xl font-bold">Recomendações de Narrativa</h1>
+      </HelpTooltip>
         <p className="text-muted-foreground mt-1">
           Orientações práticas de comunicação baseadas nos comentários reais coletados.
         </p>

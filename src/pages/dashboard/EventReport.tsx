@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Loader2, CalendarDays, MessageSquare, TrendingUp, AlertTriangle, Lightbulb, BookOpen, Zap } from "lucide-react";
 import { toast } from "sonner";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 interface Reaction {
   reaction: string;
@@ -131,7 +132,9 @@ const EventReportPage = () => {
   return (
     <div className="space-y-6">
       <div>
+        <HelpTooltip text="Veja se um evento (debate, entrevista, comício) ajudou ou atrapalhou seu candidato.">
         <h1 className="text-3xl font-bold">Relatório de Evento</h1>
+      </HelpTooltip>
         <p className="text-muted-foreground mt-1">Analise a repercussão de entrevistas, eventos ou falas específicas.</p>
       </div>
 

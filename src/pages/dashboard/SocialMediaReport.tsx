@@ -17,6 +17,7 @@ import { SocialMediaTemporalEvolution } from "@/components/dashboard/SocialMedia
 import { SocialMediaPeakHours } from "@/components/dashboard/SocialMediaPeakHours";
 import { SocialMediaKeywordAnalysis } from "@/components/dashboard/SocialMediaKeywordAnalysis";
 import { SocialMediaInfluencers } from "@/components/dashboard/SocialMediaInfluencers";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 export interface SocialMediaReportData {
   network: string;
@@ -195,7 +196,9 @@ export default function SocialMediaReport() {
     <div className="space-y-6 p-6">
       {/* Header */}
       <div>
+        <HelpTooltip text="Relatório completo de cada rede social: quem fala mais, onde fala e como fala.">
         <h1 className="text-3xl font-bold tracking-tight">Relatório por Rede Social</h1>
+      </HelpTooltip>
         <p className="text-muted-foreground">
           Análise detalhada de menções, sentimentos e engajamento por plataforma
         </p>

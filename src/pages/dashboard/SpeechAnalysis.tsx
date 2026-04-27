@@ -19,6 +19,7 @@ import { ptBR } from "date-fns/locale";
 import { useAuth } from "@/hooks/useAuth";
 import { useTokenValidator } from "@/hooks/useTokenValidator";
 import { DateRange } from "react-day-picker";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 export default function SpeechAnalysis() {
   const { toast } = useToast();
@@ -225,7 +226,9 @@ export default function SpeechAnalysis() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Análise Inteligente de Fala</h1>
+      <HelpTooltip text="A IA analisa falas e discursos do seu candidato e te diz o que está funcionando.">
+        <h1 className="text-3xl font-bold">Análise Inteligente de Fala</h1>
+      </HelpTooltip>
       <Tabs defaultValue="new">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="new">Nova Análise</TabsTrigger>

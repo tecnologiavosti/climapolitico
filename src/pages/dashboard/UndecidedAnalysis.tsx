@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import {
   LineChart,
   Line,
@@ -452,7 +453,9 @@ export default function UndecidedAnalysis() {
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div>
+        <HelpTooltip text="Descubra o que pensa quem ainda não decidiu o voto e como conquistar essas pessoas.">
         <h1 className="text-3xl font-bold mb-2">Análise de Público Indeciso</h1>
+      </HelpTooltip>
         <p className="text-muted-foreground">
           Detecte padrões comportamentais e estratégias para converter eleitores indecisos
         </p>

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 import {
   Select,
   SelectContent,
@@ -249,7 +250,9 @@ export default function CollectionStatus() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">Configuração de Coleta</h1>
+          <HelpTooltip text="Veja se a coleta de dados de cada rede social está rodando direitinho.">
+        <h1 className="text-3xl font-bold">Configuração de Coleta</h1>
+      </HelpTooltip>
           <p className="text-muted-foreground">
             Configure a coleta automática de dados do YouTube
           </p>
