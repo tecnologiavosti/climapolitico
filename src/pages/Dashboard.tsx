@@ -151,7 +151,8 @@ const Dashboard = () => {
                 <Route path="/brand24-collector" element={<Brand24Collector />} />
                 <Route path="/admin" element={<Admin />} />
                 <Route path="/admin/api-settings" element={<AdminApiSettings />} />
-                <Route path="/notifications" element={<Notifications />} />
+               <Route path="/notifications" element={<Notifications />} />
+               <Route path="/data-collection-methodology" element={<DataCollectionMethodology />} />
                 <Route path="/subscription" element={
                   <div className="text-center py-12">
                     <h3 className="text-2xl font-bold mb-2">Assinatura</h3>
