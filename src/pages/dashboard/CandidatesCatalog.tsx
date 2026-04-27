@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { toast } from "sonner";
 import { Search, Plus, Check, Users, Loader2, ShieldCheck } from "lucide-react";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 export default function CandidatesCatalog() {
   const queryClient = useQueryClient();
@@ -144,10 +145,12 @@ export default function CandidatesCatalog() {
         {isAdmin && (
           <Dialog open={addOpen} onOpenChange={setAddOpen}>
             <DialogTrigger asChild>
-              <Button>
-                <ShieldCheck className="h-4 w-4 mr-2" />
-                Adicionar ao catálogo
-              </Button>
+              <HelpTooltip text="Apenas administradores: cadastra um novo candidato no catálogo público para todos os usuários verem.">
+                <Button>
+                  <ShieldCheck className="h-4 w-4 mr-2" />
+                  Adicionar ao catálogo
+                </Button>
+              </HelpTooltip>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -219,12 +222,14 @@ export default function CandidatesCatalog() {
         <CardContent className="pt-6">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por nome, partido ou região..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+            <HelpTooltip text="Filtra os candidatos do catálogo por nome, partido ou região conforme você digita.">
+              <Input
+                placeholder="Buscar por nome, partido ou região..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </HelpTooltip>
           </div>
         </CardContent>
       </Card>
@@ -258,21 +263,23 @@ export default function CandidatesCatalog() {
                   {c.description && (
                     <p className="text-sm text-muted-foreground line-clamp-2">{c.description}</p>
                   )}
-                  <Button
-                    className="w-full"
-                    variant={alreadyAdded ? "outline" : "default"}
-                    disabled={alreadyAdded || adoptMutation.isPending}
-                    onClick={() => adoptMutation.mutate(c)}
-                  >
-                    {adoptMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : alreadyAdded ? (
-                      <Check className="h-4 w-4 mr-2" />
-                    ) : (
-                      <Plus className="h-4 w-4 mr-2" />
-                    )}
-                    {alreadyAdded ? "Já adicionado" : "Adicionar à minha conta"}
-                  </Button>
+                  <HelpTooltip text={alreadyAdded ? "Esse candidato já está na sua conta. Vá em Candidatos para gerenciá-lo." : "Adiciona o candidato à sua conta para começar a coletar dados e analisar o sentimento."}>
+                    <Button
+                      className="w-full"
+                      variant={alreadyAdded ? "outline" : "default"}
+                      disabled={alreadyAdded || adoptMutation.isPending}
+                      onClick={() => adoptMutation.mutate(c)}
+                    >
+                      {adoptMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : alreadyAdded ? (
+                        <Check className="h-4 w-4 mr-2" />
+                      ) : (
+                        <Plus className="h-4 w-4 mr-2" />
+                      )}
+                      {alreadyAdded ? "Já adicionado" : "Adicionar à minha conta"}
+                    </Button>
+                  </HelpTooltip>
                 </CardContent>
               </Card>
             );

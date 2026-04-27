@@ -39,21 +39,22 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 // Módulos ativos no menu principal
 const mainItems = [
-  { title: "Visão Geral", url: "/dashboard", icon: BarChart3 },
-  { title: "Resumo Inteligente", url: "/dashboard/candidate-summary", icon: FileText },
-  { title: "Análise de Rejeição", url: "/dashboard/rejection-analysis", icon: ThumbsDown },
-  { title: "Recomendações de Narrativa", url: "/dashboard/narrative-recommendations", icon: Sparkles },
-  { title: "Comparação de Candidatos", url: "/dashboard/candidate-comparison", icon: GitCompareArrows },
-  { title: "Relatório de Evento", url: "/dashboard/event-report", icon: Calendar },
-  { title: "Monitor Tempo Real", url: "/dashboard/realtime-monitor", icon: Radio },
-  { title: "Candidatos", url: "/dashboard/candidates", icon: Users },
-  { title: "Catálogo de Candidatos", url: "/dashboard/candidates-catalog", icon: BookUser },
-  { title: "Analytics Avançado", url: "/dashboard/analytics-advanced", icon: LineChart },
-  { title: "Ranking", url: "/dashboard/ranking", icon: Trophy },
-  { title: "Configuração de Coleta", url: "/dashboard/collection-status", icon: Database },
+  { title: "Visão Geral", url: "/dashboard", icon: BarChart3, tip: "Painel inicial com indicadores resumidos de todos os candidatos monitorados." },
+  { title: "Resumo Inteligente", url: "/dashboard/candidate-summary", icon: FileText, tip: "Resumo executivo gerado por IA a partir dos comentários reais coletados." },
+  { title: "Análise de Rejeição", url: "/dashboard/rejection-analysis", icon: ThumbsDown, tip: "Mostra os principais motivos pelos quais o público rejeita o candidato." },
+  { title: "Recomendações de Narrativa", url: "/dashboard/narrative-recommendations", icon: Sparkles, tip: "Sugestões de discurso e posicionamento baseadas na percepção pública." },
+  { title: "Comparação de Candidatos", url: "/dashboard/candidate-comparison", icon: GitCompareArrows, tip: "Compare métricas e percepção entre dois ou mais candidatos lado a lado." },
+  { title: "Relatório de Evento", url: "/dashboard/event-report", icon: Calendar, tip: "Veja como um evento específico (entrevista, debate) impactou a percepção pública." },
+  { title: "Monitor Tempo Real", url: "/dashboard/realtime-monitor", icon: Radio, tip: "Acompanhe os comentários e o sentimento sendo coletados em tempo real." },
+  { title: "Candidatos", url: "/dashboard/candidates", icon: Users, tip: "Gerencie seus candidatos: adicionar, remover, analisar e coletar dados." },
+  { title: "Catálogo de Candidatos", url: "/dashboard/candidates-catalog", icon: BookUser, tip: "Catálogo público de candidatos prontos para você adicionar à sua conta." },
+  { title: "Analytics Avançado", url: "/dashboard/analytics-advanced", icon: LineChart, tip: "Gráficos detalhados de evolução temporal, redes sociais e palavras-chave." },
+  { title: "Ranking", url: "/dashboard/ranking", icon: Trophy, tip: "Ranking dos candidatos pelo desempenho geral nos últimos 30 dias." },
+  { title: "Configuração de Coleta", url: "/dashboard/collection-status", icon: Database, tip: "Acompanhe o status das coletas automáticas em cada rede social." },
 ];
 
 // Módulos temporariamente desativados (mantidos para reativação futura)
@@ -69,14 +70,14 @@ const mainItems = [
 // ];
 
 const adminItems = [
-  { title: "Administração", url: "/dashboard/admin", icon: Shield },
-  { title: "APIs & Integrações", url: "/dashboard/admin/api-settings", icon: Key },
+  { title: "Administração", url: "/dashboard/admin", icon: Shield, tip: "Painel administrativo: gerenciar usuários, planos e métricas globais." },
+  { title: "APIs & Integrações", url: "/dashboard/admin/api-settings", icon: Key, tip: "Configurar chaves de API das redes sociais e serviços externos." },
 ];
 
 const settingsItems = [
-  { title: "Notificações", url: "/dashboard/notifications", icon: Bell },
-  { title: "Assinatura", url: "/dashboard/subscription", icon: CreditCard },
-  { title: "Configurações", url: "/dashboard/settings", icon: Settings },
+  { title: "Notificações", url: "/dashboard/notifications", icon: Bell, tip: "Veja alertas sobre mudanças de sentimento, novas menções e novidades." },
+  { title: "Assinatura", url: "/dashboard/subscription", icon: CreditCard, tip: "Consulte seu plano atual, limites de uso e faça upgrade se precisar." },
+  { title: "Configurações", url: "/dashboard/settings", icon: Settings, tip: "Ajuste seu perfil, preferências de idioma, tema e segurança da conta." },
 ];
 
 export function AppSidebar() {
@@ -126,15 +127,17 @@ export function AppSidebar() {
                       undefined
                     }
                   >
-                    <NavLink
-                      to={item.url}
-                      end={item.url === "/dashboard"}
-                      className="hover:bg-muted/50"
-                      activeClassName="bg-muted text-primary font-medium"
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {!isCollapsed && <span>{item.title}</span>}
-                    </NavLink>
+                    <HelpTooltip text={item.tip} side="right">
+                      <NavLink
+                        to={item.url}
+                        end={item.url === "/dashboard"}
+                        className="hover:bg-muted/50"
+                        activeClassName="bg-muted text-primary font-medium"
+                      >
+                        <item.icon className="h-4 w-4" />
+                        {!isCollapsed && <span>{item.title}</span>}
+                      </NavLink>
+                    </HelpTooltip>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
@@ -151,14 +154,16 @@ export function AppSidebar() {
                 {adminItems.map((item) => (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton asChild>
-                      <NavLink
-                        to={item.url}
-                        className="hover:bg-muted/50"
-                        activeClassName="bg-muted text-primary font-medium"
-                      >
-                        <item.icon className="h-4 w-4" />
-                        {!isCollapsed && <span>{item.title}</span>}
-                      </NavLink>
+                      <HelpTooltip text={item.tip} side="right">
+                        <NavLink
+                          to={item.url}
+                          className="hover:bg-muted/50"
+                          activeClassName="bg-muted text-primary font-medium"
+                        >
+                          <item.icon className="h-4 w-4" />
+                          {!isCollapsed && <span>{item.title}</span>}
+                        </NavLink>
+                      </HelpTooltip>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
@@ -175,14 +180,16 @@ export function AppSidebar() {
               {settingsItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
-                    <NavLink
-                      to={item.url}
-                      className="hover:bg-muted/50"
-                      activeClassName="bg-muted text-primary font-medium"
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {!isCollapsed && <span>{item.title}</span>}
-                    </NavLink>
+                    <HelpTooltip text={item.tip} side="right">
+                      <NavLink
+                        to={item.url}
+                        className="hover:bg-muted/50"
+                        activeClassName="bg-muted text-primary font-medium"
+                      >
+                        <item.icon className="h-4 w-4" />
+                        {!isCollapsed && <span>{item.title}</span>}
+                      </NavLink>
+                    </HelpTooltip>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
