@@ -455,89 +455,97 @@ export default function Overview() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Menções Total</p>
-              {isLoading ? (
-                <Skeleton className="h-10 w-24 mt-2" />
-              ) : (
-                <p className="text-3xl font-bold mt-2">{totalMentions.toLocaleString('pt-BR')}</p>
-              )}
-              <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
-                <Activity className="h-4 w-4" />
-                <span>{uniqueAuthors} autores únicos</span>
-              </div>
-            </div>
-            <div className="p-3 bg-gradient-primary rounded-lg">
-              <MessageSquare className="h-6 w-6 text-white" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Candidatos</p>
-              {isLoading ? (
-                <Skeleton className="h-10 w-16 mt-2" />
-              ) : (
-                <p className="text-3xl font-bold mt-2">{totalCandidates}</p>
-              )}
-              <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
-                <Activity className="h-4 w-4" />
-                <span>monitorados</span>
-              </div>
-            </div>
-            <div className="p-3 bg-gradient-primary rounded-lg">
-              <Users className="h-6 w-6 text-white" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Sentimento Médio</p>
-              {isLoading ? (
-                <Skeleton className="h-10 w-20 mt-2" />
-              ) : (
-                <p className="text-3xl font-bold mt-2">{avgSentiment}%</p>
-              )}
-              <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
-                {avgSentiment >= 50 ? (
-                  <TrendingUp className="h-4 w-4 text-success" />
+        <HelpTooltip text="Total de comentários, posts e menções coletados em todas as redes sociais sobre seus candidatos.">
+          <Card className="p-6 cursor-help">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Menções Total</p>
+                {isLoading ? (
+                  <Skeleton className="h-10 w-24 mt-2" />
                 ) : (
-                  <TrendingDown className="h-4 w-4 text-destructive" />
+                  <p className="text-3xl font-bold mt-2">{totalMentions.toLocaleString('pt-BR')}</p>
                 )}
-                <span>{avgSentiment >= 50 ? 'Positivo' : 'Atenção'}</span>
+                <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
+                  <Activity className="h-4 w-4" />
+                  <span>{uniqueAuthors} autores únicos</span>
+                </div>
+              </div>
+              <div className="p-3 bg-gradient-primary rounded-lg">
+                <MessageSquare className="h-6 w-6 text-white" />
               </div>
             </div>
-            <div className="p-3 bg-gradient-primary rounded-lg">
-              <TrendingUp className="h-6 w-6 text-white" />
-            </div>
-          </div>
-        </Card>
+          </Card>
+        </HelpTooltip>
 
-        <Card className="p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">Engajamento Total</p>
-              {isLoading ? (
-                <Skeleton className="h-10 w-16 mt-2" />
-              ) : (
-                <p className="text-3xl font-bold mt-2">{aggregatedMetrics.totalEngagement.toLocaleString('pt-BR')}</p>
-              )}
-              <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
-                <Activity className="h-4 w-4" />
-                <span>curtidas</span>
+        <HelpTooltip text="Quantidade de candidatos que você está monitorando ativamente na plataforma.">
+          <Card className="p-6 cursor-help">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Candidatos</p>
+                {isLoading ? (
+                  <Skeleton className="h-10 w-16 mt-2" />
+                ) : (
+                  <p className="text-3xl font-bold mt-2">{totalCandidates}</p>
+                )}
+                <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
+                  <Activity className="h-4 w-4" />
+                  <span>monitorados</span>
+                </div>
+              </div>
+              <div className="p-3 bg-gradient-primary rounded-lg">
+                <Users className="h-6 w-6 text-white" />
               </div>
             </div>
-            <div className="p-3 bg-gradient-primary rounded-lg">
-              <TrendingUp className="h-6 w-6 text-white" />
+          </Card>
+        </HelpTooltip>
+
+        <HelpTooltip text="Sentimento médio dos comentários: 100% é totalmente positivo, 0% totalmente negativo e 50% neutro.">
+          <Card className="p-6 cursor-help">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Sentimento Médio</p>
+                {isLoading ? (
+                  <Skeleton className="h-10 w-20 mt-2" />
+                ) : (
+                  <p className="text-3xl font-bold mt-2">{avgSentiment}%</p>
+                )}
+                <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
+                  {avgSentiment >= 50 ? (
+                    <TrendingUp className="h-4 w-4 text-success" />
+                  ) : (
+                    <TrendingDown className="h-4 w-4 text-destructive" />
+                  )}
+                  <span>{avgSentiment >= 50 ? 'Positivo' : 'Atenção'}</span>
+                </div>
+              </div>
+              <div className="p-3 bg-gradient-primary rounded-lg">
+                <TrendingUp className="h-6 w-6 text-white" />
+              </div>
             </div>
-          </div>
-        </Card>
+          </Card>
+        </HelpTooltip>
+
+        <HelpTooltip text="Soma de curtidas, respostas e compartilhamentos recebidos pelas menções coletadas.">
+          <Card className="p-6 cursor-help">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Engajamento Total</p>
+                {isLoading ? (
+                  <Skeleton className="h-10 w-16 mt-2" />
+                ) : (
+                  <p className="text-3xl font-bold mt-2">{aggregatedMetrics.totalEngagement.toLocaleString('pt-BR')}</p>
+                )}
+                <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
+                  <Activity className="h-4 w-4" />
+                  <span>curtidas</span>
+                </div>
+              </div>
+              <div className="p-3 bg-gradient-primary rounded-lg">
+                <TrendingUp className="h-6 w-6 text-white" />
+              </div>
+            </div>
+          </Card>
+        </HelpTooltip>
       </div>
 
       {/* Componentes de IA temporariamente ocultos da Visão Geral */}
