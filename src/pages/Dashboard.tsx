@@ -41,6 +41,7 @@ const Brand24Collector = lazy(() => import("./dashboard/Brand24Collector"));
 const CandidatesCatalog = lazy(() => import("./dashboard/CandidatesCatalog"));
 const Settings = lazy(() => import("./dashboard/Settings"));
 const Notifications = lazy(() => import("./dashboard/Notifications"));
+const DataCollectionMethodology = lazy(() => import("./dashboard/DataCollectionMethodology"));
 const onboardingSteps: OnboardingStep[] = [
   {
     target: '[data-onboarding="sidebar"]',
