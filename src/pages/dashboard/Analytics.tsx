@@ -58,7 +58,7 @@ export default function Analytics() {
         if (error) throw error;
         if (!data || data.length === 0) break;
 
-        all.push(...data);
+        all.push(...(data as Row[]));
         if (data.length < PAGE_SIZE) break;
         offset += PAGE_SIZE;
 
