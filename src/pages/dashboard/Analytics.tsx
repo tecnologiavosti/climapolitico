@@ -507,10 +507,11 @@ export default function Analytics() {
       <Card className="bg-muted/30">
         <CardContent className="py-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Youtube className="h-4 w-4 text-destructive" />
+            <BarChart3 className="h-4 w-4 text-primary" />
             <span>
-              Todas as métricas são calculadas a partir dos comentários reais coletados do YouTube.
-              Dados demográficos (idade, gênero, localização) não são fornecidos pela API do YouTube.
+              Todas as métricas são calculadas a partir de comentários reais coletados em
+              YouTube, Google News, TikTok, Reddit, Telegram, Wikipedia, X (Twitter), Instagram e Facebook —
+              sem amostragem (paginação completa).
             </span>
           </div>
         </CardContent>
