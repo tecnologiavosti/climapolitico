@@ -9,6 +9,7 @@ import { InsightCard } from "@/components/dashboard/InsightCard";
 import { InsightFilters } from "@/components/dashboard/InsightFilters";
 import { TrendingKeywords } from "@/components/dashboard/TrendingKeywords";
 import { OpportunityMap } from "@/components/dashboard/OpportunityMap";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 interface Insight {
   id: string;
@@ -100,69 +101,79 @@ const AIInsights = () => {
             Inteligência estratégica gerada automaticamente
           </p>
         </div>
-        <Button 
-          onClick={() => generateInsightsMutation.mutate(undefined)}
-          disabled={generateInsightsMutation.isPending}
-        >
-          {generateInsightsMutation.isPending ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Gerando...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Gerar Novos Insights
-            </>
-          )}
-        </Button>
+        <HelpTooltip text="Pede para a IA varrer os dados recentes e gerar novos alertas, riscos e oportunidades estratégicas.">
+          <Button 
+            onClick={() => generateInsightsMutation.mutate(undefined)}
+            disabled={generateInsightsMutation.isPending}
+          >
+            {generateInsightsMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Gerando...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Gerar Novos Insights
+              </>
+            )}
+          </Button>
+        </HelpTooltip>
       </div>
 
       {/* KPIs */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Insights</CardTitle>
-            <Sparkles className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
-            <p className="text-xs text-muted-foreground">Últimos 30 dias</p>
-          </CardContent>
-        </Card>
+        <HelpTooltip text="Quantidade total de insights ativos gerados pela IA nos últimos 30 dias.">
+          <Card className="cursor-help">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total de Insights</CardTitle>
+              <Sparkles className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.total}</div>
+              <p className="text-xs text-muted-foreground">Últimos 30 dias</p>
+            </CardContent>
+          </Card>
+        </HelpTooltip>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Alertas Críticos</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-destructive" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-destructive">{stats.critical}</div>
-            <p className="text-xs text-muted-foreground">Requerem ação imediata</p>
-          </CardContent>
-        </Card>
+        <HelpTooltip text="Insights de prioridade alta que pedem atenção imediata da equipe de campanha.">
+          <Card className="cursor-help">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Alertas Críticos</CardTitle>
+              <AlertTriangle className="h-4 w-4 text-destructive" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-destructive">{stats.critical}</div>
+              <p className="text-xs text-muted-foreground">Requerem ação imediata</p>
+            </CardContent>
+          </Card>
+        </HelpTooltip>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Oportunidades</CardTitle>
-            <TrendingUp className="h-4 w-4 text-success" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-success">{stats.opportunities}</div>
-            <p className="text-xs text-muted-foreground">Para explorar</p>
-          </CardContent>
-        </Card>
+        <HelpTooltip text="Pontos positivos detectados pela IA que podem ser explorados para fortalecer a campanha.">
+          <Card className="cursor-help">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Oportunidades</CardTitle>
+              <TrendingUp className="h-4 w-4 text-success" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-success">{stats.opportunities}</div>
+              <p className="text-xs text-muted-foreground">Para explorar</p>
+            </CardContent>
+          </Card>
+        </HelpTooltip>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Confiança Média</CardTitle>
-            <Lightbulb className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.avgConfidence}%</div>
-            <p className="text-xs text-muted-foreground">Qualidade dos dados</p>
-          </CardContent>
-        </Card>
+        <HelpTooltip text="Quanto a IA confia, em média, nos insights gerados — quanto maior, mais sólidos os dados.">
+          <Card className="cursor-help">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Confiança Média</CardTitle>
+              <Lightbulb className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.avgConfidence}%</div>
+              <p className="text-xs text-muted-foreground">Qualidade dos dados</p>
+            </CardContent>
+          </Card>
+        </HelpTooltip>
       </div>
 
       {/* Trending Keywords */}
