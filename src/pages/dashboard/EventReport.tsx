@@ -142,37 +142,47 @@ const EventReportPage = () => {
       <Card>
         <CardContent className="pt-6 space-y-4">
           <div className="flex flex-col sm:flex-row gap-4">
-            <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
-              <SelectTrigger className="w-full sm:w-[280px]">
-                <SelectValue placeholder="Selecione um candidato" />
-              </SelectTrigger>
-              <SelectContent>
-                {candidates.map(c => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.full_name}{c.party ? ` (${c.party})` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input
-              placeholder="Nome do evento (ex: Entrevista no Jornal X)"
-              value={eventName}
-              onChange={e => setEventName(e.target.value)}
-              className="w-full sm:w-[300px]"
-            />
+            <HelpTooltip text="Escolha o candidato cujo evento você quer analisar.">
+              <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
+                <SelectTrigger className="w-full sm:w-[280px]">
+                  <SelectValue placeholder="Selecione um candidato" />
+                </SelectTrigger>
+                <SelectContent>
+                  {candidates.map(c => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.full_name}{c.party ? ` (${c.party})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </HelpTooltip>
+            <HelpTooltip text="Dê um nome pro evento (ex: 'Debate na TV') pra você lembrar depois.">
+              <Input
+                placeholder="Nome do evento (ex: Entrevista no Jornal X)"
+                value={eventName}
+                onChange={e => setEventName(e.target.value)}
+                className="w-full sm:w-[300px]"
+              />
+            </HelpTooltip>
           </div>
           <div className="flex flex-col sm:flex-row gap-4 items-end">
             <div className="space-y-1">
               <label className="text-sm text-muted-foreground">Data Início</label>
-              <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-[180px]" />
+              <HelpTooltip text="Dia em que o evento começou.">
+                <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-[180px]" />
+              </HelpTooltip>
             </div>
             <div className="space-y-1">
               <label className="text-sm text-muted-foreground">Data Fim</label>
-              <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-[180px]" />
+              <HelpTooltip text="Até quando você quer analisar a repercussão.">
+                <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-[180px]" />
+              </HelpTooltip>
             </div>
-            <Button onClick={handleGenerate} disabled={isLoading || !selectedCandidate || !startDate || !endDate}>
-              {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analisando...</> : <><CalendarDays className="mr-2 h-4 w-4" />Gerar Relatório</>}
-            </Button>
+            <HelpTooltip text="Clica aqui pra IA olhar tudo que falaram nesse período e te dizer se foi bom ou ruim.">
+              <Button onClick={handleGenerate} disabled={isLoading || !selectedCandidate || !startDate || !endDate}>
+                {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analisando...</> : <><CalendarDays className="mr-2 h-4 w-4" />Gerar Relatório</>}
+              </Button>
+            </HelpTooltip>
           </div>
         </CardContent>
       </Card>
@@ -208,28 +218,30 @@ const EventReportPage = () => {
 
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <Card><CardContent className="pt-6 text-center">
+            <HelpTooltip text="Total de comentários coletados durante o evento."><Card><CardContent className="pt-6 text-center">
               <p className="text-sm text-muted-foreground">Total</p>
               <p className="text-3xl font-bold">{stats.total}</p>
-            </CardContent></Card>
-            <Card><CardContent className="pt-6 text-center">
+            </CardContent></Card></HelpTooltip>
+            <HelpTooltip text="Quantos comentários foram elogios ou apoios."><Card><CardContent className="pt-6 text-center">
               <p className="text-sm text-muted-foreground">Positivos</p>
               <p className="text-3xl font-bold text-green-600 dark:text-green-400">{stats.positive}</p>
-            </CardContent></Card>
-            <Card><CardContent className="pt-6 text-center">
+            </CardContent></Card></HelpTooltip>
+            <HelpTooltip text="Quantos comentários foram críticas ou ataques."><Card><CardContent className="pt-6 text-center">
               <p className="text-sm text-muted-foreground">Negativos</p>
               <p className="text-3xl font-bold text-red-600 dark:text-red-400">{stats.negative}</p>
-            </CardContent></Card>
-            <Card><CardContent className="pt-6 text-center">
+            </CardContent></Card></HelpTooltip>
+            <HelpTooltip text="Comentários sem opinião clara, nem elogio nem crítica."><Card><CardContent className="pt-6 text-center">
               <p className="text-sm text-muted-foreground">Neutros</p>
               <p className="text-3xl font-bold text-muted-foreground">{stats.neutral}</p>
-            </CardContent></Card>
+            </CardContent></Card></HelpTooltip>
           </div>
 
           {/* Executive Summary */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><TrendingUp className="h-5 w-5" />Resumo Executivo</CardTitle>
+              <HelpTooltip text="Resumão em poucas linhas: o que aconteceu e qual foi a reação geral do povo.">
+                <CardTitle className="flex items-center gap-2"><TrendingUp className="h-5 w-5" />Resumo Executivo</CardTitle>
+              </HelpTooltip>
             </CardHeader>
             <CardContent>
               <p className="text-foreground leading-relaxed">{report.executive_summary}</p>
@@ -239,7 +251,9 @@ const EventReportPage = () => {
           {/* Key Reactions */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><Zap className="h-5 w-5" />Principais Reações</CardTitle>
+              <HelpTooltip text="As reações mais marcantes do povo: o que mais chamou atenção, pra bem ou pra mal.">
+                <CardTitle className="flex items-center gap-2"><Zap className="h-5 w-5" />Principais Reações</CardTitle>
+              </HelpTooltip>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
@@ -259,7 +273,9 @@ const EventReportPage = () => {
           {/* Main Topics */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5" />Temas Mais Discutidos</CardTitle>
+              <HelpTooltip text="Os assuntos que apareceram mais vezes nos comentários sobre o evento.">
+                <CardTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5" />Temas Mais Discutidos</CardTitle>
+              </HelpTooltip>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
@@ -273,7 +289,9 @@ const EventReportPage = () => {
           {/* Impact Analysis */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5" />Análise de Impacto</CardTitle>
+              <HelpTooltip text="A IA explica se o evento ajudou ou atrapalhou seu candidato e por quê.">
+                <CardTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5" />Análise de Impacto</CardTitle>
+              </HelpTooltip>
             </CardHeader>
             <CardContent>
               <p className="text-foreground leading-relaxed">{report.impact_analysis}</p>
@@ -283,7 +301,9 @@ const EventReportPage = () => {
           {/* Immediate Actions */}
           <Card className="border-primary/30">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-primary"><Lightbulb className="h-5 w-5" />Ações Recomendadas</CardTitle>
+              <HelpTooltip text="Coisas pra fazer JÁ pra aproveitar (ou consertar) o que rolou no evento.">
+                <CardTitle className="flex items-center gap-2 text-primary"><Lightbulb className="h-5 w-5" />Ações Recomendadas</CardTitle>
+              </HelpTooltip>
             </CardHeader>
             <CardContent>
               <ul className="space-y-3">
@@ -300,7 +320,9 @@ const EventReportPage = () => {
           {/* Lessons Learned */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><BookOpen className="h-5 w-5" />Lições para Eventos Futuros</CardTitle>
+              <HelpTooltip text="O que aprender desse evento pra ir melhor no próximo.">
+                <CardTitle className="flex items-center gap-2"><BookOpen className="h-5 w-5" />Lições para Eventos Futuros</CardTitle>
+              </HelpTooltip>
             </CardHeader>
             <CardContent>
               <ul className="space-y-2">
