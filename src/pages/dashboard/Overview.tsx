@@ -14,6 +14,7 @@ import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { useAuth } from "@/hooks/useAuth";
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 import { useAllCandidateMetrics, CandidateMetrics } from "@/hooks/useCandidateMetrics";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 // Componentes temporariamente ocultos da Visão Geral (mantidos para uso futuro)
 // import { AIModelsPanel } from "@/components/dashboard/AIModelsPanel";
