@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Loader2, FileText, ThumbsUp, ThumbsDown, Lightbulb, AlertTriangle, TrendingUp, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { HelpTooltip } from "@/components/ui/help-tooltip";
 
 interface SummaryData {
   overall_sentiment: string;
@@ -99,43 +100,49 @@ const CandidateSummary = () => {
           <div className="flex flex-col sm:flex-row gap-4 items-end">
             <div className="flex-1 space-y-2">
               <label className="text-sm font-medium">Candidato</label>
-              <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione um candidato" />
-                </SelectTrigger>
-                <SelectContent>
-                  {candidates?.map(c => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.full_name} {c.party ? `(${c.party})` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <HelpTooltip text="Escolha qual candidato você quer resumir. Aparecem aqui apenas os que você adicionou na sua conta.">
+                <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione um candidato" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {candidates?.map(c => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.full_name} {c.party ? `(${c.party})` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </HelpTooltip>
             </div>
             <div className="w-40 space-y-2">
               <label className="text-sm font-medium">Período</label>
-              <Select value={daysBack} onValueChange={setDaysBack}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">Últimas 24h</SelectItem>
-                  <SelectItem value="3">Últimos 3 dias</SelectItem>
-                  <SelectItem value="7">Últimos 7 dias</SelectItem>
-                  <SelectItem value="14">Últimos 14 dias</SelectItem>
-                  <SelectItem value="30">Últimos 30 dias</SelectItem>
-                  <SelectItem value="90">Últimos 90 dias</SelectItem>
-                  <SelectItem value="all">Período Total (todos os comentários)</SelectItem>
-                </SelectContent>
-              </Select>
+              <HelpTooltip text="Define a janela de tempo dos comentários analisados. Quanto maior, mais dados, porém mais lento.">
+                <Select value={daysBack} onValueChange={setDaysBack}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Últimas 24h</SelectItem>
+                    <SelectItem value="3">Últimos 3 dias</SelectItem>
+                    <SelectItem value="7">Últimos 7 dias</SelectItem>
+                    <SelectItem value="14">Últimos 14 dias</SelectItem>
+                    <SelectItem value="30">Últimos 30 dias</SelectItem>
+                    <SelectItem value="90">Últimos 90 dias</SelectItem>
+                    <SelectItem value="all">Período Total (todos os comentários)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </HelpTooltip>
             </div>
-            <Button onClick={handleGenerate} disabled={summaryMutation.isPending || !selectedCandidate}>
-              {summaryMutation.isPending ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Gerando...</>
-              ) : (
-                <><RefreshCw className="mr-2 h-4 w-4" /> Gerar Resumo</>
-              )}
-            </Button>
+            <HelpTooltip text="A IA lê todos os comentários do período e devolve um resumo executivo com pontos fortes, fracos e recomendações.">
+              <Button onClick={handleGenerate} disabled={summaryMutation.isPending || !selectedCandidate}>
+                {summaryMutation.isPending ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Gerando...</>
+                ) : (
+                  <><RefreshCw className="mr-2 h-4 w-4" /> Gerar Resumo</>
+                )}
+              </Button>
+            </HelpTooltip>
           </div>
         </CardContent>
       </Card>
