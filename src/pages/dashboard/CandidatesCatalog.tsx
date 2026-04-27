@@ -263,21 +263,23 @@ export default function CandidatesCatalog() {
                   {c.description && (
                     <p className="text-sm text-muted-foreground line-clamp-2">{c.description}</p>
                   )}
-                  <Button
-                    className="w-full"
-                    variant={alreadyAdded ? "outline" : "default"}
-                    disabled={alreadyAdded || adoptMutation.isPending}
-                    onClick={() => adoptMutation.mutate(c)}
-                  >
-                    {adoptMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : alreadyAdded ? (
-                      <Check className="h-4 w-4 mr-2" />
-                    ) : (
-                      <Plus className="h-4 w-4 mr-2" />
-                    )}
-                    {alreadyAdded ? "Já adicionado" : "Adicionar à minha conta"}
-                  </Button>
+                  <HelpTooltip text={alreadyAdded ? "Esse candidato já está na sua conta. Vá em Candidatos para gerenciá-lo." : "Adiciona o candidato à sua conta para começar a coletar dados e analisar o sentimento."}>
+                    <Button
+                      className="w-full"
+                      variant={alreadyAdded ? "outline" : "default"}
+                      disabled={alreadyAdded || adoptMutation.isPending}
+                      onClick={() => adoptMutation.mutate(c)}
+                    >
+                      {adoptMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : alreadyAdded ? (
+                        <Check className="h-4 w-4 mr-2" />
+                      ) : (
+                        <Plus className="h-4 w-4 mr-2" />
+                      )}
+                      {alreadyAdded ? "Já adicionado" : "Adicionar à minha conta"}
+                    </Button>
+                  </HelpTooltip>
                 </CardContent>
               </Card>
             );
