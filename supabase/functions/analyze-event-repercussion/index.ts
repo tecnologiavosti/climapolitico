@@ -146,71 +146,121 @@ ${sampleNeu.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
 Gere um relatório completo de repercussão deste evento/período.`;
 
+    const CEREBRAS_API_KEY = Deno.env.get('CEREBRAS_API_KEY');
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      return new Response(JSON.stringify({ error: 'Chave de API não configurada' }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
 
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'google/gemini-3-flash-preview',
-        messages: [
-          { role: 'system', content: 'Você é um analista político estratégico brasileiro. Gere relatórios de repercussão de eventos baseados em dados reais. Responda em português do Brasil.' },
-          { role: 'user', content: prompt }
-        ],
-        tools: [{
-          type: 'function',
-          function: {
-            name: 'create_event_report',
-            description: 'Gerar relatório estruturado de repercussão de evento',
-            parameters: {
-              type: 'object',
-              properties: {
-                overall_assessment: { type: 'string', enum: ['muito_positiva', 'positiva', 'mista', 'negativa', 'muito_negativa'], description: 'Avaliação geral da repercussão' },
-                executive_summary: { type: 'string', description: 'Resumo executivo em 3-5 frases sobre a repercussão do evento' },
-                key_reactions: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      reaction: { type: 'string', description: 'Reação identificada' },
-                      type: { type: 'string', enum: ['positiva', 'negativa', 'neutra'] },
-                      intensity: { type: 'string', enum: ['alta', 'media', 'baixa'] }
-                    },
-                    required: ['reaction', 'type', 'intensity']
-                  },
-                  description: '4-8 principais reações do público'
-                },
-                main_topics: { type: 'array', items: { type: 'string' }, description: '3-6 temas mais discutidos' },
-                impact_analysis: { type: 'string', description: 'Análise do impacto potencial na imagem do candidato' },
-                immediate_actions: { type: 'array', items: { type: 'string' }, description: '3-5 ações recomendadas de resposta imediata' },
-                lessons_learned: { type: 'array', items: { type: 'string' }, description: '2-4 lições para eventos futuros' }
-              },
-              required: ['overall_assessment', 'executive_summary', 'key_reactions', 'main_topics', 'impact_analysis', 'immediate_actions', 'lessons_learned']
-            }
+    const systemMsg = 'Você é um analista político estratégico brasileiro. Gere relatórios de repercussão de eventos baseados em dados reais. Responda em português do Brasil.';
+    const jsonInstruction = `\n\nResponda APENAS com um JSON válido (sem markdown, sem comentários) no seguinte formato exato:\n{\n  "overall_assessment": "muito_positiva|positiva|mista|negativa|muito_negativa",\n  "executive_summary": "resumo executivo em 3-5 frases",\n  "key_reactions": [{"reaction": "texto", "type": "positiva|negativa|neutra", "intensity": "alta|media|baixa"}],\n  "main_topics": ["tema1","tema2"],\n  "impact_analysis": "análise de impacto",\n  "immediate_actions": ["ação1","ação2"],\n  "lessons_learned": ["lição1","lição2"]\n}`;
+
+    let report: any = null;
+    let lastError: { status: number; text: string } | null = null;
+
+    // Try Cerebras first (same provider used in rejection/narrative analyses)
+    if (CEREBRAS_API_KEY) {
+      const cerebrasModels = ['llama-3.3-70b', 'llama3.1-8b'];
+      for (const model of cerebrasModels) {
+        try {
+          const res = await fetch('https://api.cerebras.ai/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${CEREBRAS_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model,
+              messages: [
+                { role: 'system', content: systemMsg },
+                { role: 'user', content: prompt + jsonInstruction }
+              ],
+              temperature: 0.3,
+              max_tokens: 3000,
+              response_format: { type: 'json_object' },
+            })
+          });
+          if (!res.ok) {
+            const t = await res.text().catch(() => '');
+            console.warn(`[event-repercussion] Cerebras ${model} ${res.status}: ${t.substring(0, 300)}`);
+            lastError = { status: res.status, text: t };
+            continue;
           }
-        }],
-        tool_choice: { type: 'function', function: { name: 'create_event_report' } }
-      })
-    });
-
-    if (!aiResponse.ok) {
-      const errText = await aiResponse.text();
-      console.error('AI error:', aiResponse.status, errText);
-      if (aiResponse.status === 429) return new Response(JSON.stringify({ error: 'Limite de requisições excedido.' }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      if (aiResponse.status === 402) return new Response(JSON.stringify({ error: 'Créditos insuficientes.' }), { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      return new Response(JSON.stringify({ error: 'Erro ao gerar relatório' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+          const data = await res.json();
+          const content = data.choices?.[0]?.message?.content || '';
+          try {
+            report = JSON.parse(content);
+            console.log(`[event-repercussion] ✅ Cerebras ${model} OK`);
+            break;
+          } catch {
+            const m = content.match(/\{[\s\S]*\}/);
+            if (m) { report = JSON.parse(m[0]); break; }
+            console.warn(`[event-repercussion] Cerebras ${model} resposta não-JSON`);
+          }
+        } catch (e) {
+          console.warn(`[event-repercussion] Cerebras ${model} exceção:`, e);
+        }
+      }
     }
 
-    const result = await aiResponse.json();
-    const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall) return new Response(JSON.stringify({ error: 'Resposta inesperada da IA' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    // Fallback to Lovable AI Gateway
+    if (!report && LOVABLE_API_KEY) {
+      const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'google/gemini-3-flash-preview',
+          messages: [
+            { role: 'system', content: systemMsg },
+            { role: 'user', content: prompt }
+          ],
+          tools: [{
+            type: 'function',
+            function: {
+              name: 'create_event_report',
+              description: 'Gerar relatório estruturado de repercussão de evento',
+              parameters: {
+                type: 'object',
+                properties: {
+                  overall_assessment: { type: 'string', enum: ['muito_positiva', 'positiva', 'mista', 'negativa', 'muito_negativa'] },
+                  executive_summary: { type: 'string' },
+                  key_reactions: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        reaction: { type: 'string' },
+                        type: { type: 'string', enum: ['positiva', 'negativa', 'neutra'] },
+                        intensity: { type: 'string', enum: ['alta', 'media', 'baixa'] }
+                      },
+                      required: ['reaction', 'type', 'intensity']
+                    }
+                  },
+                  main_topics: { type: 'array', items: { type: 'string' } },
+                  impact_analysis: { type: 'string' },
+                  immediate_actions: { type: 'array', items: { type: 'string' } },
+                  lessons_learned: { type: 'array', items: { type: 'string' } }
+                },
+                required: ['overall_assessment', 'executive_summary', 'key_reactions', 'main_topics', 'impact_analysis', 'immediate_actions', 'lessons_learned']
+              }
+            }
+          }],
+          tool_choice: { type: 'function', function: { name: 'create_event_report' } }
+        })
+      });
 
-    const report = JSON.parse(toolCall.function.arguments);
+      if (!aiResponse.ok) {
+        const errText = await aiResponse.text();
+        console.error('AI gateway fallback error:', aiResponse.status, errText);
+        lastError = { status: aiResponse.status, text: errText };
+      } else {
+        const result = await aiResponse.json();
+        const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
+        if (toolCall) {
+          try { report = JSON.parse(toolCall.function.arguments); console.log('[event-repercussion] ✅ Lovable Gateway OK'); } catch (e) { console.error('Parse fallback error:', e); }
+        }
+      }
+    }
+
+    if (!report) {
+      const status = lastError?.status === 429 ? 429 : lastError?.status === 402 ? 402 : 500;
+      const msg = status === 429 ? 'Limite de requisições excedido.' : status === 402 ? 'Créditos insuficientes.' : 'Erro ao gerar relatório com IA';
+      return new Response(JSON.stringify({ error: msg }), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
 
     return new Response(JSON.stringify({
       report,
