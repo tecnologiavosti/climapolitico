@@ -148,37 +148,43 @@ const NarrativeRecommendationsPage = () => {
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-col sm:flex-row gap-4">
-            <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
-              <SelectTrigger className="w-full sm:w-[280px]">
-                <SelectValue placeholder="Selecione um candidato" />
-              </SelectTrigger>
-              <SelectContent>
-                {candidates.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.full_name}{c.party ? ` (${c.party})` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <HelpTooltip text="Escolha pra qual candidato você quer receber as dicas de comunicação.">
+              <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
+                <SelectTrigger className="w-full sm:w-[280px]">
+                  <SelectValue placeholder="Selecione um candidato" />
+                </SelectTrigger>
+                <SelectContent>
+                  {candidates.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.full_name}{c.party ? ` (${c.party})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </HelpTooltip>
 
-            <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-              <SelectTrigger className="w-full sm:w-[200px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PERIOD_OPTIONS.map((p) => (
-                  <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <HelpTooltip text="De quantos dias atrás a IA vai considerar os comentários.">
+              <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                <SelectTrigger className="w-full sm:w-[200px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PERIOD_OPTIONS.map((p) => (
+                    <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </HelpTooltip>
 
-            <Button onClick={handleGenerate} disabled={isLoading || !selectedCandidate}>
-              {isLoading ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Gerando...</>
-              ) : (
-                <><Sparkles className="mr-2 h-4 w-4" />Gerar Recomendações</>
-              )}
-            </Button>
+            <HelpTooltip text="Clica aqui pra IA gerar dicas de o que falar e como agir nos próximos dias.">
+              <Button onClick={handleGenerate} disabled={isLoading || !selectedCandidate}>
+                {isLoading ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Gerando...</>
+                ) : (
+                  <><Sparkles className="mr-2 h-4 w-4" />Gerar Recomendações</>
+                )}
+              </Button>
+            </HelpTooltip>
           </div>
         </CardContent>
       </Card>
@@ -202,20 +208,24 @@ const NarrativeRecommendationsPage = () => {
           {/* Key Message */}
           <Card className="border-primary/40 bg-primary/5">
             <CardContent className="pt-6">
-              <div className="flex items-start gap-3">
-                <Target className="h-6 w-6 text-primary mt-1 flex-shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-primary mb-1">Mensagem-Chave</p>
-                  <p className="text-lg font-semibold text-foreground">{rec.key_message}</p>
+              <HelpTooltip text="A frase principal que seu candidato deveria estar repetindo agora pra conquistar o povo.">
+                <div className="flex items-start gap-3">
+                  <Target className="h-6 w-6 text-primary mt-1 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-primary mb-1">Mensagem-Chave</p>
+                    <p className="text-lg font-semibold text-foreground">{rec.key_message}</p>
+                  </div>
                 </div>
-              </div>
+              </HelpTooltip>
             </CardContent>
           </Card>
 
           {/* Situation Summary */}
           <Card>
             <CardHeader>
-              <CardTitle>Diagnóstico da Situação</CardTitle>
+              <HelpTooltip text="Resumão de como está a situação do seu candidato hoje, em poucas linhas.">
+                <CardTitle>Diagnóstico da Situação</CardTitle>
+              </HelpTooltip>
             </CardHeader>
             <CardContent>
               <p className="text-foreground leading-relaxed">{rec.situation_summary}</p>
@@ -232,10 +242,12 @@ const NarrativeRecommendationsPage = () => {
           {/* Topics to Avoid */}
           <Card className="border-destructive/30">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-destructive">
-                <Ban className="h-5 w-5" />
-                Temas a Evitar
-              </CardTitle>
+              <HelpTooltip text="Assuntos que seu candidato deve EVITAR falar nos próximos dias.">
+                <CardTitle className="flex items-center gap-2 text-destructive">
+                  <Ban className="h-5 w-5" />
+                  Temas a Evitar
+                </CardTitle>
+              </HelpTooltip>
               <CardDescription>Assuntos que devem ser evitados nas próximas falas</CardDescription>
             </CardHeader>
             <CardContent>
@@ -258,10 +270,12 @@ const NarrativeRecommendationsPage = () => {
           {/* Topics to Reinforce */}
           <Card className="border-green-500/30">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-green-600 dark:text-green-400">
-                <Megaphone className="h-5 w-5" />
-                Temas a Reforçar
-              </CardTitle>
+              <HelpTooltip text="Assuntos que seu candidato DEVE falar mais, porque o povo está gostando.">
+                <CardTitle className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                  <Megaphone className="h-5 w-5" />
+                  Temas a Reforçar
+                </CardTitle>
+              </HelpTooltip>
               <CardDescription>Narrativas que devem ser amplificadas</CardDescription>
             </CardHeader>
             <CardContent>
@@ -283,10 +297,12 @@ const NarrativeRecommendationsPage = () => {
           {/* Responses to Criticism */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Shield className="h-5 w-5" />
-                Respostas a Críticas
-              </CardTitle>
+              <HelpTooltip text="Respostas prontas pras críticas que mais aparecem nos comentários.">
+                <CardTitle className="flex items-center gap-2">
+                  <Shield className="h-5 w-5" />
+                  Respostas a Críticas
+                </CardTitle>
+              </HelpTooltip>
               <CardDescription>Como endereçar as críticas mais recorrentes</CardDescription>
             </CardHeader>
             <CardContent>
@@ -312,10 +328,12 @@ const NarrativeRecommendationsPage = () => {
           {/* Communication Plan */}
           <Card className="border-primary/30">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-primary">
-                <Target className="h-5 w-5" />
-                Plano de Comunicação
-              </CardTitle>
+              <HelpTooltip text="Lista de coisas pra fazer agora, em ordem do que dá mais resultado.">
+                <CardTitle className="flex items-center gap-2 text-primary">
+                  <Target className="h-5 w-5" />
+                  Plano de Comunicação
+                </CardTitle>
+              </HelpTooltip>
               <CardDescription>Ações concretas priorizadas por impacto</CardDescription>
             </CardHeader>
             <CardContent>
