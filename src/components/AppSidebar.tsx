@@ -88,6 +88,7 @@ export function AppSidebar() {
   const currentPath = location.pathname;
   const isCollapsed = state === "collapsed";
   const { isAdmin } = useAdminCheck();
+  const tooltipsEnabled = useTooltipsEnabled();
 
   const isActive = (path: string) => {
     if (path === "/dashboard") {
