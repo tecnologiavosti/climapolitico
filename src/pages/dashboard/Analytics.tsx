@@ -31,8 +31,9 @@ export default function Analytics() {
     queryFn: async () => {
       if (!user) return [];
 
+      type Row = { id: string; sentiment_label: string | null; sentiment_score: number | null; likes_count: number | null; social_network: string | null; created_at: string; comment_author: string | null };
       const PAGE_SIZE = 1000;
-      const all: any[] = [];
+      const all: Row[] = [];
       let offset = 0;
 
       const endDate = dateRange?.to ? new Date(dateRange.to) : null;
