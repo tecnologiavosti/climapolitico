@@ -15,6 +15,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 import { useAllCandidateMetrics, CandidateMetrics } from "@/hooks/useCandidateMetrics";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { NetworkLegendWithTooltips } from "@/components/dashboard/NetworkLegendWithTooltips";
 
 // Componentes temporariamente ocultos da Visão Geral (mantidos para uso futuro)
 // import { AIModelsPanel } from "@/components/dashboard/AIModelsPanel";
@@ -605,48 +606,39 @@ export default function Overview() {
               <p>Nenhum dado coletado ainda</p>
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={340}>
-              <PieChart>
-                <Pie
-                  data={networkData}
-                  cx="50%"
-                  cy="42%"
-                  labelLine={false}
-                  label={false}
-                  outerRadius={90}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {networkData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'hsl(var(--card))', 
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px'
-                  }}
-                  formatter={(value: number, name: string) => {
-                    const total = networkData.reduce((s, d) => s + d.value, 0);
-                    const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
-                    return [`${value.toLocaleString('pt-BR')} (${pct}%)`, name];
-                  }}
-                />
-                <Legend
-                  verticalAlign="bottom"
-                  height={64}
-                  iconSize={10}
-                  wrapperStyle={{ fontSize: '12px', paddingTop: '8px', lineHeight: '20px' }}
-                  formatter={(value: string) => {
-                    const item = networkData.find(d => d.name === value);
-                    const total = networkData.reduce((s, d) => s + d.value, 0);
-                    const pct = item && total > 0 ? ((item.value / total) * 100).toFixed(0) : '0';
-                    return `${value} (${pct}%)`;
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+            <>
+              <ResponsiveContainer width="100%" height={280}>
+                <PieChart>
+                  <Pie
+                    data={networkData}
+                    cx="50%"
+                    cy="45%"
+                    labelLine={false}
+                    label={false}
+                    outerRadius={85}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {networkData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--card))', 
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px'
+                    }}
+                    formatter={(value: number, name: string) => {
+                      const total = networkData.reduce((s, d) => s + d.value, 0);
+                      const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
+                      return [`${value.toLocaleString('pt-BR')} (${pct}%)`, name];
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <NetworkLegendWithTooltips data={networkData} />
+            </>
           )}
         </Card>
       </div>
