@@ -24,34 +24,54 @@ export default function Analytics() {
     to: new Date(),
   });
 
-  // Query: Buscar dados reais de social_interactions (comentários coletados)
+  // Query: Buscar TODOS os dados reais de social_interactions com paginação
+  // (Supabase limita 1000 linhas por request — paginamos para pegar todo o histórico)
   const { data: interactions, isLoading } = useQuery({
     queryKey: ['analytics-interactions', dateRange, user?.id],
     queryFn: async () => {
       if (!user) return [];
 
-      let query = supabase
-        .from('social_interactions')
-        .select('id, sentiment_label, sentiment_score, likes_count, social_network, created_at, comment_author')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true });
+      type Row = { id: string; sentiment_label: string | null; sentiment_score: number | null; likes_count: number | null; social_network: string | null; created_at: string; comment_author: string | null };
+      const PAGE_SIZE = 1000;
+      const all: Row[] = [];
+      let offset = 0;
 
-      if (dateRange?.from) {
-        query = query.gte('created_at', dateRange.from.toISOString());
-      }
-      if (dateRange?.to) {
-        // Add one day to include the full end date
-        const endDate = new Date(dateRange.to);
-        endDate.setDate(endDate.getDate() + 1);
-        query = query.lt('created_at', endDate.toISOString());
+      const endDate = dateRange?.to ? new Date(dateRange.to) : null;
+      if (endDate) endDate.setDate(endDate.getDate() + 1);
+
+      while (true) {
+        let query = supabase
+          .from('social_interactions')
+          .select('id, sentiment_label, sentiment_score, likes_count, social_network, created_at, comment_author')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: true })
+          .range(offset, offset + PAGE_SIZE - 1);
+
+        if (dateRange?.from) {
+          query = query.gte('created_at', dateRange.from.toISOString());
+        }
+        if (endDate) {
+          query = query.lt('created_at', endDate.toISOString());
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+
+        all.push(...(data as Row[]));
+        if (data.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+
+        // safety cap to avoid runaway loops
+        if (offset > 200000) break;
       }
 
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
+      return all;
     },
     enabled: !!user,
+    staleTime: 60_000,
   });
+
 
   // Calculate KPIs from real interactions
   const totalMentions = interactions?.length || 0;
@@ -487,10 +507,11 @@ export default function Analytics() {
       <Card className="bg-muted/30">
         <CardContent className="py-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Youtube className="h-4 w-4 text-destructive" />
+            <BarChart3 className="h-4 w-4 text-primary" />
             <span>
-              Todas as métricas são calculadas a partir dos comentários reais coletados do YouTube.
-              Dados demográficos (idade, gênero, localização) não são fornecidos pela API do YouTube.
+              Todas as métricas são calculadas a partir de comentários reais coletados em
+              YouTube, Google News, TikTok, Reddit, Telegram, Wikipedia, X (Twitter), Instagram e Facebook —
+              sem amostragem (paginação completa).
             </span>
           </div>
         </CardContent>
