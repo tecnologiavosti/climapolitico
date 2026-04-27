@@ -134,7 +134,7 @@ export function AppSidebar() {
                       <NavLink
                         to={item.url}
                         end={item.url === "/dashboard"}
-                        className="flex items-center gap-2 hover:bg-muted/50"
+                        className="flex items-center gap-3 hover:bg-muted/50"
                         activeClassName="bg-muted text-primary font-medium"
                       >
                         <item.icon className="h-4 w-4 shrink-0" />
@@ -160,7 +160,7 @@ export function AppSidebar() {
                       <HelpTooltip text={item.tip} side="right">
                         <NavLink
                           to={item.url}
-                          className="flex items-center gap-2 hover:bg-muted/50"
+                          className="flex items-center gap-3 hover:bg-muted/50"
                           activeClassName="bg-muted text-primary font-medium"
                         >
                           <item.icon className="h-4 w-4 shrink-0" />
@@ -189,7 +189,7 @@ export function AppSidebar() {
                     >
                       <NavLink
                         to="/dashboard/data-collection-methodology"
-                        className="flex items-center gap-2 hover:bg-muted/50"
+                        className="flex items-center gap-3 hover:bg-muted/50"
                         activeClassName="bg-muted text-primary font-medium"
                       >
                         <DatabaseIcon className="h-4 w-4 shrink-0" />
@@ -214,7 +214,7 @@ export function AppSidebar() {
                     <HelpTooltip text={item.tip} side="right">
                       <NavLink
                         to={item.url}
-                        className="flex items-center gap-2 hover:bg-muted/50"
+                        className="flex items-center gap-3 hover:bg-muted/50"
                         activeClassName="bg-muted text-primary font-medium"
                       >
                         <item.icon className="h-4 w-4 shrink-0" />
