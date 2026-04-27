@@ -176,16 +176,20 @@ export default function Brand24Collector() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold">Brand24 — Coleta Automática</h2>
+          <HelpTooltip text="Liga a coleta automática do Brand24, que pega menções de várias redes ao mesmo tempo.">
+            <h2 className="text-3xl font-bold">Brand24 — Coleta Automática</h2>
+          </HelpTooltip>
           <p className="text-muted-foreground mt-1">
             Configure os feeds RSS do Brand24 para coletar menções automaticamente de todas as redes sociais.
           </p>
         </div>
         {rssConfigs && rssConfigs.length > 0 && (
-          <Button onClick={collectAll} disabled={!!collectingId} size="lg">
-            <RefreshCw className={`h-4 w-4 mr-2 ${collectingId ? 'animate-spin' : ''}`} />
-            Coletar Todos
-          </Button>
+          <HelpTooltip text="Roda a coleta de todos os feeds configurados de uma vez só.">
+            <Button onClick={collectAll} disabled={!!collectingId} size="lg">
+              <RefreshCw className={`h-4 w-4 mr-2 ${collectingId ? 'animate-spin' : ''}`} />
+              Coletar Todos
+            </Button>
+          </HelpTooltip>
         )}
       </div>
 
