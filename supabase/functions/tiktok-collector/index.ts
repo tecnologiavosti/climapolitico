@@ -177,12 +177,19 @@ async function collectForCandidate(
         console.log(`[tiktok-collector] Search retornou ${posts.length} vídeos para "${candidate.full_name}"`);
       } catch (e) {
         console.warn(`[tiktok-collector] tikwm search falhou:`, e instanceof Error ? e.message : e);
-        return { posts: 0, comments: 0, handle, error: `Sem vídeos (perfil e busca falharam)` };
       }
     }
 
+    // Fallback final: Apify (clockworks/tiktok-scraper) — só roda se Tikwm zerar
     if (posts.length === 0) {
-      return { posts: 0, comments: 0, handle, error: "Nenhum vídeo encontrado (perfil ou busca)" };
+      sourceMode = "search";
+      console.log(`[tiktok-collector] Fallback Apify para "${candidate.full_name}"...`);
+      posts = await fetchApifyTikTokSearch(candidate.full_name);
+      console.log(`[tiktok-collector] Apify retornou ${posts.length} vídeos`);
+    }
+
+    if (posts.length === 0) {
+      return { posts: 0, comments: 0, handle, error: "Nenhum vídeo encontrado (Tikwm + Apify)" };
     }
 
     // Builder de URL: usa handle do post (modo search) ou handle do candidato (modo profile)
