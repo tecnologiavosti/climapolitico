@@ -13,16 +13,18 @@ import { toast } from "sonner";
 type RegionLabel = "Norte" | "Nordeste" | "Centro-Oeste" | "Sudeste" | "Sul";
 const REGIONS: RegionLabel[] = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"];
 
+// values precisam casar com os valores REAIS na coluna social_network do banco
 const NETWORKS = [
-  { value: "youtube", label: "YouTube", Icon: Youtube },
-  { value: "instagram", label: "Instagram", Icon: Instagram },
-  { value: "tiktok", label: "TikTok", Icon: Music2 },
-  { value: "twitter", label: "Twitter/X", Icon: Twitter },
-  { value: "facebook", label: "Facebook", Icon: Facebook },
-  { value: "google_news", label: "Google News", Icon: Newspaper },
-  { value: "reddit", label: "Reddit", Icon: Globe },
-  { value: "telegram", label: "Telegram", Icon: MessageSquare },
+  { values: ["YouTube", "youtube"], label: "YouTube", Icon: Youtube },
+  { values: ["Twitter/X", "twitter", "Twitter"], label: "Twitter/X", Icon: Twitter },
+  { values: ["Instagram", "instagram"], label: "Instagram", Icon: Instagram },
+  { values: ["TikTok", "tiktok"], label: "TikTok", Icon: Music2 },
+  { values: ["Facebook", "facebook"], label: "Facebook", Icon: Facebook },
+  { values: ["google_news", "Google News"], label: "Google News", Icon: Newspaper },
+  { values: ["Reddit", "reddit"], label: "Reddit", Icon: Globe },
+  { values: ["Telegram", "telegram"], label: "Telegram", Icon: MessageSquare },
 ];
+type NetCfg = typeof NETWORKS[number];
 
 const REGION_PATHS: Record<RegionLabel, string> = {
   Norte: "M60,40 L260,40 L260,170 L180,200 L60,180 Z",
