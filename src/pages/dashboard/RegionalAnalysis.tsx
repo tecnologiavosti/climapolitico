@@ -58,7 +58,7 @@ export default function RegionalAnalysis() {
   const { user } = useAuth();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [candidateId, setCandidateId] = useState<string>("");
-  const [network, setNetwork] = useState<string>("youtube");
+  const [network, setNetwork] = useState<string>("YouTube");
   const [region, setRegion] = useState<RegionLabel>("Sudeste");
 
   const [loading, setLoading] = useState(false);
@@ -107,6 +107,8 @@ export default function RegionalAnalysis() {
     setInsights(null);
     try {
       const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const netCfg = NETWORKS.find((n) => n.label === network) ?? NETWORKS[0];
+      const netValues = netCfg.values;
 
       // 1) Map data — all 5 regions for selected network
       const { data: mapRows, error: mapErr } = await supabase
@@ -114,7 +116,7 @@ export default function RegionalAnalysis() {
         .select("region, sentiment_label, likes_count, replies_count, shares_count")
         .eq("user_id", user.id)
         .eq("candidate_id", candidateId)
-        .eq("social_network", network)
+        .in("social_network", netValues)
         .not("region", "is", null)
         .gte("created_at", since)
         .limit(50000);
@@ -137,7 +139,7 @@ export default function RegionalAnalysis() {
         .select("id, comment_text, comment_author, sentiment_label, created_at, social_network")
         .eq("user_id", user.id)
         .eq("candidate_id", candidateId)
-        .eq("social_network", network)
+        .in("social_network", netValues)
         .eq("region", region)
         .not("comment_text", "is", null)
         .order("created_at", { ascending: false })
@@ -203,9 +205,9 @@ export default function RegionalAnalysis() {
     return <Badge variant="secondary"><Minus className="h-3 w-3 mr-1" />Neutro</Badge>;
   };
 
-  const networkLabel = (n: string) => NETWORKS.find((x) => x.value === n)?.label ?? n;
+  const networkLabel = (n: string) => NETWORKS.find((x) => x.label === n || x.values.includes(n))?.label ?? n;
   const NetworkIcon = ({ n, className }: { n: string; className?: string }) => {
-    const Icon = NETWORKS.find((x) => x.value === n)?.Icon ?? MessageSquare;
+    const Icon = NETWORKS.find((x) => x.label === n || x.values.includes(n))?.Icon ?? MessageSquare;
     return <Icon className={className} />;
   };
 
@@ -249,7 +251,7 @@ export default function RegionalAnalysis() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {NETWORKS.map((n) => (
-                    <SelectItem key={n.value} value={n.value}>
+                    <SelectItem key={n.label} value={n.label}>
                       <div className="flex items-center gap-2"><n.Icon className="h-4 w-4" />{n.label}</div>
                     </SelectItem>
                   ))}
