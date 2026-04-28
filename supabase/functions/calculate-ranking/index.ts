@@ -8,22 +8,22 @@ const corsHeaders = {
 
 /**
  * Ranking score (0-100) baseado em comentários reais coletados (social_interactions).
- * Fórmula:
- *   30% volume de menções
- * + 20% diversidade de autores únicos
- * + 30% sentimento médio
- * + 20% engajamento (curtidas)
+ * Fórmula (peso integral em todas as dimensões):
+ *   100% volume de menções
+ * + 100% diversidade de autores únicos
+ * + 100% sentimento médio
+ * + 100% engajamento (curtidas)
  *
  * Cada métrica é normalizada de 0 a 100 RELATIVAMENTE ao maior valor entre os
- * candidatos do usuário no período (max-normalization). Isso garante a escala
- * 0-100 mesmo com volumes muito diferentes entre coletas.
+ * candidatos do usuário no período. O score final é a MÉDIA das 4 dimensões,
+ * mantendo a escala 0-100 com cada métrica contribuindo integralmente (100%).
  */
 
 const WEIGHTS = {
-  mentions: 0.30,
-  authors: 0.20,
-  sentiment: 0.30,
-  engagement: 0.20,
+  mentions: 1,
+  authors: 1,
+  sentiment: 1,
+  engagement: 1,
 };
 
 interface RawMetrics {
@@ -157,10 +157,10 @@ serve(async (req) => {
       const engagementScore = normalize(m.likes, maxLikes);
 
       const overall =
-        mentionsScore * WEIGHTS.mentions +
-        authorsScore * WEIGHTS.authors +
-        sentimentScore * WEIGHTS.sentiment +
-        engagementScore * WEIGHTS.engagement;
+        (mentionsScore * WEIGHTS.mentions +
+         authorsScore * WEIGHTS.authors +
+         sentimentScore * WEIGHTS.sentiment +
+         engagementScore * WEIGHTS.engagement) / 4;
 
       return {
         candidate_id: m.candidate_id,
@@ -228,7 +228,7 @@ serve(async (req) => {
         success: true,
         rankings: rankedData,
         message: `Ranking calculado para ${rankedData.length} candidatos a partir de comentários reais.`,
-        formula: '30% menções + 20% autores únicos + 30% sentimento + 20% curtidas',
+        formula: '100% menções + 100% autores únicos + 100% sentimento + 100% curtidas (média das 4 dimensões)',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
