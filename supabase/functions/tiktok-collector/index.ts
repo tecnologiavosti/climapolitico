@@ -96,6 +96,54 @@ async function fetchTikwmComments(videoId: string): Promise<TikwmComment[]> {
   return (json?.data?.comments || []) as TikwmComment[];
 }
 
+// Fallback Apify: clockworks/tiktok-scraper (free tier 500 créditos/mês).
+// Acionado quando Tikwm retorna 0 vídeos para o candidato.
+async function fetchApifyTikTokSearch(keyword: string): Promise<TikwmPost[]> {
+  const token = Deno.env.get("APIFY_API_TOKEN");
+  if (!token) {
+    console.warn(`[tiktok-collector] APIFY_API_TOKEN ausente — fallback Apify desabilitado`);
+    return [];
+  }
+  try {
+    const url = `https://api.apify.com/v2/acts/clockworks~tiktok-scraper/run-sync-get-dataset-items?token=${token}&timeout=120`;
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        searchQueries: [keyword],
+        resultsPerPage: 30,
+        shouldDownloadVideos: false,
+        shouldDownloadCovers: false,
+        proxyCountryCode: "BR",
+      }),
+      signal: AbortSignal.timeout(150000),
+    });
+    if (!resp.ok) {
+      console.warn(`[tiktok-collector] Apify HTTP ${resp.status}`);
+      return [];
+    }
+    const items = await resp.json();
+    if (!Array.isArray(items)) return [];
+    // Normaliza para o shape TikwmPost
+    return items.map((it: any) => ({
+      video_id: String(it.id || it.itemId || ""),
+      title: it.text || it.desc || "",
+      create_time: it.createTime || (it.createTimeISO ? Math.floor(new Date(it.createTimeISO).getTime() / 1000) : 0),
+      digg_count: it.diggCount || it.likes || 0,
+      comment_count: it.commentCount || it.comments || 0,
+      share_count: it.shareCount || it.shares || 0,
+      play_count: it.playCount || it.views || 0,
+      author: {
+        unique_id: it.authorMeta?.name || it["authorMeta.name"] || it.author?.uniqueId || "",
+        nickname: it.authorMeta?.nickName || it.author?.nickname || "",
+      },
+    })).filter((p: TikwmPost) => p.video_id);
+  } catch (e) {
+    console.warn(`[tiktok-collector] Apify falhou:`, e instanceof Error ? e.message : e);
+    return [];
+  }
+}
+
 async function collectForCandidate(
   supabase: any,
   candidate: { id: string; full_name: string; user_id: string; social_media_link: string | null },
@@ -129,12 +177,19 @@ async function collectForCandidate(
         console.log(`[tiktok-collector] Search retornou ${posts.length} vídeos para "${candidate.full_name}"`);
       } catch (e) {
         console.warn(`[tiktok-collector] tikwm search falhou:`, e instanceof Error ? e.message : e);
-        return { posts: 0, comments: 0, handle, error: `Sem vídeos (perfil e busca falharam)` };
       }
     }
 
+    // Fallback final: Apify (clockworks/tiktok-scraper) — só roda se Tikwm zerar
     if (posts.length === 0) {
-      return { posts: 0, comments: 0, handle, error: "Nenhum vídeo encontrado (perfil ou busca)" };
+      sourceMode = "search";
+      console.log(`[tiktok-collector] Fallback Apify para "${candidate.full_name}"...`);
+      posts = await fetchApifyTikTokSearch(candidate.full_name);
+      console.log(`[tiktok-collector] Apify retornou ${posts.length} vídeos`);
+    }
+
+    if (posts.length === 0) {
+      return { posts: 0, comments: 0, handle, error: "Nenhum vídeo encontrado (Tikwm + Apify)" };
     }
 
     // Builder de URL: usa handle do post (modo search) ou handle do candidato (modo profile)

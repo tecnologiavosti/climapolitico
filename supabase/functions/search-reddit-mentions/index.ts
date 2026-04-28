@@ -1,5 +1,6 @@
 // Edge function: coleta manual de menções do Reddit para 1 candidato.
-// Usa PullPush API (api.pullpush.io) — funciona em IPs de cloud (Reddit oficial bloqueia).
+// Fontes: PullPush (global + 9 subreddits BR) + Arctic Shift (histórico 90d).
+// Reddit oficial bloqueia IPs de cloud.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -9,6 +10,12 @@ const corsHeaders = {
 };
 
 const PULLPUSH_BASE = "https://api.pullpush.io/reddit/search";
+const ARCTIC_SHIFT_BASE = "https://arctic-shift.photon-reddit.com/api";
+
+const BR_SUBREDDITS = [
+  "brasil", "brasilivre", "BrasildoB", "politica", "nordeste",
+  "saopaulo", "InternetBrasil", "investimentos", "noticias",
+];
 
 function semanticMatch(text: string, fullName: string): boolean {
   const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -21,21 +28,50 @@ function semanticMatch(text: string, fullName: string): boolean {
   return t.includes(parts[0]);
 }
 
-async function fetchPullPush(kind: "submission" | "comment", query: string, size = 50): Promise<any[]> {
-  const url = `${PULLPUSH_BASE}/${kind}/?q=${encodeURIComponent(query)}&size=${size}&sort=desc&sort_type=created_utc`;
+async function fetchPullPush(
+  kind: "submission" | "comment",
+  query: string,
+  size = 50,
+  subreddit?: string,
+): Promise<any[]> {
+  const params = new URLSearchParams({
+    q: query, size: String(size), sort: "desc", sort_type: "created_utc",
+  });
+  if (subreddit) params.set("subreddit", subreddit);
+  const url = `${PULLPUSH_BASE}/${kind}/?${params.toString()}`;
   try {
     const res = await fetch(url, {
       headers: { "Accept": "application/json", "User-Agent": "ClimaPolitico/1.0 (+lovable)" },
       signal: AbortSignal.timeout(20000),
     });
     if (!res.ok) {
-      console.warn(`[REDDIT] pullpush ${kind} HTTP ${res.status}`);
+      console.warn(`[REDDIT] pullpush ${kind}${subreddit ? ` r/${subreddit}` : ""} HTTP ${res.status}`);
       return [];
     }
     const json = await res.json();
     return Array.isArray(json?.data) ? json.data : [];
   } catch (e) {
     console.warn(`[REDDIT] pullpush ${kind} falhou:`, (e as Error).message);
+    return [];
+  }
+}
+
+async function fetchArcticShift(kind: "posts" | "comments", query: string): Promise<any[]> {
+  const after = Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
+  const url = `${ARCTIC_SHIFT_BASE}/${kind}/search?q=${encodeURIComponent(query)}&limit=200&after=${after}`;
+  try {
+    const res = await fetch(url, {
+      headers: { "Accept": "application/json", "User-Agent": "ClimaPolitico/1.0 (+lovable)" },
+      signal: AbortSignal.timeout(25000),
+    });
+    if (!res.ok) {
+      console.warn(`[REDDIT] arctic-shift ${kind} HTTP ${res.status}`);
+      return [];
+    }
+    const json = await res.json();
+    return Array.isArray(json?.data) ? json.data : [];
+  } catch (e) {
+    console.warn(`[REDDIT] arctic-shift ${kind} falhou:`, (e as Error).message);
     return [];
   }
 }
@@ -59,7 +95,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Recupera user_id
     const { data: cand } = await supabase
       .from("candidates").select("user_id").eq("id", candidateId).maybeSingle();
     if (!cand) {
@@ -70,13 +105,27 @@ Deno.serve(async (req) => {
     const userId = cand.user_id as string;
 
     const query = `"${candidateName}"`;
-    const [posts, comments] = await Promise.all([
+
+    const tasks: Promise<any[]>[] = [
       fetchPullPush("submission", query, 50),
       fetchPullPush("comment", query, 50),
-    ]);
+    ];
+    for (const sr of BR_SUBREDDITS) {
+      tasks.push(fetchPullPush("submission", query, 30, sr));
+    }
+    tasks.push(fetchArcticShift("posts", candidateName));
+    tasks.push(fetchArcticShift("comments", candidateName));
+
+    const results = await Promise.all(tasks);
+    const allPosts = [
+      ...results[0],
+      ...results.slice(2, 2 + BR_SUBREDDITS.length).flat(),
+      ...results[results.length - 2],
+    ];
+    const allComments = [...results[1], ...results[results.length - 1]];
 
     const items: any[] = [];
-    for (const p of posts) {
+    for (const p of allPosts) {
       const text = `${p.title || ""}\n${p.selftext || ""}`.trim();
       const url = p.permalink ? `https://reddit.com${p.permalink}` : (p.url || "");
       if (!text || !url) continue;
@@ -92,7 +141,7 @@ Deno.serve(async (req) => {
         replies_count: Number(p.num_comments || 0), shares_count: 0,
       });
     }
-    for (const c of comments) {
+    for (const c of allComments) {
       const text = (c.body || "").trim();
       const url = c.permalink ? `https://reddit.com${c.permalink}` : (c.link_permalink || "");
       if (!text || !url || text === "[removed]" || text === "[deleted]") continue;
@@ -108,19 +157,28 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (items.length === 0) {
+    // Dedup interno por URL
+    const byUrl = new Map<string, any>();
+    for (const it of items) byUrl.set(it.author_profile_url, it);
+    const dedupedLocal = [...byUrl.values()];
+
+    if (dedupedLocal.length === 0) {
       return new Response(JSON.stringify({ collected: 0, message: "Nenhuma menção nova" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Dedup
-    const urls = items.map((r) => r.author_profile_url);
-    const { data: existing } = await supabase
-      .from("social_interactions").select("author_profile_url")
-      .eq("candidate_id", candidateId).eq("social_network", "Reddit").in("author_profile_url", urls);
-    const existingSet = new Set((existing ?? []).map((e: any) => e.author_profile_url));
-    const fresh = items.filter((r) => !existingSet.has(r.author_profile_url));
+    // Dedup contra DB em chunks
+    const urls = dedupedLocal.map((r) => r.author_profile_url);
+    const existingSet = new Set<string>();
+    for (let i = 0; i < urls.length; i += 100) {
+      const chunk = urls.slice(i, i + 100);
+      const { data: existing } = await supabase
+        .from("social_interactions").select("author_profile_url")
+        .eq("candidate_id", candidateId).eq("social_network", "Reddit").in("author_profile_url", chunk);
+      (existing ?? []).forEach((e: any) => existingSet.add(e.author_profile_url));
+    }
+    const fresh = dedupedLocal.filter((r) => !existingSet.has(r.author_profile_url));
 
     if (fresh.length === 0) {
       return new Response(JSON.stringify({ collected: 0, message: "Todos duplicados" }), {
@@ -131,7 +189,7 @@ Deno.serve(async (req) => {
     const { error } = await supabase.from("social_interactions").insert(fresh);
     if (error) throw error;
 
-    return new Response(JSON.stringify({ collected: fresh.length, raw: items.length }), {
+    return new Response(JSON.stringify({ collected: fresh.length, raw: dedupedLocal.length }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

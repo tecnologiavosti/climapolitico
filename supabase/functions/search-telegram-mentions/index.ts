@@ -36,17 +36,27 @@ const RSS_BRIDGE_INSTANCES = [
   "https://rss.0v0.email",
 ];
 
-// Canais brasileiros de imprensa/política para varrer em busca de menções.
-// Mantemos uma lista enxuta de canais grandes e abertos ao público.
+// Canais brasileiros para varrer em busca de menções (categorizados).
+// Nota: nem todos podem existir no Telegram com esse handle exato — os que não
+// existirem simplesmente não retornam itens (silenciosamente ignorados).
 const BR_PRESS_CHANNELS = [
-  "g1noticias",
-  "uol",
-  "folhadespaulo",
-  "estadao",
-  "cnnbrasil",
-  "metropoles",
-  "poder360",
-  "bbcbrasil",
+  // Grandes veículos
+  "g1noticias", "uol", "folhadespaulo", "estadao", "cnnbrasil", "metropoles",
+  "poder360", "bbcbrasil", "UOLNoticias", "band_jornalismo", "recordnews", "jovempannews",
+  // Política nacional
+  "politicabrasil", "brazilpolitics", "debatepolitico",
+  "forumbrasileiro", "brasil247", "revistaforum",
+  // Direita / conservador
+  "bolsonaronews", "direitabrasil", "agora_brasil",
+  "conservadoresbrasil", "patriotasbr",
+  // Esquerda / progressista
+  "ptbrasil", "mstnacional", "pcdobrasil",
+  "movimentobrasil", "esquerda_online",
+  // Fact-checking
+  "aosfatos", "lupa", "agenciapublica", "comprova",
+  // Regionais
+  "nordeste_politica", "sul_noticias", "centroeste_br",
+  "sudeste_noticias", "norte_amazonia",
 ];
 
 const USER_AGENTS = [
@@ -138,58 +148,8 @@ function extractTelegramHandle(link: string | null | undefined): string | null {
 }
 
 async function fetchChannelRss(channel: string): Promise<Array<Record<string, string>>> {
-  // Tenta RSSHub primeiro
-  for (const inst of RSSHUB_INSTANCES) {
-    try {
-      const url = `${inst}/telegram/channel/${channel}`;
-      const res = await fetch(url, {
-        headers: {
-          "User-Agent": randomUA(),
-          "Accept": "application/rss+xml, application/xml, text/xml, */*",
-        },
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!res.ok) {
-        console.warn(`[Telegram] RSSHub ${inst}/${channel}: HTTP ${res.status}`);
-        continue;
-      }
-      const xml = await res.text();
-      const items = parseRssItems(xml);
-      if (items.length > 0) {
-        console.log(`[Telegram] RSSHub ${inst}/${channel}: ${items.length} itens`);
-        return items;
-      }
-    } catch (e) {
-      console.warn(`[Telegram] RSSHub ${inst}/${channel} falhou: ${(e as Error).message}`);
-    }
-  }
-  // Fallback: RSS-Bridge TelegramBridge
-  for (const inst of RSS_BRIDGE_INSTANCES) {
-    try {
-      const url = `${inst}/?action=display&bridge=TelegramBridge&username=${encodeURIComponent(channel)}&format=Mrss`;
-      const res = await fetch(url, {
-        headers: {
-          "User-Agent": randomUA(),
-          "Accept": "application/rss+xml, application/xml, text/xml, */*",
-        },
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!res.ok) {
-        console.warn(`[Telegram] Bridge ${inst}/${channel}: HTTP ${res.status}`);
-        continue;
-      }
-      const xml = await res.text();
-      const items = parseRssItems(xml);
-      if (items.length > 0) {
-        console.log(`[Telegram] Bridge ${inst}/${channel}: ${items.length} itens`);
-        return items;
-      }
-    } catch (e) {
-      console.warn(`[Telegram] Bridge ${inst}/${channel} falhou: ${(e as Error).message}`);
-    }
-  }
-  // Fallback final: scrape HTML público de t.me/s/<canal>
-  // Esta página é renderizada pelo próprio Telegram e é sempre pública.
+  // 1) Prioridade: scraping do HTML público t.me/s/<canal> (renderizado pelo
+  // próprio Telegram, sempre acessível, não depende de instâncias terceiras).
   try {
     const url = `https://t.me/s/${channel}`;
     const res = await fetch(url, {
@@ -207,13 +167,59 @@ async function fetchChannelRss(channel: string): Promise<Array<Record<string, st
         console.log(`[Telegram] t.me/s/${channel}: ${items.length} itens (HTML)`);
         return items;
       }
-      console.warn(`[Telegram] t.me/s/${channel}: HTML sem mensagens (canal privado?)`);
     } else {
       console.warn(`[Telegram] t.me/s/${channel}: HTTP ${res.status}`);
     }
   } catch (e) {
     console.warn(`[Telegram] t.me/s/${channel} falhou: ${(e as Error).message}`);
   }
+
+  // 2) Fallback: RSSHub público
+  for (const inst of RSSHUB_INSTANCES) {
+    try {
+      const url = `${inst}/telegram/channel/${channel}`;
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": randomUA(),
+          "Accept": "application/rss+xml, application/xml, text/xml, */*",
+        },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) continue;
+      const xml = await res.text();
+      const items = parseRssItems(xml);
+      if (items.length > 0) {
+        console.log(`[Telegram] RSSHub ${inst}/${channel}: ${items.length} itens`);
+        return items;
+      }
+    } catch (_e) {
+      // silencioso — tantas instâncias offline
+    }
+  }
+
+  // 3) Fallback final: RSS-Bridge TelegramBridge
+  for (const inst of RSS_BRIDGE_INSTANCES) {
+    try {
+      const url = `${inst}/?action=display&bridge=TelegramBridge&username=${encodeURIComponent(channel)}&format=Mrss`;
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": randomUA(),
+          "Accept": "application/rss+xml, application/xml, text/xml, */*",
+        },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) continue;
+      const xml = await res.text();
+      const items = parseRssItems(xml);
+      if (items.length > 0) {
+        console.log(`[Telegram] Bridge ${inst}/${channel}: ${items.length} itens`);
+        return items;
+      }
+    } catch (_e) {
+      // silencioso
+    }
+  }
+
   return [];
 }
 
