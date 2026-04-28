@@ -174,7 +174,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ processed: updates.length, heuristic: heuristicCount, ai: aiCount, remaining_in_batch: rows.length }),
+      JSON.stringify({ processed: updates.length, heuristic: heuristicCount, ai: aiCount, skipped, scanned: rows.length }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
