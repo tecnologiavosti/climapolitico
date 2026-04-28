@@ -102,22 +102,21 @@ export default function RegionalAnalysis() {
       const netCfg = NETWORKS.find((n) => n.label === network) ?? NETWORKS[0];
       const netValues = netCfg.values;
 
-      // 1) Map data — all 5 regions for selected network
+      // 1) Map data — all regions for selected network (NULL region tratado como "Indefinido")
       const { data: mapRows, error: mapErr } = await supabase
         .from("social_interactions")
         .select("region, sentiment_label, likes_count, replies_count, shares_count")
         .eq("user_id", user.id)
         .eq("candidate_id", candidateId)
         .in("social_network", netValues)
-        .not("region", "is", null)
         .gte("created_at", since)
         .limit(50000);
       if (mapErr) throw mapErr;
 
       const grouped: Record<string, typeof mapRows> = {};
       for (const r of mapRows ?? []) {
-        const reg = r.region as string;
-        if (!REGIONS.includes(reg as RegionLabel)) continue;
+        let reg = (r.region as string) || "Indefinido";
+        if (!REGIONS.includes(reg as RegionLabel)) reg = "Indefinido";
         (grouped[reg] = grouped[reg] || []).push(r);
       }
       const md = {} as Record<RegionLabel, Metrics>;
