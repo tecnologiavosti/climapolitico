@@ -9,6 +9,7 @@ import { CheckCircle2, XCircle, MessageSquare, Activity, Instagram, Youtube, Fac
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { BR_MAP } from "@/data/brRegionsMap";
 
 type RegionLabel = "Norte" | "Nordeste" | "Centro-Oeste" | "Sudeste" | "Sul";
 const REGIONS: RegionLabel[] = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"];
@@ -26,20 +27,10 @@ const NETWORKS = [
 ];
 type NetCfg = typeof NETWORKS[number];
 
-const REGION_PATHS: Record<RegionLabel, string> = {
-  Norte: "M60,40 L260,40 L260,170 L180,200 L60,180 Z",
-  Nordeste: "M260,40 L360,60 L370,200 L300,220 L260,170 Z",
-  "Centro-Oeste": "M150,180 L260,170 L300,220 L260,290 L150,280 Z",
-  Sudeste: "M260,220 L340,220 L340,300 L260,310 Z",
-  Sul: "M180,300 L290,300 L280,370 L190,370 Z",
-};
-const REGION_LABEL_POS: Record<RegionLabel, { x: number; y: number }> = {
-  Norte: { x: 160, y: 115 },
-  Nordeste: { x: 315, y: 130 },
-  "Centro-Oeste": { x: 220, y: 235 },
-  Sudeste: { x: 300, y: 270 },
-  Sul: { x: 235, y: 340 },
-};
+// Geometria real das 5 regiões do Brasil (gerada de simplemaps.com — uso comercial livre).
+const REGION_PATHS: Record<RegionLabel, string> = BR_MAP.regions as Record<RegionLabel, string>;
+const REGION_LABEL_POS: Record<RegionLabel, { x: number; y: number }> = BR_MAP.labels as Record<RegionLabel, { x: number; y: number }>;
+const MAP_VIEWBOX = BR_MAP.viewBox;
 
 function colorByAcceptance(acc: number, total: number): string {
   if (total < 10) return "hsl(var(--muted))";
@@ -327,7 +318,7 @@ export default function RegionalAnalysis() {
               <CardContent>
                 <TooltipProvider delayDuration={150}>
                   <div className="w-full flex justify-center">
-                    <svg viewBox="0 0 420 400" className="w-full max-w-md h-auto">
+                    <svg viewBox={MAP_VIEWBOX} className="w-full max-w-md h-auto" role="img" aria-label="Mapa do Brasil dividido em 5 regiões">
                       {REGIONS.map((r) => {
                         const m = mapData[r] ?? { acceptance: 0, total: 0 } as Metrics;
                         const fill = colorByAcceptance(m.acceptance, m.total);
@@ -336,8 +327,22 @@ export default function RegionalAnalysis() {
                           <Tooltip key={r}>
                             <TooltipTrigger asChild>
                               <g onClick={() => setRegion(r)} className="cursor-pointer">
-                                <path d={REGION_PATHS[r]} fill={fill} stroke={selected ? "hsl(var(--primary))" : "hsl(var(--background))"} strokeWidth={selected ? 4 : 2} className="transition-all hover:opacity-80" />
-                                <text x={REGION_LABEL_POS[r].x} y={REGION_LABEL_POS[r].y} textAnchor="middle" className="fill-white text-xs font-bold pointer-events-none" style={{ textShadow: "0 1px 2px rgba(0,0,0,0.6)" }}>{r}</text>
+                                <path
+                                  d={REGION_PATHS[r]}
+                                  fill={fill}
+                                  stroke={selected ? "hsl(var(--primary))" : "hsl(var(--background))"}
+                                  strokeWidth={selected ? 4 : 1.5}
+                                  className="transition-all hover:opacity-80"
+                                />
+                                <text
+                                  x={REGION_LABEL_POS[r].x}
+                                  y={REGION_LABEL_POS[r].y}
+                                  textAnchor="middle"
+                                  className="fill-white font-bold pointer-events-none"
+                                  style={{ fontSize: 28, paintOrder: "stroke", stroke: "rgba(0,0,0,0.55)", strokeWidth: 4, strokeLinejoin: "round" }}
+                                >
+                                  {r}
+                                </text>
                               </g>
                             </TooltipTrigger>
                             <TooltipContent>
