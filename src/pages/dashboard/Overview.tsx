@@ -194,7 +194,9 @@ export default function Overview() {
       const mScore = maxM > 0 ? (m.mentions / maxM) * 100 : 0;
       const aScore = maxA > 0 ? (m.authors.size / maxA) * 100 : 0;
       const eScore = maxE > 0 ? (m.engagement / maxE) * 100 : 0;
-      const overall = Math.round(mScore * 0.3 + aScore * 0.2 + avgSent * 0.3 + eScore * 0.2);
+      // Mesma fórmula da aba Ranking: cada métrica entra com peso integral (100%)
+      // e o score final é a média das 4 dimensões normalizadas (escala 0-100).
+      const overall = Math.round((mScore + aScore + avgSent + eScore) / 4);
       return { id: c.id, candidate_id: c.id, overall_score: overall, rank_change: 0, candidates: { full_name: c.full_name } };
     });
     arr.sort((a, b) => b.overall_score - a.overall_score);
