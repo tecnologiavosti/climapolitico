@@ -59,25 +59,29 @@ async function classifyBatchWithCerebras(items: { id: string; text: string }[]):
 
   const sys = `Você é um classificador de região brasileira. Para cada texto numerado, identifique a região do autor (Norte, Nordeste, Centro-Oeste, Sudeste, Sul) com base em gírias, cidades, referências culturais, times, sotaque escrito. Se não for possível, use "Indefinido". Responda APENAS um JSON no formato {"results":[{"i":1,"region":"Sudeste"}, ...]}. Use exatamente esses rótulos: Norte, Nordeste, Centro-Oeste, Sudeste, Sul, Indefinido.`;
 
-  const resp = await fetch("https://api.cerebras.ai/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "llama-3.3-70b",
-      messages: [
-        { role: "system", content: sys },
-        { role: "user", content: numbered },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 2000,
-      temperature: 0.1,
-    }),
-  });
-  if (!resp.ok) {
-    const t = await resp.text();
-    throw new Error(`Cerebras ${resp.status}: ${t.slice(0, 300)}`);
+  const models = ["qwen-3-235b-a22b-instruct-2507", "llama3.1-8b"];
+  let json: any = null;
+  let lastErr = "";
+  for (const model of models) {
+    const resp = await fetch("https://api.cerebras.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: sys },
+          { role: "user", content: numbered },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 2000,
+        temperature: 0.1,
+      }),
+    });
+    if (resp.ok) { json = await resp.json(); break; }
+    lastErr = `${model} ${resp.status}: ${(await resp.text()).slice(0, 200)}`;
+    console.warn("[classify-region]", lastErr);
   }
-  const json = await resp.json();
+  if (!json) throw new Error(`Cerebras failed: ${lastErr}`);
   const content = json.choices?.[0]?.message?.content ?? "{}";
   const parsed = JSON.parse(content);
   const out: Record<string, RegionLabel> = {};
