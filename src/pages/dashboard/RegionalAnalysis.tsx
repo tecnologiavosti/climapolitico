@@ -161,7 +161,8 @@ export default function RegionalAnalysis() {
             body: {
               candidate_id: candidateId,
               region,
-              social_network: network,
+              social_network: netCfg.label,
+              social_network_values: netValues,
               totals: { total: md[region].total, acceptance: md[region].acceptance, rejection: md[region].rejection },
             },
           });
