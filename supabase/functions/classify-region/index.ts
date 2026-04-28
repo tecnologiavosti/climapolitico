@@ -155,13 +155,19 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Apply updates one-by-one (Supabase JS doesn't bulk-update by id easily)
-    for (const u of updates) {
-      const { error: upErr } = await supabase
-        .from("social_interactions")
-        .update({ region: u.region })
-        .eq("id", u.id);
-      if (upErr) console.error("update failed", u.id, upErr.message);
+    // Apply updates grouped by region (one UPDATE per region with IN clause)
+    const byRegion: Record<string, string[]> = {};
+    for (const u of updates) (byRegion[u.region] = byRegion[u.region] || []).push(u.id);
+    for (const [reg, ids] of Object.entries(byRegion)) {
+      // chunk to keep query size reasonable
+      for (let i = 0; i < ids.length; i += 200) {
+        const chunk = ids.slice(i, i + 200);
+        const { error: upErr } = await supabase
+          .from("social_interactions")
+          .update({ region: reg })
+          .in("id", chunk);
+        if (upErr) console.error("bulk update failed", reg, upErr.message);
+      }
     }
 
     return new Response(
