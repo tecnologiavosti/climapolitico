@@ -42,6 +42,7 @@ const CandidatesCatalog = lazy(() => import("./dashboard/CandidatesCatalog"));
 const Settings = lazy(() => import("./dashboard/Settings"));
 const Notifications = lazy(() => import("./dashboard/Notifications"));
 const DataCollectionMethodology = lazy(() => import("./dashboard/DataCollectionMethodology"));
+const RegionalAnalysis = lazy(() => import("./dashboard/RegionalAnalysis"));
 const onboardingSteps: OnboardingStep[] = [
   {
     target: '[data-onboarding="sidebar"]',
