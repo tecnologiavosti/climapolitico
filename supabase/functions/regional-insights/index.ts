@@ -77,26 +77,29 @@ Responda APENAS um JSON no formato exato:
 {"pontos_fortes":["...","...","...","...","..."],"como_melhorar":["...","...","...","...","..."]}
 Cada item deve ter no máximo 140 caracteres, em português brasileiro.`;
 
-    const resp = await fetch("https://api.cerebras.ai/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "llama-3.3-70b",
-        messages: [
-          { role: "system", content: "Você é um estrategista político brasileiro. Responda sempre em JSON válido em português." },
-          { role: "user", content: prompt },
-        ],
-        response_format: { type: "json_object" },
-        max_tokens: 1000,
-        temperature: 0.4,
-      }),
-    });
-
-    if (!resp.ok) {
-      const t = await resp.text();
-      throw new Error(`Cerebras ${resp.status}: ${t.slice(0, 300)}`);
+    const models = ["qwen-3-235b-a22b-instruct-2507", "llama3.1-8b"];
+    let json: any = null;
+    let lastErr = "";
+    for (const model of models) {
+      const r = await fetch("https://api.cerebras.ai/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: "Você é um estrategista político brasileiro. Responda sempre em JSON válido em português." },
+            { role: "user", content: prompt },
+          ],
+          response_format: { type: "json_object" },
+          max_tokens: 1000,
+          temperature: 0.4,
+        }),
+      });
+      if (r.ok) { json = await r.json(); break; }
+      lastErr = `${model} ${r.status}: ${(await r.text()).slice(0, 200)}`;
+      console.warn("[regional-insights]", lastErr);
     }
-    const json = await resp.json();
+    if (!json) throw new Error(`Cerebras failed: ${lastErr}`);
     const parsed = JSON.parse(json.choices?.[0]?.message?.content ?? "{}");
 
     return new Response(
