@@ -318,7 +318,7 @@ export default function RegionalAnalysis() {
               <CardContent>
                 <TooltipProvider delayDuration={150}>
                   <div className="w-full flex justify-center">
-                    <svg viewBox="0 0 420 400" className="w-full max-w-md h-auto">
+                    <svg viewBox={MAP_VIEWBOX} className="w-full max-w-md h-auto" role="img" aria-label="Mapa do Brasil dividido em 5 regiões">
                       {REGIONS.map((r) => {
                         const m = mapData[r] ?? { acceptance: 0, total: 0 } as Metrics;
                         const fill = colorByAcceptance(m.acceptance, m.total);
@@ -327,8 +327,22 @@ export default function RegionalAnalysis() {
                           <Tooltip key={r}>
                             <TooltipTrigger asChild>
                               <g onClick={() => setRegion(r)} className="cursor-pointer">
-                                <path d={REGION_PATHS[r]} fill={fill} stroke={selected ? "hsl(var(--primary))" : "hsl(var(--background))"} strokeWidth={selected ? 4 : 2} className="transition-all hover:opacity-80" />
-                                <text x={REGION_LABEL_POS[r].x} y={REGION_LABEL_POS[r].y} textAnchor="middle" className="fill-white text-xs font-bold pointer-events-none" style={{ textShadow: "0 1px 2px rgba(0,0,0,0.6)" }}>{r}</text>
+                                <path
+                                  d={REGION_PATHS[r]}
+                                  fill={fill}
+                                  stroke={selected ? "hsl(var(--primary))" : "hsl(var(--background))"}
+                                  strokeWidth={selected ? 4 : 1.5}
+                                  className="transition-all hover:opacity-80"
+                                />
+                                <text
+                                  x={REGION_LABEL_POS[r].x}
+                                  y={REGION_LABEL_POS[r].y}
+                                  textAnchor="middle"
+                                  className="fill-white font-bold pointer-events-none"
+                                  style={{ fontSize: 28, paintOrder: "stroke", stroke: "rgba(0,0,0,0.55)", strokeWidth: 4, strokeLinejoin: "round" }}
+                                >
+                                  {r}
+                                </text>
                               </g>
                             </TooltipTrigger>
                             <TooltipContent>
