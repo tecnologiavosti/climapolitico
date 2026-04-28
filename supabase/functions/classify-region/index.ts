@@ -107,16 +107,26 @@ Deno.serve(async (req) => {
     );
 
     const body = await req.json().catch(() => ({}));
-    const limit: number = Math.min(Math.max(Number(body.limit) || 200, 1), 5000);
+    const limit: number = Math.min(Math.max(Number(body.limit) || 200, 1), 1000);
     const candidate_id: string | undefined = body.candidate_id;
+    const user_id: string | undefined = body.user_id;
     const heuristic_only: boolean = body.heuristic_only === true;
+    // include_indefinido = re-classify rows already marked Indefinido (try AI again)
+    const include_indefinido: boolean = body.include_indefinido === true;
+    // force_ai_for_all = skip heuristic check, send everything to AI (costlier but used to fill gaps)
+    const force_ai_for_all: boolean = body.force_ai_for_all === true;
 
     let q = supabase
       .from("social_interactions")
       .select("id, comment_text, comment_author, author_profile_url")
-      .is("region", null)
       .limit(limit);
+    if (include_indefinido) {
+      q = q.or("region.is.null,region.eq.Indefinido");
+    } else {
+      q = q.is("region", null);
+    }
     if (candidate_id) q = q.eq("candidate_id", candidate_id);
+    if (user_id) q = q.eq("user_id", user_id);
 
     const { data: rows, error } = await q;
     if (error) throw error;
