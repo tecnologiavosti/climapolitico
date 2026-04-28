@@ -26,6 +26,7 @@ import {
   Import,
   BookUser,
   Database as DatabaseIcon,
+  MapPinned,
 } from "lucide-react";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { useTooltipsEnabled } from "@/hooks/useTooltipsEnabled";
@@ -57,6 +58,7 @@ const mainItems = [
   { title: "Analytics Avançado", url: "/dashboard/analytics-advanced", icon: LineChart, tip: "Gráficos detalhados pra quem quer entender tudo a fundo." },
   { title: "Ranking", url: "/dashboard/ranking", icon: Trophy, tip: "Quem está ganhando e quem está perdendo nas redes nos últimos 30 dias." },
   { title: "Configuração de Coleta", url: "/dashboard/collection-status", icon: Database, tip: "Veja se a coleta de dados em cada rede social está funcionando direitinho." },
+  { title: "Análise Regional", url: "/dashboard/regional-analysis", icon: MapPinned, tip: "Veja como seu candidato performa em cada região do Brasil por rede social." },
 ];
 
 // Módulos temporariamente desativados (mantidos para reativação futura)
