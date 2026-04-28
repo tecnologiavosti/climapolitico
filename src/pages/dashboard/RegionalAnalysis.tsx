@@ -9,6 +9,7 @@ import { CheckCircle2, XCircle, MessageSquare, Activity, Instagram, Youtube, Fac
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { BR_MAP } from "@/data/brRegionsMap";
 
 type RegionLabel = "Norte" | "Nordeste" | "Centro-Oeste" | "Sudeste" | "Sul";
 const REGIONS: RegionLabel[] = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"];
@@ -26,20 +27,10 @@ const NETWORKS = [
 ];
 type NetCfg = typeof NETWORKS[number];
 
-const REGION_PATHS: Record<RegionLabel, string> = {
-  Norte: "M60,40 L260,40 L260,170 L180,200 L60,180 Z",
-  Nordeste: "M260,40 L360,60 L370,200 L300,220 L260,170 Z",
-  "Centro-Oeste": "M150,180 L260,170 L300,220 L260,290 L150,280 Z",
-  Sudeste: "M260,220 L340,220 L340,300 L260,310 Z",
-  Sul: "M180,300 L290,300 L280,370 L190,370 Z",
-};
-const REGION_LABEL_POS: Record<RegionLabel, { x: number; y: number }> = {
-  Norte: { x: 160, y: 115 },
-  Nordeste: { x: 315, y: 130 },
-  "Centro-Oeste": { x: 220, y: 235 },
-  Sudeste: { x: 300, y: 270 },
-  Sul: { x: 235, y: 340 },
-};
+// Geometria real das 5 regiões do Brasil (gerada de simplemaps.com — uso comercial livre).
+const REGION_PATHS: Record<RegionLabel, string> = BR_MAP.regions as Record<RegionLabel, string>;
+const REGION_LABEL_POS: Record<RegionLabel, { x: number; y: number }> = BR_MAP.labels as Record<RegionLabel, { x: number; y: number }>;
+const MAP_VIEWBOX = BR_MAP.viewBox;
 
 function colorByAcceptance(acc: number, total: number): string {
   if (total < 10) return "hsl(var(--muted))";
