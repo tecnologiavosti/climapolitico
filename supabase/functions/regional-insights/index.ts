@@ -30,29 +30,35 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { candidate_id, region, social_network, totals } = await req.json();
+    const { candidate_id, region, social_network, social_network_values, totals } = await req.json();
     if (!candidate_id || !region || !social_network) {
       return new Response(JSON.stringify({ error: "missing params" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    const netValues: string[] = Array.isArray(social_network_values) && social_network_values.length
+      ? social_network_values
+      : [social_network];
 
-    // Fetch sample comments (positive + negative)
+    // Fetch sample comments (positive + negative). Sentiments in DB are 'Positivo'/'Negativo'/'Neutro' (PT) — accept both.
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const baseFilter = (sentiment: string) =>
+    const baseFilter = (sentiments: string[]) =>
       admin
         .from("social_interactions")
         .select("comment_text")
         .eq("user_id", userId)
         .eq("candidate_id", candidate_id)
         .eq("region", region)
-        .eq("social_network", social_network)
-        .eq("sentiment_label", sentiment)
+        .in("social_network", netValues)
+        .in("sentiment_label", sentiments)
         .not("comment_text", "is", null)
         .order("created_at", { ascending: false })
         .limit(8);
 
-    const [{ data: pos }, { data: neg }] = await Promise.all([baseFilter("positive"), baseFilter("negative")]);
+    const [{ data: pos }, { data: neg }] = await Promise.all([
+      baseFilter(["Positivo", "positive", "positivo"]),
+      baseFilter(["Negativo", "negative", "negativo"]),
+    ]);
 
     const positives = (pos ?? []).map((r) => `- ${(r.comment_text || "").slice(0, 200)}`).join("\n") || "(sem amostras)";
     const negatives = (neg ?? []).map((r) => `- ${(r.comment_text || "").slice(0, 200)}`).join("\n") || "(sem amostras)";

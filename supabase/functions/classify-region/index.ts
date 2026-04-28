@@ -107,8 +107,9 @@ Deno.serve(async (req) => {
     );
 
     const body = await req.json().catch(() => ({}));
-    const limit: number = Math.min(Math.max(Number(body.limit) || 200, 1), 500);
+    const limit: number = Math.min(Math.max(Number(body.limit) || 200, 1), 5000);
     const candidate_id: string | undefined = body.candidate_id;
+    const heuristic_only: boolean = body.heuristic_only === true;
 
     let q = supabase
       .from("social_interactions")
@@ -120,7 +121,7 @@ Deno.serve(async (req) => {
     const { data: rows, error } = await q;
     if (error) throw error;
     if (!rows || rows.length === 0) {
-      return new Response(JSON.stringify({ processed: 0, heuristic: 0, ai: 0 }), {
+      return new Response(JSON.stringify({ processed: 0, heuristic: 0, ai: 0, skipped: 0 }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -134,38 +135,46 @@ Deno.serve(async (req) => {
       if (reg) {
         updates.push({ id: r.id, region: reg });
         heuristicCount++;
-      } else {
+      } else if (!heuristic_only) {
         needAI.push({ id: r.id, text: `${r.comment_text ?? ""} | autor: ${r.comment_author ?? ""}` });
       }
     }
+    const skipped = heuristic_only ? rows.length - heuristicCount : 0;
 
     let aiCount = 0;
-    // Process AI in batches of 25
-    for (let i = 0; i < needAI.length; i += 25) {
-      const batch = needAI.slice(i, i + 25);
-      try {
-        const map = await classifyBatchWithCerebras(batch);
-        for (const it of batch) {
-          updates.push({ id: it.id, region: map[it.id] ?? "Indefinido" });
-          aiCount++;
+    if (!heuristic_only) {
+      for (let i = 0; i < needAI.length; i += 25) {
+        const batch = needAI.slice(i, i + 25);
+        try {
+          const map = await classifyBatchWithCerebras(batch);
+          for (const it of batch) {
+            updates.push({ id: it.id, region: map[it.id] ?? "Indefinido" });
+            aiCount++;
+          }
+        } catch (e) {
+          console.error("AI batch failed, marking as Indefinido:", (e as Error).message);
+          for (const it of batch) updates.push({ id: it.id, region: "Indefinido" });
         }
-      } catch (e) {
-        console.error("AI batch failed, marking as Indefinido:", (e as Error).message);
-        for (const it of batch) updates.push({ id: it.id, region: "Indefinido" });
       }
     }
 
-    // Apply updates one-by-one (Supabase JS doesn't bulk-update by id easily)
-    for (const u of updates) {
-      const { error: upErr } = await supabase
-        .from("social_interactions")
-        .update({ region: u.region })
-        .eq("id", u.id);
-      if (upErr) console.error("update failed", u.id, upErr.message);
+    // Apply updates grouped by region (one UPDATE per region with IN clause)
+    const byRegion: Record<string, string[]> = {};
+    for (const u of updates) (byRegion[u.region] = byRegion[u.region] || []).push(u.id);
+    for (const [reg, ids] of Object.entries(byRegion)) {
+      // chunk to keep query size reasonable
+      for (let i = 0; i < ids.length; i += 200) {
+        const chunk = ids.slice(i, i + 200);
+        const { error: upErr } = await supabase
+          .from("social_interactions")
+          .update({ region: reg })
+          .in("id", chunk);
+        if (upErr) console.error("bulk update failed", reg, upErr.message);
+      }
     }
 
     return new Response(
-      JSON.stringify({ processed: updates.length, heuristic: heuristicCount, ai: aiCount, remaining_in_batch: rows.length }),
+      JSON.stringify({ processed: updates.length, heuristic: heuristicCount, ai: aiCount, skipped, scanned: rows.length }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
