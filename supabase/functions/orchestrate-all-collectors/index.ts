@@ -74,6 +74,17 @@ Deno.serve(async (req) => {
         }
       }
       console.log(`[ORCHESTRATOR] Concluído em ${(Date.now() - startedAt) / 1000}s | summary=`, JSON.stringify(summary));
+
+      // 3) Classifica regiões das novas interações (heurística + IA em lote)
+      try {
+        for (let i = 0; i < 5; i++) {
+          const { data: cr } = await supabase.functions.invoke("classify-region", { body: { limit: 300 } });
+          console.log(`[ORCHESTRATOR] classify-region pass ${i + 1}:`, JSON.stringify(cr));
+          if (!cr || (cr as any).processed === 0) break;
+        }
+      } catch (e) {
+        console.warn("[ORCHESTRATOR] classify-region falhou:", (e as Error).message);
+      }
     })();
 
     // @ts-ignore EdgeRuntime
