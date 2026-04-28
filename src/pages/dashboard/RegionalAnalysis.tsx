@@ -11,8 +11,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { BR_MAP } from "@/data/brRegionsMap";
 
-type RegionLabel = "Norte" | "Nordeste" | "Centro-Oeste" | "Sudeste" | "Sul";
-const REGIONS: RegionLabel[] = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"];
+type RegionLabel = "Norte" | "Nordeste" | "Centro-Oeste" | "Sudeste" | "Sul" | "Indefinido";
+const REGIONS: RegionLabel[] = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul", "Indefinido"];
+const MAP_REGIONS: Exclude<RegionLabel, "Indefinido">[] = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"];
 
 // values precisam casar com os valores REAIS na coluna social_network do banco
 const NETWORKS = [
