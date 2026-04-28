@@ -94,22 +94,32 @@ async function collectRedditForCandidate(
 ): Promise<{ collected: number; skipped: number; raw: number }> {
   const query = `"${candidate.full_name}"`;
 
-  // 1) PullPush global
-  const tasks: Promise<any[]>[] = [
+  // 1) PullPush global (paralelo)
+  const globalResults = await Promise.all([
     fetchPullPush("submission", query),
     fetchPullPush("comment", query),
-  ];
-  // 2) PullPush por subreddit BR (paralelo, com pacing leve)
-  for (const sr of BR_SUBREDDITS) {
-    tasks.push(fetchPullPush("submission", query, sr));
-  }
-  // 3) Arctic Shift histórico
-  tasks.push(fetchArcticShift("posts", candidate.full_name));
-  tasks.push(fetchArcticShift("comments", candidate.full_name));
+  ]);
+  const allPosts: any[] = [...globalResults[0]];
+  const allComments: any[] = [...globalResults[1]];
 
-  const results = await Promise.all(tasks);
-  const allPosts = [...results[0], ...results.slice(2, 2 + BR_SUBREDDITS.length).flat(), ...results[results.length - 2]];
-  const allComments = [...results[1], ...results[results.length - 1]];
+  // 2) PullPush por subreddit BR — sequencial com pacing para evitar 429
+  for (const sr of BR_SUBREDDITS) {
+    const r = await fetchPullPush("submission", query, sr);
+    allPosts.push(...r);
+    await new Promise((res) => setTimeout(res, 350));
+  }
+
+  // 3) Arctic Shift (best-effort — frequentemente retorna 400, ignora silenciosamente)
+  try {
+    const [aPosts, aComments] = await Promise.all([
+      fetchArcticShift("posts", candidate.full_name),
+      fetchArcticShift("comments", candidate.full_name),
+    ]);
+    allPosts.push(...aPosts);
+    allComments.push(...aComments);
+  } catch (_e) {
+    // ignora
+  }
 
   const items: Array<{ kind: string; text: string; author: string; url: string; created: string; score: number; replies: number }> = [];
 
