@@ -629,12 +629,10 @@ export default function Candidates() {
 
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <HelpTooltip text="Cadastra um novo candidato pra você começar a acompanhar.">
-                <Button>
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  Adicionar Candidato
-                </Button>
-              </HelpTooltip>
+              <Button title="Cadastra um novo candidato pra você começar a acompanhar.">
+                <UserPlus className="mr-2 h-4 w-4" />
+                Adicionar Candidato
+              </Button>
             </DialogTrigger>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
