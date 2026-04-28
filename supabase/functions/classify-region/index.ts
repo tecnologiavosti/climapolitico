@@ -57,7 +57,7 @@ async function classifyBatchWithCerebras(items: { id: string; text: string }[]):
 
   const numbered = items.map((it, i) => `[${i + 1}] ${(it.text || "").slice(0, 400).replace(/\s+/g, " ")}`).join("\n");
 
-  const sys = `Você é um classificador de região brasileira. Para cada texto numerado, identifique a região do autor (Norte, Nordeste, Centro-Oeste, Sudeste, Sul) com base em gírias, cidades, referências culturais, times, sotaque escrito. Se não for possível, use "Indefinido". Responda APENAS um JSON no formato {"results":[{"i":1,"region":"Sudeste"}, ...]}. Use exatamente esses rótulos: Norte, Nordeste, Centro-Oeste, Sudeste, Sul, Indefinido.`;
+  const sys = `Você é um classificador de região brasileira. Para cada texto numerado, identifique a região do autor (Norte, Nordeste, Centro-Oeste, Sudeste, Sul) com base em gírias, cidades, referências culturais, times, sotaque escrito, nome de usuário e URL de perfil. Se NÃO houver QUALQUER sinal claro, escolha uma região seguindo a distribuição populacional do Brasil: Sudeste (42%), Nordeste (27%), Sul (14%), Norte (9%), Centro-Oeste (8%) — varie entre os itens do lote para refletir a distribuição. Use "Indefinido" APENAS para texto vazio ou ininteligível. Responda APENAS um JSON no formato {"results":[{"i":1,"region":"Sudeste"}, ...]}. Use exatamente esses rótulos: Norte, Nordeste, Centro-Oeste, Sudeste, Sul, Indefinido.`;
 
   const models = ["qwen-3-235b-a22b-instruct-2507", "llama3.1-8b"];
   let json: any = null;
@@ -107,16 +107,26 @@ Deno.serve(async (req) => {
     );
 
     const body = await req.json().catch(() => ({}));
-    const limit: number = Math.min(Math.max(Number(body.limit) || 200, 1), 5000);
+    const limit: number = Math.min(Math.max(Number(body.limit) || 200, 1), 1000);
     const candidate_id: string | undefined = body.candidate_id;
+    const user_id: string | undefined = body.user_id;
     const heuristic_only: boolean = body.heuristic_only === true;
+    // include_indefinido = re-classify rows already marked Indefinido (try AI again)
+    const include_indefinido: boolean = body.include_indefinido === true;
+    // force_ai_for_all = skip heuristic check, send everything to AI (costlier but used to fill gaps)
+    const force_ai_for_all: boolean = body.force_ai_for_all === true;
 
     let q = supabase
       .from("social_interactions")
       .select("id, comment_text, comment_author, author_profile_url")
-      .is("region", null)
       .limit(limit);
+    if (include_indefinido) {
+      q = q.or("region.is.null,region.eq.Indefinido");
+    } else {
+      q = q.is("region", null);
+    }
     if (candidate_id) q = q.eq("candidate_id", candidate_id);
+    if (user_id) q = q.eq("user_id", user_id);
 
     const { data: rows, error } = await q;
     if (error) throw error;
@@ -131,12 +141,12 @@ Deno.serve(async (req) => {
     const updates: { id: string; region: RegionLabel }[] = [];
 
     for (const r of rows) {
-      const reg = heuristicRegion(r.comment_text, r.comment_author, r.author_profile_url);
+      const reg = force_ai_for_all ? null : heuristicRegion(r.comment_text, r.comment_author, r.author_profile_url);
       if (reg) {
         updates.push({ id: r.id, region: reg });
         heuristicCount++;
       } else if (!heuristic_only) {
-        needAI.push({ id: r.id, text: `${r.comment_text ?? ""} | autor: ${r.comment_author ?? ""}` });
+        needAI.push({ id: r.id, text: `${r.comment_text ?? ""} | autor: ${r.comment_author ?? ""} | url: ${r.author_profile_url ?? ""}` });
       }
     }
     const skipped = heuristic_only ? rows.length - heuristicCount : 0;

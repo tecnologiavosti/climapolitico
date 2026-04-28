@@ -11,8 +11,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { BR_MAP } from "@/data/brRegionsMap";
 
-type RegionLabel = "Norte" | "Nordeste" | "Centro-Oeste" | "Sudeste" | "Sul";
-const REGIONS: RegionLabel[] = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"];
+type RegionLabel = "Norte" | "Nordeste" | "Centro-Oeste" | "Sudeste" | "Sul" | "Indefinido";
+const REGIONS: RegionLabel[] = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul", "Indefinido"];
+const MAP_REGIONS: Exclude<RegionLabel, "Indefinido">[] = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"];
 
 // values precisam casar com os valores REAIS na coluna social_network do banco
 const NETWORKS = [
@@ -101,22 +102,21 @@ export default function RegionalAnalysis() {
       const netCfg = NETWORKS.find((n) => n.label === network) ?? NETWORKS[0];
       const netValues = netCfg.values;
 
-      // 1) Map data — all 5 regions for selected network
+      // 1) Map data — all regions for selected network (NULL region tratado como "Indefinido")
       const { data: mapRows, error: mapErr } = await supabase
         .from("social_interactions")
         .select("region, sentiment_label, likes_count, replies_count, shares_count")
         .eq("user_id", user.id)
         .eq("candidate_id", candidateId)
         .in("social_network", netValues)
-        .not("region", "is", null)
         .gte("created_at", since)
         .limit(50000);
       if (mapErr) throw mapErr;
 
       const grouped: Record<string, typeof mapRows> = {};
       for (const r of mapRows ?? []) {
-        const reg = r.region as string;
-        if (!REGIONS.includes(reg as RegionLabel)) continue;
+        let reg = (r.region as string) || "Indefinido";
+        if (!REGIONS.includes(reg as RegionLabel)) reg = "Indefinido";
         (grouped[reg] = grouped[reg] || []).push(r);
       }
       const md = {} as Record<RegionLabel, Metrics>;
@@ -125,14 +125,19 @@ export default function RegionalAnalysis() {
       setMetrics(md[region]);
 
       // 2) Sample comments for selected region (busca extra para deduplicar e ainda devolver 6)
-      const { data: cmts } = await supabase
+      let cmtsQuery = supabase
         .from("social_interactions")
         .select("id, comment_text, comment_author, sentiment_label, created_at, social_network")
         .eq("user_id", user.id)
         .eq("candidate_id", candidateId)
         .in("social_network", netValues)
-        .eq("region", region)
-        .not("comment_text", "is", null)
+        .not("comment_text", "is", null);
+      if (region === "Indefinido") {
+        cmtsQuery = cmtsQuery.or("region.is.null,region.eq.Indefinido");
+      } else {
+        cmtsQuery = cmtsQuery.eq("region", region);
+      }
+      const { data: cmts } = await cmtsQuery
         .order("created_at", { ascending: false })
         .limit(40);
 
@@ -330,7 +335,7 @@ export default function RegionalAnalysis() {
                 <TooltipProvider delayDuration={150}>
                   <div className="w-full flex justify-center">
                     <svg viewBox={MAP_VIEWBOX} className="w-full max-w-md h-auto" role="img" aria-label="Mapa do Brasil dividido em 5 regiões">
-                      {REGIONS.map((r) => {
+                      {MAP_REGIONS.map((r) => {
                         const m = mapData[r] ?? { acceptance: 0, total: 0 } as Metrics;
                         const fill = colorByAcceptance(m.acceptance, m.total);
                         const selected = r === region;
