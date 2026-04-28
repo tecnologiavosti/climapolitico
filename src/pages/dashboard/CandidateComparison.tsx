@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Users, MessageSquare, Heart, TrendingUp } from "lucide-react";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 
@@ -45,12 +46,45 @@ const SentimentBar = ({ positive, negative, neutral }: { positive: number; negat
   const pPos = (positive / total) * 100;
   const pNeu = (neutral / total) * 100;
   const pNeg = (negative / total) * 100;
+  const fmt = (v: number) => `${v.toFixed(1)}%`;
   return (
-    <div className="w-full h-5 rounded-full overflow-hidden flex">
-      <div className="bg-green-500 h-full transition-all" style={{ width: `${pPos}%` }} />
-      <div className="bg-yellow-400 h-full transition-all" style={{ width: `${pNeu}%` }} />
-      <div className="bg-red-500 h-full transition-all" style={{ width: `${pNeg}%` }} />
-    </div>
+    <TooltipProvider delayDuration={100}>
+      <div className="w-full h-5 rounded-full overflow-hidden flex cursor-help">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="bg-green-500 h-full transition-all hover:opacity-80" style={{ width: `${pPos}%` }} />
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            <div className="text-xs">
+              <div className="font-semibold text-green-600 dark:text-green-400">Positivo: {fmt(pPos)}</div>
+              <div className="text-muted-foreground">{positive.toLocaleString('pt-BR')} de {total.toLocaleString('pt-BR')} comentários</div>
+            </div>
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="bg-yellow-400 h-full transition-all hover:opacity-80" style={{ width: `${pNeu}%` }} />
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            <div className="text-xs">
+              <div className="font-semibold text-yellow-600 dark:text-yellow-400">Neutro: {fmt(pNeu)}</div>
+              <div className="text-muted-foreground">{neutral.toLocaleString('pt-BR')} de {total.toLocaleString('pt-BR')} comentários</div>
+            </div>
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="bg-red-500 h-full transition-all hover:opacity-80" style={{ width: `${pNeg}%` }} />
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            <div className="text-xs">
+              <div className="font-semibold text-red-600 dark:text-red-400">Negativo: {fmt(pNeg)}</div>
+              <div className="text-muted-foreground">{negative.toLocaleString('pt-BR')} de {total.toLocaleString('pt-BR')} comentários</div>
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    </TooltipProvider>
   );
 };
 
