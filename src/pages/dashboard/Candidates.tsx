@@ -630,10 +630,7 @@ export default function Candidates() {
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <HelpTooltip text="Cadastra um novo candidato pra você começar a acompanhar.">
-                <Button 
-                  disabled={isLimitReached}
-                  title={isLimitReached ? "Limite de candidatos atingido" : ""}
-                >
+                <Button>
                   <UserPlus className="mr-2 h-4 w-4" />
                   Adicionar Candidato
                 </Button>
@@ -643,9 +640,17 @@ export default function Candidates() {
             <DialogHeader>
               <DialogTitle>Adicionar Novo Candidato</DialogTitle>
               <DialogDescription>
-                Insira as informações do candidato que deseja monitorar
+                {subscription
+                  ? `Plano ${String(subscription.tier).toUpperCase()} — ${candidates.length}/${subscription.max_candidates} candidatos utilizados.`
+                  : "Insira as informações do candidato que deseja monitorar."}
               </DialogDescription>
             </DialogHeader>
+            {isLimitReached && (
+              <div className="mt-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                Você atingiu o limite de <strong>{subscription?.max_candidates}</strong> candidatos do plano <strong>{String(subscription?.tier).toUpperCase()}</strong>.
+                Remova um candidato existente ou faça upgrade para adicionar mais.
+              </div>
+            )}
             <form onSubmit={handleSubmit} className="space-y-4 mt-4">
               <div className="space-y-2">
                 <Label htmlFor="fullName">Nome Completo *</Label>
@@ -729,7 +734,8 @@ export default function Candidates() {
                 </Button>
                 <Button 
                   type="submit"
-                  disabled={addCandidateMutation.isPending}
+                  disabled={addCandidateMutation.isPending || isLimitReached}
+                  title={isLimitReached ? "Limite do plano atingido" : ""}
                 >
                   {addCandidateMutation.isPending ? "Adicionando..." : "Adicionar"}
                 </Button>
