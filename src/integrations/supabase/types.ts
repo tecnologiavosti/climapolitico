@@ -948,6 +948,7 @@ export type Database = {
           interaction_type: string
           likes_count: number | null
           original_posted_at: string | null
+          region: string | null
           replies_count: number | null
           sentiment_label: string | null
           sentiment_score: number | null
@@ -967,6 +968,7 @@ export type Database = {
           interaction_type?: string
           likes_count?: number | null
           original_posted_at?: string | null
+          region?: string | null
           replies_count?: number | null
           sentiment_label?: string | null
           sentiment_score?: number | null
@@ -986,6 +988,7 @@ export type Database = {
           interaction_type?: string
           likes_count?: number | null
           original_posted_at?: string | null
+          region?: string | null
           replies_count?: number | null
           sentiment_label?: string | null
           sentiment_score?: number | null
