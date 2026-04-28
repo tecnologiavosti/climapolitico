@@ -46,10 +46,11 @@ interface CandidateRankingData {
 
 /**
  * Fórmula do Score Geral (0-100):
- * - Menções normalizadas: 30%
- * - Autores únicos normalizados: 20%
- * - Sentimento médio: 30%
- * - Engajamento normalizado: 20%
+ * Cada métrica entra com peso TOTAL (100%) — média simples das 4 dimensões normalizadas.
+ * - Menções normalizadas: 100%
+ * - Autores únicos normalizados: 100%
+ * - Sentimento médio: 100%
+ * - Engajamento normalizado: 100%
  */
 function calculateOverallScore(
   mentions: number,
@@ -65,12 +66,8 @@ function calculateOverallScore(
   const sentimentScore = sentiment; // Já é 0-100
   const engagementScore = maxEngagement > 0 ? (engagement / maxEngagement) * 100 : 0;
 
-  return Math.round(
-    mentionsScore * 0.30 +
-    authorsScore * 0.20 +
-    sentimentScore * 0.30 +
-    engagementScore * 0.20
-  );
+  // Cada métrica contribui integralmente (100%); média final mantém escala 0-100.
+  return Math.round((mentionsScore + authorsScore + sentimentScore + engagementScore) / 4);
 }
 
 export default function CandidateRanking() {
@@ -409,7 +406,7 @@ export default function CandidateRanking() {
             <CardTitle>Ranking Geral</CardTitle>
           </HelpTooltip>
           <CardDescription>
-            Score calculado automaticamente: 30% menções + 20% autores + 30% sentimento + 20% engajamento
+            Score calculado automaticamente: 100% menções + 100% autores + 100% sentimento + 100% engajamento
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -579,10 +576,10 @@ export default function CandidateRanking() {
             <div>
               <p className="font-medium text-foreground">Fórmula do Score Geral</p>
               <p className="mt-1">
-                O ranking é calculado automaticamente a partir dos comentários reais coletados do YouTube.
-                A fórmula do score combina: <strong>30% volume de menções</strong> + <strong>20% diversidade de autores</strong> + 
-                <strong>30% sentimento médio</strong> + <strong>20% engajamento (curtidas)</strong>.
-                Todas as métricas são normalizadas para uma escala de 0-100.
+                O ranking é calculado automaticamente a partir dos comentários reais coletados.
+                A fórmula do score combina: <strong>100% volume de menções</strong> + <strong>100% diversidade de autores</strong> + 
+                <strong>100% sentimento médio</strong> + <strong>100% engajamento (curtidas)</strong>.
+                Cada dimensão entra com peso integral e o score final é a média das 4 métricas normalizadas (escala 0-100).
               </p>
             </div>
           </div>
