@@ -11,9 +11,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { BR_MAP } from "@/data/brRegionsMap";
 
-type RegionLabel = "Norte" | "Nordeste" | "Centro-Oeste" | "Sudeste" | "Sul" | "Indefinido";
-const REGIONS: RegionLabel[] = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul", "Indefinido"];
-const MAP_REGIONS: Exclude<RegionLabel, "Indefinido">[] = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"];
+type RegionLabel = "Norte" | "Nordeste" | "Centro-Oeste" | "Sudeste" | "Sul";
+const REGIONS: RegionLabel[] = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"];
+const MAP_REGIONS: RegionLabel[] = REGIONS;
 
 // values precisam casar com os valores REAIS na coluna social_network do banco
 const NETWORKS = [
@@ -132,12 +132,8 @@ export default function RegionalAnalysis() {
         .eq("candidate_id", candidateId)
         .in("social_network", netValues)
         .not("comment_text", "is", null);
-      if (region === "Indefinido") {
-        cmtsQuery = cmtsQuery.or("region.is.null,region.eq.Indefinido");
-      } else {
-        cmtsQuery = cmtsQuery.eq("region", region);
-      }
       const { data: cmts } = await cmtsQuery
+        .eq("region", region)
         .order("created_at", { ascending: false })
         .limit(40);
 
