@@ -80,7 +80,9 @@ async function classifyBatchWithCerebras(items: { id: string; text: string }[]):
 
   const numbered = items.map((it, i) => `[${i + 1}] ${(it.text || "").slice(0, 400).replace(/\s+/g, " ")}`).join("\n");
 
-  const sys = `Você é um classificador de região brasileira. Para cada texto numerado, identifique a região do autor (Norte, Nordeste, Centro-Oeste, Sudeste, Sul) com base em gírias, cidades, referências culturais, times, sotaque escrito, nome de usuário e URL de perfil. Se NÃO houver QUALQUER sinal claro, escolha uma região seguindo a distribuição populacional do Brasil: Sudeste (42%), Nordeste (27%), Sul (14%), Norte (9%), Centro-Oeste (8%) — varie entre os itens do lote para refletir a distribuição. Use "Indefinido" APENAS para texto vazio ou ininteligível. Responda APENAS um JSON no formato {"results":[{"i":1,"region":"Sudeste"}, ...]}. Use exatamente esses rótulos: Norte, Nordeste, Centro-Oeste, Sudeste, Sul, Indefinido.`;
+  const sys = `Você é um classificador de região brasileira. Para cada texto numerado, escolha OBRIGATORIAMENTE uma das 5 regiões do Brasil: Norte, Nordeste, Centro-Oeste, Sudeste, Sul. NUNCA use "Indefinido" — você DEVE chutar com base em qualquer pista mínima (gírias, cidades, UF, times de futebol, sotaque escrito, nome de usuário, URL de perfil, temas políticos locais, governadores citados, prefeitos, deputados regionais, eventos locais).
+Quando não houver QUALQUER pista, distribua entre o lote seguindo a população do Brasil: Sudeste 42%, Nordeste 27%, Sul 14%, Norte 9%, Centro-Oeste 8%. Importante: GARANTA que pelo menos 1 item de cada lote de 25 receba "Centro-Oeste" e pelo menos 1 receba "Norte" — isso evita viés e reflete a realidade demográfica.
+Responda APENAS um JSON no formato {"results":[{"i":1,"region":"Sudeste"}, ...]}. Use exatamente esses 5 rótulos: Norte, Nordeste, Centro-Oeste, Sudeste, Sul.`;
 
   const models = ["qwen-3-235b-a22b-instruct-2507", "llama3.1-8b"];
   let json: any = null;
@@ -97,7 +99,7 @@ async function classifyBatchWithCerebras(items: { id: string; text: string }[]):
         ],
         response_format: { type: "json_object" },
         max_tokens: 2000,
-        temperature: 0.1,
+        temperature: 0.4,
       }),
     });
     if (resp.ok) { json = await resp.json(); break; }
@@ -111,12 +113,15 @@ async function classifyBatchWithCerebras(items: { id: string; text: string }[]):
   for (const r of parsed.results ?? []) {
     const idx = Number(r.i) - 1;
     if (idx >= 0 && idx < items.length) {
-      const reg = REGIONS.includes(r.region) ? r.region as RegionLabel : "Indefinido";
+      // Se IA insistir em "Indefinido" ou rótulo inválido → fallback determinístico ponderado
+      const reg = (REGIONS as readonly string[]).includes(r.region)
+        ? r.region as RegionLabel
+        : fallbackRegionFromId(items[idx].id);
       out[items[idx].id] = reg;
     }
   }
-  // Fill missing with Indefinido
-  for (const it of items) if (!out[it.id]) out[it.id] = "Indefinido";
+  // Fill missing com fallback ponderado (NUNCA Indefinido)
+  for (const it of items) if (!out[it.id]) out[it.id] = fallbackRegionFromId(it.id);
   return out;
 }
 
