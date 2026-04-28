@@ -1,0 +1,174 @@
+// Classify Brazilian region of social_interactions rows.
+// Strategy: regex/heuristic first, then Cerebras (Llama 3.3 70B) in batch for the rest.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const REGIONS = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul", "Indefinido"] as const;
+type RegionLabel = typeof REGIONS[number];
+
+// Mapping state UF / capitals / common cities -> region
+const STATE_TO_REGION: Record<string, RegionLabel> = {
+  AC: "Norte", AM: "Norte", AP: "Norte", PA: "Norte", RO: "Norte", RR: "Norte", TO: "Norte",
+  AL: "Nordeste", BA: "Nordeste", CE: "Nordeste", MA: "Nordeste", PB: "Nordeste", PE: "Nordeste", PI: "Nordeste", RN: "Nordeste", SE: "Nordeste",
+  DF: "Centro-Oeste", GO: "Centro-Oeste", MT: "Centro-Oeste", MS: "Centro-Oeste",
+  ES: "Sudeste", MG: "Sudeste", RJ: "Sudeste", SP: "Sudeste",
+  PR: "Sul", RS: "Sul", SC: "Sul",
+};
+
+const CITY_PATTERNS: { rx: RegExp; region: RegionLabel }[] = [
+  { rx: /\b(manaus|bel[eé]m|porto velho|rio branco|boa vista|macap[aá]|palmas)\b/i, region: "Norte" },
+  { rx: /\b(salvador|recife|fortaleza|s[aã]o lu[ií]s|natal|macei[oó]|jo[aã]o pessoa|aracaju|teresina|olinda|caruaru|petrolina|feira de santana)\b/i, region: "Nordeste" },
+  { rx: /\b(goi[aâ]nia|bras[ií]lia|cuiab[aá]|campo grande|an[aá]polis|rondon[oó]polis)\b/i, region: "Centro-Oeste" },
+  { rx: /\b(s[aã]o paulo|rio de janeiro|belo horizonte|vit[oó]ria|campinas|niter[oó]i|santos|guarulhos|osasco|uberl[aâ]ndia|juiz de fora|sorocaba)\b/i, region: "Sudeste" },
+  { rx: /\b(porto alegre|curitiba|florian[oó]polis|caxias do sul|londrina|joinville|maring[aá]|blumenau|chapec[oó]|pelotas)\b/i, region: "Sul" },
+];
+
+const SLANG_PATTERNS: { rx: RegExp; region: RegionLabel }[] = [
+  { rx: /\b(oxe|vixe|arr[ae]ta|massa demais|forr[oó]|ax[eé]|lampi[aã]o|cabra da peste|ar[ei]gua)\b/i, region: "Nordeste" },
+  { rx: /\b(tch[eê]|bah|guri|piá|chimarr[aã]o|barbaridade)\b/i, region: "Sul" },
+  { rx: /\b(uai|trem bom|s[oó] que|sô|trem)\b/i, region: "Sudeste" },
+  { rx: /\b(égua|p[aá]i d['é]g[uú]a|maninho)\b/i, region: "Norte" },
+];
+
+function heuristicRegion(text: string | null, author: string | null, profileUrl: string | null): RegionLabel | null {
+  const blob = `${text ?? ""} ${author ?? ""} ${profileUrl ?? ""}`;
+  if (!blob.trim()) return null;
+
+  // 1) UF code like " - SP", "/RJ", " RS "
+  const ufMatch = blob.match(/[\s\/\-,]([A-Z]{2})\b/);
+  if (ufMatch && STATE_TO_REGION[ufMatch[1]]) return STATE_TO_REGION[ufMatch[1]];
+
+  // 2) Cities
+  for (const { rx, region } of CITY_PATTERNS) if (rx.test(blob)) return region;
+
+  // 3) Slangs / cultural
+  for (const { rx, region } of SLANG_PATTERNS) if (rx.test(blob)) return region;
+
+  return null;
+}
+
+async function classifyBatchWithCerebras(items: { id: string; text: string }[]): Promise<Record<string, RegionLabel>> {
+  const apiKey = Deno.env.get("CEREBRAS_API_KEY");
+  if (!apiKey) throw new Error("CEREBRAS_API_KEY missing");
+
+  const numbered = items.map((it, i) => `[${i + 1}] ${(it.text || "").slice(0, 400).replace(/\s+/g, " ")}`).join("\n");
+
+  const sys = `Você é um classificador de região brasileira. Para cada texto numerado, identifique a região do autor (Norte, Nordeste, Centro-Oeste, Sudeste, Sul) com base em gírias, cidades, referências culturais, times, sotaque escrito. Se não for possível, use "Indefinido". Responda APENAS um JSON no formato {"results":[{"i":1,"region":"Sudeste"}, ...]}. Use exatamente esses rótulos: Norte, Nordeste, Centro-Oeste, Sudeste, Sul, Indefinido.`;
+
+  const resp = await fetch("https://api.cerebras.ai/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "llama-3.3-70b",
+      messages: [
+        { role: "system", content: sys },
+        { role: "user", content: numbered },
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 2000,
+      temperature: 0.1,
+    }),
+  });
+  if (!resp.ok) {
+    const t = await resp.text();
+    throw new Error(`Cerebras ${resp.status}: ${t.slice(0, 300)}`);
+  }
+  const json = await resp.json();
+  const content = json.choices?.[0]?.message?.content ?? "{}";
+  const parsed = JSON.parse(content);
+  const out: Record<string, RegionLabel> = {};
+  for (const r of parsed.results ?? []) {
+    const idx = Number(r.i) - 1;
+    if (idx >= 0 && idx < items.length) {
+      const reg = REGIONS.includes(r.region) ? r.region as RegionLabel : "Indefinido";
+      out[items[idx].id] = reg;
+    }
+  }
+  // Fill missing with Indefinido
+  for (const it of items) if (!out[it.id]) out[it.id] = "Indefinido";
+  return out;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
+    const body = await req.json().catch(() => ({}));
+    const limit: number = Math.min(Math.max(Number(body.limit) || 200, 1), 500);
+    const candidate_id: string | undefined = body.candidate_id;
+
+    let q = supabase
+      .from("social_interactions")
+      .select("id, comment_text, comment_author, author_profile_url")
+      .is("region", null)
+      .limit(limit);
+    if (candidate_id) q = q.eq("candidate_id", candidate_id);
+
+    const { data: rows, error } = await q;
+    if (error) throw error;
+    if (!rows || rows.length === 0) {
+      return new Response(JSON.stringify({ processed: 0, heuristic: 0, ai: 0 }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    let heuristicCount = 0;
+    const needAI: { id: string; text: string }[] = [];
+    const updates: { id: string; region: RegionLabel }[] = [];
+
+    for (const r of rows) {
+      const reg = heuristicRegion(r.comment_text, r.comment_author, r.author_profile_url);
+      if (reg) {
+        updates.push({ id: r.id, region: reg });
+        heuristicCount++;
+      } else {
+        needAI.push({ id: r.id, text: `${r.comment_text ?? ""} | autor: ${r.comment_author ?? ""}` });
+      }
+    }
+
+    let aiCount = 0;
+    // Process AI in batches of 25
+    for (let i = 0; i < needAI.length; i += 25) {
+      const batch = needAI.slice(i, i + 25);
+      try {
+        const map = await classifyBatchWithCerebras(batch);
+        for (const it of batch) {
+          updates.push({ id: it.id, region: map[it.id] ?? "Indefinido" });
+          aiCount++;
+        }
+      } catch (e) {
+        console.error("AI batch failed, marking as Indefinido:", (e as Error).message);
+        for (const it of batch) updates.push({ id: it.id, region: "Indefinido" });
+      }
+    }
+
+    // Apply updates one-by-one (Supabase JS doesn't bulk-update by id easily)
+    for (const u of updates) {
+      const { error: upErr } = await supabase
+        .from("social_interactions")
+        .update({ region: u.region })
+        .eq("id", u.id);
+      if (upErr) console.error("update failed", u.id, upErr.message);
+    }
+
+    return new Response(
+      JSON.stringify({ processed: updates.length, heuristic: heuristicCount, ai: aiCount, remaining_in_batch: rows.length }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (e) {
+    console.error("classify-region error:", e);
+    return new Response(JSON.stringify({ error: (e as Error).message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
