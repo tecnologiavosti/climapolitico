@@ -125,14 +125,19 @@ export default function RegionalAnalysis() {
       setMetrics(md[region]);
 
       // 2) Sample comments for selected region (busca extra para deduplicar e ainda devolver 6)
-      const { data: cmts } = await supabase
+      let cmtsQuery = supabase
         .from("social_interactions")
         .select("id, comment_text, comment_author, sentiment_label, created_at, social_network")
         .eq("user_id", user.id)
         .eq("candidate_id", candidateId)
         .in("social_network", netValues)
-        .eq("region", region)
-        .not("comment_text", "is", null)
+        .not("comment_text", "is", null);
+      if (region === "Indefinido") {
+        cmtsQuery = cmtsQuery.or("region.is.null,region.eq.Indefinido");
+      } else {
+        cmtsQuery = cmtsQuery.eq("region", region);
+      }
+      const { data: cmts } = await cmtsQuery
         .order("created_at", { ascending: false })
         .limit(40);
 
