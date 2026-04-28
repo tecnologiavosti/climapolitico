@@ -124,7 +124,7 @@ export default function RegionalAnalysis() {
       setMapData(md);
       setMetrics(md[region]);
 
-      // 2) Sample comments for selected region
+      // 2) Sample comments for selected region (busca extra para deduplicar e ainda devolver 6)
       const { data: cmts } = await supabase
         .from("social_interactions")
         .select("id, comment_text, comment_author, sentiment_label, created_at, social_network")
@@ -134,8 +134,19 @@ export default function RegionalAnalysis() {
         .eq("region", region)
         .not("comment_text", "is", null)
         .order("created_at", { ascending: false })
-        .limit(6);
-      setComments((cmts ?? []) as Comment[]);
+        .limit(40);
+
+      // Dedup por texto normalizado (defesa extra contra duplicatas legadas)
+      const seenTexts = new Set<string>();
+      const uniqueComments: Comment[] = [];
+      for (const c of (cmts ?? []) as Comment[]) {
+        const key = (c.comment_text || "").trim().toLowerCase();
+        if (!key || seenTexts.has(key)) continue;
+        seenTexts.add(key);
+        uniqueComments.push(c);
+        if (uniqueComments.length >= 6) break;
+      }
+      setComments(uniqueComments);
 
       const key = `${candidateId}|${network}|${region}`;
       setAnalyzedKey(key);
