@@ -1,6 +1,6 @@
-// Edge function: Coleta automática do Reddit via PullPush API (api.pullpush.io).
-// Substitui RSS-Bridge (instâncias públicas que ficaram offline / DNS dead).
-// PullPush é um arquivo público gratuito do Pushshift, acessível de IPs de cloud.
+// Edge function: Coleta automática do Reddit.
+// Fontes em ordem: PullPush (busca global), subreddits BR (PullPush filtrado),
+// Arctic Shift (histórico estendido). Reddit oficial bloqueia IPs de cloud.
 // Disparada por cron a cada 30 minutos para todos os candidatos ativos.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -11,7 +11,14 @@ const corsHeaders = {
 };
 
 const PULLPUSH_BASE = "https://api.pullpush.io/reddit/search";
-const PER_QUERY = 50; // posts + 50 comments por candidato
+const ARCTIC_SHIFT_BASE = "https://arctic-shift.photon-reddit.com/api";
+const PER_QUERY = 50;
+
+// Subreddits brasileiros para varredura adicional
+const BR_SUBREDDITS = [
+  "brasil", "brasilivre", "BrasildoB", "politica", "nordeste",
+  "saopaulo", "InternetBrasil", "investimentos", "noticias",
+];
 
 interface Candidate {
   id: string;
@@ -30,15 +37,26 @@ function semanticMatch(text: string, fullName: string): boolean {
   return t.includes(parts[0]);
 }
 
-async function fetchPullPush(kind: "submission" | "comment", query: string): Promise<any[]> {
-  const url = `${PULLPUSH_BASE}/${kind}/?q=${encodeURIComponent(query)}&size=${PER_QUERY}&sort=desc&sort_type=created_utc`;
+async function fetchPullPush(
+  kind: "submission" | "comment",
+  query: string,
+  subreddit?: string,
+): Promise<any[]> {
+  const params = new URLSearchParams({
+    q: query,
+    size: String(PER_QUERY),
+    sort: "desc",
+    sort_type: "created_utc",
+  });
+  if (subreddit) params.set("subreddit", subreddit);
+  const url = `${PULLPUSH_BASE}/${kind}/?${params.toString()}`;
   try {
     const res = await fetch(url, {
       headers: { "Accept": "application/json", "User-Agent": "ClimaPolitico/1.0 (+lovable)" },
       signal: AbortSignal.timeout(20000),
     });
     if (!res.ok) {
-      console.warn(`[REDDIT-CRON] pullpush ${kind} HTTP ${res.status}`);
+      console.warn(`[REDDIT-CRON] pullpush ${kind}${subreddit ? ` r/${subreddit}` : ""} HTTP ${res.status}`);
       return [];
     }
     const json = await res.json();
@@ -49,20 +67,53 @@ async function fetchPullPush(kind: "submission" | "comment", query: string): Pro
   }
 }
 
+async function fetchArcticShift(kind: "posts" | "comments", query: string): Promise<any[]> {
+  // Últimos 90 dias
+  const after = Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
+  const url = `${ARCTIC_SHIFT_BASE}/${kind}/search?q=${encodeURIComponent(query)}&limit=200&after=${after}`;
+  try {
+    const res = await fetch(url, {
+      headers: { "Accept": "application/json", "User-Agent": "ClimaPolitico/1.0 (+lovable)" },
+      signal: AbortSignal.timeout(25000),
+    });
+    if (!res.ok) {
+      console.warn(`[REDDIT-CRON] arctic-shift ${kind} HTTP ${res.status}`);
+      return [];
+    }
+    const json = await res.json();
+    return Array.isArray(json?.data) ? json.data : [];
+  } catch (e) {
+    console.warn(`[REDDIT-CRON] arctic-shift ${kind} falhou:`, (e as Error).message);
+    return [];
+  }
+}
+
 async function collectRedditForCandidate(
   supabase: ReturnType<typeof createClient>,
   candidate: Candidate,
 ): Promise<{ collected: number; skipped: number; raw: number }> {
   const query = `"${candidate.full_name}"`;
 
-  const [posts, comments] = await Promise.all([
+  // 1) PullPush global
+  const tasks: Promise<any[]>[] = [
     fetchPullPush("submission", query),
     fetchPullPush("comment", query),
-  ]);
+  ];
+  // 2) PullPush por subreddit BR (paralelo, com pacing leve)
+  for (const sr of BR_SUBREDDITS) {
+    tasks.push(fetchPullPush("submission", query, sr));
+  }
+  // 3) Arctic Shift histórico
+  tasks.push(fetchArcticShift("posts", candidate.full_name));
+  tasks.push(fetchArcticShift("comments", candidate.full_name));
+
+  const results = await Promise.all(tasks);
+  const allPosts = [...results[0], ...results.slice(2, 2 + BR_SUBREDDITS.length).flat(), ...results[results.length - 2]];
+  const allComments = [...results[1], ...results[results.length - 1]];
 
   const items: Array<{ kind: string; text: string; author: string; url: string; created: string; score: number; replies: number }> = [];
 
-  for (const p of posts) {
+  for (const p of allPosts) {
     const text = `${p.title || ""}\n${p.selftext || ""}`.trim();
     const url = p.permalink ? `https://reddit.com${p.permalink}` : (p.url || "");
     if (!text || !url) continue;
@@ -76,7 +127,7 @@ async function collectRedditForCandidate(
       replies: Number(p.num_comments || 0),
     });
   }
-  for (const c of comments) {
+  for (const c of allComments) {
     const text = (c.body || "").trim();
     const url = c.permalink ? `https://reddit.com${c.permalink}` : (c.link_permalink || "");
     if (!text || !url || text === "[removed]" || text === "[deleted]") continue;
@@ -92,13 +143,18 @@ async function collectRedditForCandidate(
   }
 
   if (items.length === 0) {
-    console.log(`[REDDIT-CRON] ${candidate.full_name}: 0 itens (PullPush)`);
+    console.log(`[REDDIT-CRON] ${candidate.full_name}: 0 itens (todas as fontes)`);
     return { collected: 0, skipped: 0, raw: 0 };
   }
 
+  // Dedup interno por URL
+  const byUrl = new Map<string, typeof items[0]>();
+  for (const it of items) byUrl.set(it.url, it);
+  const dedupedLocal = [...byUrl.values()];
+
   let skipped = 0;
   const rows: any[] = [];
-  for (const it of items) {
+  for (const it of dedupedLocal) {
     if (!semanticMatch(it.text, candidate.full_name)) { skipped++; continue; }
     rows.push({
       candidate_id: candidate.id,
@@ -117,34 +173,38 @@ async function collectRedditForCandidate(
   }
 
   if (rows.length === 0) {
-    console.log(`[REDDIT-CRON] ${candidate.full_name}: bruto=${items.length} novos=0 skipped=${skipped}`);
-    return { collected: 0, skipped, raw: items.length };
+    console.log(`[REDDIT-CRON] ${candidate.full_name}: bruto=${dedupedLocal.length} novos=0 skipped=${skipped}`);
+    return { collected: 0, skipped, raw: dedupedLocal.length };
   }
 
-  // Dedup por author_profile_url
+  // Dedup por author_profile_url (em DB) — em chunks de 100 para evitar URL grande
   const urls = rows.map((r) => r.author_profile_url);
-  const { data: existing } = await supabase
-    .from("social_interactions")
-    .select("author_profile_url")
-    .eq("candidate_id", candidate.id)
-    .eq("social_network", "Reddit")
-    .in("author_profile_url", urls);
-  const existingSet = new Set((existing ?? []).map((e: any) => e.author_profile_url));
+  const existingSet = new Set<string>();
+  for (let i = 0; i < urls.length; i += 100) {
+    const chunk = urls.slice(i, i + 100);
+    const { data: existing } = await supabase
+      .from("social_interactions")
+      .select("author_profile_url")
+      .eq("candidate_id", candidate.id)
+      .eq("social_network", "Reddit")
+      .in("author_profile_url", chunk);
+    (existing ?? []).forEach((e: any) => existingSet.add(e.author_profile_url));
+  }
   const fresh = rows.filter((r) => !existingSet.has(r.author_profile_url));
 
   if (fresh.length === 0) {
-    console.log(`[REDDIT-CRON] ${candidate.full_name}: bruto=${items.length} novos=0 (dups)`);
-    return { collected: 0, skipped, raw: items.length };
+    console.log(`[REDDIT-CRON] ${candidate.full_name}: bruto=${dedupedLocal.length} novos=0 (dups)`);
+    return { collected: 0, skipped, raw: dedupedLocal.length };
   }
 
   const { error } = await supabase.from("social_interactions").insert(fresh);
   if (error) {
     console.error(`[REDDIT-CRON] insert falhou ${candidate.full_name}: ${error.message}`);
-    return { collected: 0, skipped, raw: items.length };
+    return { collected: 0, skipped, raw: dedupedLocal.length };
   }
 
-  console.log(`[REDDIT-CRON] ${candidate.full_name}: bruto=${items.length} novos=${fresh.length} skipped=${skipped}`);
-  return { collected: fresh.length, skipped, raw: items.length };
+  console.log(`[REDDIT-CRON] ${candidate.full_name}: bruto=${dedupedLocal.length} novos=${fresh.length} skipped=${skipped}`);
+  return { collected: fresh.length, skipped, raw: dedupedLocal.length };
 }
 
 Deno.serve(async (req) => {
@@ -174,7 +234,8 @@ Deno.serve(async (req) => {
       const r = await collectRedditForCandidate(supabase, c);
       totalCollected += r.collected;
       results.push({ candidate: c.full_name, ...r });
-      await new Promise((res) => setTimeout(res, 1200));
+      // Pacing: PullPush + ArcticShift fazem ~12 req por candidato; 1.5s entre candidatos
+      await new Promise((res) => setTimeout(res, 1500));
     }
 
     return new Response(
