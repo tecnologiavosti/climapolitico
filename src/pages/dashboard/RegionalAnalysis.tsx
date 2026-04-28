@@ -132,12 +132,8 @@ export default function RegionalAnalysis() {
         .eq("candidate_id", candidateId)
         .in("social_network", netValues)
         .not("comment_text", "is", null);
-      if (region === "Indefinido") {
-        cmtsQuery = cmtsQuery.or("region.is.null,region.eq.Indefinido");
-      } else {
-        cmtsQuery = cmtsQuery.eq("region", region);
-      }
       const { data: cmts } = await cmtsQuery
+        .eq("region", region)
         .order("created_at", { ascending: false })
         .limit(40);
 
