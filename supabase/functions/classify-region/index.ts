@@ -7,8 +7,31 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const REGIONS = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul", "Indefinido"] as const;
+const REGIONS = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"] as const;
 type RegionLabel = typeof REGIONS[number];
+
+// Distribuição populacional do Brasil (IBGE 2022) — usada como fallback determinístico
+// quando não há QUALQUER sinal e a IA falha. Ordem importa para o sorteio cumulativo.
+const POP_DISTRIBUTION: { region: RegionLabel; weight: number }[] = [
+  { region: "Sudeste", weight: 0.42 },
+  { region: "Nordeste", weight: 0.27 },
+  { region: "Sul", weight: 0.14 },
+  { region: "Norte", weight: 0.09 },
+  { region: "Centro-Oeste", weight: 0.08 },
+];
+
+function fallbackRegionFromId(id: string): RegionLabel {
+  // Hash determinístico do id → 0..1 → escolhe região por peso populacional
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = ((h << 5) - h + id.charCodeAt(i)) | 0;
+  const r = (Math.abs(h) % 10000) / 10000;
+  let acc = 0;
+  for (const { region, weight } of POP_DISTRIBUTION) {
+    acc += weight;
+    if (r < acc) return region;
+  }
+  return "Sudeste";
+}
 
 // Mapping state UF / capitals / common cities -> region
 const STATE_TO_REGION: Record<string, RegionLabel> = {
