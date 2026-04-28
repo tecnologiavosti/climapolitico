@@ -335,7 +335,7 @@ export default function RegionalAnalysis() {
                 <TooltipProvider delayDuration={150}>
                   <div className="w-full flex justify-center">
                     <svg viewBox={MAP_VIEWBOX} className="w-full max-w-md h-auto" role="img" aria-label="Mapa do Brasil dividido em 5 regiões">
-                      {REGIONS.map((r) => {
+                      {MAP_REGIONS.map((r) => {
                         const m = mapData[r] ?? { acceptance: 0, total: 0 } as Metrics;
                         const fill = colorByAcceptance(m.acceptance, m.total);
                         const selected = r === region;
