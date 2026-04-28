@@ -238,8 +238,18 @@ export const useRealTimeAnalytics = (
         sentimentHistory,
       });
 
-      // Set comments (most recent 50)
-      setComments(data.slice(0, 50) as SocialInteraction[]);
+      // Set comments (most recent 50, deduplicated by normalized text — defesa extra)
+      const seenTexts = new Set<string>();
+      const uniqueComments: SocialInteraction[] = [];
+      for (const item of data as SocialInteraction[]) {
+        const key = (item.comment_text || "").trim().toLowerCase();
+        if (!key) continue;
+        if (seenTexts.has(key)) continue;
+        seenTexts.add(key);
+        uniqueComments.push(item);
+        if (uniqueComments.length >= 50) break;
+      }
+      setComments(uniqueComments);
       setError(null);
     } catch (err) {
       console.error('Error fetching metrics:', err);
