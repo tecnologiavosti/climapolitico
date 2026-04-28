@@ -36,17 +36,27 @@ const RSS_BRIDGE_INSTANCES = [
   "https://rss.0v0.email",
 ];
 
-// Canais brasileiros de imprensa/política para varrer em busca de menções.
-// Mantemos uma lista enxuta de canais grandes e abertos ao público.
+// Canais brasileiros para varrer em busca de menções (categorizados).
+// Nota: nem todos podem existir no Telegram com esse handle exato — os que não
+// existirem simplesmente não retornam itens (silenciosamente ignorados).
 const BR_PRESS_CHANNELS = [
-  "g1noticias",
-  "uol",
-  "folhadespaulo",
-  "estadao",
-  "cnnbrasil",
-  "metropoles",
-  "poder360",
-  "bbcbrasil",
+  // Grandes veículos
+  "g1noticias", "uol", "folhadespaulo", "estadao", "cnnbrasil", "metropoles",
+  "poder360", "bbcbrasil", "UOLNoticias", "band_jornalismo", "recordnews", "jovempannews",
+  // Política nacional
+  "politicabrasil", "brazilpolitics", "debatepolitico",
+  "forumbrasileiro", "brasil247", "revistaforum",
+  // Direita / conservador
+  "bolsonaronews", "direitabrasil", "agora_brasil",
+  "conservadoresbrasil", "patriotasbr",
+  // Esquerda / progressista
+  "ptbrasil", "mstnacional", "pcdobrasil",
+  "movimentobrasil", "esquerda_online",
+  // Fact-checking
+  "aosfatos", "lupa", "agenciapublica", "comprova",
+  // Regionais
+  "nordeste_politica", "sul_noticias", "centroeste_br",
+  "sudeste_noticias", "norte_amazonia",
 ];
 
 const USER_AGENTS = [
