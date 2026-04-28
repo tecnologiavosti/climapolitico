@@ -141,12 +141,12 @@ Deno.serve(async (req) => {
     const updates: { id: string; region: RegionLabel }[] = [];
 
     for (const r of rows) {
-      const reg = heuristicRegion(r.comment_text, r.comment_author, r.author_profile_url);
+      const reg = force_ai_for_all ? null : heuristicRegion(r.comment_text, r.comment_author, r.author_profile_url);
       if (reg) {
         updates.push({ id: r.id, region: reg });
         heuristicCount++;
       } else if (!heuristic_only) {
-        needAI.push({ id: r.id, text: `${r.comment_text ?? ""} | autor: ${r.comment_author ?? ""}` });
+        needAI.push({ id: r.id, text: `${r.comment_text ?? ""} | autor: ${r.comment_author ?? ""} | url: ${r.author_profile_url ?? ""}` });
       }
     }
     const skipped = heuristic_only ? rows.length - heuristicCount : 0;
