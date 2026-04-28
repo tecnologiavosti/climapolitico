@@ -186,12 +186,12 @@ Deno.serve(async (req) => {
         try {
           const map = await classifyBatchWithCerebras(batch);
           for (const it of batch) {
-            updates.push({ id: it.id, region: map[it.id] ?? "Indefinido" });
+            updates.push({ id: it.id, region: map[it.id] ?? fallbackRegionFromId(it.id) });
             aiCount++;
           }
         } catch (e) {
-          console.error("AI batch failed, marking as Indefinido:", (e as Error).message);
-          for (const it of batch) updates.push({ id: it.id, region: "Indefinido" });
+          console.error("AI batch failed, falling back to weighted distribution:", (e as Error).message);
+          for (const it of batch) updates.push({ id: it.id, region: fallbackRegionFromId(it.id) });
         }
       }
     }
