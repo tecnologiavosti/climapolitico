@@ -66,8 +66,8 @@ Deno.serve(async (req) => {
         for (const col of selectedCollectors) {
           summary[col.name] = summary[col.name] || { ok: 0, fail: 0 };
           try {
-            // Para search-twitter-mentions, precisamos passar userId pois ele exige (cron interno)
-            const body = col.fn === "search-twitter-mentions"
+            // Coletores com validação interna precisam do userId do dono quando chamados por cron.
+            const body = col.fn === "search-twitter-mentions" || col.fn === "search-youtube-mentions"
               ? { ...col.payload(c), userId: c.user_id }
               : col.payload(c);
             const { error: invErr } = await supabase.functions.invoke(col.fn, { body });
