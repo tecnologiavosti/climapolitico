@@ -206,8 +206,9 @@ export function useAllCandidateMetrics() {
       });
     },
     enabled: !!user,
-    staleTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: false,
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 }
 
