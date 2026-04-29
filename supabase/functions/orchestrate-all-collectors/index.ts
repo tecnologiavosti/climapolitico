@@ -23,6 +23,18 @@ Deno.serve(async (req) => {
 
   const startedAt = Date.now();
   try {
+    const reqBody = await req.json().catch(() => ({}));
+    const requestedCollector = typeof reqBody.collector === "string" ? reqBody.collector.toLowerCase() : "all";
+    const selectedCollectors = requestedCollector === "all"
+      ? COLLECTORS
+      : COLLECTORS.filter((c) => c.name.toLowerCase() === requestedCollector || c.fn.toLowerCase() === requestedCollector);
+
+    if (selectedCollectors.length === 0) {
+      return new Response(JSON.stringify({ error: `Coletor inválido: ${reqBody.collector}` }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
@@ -46,12 +58,12 @@ Deno.serve(async (req) => {
     if (error) throw error;
 
     const list = candidates || [];
-    console.log(`[ORCHESTRATOR] ${list.length} candidatos | ${COLLECTORS.length} coletores`);
+    console.log(`[ORCHESTRATOR] ${list.length} candidatos | ${selectedCollectors.length} coletores (${requestedCollector})`);
 
     const job = (async () => {
       const summary: Record<string, { ok: number; fail: number }> = {};
       for (const c of list) {
-        for (const col of COLLECTORS) {
+        for (const col of selectedCollectors) {
           summary[col.name] = summary[col.name] || { ok: 0, fail: 0 };
           try {
             // Para search-twitter-mentions, precisamos passar userId pois ele exige (cron interno)
@@ -97,7 +109,7 @@ Deno.serve(async (req) => {
       success: true,
       accepted: true,
       candidates: list.length,
-      collectors: COLLECTORS.map((c) => c.name),
+      collectors: selectedCollectors.map((c) => c.name),
       message: "Orquestração iniciada em background",
     }), { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err: unknown) {
