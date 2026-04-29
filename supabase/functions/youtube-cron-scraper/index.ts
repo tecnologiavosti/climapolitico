@@ -48,9 +48,10 @@ Deno.serve(async (req) => {
     const functionUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/search-youtube-mentions`;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-    for (const c of candidates) {
-      // fire-and-forget — cron de 1 min não pode esperar coleta longa
-      fetch(functionUrl, {
+    const dispatchJob = (async () => {
+      for (const c of candidates) {
+        try {
+          const response = await fetch(functionUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -65,12 +66,28 @@ Deno.serve(async (req) => {
           maxCommentsPerVideo: 50,
           maxNewComments: 150,
         }),
-      }).catch((err) => {
-        console.error(
-          `[YOUTUBE-CRON] dispatch falhou ${c.full_name}:`,
-          (err as Error).message,
-        );
-      });
+          });
+          if (!response.ok) {
+            console.warn(`[YOUTUBE-CRON] ${c.full_name}: HTTP ${response.status} ${await response.text()}`);
+          } else {
+            console.log(`[YOUTUBE-CRON] ${c.full_name}: coleta disparada`);
+          }
+        } catch (err) {
+          console.error(
+            `[YOUTUBE-CRON] dispatch falhou ${c.full_name}:`,
+            (err as Error).message,
+          );
+        }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    })();
+
+    // @ts-ignore EdgeRuntime
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
+      // @ts-ignore
+      EdgeRuntime.waitUntil(dispatchJob);
+    } else {
+      await dispatchJob;
     }
 
     return new Response(JSON.stringify({
