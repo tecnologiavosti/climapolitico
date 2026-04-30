@@ -134,10 +134,12 @@ export const useRealTimeAnalytics = (
       console.log(`[Monitor] Fetched ${data.length} interactions (total count: ${totalCount}) for user ${user.id}`);
       
       // Calculate metrics from ALL data
-      const totalMentions = totalCount || data.length;
       const positiveMentions = data.filter(i => i.sentiment_label === 'Positivo').length;
       const negativeMentions = data.filter(i => i.sentiment_label === 'Negativo').length;
       const neutralMentions = data.filter(i => i.sentiment_label === 'Neutro').length;
+      // Total exibido = soma das três classes (pos+neu+neg). Garante consistência visual.
+      const totalMentions = positiveMentions + negativeMentions + neutralMentions;
+      const totalCollected = totalCount || data.length;
       
       // Total engagement (sum of likes)
       const totalEngagement = data.reduce((sum, i) => sum + (i.likes_count || 0), 0);

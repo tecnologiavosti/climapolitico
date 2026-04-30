@@ -23,6 +23,41 @@ interface CandidateRow {
   status: string | null;
 }
 
+// Keywords políticas gerais — coletadas para todos e vinculadas ao candidato
+// cujo nome aparece no título/descrição (dedup por URL evita inflar duplicatas).
+const POLITICAL_KEYWORDS = [
+  // Eleições
+  "eleições 2026", "candidatos 2026", "pesquisa eleitoral",
+  "TSE eleições", "campanha política",
+  // Partidos
+  "PT partido", "PL partido", "PSDB", "MDB",
+  "União Brasil", "PDT", "PSOL",
+  // Temas políticos
+  "reforma tributária", "reforma administrativa",
+  "privatização", "orçamento federal",
+  "congresso nacional", "senado federal",
+  "câmara deputados", "STF julgamento",
+  // Economia política
+  "Lula governo", "oposição brasil",
+  "crise política", "impeachment",
+  "corrupção brasil", "operação policial",
+  // Sociais
+  "greve brasil", "manifestação política",
+  "direitos sociais", "educação pública",
+  "saúde pública brasil", "segurança pública",
+];
+
+function nameMatches(text: string, fullName: string): boolean {
+  const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const t = norm(text);
+  if (t.includes(norm(fullName))) return true;
+  const parts = norm(fullName).split(/\s+/).filter((p) => p.length >= 4);
+  if (parts.length >= 2) {
+    return t.includes(`${parts[0]} ${parts[parts.length - 1]}`);
+  }
+  return parts.length === 1 ? t.includes(parts[0]) : false;
+}
+
 interface ExistingInteractionRow {
   author_profile_url: string | null;
 }
@@ -130,7 +165,64 @@ async function collectForAllCandidates(supabase: any) {
     }
   }
 
-  console.log(`[google-news-collector] concluído: ${totalInserted} notícias em ${Date.now() - startedAt}ms`);
+  // ========= Sweep extra: keywords políticas gerais =========
+  // Para cada keyword, busca notícias e vincula ao candidato cujo nome aparece.
+  // Dedup por URL evita inflar duplicatas.
+  let keywordInserted = 0;
+  const candList = candidates as CandidateRow[];
+  for (const kw of POLITICAL_KEYWORDS) {
+    try {
+      const url = `https://news.google.com/rss/search?q=${encodeURIComponent(kw)}&hl=pt-BR&gl=BR&ceid=BR:pt-419`;
+      const resp = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; ClimaPolitico/1.0)" } });
+      if (!resp.ok) continue;
+      const xml = await resp.text();
+      const items = parseRSSFeed(xml).slice(0, 50);
+      if (items.length === 0) continue;
+
+      // Para cada item, descobre quais candidatos têm o nome citado
+      const rowsByCandidate = new Map<string, any[]>();
+      for (const item of items) {
+        const haystack = `${item.title} ${item.description}`;
+        for (const cand of candList) {
+          if (!nameMatches(haystack, cand.full_name)) continue;
+          const row = {
+            user_id: cand.user_id,
+            candidate_id: cand.id,
+            social_network: "google_news",
+            interaction_type: "news",
+            comment_text: `${item.title}\n\n${item.description}`,
+            comment_author: item.source,
+            author_profile_url: item.link,
+            original_posted_at: item.pubDate ? new Date(item.pubDate).toISOString() : null,
+            collected_at: new Date().toISOString(),
+          };
+          const arr = rowsByCandidate.get(cand.id) ?? [];
+          arr.push(row);
+          rowsByCandidate.set(cand.id, arr);
+        }
+      }
+
+      for (const [candId, rows] of rowsByCandidate.entries()) {
+        const links = rows.map((r) => r.author_profile_url);
+        const { data: existing } = await supabase
+          .from("social_interactions")
+          .select("author_profile_url")
+          .eq("candidate_id", candId)
+          .eq("social_network", "google_news")
+          .in("author_profile_url", links);
+        const existingSet = new Set(((existing || []) as ExistingInteractionRow[]).map((e) => e.author_profile_url));
+        const fresh = rows.filter((r) => !existingSet.has(r.author_profile_url));
+        if (fresh.length === 0) continue;
+        const { error: insErr } = await supabase.from("social_interactions").insert(fresh);
+        if (!insErr) keywordInserted += fresh.length;
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[google-news-collector] keyword "${kw}" falhou:`, msg);
+    }
+  }
+
+  console.log(`[google-news-collector] concluído: ${totalInserted} (por candidato) + ${keywordInserted} (keywords) em ${Date.now() - startedAt}ms`);
 }
 
 serve(async (req) => {

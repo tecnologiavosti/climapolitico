@@ -75,8 +75,8 @@ const KPICard = ({ title, value, suffix = '', icon, trend, color }: KPICardProps
 export const RealTimeKPIs = ({ metrics }: RealTimeKPIsProps) => {
   if (!metrics) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[...Array(4)].map((_, i) => (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        {[...Array(5)].map((_, i) => (
           <Card key={i} className="animate-pulse">
             <CardContent className="p-4 h-24 bg-muted/20" />
           </Card>
@@ -86,7 +86,7 @@ export const RealTimeKPIs = ({ metrics }: RealTimeKPIsProps) => {
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
       <KPICard
         title="Total de Menções"
         value={metrics.totalMentions}
@@ -99,6 +99,12 @@ export const RealTimeKPIs = ({ metrics }: RealTimeKPIsProps) => {
         value={metrics.positiveMentions}
         icon={<ThumbsUp className="h-5 w-5" />}
         color="green"
+      />
+      <KPICard
+        title="Menções Neutras"
+        value={metrics.neutralMentions}
+        icon={<Minus className="h-5 w-5" />}
+        color="yellow"
       />
       <KPICard
         title="Menções Negativas"

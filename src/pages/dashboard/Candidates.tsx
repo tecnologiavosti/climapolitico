@@ -140,12 +140,34 @@ export default function Candidates() {
 
       return data;
     },
-    onSuccess: () => {
+    onSuccess: async (data) => {
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
       toast.success('Candidato adicionado com sucesso!');
       setDialogOpen(false);
       setFormData({ fullName: "", region: "", socialMedia: "", instagramUrl: "", facebookUrl: "" });
       setValidationErrors({});
+
+      // Geração automática de canais/subreddits/keywords via IA (não bloqueante)
+      try {
+        const { data: cfg, error: cfgErr } = await supabase.functions.invoke('suggest-candidate-config', {
+          body: {
+            candidateName: data.full_name,
+            party: data.party ?? '',
+            region: data.region ?? '',
+          },
+        });
+        if (!cfgErr && cfg) {
+          const t = cfg.canais_telegram?.length ?? 0;
+          const s = cfg.subreddits?.length ?? 0;
+          const k = cfg.keywords?.length ?? 0;
+          toast.success(`IA sugeriu ${t} canais Telegram, ${s} subreddits e ${k} keywords para monitorar.`, {
+            duration: 6000,
+          });
+          console.log('[Candidates] IA sugestões:', cfg);
+        }
+      } catch (e) {
+        console.warn('[Candidates] IA suggestions falharam (não bloqueante):', e);
+      }
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Erro ao adicionar candidato');

@@ -265,12 +265,18 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    const positive = allComments.filter(c => c.sentiment_label === 'Positivo').length;
+    const negative = allComments.filter(c => c.sentiment_label === 'Negativo').length;
+    const neutral = allComments.filter(c => c.sentiment_label === 'Neutro').length;
+    const withoutSentiment = allComments.filter(c => !c.sentiment_label).length;
+    // total exibido = soma das três classes (pos+neu+neg). Garante que a soma sempre bata.
     const stats = {
-      total: allComments.length,
-      positive: allComments.filter(c => c.sentiment_label === 'Positivo').length,
-      negative: allComments.filter(c => c.sentiment_label === 'Negativo').length,
-      neutral: allComments.filter(c => c.sentiment_label === 'Neutro').length,
-      withoutSentiment: allComments.filter(c => !c.sentiment_label).length,
+      total: positive + negative + neutral,
+      positive,
+      negative,
+      neutral,
+      withoutSentiment,
+      totalCollected: allComments.length,
     };
 
     const positiveComments = allComments.filter(c => c.sentiment_label === 'Positivo' && c.comment_text).slice(0, 50).map(c => c.comment_text.substring(0, 200));

@@ -13,8 +13,14 @@ const PULLPUSH_BASE = "https://api.pullpush.io/reddit/search";
 const ARCTIC_SHIFT_BASE = "https://arctic-shift.photon-reddit.com/api";
 
 const BR_SUBREDDITS = [
-  "brasil", "brasilivre", "BrasildoB", "politica", "nordeste",
-  "saopaulo", "InternetBrasil", "investimentos", "noticias",
+  // Política geral
+  "brasil", "brasilivre", "BrasilSimulator", "AgendaBrasil", "politica", "lutabrasileira",
+  "BrasildoB", "noticias", "InternetBrasil", "investimentos",
+  // Regionais
+  "saopaulo", "riodejaneiro", "minasgerais", "bahia", "ceara", "pernambuco",
+  "parana", "riograndedosul", "brasilia", "nordeste",
+  // Temáticos
+  "economy_brazil", "direito", "jornalismo", "upheaval",
 ];
 
 function semanticMatch(text: string, fullName: string): boolean {
