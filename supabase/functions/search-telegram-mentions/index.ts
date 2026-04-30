@@ -40,23 +40,64 @@ const RSS_BRIDGE_INSTANCES = [
 // Nota: nem todos podem existir no Telegram com esse handle exato — os que não
 // existirem simplesmente não retornam itens (silenciosamente ignorados).
 const BR_PRESS_CHANNELS = [
-  // Grandes veículos
-  "g1noticias", "uol", "folhadespaulo", "estadao", "cnnbrasil", "metropoles",
-  "poder360", "bbcbrasil", "UOLNoticias", "band_jornalismo", "recordnews", "jovempannews",
-  // Política nacional
-  "politicabrasil", "brazilpolitics", "debatepolitico",
-  "forumbrasileiro", "brasil247", "revistaforum",
-  // Direita / conservador
-  "bolsonaronews", "direitabrasil", "agora_brasil",
-  "conservadoresbrasil", "patriotasbr",
-  // Esquerda / progressista
-  "ptbrasil", "mstnacional", "pcdobrasil",
-  "movimentobrasil", "esquerda_online",
-  // Fact-checking
-  "aosfatos", "lupa", "agenciapublica", "comprova",
+  // Partidos e movimentos
+  "ptoficial", "ptbrasil", "plbrasil", "pdtoficial",
+  "psoloficial", "psdboficial", "mdboficial", "unionbrasil",
+  "republicanos_br", "solidariedade_br", "avantebrasil",
+  "podemosbrasil", "cidadania_br", "redeoficial",
+  // Notícias e política geral
+  "politicabrasil", "brasilpolitico", "noticiasbrasil",
+  "agendabrasil", "brasilnoticias", "politicabrasileira",
+  "brasilemfoco", "focopolitico", "diariopolitico",
+  "politicaemfoco", "brasilhoje", "noticiasdoBrasil",
+  "politicaurgente", "brasilurgente", "agenciabrasil",
+  // Direita / conservadores
+  "direitabrasil", "conservadoresbr", "brasilconservador",
+  "direitaliberal", "liberalismobr", "libertariosbrasil",
+  "novobrasil", "direitaoficial", "patriotasbrasil",
+  "brazilconservative", "vemprabrasil", "brasilnovo",
+  "olavodecarvalho", "conservadorismo", "direitismo",
+  "bolsonaronews", "agora_brasil", "conservadoresbrasil", "patriotasbr",
+  // Esquerda / progressistas
+  "esquerdabrasil", "progressistasbr", "socialismobrasil",
+  "esquerda_br", "movimentossociais", "mstnacional",
+  "cutooficial", "ctbbrasil", "intersindical",
+  "brasilpopular", "frentebrasilpopular", "esquerdadiario",
+  "pcdobrasil", "movimentobrasil", "esquerda_online",
+  // Mídia alternativa e análise
+  "jornalistaslivres", "thedocsnews", "brasilwire_pt",
+  "agenciapublica", "intercept_brasil", "piauirevista",
+  "cartacapital", "vejaoficial", "istoebrasil",
+  "poder360news", "metropolesnews", "correionews",
+  "elpaisnoticias", "bbcbrasil", "cnnbrasil",
+  "folhadesaopaulo", "estadao", "oglobo",
+  "valoreconomico", "uolnoticias",
+  // Grandes veículos (handles alternativos)
+  "g1noticias", "uol", "folhadespaulo", "metropoles", "poder360",
+  "band_jornalismo", "recordnews", "jovempannews",
+  // Eleições e candidatos
+  "eleicoesbrasil", "tseoficial", "candidatosbr",
+  "votoconsciente", "fiscalizaeleicoes", "democraciabr",
   // Regionais
+  "politicasudeste", "politicanordeste", "politicasul",
+  "politicanorte", "politicacentrooeste",
+  "saopaulo_politica", "riopolitica", "minasnoticias",
+  "bahianoticias", "cearanoticias", "pernambuconews",
+  "amazonasnoticias", "paranoticias", "rsnoticias",
+  "brasiliapolitica", "dfnoticias",
   "nordeste_politica", "sul_noticias", "centroeste_br",
   "sudeste_noticias", "norte_amazonia",
+  // Congresso e governo
+  "camaradosdeputados", "senadofederal", "planaltooficial",
+  "ministerioss", "tcubrasil", "mpfbrasil",
+  // Anticorrupção e transparência
+  "transparenciabr", "anticorrupcao", "operacaolava",
+  "controlecidadao", "fiscalizabrasil",
+  // Debate e análise
+  "debatepolitico", "analisepolitica", "politologos",
+  "cienciapolitica", "eleitoradobr", "forumbrasileiro", "brasil247", "revistaforum",
+  // Fact-checking
+  "aosfatos", "lupa", "comprova",
 ];
 
 const USER_AGENTS = [
