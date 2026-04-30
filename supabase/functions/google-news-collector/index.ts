@@ -23,6 +23,41 @@ interface CandidateRow {
   status: string | null;
 }
 
+// Keywords políticas gerais — coletadas para todos e vinculadas ao candidato
+// cujo nome aparece no título/descrição (dedup por URL evita inflar duplicatas).
+const POLITICAL_KEYWORDS = [
+  // Eleições
+  "eleições 2026", "candidatos 2026", "pesquisa eleitoral",
+  "TSE eleições", "campanha política",
+  // Partidos
+  "PT partido", "PL partido", "PSDB", "MDB",
+  "União Brasil", "PDT", "PSOL",
+  // Temas políticos
+  "reforma tributária", "reforma administrativa",
+  "privatização", "orçamento federal",
+  "congresso nacional", "senado federal",
+  "câmara deputados", "STF julgamento",
+  // Economia política
+  "Lula governo", "oposição brasil",
+  "crise política", "impeachment",
+  "corrupção brasil", "operação policial",
+  // Sociais
+  "greve brasil", "manifestação política",
+  "direitos sociais", "educação pública",
+  "saúde pública brasil", "segurança pública",
+];
+
+function nameMatches(text: string, fullName: string): boolean {
+  const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const t = norm(text);
+  if (t.includes(norm(fullName))) return true;
+  const parts = norm(fullName).split(/\s+/).filter((p) => p.length >= 4);
+  if (parts.length >= 2) {
+    return t.includes(`${parts[0]} ${parts[parts.length - 1]}`);
+  }
+  return parts.length === 1 ? t.includes(parts[0]) : false;
+}
+
 interface ExistingInteractionRow {
   author_profile_url: string | null;
 }
