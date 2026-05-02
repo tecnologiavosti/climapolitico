@@ -101,40 +101,57 @@ export default function RegionalAnalysis() {
     setLoading(true);
     setInsights(null);
     try {
-      const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const netCfg = NETWORKS.find((n) => n.label === network) ?? NETWORKS[0];
-      const netValues = netCfg.values;
+      const isAllNetworks = network === ALL_NETWORKS_VALUE;
+      const netCfg = isAllNetworks ? null : (NETWORKS.find((n) => n.label === network) ?? NETWORKS[0]);
+      const netValues = netCfg ? netCfg.values : null;
 
-      // 1) Map data — all regions for selected network (NULL region tratado como "Indefinido")
-      const { data: mapRows, error: mapErr } = await supabase
-        .from("social_interactions")
-        .select("region, sentiment_label, likes_count, replies_count, shares_count")
-        .eq("user_id", user.id)
-        .eq("candidate_id", candidateId)
-        .in("social_network", netValues)
-        .gte("created_at", since)
-        .limit(50000);
-      if (mapErr) throw mapErr;
+      // 1) Map data — todas as menções do candidato (sem filtro de data)
+      // para bater com o total exibido na Visão Geral.
+      // Paginação manual para superar o limite de 1000 do PostgREST.
+      const PAGE = 1000;
+      const HARD_CAP = 50000;
+      let from = 0;
+      const mapRows: { region: string | null; sentiment_label: string | null; likes_count: number | null; replies_count: number | null; shares_count: number | null }[] = [];
+      while (mapRows.length < HARD_CAP) {
+        let q = supabase
+          .from("social_interactions")
+          .select("region, sentiment_label, likes_count, replies_count, shares_count")
+          .eq("user_id", user.id)
+          .eq("candidate_id", candidateId)
+          .range(from, from + PAGE - 1);
+        if (netValues) q = q.in("social_network", netValues);
+        const { data: page, error: pageErr } = await q;
+        if (pageErr) throw pageErr;
+        if (!page || page.length === 0) break;
+        mapRows.push(...page);
+        if (page.length < PAGE) break;
+        from += PAGE;
+      }
 
       const grouped: Record<string, typeof mapRows> = {};
-      for (const r of mapRows ?? []) {
-        let reg = (r.region as string) || "Indefinido";
-        if (!REGIONS.includes(reg as RegionLabel)) reg = "Indefinido";
-        (grouped[reg] = grouped[reg] || []).push(r);
+      const undefinedRows: typeof mapRows = [];
+      for (const r of mapRows) {
+        const reg = (r.region as string) || "";
+        if (REGIONS.includes(reg as RegionLabel)) {
+          (grouped[reg] = grouped[reg] || []).push(r);
+        } else {
+          undefinedRows.push(r);
+        }
       }
       const md = {} as Record<RegionLabel, Metrics>;
       for (const r of REGIONS) md[r] = computeMetrics(grouped[r] ?? []);
       setMapData(md);
+      setUndefinedMetrics(computeMetrics(undefinedRows));
       setMetrics(md[region]);
 
-      // 2) Sample comments for selected region (busca extra para deduplicar e ainda devolver 6)
+      // 2) Comentários da região selecionada (sem filtro de data)
       let cmtsQuery = supabase
         .from("social_interactions")
         .select("id, comment_text, comment_author, sentiment_label, created_at, social_network")
         .eq("user_id", user.id)
         .eq("candidate_id", candidateId)
-        .in("social_network", netValues)
         .not("comment_text", "is", null);
+      if (netValues) cmtsQuery = cmtsQuery.in("social_network", netValues);
       const { data: cmts } = await cmtsQuery
         .eq("region", region)
         .order("created_at", { ascending: false })
@@ -167,7 +184,7 @@ export default function RegionalAnalysis() {
             body: {
               candidate_id: candidateId,
               region,
-              social_network: netCfg.label,
+              social_network: netCfg ? netCfg.label : "Todas as redes",
               social_network_values: netValues,
               totals: { total: md[region].total, acceptance: md[region].acceptance, rejection: md[region].rejection },
             },
@@ -179,7 +196,7 @@ export default function RegionalAnalysis() {
           }
         } catch (e) {
           console.error(e);
-          toast.error("Não foi possível gerar insights da IA");
+          // Silencioso: créditos de IA esgotados não devem quebrar a visualização
         } finally {
           setInsightsLoading(false);
         }
