@@ -274,6 +274,9 @@ export default function RegionalAnalysis() {
               <Select value={network} onValueChange={setNetwork}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value={ALL_NETWORKS_VALUE}>
+                    <div className="flex items-center gap-2"><Globe className="h-4 w-4" />Todas as redes</div>
+                  </SelectItem>
                   {NETWORKS.map((n) => (
                     <SelectItem key={n.label} value={n.label}>
                       <div className="flex items-center gap-2"><n.Icon className="h-4 w-4" />{n.label}</div>
