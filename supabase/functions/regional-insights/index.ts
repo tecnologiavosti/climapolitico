@@ -149,8 +149,29 @@ Cada item deve ter no máximo 140 caracteres, em português brasileiro.`;
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
-    console.error("regional-insights error:", e);
-    return new Response(JSON.stringify({ error: (e as Error).message }), {
+    const msg = (e as Error).message || "";
+    console.error("regional-insights error:", msg);
+    // Falhas de IA (créditos esgotados, rate limit, fallback) NÃO devem quebrar a UI.
+    // Retorna 200 com fallback vazio + flag para o cliente exibir mensagem amigável.
+    const isAiQuota =
+      msg.includes("Créditos da IA esgotados") ||
+      msg.includes("Limite de requisições") ||
+      msg.includes("AI fallback failed") ||
+      msg.includes("token_quota_exceeded") ||
+      msg.includes("too_many_tokens");
+    if (isAiQuota) {
+      return new Response(
+        JSON.stringify({
+          pontos_fortes: [],
+          como_melhorar: [],
+          fallback: true,
+          error: msg.includes("Créditos") ? "AI_CREDITS_EXHAUSTED" : "AI_RATE_LIMITED",
+          message: msg,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    return new Response(JSON.stringify({ error: msg }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
