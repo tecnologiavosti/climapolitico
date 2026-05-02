@@ -602,6 +602,7 @@ async function tryCerebras(systemPrompt: string, userPrompt: string, expected: n
 async function tryGroq(systemPrompt: string, userPrompt: string, expected: number): Promise<SentimentResult[] | null> {
   const groqKey = Deno.env.get('GROQ_API_KEY');
   if (!groqKey) return null;
+  if (isOnCooldown('groq')) return null;
   const models = ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile'];
   for (const model of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -621,6 +622,10 @@ async function tryGroq(systemPrompt: string, userPrompt: string, expected: numbe
           signal: AbortSignal.timeout(20000),
         });
         if (response.status === 429) {
+          if (attempt === 1) {
+            setCooldown('groq', 10);
+            return null;
+          }
           const retryAfter = parseFloat(response.headers.get('retry-after') || '0');
           const wait = Math.min(15000, (retryAfter > 0 ? retryAfter * 1000 : 3000) + Math.random() * 500);
           console.warn(`[SENTIMENT-GROQ] ${model} 429 — aguardando ${wait.toFixed(0)}ms (tentativa ${attempt + 1}/2)`);
@@ -651,6 +656,7 @@ async function tryGroq(systemPrompt: string, userPrompt: string, expected: numbe
 async function tryGemini(systemPrompt: string, userPrompt: string, expected: number): Promise<SentimentResult[] | null> {
   const apiKey = Deno.env.get('LOVABLE_API_KEY');
   if (!apiKey) return null;
+  if (isOnCooldown('gemini')) return null;
   // Cascata: flash (mais robusto) → flash-lite (cota maior) → gemini-3-flash (preview)
   const models = [
     'google/gemini-2.5-flash',
@@ -682,7 +688,8 @@ async function tryGemini(systemPrompt: string, userPrompt: string, expected: num
           continue;
         }
         if (response.status === 402) {
-          console.error(`[SENTIMENT-GEMINI] créditos esgotados (402)`);
+          console.error(`[SENTIMENT-GEMINI] créditos esgotados (402) — cooldown 60min`);
+          setCooldown('gemini', 60);
           return null;
         }
         if (!response.ok) {
