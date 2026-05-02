@@ -28,6 +28,7 @@ import {
   Database as DatabaseIcon,
   MapPinned,
   Linkedin,
+  Rss,
 } from "lucide-react";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { useTooltipsEnabled } from "@/hooks/useTooltipsEnabled";
@@ -60,7 +61,7 @@ const mainItems = [
   { title: "Ranking", url: "/dashboard/ranking", icon: Trophy, tip: "Quem está ganhando e quem está perdendo nas redes nos últimos 30 dias." },
   { title: "Configuração de Coleta", url: "/dashboard/collection-status", icon: Database, tip: "Veja se a coleta de dados em cada rede social está funcionando direitinho." },
   { title: "Análise Regional", url: "/dashboard/regional-analysis", icon: MapPinned, tip: "Veja como seu candidato performa em cada região do Brasil por rede social." },
-  { title: "Feed LinkedIn", url: "/dashboard/linkedin-feed", icon: Linkedin, tip: "Posts e menções públicas do LinkedIn coletadas automaticamente, com paginação." },
+  { title: "Feeds Redes Sociais", url: "/dashboard/social-feeds", icon: Rss, tip: "Feeds com posts e menções de todas as redes sociais (LinkedIn, YouTube, Twitter, Reddit, Telegram, Notícias e mais)." },
 ];
 
 // Módulos temporariamente desativados (mantidos para reativação futura)
