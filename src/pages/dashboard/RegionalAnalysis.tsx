@@ -30,26 +30,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { BR_MAP } from "@/data/brRegionsMap";
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Tipos & constantes
-// ─────────────────────────────────────────────────────────────────────────────
-type RegionLabel = "Norte" | "Nordeste" | "Centro-Oeste" | "Sudeste" | "Sul";
-const REGIONS: RegionLabel[] = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"];
-
-// values precisam casar com os valores REAIS na coluna social_network do banco
-const NETWORKS = [
-  { values: ["YouTube", "youtube"], label: "YouTube", Icon: Youtube },
-  { values: ["Twitter/X", "twitter", "Twitter", "x"], label: "Twitter/X", Icon: Twitter },
-  { values: ["Instagram", "instagram"], label: "Instagram", Icon: Instagram },
-  { values: ["TikTok", "tiktok"], label: "TikTok", Icon: Music2 },
-  { values: ["Facebook", "facebook"], label: "Facebook", Icon: Facebook },
-  { values: ["google_news", "Google News", "news"], label: "Notícias", Icon: Newspaper },
-  { values: ["Reddit", "reddit"], label: "Reddit", Icon: Globe },
-  { values: ["Telegram", "telegram"], label: "Telegram", Icon: MessageSquare },
-  { values: ["LinkedIn", "linkedin"], label: "LinkedIn", Icon: Globe },
-];
-const ALL_NETWORKS_VALUE = "__all__";
+import {
+  REGIONS,
+  NETWORKS,
+  ALL_NETWORKS_VALUE,
+  EMPTY_METRICS,
+  colorByAcceptance,
+  computeMetrics,
+  networkLabel,
+  type RegionLabel,
+  type Metrics,
+} from "./regionalAnalysis.helpers";
 
 const REGION_PATHS: Record<RegionLabel, string> = BR_MAP.regions as Record<RegionLabel, string>;
 const REGION_LABEL_POS: Record<RegionLabel, { x: number; y: number }> = BR_MAP.labels as Record<
