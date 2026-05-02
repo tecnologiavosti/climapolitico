@@ -10,8 +10,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const MAX_TWEETS_PER_CANDIDATE = 200;
-const MAX_PAGES_PER_CANDIDATE = 4;
+const MAX_TWEETS_PER_CANDIDATE = 600;
+const MAX_PAGES_PER_CANDIDATE = 12;
 
 function buildCandidateAliases(fullName: string): string[] {
   const clean = fullName
