@@ -71,12 +71,12 @@ interface NetworkConfig {
 const NETWORKS: NetworkConfig[] = [
   { key: "linkedin", label: "LinkedIn", icon: Linkedin, color: "#0A66C2", collectorFn: "linkedin-collector", match: ["linkedin"] },
   { key: "youtube", label: "YouTube", icon: Youtube, color: "#FF0000", match: ["youtube"] },
-  { key: "twitter", label: "Twitter/X", icon: Twitter, color: "#1DA1F2", match: ["twitter", "x"] },
+  { key: "twitter", label: "Twitter/X", icon: Twitter, color: "#1DA1F2", match: ["twitter"] },
   { key: "facebook", label: "Facebook", icon: Facebook, color: "#1877F2", match: ["facebook"] },
   { key: "instagram", label: "Instagram", icon: Instagram, color: "#E4405F", match: ["instagram"] },
   { key: "reddit", label: "Reddit", icon: MessageCircle, color: "#FF4500", collectorFn: "search-reddit-mentions", match: ["reddit"] },
   { key: "telegram", label: "Telegram", icon: Send, color: "#26A5E4", collectorFn: "search-telegram-mentions", match: ["telegram"] },
-  { key: "news", label: "Notícias", icon: Newspaper, color: "#6366F1", match: ["news", "google_news"] },
+  { key: "news", label: "Notícias", icon: Newspaper, color: "#6366F1", match: ["google_news"] },
   { key: "gdelt", label: "GDELT", icon: Globe, color: "#10B981", collectorFn: "gdelt-collector", match: ["gdelt"] },
 ];
 

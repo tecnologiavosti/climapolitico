@@ -98,6 +98,15 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Registrar chamada no sistema de quota (observabilidade)
+    try {
+      await supabase.rpc("record_collector_call", {
+        _name: "twitter",
+        _items: candidates.length,
+        _had_error: false,
+      });
+    } catch (_) { /* ignore */ }
+
     return new Response(
       JSON.stringify({
         success: true,
