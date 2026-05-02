@@ -30,26 +30,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { BR_MAP } from "@/data/brRegionsMap";
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Tipos & constantes
-// ─────────────────────────────────────────────────────────────────────────────
-type RegionLabel = "Norte" | "Nordeste" | "Centro-Oeste" | "Sudeste" | "Sul";
-const REGIONS: RegionLabel[] = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"];
-
-// values precisam casar com os valores REAIS na coluna social_network do banco
-const NETWORKS = [
-  { values: ["YouTube", "youtube"], label: "YouTube", Icon: Youtube },
-  { values: ["Twitter/X", "twitter", "Twitter", "x"], label: "Twitter/X", Icon: Twitter },
-  { values: ["Instagram", "instagram"], label: "Instagram", Icon: Instagram },
-  { values: ["TikTok", "tiktok"], label: "TikTok", Icon: Music2 },
-  { values: ["Facebook", "facebook"], label: "Facebook", Icon: Facebook },
-  { values: ["google_news", "Google News", "news"], label: "Notícias", Icon: Newspaper },
-  { values: ["Reddit", "reddit"], label: "Reddit", Icon: Globe },
-  { values: ["Telegram", "telegram"], label: "Telegram", Icon: MessageSquare },
-  { values: ["LinkedIn", "linkedin"], label: "LinkedIn", Icon: Globe },
-];
-const ALL_NETWORKS_VALUE = "__all__";
+import {
+  REGIONS,
+  NETWORKS,
+  ALL_NETWORKS_VALUE,
+  EMPTY_METRICS,
+  colorByAcceptance,
+  computeMetrics,
+  networkLabel,
+  type RegionLabel,
+  type Metrics,
+} from "./regionalAnalysis.helpers";
 
 const REGION_PATHS: Record<RegionLabel, string> = BR_MAP.regions as Record<RegionLabel, string>;
 const REGION_LABEL_POS: Record<RegionLabel, { x: number; y: number }> = BR_MAP.labels as Record<
@@ -62,15 +53,6 @@ interface Candidate {
   id: string;
   full_name: string;
 }
-interface Metrics {
-  total: number;
-  pos: number;
-  neg: number;
-  neu: number;
-  acceptance: number;
-  rejection: number;
-  engagement: number;
-}
 interface Comment {
   id: string;
   comment_text: string;
@@ -80,48 +62,7 @@ interface Comment {
   social_network: string;
 }
 
-const EMPTY_METRICS: Metrics = { total: 0, pos: 0, neg: 0, neu: 0, acceptance: 0, rejection: 0, engagement: 0 };
 const insightCache = new Map<string, { ts: number; data: { pontos_fortes: string[]; como_melhorar: string[] } }>();
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-function colorByAcceptance(acc: number, total: number): string {
-  if (total < 10) return "hsl(var(--muted))";
-  if (acc > 65) return "hsl(142, 70%, 45%)";
-  if (acc >= 35) return "hsl(45, 95%, 55%)";
-  return "hsl(0, 75%, 55%)";
-}
-
-function computeMetrics(
-  rows: { sentiment_label: string | null; likes_count: number | null; replies_count: number | null; shares_count: number | null }[]
-): Metrics {
-  const total = rows.length;
-  if (!total) return { ...EMPTY_METRICS };
-  let pos = 0,
-    neg = 0,
-    neu = 0,
-    eng = 0;
-  for (const r of rows) {
-    const s = (r.sentiment_label || "").toLowerCase();
-    if (s === "positive" || s === "positivo") pos++;
-    else if (s === "negative" || s === "negativo") neg++;
-    else neu++;
-    eng += (r.likes_count || 0) + (r.replies_count || 0) + (r.shares_count || 0);
-  }
-  return {
-    total,
-    pos,
-    neg,
-    neu,
-    acceptance: Math.round((pos / total) * 1000) / 10,
-    rejection: Math.round((neg / total) * 1000) / 10,
-    engagement: Math.round((eng / total) * 10) / 10,
-  };
-}
-
-const networkLabel = (n: string) =>
-  NETWORKS.find((x) => x.label === n || x.values.includes(n))?.label ?? n;
 
 function NetworkIcon({ n, className }: { n: string; className?: string }) {
   const Icon = NETWORKS.find((x) => x.label === n || x.values.includes(n))?.Icon ?? MessageSquare;
