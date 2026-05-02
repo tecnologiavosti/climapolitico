@@ -343,6 +343,40 @@ export default function RegionalAnalysis() {
             </Card>
           </div>
 
+          {/* Resumo total: classificadas vs. sem região */}
+          {(() => {
+            const classified = REGIONS.reduce((s, r) => s + (mapData[r]?.total ?? 0), 0);
+            const unclassified = undefinedMetrics?.total ?? 0;
+            const grandTotal = classified + unclassified;
+            return (
+              <Card className="bg-muted/30">
+                <CardContent className="pt-6">
+                  <div className="flex flex-wrap items-center justify-between gap-4 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Total geral de menções deste candidato {network !== ALL_NETWORKS_VALUE ? `em ${networkLabel(network)}` : "em todas as redes"}: </span>
+                      <span className="font-bold text-foreground text-base">{grandTotal.toLocaleString("pt-BR")}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="secondary">
+                        Classificadas por região: {classified.toLocaleString("pt-BR")}
+                      </Badge>
+                      {unclassified > 0 && (
+                        <Badge variant="outline" className="border-amber-500/50 text-amber-700 dark:text-amber-400">
+                          Sem região identificada: {unclassified.toLocaleString("pt-BR")}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  {unclassified > 0 && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Algumas menções não têm dados públicos suficientes para identificar a região do autor. Elas contam no total da Visão Geral, mas não aparecem no mapa.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })()}
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Mapa */}
             <Card>
