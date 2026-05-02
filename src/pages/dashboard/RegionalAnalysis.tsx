@@ -53,15 +53,6 @@ interface Candidate {
   id: string;
   full_name: string;
 }
-interface Metrics {
-  total: number;
-  pos: number;
-  neg: number;
-  neu: number;
-  acceptance: number;
-  rejection: number;
-  engagement: number;
-}
 interface Comment {
   id: string;
   comment_text: string;
@@ -71,48 +62,7 @@ interface Comment {
   social_network: string;
 }
 
-const EMPTY_METRICS: Metrics = { total: 0, pos: 0, neg: 0, neu: 0, acceptance: 0, rejection: 0, engagement: 0 };
 const insightCache = new Map<string, { ts: number; data: { pontos_fortes: string[]; como_melhorar: string[] } }>();
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-function colorByAcceptance(acc: number, total: number): string {
-  if (total < 10) return "hsl(var(--muted))";
-  if (acc > 65) return "hsl(142, 70%, 45%)";
-  if (acc >= 35) return "hsl(45, 95%, 55%)";
-  return "hsl(0, 75%, 55%)";
-}
-
-function computeMetrics(
-  rows: { sentiment_label: string | null; likes_count: number | null; replies_count: number | null; shares_count: number | null }[]
-): Metrics {
-  const total = rows.length;
-  if (!total) return { ...EMPTY_METRICS };
-  let pos = 0,
-    neg = 0,
-    neu = 0,
-    eng = 0;
-  for (const r of rows) {
-    const s = (r.sentiment_label || "").toLowerCase();
-    if (s === "positive" || s === "positivo") pos++;
-    else if (s === "negative" || s === "negativo") neg++;
-    else neu++;
-    eng += (r.likes_count || 0) + (r.replies_count || 0) + (r.shares_count || 0);
-  }
-  return {
-    total,
-    pos,
-    neg,
-    neu,
-    acceptance: Math.round((pos / total) * 1000) / 10,
-    rejection: Math.round((neg / total) * 1000) / 10,
-    engagement: Math.round((eng / total) * 10) / 10,
-  };
-}
-
-const networkLabel = (n: string) =>
-  NETWORKS.find((x) => x.label === n || x.values.includes(n))?.label ?? n;
 
 function NetworkIcon({ n, className }: { n: string; className?: string }) {
   const Icon = NETWORKS.find((x) => x.label === n || x.values.includes(n))?.Icon ?? MessageSquare;
