@@ -27,6 +27,7 @@ import {
   BookUser,
   Database as DatabaseIcon,
   MapPinned,
+  Linkedin,
 } from "lucide-react";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { useTooltipsEnabled } from "@/hooks/useTooltipsEnabled";
