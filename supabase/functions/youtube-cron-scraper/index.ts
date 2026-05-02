@@ -89,6 +89,7 @@ Deno.serve(async (req) => {
         }
         await new Promise((r) => setTimeout(r, 500));
       }
+      await supabase.rpc("record_collector_call", { _name: "youtube", _items: 0, _had_error: false });
     })();
 
     // @ts-ignore EdgeRuntime
