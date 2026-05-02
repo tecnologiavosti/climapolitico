@@ -64,7 +64,6 @@ Deno.serve(async (req) => {
     const negatives = (neg ?? []).map((r) => `- ${(r.comment_text || "").slice(0, 200)}`).join("\n") || "(sem amostras)";
 
     const apiKey = Deno.env.get("CEREBRAS_API_KEY");
-    if (!apiKey) throw new Error("CEREBRAS_API_KEY missing");
 
     const prompt = `Você é um analista político especialista em comunicação regional brasileira.
 Com base nos dados reais abaixo de menções ao candidato na região ${region} no ${social_network}, gere uma análise.
@@ -83,30 +82,64 @@ Responda APENAS um JSON no formato exato:
 {"pontos_fortes":["...","...","...","...","..."],"como_melhorar":["...","...","...","...","..."]}
 Cada item deve ter no máximo 140 caracteres, em português brasileiro.`;
 
-    const models = ["qwen-3-235b-a22b-instruct-2507", "llama3.1-8b"];
+    const systemMsg = "Você é um estrategista político brasileiro. Responda sempre em JSON válido em português.";
     let json: any = null;
     let lastErr = "";
-    for (const model of models) {
-      const r = await fetch("https://api.cerebras.ai/v1/chat/completions", {
+    let quotaExceeded = false;
+
+    // 1) Try Cerebras first (fast and free if quota available)
+    if (apiKey) {
+      const cerebrasModels = ["qwen-3-235b-a22b-instruct-2507", "llama3.1-8b"];
+      for (const model of cerebrasModels) {
+        const r = await fetch("https://api.cerebras.ai/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "system", content: systemMsg }, { role: "user", content: prompt }],
+            response_format: { type: "json_object" },
+            max_tokens: 1000,
+            temperature: 0.4,
+          }),
+        });
+        if (r.ok) { json = await r.json(); break; }
+        const errText = (await r.text()).slice(0, 300);
+        lastErr = `${model} ${r.status}: ${errText}`;
+        if (r.status === 429 || /token_quota_exceeded|too_many_tokens/i.test(errText)) {
+          quotaExceeded = true;
+          console.warn("[regional-insights] Cerebras quota exceeded, falling back to Lovable AI");
+          break;
+        }
+        console.warn("[regional-insights]", lastErr);
+      }
+    } else {
+      quotaExceeded = true;
+    }
+
+    // 2) Fallback to Lovable AI Gateway
+    if (!json) {
+      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+      if (!LOVABLE_API_KEY) throw new Error(`Cerebras failed: ${lastErr} | LOVABLE_API_KEY missing`);
+      const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
-        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          model,
-          messages: [
-            { role: "system", content: "Você é um estrategista político brasileiro. Responda sempre em JSON válido em português." },
-            { role: "user", content: prompt },
-          ],
+          model: "google/gemini-3-flash-preview",
+          messages: [{ role: "system", content: systemMsg }, { role: "user", content: prompt }],
           response_format: { type: "json_object" },
-          max_tokens: 1000,
-          temperature: 0.4,
         }),
       });
-      if (r.ok) { json = await r.json(); break; }
-      lastErr = `${model} ${r.status}: ${(await r.text()).slice(0, 200)}`;
-      console.warn("[regional-insights]", lastErr);
+      if (!r.ok) {
+        const errText = (await r.text()).slice(0, 300);
+        if (r.status === 429) throw new Error("Limite de requisições atingido. Tente novamente em alguns minutos.");
+        if (r.status === 402) throw new Error("Créditos da IA esgotados. Adicione créditos em Settings > Workspace > Usage.");
+        throw new Error(`AI fallback failed: ${r.status} ${errText}`);
+      }
+      json = await r.json();
     }
-    if (!json) throw new Error(`Cerebras failed: ${lastErr}`);
-    const parsed = JSON.parse(json.choices?.[0]?.message?.content ?? "{}");
+
+    const content = json.choices?.[0]?.message?.content ?? "{}";
+    const parsed = typeof content === "string" ? JSON.parse(content) : content;
 
     return new Response(
       JSON.stringify({
