@@ -64,7 +64,6 @@ Deno.serve(async (req) => {
     const negatives = (neg ?? []).map((r) => `- ${(r.comment_text || "").slice(0, 200)}`).join("\n") || "(sem amostras)";
 
     const apiKey = Deno.env.get("CEREBRAS_API_KEY");
-    if (!apiKey) throw new Error("CEREBRAS_API_KEY missing");
 
     const prompt = `Você é um analista político especialista em comunicação regional brasileira.
 Com base nos dados reais abaixo de menções ao candidato na região ${region} no ${social_network}, gere uma análise.
