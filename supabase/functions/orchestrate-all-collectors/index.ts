@@ -65,8 +65,18 @@ Deno.serve(async (req) => {
       for (const c of list) {
         for (const col of selectedCollectors) {
           summary[col.name] = summary[col.name] || { ok: 0, fail: 0 };
+
+          // Quota check por coletor
+          const quotaName = col.name.toLowerCase().replace("/x", "").replace(" ", "_");
           try {
-            // Coletores com validação interna precisam do userId do dono quando chamados por cron.
+            const { data: skipData } = await supabase.rpc("should_skip_collector", { _name: quotaName });
+            if (skipData === true) {
+              console.log(`[ORCHESTRATOR] ${col.name} pulado por quota`);
+              continue;
+            }
+          } catch (_) { /* segue */ }
+
+          try {
             const body = col.fn === "search-twitter-mentions" || col.fn === "search-youtube-mentions"
               ? { ...col.payload(c), userId: c.user_id }
               : col.payload(c);
@@ -81,11 +91,21 @@ Deno.serve(async (req) => {
             summary[col.name].fail++;
             console.warn(`[ORCHESTRATOR] ${col.name} ${c.full_name} exception:`, (e as Error).message);
           }
-          // Pacing leve para evitar rate-limits
           await new Promise((r) => setTimeout(r, 800));
         }
       }
       console.log(`[ORCHESTRATOR] Concluído em ${(Date.now() - startedAt) / 1000}s | summary=`, JSON.stringify(summary));
+
+      // Registra calls em quota
+      for (const col of selectedCollectors) {
+        const quotaName = col.name.toLowerCase().replace("/x", "").replace(" ", "_");
+        const s = summary[col.name] || { ok: 0, fail: 0 };
+        try {
+          await supabase.rpc("record_collector_call", {
+            _name: quotaName, _items: s.ok, _had_error: s.fail > 0,
+          });
+        } catch (_) { /* ignora */ }
+      }
 
       // 3) Classifica regiões das novas interações (heurística + IA em lote)
       try {
