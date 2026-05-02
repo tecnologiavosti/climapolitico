@@ -46,11 +46,13 @@ interface Comment { id: string; comment_text: string; comment_author: string | n
 
 const insightCache = new Map<string, { ts: number; data: { pontos_fortes: string[]; como_melhorar: string[] } }>();
 
+const ALL_NETWORKS_VALUE = "__all__";
+
 export default function RegionalAnalysis() {
   const { user } = useAuth();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [candidateId, setCandidateId] = useState<string>("");
-  const [network, setNetwork] = useState<string>("YouTube");
+  const [network, setNetwork] = useState<string>(ALL_NETWORKS_VALUE);
   const [region, setRegion] = useState<RegionLabel>("Sudeste");
 
   const [loading, setLoading] = useState(false);
@@ -58,6 +60,7 @@ export default function RegionalAnalysis() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [mapData, setMapData] = useState<Record<RegionLabel, Metrics>>({} as Record<RegionLabel, Metrics>);
+  const [undefinedMetrics, setUndefinedMetrics] = useState<Metrics | null>(null);
   const [insights, setInsights] = useState<{ pontos_fortes: string[]; como_melhorar: string[] } | null>(null);
   const [analyzedKey, setAnalyzedKey] = useState<string>("");
 
