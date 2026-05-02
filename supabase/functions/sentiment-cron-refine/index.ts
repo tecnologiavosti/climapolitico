@@ -28,6 +28,14 @@ function heuristic(text: string): SentimentResult {
   return { label: "Neutro", score: 0.5 };
 }
 
+// === Circuit breaker em memória (vive enquanto o worker estiver aquecido) ===
+const providerCooldown: Record<string, number> = { cerebras: 0, groq: 0, gemini: 0 };
+const isOnCooldown = (n: string) => Date.now() < (providerCooldown[n] || 0);
+const setCooldown = (n: string, minutes: number) => {
+  providerCooldown[n] = Date.now() + minutes * 60_000;
+  console.warn(`[REFINE] ${n} cooldown ${minutes}min`);
+};
+
 async function callCerebras(texts: string[], cerebrasKey: string): Promise<SentimentResult[] | null> {
   if (isOnCooldown('cerebras')) { console.log('[REFINE] cerebras em cooldown'); return null; }
   const clipped = texts.map((t) => (t || "").substring(0, 400).trim());
