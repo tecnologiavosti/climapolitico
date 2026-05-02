@@ -763,7 +763,7 @@ Deno.serve(async (req) => {
       candidateId,
       candidateName,
       candidateAliases = [] as string[],
-      maxTweets = 80,
+      maxTweets = 400,
     } = requestBody;
 
     if (!candidateId || !candidateName) {
