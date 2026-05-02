@@ -29,6 +29,7 @@ function heuristic(text: string): SentimentResult {
 }
 
 async function callCerebras(texts: string[], cerebrasKey: string): Promise<SentimentResult[] | null> {
+  if (isOnCooldown('cerebras')) { console.log('[REFINE] cerebras em cooldown'); return null; }
   const clipped = texts.map((t) => (t || "").substring(0, 400).trim());
   const userContent = clipped.map((t, i) => `${i + 1}. "${t}"`).join("\n");
 
@@ -59,6 +60,7 @@ Responda APENAS JSON object com chave "results" contendo array na MESMA ordem: {
       if (!res.ok) {
         const errBody = await res.text().catch(() => "");
         console.warn(`[REFINE] Cerebras ${model} ${res.status}: ${errBody.substring(0, 300)}`);
+        if (res.status === 429) { setCooldown('cerebras', 10); return null; }
         continue;
       }
       const data = await res.json();
@@ -90,6 +92,7 @@ Responda APENAS JSON object com chave "results" contendo array na MESMA ordem: {
 }
 
 async function callGroq(texts: string[], groqKey: string): Promise<SentimentResult[] | null> {
+  if (isOnCooldown('groq')) { console.log('[REFINE] groq em cooldown'); return null; }
   const clipped = texts.map((t) => (t || "").substring(0, 400).trim());
   const userContent = clipped.map((t, i) => `${i + 1}. "${t}"`).join("\n");
 
@@ -116,6 +119,7 @@ Responda APENAS JSON array na mesma ordem: [{"label":"Positivo|Negativo|Neutro",
     });
     if (!res.ok) {
       console.warn(`[REFINE] Groq ${res.status}`);
+      if (res.status === 429) setCooldown('groq', 10);
       return null;
     }
     const data = await res.json();
@@ -139,6 +143,7 @@ Responda APENAS JSON array na mesma ordem: [{"label":"Positivo|Negativo|Neutro",
 }
 
 async function callAI(texts: string[], apiKey: string): Promise<SentimentResult[] | null> {
+  if (isOnCooldown('gemini')) { console.log('[REFINE] gemini em cooldown'); return null; }
   const clipped = texts.map((t) => (t || "").substring(0, 400).trim());
   const userContent = clipped.map((t, i) => `${i + 1}. "${t}"`).join("\n");
 
@@ -188,7 +193,8 @@ Neutro (0.4-0.6): pergunta, informativo, indeterminado.`;
     }
 
     if (res.status === 402) {
-      console.error("[REFINE] créditos esgotados — abortando ciclo");
+      console.error("[REFINE] créditos esgotados — cooldown Gemini 60min");
+      setCooldown('gemini', 60);
       return null;
     }
     if (res.status !== 429 && res.status < 500) {
