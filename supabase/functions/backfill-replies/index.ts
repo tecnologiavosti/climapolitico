@@ -179,18 +179,22 @@ Deno.serve(async (req) => {
       { auth: { persistSession: false } },
     );
 
-    // Validação JWT
+    // Validação JWT — aceita service role (cron) ou usuário autenticado
     const auth = req.headers.get("Authorization");
     if (!auth?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Não autorizado" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const { data: userData, error: authErr } = await supabase.auth.getUser(auth.replace("Bearer ", ""));
-    if (authErr || !userData?.user) {
-      return new Response(JSON.stringify({ error: "Token inválido" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const token = auth.replace("Bearer ", "");
+    const isServiceRole = token === (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
+    if (!isServiceRole) {
+      const { data: userData, error: authErr } = await supabase.auth.getUser(token);
+      if (authErr || !userData?.user) {
+        return new Response(JSON.stringify({ error: "Token inválido" }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const { candidateId, days = 7, perNetworkLimit = 30 } = await req.json();

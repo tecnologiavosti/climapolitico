@@ -33,6 +33,15 @@ Deno.serve(async (req) => {
   );
 
   try {
+    // Auto-pause via quota
+    const { data: skipData } = await supabase.rpc("should_skip_collector", { _name: "youtube" });
+    if (skipData === true) {
+      console.log("[YOUTUBE-CRON] pulado por quota");
+      return new Response(JSON.stringify({ skipped: true, reason: "quota" }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { data: candidates, error } = await supabase
       .from("candidates")
       .select("id, full_name, user_id")
@@ -62,9 +71,9 @@ Deno.serve(async (req) => {
           candidateName: c.full_name,
           candidateAliases: buildAliases(c.full_name),
           userId: c.user_id,
-          maxVideos: 8,
-          maxCommentsPerVideo: 50,
-          maxNewComments: 150,
+          maxVideos: 12,
+          maxCommentsPerVideo: 100,
+          maxNewComments: 300,
         }),
           });
           if (!response.ok) {
@@ -80,6 +89,7 @@ Deno.serve(async (req) => {
         }
         await new Promise((r) => setTimeout(r, 500));
       }
+      await supabase.rpc("record_collector_call", { _name: "youtube", _items: 0, _had_error: false });
     })();
 
     // @ts-ignore EdgeRuntime

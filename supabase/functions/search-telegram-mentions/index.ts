@@ -98,6 +98,30 @@ const BR_PRESS_CHANNELS = [
   "cienciapolitica", "eleitoradobr", "forumbrasileiro", "brasil247", "revistaforum",
   // Fact-checking
   "aosfatos", "lupa", "comprova",
+  // === EXPANSÃO 2026: imprensa, influenciadores, governadores ===
+  "g1politica", "g1brasil", "g1economia", "uolnews", "uolpolitica",
+  "folhapolitica", "folhanoticias", "estadaopolitica", "estadaonews",
+  "valorpolitica", "valornews", "globonews_oficial", "cnnbrasiloficial",
+  "gazetadopovo", "oantagonista", "antagonista", "veja_politica", "vejapolitica",
+  "istoenoticias", "isto_e_oficial", "exame_oficial", "infomoney_oficial",
+  "brazilbusiness", "monitormercantil", "agenciaestado", "rfi_brasil",
+  // Influenciadores e analistas
+  "renatomeiranews", "renanmeira", "leandroruschel", "kim_kataguiri",
+  "nikolasferreiraoficial", "andreajaneoficial", "augustonunes",
+  "guigaboardman", "ribeiro_helio", "ricardosalles_oficial",
+  // Governadores e prefeitos
+  "tarcisiodefreitas", "claudio_castro_rj", "romeu_zema",
+  "ratinho_junior_pr", "leite_eduardo_rs", "wilson_lima_am",
+  "renan_filho_oficial", "joao_doria_oficial",
+  // Câmaras e Senado regionais
+  "alep_pr", "alepe_pe", "alemg_oficial", "alesp_oficial", "alerj_rj",
+  "camarasp", "camaramg", "camararj", "senado_oficial",
+  // Eleitorado e ativismo
+  "vempraruabrasil", "movimentobrasilivre", "vemprarua_br",
+  "instituto_milenio", "instituto_liberal", "ifl_brasil",
+  "fundacaotruman", "estudantes_pelaliberdade",
+  // Fact-checking expandido
+  "boatos_org", "e-farsas", "agencialupa", "projeto_comprova",
 ];
 
 const USER_AGENTS = [

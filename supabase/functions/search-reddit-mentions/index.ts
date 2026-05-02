@@ -16,11 +16,22 @@ const BR_SUBREDDITS = [
   // Política geral
   "brasil", "brasilivre", "BrasilSimulator", "AgendaBrasil", "politica", "lutabrasileira",
   "BrasildoB", "noticias", "InternetBrasil", "investimentos",
-  // Regionais
+  "PoliticaBrasil", "CongressoNacional", "EleicoesBrasil",
+  // Direita / Conservadores
+  "conservadores", "Bolsonaro", "DireitaBrasileira", "LiberalismoBR",
+  "PartidoNovoOficial", "BrazilianConservatives",
+  // Esquerda / Progressistas
+  "esquerda", "PTBrasil", "PSOLoficial", "Lula", "EsquerdaBR",
+  // Regionais (capitais e estados)
   "saopaulo", "riodejaneiro", "minasgerais", "bahia", "ceara", "pernambuco",
   "parana", "riograndedosul", "brasilia", "nordeste",
+  "amazonas", "para", "santacatarina", "goias", "espiritosanto",
+  "maranhao", "piaui", "alagoas", "sergipe",
+  "Florianopolis", "PortoAlegre", "BeloHorizonte", "Salvador",
+  "Curitiba", "Recife", "Fortaleza",
   // Temáticos
   "economy_brazil", "direito", "jornalismo", "upheaval",
+  "EconomiaBrasil", "DireitoBrasil",
 ];
 
 function semanticMatch(text: string, fullName: string): boolean {

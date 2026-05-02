@@ -624,6 +624,51 @@ export type Database = {
           },
         ]
       }
+      collector_quota_state: {
+        Row: {
+          collector_name: string
+          created_at: string
+          daily_calls: number
+          daily_errors: number
+          daily_items_collected: number
+          id: string
+          last_call_at: string | null
+          last_reset_at: string
+          max_daily_calls: number
+          notes: string | null
+          paused_until: string | null
+          updated_at: string
+        }
+        Insert: {
+          collector_name: string
+          created_at?: string
+          daily_calls?: number
+          daily_errors?: number
+          daily_items_collected?: number
+          id?: string
+          last_call_at?: string | null
+          last_reset_at?: string
+          max_daily_calls?: number
+          notes?: string | null
+          paused_until?: string | null
+          updated_at?: string
+        }
+        Update: {
+          collector_name?: string
+          created_at?: string
+          daily_calls?: number
+          daily_errors?: number
+          daily_items_collected?: number
+          id?: string
+          last_call_at?: string | null
+          last_reset_at?: string
+          max_daily_calls?: number
+          notes?: string | null
+          paused_until?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       email_otp_codes: {
         Row: {
           attempts: number
@@ -1443,7 +1488,12 @@ export type Database = {
         Returns: boolean
       }
       reactivate_youtube_keys: { Args: never; Returns: undefined }
+      record_collector_call: {
+        Args: { _had_error?: boolean; _items?: number; _name: string }
+        Returns: undefined
+      }
       refresh_network_profiles_deduplicated: { Args: never; Returns: undefined }
+      should_skip_collector: { Args: { _name: string }; Returns: boolean }
     }
     Enums: {
       app_role: "admin" | "analyst" | "subscriber"
