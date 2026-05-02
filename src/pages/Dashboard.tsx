@@ -43,6 +43,7 @@ const Settings = lazy(() => import("./dashboard/Settings"));
 const Notifications = lazy(() => import("./dashboard/Notifications"));
 const DataCollectionMethodology = lazy(() => import("./dashboard/DataCollectionMethodology"));
 const RegionalAnalysis = lazy(() => import("./dashboard/RegionalAnalysis"));
+const LinkedInFeed = lazy(() => import("./dashboard/LinkedInFeed"));
 const onboardingSteps: OnboardingStep[] = [
   {
     target: '[data-onboarding="sidebar"]',
@@ -155,6 +156,7 @@ const Dashboard = () => {
                <Route path="/notifications" element={<Notifications />} />
                <Route path="/data-collection-methodology" element={<DataCollectionMethodology />} />
                <Route path="/regional-analysis" element={<RegionalAnalysis />} />
+               <Route path="/linkedin-feed" element={<LinkedInFeed />} />
                 <Route path="/subscription" element={
                   <div className="text-center py-12">
                     <h3 className="text-2xl font-bold mb-2">Assinatura</h3>
