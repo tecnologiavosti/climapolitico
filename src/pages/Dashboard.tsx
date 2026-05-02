@@ -43,6 +43,7 @@ const Settings = lazy(() => import("./dashboard/Settings"));
 const Notifications = lazy(() => import("./dashboard/Notifications"));
 const DataCollectionMethodology = lazy(() => import("./dashboard/DataCollectionMethodology"));
 const RegionalAnalysis = lazy(() => import("./dashboard/RegionalAnalysis"));
+const LinkedInFeed = lazy(() => import("./dashboard/LinkedInFeed"));
 const onboardingSteps: OnboardingStep[] = [
   {
     target: '[data-onboarding="sidebar"]',
