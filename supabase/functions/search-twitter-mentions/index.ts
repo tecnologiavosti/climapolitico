@@ -525,9 +525,27 @@ function parseSentimentArray(content: string, expected: number): SentimentResult
   });
 }
 
+// === Circuit breaker em memória (vive enquanto o worker estiver aquecido) ===
+// Quando um provider responde 402 (créditos) ou 429 sequencial, marcamos um
+// "cooldown" para pular o provider por X minutos e poupar latência/quota.
+const providerCooldown: Record<string, number> = { cerebras: 0, groq: 0, gemini: 0 };
+function isOnCooldown(name: string): boolean {
+  const until = providerCooldown[name] || 0;
+  if (Date.now() < until) {
+    console.log(`[SENTIMENT-${name.toUpperCase()}] em cooldown até ${new Date(until).toISOString()}`);
+    return true;
+  }
+  return false;
+}
+function setCooldown(name: string, minutes: number) {
+  providerCooldown[name] = Date.now() + minutes * 60_000;
+  console.warn(`[SENTIMENT-${name.toUpperCase()}] cooldown ativado por ${minutes}min`);
+}
+
 async function tryCerebras(systemPrompt: string, userPrompt: string, expected: number): Promise<SentimentResult[] | null> {
   const cerebrasKey = Deno.env.get('CEREBRAS_API_KEY');
   if (!cerebrasKey) return null;
+  if (isOnCooldown('cerebras')) return null;
   // Cerebras: ~2000 tok/s, 1M tokens/dia grátis. Llama 3.3 70B excelente para PT-BR.
   const models = ['llama3.1-8b', 'qwen-3-235b-a22b-instruct-2507', 'gpt-oss-120b'];
   for (const model of models) {
@@ -549,6 +567,11 @@ async function tryCerebras(systemPrompt: string, userPrompt: string, expected: n
           signal: AbortSignal.timeout(20000),
         });
         if (response.status === 429) {
+          if (attempt === 1) {
+            // Segundo 429 seguido = quota realmente saturada → cooldown 10min
+            setCooldown('cerebras', 10);
+            return null;
+          }
           const retryAfter = parseFloat(response.headers.get('retry-after') || '0');
           const wait = Math.min(15000, (retryAfter > 0 ? retryAfter * 1000 : 3000) + Math.random() * 500);
           console.warn(`[SENTIMENT-CEREBRAS] ${model} 429 — aguardando ${wait.toFixed(0)}ms (tentativa ${attempt + 1}/2)`);
