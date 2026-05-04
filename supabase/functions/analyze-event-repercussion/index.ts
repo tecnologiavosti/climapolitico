@@ -6,6 +6,21 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+// Sanitiza texto vindo do banco para garantir JSON válido nas chamadas à IA.
+// Remove: caracteres de controle, lone surrogates (que quebram o serializador JSON
+// do Cerebras com "unexpected end of hex escape"), e normaliza espaços.
+function sanitizeForAI(s: unknown): string {
+  if (s == null) return "";
+  let str = String(s);
+  // Remove caracteres de controle (exceto \n, \r, \t)
+  str = str.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ");
+  // Remove lone high/low surrogates (emojis quebrados)
+  str = str.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, "");
+  str = str.replace(/(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "$1");
+  // Colapsa espaços
+  return str.replace(/\s+/g, " ").trim();
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
@@ -118,9 +133,9 @@ serve(async (req) => {
       }));
 
     // AI analysis
-    const sampleNeg = comments.filter(c => c.sentiment_label === 'Negativo' && c.comment_text).slice(0, 80).map(c => c.comment_text.substring(0, 250));
-    const samplePos = comments.filter(c => c.sentiment_label === 'Positivo' && c.comment_text).slice(0, 80).map(c => c.comment_text.substring(0, 250));
-    const sampleNeu = comments.filter(c => c.sentiment_label === 'Neutro' && c.comment_text).slice(0, 40).map(c => c.comment_text.substring(0, 200));
+    const sampleNeg = comments.filter(c => c.sentiment_label === 'Negativo' && c.comment_text).slice(0, 80).map(c => sanitizeForAI(c.comment_text).substring(0, 250)).filter(Boolean);
+    const samplePos = comments.filter(c => c.sentiment_label === 'Positivo' && c.comment_text).slice(0, 80).map(c => sanitizeForAI(c.comment_text).substring(0, 250)).filter(Boolean);
+    const sampleNeu = comments.filter(c => c.sentiment_label === 'Neutro' && c.comment_text).slice(0, 40).map(c => sanitizeForAI(c.comment_text).substring(0, 200)).filter(Boolean);
 
     const eventLabel = eventName || `período de ${startDate.substring(0, 10)} a ${endDate.substring(0, 10)}`;
 
