@@ -22,6 +22,11 @@ const COLLECTORS: Array<{ name: string; fn: string; payload: (c: any) => Record<
   { name: "Lemmy",        fn: "lemmy-fediverse-collector", payload: (c) => ({ candidateId: c.id }) },
   { name: "4chan",        fn: "fourchan-collector",       payload: (c) => ({ candidateId: c.id }) },
   { name: "Tumblr",       fn: "tumblr-collector",         payload: (c) => ({ candidateId: c.id }) },
+  { name: "LinkedIn",     fn: "linkedin-collector",       payload: (c) => ({ candidateId: c.id }) },
+  { name: "GDELT",        fn: "gdelt-collector",          payload: (c) => ({ candidateId: c.id, candidateName: c.full_name }) },
+  { name: "Brand24",      fn: "collect-brand24-rss",      payload: (c) => ({ candidateId: c.id }) },
+  { name: "Pinterest",    fn: "pinterest-collector",      payload: (c) => ({ candidateId: c.id }) },
+  { name: "Facebook RSS", fn: "facebook-rss-collector",   payload: (c) => ({ candidateId: c.id }) },
 ];
 
 Deno.serve(async (req) => {
