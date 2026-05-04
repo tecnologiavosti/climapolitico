@@ -28,7 +28,7 @@ function extractFrequentTerms(texts: string[]): string[] {
     'para', 'como', 'mais', 'muito', 'pela', 'pelo', 'isso', 'essa', 'esse', 'esta', 'este',
     'entre', 'sobre', 'quando', 'onde', 'tambem', 'também', 'presidente', 'candidato', 'candidata',
     'lula', 'bolsonaro', 'silva', 'brasil', 'brasileiro', 'brasileira', 'politica', 'política',
-    'https', 'http', 'href', 'class', 'message', 'text', 'target', 'blank', 'rel', 'nofollow'
+    'https', 'http', 'href', 'class', 'message', 'text', 'target', 'blank', 'rel', 'nofollow', 'nbsp'
   ]);
   const counts = new Map<string, number>();
   texts.join(' ')
@@ -344,7 +344,7 @@ Gere um relatório completo de repercussão deste evento/período.`;
       const msg = code === 'AI_RATE_LIMITED'
         ? 'Limite de requisições da IA excedido. Tente novamente em alguns minutos.'
         : code === 'AI_CREDITS_EXHAUSTED'
-        ? 'Créditos da IA esgotados. Adicione créditos em Settings > Workspace > Usage.'
+        ? 'A IA de fallback ficou indisponível no momento.'
         : 'Não foi possível gerar o relatório com IA no momento.';
       const deterministicReport = buildDeterministicReport('ai_unavailable');
       // Return a usable report even when external AI providers fail, so the tab never appears empty.
