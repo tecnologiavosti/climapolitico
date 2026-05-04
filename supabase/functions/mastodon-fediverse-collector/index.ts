@@ -23,6 +23,13 @@ const INSTANCES = [
   "https://mstdn.social",
   "https://hachyderm.io",
   "https://infosec.exchange",
+  "https://mas.to",
+  "https://mastodon.world",
+  "https://techhub.social",
+  "https://social.vivaldi.net",
+  "https://fosstodon.org",
+  "https://mastodon.online",
+  "https://mastodon.uno",
 ];
 
 interface Toot {
@@ -50,6 +57,11 @@ async function searchTag(instance: string, tag: string): Promise<Toot[]> {
   const url = `${instance}/api/v1/timelines/tag/${encodeURIComponent(tag)}?limit=40`;
   try {
     const r = await fetch(url, {
+      headers: { "User-Agent": UA, "Accept": "application/json" },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!r.ok) return [];
+    const arr = await r.json();
       headers: { "User-Agent": UA, "Accept": "application/json" },
       signal: AbortSignal.timeout(10000),
     });

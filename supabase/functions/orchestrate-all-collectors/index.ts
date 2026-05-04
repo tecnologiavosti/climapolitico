@@ -10,14 +10,18 @@ const corsHeaders = {
 
 const COLLECTORS: Array<{ name: string; fn: string; payload: (c: any) => Record<string, any> }> = [
   { name: "YouTube",      fn: "search-youtube-mentions",  payload: (c) => ({ candidateId: c.id, candidateName: c.full_name }) },
+  { name: "Invidious",    fn: "invidious-collector",      payload: (c) => ({ candidateId: c.id }) },
   { name: "Google News",  fn: "google-news-collector",    payload: (c) => ({ candidateId: c.id, candidateName: c.full_name }) },
   { name: "TikTok",       fn: "tiktok-collector",         payload: (c) => ({ candidateId: c.id }) },
   { name: "Reddit",       fn: "search-reddit-mentions",   payload: (c) => ({ candidateId: c.id, candidateName: c.full_name }) },
   { name: "Telegram",     fn: "search-telegram-mentions", payload: (c) => ({ candidateId: c.id, candidateName: c.full_name }) },
   { name: "Wikipedia",    fn: "wikipedia-deep-collector", payload: (c) => ({ candidateId: c.id, candidateName: c.full_name }) },
   { name: "Twitter/X",    fn: "search-twitter-mentions",  payload: (c) => ({ candidateId: c.id, candidateName: c.full_name }) },
-  { name: "Bluesky",      fn: "bluesky-deep-collector",   payload: (c) => ({ candidateId: c.id }) },
+  { name: "Bluesky",      fn: "bluesky-deep-collector",   payload: (c) => ({ candidateId: c.id, maxPosts: 600 }) },
   { name: "Mastodon",     fn: "mastodon-fediverse-collector", payload: (c) => ({ candidateId: c.id }) },
+  { name: "Lemmy",        fn: "lemmy-fediverse-collector", payload: (c) => ({ candidateId: c.id }) },
+  { name: "4chan",        fn: "fourchan-collector",       payload: (c) => ({ candidateId: c.id }) },
+  { name: "Tumblr",       fn: "tumblr-collector",         payload: (c) => ({ candidateId: c.id }) },
 ];
 
 Deno.serve(async (req) => {
