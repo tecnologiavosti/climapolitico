@@ -89,7 +89,8 @@ export const useRealTimeAnalytics = (
       let countQuery = supabase
         .from('social_interactions')
         .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id);
+        .eq('user_id', user.id)
+        .not('social_network', 'in', '(mastodon,lemmy)');
       
       if (currentCandidateIds.length > 0) {
         countQuery = countQuery.in('candidate_id', currentCandidateIds);
@@ -107,6 +108,7 @@ export const useRealTimeAnalytics = (
           .from('social_interactions')
           .select('*')
           .eq('user_id', user.id)
+          .not('social_network', 'in', '(mastodon,lemmy)')
           .order('created_at', { ascending: false })
           .range(offset, offset + pageSize - 1);
 

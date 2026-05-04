@@ -221,7 +221,8 @@ async function calculateMetricsOnTheFly(candidateId: string, userId: string): Pr
     .from('social_interactions')
     .select('*', { count: 'exact', head: true })
     .eq('candidate_id', candidateId)
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .not('social_network', 'in', '(mastodon,lemmy)');
 
   if (countError) {
     console.error('Failed to count interactions:', countError);
@@ -241,6 +242,7 @@ async function calculateMetricsOnTheFly(candidateId: string, userId: string): Pr
       .select('id, sentiment_label, sentiment_score, likes_count, replies_count, shares_count, social_network, comment_author')
       .eq('candidate_id', candidateId)
       .eq('user_id', userId)
+      .not('social_network', 'in', '(mastodon,lemmy)')
       .range(offset, offset + pageSize - 1);
 
     if (pageError) {

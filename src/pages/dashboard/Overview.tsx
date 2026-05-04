@@ -129,6 +129,7 @@ export default function Overview() {
         .from('social_interactions')
         .select('id, candidate_id, sentiment_label, sentiment_score, likes_count, social_network, created_at, original_posted_at, comment_author')
         .or(`original_posted_at.gte.${sevenDaysAgo},and(original_posted_at.is.null,created_at.gte.${sevenDaysAgo})`)
+        .not('social_network', 'in', '(mastodon,lemmy)')
         .order('created_at', { ascending: false })
         .limit(10000);
       if (!isAdmin) query = query.eq('user_id', user.id);
@@ -159,6 +160,7 @@ export default function Overview() {
         .from('social_interactions')
         .select('candidate_id, sentiment_label, sentiment_score, likes_count, comment_author')
         .eq('user_id', user.id)
+        .not('social_network', 'in', '(mastodon,lemmy)')
         .or(orFilter)
         .order('created_at', { ascending: false })
         .limit(5000);
