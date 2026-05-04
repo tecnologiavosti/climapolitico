@@ -161,6 +161,45 @@ serve(async (req) => {
 
     const eventLabel = eventName || `período de ${startDate.substring(0, 10)} a ${endDate.substring(0, 10)}`;
 
+    const buildDeterministicReport = (reason: 'ai_unavailable' | 'no_ai_key') => {
+      const negativePct = stats.negative / stats.total;
+      const positivePct = stats.positive / stats.total;
+      const neutralPct = Math.max(0, 1 - negativePct - positivePct);
+      const overall_assessment = negativePct >= 0.45
+        ? 'muito_negativa'
+        : negativePct >= 0.32
+        ? 'negativa'
+        : positivePct >= 0.55
+        ? 'positiva'
+        : positivePct >= 0.7
+        ? 'muito_positiva'
+        : 'mista';
+      const topNetworks = Object.entries(stats.byNetwork).sort((a, b) => b[1] - a[1]).slice(0, 3);
+      const topics = extractFrequentTerms([...sampleNeg, ...samplePos, ...sampleNeu]);
+
+      return {
+        overall_assessment,
+        executive_summary: `Foram analisados ${stats.total} comentários sobre ${eventLabel}. A repercussão teve ${stats.positive} comentários positivos, ${stats.negative} negativos e ${stats.neutral} neutros, com maior volume em ${topNetworks.map(([network]) => network).join(', ') || 'redes sociais monitoradas'}. Como a IA principal ficou indisponível no momento, este relatório foi gerado por leitura estatística direta dos dados coletados.`,
+        key_reactions: [
+          { reaction: `Apoio identificado em ${Math.round(positivePct * 100)}% das interações classificadas.`, type: 'positiva', intensity: positivePct >= 0.5 ? 'alta' : 'media' },
+          { reaction: `Rejeição ou crítica apareceu em ${Math.round(negativePct * 100)}% das interações.`, type: 'negativa', intensity: negativePct >= 0.35 ? 'alta' : 'media' },
+          { reaction: `Participação neutra/ambígua estimada em ${Math.round(neutralPct * 100)}%, indicando espaço para disputa de narrativa.`, type: 'neutra', intensity: neutralPct >= 0.3 ? 'media' : 'baixa' },
+        ],
+        main_topics: topics.length ? topics : ['repercussão pública', 'engajamento', 'sentimento', 'narrativa política'],
+        impact_analysis: `O impacto calculado pelos dados é ${overall_assessment.replace('_', ' ')}. A leitura deve priorizar as redes com maior volume (${topNetworks.map(([network, count]) => `${network}: ${count}`).join('; ')}) e os comentários de maior engajamento para entender quais mensagens estão impulsionando a percepção pública.`,
+        immediate_actions: [
+          negativePct > positivePct ? 'Responder rapidamente aos pontos críticos mais recorrentes com mensagens simples e verificáveis.' : 'Amplificar os temas positivos com cortes, cards e depoimentos nas redes de maior volume.',
+          'Usar os comentários mais relevantes como insumo para ajustar a comunicação nas próximas 24 horas.',
+          'Monitorar se o sentimento muda após novas publicações ou respostas oficiais.'
+        ],
+        lessons_learned: [
+          'Eventos com alto volume exigem acompanhamento diário por rede social, não apenas leitura agregada.',
+          'Picos de engajamento ajudam a identificar quais temas devem virar prioridade de comunicação.',
+          reason === 'ai_unavailable' ? 'Quando a IA estiver disponível novamente, gere nova versão para obter análise semântica mais profunda.' : 'Configure a IA para obter análise semântica mais profunda.'
+        ]
+      };
+    };
+
     const prompt = `Você é um analista político estratégico brasileiro. Analise a repercussão do evento/período "${eventLabel}" para o candidato ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}.
 
 ESTATÍSTICAS DO PERÍODO:
