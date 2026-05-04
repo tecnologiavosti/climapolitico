@@ -62,11 +62,6 @@ async function searchTag(instance: string, tag: string): Promise<Toot[]> {
     });
     if (!r.ok) return [];
     const arr = await r.json();
-      headers: { "User-Agent": UA, "Accept": "application/json" },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!r.ok) return [];
-    const arr = await r.json();
     if (!Array.isArray(arr)) return [];
     return arr.map((t: any) => ({
       id: t.id,
