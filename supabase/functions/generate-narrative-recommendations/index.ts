@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -184,10 +185,27 @@ Com base nos dados REAIS acima, gere recomendações concretas e específicas de
     };
 
     let recommendations: any = null;
-    let aiProvider = 'lovable';
+    let aiProvider = 'cerebras';
 
-    // Try Lovable AI first
-    if (LOVABLE_API_KEY) {
+    // 1) PRIMÁRIO: Cerebras (alta capacidade) com fallback automático para Lovable AI Gateway
+    try {
+      const jsonPrompt = `${prompt}\n\nResponda EXCLUSIVAMENTE em JSON válido no formato:\n{"situation_summary":"...","topics_to_avoid":[{"topic":"...","reason":"...","urgency":"imediata|alta|moderada"}],"topics_to_reinforce":[{"topic":"...","reason":"...","suggested_approach":"..."}],"responses_to_criticism":[{"criticism":"...","suggested_response":"...","tone":"firme|conciliador|educativo|empático"}],"communication_plan":[{"action":"...","channel":"...","priority":"critica|alta|media|baixa","expected_impact":"..."}],"key_message":"..."}`;
+      const result = await callAICerebrasFirst({
+        systemMsg,
+        userPrompt: jsonPrompt,
+        jsonMode: true,
+        maxTokens: 3000,
+        temperature: 0.5,
+        tag: 'narrative',
+      });
+      recommendations = JSON.parse(result.content || '{}');
+      aiProvider = `${result.provider}:${result.model}`;
+    } catch (e) {
+      console.warn('[NARRATIVE] Cerebras+Lovable falharam, tentando Lovable AI tool-calling...', (e as Error).message);
+    }
+
+    // 2) Fallback secundário: Lovable AI Gateway com tool-calling estruturado
+    if (!recommendations && LOVABLE_API_KEY) {
       try {
         const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
           method: 'POST',
@@ -208,6 +226,7 @@ Com base nos dados REAIS acima, gere recomendações concretas e específicas de
           const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
           if (toolCall) {
             recommendations = JSON.parse(toolCall.function.arguments);
+            aiProvider = 'lovable-tool';
           } else {
             console.warn('Lovable AI: resposta sem tool_call, tentando Gemini fallback');
           }
