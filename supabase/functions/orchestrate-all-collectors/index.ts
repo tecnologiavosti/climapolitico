@@ -14,8 +14,10 @@ const COLLECTORS: Array<{ name: string; fn: string; payload: (c: any) => Record<
   { name: "TikTok",       fn: "tiktok-collector",         payload: (c) => ({ candidateId: c.id }) },
   { name: "Reddit",       fn: "search-reddit-mentions",   payload: (c) => ({ candidateId: c.id, candidateName: c.full_name }) },
   { name: "Telegram",     fn: "search-telegram-mentions", payload: (c) => ({ candidateId: c.id, candidateName: c.full_name }) },
-  { name: "Wikipedia",    fn: "search-wikipedia",         payload: (c) => ({ candidateId: c.id, candidateName: c.full_name }) },
+  { name: "Wikipedia",    fn: "wikipedia-deep-collector", payload: (c) => ({ candidateId: c.id, candidateName: c.full_name }) },
   { name: "Twitter/X",    fn: "search-twitter-mentions",  payload: (c) => ({ candidateId: c.id, candidateName: c.full_name }) },
+  { name: "Bluesky",      fn: "bluesky-deep-collector",   payload: (c) => ({ candidateId: c.id }) },
+  { name: "Mastodon",     fn: "mastodon-fediverse-collector", payload: (c) => ({ candidateId: c.id }) },
 ];
 
 Deno.serve(async (req) => {
