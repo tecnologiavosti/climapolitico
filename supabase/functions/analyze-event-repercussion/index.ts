@@ -12,6 +12,8 @@ const corsHeaders = {
 function sanitizeForAI(s: unknown): string {
   if (s == null) return "";
   let str = String(s);
+  // Remove HTML/URLs que aparecem em alguns coletores e poluem a análise estatística.
+  str = str.replace(/<[^>]*>/g, " ").replace(/https?:\/\/\S+/gi, " ");
   // Remove caracteres de controle (exceto \n, \r, \t)
   str = str.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ");
   // Remove lone high/low surrogates (emojis quebrados)
@@ -19,6 +21,29 @@ function sanitizeForAI(s: unknown): string {
   str = str.replace(/(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "$1");
   // Colapsa espaços
   return str.replace(/\s+/g, " ").trim();
+}
+
+function extractFrequentTerms(texts: string[]): string[] {
+  const stopWords = new Set([
+    'para', 'como', 'mais', 'muito', 'pela', 'pelo', 'isso', 'essa', 'esse', 'esta', 'este',
+    'entre', 'sobre', 'quando', 'onde', 'tambem', 'também', 'presidente', 'candidato', 'candidata',
+    'lula', 'bolsonaro', 'silva', 'brasil', 'brasileiro', 'brasileira', 'politica', 'política',
+    'https', 'http', 'href', 'class', 'message', 'text', 'target', 'blank', 'rel', 'nofollow', 'nbsp'
+  ]);
+  const counts = new Map<string, number>();
+  texts.join(' ')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .match(/[a-z0-9#@]{4,}/g)
+    ?.forEach((word) => {
+      if (!stopWords.has(word) && !/^\d+$/.test(word)) counts.set(word, (counts.get(word) || 0) + 1);
+    });
+
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([word]) => word.replace(/^#/, ''));
 }
 
 serve(async (req) => {
@@ -138,6 +163,45 @@ serve(async (req) => {
     const sampleNeu = comments.filter(c => c.sentiment_label === 'Neutro' && c.comment_text).slice(0, 40).map(c => sanitizeForAI(c.comment_text).substring(0, 200)).filter(Boolean);
 
     const eventLabel = eventName || `período de ${startDate.substring(0, 10)} a ${endDate.substring(0, 10)}`;
+
+    const buildDeterministicReport = (reason: 'ai_unavailable' | 'no_ai_key') => {
+      const negativePct = stats.negative / stats.total;
+      const positivePct = stats.positive / stats.total;
+      const neutralPct = Math.max(0, 1 - negativePct - positivePct);
+      const overall_assessment = negativePct >= 0.45
+        ? 'muito_negativa'
+        : negativePct >= 0.32
+        ? 'negativa'
+        : positivePct >= 0.7
+        ? 'muito_positiva'
+        : positivePct >= 0.55
+        ? 'positiva'
+        : 'mista';
+      const topNetworks = Object.entries(stats.byNetwork).sort((a, b) => b[1] - a[1]).slice(0, 3);
+      const topics = extractFrequentTerms([...sampleNeg, ...samplePos, ...sampleNeu]);
+
+      return {
+        overall_assessment,
+        executive_summary: `Foram analisados ${stats.total} comentários sobre ${eventLabel}. A repercussão teve ${stats.positive} comentários positivos, ${stats.negative} negativos e ${stats.neutral} neutros, com maior volume em ${topNetworks.map(([network]) => network).join(', ') || 'redes sociais monitoradas'}. Como a IA principal ficou indisponível no momento, este relatório foi gerado por leitura estatística direta dos dados coletados.`,
+        key_reactions: [
+          { reaction: `Apoio identificado em ${Math.round(positivePct * 100)}% das interações classificadas.`, type: 'positiva', intensity: positivePct >= 0.5 ? 'alta' : 'media' },
+          { reaction: `Rejeição ou crítica apareceu em ${Math.round(negativePct * 100)}% das interações.`, type: 'negativa', intensity: negativePct >= 0.35 ? 'alta' : 'media' },
+          { reaction: `Participação neutra/ambígua estimada em ${Math.round(neutralPct * 100)}%, indicando espaço para disputa de narrativa.`, type: 'neutra', intensity: neutralPct >= 0.3 ? 'media' : 'baixa' },
+        ],
+        main_topics: topics.length ? topics : ['repercussão pública', 'engajamento', 'sentimento', 'narrativa política'],
+        impact_analysis: `O impacto calculado pelos dados é ${overall_assessment.replace('_', ' ')}. A leitura deve priorizar as redes com maior volume (${topNetworks.map(([network, count]) => `${network}: ${count}`).join('; ')}) e os comentários de maior engajamento para entender quais mensagens estão impulsionando a percepção pública.`,
+        immediate_actions: [
+          negativePct > positivePct ? 'Responder rapidamente aos pontos críticos mais recorrentes com mensagens simples e verificáveis.' : 'Amplificar os temas positivos com cortes, cards e depoimentos nas redes de maior volume.',
+          'Usar os comentários mais relevantes como insumo para ajustar a comunicação nas próximas 24 horas.',
+          'Monitorar se o sentimento muda após novas publicações ou respostas oficiais.'
+        ],
+        lessons_learned: [
+          'Eventos com alto volume exigem acompanhamento diário por rede social, não apenas leitura agregada.',
+          'Picos de engajamento ajudam a identificar quais temas devem virar prioridade de comunicação.',
+          reason === 'ai_unavailable' ? 'Quando a IA estiver disponível novamente, gere nova versão para obter análise semântica mais profunda.' : 'Configure a IA para obter análise semântica mais profunda.'
+        ]
+      };
+    };
 
     const prompt = `Você é um analista político estratégico brasileiro. Analise a repercussão do evento/período "${eventLabel}" para o candidato ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}.
 
@@ -280,14 +344,15 @@ Gere um relatório completo de repercussão deste evento/período.`;
       const msg = code === 'AI_RATE_LIMITED'
         ? 'Limite de requisições da IA excedido. Tente novamente em alguns minutos.'
         : code === 'AI_CREDITS_EXHAUSTED'
-        ? 'Créditos da IA esgotados. Adicione créditos em Settings > Workspace > Usage.'
+        ? 'A IA de fallback ficou indisponível no momento.'
         : 'Não foi possível gerar o relatório com IA no momento.';
-      // Return 200 with fallback flag so the UI doesn't crash with FunctionsHttpError.
+      const deterministicReport = buildDeterministicReport('ai_unavailable');
+      // Return a usable report even when external AI providers fail, so the tab never appears empty.
       return new Response(JSON.stringify({
-        report: null,
+        report: deterministicReport,
         fallback: true,
         error: code,
-        message: msg,
+        message: `${msg} Exibindo relatório estatístico com os dados reais coletados.`,
         stats,
         dailyVolume,
         topComments,
