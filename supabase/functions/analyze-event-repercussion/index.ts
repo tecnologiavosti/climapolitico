@@ -21,6 +21,28 @@ function sanitizeForAI(s: unknown): string {
   return str.replace(/\s+/g, " ").trim();
 }
 
+function extractFrequentTerms(texts: string[]): string[] {
+  const stopWords = new Set([
+    'para', 'como', 'mais', 'muito', 'pela', 'pelo', 'isso', 'essa', 'esse', 'esta', 'este',
+    'entre', 'sobre', 'quando', 'onde', 'tambem', 'também', 'presidente', 'candidato', 'candidata',
+    'lula', 'bolsonaro', 'silva', 'brasil', 'brasileiro', 'brasileira', 'politica', 'política'
+  ]);
+  const counts = new Map<string, number>();
+  texts.join(' ')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .match(/[a-z0-9#@]{4,}/g)
+    ?.forEach((word) => {
+      if (!stopWords.has(word) && !/^\d+$/.test(word)) counts.set(word, (counts.get(word) || 0) + 1);
+    });
+
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([word]) => word.replace(/^#/, ''));
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
