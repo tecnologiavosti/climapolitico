@@ -328,18 +328,27 @@ Gere um resumo executivo completo para a equipe de campanha.`;
     let modelUsed = 'fallback_deterministic';
     let fallbackUsed = false;
 
-    // 1. Tenta Lovable AI Gateway
-    if (LOVABLE_API_KEY) {
+    // 1. PRIMÁRIO: Cerebras (alta capacidade), com fallback automático para Lovable AI
+    try {
+      const aiResult = await callCerebrasSummary(prompt);
+      summary = aiResult.summary;
+      modelUsed = aiResult.model_used;
+    } catch (e: any) {
+      console.warn('[SUMMARY] Cerebras+Lovable falharam, tentando Lovable AI tool-calling...', e?.message || e);
+    }
+
+    // 2. Fallback secundário: Lovable AI Gateway com tool-calling estruturado
+    if (!summary && LOVABLE_API_KEY) {
       try {
         const aiResult = await callLovableAI(prompt, LOVABLE_API_KEY);
         summary = aiResult.summary;
         modelUsed = aiResult.model_used;
       } catch (e: any) {
-        console.warn('[SUMMARY] Lovable AI falhou, tentando Gemini direto...', e?.status || e);
+        console.warn('[SUMMARY] Lovable AI tool-calling falhou, tentando Gemini direto...', e?.status || e);
       }
     }
 
-    // 2. Fallback: Google Gemini API direta
+    // 3. Fallback: Google Gemini API direta
     if (!summary && GEMINI_API_KEY) {
       try {
         const aiResult = await callGeminiDirect(prompt, GEMINI_API_KEY);
@@ -350,7 +359,7 @@ Gere um resumo executivo completo para a equipe de campanha.`;
       }
     }
 
-    // 3. Fallback determinístico (offline)
+    // 4. Fallback determinístico (offline)
     if (!summary) {
       summary = buildDeterministicSummary(stats, candidate, periodLabel);
       fallbackUsed = true;
