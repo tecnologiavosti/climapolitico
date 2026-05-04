@@ -343,12 +343,13 @@ Gere um relatório completo de repercussão deste evento/período.`;
         : code === 'AI_CREDITS_EXHAUSTED'
         ? 'Créditos da IA esgotados. Adicione créditos em Settings > Workspace > Usage.'
         : 'Não foi possível gerar o relatório com IA no momento.';
-      // Return 200 with fallback flag so the UI doesn't crash with FunctionsHttpError.
+      const deterministicReport = buildDeterministicReport('ai_unavailable');
+      // Return a usable report even when external AI providers fail, so the tab never appears empty.
       return new Response(JSON.stringify({
-        report: null,
+        report: deterministicReport,
         fallback: true,
         error: code,
-        message: msg,
+        message: `${msg} Exibindo relatório estatístico com os dados reais coletados.`,
         stats,
         dailyVolume,
         topComments,
