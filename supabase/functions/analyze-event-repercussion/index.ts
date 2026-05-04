@@ -257,9 +257,28 @@ Gere um relatório completo de repercussão deste evento/período.`;
     }
 
     if (!report) {
-      const status = lastError?.status === 429 ? 429 : lastError?.status === 402 ? 402 : 500;
-      const msg = status === 429 ? 'Limite de requisições excedido.' : status === 402 ? 'Créditos insuficientes.' : 'Erro ao gerar relatório com IA';
-      return new Response(JSON.stringify({ error: msg }), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      const code = lastError?.status === 429
+        ? 'AI_RATE_LIMITED'
+        : lastError?.status === 402
+        ? 'AI_CREDITS_EXHAUSTED'
+        : 'AI_UNAVAILABLE';
+      const msg = code === 'AI_RATE_LIMITED'
+        ? 'Limite de requisições da IA excedido. Tente novamente em alguns minutos.'
+        : code === 'AI_CREDITS_EXHAUSTED'
+        ? 'Créditos da IA esgotados. Adicione créditos em Settings > Workspace > Usage.'
+        : 'Não foi possível gerar o relatório com IA no momento.';
+      // Return 200 with fallback flag so the UI doesn't crash with FunctionsHttpError.
+      return new Response(JSON.stringify({
+        report: null,
+        fallback: true,
+        error: code,
+        message: msg,
+        stats,
+        dailyVolume,
+        topComments,
+        candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party },
+        period: { startDate, endDate, eventName: eventName || null },
+      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     return new Response(JSON.stringify({
