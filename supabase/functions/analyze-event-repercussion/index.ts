@@ -169,10 +169,10 @@ serve(async (req) => {
         ? 'muito_negativa'
         : negativePct >= 0.32
         ? 'negativa'
-        : positivePct >= 0.55
-        ? 'positiva'
         : positivePct >= 0.7
         ? 'muito_positiva'
+        : positivePct >= 0.55
+        ? 'positiva'
         : 'mista';
       const topNetworks = Object.entries(stats.byNetwork).sort((a, b) => b[1] - a[1]).slice(0, 3);
       const topics = extractFrequentTerms([...sampleNeg, ...samplePos, ...sampleNeu]);
