@@ -90,16 +90,16 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const targetId = body.candidateId as string | undefined;
-    const maxPosts = Math.min(Number(body.maxPosts) || 300, 600);
+    const maxPosts = Math.min(Number(body.maxPosts) || 600, 1000);
 
-    let candidates: Array<{ id: string; full_name: string; user_id: string }> = [];
+    let candidates: Array<{ id: string; full_name: string; user_id: string; party?: string }> = [];
     if (targetId) {
       const { data } = await supabase.from("candidates")
-        .select("id, full_name, user_id").eq("id", targetId).maybeSingle();
+        .select("id, full_name, user_id, party").eq("id", targetId).maybeSingle();
       if (data) candidates = [data as any];
     } else {
       const { data } = await supabase.from("candidates")
-        .select("id, full_name, user_id").eq("status", "active").limit(200);
+        .select("id, full_name, user_id, party").eq("status", "active").limit(200);
       candidates = (data || []) as any[];
     }
 
@@ -108,8 +108,22 @@ Deno.serve(async (req) => {
     const details: Array<{ name: string; collected: number; inserted: number }> = [];
 
     for (const c of candidates) {
-      // Quoted query → exato
-      const posts = await deepSearch(`"${c.full_name}"`, maxPosts);
+      // Múltiplas queries: nome exato, sem aspas, sobrenome, hashtag, com partido
+      const tokens = c.full_name.split(/\s+/);
+      const last = tokens[tokens.length - 1];
+      const queries = [
+        `"${c.full_name}"`,
+        c.full_name,
+        last.length > 4 ? `"${tokens[0]} ${last}"` : null,
+        `#${c.full_name.toLowerCase().replace(/\s+/g, "")}`,
+        c.party ? `${c.full_name} ${c.party}` : null,
+      ].filter(Boolean) as string[];
+      const merged = new Map<string, BskyPost>();
+      for (const q of queries) {
+        const r = await deepSearch(q, Math.ceil(maxPosts / queries.length));
+        for (const p of r) merged.set(p.uri, p);
+      }
+      const posts = Array.from(merged.values());
       totalCollected += posts.length;
       let inserted = 0;
       for (const p of posts) {
