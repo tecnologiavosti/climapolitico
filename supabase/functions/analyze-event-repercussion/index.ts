@@ -157,7 +157,7 @@ Gere um relatório completo de repercussão deste evento/período.`;
 
     // Try Cerebras first (same provider used in rejection/narrative analyses)
     if (CEREBRAS_API_KEY) {
-      const cerebrasModels = ['llama-3.3-70b', 'llama3.1-8b'];
+      const cerebrasModels = ['qwen-3-235b-a22b-instruct-2507', 'llama-3.3-70b', 'llama3.1-8b'];
       for (const model of cerebrasModels) {
         try {
           const res = await fetch('https://api.cerebras.ai/v1/chat/completions', {
