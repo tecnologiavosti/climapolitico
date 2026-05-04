@@ -23,6 +23,13 @@ const INSTANCES = [
   "https://mstdn.social",
   "https://hachyderm.io",
   "https://infosec.exchange",
+  "https://mas.to",
+  "https://mastodon.world",
+  "https://techhub.social",
+  "https://social.vivaldi.net",
+  "https://fosstodon.org",
+  "https://mastodon.online",
+  "https://mastodon.uno",
 ];
 
 interface Toot {
