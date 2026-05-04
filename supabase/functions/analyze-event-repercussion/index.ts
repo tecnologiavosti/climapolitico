@@ -12,6 +12,8 @@ const corsHeaders = {
 function sanitizeForAI(s: unknown): string {
   if (s == null) return "";
   let str = String(s);
+  // Remove HTML/URLs que aparecem em alguns coletores e poluem a análise estatística.
+  str = str.replace(/<[^>]*>/g, " ").replace(/https?:\/\/\S+/gi, " ");
   // Remove caracteres de controle (exceto \n, \r, \t)
   str = str.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ");
   // Remove lone high/low surrogates (emojis quebrados)
@@ -25,7 +27,8 @@ function extractFrequentTerms(texts: string[]): string[] {
   const stopWords = new Set([
     'para', 'como', 'mais', 'muito', 'pela', 'pelo', 'isso', 'essa', 'esse', 'esta', 'este',
     'entre', 'sobre', 'quando', 'onde', 'tambem', 'também', 'presidente', 'candidato', 'candidata',
-    'lula', 'bolsonaro', 'silva', 'brasil', 'brasileiro', 'brasileira', 'politica', 'política'
+    'lula', 'bolsonaro', 'silva', 'brasil', 'brasileiro', 'brasileira', 'politica', 'política',
+    'https', 'http', 'href', 'class', 'message', 'text', 'target', 'blank', 'rel', 'nofollow'
   ]);
   const counts = new Map<string, number>();
   texts.join(' ')
