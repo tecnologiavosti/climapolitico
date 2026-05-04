@@ -1,5 +1,24 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
+
+const CEREBRAS_MODELS = ["qwen-3-235b-a22b-instruct-2507", "llama-3.3-70b", "llama3.1-8b"];
+
+async function callCerebrasSummary(prompt: string) {
+  const systemMsg = 'Você é um analista político estratégico brasileiro especializado em comunicação de campanha. Responda sempre em português do Brasil. Seja direto, prático e acionável. Responda SEMPRE em JSON válido seguindo o schema solicitado.';
+  const fullPrompt = `${prompt}\n\nResponda EXCLUSIVAMENTE com um JSON no formato:\n{"overall_sentiment":"muito_positiva|positiva|mista|negativa|muito_negativa","overall_summary":"...","positive_points":["..."],"negative_points":["..."],"narrative_recommendations":["..."],"risk_alert":"...","opportunity_alert":"..."}`;
+  const result = await callAICerebrasFirst({
+    systemMsg,
+    userPrompt: fullPrompt,
+    jsonMode: true,
+    maxTokens: 2000,
+    temperature: 0.5,
+    cerebrasModels: CEREBRAS_MODELS,
+    tag: 'summary',
+  });
+  const parsed = JSON.parse(result.content || '{}');
+  return { summary: parsed, model_used: `${result.provider}/${result.model}` };
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
