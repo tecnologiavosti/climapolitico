@@ -171,10 +171,27 @@ Analise profundamente esses comentários negativos e identifique padrões de rej
     };
 
     let analysis: any = null;
-    let aiProvider = 'lovable';
+    let aiProvider = 'cerebras';
 
-    // Try Lovable AI first
-    if (LOVABLE_API_KEY) {
+    // 1) PRIMÁRIO: Cerebras (alta capacidade) com fallback automático para Lovable AI Gateway
+    try {
+      const jsonPrompt = `${prompt}\n\nResponda EXCLUSIVAMENTE em JSON válido no formato:\n{"rejection_summary":"...","rejection_themes":[{"theme":"...","description":"...","frequency":"alta|media|baixa","severity":"critica|alta|moderada|baixa"}],"recurring_keywords":["..."],"crisis_points":["..."],"mitigation_strategies":["..."],"risk_level":"critico|alto|moderado|baixo"}`;
+      const result = await callAICerebrasFirst({
+        systemMsg,
+        userPrompt: jsonPrompt,
+        jsonMode: true,
+        maxTokens: 2500,
+        temperature: 0.4,
+        tag: 'rejection',
+      });
+      analysis = JSON.parse(result.content || '{}');
+      aiProvider = `${result.provider}:${result.model}`;
+    } catch (e) {
+      console.warn('[REJECTION] Cerebras+Lovable falharam, tentando Lovable AI tool-calling...', (e as Error).message);
+    }
+
+    // 2) Fallback secundário: Lovable AI Gateway com tool-calling estruturado
+    if (!analysis && LOVABLE_API_KEY) {
       try {
         const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
           method: 'POST',
@@ -195,6 +212,7 @@ Analise profundamente esses comentários negativos e identifique padrões de rej
           const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
           if (toolCall) {
             analysis = JSON.parse(toolCall.function.arguments);
+            aiProvider = 'lovable-tool';
           } else {
             console.warn('Lovable AI: resposta sem tool_call, tentando Gemini fallback');
           }
