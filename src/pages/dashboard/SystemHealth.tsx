@@ -25,7 +25,7 @@ const statusBadge = (s: LogRow["status"]) => {
 };
 
 export default function SystemHealth() {
-  const { isAdmin, loading } = useAdminCheck();
+  const { isAdmin, isLoading: loading } = useAdminCheck();
 
   const { data, isLoading } = useQuery({
     queryKey: ["edge-function-logs"],
