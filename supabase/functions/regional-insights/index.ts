@@ -1,5 +1,6 @@
-// Generates "pontos fortes" + "como melhorar" for a region/network combo using Cerebras.
+// Generates "pontos fortes" + "como melhorar" for a region/network combo with multi-provider AI fallback.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -40,7 +41,6 @@ Deno.serve(async (req) => {
       ? social_network_values
       : [social_network];
 
-    // Fetch sample comments (positive + negative). Sentiments in DB are 'Positivo'/'Negativo'/'Neutro' (PT) — accept both.
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const baseFilter = (sentiments: string[]) =>
       admin
@@ -63,8 +63,6 @@ Deno.serve(async (req) => {
     const positives = (pos ?? []).map((r) => `- ${(r.comment_text || "").slice(0, 200)}`).join("\n") || "(sem amostras)";
     const negatives = (neg ?? []).map((r) => `- ${(r.comment_text || "").slice(0, 200)}`).join("\n") || "(sem amostras)";
 
-    const apiKey = Deno.env.get("CEREBRAS_API_KEY");
-
     const prompt = `Você é um analista político especialista em comunicação regional brasileira.
 Com base nos dados reais abaixo de menções ao candidato na região ${region} no ${social_network}, gere uma análise.
 
@@ -83,94 +81,49 @@ Responda APENAS um JSON no formato exato:
 Cada item deve ter no máximo 140 caracteres, em português brasileiro.`;
 
     const systemMsg = "Você é um estrategista político brasileiro. Responda sempre em JSON válido em português.";
-    let json: any = null;
-    let lastErr = "";
-    let quotaExceeded = false;
 
-    // 1) Try Cerebras first (fast and free if quota available)
-    if (apiKey) {
-      const cerebrasModels = ["qwen-3-235b-a22b-instruct-2507", "llama3.1-8b"];
-      for (const model of cerebrasModels) {
-        const r = await fetch("https://api.cerebras.ai/v1/chat/completions", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model,
-            messages: [{ role: "system", content: systemMsg }, { role: "user", content: prompt }],
-            response_format: { type: "json_object" },
-            max_tokens: 1000,
-            temperature: 0.4,
-          }),
-        });
-        if (r.ok) { json = await r.json(); break; }
-        const errText = (await r.text()).slice(0, 300);
-        lastErr = `${model} ${r.status}: ${errText}`;
-        if (r.status === 429 || /token_quota_exceeded|too_many_tokens/i.test(errText)) {
-          quotaExceeded = true;
-          console.warn("[regional-insights] Cerebras quota exceeded, falling back to Lovable AI");
-          break;
-        }
-        console.warn("[regional-insights]", lastErr);
-      }
-    } else {
-      quotaExceeded = true;
-    }
-
-    // 2) Fallback to Lovable AI Gateway
-    if (!json) {
-      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-      if (!LOVABLE_API_KEY) throw new Error(`Cerebras failed: ${lastErr} | LOVABLE_API_KEY missing`);
-      const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
-          messages: [{ role: "system", content: systemMsg }, { role: "user", content: prompt }],
-          response_format: { type: "json_object" },
-        }),
+    try {
+      const aiRes = await callAICerebrasFirst({
+        systemMsg,
+        userPrompt: prompt,
+        jsonMode: true,
+        maxTokens: 1000,
+        temperature: 0.4,
+        tag: "regional-insights",
       });
-      if (!r.ok) {
-        const errText = (await r.text()).slice(0, 300);
-        if (r.status === 429) throw new Error("Limite de requisições atingido. Tente novamente em alguns minutos.");
-        if (r.status === 402) throw new Error("Créditos da IA esgotados. Adicione créditos em Settings > Workspace > Usage.");
-        throw new Error(`AI fallback failed: ${r.status} ${errText}`);
+      const content = aiRes.content || "{}";
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(content);
+      } catch {
+        const m = content.match(/\{[\s\S]*\}/);
+        if (m) parsed = JSON.parse(m[0]);
       }
-      json = await r.json();
-    }
-
-    const content = json.choices?.[0]?.message?.content ?? "{}";
-    const parsed = typeof content === "string" ? JSON.parse(content) : content;
-
-    return new Response(
-      JSON.stringify({
-        pontos_fortes: Array.isArray(parsed.pontos_fortes) ? parsed.pontos_fortes.slice(0, 5) : [],
-        como_melhorar: Array.isArray(parsed.como_melhorar) ? parsed.como_melhorar.slice(0, 5) : [],
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  } catch (e) {
-    const msg = (e as Error).message || "";
-    console.error("regional-insights error:", msg);
-    // Falhas de IA (créditos esgotados, rate limit, fallback) NÃO devem quebrar a UI.
-    // Retorna 200 com fallback vazio + flag para o cliente exibir mensagem amigável.
-    const isAiQuota =
-      msg.includes("Créditos da IA esgotados") ||
-      msg.includes("Limite de requisições") ||
-      msg.includes("AI fallback failed") ||
-      msg.includes("token_quota_exceeded") ||
-      msg.includes("too_many_tokens");
-    if (isAiQuota) {
+      console.log(`[regional-insights] ✅ ${aiRes.provider}:${aiRes.model}`);
+      return new Response(
+        JSON.stringify({
+          pontos_fortes: Array.isArray(parsed.pontos_fortes) ? parsed.pontos_fortes.slice(0, 5) : [],
+          como_melhorar: Array.isArray(parsed.como_melhorar) ? parsed.como_melhorar.slice(0, 5) : [],
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    } catch (e) {
+      const msg = (e as Error).message || "";
+      console.error("[regional-insights] all providers failed:", msg);
       return new Response(
         JSON.stringify({
           pontos_fortes: [],
           como_melhorar: [],
           fallback: true,
-          error: msg.includes("Créditos") ? "AI_CREDITS_EXHAUSTED" : "AI_RATE_LIMITED",
+          error: /créditos/i.test(msg) ? "AI_CREDITS_EXHAUSTED" : /limite/i.test(msg) ? "AI_RATE_LIMITED" : "AI_UNAVAILABLE",
           message: msg,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+  } catch (e) {
+    const msg = (e as Error).message || "";
+    console.error("regional-insights error:", msg);
     return new Response(JSON.stringify({ error: msg }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
