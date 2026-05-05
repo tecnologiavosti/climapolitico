@@ -226,114 +226,34 @@ ${sampleNeu.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
 Gere um relatório completo de repercussão deste evento/período.`;
 
-    const CEREBRAS_API_KEY = Deno.env.get('CEREBRAS_API_KEY');
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-
     const systemMsg = 'Você é um analista político estratégico brasileiro. Gere relatórios de repercussão de eventos baseados em dados reais. Responda em português do Brasil.';
     const jsonInstruction = `\n\nResponda APENAS com um JSON válido (sem markdown, sem comentários) no seguinte formato exato:\n{\n  "overall_assessment": "muito_positiva|positiva|mista|negativa|muito_negativa",\n  "executive_summary": "resumo executivo em 3-5 frases",\n  "key_reactions": [{"reaction": "texto", "type": "positiva|negativa|neutra", "intensity": "alta|media|baixa"}],\n  "main_topics": ["tema1","tema2"],\n  "impact_analysis": "análise de impacto",\n  "immediate_actions": ["ação1","ação2"],\n  "lessons_learned": ["lição1","lição2"]\n}`;
 
     let report: any = null;
     let lastError: { status: number; text: string } | null = null;
 
-    // Try Cerebras first (same provider used in rejection/narrative analyses)
-    if (CEREBRAS_API_KEY) {
-      const cerebrasModels = ['qwen-3-235b-a22b-instruct-2507', 'llama-3.3-70b', 'llama3.1-8b'];
-      for (const model of cerebrasModels) {
-        try {
-          const res = await fetch('https://api.cerebras.ai/v1/chat/completions', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${CEREBRAS_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model,
-              messages: [
-                { role: 'system', content: systemMsg },
-                { role: 'user', content: prompt + jsonInstruction }
-              ],
-              temperature: 0.3,
-              max_tokens: 3000,
-              response_format: { type: 'json_object' },
-            })
-          });
-          if (!res.ok) {
-            const t = await res.text().catch(() => '');
-            console.warn(`[event-repercussion] Cerebras ${model} ${res.status}: ${t.substring(0, 300)}`);
-            lastError = { status: res.status, text: t };
-            continue;
-          }
-          const data = await res.json();
-          const content = data.choices?.[0]?.message?.content || '';
-          try {
-            report = JSON.parse(content);
-            console.log(`[event-repercussion] ✅ Cerebras ${model} OK`);
-            break;
-          } catch {
-            const m = content.match(/\{[\s\S]*\}/);
-            if (m) { report = JSON.parse(m[0]); break; }
-            console.warn(`[event-repercussion] Cerebras ${model} resposta não-JSON`);
-          }
-        } catch (e) {
-          console.warn(`[event-repercussion] Cerebras ${model} exceção:`, e);
-        }
-      }
-    }
-
-    // Fallback to Lovable AI Gateway
-    if (!report && LOVABLE_API_KEY) {
-      const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'google/gemini-3-flash-preview',
-          messages: [
-            { role: 'system', content: systemMsg },
-            { role: 'user', content: prompt }
-          ],
-          tools: [{
-            type: 'function',
-            function: {
-              name: 'create_event_report',
-              description: 'Gerar relatório estruturado de repercussão de evento',
-              parameters: {
-                type: 'object',
-                properties: {
-                  overall_assessment: { type: 'string', enum: ['muito_positiva', 'positiva', 'mista', 'negativa', 'muito_negativa'] },
-                  executive_summary: { type: 'string' },
-                  key_reactions: {
-                    type: 'array',
-                    items: {
-                      type: 'object',
-                      properties: {
-                        reaction: { type: 'string' },
-                        type: { type: 'string', enum: ['positiva', 'negativa', 'neutra'] },
-                        intensity: { type: 'string', enum: ['alta', 'media', 'baixa'] }
-                      },
-                      required: ['reaction', 'type', 'intensity']
-                    }
-                  },
-                  main_topics: { type: 'array', items: { type: 'string' } },
-                  impact_analysis: { type: 'string' },
-                  immediate_actions: { type: 'array', items: { type: 'string' } },
-                  lessons_learned: { type: 'array', items: { type: 'string' } }
-                },
-                required: ['overall_assessment', 'executive_summary', 'key_reactions', 'main_topics', 'impact_analysis', 'immediate_actions', 'lessons_learned']
-              }
-            }
-          }],
-          tool_choice: { type: 'function', function: { name: 'create_event_report' } }
-        })
+    try {
+      const aiRes = await callAICerebrasFirst({
+        systemMsg,
+        userPrompt: prompt + jsonInstruction,
+        jsonMode: true,
+        maxTokens: 3000,
+        temperature: 0.3,
+        tag: 'event-repercussion',
       });
-
-      if (!aiResponse.ok) {
-        const errText = await aiResponse.text();
-        console.error('AI gateway fallback error:', aiResponse.status, errText);
-        lastError = { status: aiResponse.status, text: errText };
-      } else {
-        const result = await aiResponse.json();
-        const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
-        if (toolCall) {
-          try { report = JSON.parse(toolCall.function.arguments); console.log('[event-repercussion] ✅ Lovable Gateway OK'); } catch (e) { console.error('Parse fallback error:', e); }
-        }
+      const content = aiRes.content || '';
+      try {
+        report = JSON.parse(content);
+      } catch {
+        const m = content.match(/\{[\s\S]*\}/);
+        if (m) report = JSON.parse(m[0]);
       }
+      if (report) console.log(`[event-repercussion] ✅ ${aiRes.provider}:${aiRes.model} OK`);
+    } catch (e) {
+      const msg = (e as Error).message || '';
+      console.error('[event-repercussion] all providers failed:', msg);
+      const status = /créditos/i.test(msg) ? 402 : /limite/i.test(msg) ? 429 : 503;
+      lastError = { status, text: msg };
     }
 
     if (!report) {
