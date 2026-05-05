@@ -15,11 +15,11 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60 * 1000,        // 5min: dados ficam "frescos" e não refazem fetch
-      gcTime: 30 * 60 * 1000,          // 30min: mantém em cache mesmo sem observers
-      refetchOnWindowFocus: false,     // evita refetch toda vez que volta pra aba
-      refetchOnMount: false,           // se já tem dado fresco, não refaz
-      retry: 1,                        // 1 retry só
+      staleTime: 2 * 60 * 1000,        // 2min default — telas de gestão usam refetchOnMount: 'always'
+      gcTime: 30 * 60 * 1000,
+      refetchOnWindowFocus: false,
+      refetchOnMount: true,            // sempre refaz no mount; queries específicas opt-out
+      retry: 1,
     },
   },
 });
