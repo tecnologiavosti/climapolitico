@@ -7,7 +7,6 @@ import {
   Settings,
   Brain,
   Bell,
-  CreditCard,
   LineChart,
   Mic,
   Trophy,
