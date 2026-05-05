@@ -669,6 +669,36 @@ export type Database = {
         }
         Relationships: []
       }
+      edge_function_logs: {
+        Row: {
+          duration_ms: number | null
+          error_message: string | null
+          executed_at: string
+          function_name: string
+          id: string
+          metadata: Json | null
+          status: string
+        }
+        Insert: {
+          duration_ms?: number | null
+          error_message?: string | null
+          executed_at?: string
+          function_name: string
+          id?: string
+          metadata?: Json | null
+          status: string
+        }
+        Update: {
+          duration_ms?: number | null
+          error_message?: string | null
+          executed_at?: string
+          function_name?: string
+          id?: string
+          metadata?: Json | null
+          status?: string
+        }
+        Relationships: []
+      }
       email_otp_codes: {
         Row: {
           attempts: number
@@ -1487,6 +1517,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      prune_edge_function_logs: { Args: never; Returns: undefined }
       reactivate_youtube_keys: { Args: never; Returns: undefined }
       record_collector_call: {
         Args: { _had_error?: boolean; _items?: number; _name: string }

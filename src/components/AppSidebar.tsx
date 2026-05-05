@@ -7,7 +7,6 @@ import {
   Settings,
   Brain,
   Bell,
-  CreditCard,
   LineChart,
   Mic,
   Trophy,
@@ -83,7 +82,6 @@ const adminItems = [
 
 const settingsItems = [
   { title: "Notificações", url: "/dashboard/notifications", icon: Bell, tip: "Avisos importantes: quando algo mudar, você fica sabendo aqui." },
-  { title: "Assinatura", url: "/dashboard/subscription", icon: CreditCard, tip: "Veja seu plano, quanto já usou no mês e troque de plano se quiser." },
   { title: "Configurações", url: "/dashboard/settings", icon: Settings, tip: "Mexa no seu perfil, troque a senha, mude o tema e ajuste suas preferências." },
 ];
 
