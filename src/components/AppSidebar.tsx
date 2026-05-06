@@ -54,13 +54,13 @@ const mainItems = [
   { title: "Comparação de Candidatos", url: "/dashboard/candidate-comparison", icon: GitCompareArrows, tip: "Coloque dois ou mais candidatos lado a lado pra ver quem está melhor." },
   { title: "Relatório de Evento", url: "/dashboard/event-report", icon: Calendar, tip: "Veja se um debate, entrevista ou ato ajudou ou atrapalhou seu candidato." },
   { title: "Monitor Tempo Real", url: "/dashboard/realtime-monitor", icon: Radio, tip: "Acompanhe os comentários chegando ao vivo, na hora em que o povo posta." },
+  { title: "Análise Regional", url: "/dashboard/regional-analysis", icon: MapPinned, tip: "Veja como seu candidato performa em cada região do Brasil por rede social." },
+  { title: "Feeds Redes Sociais", url: "/dashboard/social-feeds", icon: Rss, tip: "Feeds com posts e menções de todas as redes sociais (LinkedIn, YouTube, Twitter, Reddit, Telegram, Notícias e mais)." },
   { title: "Candidatos", url: "/dashboard/candidates", icon: Users, tip: "Onde você adiciona, remove e cuida dos candidatos que está acompanhando." },
   { title: "Catálogo de Candidatos", url: "/dashboard/candidates-catalog", icon: BookUser, tip: "Lista de candidatos já prontos. Escolha um e adicione na sua conta com 1 clique." },
   { title: "Analytics Avançado", url: "/dashboard/analytics-advanced", icon: LineChart, tip: "Gráficos detalhados pra quem quer entender tudo a fundo." },
   { title: "Ranking", url: "/dashboard/ranking", icon: Trophy, tip: "Quem está ganhando e quem está perdendo nas redes nos últimos 30 dias." },
   { title: "Configuração de Coleta", url: "/dashboard/collection-status", icon: Database, tip: "Veja se a coleta de dados em cada rede social está funcionando direitinho." },
-  { title: "Análise Regional", url: "/dashboard/regional-analysis", icon: MapPinned, tip: "Veja como seu candidato performa em cada região do Brasil por rede social." },
-  { title: "Feeds Redes Sociais", url: "/dashboard/social-feeds", icon: Rss, tip: "Feeds com posts e menções de todas as redes sociais (LinkedIn, YouTube, Twitter, Reddit, Telegram, Notícias e mais)." },
 ];
 
 // Módulos temporariamente desativados (mantidos para reativação futura)
