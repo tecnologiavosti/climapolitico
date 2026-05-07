@@ -577,14 +577,24 @@ export default function RegionalAnalysis() {
                                 </div>
                               );
                             })()}
-                            <div className="flex justify-between mt-1 text-xs">
-                              <span className="text-green-600" title="Aceitação entre quem opinou (exclui neutros)">
-                                {r.acceptance}% aceitação
-                              </span>
-                              <span className="text-red-600" title="Rejeição entre quem opinou (exclui neutros)">
-                                {r.rejection}%
-                              </span>
-                            </div>
+                            {(() => {
+                              const posPct = Math.round((r.pos / r.total) * 1000) / 10;
+                              const negPct = Math.round((r.neg / r.total) * 1000) / 10;
+                              const neuPct = Math.max(0, Math.round((100 - posPct - negPct) * 10) / 10);
+                              return (
+                                <div className="flex justify-between mt-1 text-xs gap-2">
+                                  <span className="text-green-600" title={`${r.pos} positivos`}>
+                                    {posPct}% pos
+                                  </span>
+                                  <span className="text-muted-foreground" title={`${r.neu} neutros`}>
+                                    {neuPct}% neu
+                                  </span>
+                                  <span className="text-red-600" title={`${r.neg} negativos`}>
+                                    {negPct}% neg
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </>
                         ) : (
                           <div className="text-xs text-muted-foreground italic">Dados insuficientes</div>
