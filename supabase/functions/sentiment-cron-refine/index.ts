@@ -226,11 +226,11 @@ async function callGeminiDirect(texts: string[], geminiKey: string): Promise<Sen
   const clipped = texts.map((t) => (t || "").substring(0, 400).trim());
   const userContent = clipped.map((t, i) => `${i + 1}. "${t}"`).join("\n");
 
-  const systemPrompt = `Você é especialista em análise de sentimento político BR.
+  const systemPrompt = `Especialista em sentimento político BR. MINIMIZE "Neutro".
 Para cada comentário responda em JSON array: [{"label":"Positivo|Negativo|Neutro","score":0.0-1.0},...] na MESMA ordem.
-Positivo (0.7-1.0): apoio, elogio, torcida, emojis ❤️👏🙏.
-Negativo (0.0-0.3): crítica, xingamento, rejeição, sarcasmo, gírias "gado/mortadela/petralha/bolsominion", emojis 🤮👎.
-Neutro (0.4-0.6): pergunta, informativo, indeterminado.`;
+POSITIVO (0.7-1.0): apoio, elogio, torcida, "mito"/"mitou"/"faz o L", emojis ❤️👏🙏🔥👍.
+NEGATIVO (0.0-0.3): crítica, xingamento, sarcasmo, ironia, "ladrão"/"fora"/"palhaço", gírias "gado/mortadela/petralha/bolsominion/coxinha", emojis 🤮👎🤡🙄💩.
+NEUTRO (0.45-0.55): APENAS notícia factual sem adjetivo, pergunta sem viés ou indecifrável. Em dúvida escolha o lado predominante (sarcasmo = Negativo).`;
 
   const models = ["gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-2.5-flash"];
   for (const model of models) {
