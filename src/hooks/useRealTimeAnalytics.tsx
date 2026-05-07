@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { isHiddenNetwork } from "@/lib/networkVisibility";
 
 export interface SocialInteraction {
   id: string;
