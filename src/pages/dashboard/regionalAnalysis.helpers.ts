@@ -83,13 +83,20 @@ export function computeMetrics(
     else neu++;
     eng += (r.likes_count || 0) + (r.replies_count || 0) + (r.shares_count || 0);
   }
+  // Aceitação/rejeição calculadas sobre menções com opinião expressa (pos+neg).
+  // Neutros são excluídos do denominador para evitar diluição artificial — sem isso,
+  // regiões com muito conteúdo neutro/factual ficam com aceitação ~10% mesmo
+  // quando o sentimento positivo domina entre quem opinou.
+  const opinionated = pos + neg;
+  const acceptance = opinionated > 0 ? Math.round((pos / opinionated) * 1000) / 10 : 0;
+  const rejection = opinionated > 0 ? Math.round((neg / opinionated) * 1000) / 10 : 0;
   return {
     total,
     pos,
     neg,
     neu,
-    acceptance: Math.round((pos / total) * 1000) / 10,
-    rejection: Math.round((neg / total) * 1000) / 10,
+    acceptance,
+    rejection,
     engagement: Math.round((eng / total) * 10) / 10,
   };
 }
