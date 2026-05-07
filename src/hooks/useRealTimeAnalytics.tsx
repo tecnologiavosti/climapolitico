@@ -177,7 +177,6 @@ export const useRealTimeAnalytics = (
       data.forEach(i => {
         networkCounts[i.social_network] = (networkCounts[i.social_network] || 0) + 1;
       });
-      const { isHiddenNetwork } = await import('@/lib/networkVisibility');
       const mentionsByNetwork = Object.entries(networkCounts)
         .filter(([network]) => !isHiddenNetwork(network))
         .map(([network, count]) => ({ network, count }))
