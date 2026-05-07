@@ -552,30 +552,42 @@ export default function RegionalAnalysis() {
                           </span>
                         </div>
                         {r.total >= 10 ? (
-                          <div className="flex h-2 rounded-full overflow-hidden bg-muted">
-                            <div
-                              className="bg-green-500"
-                              style={{ width: `${r.acceptance}%` }}
-                              title={`Aceitação ${r.acceptance}%`}
-                            />
-                            <div
-                              className="bg-muted-foreground/30"
-                              style={{ width: `${100 - r.acceptance - r.rejection}%` }}
-                            />
-                            <div
-                              className="bg-red-500"
-                              style={{ width: `${r.rejection}%` }}
-                              title={`Rejeição ${r.rejection}%`}
-                            />
-                          </div>
+                          <>
+                            {(() => {
+                              const posPct = (r.pos / r.total) * 100;
+                              const negPct = (r.neg / r.total) * 100;
+                              const neuPct = Math.max(0, 100 - posPct - negPct);
+                              return (
+                                <div className="flex h-2 rounded-full overflow-hidden bg-muted">
+                                  <div
+                                    className="bg-green-500"
+                                    style={{ width: `${posPct}%` }}
+                                    title={`${r.pos} positivos`}
+                                  />
+                                  <div
+                                    className="bg-muted-foreground/30"
+                                    style={{ width: `${neuPct}%` }}
+                                    title={`${r.neu} neutros`}
+                                  />
+                                  <div
+                                    className="bg-red-500"
+                                    style={{ width: `${negPct}%` }}
+                                    title={`${r.neg} negativos`}
+                                  />
+                                </div>
+                              );
+                            })()}
+                            <div className="flex justify-between mt-1 text-xs">
+                              <span className="text-green-600" title="Aceitação entre quem opinou (exclui neutros)">
+                                {r.acceptance}% aceitação
+                              </span>
+                              <span className="text-red-600" title="Rejeição entre quem opinou (exclui neutros)">
+                                {r.rejection}%
+                              </span>
+                            </div>
+                          </>
                         ) : (
                           <div className="text-xs text-muted-foreground italic">Dados insuficientes</div>
-                        )}
-                        {r.total >= 10 && (
-                          <div className="flex justify-between mt-1 text-xs">
-                            <span className="text-green-600">{r.acceptance}%</span>
-                            <span className="text-red-600">{r.rejection}%</span>
-                          </div>
                         )}
                       </button>
                     );
