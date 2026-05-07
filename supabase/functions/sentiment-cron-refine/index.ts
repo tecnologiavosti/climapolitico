@@ -357,7 +357,7 @@ Deno.serve(async (req) => {
     if (results) {
       for (let i = 0; i < pending.length; i++) {
         const r = results[i];
-        if (!r || (r.label === "Neutro" && r.score === 0.5)) continue;
+        if (!r) continue;
         await supabase
           .from("social_interactions")
           .update({ sentiment_label: r.label, sentiment_score: r.score })
