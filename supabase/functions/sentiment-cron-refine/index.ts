@@ -42,10 +42,11 @@ async function callCerebras(texts: string[], cerebrasKey: string): Promise<Senti
   const clipped = texts.map((t) => (t || "").substring(0, 400).trim());
   const userContent = clipped.map((t, i) => `${i + 1}. "${t}"`).join("\n");
 
-  const systemPrompt = `Você é especialista brasileiro em análise de sentimento político.
-CLASSIFIQUE cada comentário: POSITIVO (apoio, elogio, "mito", emojis ❤️👏), NEGATIVO (crítica, sarcasmo, xingamento, "ladrão", "fora", emojis 🤮👎), NEUTRO (apenas notícia factual sem viés).
-Sarcasmo é NEGATIVO. Em dúvida, escolha o predominante.
-Gírias BR: "mitou"/"faz o L"=positivo, "gado"/"mortadela"/"petralha"/"bolsominion"=negativo.
+  const systemPrompt = `Você é especialista brasileiro em análise de sentimento político eleitoral.
+REGRA CRÍTICA: "Neutro" é EXCEÇÃO, não regra. Use Neutro APENAS para: notícia 100% factual sem adjetivo, pergunta genuína sem viés, ou texto incompreensível. Em QUALQUER outro caso, escolha Positivo ou Negativo (mesmo com baixa confiança 0.55-0.65).
+POSITIVO: apoio, elogio, defesa, torcida, "mito", "melhor", "verdadeiro", emojis ❤️👏🙏🔥👍, gírias "mitou"/"faz o L"/"presidente".
+NEGATIVO: crítica, sarcasmo (MUITO comum em política BR — quase sempre negativo), xingamento, ironia, descrédito, "ladrão", "fora", "pal(h)aço", "vagabundo", emojis 🤮👎🤡🙄💩, gírias "gado"/"mortadela"/"petralha"/"bolsominion"/"coxinha".
+Sarcasmo, ironia e dúvida cínica = NEGATIVO. Comentário curto com emoji negativo = NEGATIVO. Em empate genuíno, escolha NEGATIVO (política BR é polarizada e majoritariamente crítica).
 Responda APENAS JSON object com chave "results" contendo array na MESMA ordem: {"results":[{"label":"Positivo|Negativo|Neutro","score":0.0-1.0},...]}`;
 
   // gpt-oss-120b e qwen-3-235b são preview/pago e podem dar 404 no free tier; llama3.1-8b é garantido.
