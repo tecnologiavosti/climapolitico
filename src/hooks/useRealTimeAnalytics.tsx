@@ -91,7 +91,7 @@ export const useRealTimeAnalytics = (
         .from('social_interactions')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id)
-        .not('social_network', 'in', '(mastodon,lemmy)');
+        .not('social_network', 'in', '(mastodon,lemmy,pinterest)');
       
       if (currentCandidateIds.length > 0) {
         countQuery = countQuery.in('candidate_id', currentCandidateIds);
@@ -109,7 +109,7 @@ export const useRealTimeAnalytics = (
           .from('social_interactions')
           .select('*')
           .eq('user_id', user.id)
-          .not('social_network', 'in', '(mastodon,lemmy)')
+          .not('social_network', 'in', '(mastodon,lemmy,pinterest)')
           .order('created_at', { ascending: false })
           .range(offset, offset + pageSize - 1);
 

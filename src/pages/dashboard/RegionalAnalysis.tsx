@@ -168,7 +168,7 @@ export default function RegionalAnalysis() {
           .select("region, social_network, sentiment_label, likes_count, replies_count, shares_count")
           .eq("user_id", user.id)
           .eq("candidate_id", candidateId)
-          .not("social_network", "in", "(mastodon,lemmy)")
+          .not("social_network", "in", "(mastodon,lemmy,pinterest)")
           .range(from, from + PAGE - 1);
         if (netValues) q = q.in("social_network", netValues);
         const { data: page, error } = await q;
@@ -237,7 +237,7 @@ export default function RegionalAnalysis() {
           .eq("user_id", user.id)
           .eq("candidate_id", candidateId)
           .eq("region", region)
-          .not("social_network", "in", "(mastodon,lemmy)")
+          .not("social_network", "in", "(mastodon,lemmy,pinterest)")
           .not("comment_text", "is", null);
         if (netValues) cmtsQuery = cmtsQuery.in("social_network", netValues);
         const { data: cmts } = await cmtsQuery
