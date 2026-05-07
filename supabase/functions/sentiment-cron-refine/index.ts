@@ -15,9 +15,9 @@ interface SentimentResult {
 }
 
 const NEG_REGEX =
-  /(ladr[ãa]o|corrupt[oa]|mentiros[oa]|vagabund[oa]|bandido|cadeia|pris[ãa]o|fora\s|jamais|nunca\s|safad[oa]|canalha|absurdo|verg[oa]nha|nojo|nojent[oa]|p[ée]ssim[oa]|horr[íi]vel|odi[oa]|destru|fracass|incompetente|idiota|burr[oa]|imbecil|lixo|merda|fdp|🤮|👎|😡|💩|🤡)/i;
+  /(ladr[ãa]o|corrupt[oa]|mentiros[oa]|vagabund[oa]|bandido|cadeia|pris[ãa]o|fora\s|jamais|nunca\s|safad[oa]|canalha|absurdo|verg[oa]nha|nojo|nojent[oa]|p[ée]ssim[oa]|horr[íi]vel|odi[oa]|destru|fracass|incompetente|idiota|burr[oa]|imbecil|lixo|merda|fdp|pal(h|h)a[çc]o|farsante|traidor|gen[oa]cida|pat[ée]tico|rid[íi]culo|escr[óo]ria|gado|mortadela|petralha|bolsominion|coxinha|miser[áa]vel|🤮|👎|😡|💩|🤡|🙄|😒)/i;
 const POS_REGEX =
-  /(parab[ée]ns|melhor|[óo]tim[oa]|excelente|maravilhos[oa]|perfeit[oa]|mito|her[óo]i|orgulho|apoio|votarei|voto\s+em|t[ée]\s+amo|amo\s+voc|presidente\s+(lula|bolsonaro|caiado)|força|estamos\s+(juntos|com)|vai\s+ganhar|vencer|vit[óo]ria|sucesso|deus\s+aben|❤️|👏|🙏|✊|🇧🇷|💚|💛)/i;
+  /(parab[ée]ns|melhor|[óo]tim[oa]|excelente|maravilhos[oa]|perfeit[oa]|mito|her[óo]i|orgulho|apoio|votarei|voto\s+em|t[ée]\s+amo|amo\s+voc|presidente\s+(lula|bolsonaro|caiado)|for[çc]a|estamos\s+(juntos|com)|vai\s+ganhar|vencer|vit[óo]ria|sucesso|deus\s+aben|verdadeiro|honest[oa]|competente|trabalhador|admiro|respeito|legenda|melhor\s+(presidente|governador|prefeito)|faz\s+o\s+l|mitou|❤️|👏|🙏|✊|🇧🇷|💚|💛|🥰|😍|👍|🔥)/i;
 
 function heuristic(text: string): SentimentResult {
   const t = text || "";
@@ -25,6 +25,7 @@ function heuristic(text: string): SentimentResult {
   const pos = POS_REGEX.test(t);
   if (neg && !pos) return { label: "Negativo", score: 0.2 };
   if (pos && !neg) return { label: "Positivo", score: 0.8 };
+  if (neg && pos) return { label: "Negativo", score: 0.35 }; // ambivalente tende a crítica
   return { label: "Neutro", score: 0.5 };
 }
 
@@ -41,10 +42,11 @@ async function callCerebras(texts: string[], cerebrasKey: string): Promise<Senti
   const clipped = texts.map((t) => (t || "").substring(0, 400).trim());
   const userContent = clipped.map((t, i) => `${i + 1}. "${t}"`).join("\n");
 
-  const systemPrompt = `Você é especialista brasileiro em análise de sentimento político.
-CLASSIFIQUE cada comentário: POSITIVO (apoio, elogio, "mito", emojis ❤️👏), NEGATIVO (crítica, sarcasmo, xingamento, "ladrão", "fora", emojis 🤮👎), NEUTRO (apenas notícia factual sem viés).
-Sarcasmo é NEGATIVO. Em dúvida, escolha o predominante.
-Gírias BR: "mitou"/"faz o L"=positivo, "gado"/"mortadela"/"petralha"/"bolsominion"=negativo.
+  const systemPrompt = `Você é especialista brasileiro em análise de sentimento político eleitoral.
+REGRA CRÍTICA: "Neutro" é EXCEÇÃO, não regra. Use Neutro APENAS para: notícia 100% factual sem adjetivo, pergunta genuína sem viés, ou texto incompreensível. Em QUALQUER outro caso, escolha Positivo ou Negativo (mesmo com baixa confiança 0.55-0.65).
+POSITIVO: apoio, elogio, defesa, torcida, "mito", "melhor", "verdadeiro", emojis ❤️👏🙏🔥👍, gírias "mitou"/"faz o L"/"presidente".
+NEGATIVO: crítica, sarcasmo (MUITO comum em política BR — quase sempre negativo), xingamento, ironia, descrédito, "ladrão", "fora", "pal(h)aço", "vagabundo", emojis 🤮👎🤡🙄💩, gírias "gado"/"mortadela"/"petralha"/"bolsominion"/"coxinha".
+Sarcasmo, ironia e dúvida cínica = NEGATIVO. Comentário curto com emoji negativo = NEGATIVO. Em empate genuíno, escolha NEGATIVO (política BR é polarizada e majoritariamente crítica).
 Responda APENAS JSON object com chave "results" contendo array na MESMA ordem: {"results":[{"label":"Positivo|Negativo|Neutro","score":0.0-1.0},...]}`;
 
   // gpt-oss-120b e qwen-3-235b são preview/pago e podem dar 404 no free tier; llama3.1-8b é garantido.
@@ -104,10 +106,11 @@ async function callGroq(texts: string[], groqKey: string): Promise<SentimentResu
   const clipped = texts.map((t) => (t || "").substring(0, 400).trim());
   const userContent = clipped.map((t, i) => `${i + 1}. "${t}"`).join("\n");
 
-  const systemPrompt = `Você é um analista político brasileiro especialista em sentimento.
-CLASSIFIQUE cada comentário: POSITIVO (apoio, elogio, "mito", emojis ❤️👏), NEGATIVO (crítica, sarcasmo, xingamento, "ladrão", "fora", emojis 🤮👎), NEUTRO (apenas notícia factual sem viés).
-Sarcasmo é NEGATIVO. Em dúvida, escolha o predominante (saia do muro).
-Gírias BR: "mitou"/"faz o L"=positivo, "gado"/"mortadela"/"petralha"/"bolsominion"=negativo.
+  const systemPrompt = `Você é analista político brasileiro especialista em sentimento eleitoral.
+REGRA CRÍTICA: minimize "Neutro". Use Neutro APENAS em notícia factual pura, pergunta sem viés, ou texto sem sentido. Em qualquer outro caso classifique Positivo ou Negativo (mesmo com 0.55 de confiança).
+POSITIVO: apoio, elogio, "mito", "melhor", emojis ❤️👏🔥👍🙏.
+NEGATIVO: crítica, sarcasmo, ironia, xingamento, "ladrão", "fora", "palhaço", emojis 🤮👎🤡🙄. Gírias: "gado"/"mortadela"/"petralha"/"bolsominion"/"coxinha"=negativo; "mitou"/"faz o L"=positivo.
+Sarcasmo/ironia = sempre NEGATIVO. Em empate, escolha NEGATIVO (política BR é polarizada).
 Responda APENAS JSON array na mesma ordem: [{"label":"Positivo|Negativo|Neutro","score":0.0-1.0},...]`;
 
   try {
@@ -155,11 +158,11 @@ async function callAI(texts: string[], apiKey: string): Promise<SentimentResult[
   const clipped = texts.map((t) => (t || "").substring(0, 400).trim());
   const userContent = clipped.map((t, i) => `${i + 1}. "${t}"`).join("\n");
 
-  const systemPrompt = `Você é especialista em análise de sentimento político BR.
+  const systemPrompt = `Especialista em sentimento político BR. MINIMIZE "Neutro".
 Para cada comentário responda em JSON array: [{"label":"Positivo|Negativo|Neutro","score":0.0-1.0},...] na MESMA ordem.
-Positivo (0.7-1.0): apoio, elogio, torcida, emojis ❤️👏🙏.
-Negativo (0.0-0.3): crítica, xingamento, rejeição, sarcasmo, emojis 🤮👎.
-Neutro (0.4-0.6): pergunta, informativo, indeterminado.`;
+POSITIVO (0.7-1.0): apoio, elogio, "mito", torcida, "faz o L", "mitou", emojis ❤️👏🙏🔥👍.
+NEGATIVO (0.0-0.3): crítica, xingamento, sarcasmo, ironia, descrédito, "ladrão"/"fora"/"palhaço", gírias "gado"/"mortadela"/"petralha"/"bolsominion"/"coxinha", emojis 🤮👎🤡🙄.
+NEUTRO (0.45-0.55): SOMENTE notícia 100% factual, pergunta sem viés ou texto incompreensível. Em dúvida, escolha o lado predominante — sarcasmo é sempre Negativo.`;
 
   // Backoff exponencial: 3s, 9s, 27s, 60s
   const delays = [3000, 9000, 27000, 60000];
@@ -223,11 +226,11 @@ async function callGeminiDirect(texts: string[], geminiKey: string): Promise<Sen
   const clipped = texts.map((t) => (t || "").substring(0, 400).trim());
   const userContent = clipped.map((t, i) => `${i + 1}. "${t}"`).join("\n");
 
-  const systemPrompt = `Você é especialista em análise de sentimento político BR.
+  const systemPrompt = `Especialista em sentimento político BR. MINIMIZE "Neutro".
 Para cada comentário responda em JSON array: [{"label":"Positivo|Negativo|Neutro","score":0.0-1.0},...] na MESMA ordem.
-Positivo (0.7-1.0): apoio, elogio, torcida, emojis ❤️👏🙏.
-Negativo (0.0-0.3): crítica, xingamento, rejeição, sarcasmo, gírias "gado/mortadela/petralha/bolsominion", emojis 🤮👎.
-Neutro (0.4-0.6): pergunta, informativo, indeterminado.`;
+POSITIVO (0.7-1.0): apoio, elogio, torcida, "mito"/"mitou"/"faz o L", emojis ❤️👏🙏🔥👍.
+NEGATIVO (0.0-0.3): crítica, xingamento, sarcasmo, ironia, "ladrão"/"fora"/"palhaço", gírias "gado/mortadela/petralha/bolsominion/coxinha", emojis 🤮👎🤡🙄💩.
+NEUTRO (0.45-0.55): APENAS notícia factual sem adjetivo, pergunta sem viés ou indecifrável. Em dúvida escolha o lado predominante (sarcasmo = Negativo).`;
 
   const models = ["gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-2.5-flash"];
   for (const model of models) {
@@ -304,16 +307,16 @@ Deno.serve(async (req) => {
   const cerebrasKey = Deno.env.get("CEREBRAS_API_KEY");
 
   try {
-    // Pega comentários recentes com sentimento pendente ou neutro padrão das últimas 48h.
-    const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    // Pega comentários recentes Neutros (qualquer score) ou sem rótulo das últimas 7 dias.
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data: pending, error } = await supabase
       .from("social_interactions")
       .select("id, comment_text")
-      .or("and(sentiment_label.eq.Neutro,sentiment_score.eq.0.5),sentiment_label.is.null")
+      .or("sentiment_label.eq.Neutro,sentiment_label.is.null")
       .gte("created_at", since)
       .not("comment_text", "is", null)
       .order("created_at", { ascending: false })
-      .limit(30);
+      .limit(50);
 
     if (error) throw error;
 
@@ -354,7 +357,7 @@ Deno.serve(async (req) => {
     if (results) {
       for (let i = 0; i < pending.length; i++) {
         const r = results[i];
-        if (!r || (r.label === "Neutro" && r.score === 0.5)) continue;
+        if (!r) continue;
         await supabase
           .from("social_interactions")
           .update({ sentiment_label: r.label, sentiment_score: r.score })
