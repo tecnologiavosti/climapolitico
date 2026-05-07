@@ -106,10 +106,11 @@ async function callGroq(texts: string[], groqKey: string): Promise<SentimentResu
   const clipped = texts.map((t) => (t || "").substring(0, 400).trim());
   const userContent = clipped.map((t, i) => `${i + 1}. "${t}"`).join("\n");
 
-  const systemPrompt = `Você é um analista político brasileiro especialista em sentimento.
-CLASSIFIQUE cada comentário: POSITIVO (apoio, elogio, "mito", emojis ❤️👏), NEGATIVO (crítica, sarcasmo, xingamento, "ladrão", "fora", emojis 🤮👎), NEUTRO (apenas notícia factual sem viés).
-Sarcasmo é NEGATIVO. Em dúvida, escolha o predominante (saia do muro).
-Gírias BR: "mitou"/"faz o L"=positivo, "gado"/"mortadela"/"petralha"/"bolsominion"=negativo.
+  const systemPrompt = `Você é analista político brasileiro especialista em sentimento eleitoral.
+REGRA CRÍTICA: minimize "Neutro". Use Neutro APENAS em notícia factual pura, pergunta sem viés, ou texto sem sentido. Em qualquer outro caso classifique Positivo ou Negativo (mesmo com 0.55 de confiança).
+POSITIVO: apoio, elogio, "mito", "melhor", emojis ❤️👏🔥👍🙏.
+NEGATIVO: crítica, sarcasmo, ironia, xingamento, "ladrão", "fora", "palhaço", emojis 🤮👎🤡🙄. Gírias: "gado"/"mortadela"/"petralha"/"bolsominion"/"coxinha"=negativo; "mitou"/"faz o L"=positivo.
+Sarcasmo/ironia = sempre NEGATIVO. Em empate, escolha NEGATIVO (política BR é polarizada).
 Responda APENAS JSON array na mesma ordem: [{"label":"Positivo|Negativo|Neutro","score":0.0-1.0},...]`;
 
   try {
