@@ -307,16 +307,16 @@ Deno.serve(async (req) => {
   const cerebrasKey = Deno.env.get("CEREBRAS_API_KEY");
 
   try {
-    // Pega comentários recentes com sentimento pendente ou neutro padrão das últimas 48h.
-    const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    // Pega comentários recentes Neutros (qualquer score) ou sem rótulo das últimas 7 dias.
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data: pending, error } = await supabase
       .from("social_interactions")
       .select("id, comment_text")
-      .or("and(sentiment_label.eq.Neutro,sentiment_score.eq.0.5),sentiment_label.is.null")
+      .or("sentiment_label.eq.Neutro,sentiment_label.is.null")
       .gte("created_at", since)
       .not("comment_text", "is", null)
       .order("created_at", { ascending: false })
-      .limit(30);
+      .limit(50);
 
     if (error) throw error;
 
