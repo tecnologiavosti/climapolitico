@@ -16,6 +16,7 @@ import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverview
 import { useAllCandidateMetrics, CandidateMetrics } from "@/hooks/useCandidateMetrics";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { NetworkLegendWithTooltips } from "@/components/dashboard/NetworkLegendWithTooltips";
+import { isHiddenNetwork } from "@/lib/networkVisibility";
 
 // Componentes temporariamente ocultos da Visão Geral (mantidos para uso futuro)
 // import { AIModelsPanel } from "@/components/dashboard/AIModelsPanel";
@@ -370,7 +371,7 @@ export default function Overview() {
     name,
     value,
     color: NETWORK_COLORS[name] || COLORS[index % COLORS.length]
-  })).filter(d => d.value > 0);
+  })).filter(d => d.value > 0 && !isHiddenNetwork(d.name));
 
   const isLoading = loadingCandidates || loadingInteractions || loadingRankings || loadingMetrics;
 
