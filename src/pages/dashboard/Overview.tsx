@@ -16,6 +16,7 @@ import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverview
 import { useAllCandidateMetrics, CandidateMetrics } from "@/hooks/useCandidateMetrics";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { NetworkLegendWithTooltips } from "@/components/dashboard/NetworkLegendWithTooltips";
+import { isHiddenNetwork } from "@/lib/networkVisibility";
 
 // Componentes temporariamente ocultos da Visão Geral (mantidos para uso futuro)
 // import { AIModelsPanel } from "@/components/dashboard/AIModelsPanel";
