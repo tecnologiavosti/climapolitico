@@ -370,7 +370,7 @@ export default function Overview() {
     name,
     value,
     color: NETWORK_COLORS[name] || COLORS[index % COLORS.length]
-  })).filter(d => d.value > 0);
+  })).filter(d => d.value > 0 && !isHiddenNetwork(d.name));
 
   const isLoading = loadingCandidates || loadingInteractions || loadingRankings || loadingMetrics;
 
