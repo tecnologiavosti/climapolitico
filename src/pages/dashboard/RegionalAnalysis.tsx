@@ -551,13 +551,13 @@ export default function RegionalAnalysis() {
                             {r.total.toLocaleString("pt-BR")} menções
                           </span>
                         </div>
-                        {r.total >= 10 ? (
-                          <>
-                            {(() => {
-                              const posPct = (r.pos / r.total) * 100;
-                              const negPct = (r.neg / r.total) * 100;
-                              const neuPct = Math.max(0, 100 - posPct - negPct);
-                              return (
+                        {(r.pos + r.neg) >= 10 ? (
+                          (() => {
+                            const opinionated = r.pos + r.neg;
+                            const posPct = Math.round((r.pos / opinionated) * 1000) / 10;
+                            const negPct = Math.round(((100 - posPct) * 10)) / 10;
+                            return (
+                              <>
                                 <div className="flex h-2 rounded-full overflow-hidden bg-muted">
                                   <div
                                     className="bg-green-500"
@@ -565,37 +565,25 @@ export default function RegionalAnalysis() {
                                     title={`${r.pos} positivos`}
                                   />
                                   <div
-                                    className="bg-muted-foreground/30"
-                                    style={{ width: `${neuPct}%` }}
-                                    title={`${r.neu} neutros`}
-                                  />
-                                  <div
                                     className="bg-red-500"
                                     style={{ width: `${negPct}%` }}
                                     title={`${r.neg} negativos`}
                                   />
                                 </div>
-                              );
-                            })()}
-                            {(() => {
-                              const posPct = Math.round((r.pos / r.total) * 1000) / 10;
-                              const negPct = Math.round((r.neg / r.total) * 1000) / 10;
-                              const neuPct = Math.max(0, Math.round((100 - posPct - negPct) * 10) / 10);
-                              return (
                                 <div className="flex justify-between mt-1 text-xs gap-2">
                                   <span className="text-green-600" title={`${r.pos} positivos`}>
-                                    {posPct}% pos
-                                  </span>
-                                  <span className="text-muted-foreground" title={`${r.neu} neutros`}>
-                                    {neuPct}% neu
+                                    {posPct}% aceitação
                                   </span>
                                   <span className="text-red-600" title={`${r.neg} negativos`}>
-                                    {negPct}% neg
+                                    {negPct}% rejeição
                                   </span>
                                 </div>
-                              );
-                            })()}
-                          </>
+                                <div className="text-[10px] text-muted-foreground mt-0.5">
+                                  Base: {opinionated.toLocaleString("pt-BR")} menções com opinião (neutros excluídos)
+                                </div>
+                              </>
+                            );
+                          })()
                         ) : (
                           <div className="text-xs text-muted-foreground italic">Dados insuficientes</div>
                         )}
