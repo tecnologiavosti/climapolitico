@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { isHiddenNetwork } from "@/lib/networkVisibility";
 
 export interface SocialInteraction {
   id: string;
@@ -90,7 +91,7 @@ export const useRealTimeAnalytics = (
         .from('social_interactions')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id)
-        .not('social_network', 'in', '(mastodon,lemmy)');
+        .not('social_network', 'in', '(mastodon,lemmy,pinterest)');
       
       if (currentCandidateIds.length > 0) {
         countQuery = countQuery.in('candidate_id', currentCandidateIds);
@@ -108,7 +109,7 @@ export const useRealTimeAnalytics = (
           .from('social_interactions')
           .select('*')
           .eq('user_id', user.id)
-          .not('social_network', 'in', '(mastodon,lemmy)')
+          .not('social_network', 'in', '(mastodon,lemmy,pinterest)')
           .order('created_at', { ascending: false })
           .range(offset, offset + pageSize - 1);
 
@@ -177,6 +178,7 @@ export const useRealTimeAnalytics = (
         networkCounts[i.social_network] = (networkCounts[i.social_network] || 0) + 1;
       });
       const mentionsByNetwork = Object.entries(networkCounts)
+        .filter(([network]) => !isHiddenNetwork(network))
         .map(([network, count]) => ({ network, count }))
         .sort((a, b) => b.count - a.count);
 

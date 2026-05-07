@@ -116,7 +116,7 @@ export default function CandidateRanking() {
           .from('social_interactions')
           .select('candidate_id, sentiment_label, sentiment_score, likes_count, comment_author')
           .eq('user_id', user.id)
-          .not('social_network', 'in', '(mastodon,lemmy)')
+          .not('social_network', 'in', '(mastodon,lemmy,pinterest)')
           .or(orFilter)
           .range(offset, offset + PAGE_SIZE - 1);
         if (error) throw error;

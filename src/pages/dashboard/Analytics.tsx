@@ -44,7 +44,7 @@ export default function Analytics() {
           .from('social_interactions')
           .select('id, sentiment_label, sentiment_score, likes_count, social_network, created_at, comment_author')
           .eq('user_id', user.id)
-          .not('social_network', 'in', '(mastodon,lemmy)')
+          .not('social_network', 'in', '(mastodon,lemmy,pinterest)')
           .order('created_at', { ascending: true })
           .range(offset, offset + PAGE_SIZE - 1);
 
