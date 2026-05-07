@@ -15,9 +15,9 @@ interface SentimentResult {
 }
 
 const NEG_REGEX =
-  /(ladr[ãa]o|corrupt[oa]|mentiros[oa]|vagabund[oa]|bandido|cadeia|pris[ãa]o|fora\s|jamais|nunca\s|safad[oa]|canalha|absurdo|verg[oa]nha|nojo|nojent[oa]|p[ée]ssim[oa]|horr[íi]vel|odi[oa]|destru|fracass|incompetente|idiota|burr[oa]|imbecil|lixo|merda|fdp|🤮|👎|😡|💩|🤡)/i;
+  /(ladr[ãa]o|corrupt[oa]|mentiros[oa]|vagabund[oa]|bandido|cadeia|pris[ãa]o|fora\s|jamais|nunca\s|safad[oa]|canalha|absurdo|verg[oa]nha|nojo|nojent[oa]|p[ée]ssim[oa]|horr[íi]vel|odi[oa]|destru|fracass|incompetente|idiota|burr[oa]|imbecil|lixo|merda|fdp|pal(h|h)a[çc]o|farsante|traidor|gen[oa]cida|pat[ée]tico|rid[íi]culo|escr[óo]ria|gado|mortadela|petralha|bolsominion|coxinha|miser[áa]vel|🤮|👎|😡|💩|🤡|🙄|😒)/i;
 const POS_REGEX =
-  /(parab[ée]ns|melhor|[óo]tim[oa]|excelente|maravilhos[oa]|perfeit[oa]|mito|her[óo]i|orgulho|apoio|votarei|voto\s+em|t[ée]\s+amo|amo\s+voc|presidente\s+(lula|bolsonaro|caiado)|força|estamos\s+(juntos|com)|vai\s+ganhar|vencer|vit[óo]ria|sucesso|deus\s+aben|❤️|👏|🙏|✊|🇧🇷|💚|💛)/i;
+  /(parab[ée]ns|melhor|[óo]tim[oa]|excelente|maravilhos[oa]|perfeit[oa]|mito|her[óo]i|orgulho|apoio|votarei|voto\s+em|t[ée]\s+amo|amo\s+voc|presidente\s+(lula|bolsonaro|caiado)|for[çc]a|estamos\s+(juntos|com)|vai\s+ganhar|vencer|vit[óo]ria|sucesso|deus\s+aben|verdadeiro|honest[oa]|competente|trabalhador|admiro|respeito|legenda|melhor\s+(presidente|governador|prefeito)|faz\s+o\s+l|mitou|❤️|👏|🙏|✊|🇧🇷|💚|💛|🥰|😍|👍|🔥)/i;
 
 function heuristic(text: string): SentimentResult {
   const t = text || "";
@@ -25,6 +25,7 @@ function heuristic(text: string): SentimentResult {
   const pos = POS_REGEX.test(t);
   if (neg && !pos) return { label: "Negativo", score: 0.2 };
   if (pos && !neg) return { label: "Positivo", score: 0.8 };
+  if (neg && pos) return { label: "Negativo", score: 0.35 }; // ambivalente tende a crítica
   return { label: "Neutro", score: 0.5 };
 }
 
