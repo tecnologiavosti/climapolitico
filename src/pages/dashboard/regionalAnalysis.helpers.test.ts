@@ -79,15 +79,31 @@ describe("computeMetrics", () => {
     expect(m.neu).toBe(2);
   });
 
-  it("calculates acceptance/rejection as percentages with 1 decimal", () => {
+  it("calculates acceptance/rejection over opinionated mentions only (excludes neutrals)", () => {
+    // 3 positivos, 1 negativo, 6 neutros => aceitação = 3/(3+1) = 75%
     const m = computeMetrics([
       row({ sentiment_label: "positive" }),
       row({ sentiment_label: "positive" }),
       row({ sentiment_label: "positive" }),
       row({ sentiment_label: "negative" }),
+      row({ sentiment_label: "Neutro" }),
+      row({ sentiment_label: "Neutro" }),
+      row({ sentiment_label: "Neutro" }),
+      row({ sentiment_label: "Neutro" }),
+      row({ sentiment_label: "Neutro" }),
+      row({ sentiment_label: "Neutro" }),
     ]);
     expect(m.acceptance).toBe(75);
     expect(m.rejection).toBe(25);
+  });
+
+  it("returns 0 acceptance/rejection when only neutrals exist", () => {
+    const m = computeMetrics([
+      row({ sentiment_label: "Neutro" }),
+      row({ sentiment_label: null }),
+    ]);
+    expect(m.acceptance).toBe(0);
+    expect(m.rejection).toBe(0);
   });
 
   it("sums engagement (likes + replies + shares) and averages", () => {
