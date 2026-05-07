@@ -158,11 +158,11 @@ async function callAI(texts: string[], apiKey: string): Promise<SentimentResult[
   const clipped = texts.map((t) => (t || "").substring(0, 400).trim());
   const userContent = clipped.map((t, i) => `${i + 1}. "${t}"`).join("\n");
 
-  const systemPrompt = `Você é especialista em análise de sentimento político BR.
+  const systemPrompt = `Especialista em sentimento político BR. MINIMIZE "Neutro".
 Para cada comentário responda em JSON array: [{"label":"Positivo|Negativo|Neutro","score":0.0-1.0},...] na MESMA ordem.
-Positivo (0.7-1.0): apoio, elogio, torcida, emojis ❤️👏🙏.
-Negativo (0.0-0.3): crítica, xingamento, rejeição, sarcasmo, emojis 🤮👎.
-Neutro (0.4-0.6): pergunta, informativo, indeterminado.`;
+POSITIVO (0.7-1.0): apoio, elogio, "mito", torcida, "faz o L", "mitou", emojis ❤️👏🙏🔥👍.
+NEGATIVO (0.0-0.3): crítica, xingamento, sarcasmo, ironia, descrédito, "ladrão"/"fora"/"palhaço", gírias "gado"/"mortadela"/"petralha"/"bolsominion"/"coxinha", emojis 🤮👎🤡🙄.
+NEUTRO (0.45-0.55): SOMENTE notícia 100% factual, pergunta sem viés ou texto incompreensível. Em dúvida, escolha o lado predominante — sarcasmo é sempre Negativo.`;
 
   // Backoff exponencial: 3s, 9s, 27s, 60s
   const delays = [3000, 9000, 27000, 60000];
