@@ -4,6 +4,7 @@ import {
   PieChart, Pie, Cell, Legend 
 } from "recharts";
 import { SocialMediaReportData } from "@/pages/dashboard/SocialMediaReport";
+import { isHiddenNetwork } from "@/lib/networkVisibility";
 
 interface SocialMediaChartsProps {
   data: SocialMediaReportData[];
@@ -18,7 +19,7 @@ const SENTIMENT_COLORS = {
 export function SocialMediaCharts({ data }: SocialMediaChartsProps) {
   // Dados para gráfico de menções por rede
   const mentionsChartData = data
-    .filter(item => item.network && item.totalMentions > 0)
+    .filter(item => item.network && item.totalMentions > 0 && !isHiddenNetwork(item.network))
     .map(item => ({
       name: item.network || 'Desconhecida',
       mentions: item.totalMentions,
@@ -38,7 +39,7 @@ export function SocialMediaCharts({ data }: SocialMediaChartsProps) {
 
   // Dados para gráfico de sentimento por rede (stacked)
   const sentimentByNetworkData = data
-    .filter(item => item.network && item.totalMentions > 0)
+    .filter(item => item.network && item.totalMentions > 0 && !isHiddenNetwork(item.network))
     .map(item => ({
       network: item.network || 'Desconhecida',
       Positivo: item.positivePercent,
