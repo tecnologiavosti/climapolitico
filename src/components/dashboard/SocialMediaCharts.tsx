@@ -19,7 +19,7 @@ const SENTIMENT_COLORS = {
 export function SocialMediaCharts({ data }: SocialMediaChartsProps) {
   // Dados para gráfico de menções por rede
   const mentionsChartData = data
-    .filter(item => item.network && item.totalMentions > 0)
+    .filter(item => item.network && item.totalMentions > 0 && !isHiddenNetwork(item.network))
     .map(item => ({
       name: item.network || 'Desconhecida',
       mentions: item.totalMentions,
