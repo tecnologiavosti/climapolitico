@@ -4,6 +4,7 @@ import {
   PieChart, Pie, Cell, Legend 
 } from "recharts";
 import { SocialMediaReportData } from "@/pages/dashboard/SocialMediaReport";
+import { isHiddenNetwork } from "@/lib/networkVisibility";
 
 interface SocialMediaChartsProps {
   data: SocialMediaReportData[];
