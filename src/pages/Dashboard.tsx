@@ -133,6 +133,7 @@ const Dashboard = () => {
                 <Route path="/usage" element={wrap("Usage", Usage)} />
                 <Route path="/tenant-analytics" element={wrap("TenantAnalytics", TenantAnalytics)} />
                 <Route path="/webhooks" element={wrap("Webhooks", Webhooks)} />
+                <Route path="/api-keys" element={wrap("ApiKeys", ApiKeys)} />
                 <Route path="/notifications" element={wrap("Notifications", Notifications)} />
                 <Route path="/data-collection-methodology" element={wrap("DataCollectionMethodology", DataCollectionMethodology)} />
                 <Route path="/regional-analysis" element={wrap("RegionalAnalysis", RegionalAnalysis)} />
