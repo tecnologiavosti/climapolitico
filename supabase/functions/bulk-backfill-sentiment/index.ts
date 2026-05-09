@@ -203,7 +203,7 @@ Deno.serve(async (req) => {
   const providerCounts: Record<string, number> = {};
 
   // Process in chunks of 5 in parallel; light throttling.
-  const CHUNK = 5;
+  const CHUNK = 2;
   for (let i = 0; i < rows.length; i += CHUNK) {
     const slice = rows.slice(i, i + CHUNK);
     await Promise.all(slice.map(async (row: any) => {
