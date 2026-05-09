@@ -291,6 +291,48 @@ export type Database = {
         }
         Relationships: []
       }
+      api_keys: {
+        Row: {
+          created_at: string
+          expires_at: string | null
+          id: string
+          key_hash: string
+          key_prefix: string
+          last_used_at: string | null
+          name: string
+          rate_limit_per_minute: number
+          revoked_at: string | null
+          scopes: string[]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          key_hash: string
+          key_prefix: string
+          last_used_at?: string | null
+          name: string
+          rate_limit_per_minute?: number
+          revoked_at?: string | null
+          scopes?: string[]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          key_hash?: string
+          key_prefix?: string
+          last_used_at?: string | null
+          name?: string
+          rate_limit_per_minute?: number
+          revoked_at?: string | null
+          scopes?: string[]
+          user_id?: string
+        }
+        Relationships: []
+      }
       apify_runs: {
         Row: {
           actor_id: string
@@ -2206,6 +2248,10 @@ export type Database = {
       }
     }
     Functions: {
+      check_api_rate_limit: {
+        Args: { _key_id: string; _limit: number }
+        Returns: boolean
+      }
       check_rate_limit: {
         Args: {
           _endpoint: string
@@ -2278,6 +2324,15 @@ export type Database = {
           target_value: number
           window_minutes: number
         }[]
+      }
+      create_api_key: {
+        Args: {
+          _expires_days?: number
+          _name: string
+          _rate_limit_per_minute?: number
+          _scopes?: string[]
+        }
+        Returns: Json
       }
       create_worker_token: {
         Args: { _expires_days?: number; _name: string; _scopes?: string[] }
@@ -2397,6 +2452,14 @@ export type Database = {
       }
       reset_provider_circuits: { Args: never; Returns: undefined }
       should_skip_collector: { Args: { _name: string }; Returns: boolean }
+      verify_api_key: {
+        Args: { _required_scope: string; _token: string }
+        Returns: {
+          key_id: string
+          rate_limit_per_minute: number
+          user_id: string
+        }[]
+      }
       verify_worker_token: {
         Args: { _required_scope?: string; _token: string }
         Returns: {
