@@ -1552,6 +1552,19 @@ export type Database = {
         }
         Relationships: []
       }
+      observability_overview: {
+        Row: {
+          avg_duration_ms_1h: number | null
+          calls_1h: number | null
+          dlq_pending: number | null
+          errors_1h: number | null
+          low_confidence_neutrals: number | null
+          total_interactions: number | null
+          unlabeled_count: number | null
+          unread_notifications: number | null
+        }
+        Relationships: []
+      }
       pipeline_health: {
         Row: {
           candidate_id: string | null
