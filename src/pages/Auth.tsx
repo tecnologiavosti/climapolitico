@@ -50,8 +50,9 @@ const Auth = () => {
           description: error.issues[0].message,
           variant: "destructive",
         });
-        return;
+        return; // FIX: era omitido — login prosseguia mesmo com email inválido
       }
+      return;
     }
 
     setLoading(true);
