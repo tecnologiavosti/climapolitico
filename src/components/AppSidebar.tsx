@@ -81,6 +81,7 @@ const adminItems = [
   { title: "Observabilidade", url: "/dashboard/observability", icon: Shield, tip: "Saúde da plataforma, jobs em execução, fila de erros e ações de bulk processing." },
   { title: "Operations Console", url: "/dashboard/operations", icon: Shield, tip: "Filas distribuídas, workers ativos, providers IA e alertas em tempo real." },
   { title: "SLO & SLA", url: "/dashboard/slo", icon: Shield, tip: "Metas de serviço (latência, throughput, erro) e fila de jobs mortos (DLQ)." },
+  { title: "Worker Tokens", url: "/dashboard/worker-tokens", icon: Key, tip: "Tokens para conectar workers externos (Docker/Railway) à fila distribuída." },
 ];
 
 const settingsItems = [
