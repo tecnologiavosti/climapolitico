@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { ChevronRight, Home } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import {
@@ -31,37 +32,42 @@ export const Breadcrumbs = () => {
 
   if (pathnames.length <= 1) return null;
 
+  // Filtra "dashboard" — fica fora do loop pra evitar separator órfão
+  const items = pathnames
+    .map((pathname, index) => ({ pathname, index }))
+    .filter((p) => p.pathname !== "dashboard");
+
   return (
     <Breadcrumb>
       <BreadcrumbList>
         <BreadcrumbItem>
           <BreadcrumbLink asChild>
-            <Link to="/dashboard" className="flex items-center gap-1">
+            <Link to="/dashboard" className="flex items-center gap-1" aria-label="Início">
               <Home className="h-4 w-4" />
             </Link>
           </BreadcrumbLink>
         </BreadcrumbItem>
-        
-        {pathnames.map((pathname, index) => {
-          if (pathname === "dashboard") return null;
-          
+
+        {items.map(({ pathname, index }, i) => {
           const routeTo = `/${pathnames.slice(0, index + 1).join("/")}`;
-          const isLast = index === pathnames.length - 1;
+          const isLast = i === items.length - 1;
           const label = routeNames[pathname] || pathname;
 
           return (
-            <BreadcrumbItem key={pathname}>
+            <Fragment key={pathname}>
               <BreadcrumbSeparator>
                 <ChevronRight className="h-4 w-4" />
               </BreadcrumbSeparator>
-              {isLast ? (
-                <BreadcrumbPage>{label}</BreadcrumbPage>
-              ) : (
-                <BreadcrumbLink asChild>
-                  <Link to={routeTo}>{label}</Link>
-                </BreadcrumbLink>
-              )}
-            </BreadcrumbItem>
+              <BreadcrumbItem>
+                {isLast ? (
+                  <BreadcrumbPage>{label}</BreadcrumbPage>
+                ) : (
+                  <BreadcrumbLink asChild>
+                    <Link to={routeTo}>{label}</Link>
+                  </BreadcrumbLink>
+                )}
+              </BreadcrumbItem>
+            </Fragment>
           );
         })}
       </BreadcrumbList>
