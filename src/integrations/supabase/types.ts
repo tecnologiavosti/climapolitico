@@ -1870,6 +1870,45 @@ export type Database = {
         }
         Relationships: []
       }
+      worker_api_tokens: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          last_used_at: string | null
+          name: string
+          revoked_at: string | null
+          scopes: string[]
+          token_hash: string
+          token_prefix: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          last_used_at?: string | null
+          name: string
+          revoked_at?: string | null
+          scopes?: string[]
+          token_hash: string
+          token_prefix: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          last_used_at?: string | null
+          name?: string
+          revoked_at?: string | null
+          scopes?: string[]
+          token_hash?: string
+          token_prefix?: string
+        }
+        Relationships: []
+      }
       worker_heartbeats: {
         Row: {
           current_job_id: string | null
@@ -2074,6 +2113,10 @@ export type Database = {
           window_minutes: number
         }[]
       }
+      create_worker_token: {
+        Args: { _expires_days?: number; _name: string; _scopes?: string[] }
+        Returns: Json
+      }
       dlq_summary: {
         Args: never
         Returns: {
@@ -2083,6 +2126,7 @@ export type Database = {
           oldest: string
         }[]
       }
+      enforce_retention_policies: { Args: never; Returns: Json }
       get_network_profiles_stats: {
         Args: { _user_id?: string }
         Returns: {
@@ -2143,6 +2187,14 @@ export type Database = {
       }
       reset_provider_circuits: { Args: never; Returns: undefined }
       should_skip_collector: { Args: { _name: string }; Returns: boolean }
+      verify_worker_token: {
+        Args: { _required_scope?: string; _token: string }
+        Returns: {
+          name: string
+          scopes: string[]
+          token_id: string
+        }[]
+      }
     }
     Enums: {
       app_role: "admin" | "analyst" | "subscriber"
