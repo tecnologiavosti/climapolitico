@@ -1882,6 +1882,36 @@ export type Database = {
         }
         Relationships: []
       }
+      usage_limits: {
+        Row: {
+          created_at: string
+          event_type: string
+          hard_block: boolean
+          id: string
+          monthly_limit: number
+          tier: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          hard_block?: boolean
+          id?: string
+          monthly_limit: number
+          tier: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          hard_block?: boolean
+          id?: string
+          monthly_limit?: number
+          tier?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -1899,6 +1929,98 @@ export type Database = {
           created_at?: string
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      webhook_deliveries: {
+        Row: {
+          attempts: number
+          created_at: string
+          delivered_at: string | null
+          endpoint_id: string
+          event_type: string
+          id: number
+          payload: Json
+          response_body: string | null
+          status: string
+          status_code: number | null
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          delivered_at?: string | null
+          endpoint_id: string
+          event_type: string
+          id?: number
+          payload: Json
+          response_body?: string | null
+          status?: string
+          status_code?: number | null
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          delivered_at?: string | null
+          endpoint_id?: string
+          event_type?: string
+          id?: number
+          payload?: Json
+          response_body?: string | null
+          status?: string
+          status_code?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_deliveries_endpoint_id_fkey"
+            columns: ["endpoint_id"]
+            isOneToOne: false
+            referencedRelation: "webhook_endpoints"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      webhook_endpoints: {
+        Row: {
+          consecutive_failures: number
+          created_at: string
+          events: string[]
+          id: string
+          is_active: boolean
+          last_failure_at: string | null
+          last_success_at: string | null
+          name: string
+          secret: string
+          updated_at: string
+          url: string
+          user_id: string
+        }
+        Insert: {
+          consecutive_failures?: number
+          created_at?: string
+          events?: string[]
+          id?: string
+          is_active?: boolean
+          last_failure_at?: string | null
+          last_success_at?: string | null
+          name: string
+          secret: string
+          updated_at?: string
+          url: string
+          user_id: string
+        }
+        Update: {
+          consecutive_failures?: number
+          created_at?: string
+          events?: string[]
+          id?: string
+          is_active?: boolean
+          last_failure_at?: string | null
+          last_success_at?: string | null
+          name?: string
+          secret?: string
+          updated_at?: string
+          url?: string
           user_id?: string
         }
         Relationships: []
@@ -2092,6 +2214,17 @@ export type Database = {
         }
         Returns: boolean
       }
+      check_usage_limit: {
+        Args: { _event_type: string; _user_id: string }
+        Returns: {
+          allowed: boolean
+          hard_block: boolean
+          monthly_limit: number
+          remaining: number
+          tier: string
+          used: number
+        }[]
+      }
       claim_jobs: {
         Args: {
           _batch_size?: number
@@ -2160,6 +2293,17 @@ export type Database = {
         }[]
       }
       enforce_retention_policies: { Args: never; Returns: Json }
+      enforce_usage_limit: {
+        Args: {
+          _cost_units?: number
+          _event_type: string
+          _metadata?: Json
+          _quantity?: number
+          _resource?: string
+          _user_id: string
+        }
+        Returns: Json
+      }
       get_network_profiles_stats: {
         Args: { _user_id?: string }
         Returns: {
