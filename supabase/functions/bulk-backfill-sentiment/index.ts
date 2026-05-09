@@ -64,6 +64,17 @@ Classifique o comentário sobre um candidato em: positive, negative ou neutral.
 Retorne JSON com {"label":"positive|negative|neutral","score":-1..1,"confidence":0..1}.
 Só use "neutral" se o texto for genuinamente factual SEM opinião. Ironia/sarcasmo conta como sentimento.`;
 
+function safeJson(s: string): any {
+  try { return JSON.parse(s); } catch {}
+  const m = s.match(/\{[\s\S]*\}/);
+  if (m) { try { return JSON.parse(m[0]); } catch {} }
+  // Heuristic fallback
+  const lower = s.toLowerCase();
+  if (/positiv|favor|apoio|elogio/.test(lower)) return { label: "positive", score: 0.5, confidence: 0.5 };
+  if (/negativ|critica|ruim|odeio|contra/.test(lower)) return { label: "negative", score: -0.5, confidence: 0.5 };
+  return { label: "neutral", score: 0, confidence: 0.4 };
+}
+
 async function callLovable(text: string): Promise<any> {
   const key = Deno.env.get("LOVABLE_API_KEY");
   if (!key) throw new Error("no LOVABLE_API_KEY");
@@ -78,7 +89,7 @@ async function callLovable(text: string): Promise<any> {
   });
   if (!r.ok) throw new Error(`lovable ${r.status}`);
   const j = await r.json();
-  return JSON.parse(j.choices[0].message.content);
+  return safeJson(j.choices[0].message.content);
 }
 
 async function callGroq(text: string): Promise<any> {
