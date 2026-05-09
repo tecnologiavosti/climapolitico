@@ -1,4 +1,6 @@
 // Sentiment Worker — claims jobs from analysis_jobs queue and analyzes
+// Cache L1 (in-memory, per-invocation) + L2 (analysis_cache table, SHA-256 keyed)
+// Provider routing with circuit breaker (provider_health table)
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
@@ -9,13 +11,26 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_KEY = Deno.env.get("LOVABLE_API_KEY")!;
-const GROQ_KEY = Deno.env.get("GROQ_API_KEY");
-const CEREBRAS_KEY = Deno.env.get("CEREBRAS_API_KEY");
-const GEMINI_KEY = Deno.env.get("GEMINI_API_KEY");
 
 const WORKER_ID = `sentiment-${crypto.randomUUID().slice(0, 8)}`;
+const CORRELATION = crypto.randomUUID();
 const BATCH = 5;
 const LEASE_SEC = 90;
+
+const sb = createClient(SUPABASE_URL, SERVICE_KEY);
+
+// ---------- L1 cache (in-memory) ----------
+const L1 = new Map<string, { label: string; score: number; confidence: number }>();
+const L1_MAX = 500;
+
+async function sha256(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function logJSON(level: string, msg: string, extra: Record<string, unknown> = {}) {
+  console.log(JSON.stringify({ level, msg, worker: WORKER_ID, correlation: CORRELATION, ts: new Date().toISOString(), ...extra }));
+}
 
 const sb = createClient(SUPABASE_URL, SERVICE_KEY);
 
