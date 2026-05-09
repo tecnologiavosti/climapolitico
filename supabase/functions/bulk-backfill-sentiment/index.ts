@@ -106,7 +106,7 @@ async function callGroq(text: string): Promise<any> {
   });
   if (!r.ok) throw new Error(`groq ${r.status}`);
   const j = await r.json();
-  return JSON.parse(j.choices[0].message.content);
+  return safeJson(j.choices[0].message.content);
 }
 
 async function callCerebras(text: string): Promise<any> {
@@ -123,7 +123,7 @@ async function callCerebras(text: string): Promise<any> {
   });
   if (!r.ok) throw new Error(`cerebras ${r.status}`);
   const j = await r.json();
-  return JSON.parse(j.choices[0].message.content);
+  return safeJson(j.choices[0].message.content);
 }
 
 async function callGemini(text: string): Promise<any> {
@@ -142,7 +142,7 @@ async function callGemini(text: string): Promise<any> {
   );
   if (!r.ok) throw new Error(`gemini ${r.status}`);
   const j = await r.json();
-  return JSON.parse(j.candidates[0].content.parts[0].text);
+  return safeJson(j.candidates[0].content.parts[0].text);
 }
 
 const PROVIDERS: Array<[Provider, (t: string) => Promise<any>]> = [
