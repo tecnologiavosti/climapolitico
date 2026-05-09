@@ -32,40 +32,47 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth event:', event);
-        
-        // Detect invalid session on token refresh
         if (event === 'TOKEN_REFRESHED' && !session) {
-          console.error('❌ Token refresh failed - forcing logout');
           await supabase.auth.signOut();
           navigate("/auth");
           return;
         }
-        
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
       }
     );
 
-    // THEN check for existing session with error handling
     supabase.auth.getSession().then(async ({ data: { session }, error }) => {
       if (error) {
-        console.error('❌ Session error:', error);
         await supabase.auth.signOut();
         navigate("/auth");
         return;
       }
-      
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    // Multi-tab sync
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key) return;
+      if (e.key.includes("auth-token") || e.key.startsWith("sb-")) {
+        supabase.auth.getSession().then(({ data: { session: s } }) => {
+          setSession(s);
+          setUser(s?.user ?? null);
+          if (!s) navigate("/auth");
+        });
+      }
+    };
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      subscription.unsubscribe();
+      window.removeEventListener("storage", onStorage);
+    };
   }, [navigate]);
 
   const signOut = async () => {
