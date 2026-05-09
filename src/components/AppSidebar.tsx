@@ -78,6 +78,7 @@ const mainItems = [
 const adminItems = [
   { title: "Administração", url: "/dashboard/admin", icon: Shield, tip: "Área só pra administradores: cuidar de usuários, planos e da plataforma toda." },
   { title: "APIs & Integrações", url: "/dashboard/admin/api-settings", icon: Key, tip: "Liga e desliga as conexões com as redes sociais (YouTube, Twitter etc.)." },
+  { title: "Observabilidade", url: "/dashboard/observability", icon: Shield, tip: "Saúde da plataforma, jobs em execução, fila de erros e ações de bulk processing." },
 ];
 
 const settingsItems = [
