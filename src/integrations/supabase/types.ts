@@ -76,6 +76,72 @@ export type Database = {
           },
         ]
       }
+      analysis_jobs: {
+        Row: {
+          attempts: number
+          candidate_id: string | null
+          completed_at: string | null
+          created_at: string
+          id: string
+          job_type: string
+          last_error: string | null
+          lease_expires_at: string | null
+          leased_at: string | null
+          max_attempts: number
+          payload: Json
+          priority: number
+          related_id: string | null
+          result: Json | null
+          scheduled_at: string
+          status: string
+          updated_at: string
+          user_id: string | null
+          worker_id: string | null
+        }
+        Insert: {
+          attempts?: number
+          candidate_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          job_type: string
+          last_error?: string | null
+          lease_expires_at?: string | null
+          leased_at?: string | null
+          max_attempts?: number
+          payload?: Json
+          priority?: number
+          related_id?: string | null
+          result?: Json | null
+          scheduled_at?: string
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+          worker_id?: string | null
+        }
+        Update: {
+          attempts?: number
+          candidate_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          job_type?: string
+          last_error?: string | null
+          lease_expires_at?: string | null
+          leased_at?: string | null
+          max_attempts?: number
+          payload?: Json
+          priority?: number
+          related_id?: string | null
+          result?: Json | null
+          scheduled_at?: string
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+          worker_id?: string | null
+        }
+        Relationships: []
+      }
       analysis_sources: {
         Row: {
           analysis_id: string
@@ -777,6 +843,42 @@ export type Database = {
         }
         Relationships: []
       }
+      job_execution_history: {
+        Row: {
+          duration_ms: number | null
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          job_id: string
+          metadata: Json
+          started_at: string
+          status: string
+          worker_id: string | null
+        }
+        Insert: {
+          duration_ms?: number | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          job_id: string
+          metadata?: Json
+          started_at?: string
+          status: string
+          worker_id?: string | null
+        }
+        Update: {
+          duration_ms?: number | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          job_id?: string
+          metadata?: Json
+          started_at?: string
+          status?: string
+          worker_id?: string | null
+        }
+        Relationships: []
+      }
       nitter_instances: {
         Row: {
           created_at: string
@@ -860,6 +962,30 @@ export type Database = {
           },
         ]
       }
+      pipeline_metrics: {
+        Row: {
+          id: number
+          labels: Json
+          metric_name: string
+          metric_value: number
+          recorded_at: string
+        }
+        Insert: {
+          id?: number
+          labels?: Json
+          metric_name: string
+          metric_value: number
+          recorded_at?: string
+        }
+        Update: {
+          id?: number
+          labels?: Json
+          metric_name?: string
+          metric_value?: number
+          recorded_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -913,6 +1039,51 @@ export type Database = {
           show_tooltips?: boolean
           theme?: string
           two_factor_enabled?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      provider_health: {
+        Row: {
+          avg_latency_ms: number
+          consecutive_failures: number
+          consecutive_successes: number
+          cooldown_until: string | null
+          health_score: number
+          last_failure_at: string | null
+          last_success_at: string | null
+          provider: string
+          state: string
+          total_calls: number
+          total_failures: number
+          updated_at: string
+        }
+        Insert: {
+          avg_latency_ms?: number
+          consecutive_failures?: number
+          consecutive_successes?: number
+          cooldown_until?: string | null
+          health_score?: number
+          last_failure_at?: string | null
+          last_success_at?: string | null
+          provider: string
+          state?: string
+          total_calls?: number
+          total_failures?: number
+          updated_at?: string
+        }
+        Update: {
+          avg_latency_ms?: number
+          consecutive_failures?: number
+          consecutive_successes?: number
+          cooldown_until?: string | null
+          health_score?: number
+          last_failure_at?: string | null
+          last_success_at?: string | null
+          provider?: string
+          state?: string
+          total_calls?: number
+          total_failures?: number
           updated_at?: string
         }
         Relationships: []
@@ -1370,6 +1541,45 @@ export type Database = {
         }
         Relationships: []
       }
+      system_alerts: {
+        Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          alert_type: string
+          created_at: string
+          id: string
+          message: string
+          metadata: Json
+          resolved_at: string | null
+          severity: string
+          title: string
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          alert_type: string
+          created_at?: string
+          id?: string
+          message: string
+          metadata?: Json
+          resolved_at?: string | null
+          severity?: string
+          title: string
+        }
+        Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          alert_type?: string
+          created_at?: string
+          id?: string
+          message?: string
+          metadata?: Json
+          resolved_at?: string | null
+          severity?: string
+          title?: string
+        }
+        Relationships: []
+      }
       undecided_analyses: {
         Row: {
           ai_model_used: string | null
@@ -1504,6 +1714,39 @@ export type Database = {
         }
         Relationships: []
       }
+      worker_heartbeats: {
+        Row: {
+          current_job_id: string | null
+          jobs_failed: number
+          jobs_processed: number
+          last_heartbeat_at: string
+          metadata: Json
+          started_at: string
+          worker_id: string
+          worker_type: string
+        }
+        Insert: {
+          current_job_id?: string | null
+          jobs_failed?: number
+          jobs_processed?: number
+          last_heartbeat_at?: string
+          metadata?: Json
+          started_at?: string
+          worker_id: string
+          worker_type: string
+        }
+        Update: {
+          current_job_id?: string | null
+          jobs_failed?: number
+          jobs_processed?: number
+          last_heartbeat_at?: string
+          metadata?: Json
+          started_at?: string
+          worker_id?: string
+          worker_type?: string
+        }
+        Relationships: []
+      }
       youtube_api_keys: {
         Row: {
           api_key: string
@@ -1565,6 +1808,19 @@ export type Database = {
         }
         Relationships: []
       }
+      operations_overview: {
+        Row: {
+          active_workers: number | null
+          dead: number | null
+          failed: number | null
+          leased: number | null
+          open_alerts: number | null
+          queued: number | null
+          running: number | null
+          succeeded_last_hour: number | null
+        }
+        Relationships: []
+      }
       pipeline_health: {
         Row: {
           candidate_id: string | null
@@ -1586,7 +1842,43 @@ export type Database = {
       }
     }
     Functions: {
+      claim_jobs: {
+        Args: {
+          _batch_size?: number
+          _job_type: string
+          _lease_seconds?: number
+          _worker_id: string
+        }
+        Returns: {
+          attempts: number
+          candidate_id: string | null
+          completed_at: string | null
+          created_at: string
+          id: string
+          job_type: string
+          last_error: string | null
+          lease_expires_at: string | null
+          leased_at: string | null
+          max_attempts: number
+          payload: Json
+          priority: number
+          related_id: string | null
+          result: Json | null
+          scheduled_at: string
+          status: string
+          updated_at: string
+          user_id: string | null
+          worker_id: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "analysis_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       cleanup_old_notifications: { Args: never; Returns: number }
+      cleanup_pipeline_data: { Args: never; Returns: undefined }
       get_network_profiles_stats: {
         Args: { _user_id?: string }
         Returns: {
@@ -1610,7 +1902,23 @@ export type Database = {
         Args: { _had_error?: boolean; _items?: number; _name: string }
         Returns: undefined
       }
+      record_provider_call: {
+        Args: { _latency_ms?: number; _provider: string; _success: boolean }
+        Returns: undefined
+      }
+      record_worker_heartbeat: {
+        Args: {
+          _current_job_id?: string
+          _failed_delta?: number
+          _processed_delta?: number
+          _worker_id: string
+          _worker_type: string
+        }
+        Returns: undefined
+      }
+      recover_stuck_jobs: { Args: never; Returns: number }
       refresh_network_profiles_deduplicated: { Args: never; Returns: undefined }
+      reset_provider_circuits: { Args: never; Returns: undefined }
       should_skip_collector: { Args: { _name: string }; Returns: boolean }
     }
     Enums: {
