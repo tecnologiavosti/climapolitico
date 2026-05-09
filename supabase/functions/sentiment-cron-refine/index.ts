@@ -307,82 +307,154 @@ Deno.serve(async (req) => {
   const cerebrasKey = Deno.env.get("CEREBRAS_API_KEY");
 
   try {
-    // Pega comentários recentes Neutros (qualquer score) ou sem rótulo das últimas 7 dias.
-    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const { data: pending, error } = await supabase
+    // Estratégia de seleção (idempotente, com retry budget):
+    //   1) NULOS com tentativas < 5 (prioridade máxima)
+    //   2) NEUTROS com confidence < 0.6 ou null E tentativas < 3
+    // Limit pequeno: respeita rate limit + permite distribuir trabalho.
+    const BATCH = 50;
+    const MAX_NULL_ATTEMPTS = 5;
+    const MAX_NEUTRAL_REVISIT = 3;
+
+    const { data: nulls } = await supabase
       .from("social_interactions")
-      .select("id, comment_text")
-      .or("sentiment_label.eq.Neutro,sentiment_label.is.null")
-      .gte("created_at", since)
+      .select("id, comment_text, analysis_attempts")
+      .is("sentiment_label", null)
+      .lt("analysis_attempts", MAX_NULL_ATTEMPTS)
       .not("comment_text", "is", null)
       .order("created_at", { ascending: false })
-      .limit(50);
+      .limit(BATCH);
 
-    if (error) throw error;
+    let pending = nulls || [];
 
-    if (!pending || pending.length === 0) {
+    if (pending.length < BATCH) {
+      const remaining = BATCH - pending.length;
+      const { data: lowConf } = await supabase
+        .from("social_interactions")
+        .select("id, comment_text, analysis_attempts")
+        .eq("sentiment_label", "Neutro")
+        .or("sentiment_confidence.is.null,sentiment_confidence.lt.0.6")
+        .lt("analysis_attempts", MAX_NEUTRAL_REVISIT)
+        .not("comment_text", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(remaining);
+      pending = pending.concat(lowConf || []);
+    }
+
+    if (pending.length === 0) {
       return new Response(
         JSON.stringify({ message: "Nada a refinar.", refined: 0 }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
       );
     }
 
-    let refined = 0;
     const counts = { Positivo: 0, Negativo: 0, Neutro: 0 };
     const texts = pending.map((p) => p.comment_text || "");
 
-    // 1) Cerebras primeiro (PRIMÁRIO — Llama 3.3 70B, 1M tokens/dia grátis, ~2000 tok/s)
     let results: SentimentResult[] | null = null;
     let providerUsed = "none";
     if (cerebrasKey) {
       results = await callCerebras(texts, cerebrasKey);
-      if (results) { console.log("[REFINE] ✅ Cerebras OK"); providerUsed = "cerebras"; }
+      if (results) providerUsed = "cerebras";
     }
-    // 2) Groq (fallback rápido)
     if (!results && groqKey) {
       results = await callGroq(texts, groqKey);
-      if (results) { console.log("[REFINE] ✅ Groq OK"); providerUsed = "groq"; }
+      if (results) providerUsed = "groq";
     }
-    // 2) Lovable AI Gateway
     if (!results && apiKey) {
       results = await callAI(texts, apiKey);
-      if (results) { console.log("[REFINE] ✅ Lovable AI OK"); providerUsed = "lovable"; }
+      if (results) providerUsed = "lovable";
     }
-    // 3) Gemini Direct API (cota gratuita generosa)
     if (!results && geminiKey) {
       results = await callGeminiDirect(texts, geminiKey);
-      if (results) { console.log("[REFINE] ✅ Gemini Direct OK"); providerUsed = "gemini-direct"; }
+      if (results) providerUsed = "gemini-direct";
     }
 
+    let refined = 0;
+    let pushedToDLQ = 0;
+
     if (results) {
-      for (let i = 0; i < pending.length; i++) {
-        const r = results[i];
-        if (!r) continue;
-        await supabase
-          .from("social_interactions")
-          .update({ sentiment_label: r.label, sentiment_score: r.score })
-          .eq("id", pending[i].id);
-        refined++;
-        counts[r.label]++;
+      // Update em paralelo (chunks de 10)
+      for (let i = 0; i < pending.length; i += 10) {
+        const slice = pending.slice(i, i + 10);
+        await Promise.all(slice.map(async (p, idx) => {
+          const r = results![i + idx];
+          if (!r) return;
+          const { error: updErr } = await supabase
+            .from("social_interactions")
+            .update({
+              sentiment_label: r.label,
+              sentiment_score: r.score,
+              sentiment_confidence: r.score,
+              analysis_attempts: (p.analysis_attempts || 0) + 1,
+            })
+            .eq("id", p.id);
+          if (updErr) {
+            console.error(`[REFINE] update falhou id=${p.id}:`, updErr.message);
+            return;
+          }
+          refined++;
+          counts[r.label]++;
+        }));
       }
     } else {
-      // 3) Heurística pura
+      // Sem provider disponível → heurística + incrementa attempts
       for (const p of pending) {
         const h = heuristic(p.comment_text || "");
+        const newAttempts = (p.analysis_attempts || 0) + 1;
         if (h.label !== "Neutro") {
           await supabase
             .from("social_interactions")
-            .update({ sentiment_label: h.label, sentiment_score: h.score })
+            .update({
+              sentiment_label: h.label,
+              sentiment_score: h.score,
+              sentiment_confidence: 0.55,
+              analysis_attempts: newAttempts,
+            })
             .eq("id", p.id);
           refined++;
           counts[h.label]++;
+        } else {
+          // Não conseguiu — só incrementa attempts. Se estourou budget, manda p/ DLQ.
+          await supabase
+            .from("social_interactions")
+            .update({ analysis_attempts: newAttempts })
+            .eq("id", p.id);
+          if (newAttempts >= MAX_NULL_ATTEMPTS) {
+            await supabase.from("failed_analyses").insert({
+              interaction_id: p.id,
+              comment_text: (p.comment_text || "").substring(0, 1000),
+              attempts: newAttempts,
+              last_error: "all_providers_unavailable",
+              provider_used: "none",
+            });
+            pushedToDLQ++;
+          }
         }
       }
     }
 
-    console.log(`[REFINE] provider=${providerUsed} refined=${refined} dist=${JSON.stringify(counts)}`);
+    // Alerta automático de saúde do pipeline
+    const { count: totalUnlabeled } = await supabase
+      .from("social_interactions")
+      .select("id", { count: "exact", head: true })
+      .is("sentiment_label", null);
+    const { count: total } = await supabase
+      .from("social_interactions")
+      .select("id", { count: "exact", head: true });
+    const pctNull = total ? ((totalUnlabeled || 0) / total) * 100 : 0;
+
+    console.log(`[REFINE] provider=${providerUsed} refined=${refined} dlq=${pushedToDLQ} dist=${JSON.stringify(counts)} pct_null=${pctNull.toFixed(2)}%`);
+
     return new Response(
-      JSON.stringify({ success: true, provider: providerUsed, candidates: pending.length, refined, distribution: counts }),
+      JSON.stringify({
+        success: true,
+        provider: providerUsed,
+        candidates: pending.length,
+        refined,
+        pushed_to_dlq: pushedToDLQ,
+        distribution: counts,
+        pipeline_health: { pct_unlabeled: Number(pctNull.toFixed(2)), threshold_exceeded: pctNull > 5 },
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
     );
   } catch (err) {
