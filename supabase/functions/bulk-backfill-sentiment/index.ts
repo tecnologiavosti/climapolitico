@@ -238,7 +238,7 @@ Deno.serve(async (req) => {
         });
       }
     }));
-    await sleep(250); // throttle to respect rate limits
+    await sleep(800); // throttle to respect rate limits
   }
 
   await supa.from("edge_function_logs").insert({
