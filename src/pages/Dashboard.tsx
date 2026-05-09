@@ -44,6 +44,7 @@ const SLO = lazy(() => import("./dashboard/SLO"));
 const WorkerTokens = lazy(() => import("./dashboard/WorkerTokens"));
 const Usage = lazy(() => import("./dashboard/Usage"));
 const TenantAnalytics = lazy(() => import("./dashboard/TenantAnalytics"));
+const Webhooks = lazy(() => import("./dashboard/Webhooks"));
 
 /** Wraps a lazy route element in a per-route error boundary. */
 const wrap = (name: string, El: React.ComponentType) => (
@@ -130,6 +131,7 @@ const Dashboard = () => {
                 <Route path="/worker-tokens" element={wrap("WorkerTokens", WorkerTokens)} />
                 <Route path="/usage" element={wrap("Usage", Usage)} />
                 <Route path="/tenant-analytics" element={wrap("TenantAnalytics", TenantAnalytics)} />
+                <Route path="/webhooks" element={wrap("Webhooks", Webhooks)} />
                 <Route path="/notifications" element={wrap("Notifications", Notifications)} />
                 <Route path="/data-collection-methodology" element={wrap("DataCollectionMethodology", DataCollectionMethodology)} />
                 <Route path="/regional-analysis" element={wrap("RegionalAnalysis", RegionalAnalysis)} />
