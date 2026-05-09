@@ -1343,6 +1343,48 @@ export type Database = {
           },
         ]
       }
+      slo_targets: {
+        Row: {
+          comparator: string
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          metric_name: string
+          name: string
+          severity: string
+          target_value: number
+          updated_at: string
+          window_minutes: number
+        }
+        Insert: {
+          comparator?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          metric_name: string
+          name: string
+          severity?: string
+          target_value: number
+          updated_at?: string
+          window_minutes?: number
+        }
+        Update: {
+          comparator?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          metric_name?: string
+          name?: string
+          severity?: string
+          target_value?: number
+          updated_at?: string
+          window_minutes?: number
+        }
+        Relationships: []
+      }
       social_interactions: {
         Row: {
           analysis_attempts: number
@@ -2017,6 +2059,30 @@ export type Database = {
       cleanup_old_notifications: { Args: never; Returns: number }
       cleanup_pipeline_data: { Args: never; Returns: undefined }
       cleanup_rate_limits: { Args: never; Returns: undefined }
+      compute_slo_status: {
+        Args: never
+        Returns: {
+          comparator: string
+          current_value: number
+          is_compliant: boolean
+          metric_name: string
+          name: string
+          samples: number
+          severity: string
+          slo_id: string
+          target_value: number
+          window_minutes: number
+        }[]
+      }
+      dlq_summary: {
+        Args: never
+        Returns: {
+          dead_count: number
+          job_type: string
+          newest: string
+          oldest: string
+        }[]
+      }
       get_network_profiles_stats: {
         Args: { _user_id?: string }
         Returns: {
@@ -2071,6 +2137,10 @@ export type Database = {
       recover_stuck_jobs: { Args: never; Returns: number }
       refresh_network_profiles_deduplicated: { Args: never; Returns: undefined }
       refresh_pipeline_metrics_hourly: { Args: never; Returns: undefined }
+      requeue_dead_jobs: {
+        Args: { _job_type?: string; _limit?: number }
+        Returns: number
+      }
       reset_provider_circuits: { Args: never; Returns: undefined }
       should_skip_collector: { Args: { _name: string }; Returns: boolean }
     }

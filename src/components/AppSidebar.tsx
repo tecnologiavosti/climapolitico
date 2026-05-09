@@ -80,6 +80,7 @@ const adminItems = [
   { title: "APIs & Integrações", url: "/dashboard/admin/api-settings", icon: Key, tip: "Liga e desliga as conexões com as redes sociais (YouTube, Twitter etc.)." },
   { title: "Observabilidade", url: "/dashboard/observability", icon: Shield, tip: "Saúde da plataforma, jobs em execução, fila de erros e ações de bulk processing." },
   { title: "Operations Console", url: "/dashboard/operations", icon: Shield, tip: "Filas distribuídas, workers ativos, providers IA e alertas em tempo real." },
+  { title: "SLO & SLA", url: "/dashboard/slo", icon: Shield, tip: "Metas de serviço (latência, throughput, erro) e fila de jobs mortos (DLQ)." },
 ];
 
 const settingsItems = [
