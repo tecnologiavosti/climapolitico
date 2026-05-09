@@ -732,6 +732,51 @@ export type Database = {
         }
         Relationships: []
       }
+      failed_analyses: {
+        Row: {
+          attempts: number
+          candidate_id: string | null
+          comment_text: string | null
+          first_failed_at: string
+          id: string
+          interaction_id: string | null
+          last_error: string | null
+          last_failed_at: string
+          metadata: Json
+          provider_used: string | null
+          resolved_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          attempts?: number
+          candidate_id?: string | null
+          comment_text?: string | null
+          first_failed_at?: string
+          id?: string
+          interaction_id?: string | null
+          last_error?: string | null
+          last_failed_at?: string
+          metadata?: Json
+          provider_used?: string | null
+          resolved_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          attempts?: number
+          candidate_id?: string | null
+          comment_text?: string | null
+          first_failed_at?: string
+          id?: string
+          interaction_id?: string | null
+          last_error?: string | null
+          last_failed_at?: string
+          metadata?: Json
+          provider_used?: string | null
+          resolved_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       nitter_instances: {
         Row: {
           created_at: string
@@ -823,6 +868,7 @@ export type Database = {
           id: string
           language: string
           notification_preferences: Json | null
+          onboarding_completed_at: string | null
           organization: string | null
           party: string | null
           party_visible: boolean
@@ -840,6 +886,7 @@ export type Database = {
           id: string
           language?: string
           notification_preferences?: Json | null
+          onboarding_completed_at?: string | null
           organization?: string | null
           party?: string | null
           party_visible?: boolean
@@ -857,6 +904,7 @@ export type Database = {
           id?: string
           language?: string
           notification_preferences?: Json | null
+          onboarding_completed_at?: string | null
           organization?: string | null
           party?: string | null
           party_visible?: boolean
@@ -1012,6 +1060,7 @@ export type Database = {
       }
       social_interactions: {
         Row: {
+          analysis_attempts: number
           analysis_id: string | null
           author_profile_url: string | null
           candidate_id: string
@@ -1025,6 +1074,7 @@ export type Database = {
           original_posted_at: string | null
           region: string | null
           replies_count: number | null
+          sentiment_confidence: number | null
           sentiment_label: string | null
           sentiment_score: number | null
           shares_count: number | null
@@ -1032,6 +1082,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          analysis_attempts?: number
           analysis_id?: string | null
           author_profile_url?: string | null
           candidate_id: string
@@ -1045,6 +1096,7 @@ export type Database = {
           original_posted_at?: string | null
           region?: string | null
           replies_count?: number | null
+          sentiment_confidence?: number | null
           sentiment_label?: string | null
           sentiment_score?: number | null
           shares_count?: number | null
@@ -1052,6 +1104,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          analysis_attempts?: number
           analysis_id?: string | null
           author_profile_url?: string | null
           candidate_id?: string
@@ -1065,6 +1118,7 @@ export type Database = {
           original_posted_at?: string | null
           region?: string | null
           replies_count?: number | null
+          sentiment_confidence?: number | null
           sentiment_label?: string | null
           sentiment_score?: number | null
           shares_count?: number | null
@@ -1498,8 +1552,28 @@ export type Database = {
         }
         Relationships: []
       }
+      pipeline_health: {
+        Row: {
+          candidate_id: string | null
+          dead_letter: number | null
+          low_conf_neutrals: number | null
+          pct_unlabeled: number | null
+          total: number | null
+          unlabeled: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_interactions_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
+      cleanup_old_notifications: { Args: never; Returns: number }
       get_network_profiles_stats: {
         Args: { _user_id?: string }
         Returns: {
