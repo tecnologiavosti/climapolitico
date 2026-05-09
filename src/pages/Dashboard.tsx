@@ -39,6 +39,7 @@ const SocialFeeds = lazy(() => import("./dashboard/SocialFeeds"));
 const SystemHealth = lazy(() => import("./dashboard/SystemHealth"));
 const Observability = lazy(() => import("./dashboard/Observability"));
 const Operations = lazy(() => import("./dashboard/Operations"));
+const Exports = lazy(() => import("./dashboard/Exports"));
 
 /** Wraps a lazy route element in a per-route error boundary. */
 const wrap = (name: string, El: React.ComponentType) => (
@@ -120,6 +121,7 @@ const Dashboard = () => {
                 <Route path="/system-health" element={wrap("SystemHealth", SystemHealth)} />
                 <Route path="/observability" element={wrap("Observability", Observability)} />
                 <Route path="/operations" element={wrap("Operations", Operations)} />
+                <Route path="/exports" element={wrap("Exports", Exports)} />
                 <Route path="/notifications" element={wrap("Notifications", Notifications)} />
                 <Route path="/data-collection-methodology" element={wrap("DataCollectionMethodology", DataCollectionMethodology)} />
                 <Route path="/regional-analysis" element={wrap("RegionalAnalysis", RegionalAnalysis)} />
