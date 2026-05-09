@@ -128,6 +128,8 @@ const Dashboard = () => {
                 <Route path="/exports" element={wrap("Exports", Exports)} />
                 <Route path="/slo" element={wrap("SLO", SLO)} />
                 <Route path="/worker-tokens" element={wrap("WorkerTokens", WorkerTokens)} />
+                <Route path="/usage" element={wrap("Usage", Usage)} />
+                <Route path="/tenant-analytics" element={wrap("TenantAnalytics", TenantAnalytics)} />
                 <Route path="/notifications" element={wrap("Notifications", Notifications)} />
                 <Route path="/data-collection-methodology" element={wrap("DataCollectionMethodology", DataCollectionMethodology)} />
                 <Route path="/regional-analysis" element={wrap("RegionalAnalysis", RegionalAnalysis)} />
