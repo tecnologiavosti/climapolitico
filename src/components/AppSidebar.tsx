@@ -82,6 +82,7 @@ const adminItems = [
   { title: "Operations Console", url: "/dashboard/operations", icon: Shield, tip: "Filas distribuídas, workers ativos, providers IA e alertas em tempo real." },
   { title: "SLO & SLA", url: "/dashboard/slo", icon: Shield, tip: "Metas de serviço (latência, throughput, erro) e fila de jobs mortos (DLQ)." },
   { title: "Worker Tokens", url: "/dashboard/worker-tokens", icon: Key, tip: "Tokens para conectar workers externos (Docker/Railway) à fila distribuída." },
+  { title: "Tenant Analytics", url: "/dashboard/tenant-analytics", icon: Shield, tip: "Consumo agregado por usuário: top tenants, custos e atividade." },
 ];
 
 const settingsItems = [
