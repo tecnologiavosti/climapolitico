@@ -41,6 +41,7 @@ const Observability = lazy(() => import("./dashboard/Observability"));
 const Operations = lazy(() => import("./dashboard/Operations"));
 const Exports = lazy(() => import("./dashboard/Exports"));
 const SLO = lazy(() => import("./dashboard/SLO"));
+const WorkerTokens = lazy(() => import("./dashboard/WorkerTokens"));
 
 /** Wraps a lazy route element in a per-route error boundary. */
 const wrap = (name: string, El: React.ComponentType) => (
