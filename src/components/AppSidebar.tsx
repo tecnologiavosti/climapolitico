@@ -82,10 +82,12 @@ const adminItems = [
   { title: "Operations Console", url: "/dashboard/operations", icon: Shield, tip: "Filas distribuídas, workers ativos, providers IA e alertas em tempo real." },
   { title: "SLO & SLA", url: "/dashboard/slo", icon: Shield, tip: "Metas de serviço (latência, throughput, erro) e fila de jobs mortos (DLQ)." },
   { title: "Worker Tokens", url: "/dashboard/worker-tokens", icon: Key, tip: "Tokens para conectar workers externos (Docker/Railway) à fila distribuída." },
+  { title: "Tenant Analytics", url: "/dashboard/tenant-analytics", icon: Shield, tip: "Consumo agregado por usuário: top tenants, custos e atividade." },
 ];
 
 const settingsItems = [
   { title: "Notificações", url: "/dashboard/notifications", icon: Bell, tip: "Avisos importantes: quando algo mudar, você fica sabendo aqui." },
+  { title: "Meu Consumo", url: "/dashboard/usage", icon: LineChart, tip: "Veja quantas análises, exportações e coletas você consumiu no período." },
   { title: "Exportações", url: "/dashboard/exports", icon: Bell, tip: "Gere e baixe relatórios em CSV ou JSON. Processamento assíncrono." },
   { title: "Configurações", url: "/dashboard/settings", icon: Settings, tip: "Mexa no seu perfil, troque a senha, mude o tema e ajuste suas preferências." },
 ];

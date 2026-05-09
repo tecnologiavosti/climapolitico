@@ -180,6 +180,16 @@ async function processJob(job: any) {
       _processed_delta: ok ? 1 : 0,
       _failed_delta: ok ? 0 : 1,
     });
+    if (ok && job.user_id) {
+      await sb.rpc("record_usage_event", {
+        _user_id: job.user_id,
+        _event_type: "ai_analysis",
+        _resource: "sentiment",
+        _quantity: 1,
+        _cost_units: 1,
+        _metadata: { job_id: job.id, duration_ms: Date.now() - t0 },
+      }).catch(() => {});
+    }
   }
 }
 

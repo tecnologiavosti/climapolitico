@@ -1849,6 +1849,39 @@ export type Database = {
         }
         Relationships: []
       }
+      usage_events: {
+        Row: {
+          cost_units: number
+          event_type: string
+          id: number
+          metadata: Json
+          occurred_at: string
+          quantity: number
+          resource: string | null
+          user_id: string
+        }
+        Insert: {
+          cost_units?: number
+          event_type: string
+          id?: number
+          metadata?: Json
+          occurred_at?: string
+          quantity?: number
+          resource?: string | null
+          user_id: string
+        }
+        Update: {
+          cost_units?: number
+          event_type?: string
+          id?: number
+          metadata?: Json
+          occurred_at?: string
+          quantity?: number
+          resource?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -2151,6 +2184,28 @@ export type Database = {
           sum_value: number
         }[]
       }
+      get_tenant_analytics: {
+        Args: { _days?: number; _limit?: number }
+        Returns: {
+          ai_analyses: number
+          exports: number
+          full_name: string
+          last_active: string
+          tier: string
+          total_cost: number
+          total_events: number
+          user_id: string
+        }[]
+      }
+      get_user_usage_summary: {
+        Args: { _days?: number }
+        Returns: {
+          event_type: string
+          last_event: string
+          total_cost: number
+          total_quantity: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -2167,6 +2222,17 @@ export type Database = {
       record_provider_call: {
         Args: { _latency_ms?: number; _provider: string; _success: boolean }
         Returns: undefined
+      }
+      record_usage_event: {
+        Args: {
+          _cost_units?: number
+          _event_type: string
+          _metadata?: Json
+          _quantity?: number
+          _resource?: string
+          _user_id: string
+        }
+        Returns: number
       }
       record_worker_heartbeat: {
         Args: {
