@@ -2325,6 +2325,15 @@ export type Database = {
           window_minutes: number
         }[]
       }
+      create_api_key: {
+        Args: {
+          _expires_days?: number
+          _name: string
+          _rate_limit_per_minute?: number
+          _scopes?: string[]
+        }
+        Returns: Json
+      }
       create_worker_token: {
         Args: { _expires_days?: number; _name: string; _scopes?: string[] }
         Returns: Json
