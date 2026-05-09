@@ -107,7 +107,29 @@ async function processJob(job: any) {
     const { data: row, error: e1 } = await sb.from("social_interactions").select("id,comment_text").eq("id", interactionId).maybeSingle();
     if (e1) throw e1;
     if (!row?.comment_text) throw new Error("no text");
-    const r = await analyze(row.comment_text);
+
+    // Anti prompt-injection: cap length and strip control chars
+    const safeText = row.comment_text.replace(/[\u0000-\u001F\u007F]/g, " ").slice(0, 1000);
+    const key = await sha256(safeText.toLowerCase().trim());
+
+    let r = L1.get(key);
+    let cached = !!r;
+    if (!r) {
+      const { data: c } = await sb.from("analysis_cache").select("result").eq("cache_key", key).maybeSingle();
+      if (c?.result) {
+        r = c.result as any;
+        cached = true;
+        await sb.from("analysis_cache").update({ hit_count: (c as any).hit_count ? undefined : 1, last_hit_at: new Date().toISOString() }).eq("cache_key", key);
+      }
+    }
+    if (!r) {
+      r = await analyze(safeText);
+      await sb.from("analysis_cache").upsert({ cache_key: key, analysis_type: "sentiment", result: r as any }, { onConflict: "cache_key" });
+    }
+    if (L1.size >= L1_MAX) L1.delete(L1.keys().next().value);
+    L1.set(key, r);
+    logJSON("info", "analyzed", { job: job.id, cached, label: r.label });
+
     await sb.from("social_interactions").update({
       sentiment_label: r.label,
       sentiment_score: r.score,
