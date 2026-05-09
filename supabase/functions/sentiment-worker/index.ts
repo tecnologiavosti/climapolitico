@@ -1,4 +1,6 @@
 // Sentiment Worker — claims jobs from analysis_jobs queue and analyzes
+// Cache L1 (in-memory, per-invocation) + L2 (analysis_cache table, SHA-256 keyed)
+// Provider routing with circuit breaker (provider_health table)
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
@@ -9,13 +11,26 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_KEY = Deno.env.get("LOVABLE_API_KEY")!;
-const GROQ_KEY = Deno.env.get("GROQ_API_KEY");
-const CEREBRAS_KEY = Deno.env.get("CEREBRAS_API_KEY");
-const GEMINI_KEY = Deno.env.get("GEMINI_API_KEY");
 
 const WORKER_ID = `sentiment-${crypto.randomUUID().slice(0, 8)}`;
+const CORRELATION = crypto.randomUUID();
 const BATCH = 5;
 const LEASE_SEC = 90;
+
+const sb = createClient(SUPABASE_URL, SERVICE_KEY);
+
+// ---------- L1 cache (in-memory) ----------
+const L1 = new Map<string, { label: string; score: number; confidence: number }>();
+const L1_MAX = 500;
+
+async function sha256(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function logJSON(level: string, msg: string, extra: Record<string, unknown> = {}) {
+  console.log(JSON.stringify({ level, msg, worker: WORKER_ID, correlation: CORRELATION, ts: new Date().toISOString(), ...extra }));
+}
 
 const sb = createClient(SUPABASE_URL, SERVICE_KEY);
 
@@ -92,7 +107,29 @@ async function processJob(job: any) {
     const { data: row, error: e1 } = await sb.from("social_interactions").select("id,comment_text").eq("id", interactionId).maybeSingle();
     if (e1) throw e1;
     if (!row?.comment_text) throw new Error("no text");
-    const r = await analyze(row.comment_text);
+
+    // Anti prompt-injection: cap length and strip control chars
+    const safeText = row.comment_text.replace(/[\u0000-\u001F\u007F]/g, " ").slice(0, 1000);
+    const key = await sha256(safeText.toLowerCase().trim());
+
+    let r = L1.get(key);
+    let cached = !!r;
+    if (!r) {
+      const { data: c } = await sb.from("analysis_cache").select("result").eq("cache_key", key).maybeSingle();
+      if (c?.result) {
+        r = c.result as any;
+        cached = true;
+        await sb.from("analysis_cache").update({ hit_count: (c as any).hit_count ? undefined : 1, last_hit_at: new Date().toISOString() }).eq("cache_key", key);
+      }
+    }
+    if (!r) {
+      r = await analyze(safeText);
+      await sb.from("analysis_cache").upsert({ cache_key: key, analysis_type: "sentiment", result: r as any }, { onConflict: "cache_key" });
+    }
+    if (L1.size >= L1_MAX) L1.delete(L1.keys().next().value);
+    L1.set(key, r);
+    logJSON("info", "analyzed", { job: job.id, cached, label: r.label });
+
     await sb.from("social_interactions").update({
       sentiment_label: r.label,
       sentiment_score: r.score,
