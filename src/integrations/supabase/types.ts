@@ -2027,6 +2027,20 @@ export type Database = {
           unique_profiles: number
         }[]
       }
+      get_pipeline_metrics_hourly: {
+        Args: { _hours?: number; _metric?: string }
+        Returns: {
+          avg_value: number
+          bucket: string
+          max_value: number
+          metric_name: string
+          p50: number
+          p95: number
+          p99: number
+          samples: number
+          sum_value: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
