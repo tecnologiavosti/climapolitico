@@ -89,6 +89,7 @@ const settingsItems = [
   { title: "Notificações", url: "/dashboard/notifications", icon: Bell, tip: "Avisos importantes: quando algo mudar, você fica sabendo aqui." },
   { title: "Meu Consumo", url: "/dashboard/usage", icon: LineChart, tip: "Veja quantas análises, exportações e coletas você consumiu no período." },
   { title: "Exportações", url: "/dashboard/exports", icon: Bell, tip: "Gere e baixe relatórios em CSV ou JSON. Processamento assíncrono." },
+  { title: "Webhooks", url: "/dashboard/webhooks", icon: Rss, tip: "Receba eventos da plataforma em sua URL externa via HTTPS assinado." },
   { title: "Configurações", url: "/dashboard/settings", icon: Settings, tip: "Mexa no seu perfil, troque a senha, mude o tema e ajuste suas preferências." },
 ];
 
