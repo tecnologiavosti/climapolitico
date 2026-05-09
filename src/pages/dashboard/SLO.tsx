@@ -28,7 +28,7 @@ interface DLQRow {
 }
 
 export default function SLOPage() {
-  const { isAdmin, loading: adminLoading } = useAdminCheck();
+  const { isAdmin, isLoading: adminLoading } = useAdminCheck();
   const [slos, setSlos] = useState<SLORow[]>([]);
   const [dlq, setDlq] = useState<DLQRow[]>([]);
   const [loading, setLoading] = useState(true);
