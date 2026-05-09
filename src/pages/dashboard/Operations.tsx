@@ -38,7 +38,15 @@ export default function Operations() {
   useEffect(() => {
     load();
     const t = setInterval(load, 10_000);
-    return () => clearInterval(t);
+    // Realtime: invalida ao receber qualquer mudança nas tabelas operacionais
+    const ch = supabase
+      .channel("ops-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "analysis_jobs" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "system_alerts" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "worker_heartbeats" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "provider_health" }, () => load())
+      .subscribe();
+    return () => { clearInterval(t); supabase.removeChannel(ch); };
   }, []);
 
   async function trigger(name: string) {
