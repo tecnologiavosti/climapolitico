@@ -76,6 +76,39 @@ export type Database = {
           },
         ]
       }
+      analysis_cache: {
+        Row: {
+          analysis_type: string
+          cache_key: string
+          created_at: string
+          expires_at: string
+          hit_count: number
+          last_hit_at: string
+          provider: string | null
+          result: Json
+        }
+        Insert: {
+          analysis_type?: string
+          cache_key: string
+          created_at?: string
+          expires_at?: string
+          hit_count?: number
+          last_hit_at?: string
+          provider?: string | null
+          result: Json
+        }
+        Update: {
+          analysis_type?: string
+          cache_key?: string
+          created_at?: string
+          expires_at?: string
+          hit_count?: number
+          last_hit_at?: string
+          provider?: string | null
+          result?: Json
+        }
+        Relationships: []
+      }
       analysis_jobs: {
         Row: {
           attempts: number
@@ -798,6 +831,60 @@ export type Database = {
         }
         Relationships: []
       }
+      export_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          download_expires_at: string | null
+          download_url: string | null
+          error_message: string | null
+          export_type: string
+          file_size_bytes: number | null
+          filters: Json
+          id: string
+          progress: number
+          resource: string
+          rows_exported: number | null
+          status: string
+          storage_path: string | null
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          download_expires_at?: string | null
+          download_url?: string | null
+          error_message?: string | null
+          export_type: string
+          file_size_bytes?: number | null
+          filters?: Json
+          id?: string
+          progress?: number
+          resource: string
+          rows_exported?: number | null
+          status?: string
+          storage_path?: string | null
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          download_expires_at?: string | null
+          download_url?: string | null
+          error_message?: string | null
+          export_type?: string
+          file_size_bytes?: number | null
+          filters?: Json
+          id?: string
+          progress?: number
+          resource?: string
+          rows_exported?: number | null
+          status?: string
+          storage_path?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       failed_analyses: {
         Row: {
           attempts: number
@@ -1124,6 +1211,33 @@ export type Database = {
           region?: string | null
           social_media_link?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      rate_limits: {
+        Row: {
+          blocked_until: string | null
+          endpoint: string
+          id: number
+          identifier: string
+          request_count: number
+          window_start: string
+        }
+        Insert: {
+          blocked_until?: string | null
+          endpoint: string
+          id?: number
+          identifier: string
+          request_count?: number
+          window_start?: string
+        }
+        Update: {
+          blocked_until?: string | null
+          endpoint?: string
+          id?: number
+          identifier?: string
+          request_count?: number
+          window_start?: string
         }
         Relationships: []
       }
@@ -1840,8 +1954,30 @@ export type Database = {
           },
         ]
       }
+      pipeline_metrics_hourly: {
+        Row: {
+          avg_value: number | null
+          bucket: string | null
+          max_value: number | null
+          metric_name: string | null
+          p50: number | null
+          p95: number | null
+          p99: number | null
+          samples: number | null
+          sum_value: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      check_rate_limit: {
+        Args: {
+          _endpoint: string
+          _identifier: string
+          _max_per_minute?: number
+        }
+        Returns: boolean
+      }
       claim_jobs: {
         Args: {
           _batch_size?: number
@@ -1877,8 +2013,10 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      cleanup_analysis_cache: { Args: never; Returns: number }
       cleanup_old_notifications: { Args: never; Returns: number }
       cleanup_pipeline_data: { Args: never; Returns: undefined }
+      cleanup_rate_limits: { Args: never; Returns: undefined }
       get_network_profiles_stats: {
         Args: { _user_id?: string }
         Returns: {
@@ -1918,6 +2056,7 @@ export type Database = {
       }
       recover_stuck_jobs: { Args: never; Returns: number }
       refresh_network_profiles_deduplicated: { Args: never; Returns: undefined }
+      refresh_pipeline_metrics_hourly: { Args: never; Returns: undefined }
       reset_provider_circuits: { Args: never; Returns: undefined }
       should_skip_collector: { Args: { _name: string }; Returns: boolean }
     }
