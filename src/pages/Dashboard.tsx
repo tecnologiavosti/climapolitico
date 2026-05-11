@@ -124,13 +124,9 @@ const Dashboard = () => {
                 <Route path="/system-health" element={wrap("SystemHealth", SystemHealth)} />
                 <Route path="/observability" element={wrap("Observability", Observability)} />
                 <Route path="/operations" element={wrap("Operations", Operations)} />
-                <Route path="/exports" element={wrap("Exports", Exports)} />
                 <Route path="/slo" element={wrap("SLO", SLO)} />
                 <Route path="/worker-tokens" element={wrap("WorkerTokens", WorkerTokens)} />
-                <Route path="/usage" element={wrap("Usage", Usage)} />
                 <Route path="/tenant-analytics" element={wrap("TenantAnalytics", TenantAnalytics)} />
-                <Route path="/webhooks" element={wrap("Webhooks", Webhooks)} />
-                <Route path="/api-keys" element={wrap("ApiKeys", ApiKeys)} />
                 <Route path="/notifications" element={wrap("Notifications", Notifications)} />
                 <Route path="/data-collection-methodology" element={wrap("DataCollectionMethodology", DataCollectionMethodology)} />
                 <Route path="/regional-analysis" element={wrap("RegionalAnalysis", RegionalAnalysis)} />
