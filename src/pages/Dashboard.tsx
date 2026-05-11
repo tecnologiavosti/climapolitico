@@ -39,7 +39,6 @@ const SocialFeeds = lazy(() => import("./dashboard/SocialFeeds"));
 const SystemHealth = lazy(() => import("./dashboard/SystemHealth"));
 const Observability = lazy(() => import("./dashboard/Observability"));
 const Operations = lazy(() => import("./dashboard/Operations"));
-const Exports = lazy(() => import("./dashboard/Exports"));
 const SLO = lazy(() => import("./dashboard/SLO"));
 const WorkerTokens = lazy(() => import("./dashboard/WorkerTokens"));
 const TenantAnalytics = lazy(() => import("./dashboard/TenantAnalytics"));
