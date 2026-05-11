@@ -28,7 +28,6 @@ import {
   MapPinned,
   Linkedin,
   Rss,
-  KeyRound,
 } from "lucide-react";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { useTooltipsEnabled } from "@/hooks/useTooltipsEnabled";
