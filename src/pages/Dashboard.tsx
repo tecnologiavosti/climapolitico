@@ -39,13 +39,9 @@ const SocialFeeds = lazy(() => import("./dashboard/SocialFeeds"));
 const SystemHealth = lazy(() => import("./dashboard/SystemHealth"));
 const Observability = lazy(() => import("./dashboard/Observability"));
 const Operations = lazy(() => import("./dashboard/Operations"));
-const Exports = lazy(() => import("./dashboard/Exports"));
 const SLO = lazy(() => import("./dashboard/SLO"));
 const WorkerTokens = lazy(() => import("./dashboard/WorkerTokens"));
-const Usage = lazy(() => import("./dashboard/Usage"));
 const TenantAnalytics = lazy(() => import("./dashboard/TenantAnalytics"));
-const Webhooks = lazy(() => import("./dashboard/Webhooks"));
-const ApiKeys = lazy(() => import("./dashboard/ApiKeys"));
 
 /** Wraps a lazy route element in a per-route error boundary. */
 const wrap = (name: string, El: React.ComponentType) => (
@@ -127,13 +123,9 @@ const Dashboard = () => {
                 <Route path="/system-health" element={wrap("SystemHealth", SystemHealth)} />
                 <Route path="/observability" element={wrap("Observability", Observability)} />
                 <Route path="/operations" element={wrap("Operations", Operations)} />
-                <Route path="/exports" element={wrap("Exports", Exports)} />
                 <Route path="/slo" element={wrap("SLO", SLO)} />
                 <Route path="/worker-tokens" element={wrap("WorkerTokens", WorkerTokens)} />
-                <Route path="/usage" element={wrap("Usage", Usage)} />
                 <Route path="/tenant-analytics" element={wrap("TenantAnalytics", TenantAnalytics)} />
-                <Route path="/webhooks" element={wrap("Webhooks", Webhooks)} />
-                <Route path="/api-keys" element={wrap("ApiKeys", ApiKeys)} />
                 <Route path="/notifications" element={wrap("Notifications", Notifications)} />
                 <Route path="/data-collection-methodology" element={wrap("DataCollectionMethodology", DataCollectionMethodology)} />
                 <Route path="/regional-analysis" element={wrap("RegionalAnalysis", RegionalAnalysis)} />
