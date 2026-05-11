@@ -42,10 +42,7 @@ const Operations = lazy(() => import("./dashboard/Operations"));
 const Exports = lazy(() => import("./dashboard/Exports"));
 const SLO = lazy(() => import("./dashboard/SLO"));
 const WorkerTokens = lazy(() => import("./dashboard/WorkerTokens"));
-const Usage = lazy(() => import("./dashboard/Usage"));
 const TenantAnalytics = lazy(() => import("./dashboard/TenantAnalytics"));
-const Webhooks = lazy(() => import("./dashboard/Webhooks"));
-const ApiKeys = lazy(() => import("./dashboard/ApiKeys"));
 
 /** Wraps a lazy route element in a per-route error boundary. */
 const wrap = (name: string, El: React.ComponentType) => (
