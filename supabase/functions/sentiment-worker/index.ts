@@ -36,19 +36,20 @@ const sb = createClient(SUPABASE_URL, SERVICE_KEY);
 
 type Provider = { name: string; call: (text: string) => Promise<{ label: string; score: number; confidence: number }> };
 
-// Heuristic PT-BR fallback
+// Heuristic PT-BR fallback — calibrated to be decisive (less Neutro)
 function heuristic(text: string) {
   const t = text.toLowerCase();
-  const pos = /(bom|ótim|excelen|adoro|maravilh|parabén|melhor|apoio|forte|incrível|gosto|✨|❤️|👏)/g;
-  const neg = /(ruim|péssim|horríve|odeio|ladrão|corrupt|mentiroso|fora|vergonha|destru|💩|👎)/g;
+  const pos = /(bom|[óo]tim|excelen|adoro|maravilh|parab[ée]n|melhor|apoio|forte|incr[íi]vel|gosto|gostei|mito|her[óo]i|orgulho|votarei|voto\s+em|te\s+amo|presidente|for[cç]a|vai\s+ganhar|vencer|vit[óo]ria|sucesso|deus\s+aben|honesto|trabalhador|competente|sensacional|brilhante|admiro|respeito|salvou|melhorou|fant[áa]stico|top|fenomenal|✨|❤|👏|🙏|✊|🇧🇷|💚|💛|🥰|😍|🤩|👍|💪|🫡)/g;
+  const neg = /(ruim|p[ée]ssim|horr[íi]ve|odeio|ladr[ãa]o|corrupt|mentiros|vagabund|bandido|\bfora\b|jamais|nunca|safad|canalha|vergonha|nojo|[óo]dio|fracass|incompetente|idiota|burro|imbecil|lixo|merda|fdp|gado|petralha|bolsominion|destru|enganador|farsa|hip[óo]crita|trai[cç][ãa]o|escroto|absurdo|cad[ée]ia|preso|impeachment|criminoso|pilantra|in[úu]til|decep[cç][ãa]o|odiei|💩|👎|🤮|😡|🤡|🤬|🙄|😤|🖕)/g;
   const p = (t.match(pos) || []).length;
   const n = (t.match(neg) || []).length;
   if (p === 0 && n === 0) return { label: "Neutro", score: 0, confidence: 0.3 };
   const score = (p - n) / Math.max(1, p + n);
+  // Lowered threshold from 0.15 → 0.05 to reduce false-Neutro classifications
   return {
-    label: score > 0.15 ? "Positivo" : score < -0.15 ? "Negativo" : "Neutro",
+    label: score > 0.05 ? "Positivo" : score < -0.05 ? "Negativo" : "Neutro",
     score,
-    confidence: 0.55,
+    confidence: 0.6 + 0.05 * Math.min(4, p + n),
   };
 }
 
@@ -60,7 +61,7 @@ async function callLovable(text: string) {
     body: JSON.stringify({
       model: "google/gemini-2.5-flash-lite",
       messages: [
-        { role: "system", content: "Classifique o sentimento político em PT-BR. Responda APENAS JSON: {\"label\":\"Positivo|Negativo|Neutro\",\"score\":-1..1,\"confidence\":0..1}" },
+        { role: "system", content: "Você classifica sentimento político em PT-BR. Seja DECISIVO: use 'Neutro' APENAS quando o texto for puramente informativo, uma pergunta sem opinião, ou impossível de determinar polaridade. Comentários curtos de apoio ('Lula presidente', 'Parabéns', 'mito') são Positivo. Críticas, xingamentos, sarcasmo crítico são Negativo. Responda APENAS JSON: {\"label\":\"Positivo|Negativo|Neutro\",\"score\":-1..1,\"confidence\":0..1}" },
         { role: "user", content: text.slice(0, 500) },
       ],
     }),
