@@ -116,10 +116,27 @@ serve(async (req) => {
       offset += pageSize;
     }
 
+    // Filter by event keywords if provided (semantic match on comment_text)
+    const keywords = Array.isArray(eventKeywords)
+      ? eventKeywords.map((k: string) => String(k).toLowerCase().trim()).filter(Boolean)
+      : [];
+    let filteredOut = 0;
+    if (keywords.length > 0) {
+      const before = comments.length;
+      comments = comments.filter(c => {
+        const txt = (c.comment_text || '').toLowerCase();
+        return keywords.some(k => txt.includes(k));
+      });
+      filteredOut = before - comments.length;
+      console.log(`[event-repercussion] keyword filter: ${before} -> ${comments.length} (removidos: ${filteredOut})`);
+    }
+
     if (comments.length === 0) {
       return new Response(JSON.stringify({
         report: null,
-        message: 'Nenhum comentário encontrado no período selecionado.',
+        message: keywords.length > 0
+          ? `Nenhum comentário sobre "${eventName}" encontrado no período. Tente ampliar o intervalo de datas.`
+          : 'Nenhum comentário encontrado no período selecionado.',
         stats: { total: 0 }
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
