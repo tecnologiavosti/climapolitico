@@ -136,7 +136,8 @@ serve(async (req) => {
     // Daily volume breakdown
     const dailyVolume: Record<string, { total: number; positive: number; negative: number; neutral: number }> = {};
     comments.forEach(c => {
-      const day = c.created_at?.substring(0, 10) || 'unknown';
+      const ts = c.original_posted_at || c.created_at;
+      const day = ts?.substring(0, 10) || 'unknown';
       if (!dailyVolume[day]) dailyVolume[day] = { total: 0, positive: 0, negative: 0, neutral: 0 };
       dailyVolume[day].total++;
       if (c.sentiment_label === 'Positivo') dailyVolume[day].positive++;
