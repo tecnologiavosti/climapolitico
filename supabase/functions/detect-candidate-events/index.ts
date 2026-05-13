@@ -27,6 +27,61 @@ interface DetectedEvent {
   description: string;
 }
 
+const STOP = new Set([
+  'para','como','mais','muito','pela','pelo','isso','essa','esse','esta','este','entre','sobre','quando','onde','tambem','também','presidente','candidato','candidata','brasil','politica','política','governo','partido','povo','gente','tudo','todos','todas','agora','hoje','ontem','sempre','nunca','assim','porque','porquê','mesmo','quem','vou','tem','tinha','foi','sao','são','dos','das','com','sem','por','seu','sua','meu','minha','nos','nas','que','dele','dela','aqui','ali','ainda','depois','antes','tao','tão','pouco','bom','boa','ruim'
+]);
+
+function tokenize(text: string): string[] {
+  return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').match(/[a-z0-9]{4,}/g) || [];
+}
+
+function heuristicEvents(comments: any[]): DetectedEvent[] {
+  if (comments.length < 10) return [];
+  const byDay = new Map<string, any[]>();
+  for (const c of comments) {
+    const day = ((c.original_posted_at || c.created_at) || '').substring(0, 10);
+    if (!day) continue;
+    if (!byDay.has(day)) byDay.set(day, []);
+    byDay.get(day)!.push(c);
+  }
+  const days = [...byDay.entries()].sort();
+  if (days.length === 0) return [];
+  const totals = days.map(([, arr]) => arr.length);
+  const avg = totals.reduce((a, b) => a + b, 0) / totals.length;
+  const peakDays = days.filter(([, arr]) => arr.length >= Math.max(5, avg * 1.5));
+
+  const events: DetectedEvent[] = [];
+  for (const [day, arr] of peakDays) {
+    const wordCounts = new Map<string, number>();
+    for (const c of arr) {
+      const seen = new Set<string>();
+      for (const w of tokenize(sanitize(c.comment_text))) {
+        if (STOP.has(w) || /^\d+$/.test(w)) continue;
+        if (seen.has(w)) continue;
+        seen.add(w);
+        wordCounts.set(w, (wordCounts.get(w) || 0) + 1);
+      }
+    }
+    const top = [...wordCounts.entries()]
+      .filter(([, n]) => n >= Math.max(3, Math.floor(arr.length * 0.15)))
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([w]) => w);
+    if (top.length < 2) continue;
+    events.push({
+      name: `Pico de menções em ${day} — ${top.slice(0, 2).join(', ')}`,
+      type: 'pico',
+      keywords: top,
+      start_date: day,
+      end_date: day,
+      mentions_estimate: arr.length,
+      description: `Concentração atípica de comentários em ${day}. Termos recorrentes: ${top.join(', ')}.`,
+    });
+    if (events.length >= 8) break;
+  }
+  return events;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
