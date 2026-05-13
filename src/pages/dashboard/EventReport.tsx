@@ -195,7 +195,7 @@ const EventReportPage = () => {
         <CardContent className="pt-6 space-y-4">
           <div className="flex flex-col sm:flex-row gap-4">
             <HelpTooltip text="Escolha o candidato cujo evento você quer analisar.">
-              <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
+              <Select value={selectedCandidate} onValueChange={handleCandidateChange}>
                 <SelectTrigger className="w-full sm:w-[280px]">
                   <SelectValue placeholder="Selecione um candidato" />
                 </SelectTrigger>
@@ -208,14 +208,43 @@ const EventReportPage = () => {
                 </SelectContent>
               </Select>
             </HelpTooltip>
-            <HelpTooltip text="Dê um nome pro evento (ex: 'Debate na TV') pra você lembrar depois.">
-              <Input
-                placeholder="Nome do evento (ex: Entrevista no Jornal X)"
-                value={eventName}
-                onChange={e => setEventName(e.target.value)}
-                className="w-full sm:w-[300px]"
-              />
+            <HelpTooltip text="A IA varre comentários dos últimos 3 meses e identifica eventos (entrevistas, debates, falas) que tiveram repercussão.">
+              <Button variant="outline" onClick={handleDetectEvents} disabled={isDetecting || !selectedCandidate}>
+                {isDetecting
+                  ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Detectando eventos...</>
+                  : <><Zap className="mr-2 h-4 w-4" />Detectar eventos com IA</>}
+              </Button>
             </HelpTooltip>
+          </div>
+
+          {detectedEvents.length > 0 && (
+            <HelpTooltip text="Selecione um evento detectado. Só os comentários sobre ele serão analisados.">
+              <Select value={selectedEventIdx} onValueChange={handleSelectEvent}>
+                <SelectTrigger className="w-full sm:w-[480px]">
+                  <SelectValue placeholder={`${detectedEvents.length} evento(s) detectado(s) — escolha um`} />
+                </SelectTrigger>
+                <SelectContent>
+                  {detectedEvents.map((e, i) => (
+                    <SelectItem key={i} value={String(i)}>
+                      {e.name} • {e.start_date} ({e.mentions_estimate} menções)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </HelpTooltip>
+          )}
+
+          {selectedEventIdx && detectedEvents[Number(selectedEventIdx)] && (
+            <div className="rounded-md border bg-muted/30 p-3 text-sm">
+              <p className="font-medium">{detectedEvents[Number(selectedEventIdx)].name}</p>
+              <p className="text-muted-foreground mt-1">{detectedEvents[Number(selectedEventIdx)].description}</p>
+              <div className="flex flex-wrap gap-1 mt-2">
+                {detectedEvents[Number(selectedEventIdx)].keywords.map((k, i) => (
+                  <Badge key={i} variant="secondary" className="text-xs">{k}</Badge>
+                ))}
+              </div>
+            </div>
+          )}
           </div>
           <div className="flex flex-col sm:flex-row gap-4 items-end">
             <div className="space-y-1">
