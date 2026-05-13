@@ -157,7 +157,7 @@ serve(async (req) => {
         sentiment: c.sentiment_label,
         likes: c.likes_count || 0,
         replies: c.replies_count || 0,
-        date: c.created_at,
+        date: c.original_posted_at || c.created_at,
       }));
 
     // AI analysis
