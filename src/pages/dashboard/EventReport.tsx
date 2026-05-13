@@ -73,10 +73,22 @@ const sentimentColors: Record<string, string> = {
   Neutro: "text-muted-foreground",
 };
 
+interface DetectedEvent {
+  name: string;
+  type: string;
+  keywords: string[];
+  start_date: string;
+  end_date: string;
+  mentions_estimate: number;
+  description: string;
+}
+
 const EventReportPage = () => {
   const { user } = useAuth();
   const [selectedCandidate, setSelectedCandidate] = useState("");
-  const [eventName, setEventName] = useState("");
+  const [detectedEvents, setDetectedEvents] = useState<DetectedEvent[]>([]);
+  const [selectedEventIdx, setSelectedEventIdx] = useState<string>("");
+  const [isDetecting, setIsDetecting] = useState(false);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [result, setResult] = useState<ReportResult | null>(null);
@@ -90,12 +102,51 @@ const EventReportPage = () => {
       if (error) throw error;
       return data || [];
     },
-    
   });
+
+  const handleCandidateChange = (id: string) => {
+    setSelectedCandidate(id);
+    setDetectedEvents([]);
+    setSelectedEventIdx("");
+    setResult(null);
+  };
+
+  const handleDetectEvents = async () => {
+    if (!selectedCandidate) { toast.error("Selecione um candidato"); return; }
+    setIsDetecting(true);
+    setDetectedEvents([]);
+    setSelectedEventIdx("");
+    try {
+      const { data, error } = await supabase.functions.invoke('detect-candidate-events', {
+        body: { candidateId: selectedCandidate, monthsBack: 3 },
+      });
+      if (error) throw error;
+      const evts: DetectedEvent[] = data.events || [];
+      setDetectedEvents(evts);
+      if (evts.length === 0) toast.info(data.message || "Nenhum evento detectado nos últimos meses.");
+      else toast.success(`${evts.length} evento(s) detectado(s)`);
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Erro ao detectar eventos");
+    } finally {
+      setIsDetecting(false);
+    }
+  };
+
+  const handleSelectEvent = (idx: string) => {
+    setSelectedEventIdx(idx);
+    const evt = detectedEvents[Number(idx)];
+    if (evt) {
+      setStartDate(evt.start_date);
+      setEndDate(evt.end_date);
+    }
+  };
 
   const handleGenerate = async () => {
     if (!selectedCandidate) { toast.error("Selecione um candidato"); return; }
     if (!startDate || !endDate) { toast.error("Defina o período do evento"); return; }
+
+    const evt = selectedEventIdx ? detectedEvents[Number(selectedEventIdx)] : null;
 
     setIsLoading(true);
     setResult(null);
@@ -110,7 +161,8 @@ const EventReportPage = () => {
           candidateId: selectedCandidate,
           startDate: sDate.toISOString(),
           endDate: eDate.toISOString(),
-          eventName: eventName || undefined,
+          eventName: evt?.name || undefined,
+          eventKeywords: evt?.keywords || undefined,
         },
       });
       if (error) throw error;
