@@ -245,7 +245,7 @@ const EventReportPage = () => {
               </div>
             </div>
           )}
-          </div>
+
           <div className="flex flex-col sm:flex-row gap-4 items-end">
             <div className="space-y-1">
               <label className="text-sm text-muted-foreground">Data Início</label>
