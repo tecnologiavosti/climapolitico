@@ -73,10 +73,22 @@ const sentimentColors: Record<string, string> = {
   Neutro: "text-muted-foreground",
 };
 
+interface DetectedEvent {
+  name: string;
+  type: string;
+  keywords: string[];
+  start_date: string;
+  end_date: string;
+  mentions_estimate: number;
+  description: string;
+}
+
 const EventReportPage = () => {
   const { user } = useAuth();
   const [selectedCandidate, setSelectedCandidate] = useState("");
-  const [eventName, setEventName] = useState("");
+  const [detectedEvents, setDetectedEvents] = useState<DetectedEvent[]>([]);
+  const [selectedEventIdx, setSelectedEventIdx] = useState<string>("");
+  const [isDetecting, setIsDetecting] = useState(false);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [result, setResult] = useState<ReportResult | null>(null);
@@ -90,12 +102,51 @@ const EventReportPage = () => {
       if (error) throw error;
       return data || [];
     },
-    
   });
+
+  const handleCandidateChange = (id: string) => {
+    setSelectedCandidate(id);
+    setDetectedEvents([]);
+    setSelectedEventIdx("");
+    setResult(null);
+  };
+
+  const handleDetectEvents = async () => {
+    if (!selectedCandidate) { toast.error("Selecione um candidato"); return; }
+    setIsDetecting(true);
+    setDetectedEvents([]);
+    setSelectedEventIdx("");
+    try {
+      const { data, error } = await supabase.functions.invoke('detect-candidate-events', {
+        body: { candidateId: selectedCandidate, monthsBack: 3 },
+      });
+      if (error) throw error;
+      const evts: DetectedEvent[] = data.events || [];
+      setDetectedEvents(evts);
+      if (evts.length === 0) toast.info(data.message || "Nenhum evento detectado nos últimos meses.");
+      else toast.success(`${evts.length} evento(s) detectado(s)`);
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Erro ao detectar eventos");
+    } finally {
+      setIsDetecting(false);
+    }
+  };
+
+  const handleSelectEvent = (idx: string) => {
+    setSelectedEventIdx(idx);
+    const evt = detectedEvents[Number(idx)];
+    if (evt) {
+      setStartDate(evt.start_date);
+      setEndDate(evt.end_date);
+    }
+  };
 
   const handleGenerate = async () => {
     if (!selectedCandidate) { toast.error("Selecione um candidato"); return; }
     if (!startDate || !endDate) { toast.error("Defina o período do evento"); return; }
+
+    const evt = selectedEventIdx ? detectedEvents[Number(selectedEventIdx)] : null;
 
     setIsLoading(true);
     setResult(null);
@@ -110,7 +161,8 @@ const EventReportPage = () => {
           candidateId: selectedCandidate,
           startDate: sDate.toISOString(),
           endDate: eDate.toISOString(),
-          eventName: eventName || undefined,
+          eventName: evt?.name || undefined,
+          eventKeywords: evt?.keywords || undefined,
         },
       });
       if (error) throw error;
@@ -143,7 +195,7 @@ const EventReportPage = () => {
         <CardContent className="pt-6 space-y-4">
           <div className="flex flex-col sm:flex-row gap-4">
             <HelpTooltip text="Escolha o candidato cujo evento você quer analisar.">
-              <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
+              <Select value={selectedCandidate} onValueChange={handleCandidateChange}>
                 <SelectTrigger className="w-full sm:w-[280px]">
                   <SelectValue placeholder="Selecione um candidato" />
                 </SelectTrigger>
@@ -156,15 +208,44 @@ const EventReportPage = () => {
                 </SelectContent>
               </Select>
             </HelpTooltip>
-            <HelpTooltip text="Dê um nome pro evento (ex: 'Debate na TV') pra você lembrar depois.">
-              <Input
-                placeholder="Nome do evento (ex: Entrevista no Jornal X)"
-                value={eventName}
-                onChange={e => setEventName(e.target.value)}
-                className="w-full sm:w-[300px]"
-              />
+            <HelpTooltip text="A IA varre comentários dos últimos 3 meses e identifica eventos (entrevistas, debates, falas) que tiveram repercussão.">
+              <Button variant="outline" onClick={handleDetectEvents} disabled={isDetecting || !selectedCandidate}>
+                {isDetecting
+                  ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Detectando eventos...</>
+                  : <><Zap className="mr-2 h-4 w-4" />Detectar eventos com IA</>}
+              </Button>
             </HelpTooltip>
           </div>
+
+          {detectedEvents.length > 0 && (
+            <HelpTooltip text="Selecione um evento detectado. Só os comentários sobre ele serão analisados.">
+              <Select value={selectedEventIdx} onValueChange={handleSelectEvent}>
+                <SelectTrigger className="w-full sm:w-[480px]">
+                  <SelectValue placeholder={`${detectedEvents.length} evento(s) detectado(s) — escolha um`} />
+                </SelectTrigger>
+                <SelectContent>
+                  {detectedEvents.map((e, i) => (
+                    <SelectItem key={i} value={String(i)}>
+                      {e.name} • {e.start_date} ({e.mentions_estimate} menções)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </HelpTooltip>
+          )}
+
+          {selectedEventIdx && detectedEvents[Number(selectedEventIdx)] && (
+            <div className="rounded-md border bg-muted/30 p-3 text-sm">
+              <p className="font-medium">{detectedEvents[Number(selectedEventIdx)].name}</p>
+              <p className="text-muted-foreground mt-1">{detectedEvents[Number(selectedEventIdx)].description}</p>
+              <div className="flex flex-wrap gap-1 mt-2">
+                {detectedEvents[Number(selectedEventIdx)].keywords.map((k, i) => (
+                  <Badge key={i} variant="secondary" className="text-xs">{k}</Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row gap-4 items-end">
             <div className="space-y-1">
               <label className="text-sm text-muted-foreground">Data Início</label>
