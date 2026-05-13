@@ -143,15 +143,15 @@ Responda APENAS com JSON válido (sem markdown):
       }
       console.log(`[detect-events] ✅ ${aiRes.provider}:${aiRes.model} -> ${result.events?.length || 0} eventos`);
     } catch (e) {
-      console.error('[detect-events] AI failed:', (e as Error).message);
-      return new Response(JSON.stringify({
-        events: [],
-        error: 'AI_UNAVAILABLE',
-        message: 'IA indisponível para detectar eventos. Use o modo manual informando datas.'
-      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      console.error('[detect-events] AI failed, using heuristic fallback:', (e as Error).message);
+      result = { events: heuristicEvents(comments) };
     }
 
-    const events = (result.events || []).filter(e => e.name && e.keywords?.length && e.start_date);
+    let events = (result.events || []).filter(e => e.name && e.keywords?.length && e.start_date);
+    if (events.length === 0) {
+      // Always offer at least the heuristic fallback so the dropdown is never empty when there is data
+      events = heuristicEvents(comments);
+    }
 
     return new Response(JSON.stringify({
       events,
