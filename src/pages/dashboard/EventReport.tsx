@@ -73,6 +73,81 @@ const sentimentColors: Record<string, string> = {
   Neutro: "text-muted-foreground",
 };
 
+const EVENT_STOP_WORDS = new Set([
+  'para','como','mais','muito','pela','pelo','isso','essa','esse','esta','este','entre','sobre','quando','onde','tambem','também','presidente','candidato','candidata','brasil','politica','política','governo','partido','povo','gente','tudo','todos','todas','agora','hoje','ontem','sempre','nunca','assim','porque','porquê','mesmo','quem','tem','tinha','foi','sao','são','dos','das','com','sem','por','seu','sua','meu','minha','nos','nas','que','dele','dela','aqui','ali','ainda','depois','antes','pouco','bom','boa','ruim','você','voce','eles','elas','dele','dela','ser','ter','vai','vou','era','pra','pro','não','nao','sim','cada','anos','contra','favor','https','http'
+]);
+
+const EVENT_PHRASES = [
+  'jornal nacional','jn','globo','debate','entrevista','podcast','flow','roda viva','cnn','band','sbt','record','fantástico','fantastico','pronunciamento','discurso','comício','comicio','sabatin','live','tv','rádio','radio','congresso','senado','câmara','camara','stf'
+];
+
+type LocalInteraction = {
+  comment_text: string | null;
+  original_posted_at: string | null;
+  created_at: string | null;
+  likes_count: number | null;
+  replies_count: number | null;
+};
+
+const normalizeEventText = (text: string) =>
+  text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+const tokenizeEventText = (text: string) => normalizeEventText(text).match(/[a-z0-9]{4,}/g) || [];
+
+const titleFromPhrase = (phrase: string) => phrase.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+function detectEventsFromInteractions(comments: LocalInteraction[], candidateName: string): DetectedEvent[] {
+  if (comments.length < 5) return [];
+
+  const candidateStop = new Set(tokenizeEventText(candidateName));
+  const byDay = new Map<string, LocalInteraction[]>();
+  comments.forEach((comment) => {
+    const day = (comment.original_posted_at || comment.created_at || '').substring(0, 10);
+    if (!day || !comment.comment_text) return;
+    byDay.set(day, [...(byDay.get(day) || []), comment]);
+  });
+
+  const days = [...byDay.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  const avg = days.reduce((sum, [, rows]) => sum + rows.length, 0) / Math.max(days.length, 1);
+  const peakDays = days.filter(([, rows]) => rows.length >= Math.max(4, avg * 1.25)).slice(0, 10);
+
+  return peakDays.map(([day, rows]) => {
+    const wordCounts = new Map<string, number>();
+    const phraseCounts = new Map<string, number>();
+
+    rows.forEach((row) => {
+      const normalized = normalizeEventText(row.comment_text || '');
+      EVENT_PHRASES.forEach((phrase) => {
+        if (normalized.includes(normalizeEventText(phrase))) {
+          phraseCounts.set(phrase, (phraseCounts.get(phrase) || 0) + 1);
+        }
+      });
+
+      const seen = new Set<string>();
+      tokenizeEventText(row.comment_text || '').forEach((word) => {
+        if (EVENT_STOP_WORDS.has(word) || candidateStop.has(word) || /^\d+$/.test(word) || seen.has(word)) return;
+        seen.add(word);
+        wordCounts.set(word, (wordCounts.get(word) || 0) + 1);
+      });
+    });
+
+    const phrases = [...phraseCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([phrase]) => phrase);
+    const words = [...wordCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([word]) => word);
+    const keywords = [...new Set([...phrases, ...words])].slice(0, 7);
+    const label = phrases[0] ? titleFromPhrase(phrases[0]) : words.slice(0, 2).join(', ');
+
+    return {
+      name: label ? `Repercussão: ${label} (${day})` : `Pico de repercussão em ${day}`,
+      type: phrases[0] ? 'evento' : 'pico',
+      keywords: keywords.length ? keywords : words,
+      start_date: day,
+      end_date: day,
+      mentions_estimate: rows.length,
+      description: `Evento detectado por concentração real de comentários em ${day}${keywords.length ? `. Termos associados: ${keywords.join(', ')}.` : '.'}`,
+    };
+  }).filter(event => event.keywords.length > 0).slice(0, 8);
+}
+
 interface DetectedEvent {
   name: string;
   type: string;
