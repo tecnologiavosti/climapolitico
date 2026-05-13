@@ -99,13 +99,14 @@ serve(async (req) => {
     const pageSize = 1000;
 
     while (true) {
+      // Use original_posted_at quando disponível (data real do comentário); fallback para created_at (coleta).
+      // Aplicamos OR para captar interações sem original_posted_at também.
       const { data: page, error } = await supabaseClient
         .from('social_interactions')
-        .select('comment_text, comment_author, sentiment_label, sentiment_score, likes_count, replies_count, shares_count, social_network, created_at')
+        .select('comment_text, comment_author, sentiment_label, sentiment_score, likes_count, replies_count, shares_count, social_network, created_at, original_posted_at')
         .eq('candidate_id', candidateId)
-        .gte('created_at', startDate)
-        .lte('created_at', endDate)
-        .order('created_at', { ascending: false })
+        .or(`and(original_posted_at.gte.${startDate},original_posted_at.lte.${endDate}),and(original_posted_at.is.null,created_at.gte.${startDate},created_at.lte.${endDate})`)
+        .order('original_posted_at', { ascending: false, nullsFirst: false })
         .range(offset, offset + pageSize - 1);
 
       if (error) { console.error(error); break; }
@@ -135,7 +136,8 @@ serve(async (req) => {
     // Daily volume breakdown
     const dailyVolume: Record<string, { total: number; positive: number; negative: number; neutral: number }> = {};
     comments.forEach(c => {
-      const day = c.created_at?.substring(0, 10) || 'unknown';
+      const ts = c.original_posted_at || c.created_at;
+      const day = ts?.substring(0, 10) || 'unknown';
       if (!dailyVolume[day]) dailyVolume[day] = { total: 0, positive: 0, negative: 0, neutral: 0 };
       dailyVolume[day].total++;
       if (c.sentiment_label === 'Positivo') dailyVolume[day].positive++;
@@ -155,7 +157,7 @@ serve(async (req) => {
         sentiment: c.sentiment_label,
         likes: c.likes_count || 0,
         replies: c.replies_count || 0,
-        date: c.created_at,
+        date: c.original_posted_at || c.created_at,
       }));
 
     // AI analysis
