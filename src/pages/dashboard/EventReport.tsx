@@ -179,6 +179,24 @@ const EventReportPage = () => {
     },
   });
 
+  const fetchLocalEvents = async (): Promise<DetectedEvent[]> => {
+    const since = new Date();
+    since.setMonth(since.getMonth() - 3);
+    const selectedCandidateData = candidates.find(candidate => candidate.id === selectedCandidate);
+
+    const { data, error } = await supabase
+      .from('social_interactions')
+      .select('comment_text, original_posted_at, created_at, likes_count, replies_count')
+      .eq('candidate_id', selectedCandidate)
+      .or(`original_posted_at.gte.${since.toISOString()},and(original_posted_at.is.null,created_at.gte.${since.toISOString()})`)
+      .not('comment_text', 'is', null)
+      .order('likes_count', { ascending: false, nullsFirst: false })
+      .limit(800);
+
+    if (error) throw error;
+    return detectEventsFromInteractions((data || []) as LocalInteraction[], selectedCandidateData?.full_name || '');
+  };
+
   const handleCandidateChange = (id: string) => {
     setSelectedCandidate(id);
     setDetectedEvents([]);
@@ -202,7 +220,15 @@ const EventReportPage = () => {
       else toast.success(`${evts.length} evento(s) detectado(s)`);
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || "Erro ao detectar eventos");
+      try {
+        const fallbackEvents = await fetchLocalEvents();
+        setDetectedEvents(fallbackEvents);
+        if (fallbackEvents.length === 0) toast.info("Nenhum evento detectado nos últimos meses.");
+        else toast.success(`${fallbackEvents.length} evento(s) detectado(s)`);
+      } catch (fallbackError: any) {
+        console.error(fallbackError);
+        toast.error(fallbackError.message || err.message || "Erro ao detectar eventos");
+      }
     } finally {
       setIsDetecting(false);
     }
