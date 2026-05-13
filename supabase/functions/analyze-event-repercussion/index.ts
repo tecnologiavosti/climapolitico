@@ -64,7 +64,7 @@ serve(async (req) => {
       });
     }
 
-    const { candidateId, startDate, endDate, eventName } = await req.json();
+    const { candidateId, startDate, endDate, eventName, eventKeywords } = await req.json();
     if (!candidateId || !startDate || !endDate) {
       return new Response(JSON.stringify({ error: 'candidateId, startDate e endDate são obrigatórios' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
