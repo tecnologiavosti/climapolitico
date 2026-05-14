@@ -204,6 +204,31 @@ const EventReportPage = () => {
     setResult(null);
   };
 
+  const refineEventCounts = async (events: DetectedEvent[]): Promise<DetectedEvent[]> => {
+    if (events.length === 0) return events;
+    const refined = await Promise.all(events.map(async (evt) => {
+      try {
+        const sDate = new Date(evt.start_date); sDate.setHours(0, 0, 0, 0);
+        const eDate = new Date(evt.end_date); eDate.setHours(23, 59, 59, 999);
+        let query = supabase
+          .from('social_interactions')
+          .select('id', { count: 'exact', head: true })
+          .eq('candidate_id', selectedCandidate)
+          .or(`and(original_posted_at.gte.${sDate.toISOString()},original_posted_at.lte.${eDate.toISOString()}),and(original_posted_at.is.null,created_at.gte.${sDate.toISOString()},created_at.lte.${eDate.toISOString()})`);
+        const kws = (evt.keywords || []).filter(Boolean);
+        if (kws.length > 0) {
+          const orExpr = kws.map(k => `comment_text.ilike.*${k.replace(/[*,()]/g, '')}*`).join(',');
+          query = query.or(orExpr);
+        }
+        const { count } = await query;
+        return { ...evt, mentions_estimate: count ?? evt.mentions_estimate };
+      } catch {
+        return evt;
+      }
+    }));
+    return refined;
+  };
+
   const handleDetectEvents = async () => {
     if (!selectedCandidate) { toast.error("Selecione um candidato"); return; }
     setIsDetecting(true);
@@ -214,20 +239,20 @@ const EventReportPage = () => {
         body: { candidateId: selectedCandidate, monthsBack: 3 },
       });
       if (error) throw error;
-      const evts: DetectedEvent[] = data.events || [];
+      const evts: DetectedEvent[] = await refineEventCounts(data.events || []);
       setDetectedEvents(evts);
-      if (evts.length === 0) toast.info(data.message || "Nenhum evento detectado nos últimos meses.");
-      else toast.success(`${evts.length} evento(s) detectado(s)`);
+      if (evts.length === 0) toast.info(data.message || "Nenhum pico detectado nos últimos meses.");
+      else toast.success(`${evts.length} pico(s) detectado(s)`);
     } catch (err: any) {
       console.error(err);
       try {
-        const fallbackEvents = await fetchLocalEvents();
+        const fallbackEvents = await refineEventCounts(await fetchLocalEvents());
         setDetectedEvents(fallbackEvents);
-        if (fallbackEvents.length === 0) toast.info("Nenhum evento detectado nos últimos meses.");
-        else toast.success(`${fallbackEvents.length} evento(s) detectado(s)`);
+        if (fallbackEvents.length === 0) toast.info("Nenhum pico detectado nos últimos meses.");
+        else toast.success(`${fallbackEvents.length} pico(s) detectado(s)`);
       } catch (fallbackError: any) {
         console.error(fallbackError);
-        toast.error(fallbackError.message || err.message || "Erro ao detectar eventos");
+        toast.error(fallbackError.message || err.message || "Erro ao detectar picos");
       }
     } finally {
       setIsDetecting(false);
