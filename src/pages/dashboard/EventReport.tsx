@@ -309,11 +309,11 @@ const EventReportPage = () => {
                 </SelectContent>
               </Select>
             </HelpTooltip>
-            <HelpTooltip text="A IA varre comentários dos últimos 3 meses e identifica eventos (entrevistas, debates, falas) que tiveram repercussão.">
+            <HelpTooltip text="A IA varre comentários dos últimos 3 meses e identifica picos de menções (entrevistas, debates, viralizações) que tiveram repercussão.">
               <Button variant="outline" onClick={handleDetectEvents} disabled={isDetecting || !selectedCandidate}>
                 {isDetecting
-                  ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Detectando eventos...</>
-                  : <><Zap className="mr-2 h-4 w-4" />Detectar eventos com IA</>}
+                  ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Identificando picos...</>
+                  : <><Zap className="mr-2 h-4 w-4" />Identificar picos</>}
               </Button>
             </HelpTooltip>
           </div>
