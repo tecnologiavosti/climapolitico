@@ -310,10 +310,10 @@ const EventReportPage = () => {
   return (
     <div className="space-y-6">
       <div>
-        <HelpTooltip text="Veja se um evento (debate, entrevista, comício) ajudou ou atrapalhou seu candidato.">
+        <HelpTooltip text="Descubra os picos de menções do candidato: debates, entrevistas, viralizações e momentos que mais repercutiram nas redes.">
         <h1 className="text-3xl font-bold">Picos de Menções</h1>
       </HelpTooltip>
-        <p className="text-muted-foreground mt-1">Analise a repercussão de entrevistas, eventos ou falas específicas.</p>
+        <p className="text-muted-foreground mt-1">Identifique os momentos de maior repercussão do candidato nas redes sociais.</p>
       </div>
 
       {/* Controls */}

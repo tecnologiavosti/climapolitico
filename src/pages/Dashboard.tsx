@@ -109,7 +109,7 @@ const Dashboard = () => {
                 <Route path="/rejection-analysis" element={wrap("RejectionAnalysis", RejectionAnalysis)} />
                 <Route path="/narrative-recommendations" element={wrap("NarrativeRecommendations", NarrativeRecommendations)} />
                 <Route path="/candidate-comparison" element={wrap("CandidateComparison", CandidateComparison)} />
-                <Route path="/event-report" element={wrap("EventReport", EventReport)} />
+                <Route path="/pico-mencao" element={wrap("EventReport", EventReport)} />
                 <Route path="/candidates" element={wrap("Candidates", Candidates)} />
                 <Route path="/candidates-catalog" element={wrap("CandidatesCatalog", CandidatesCatalog)} />
                 <Route path="/analytics-advanced" element={wrap("Analytics", Analytics)} />
