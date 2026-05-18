@@ -1,6 +1,7 @@
 // Classify Brazilian region of social_interactions rows.
 // Strategy: regex/heuristic first, then Cerebras (Llama 3.3 70B) in batch for the rest.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
