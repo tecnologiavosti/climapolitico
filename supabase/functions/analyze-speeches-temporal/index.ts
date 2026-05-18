@@ -273,15 +273,43 @@ Retorne no formato JSON especificado.`;
       }),
     });
 
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      console.error('AI API error:', aiResponse.status, errorText);
-      throw new Error(`AI analysis failed: ${aiResponse.status}`);
+    let analysisResult: any;
+    if (aiResponse.ok) {
+      const aiData = await aiResponse.json();
+      const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+      if (toolCall?.function?.arguments) {
+        analysisResult = JSON.parse(toolCall.function.arguments);
+      }
+    } else {
+      const errorText = await aiResponse.text().catch(() => '');
+      console.warn('Primary AI (tools) failed:', aiResponse.status, errorText.slice(0, 200));
     }
 
-    const aiData = await aiResponse.json();
-    const toolCall = aiData.choices[0].message.tool_calls[0];
-    const analysisResult = JSON.parse(toolCall.function.arguments);
+    // Fallback: JSON-mode via multi-provider chain
+    if (!analysisResult) {
+      console.log('🔁 Falling back to multi-provider JSON chain...');
+      try {
+        const fb = await callAIChatCompat({
+          systemMsg: 'Você é um analista político. Responda APENAS com JSON válido, sem markdown.',
+          userPrompt: `${prompt}\n\nResponda APENAS com JSON no formato exato: {"individual_speeches":[...],"period_summary":{...}}.`,
+          jsonMode: true,
+          maxTokens: 4000,
+          temperature: 0.4,
+          tag: 'analyze-speeches-temporal',
+        });
+        const content = fb.choices?.[0]?.message?.content || '{}';
+        const m = content.match(/\{[\s\S]*\}/);
+        analysisResult = JSON.parse(m?.[0] ?? content);
+        console.log(`✅ Fallback AI via ${fb.provider}:${fb.model}`);
+      } catch (e) {
+        const msg = (e as Error).message || 'AI indisponível';
+        return new Response(JSON.stringify({ error: msg }), {
+          status: /créditos/i.test(msg) ? 402 : /limite/i.test(msg) ? 429 : 503,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
 
     // Save to database
     const { data: savedAnalysis, error: saveError } = await supabase
