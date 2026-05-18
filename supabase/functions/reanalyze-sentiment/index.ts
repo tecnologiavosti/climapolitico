@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { callAIChatCompat } from "../_shared/cerebras-ai.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -78,33 +79,26 @@ Responda SOMENTE com um JSON array no formato: [{"label":"Positivo","score":0.85
 
     const userContent = clipped.map((text, i) => `${i + 1}. "${text}"`).join('\n');
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Analise o sentimento político de cada comentário abaixo:\n\n${userContent}` },
-        ],
+    let content = '';
+    try {
+      const data = await callAIChatCompat({
+        systemMsg: systemPrompt,
+        userPrompt: `Analise o sentimento político de cada comentário abaixo:\n\n${userContent}`,
+        jsonMode: false,
         temperature: 0.1,
-        max_tokens: clipped.length * 50 + 100,
-      }),
-    });
+        maxTokens: clipped.length * 50 + 100,
+        tag: 'reanalyze-sentiment',
+      });
+      content = data.choices?.[0]?.message?.content || '';
+      console.log(`[SENTIMENT] ✅ ${data.provider}:${data.model}`);
+    } catch (e) {
+      const msg = (e as Error).message || '';
+      console.error('[SENTIMENT] all providers failed:', msg);
+      if (/créditos/i.test(msg)) throw new Error(`AI_CREDITS_EXHAUSTED:${msg}`);
+      if (/limite/i.test(msg)) throw new Error(`AI_RATE_LIMITED:${msg}`);
+      throw new Error(`AI_GATEWAY_ERROR:${msg}`);
+    }
 
-     if (!response.ok) {
-       const errorText = await response.text().catch(() => '');
-       console.error(`[SENTIMENT] API error ${response.status}:`, errorText);
-       if (response.status === 429) throw new Error(`AI_RATE_LIMITED:${errorText}`);
-       if (response.status === 402) throw new Error(`AI_CREDITS_EXHAUSTED:${errorText}`);
-       throw new Error(`AI_GATEWAY_ERROR:${response.status}:${errorText}`);
-     }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || '';
 
     const jsonMatch = content.match(/\[[\s\S]*?\]/);
      if (!jsonMatch) {

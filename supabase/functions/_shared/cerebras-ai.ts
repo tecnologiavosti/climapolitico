@@ -241,3 +241,22 @@ export async function callAICerebrasFirst(opts: CerebrasCallOptions): Promise<Ce
 
   throw new Error(`AI providers exhausted. Last error: ${lastErr}`);
 }
+
+/**
+ * OpenAI-compatible wrapper. Returns a response shaped like the Lovable AI Gateway / OpenAI
+ * chat-completions API, so existing code that reads `data.choices[0].message.content`
+ * keeps working while gaining the full Cerebras→Groq→Gemini→Lovable fallback chain.
+ */
+export async function callAIChatCompat(opts: CerebrasCallOptions): Promise<{
+  choices: Array<{ message: { content: string } }>;
+  provider: string;
+  model: string;
+}> {
+  const r = await callAICerebrasFirst(opts);
+  return {
+    choices: [{ message: { content: r.content } }],
+    provider: r.provider,
+    model: r.model,
+  };
+}
+

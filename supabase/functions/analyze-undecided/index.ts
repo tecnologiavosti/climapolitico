@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { callAIChatCompat } from "../_shared/cerebras-ai.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -258,40 +259,27 @@ Retorne APENAS JSON válido (sem markdown):
 
     console.log('🤖 Calling AI for undecided voter analysis...');
     
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'openai/gpt-5-mini',
-        messages: [
-          { role: 'system', content: 'Você é um especialista em análise política. Retorne sempre JSON válido, sem markdown.' },
-          { role: 'user', content: aiPrompt }
-        ],
-        // OpenAI-compatible gateway: use max_completion_tokens (max_tokens is rejected for newer models)
-        max_completion_tokens: 1200,
-      }),
-    });
-
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      console.error('AI API error:', errorText);
+    let aiContent = '{}';
+    try {
+      const aiData = await callAIChatCompat({
+        systemMsg: 'Você é um especialista em análise política. Retorne sempre JSON válido, sem markdown.',
+        userPrompt: aiPrompt,
+        jsonMode: true,
+        maxTokens: 1200,
+        temperature: 0.4,
+        tag: 'analyze-undecided',
+      });
+      aiContent = aiData.choices?.[0]?.message?.content || '{}';
+      console.log(`✅ AI via ${aiData.provider}:${aiData.model}`);
+    } catch (e) {
+      const msg = (e as Error).message || 'AI indisponível';
+      console.error('AI providers exhausted:', msg);
       return new Response(
-        JSON.stringify({
-          error: `AI API error: ${aiResponse.status}`,
-          details: errorText,
-        }),
-        {
-          status: aiResponse.status,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+        JSON.stringify({ error: msg }),
+        { status: /créditos/i.test(msg) ? 402 : /limite/i.test(msg) ? 429 : 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const aiData = await aiResponse.json();
-    const aiContent = aiData.choices?.[0]?.message?.content || '{}';
     
     let aiAnalysis;
     try {

@@ -3,6 +3,7 @@
 // Usa Lovable AI Gateway (gpt-5-mini) com tool calling para garantir JSON válido.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { callAIChatCompat } from "../_shared/cerebras-ai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -75,57 +76,67 @@ Deno.serve(async (req) => {
 
 Use apenas usernames realistas (sem @ nem t.me/). Para subreddits, sem r/. Para keywords, frases curtas em português.`;
 
-    const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "openai/gpt-5-mini",
-        messages: [
-          { role: "system", content: "Você é um especialista em monitoramento político brasileiro. Responda apenas via tool call." },
-          { role: "user", content: prompt },
-        ],
-        tools: [{
-          type: "function",
-          function: {
-            name: "suggest_config",
-            description: "Retorna sugestões de canais, subreddits e keywords",
-            parameters: SCHEMA,
-          },
-        }],
-        tool_choice: { type: "function", function: { name: "suggest_config" } },
-        max_completion_tokens: 1500,
-      }),
-    });
-
-    if (aiResp.status === 429) {
-      return new Response(JSON.stringify({ error: "Limite de uso da IA atingido. Tente novamente em instantes." }), {
-        status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // Try tool-call (Lovable) first, then fall back to multi-provider JSON chain.
+    let parsed: any = null;
+    try {
+      const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "openai/gpt-5-mini",
+          messages: [
+            { role: "system", content: "Você é um especialista em monitoramento político brasileiro. Responda apenas via tool call." },
+            { role: "user", content: prompt },
+          ],
+          tools: [{
+            type: "function",
+            function: {
+              name: "suggest_config",
+              description: "Retorna sugestões de canais, subreddits e keywords",
+              parameters: SCHEMA,
+            },
+          }],
+          tool_choice: { type: "function", function: { name: "suggest_config" } },
+          max_completion_tokens: 1500,
+        }),
       });
-    }
-    if (aiResp.status === 402) {
-      return new Response(JSON.stringify({ error: "Créditos da IA esgotados." }), {
-        status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    if (!aiResp.ok) {
-      const errText = await aiResp.text();
-      console.error("[suggest-candidate-config] AI error:", aiResp.status, errText);
-      return new Response(JSON.stringify({ error: "Falha ao gerar sugestões" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      if (aiResp.ok) {
+        const data = await aiResp.json();
+        const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+        if (toolCall?.function?.arguments) parsed = JSON.parse(toolCall.function.arguments);
+      } else {
+        console.warn("[suggest-candidate-config] Lovable tool-call failed:", aiResp.status);
+      }
+    } catch (e) {
+      console.warn("[suggest-candidate-config] Lovable tool-call threw:", (e as Error).message);
     }
 
-    const data = await aiResp.json();
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall) {
-      return new Response(JSON.stringify({ error: "IA não retornou tool call" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (!parsed) {
+      try {
+        const fb = await callAIChatCompat({
+          systemMsg: "Você é um especialista em monitoramento político brasileiro. Responda APENAS com JSON válido seguindo exatamente o schema pedido.",
+          userPrompt: `${prompt}\n\nResponda APENAS JSON no formato: {"canais_telegram":[...],"subreddits":[...],"keywords":[...]}`,
+          jsonMode: true,
+          maxTokens: 1500,
+          temperature: 0.5,
+          tag: "suggest-candidate-config",
+        });
+        const content = fb.choices?.[0]?.message?.content || "{}";
+        const m = content.match(/\{[\s\S]*\}/);
+        parsed = JSON.parse(m?.[0] ?? content);
+        console.log(`✅ Fallback ${fb.provider}:${fb.model}`);
+      } catch (e) {
+        const msg = (e as Error).message || "AI indisponível";
+        return new Response(JSON.stringify({ error: msg }), {
+          status: /créditos/i.test(msg) ? 402 : /limite/i.test(msg) ? 429 : 503,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
-    const parsed = JSON.parse(toolCall.function.arguments);
+
 
     return new Response(JSON.stringify({
       canais_telegram: parsed.canais_telegram ?? [],

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { callAIChatCompat } from "../_shared/cerebras-ai.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -130,56 +131,32 @@ Retorne APENAS um JSON array válido, sem texto adicional.`;
 
     console.log('Calling Lovable AI...');
     
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
+    let aiResponse = "";
+    try {
+      const data = await callAIChatCompat({
+        systemMsg: systemPrompt,
+        userPrompt,
+        jsonMode: false,
         temperature: 0.3,
-        max_tokens: 2000,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('AI API error:', response.status, errorText);
-      
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: 'Limite de requisições excedido. Tente novamente mais tarde.' }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: 'Créditos de IA esgotados. Por favor, adicione créditos para continuar.' }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
+        maxTokens: 2000,
+        tag: "analyze-sentiment",
+      });
+      aiResponse = data.choices?.[0]?.message?.content ?? "";
+      console.log(`AI response received via ${data.provider}:${data.model}`);
+    } catch (e) {
+      const msg = (e as Error).message || "AI indisponível";
+      console.error("AI providers exhausted:", msg);
+      const status = /créditos/i.test(msg) ? 402 : /limite/i.test(msg) ? 429 : 503;
       return new Response(
-        JSON.stringify({ error: 'Erro no serviço de IA', details: errorText }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: msg }),
+        { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const data = await response.json();
-    console.log('AI response received');
-    
-    const aiResponse = data.choices?.[0]?.message?.content;
     if (!aiResponse) {
-      console.error('No content in AI response');
       return new Response(
         JSON.stringify({ error: 'Resposta de IA inválida' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 

@@ -2,6 +2,7 @@
 // Cache L1 (in-memory, per-invocation) + L2 (analysis_cache table, SHA-256 keyed)
 // Provider routing with circuit breaker (provider_health table)
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,35 +56,34 @@ function heuristic(text: string) {
 
 async function callLovable(text: string) {
   const t0 = Date.now();
-  const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${LOVABLE_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash-lite",
-      messages: [
-        { role: "system", content: "Você classifica sentimento político em PT-BR. Seja DECISIVO: use 'Neutro' APENAS quando o texto for puramente informativo, uma pergunta sem opinião, ou impossível de determinar polaridade. Comentários curtos de apoio ('Lula presidente', 'Parabéns', 'mito') são Positivo. Críticas, xingamentos, sarcasmo crítico são Negativo. Responda APENAS JSON: {\"label\":\"Positivo|Negativo|Neutro\",\"score\":-1..1,\"confidence\":0..1}" },
-        { role: "user", content: text.slice(0, 500) },
-      ],
-    }),
-  });
-  const latency = Date.now() - t0;
-  if (!r.ok) {
-    await sb.rpc("record_provider_call", { _provider: "lovable", _success: false, _latency_ms: latency });
-    throw new Error(`lovable ${r.status}`);
+  try {
+    const res = await callAICerebrasFirst({
+      systemMsg: "Você classifica sentimento político em PT-BR. Seja DECISIVO: use 'Neutro' APENAS quando o texto for puramente informativo, uma pergunta sem opinião, ou impossível de determinar polaridade. Comentários curtos de apoio ('Lula presidente', 'Parabéns', 'mito') são Positivo. Críticas, xingamentos, sarcasmo crítico são Negativo. Responda APENAS JSON: {\"label\":\"Positivo|Negativo|Neutro\",\"score\":-1..1,\"confidence\":0..1}",
+      userPrompt: text.slice(0, 500),
+      jsonMode: true,
+      maxTokens: 200,
+      temperature: 0.2,
+      tag: "sentiment-worker",
+    });
+    const latency = Date.now() - t0;
+    const content = res.content || "{}";
+    const m = content.match(/\{[\s\S]*?\}/);
+    const parsed = JSON.parse(m?.[0] ?? "{}");
+    await sb.rpc("record_provider_call", { _provider: res.provider, _success: true, _latency_ms: latency });
+    return {
+      label: parsed.label || "Neutro",
+      score: Number(parsed.score) || 0,
+      confidence: Number(parsed.confidence) || 0.5,
+    };
+  } catch (e) {
+    const latency = Date.now() - t0;
+    await sb.rpc("record_provider_call", { _provider: "ai_chain", _success: false, _latency_ms: latency });
+    throw e;
   }
-  const j = await r.json();
-  const content = j.choices?.[0]?.message?.content || "{}";
-  const m = content.match(/\{[^}]+\}/);
-  const parsed = JSON.parse(m?.[0] ?? "{}");
-  await sb.rpc("record_provider_call", { _provider: "lovable", _success: true, _latency_ms: latency });
-  return {
-    label: parsed.label || "Neutro",
-    score: Number(parsed.score) || 0,
-    confidence: Number(parsed.confidence) || 0.5,
-  };
 }
 
 const providers: Provider[] = [{ name: "lovable", call: callLovable }];
+
 
 async function analyze(text: string) {
   // Check provider health
