@@ -105,48 +105,59 @@ serve(async (req) => {
     
     const aiPrompt = prompt + '\n\nRetorne JSON com: trigger_words, problematic_segments, psychological_impact, affected_voter_profiles, emotional_analysis, risk_level, recommended_actions, communication_suggestions, confidence';
     
-    const [gemini3ProResponse, gpt5Response, geminiFlashResponse] = await Promise.all([
-      fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'google/gemini-3-pro-preview',
-          messages: [{ role: 'user', content: aiPrompt }]
-        })
-      }),
-      fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'openai/gpt-5',
-          messages: [{ role: 'user', content: aiPrompt }]
-        })
-      }),
-      fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'google/gemini-2.5-flash',
-          messages: [{ role: 'user', content: aiPrompt }]
-        })
-      })
+    // Try Lovable Gateway in parallel for cross-validation; for any model that fails, fall back to multi-provider chain.
+    async function callOneModel(model: string) {
+      try {
+        const r = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model, messages: [{ role: 'user', content: aiPrompt }] }),
+        });
+        if (r.ok) {
+          const d = await r.json();
+          return d.choices?.[0]?.message?.content || '';
+        }
+        console.warn(`[analyze-speech] ${model} failed ${r.status}, falling back`);
+      } catch (e) {
+        console.warn(`[analyze-speech] ${model} threw:`, (e as Error).message);
+      }
+      // Fallback
+      try {
+        const fb = await callAIChatCompat({
+          systemMsg: 'Você é um analista político. Responda APENAS JSON válido.',
+          userPrompt: aiPrompt,
+          jsonMode: true,
+          maxTokens: 1500,
+          temperature: 0.4,
+          tag: `analyze-speech:${model}`,
+        });
+        return fb.choices?.[0]?.message?.content || '';
+      } catch (e) {
+        console.error(`[analyze-speech] all providers failed for ${model}:`, (e as Error).message);
+        return '';
+      }
+    }
+
+    const [gemini3ProContent, gpt5Content, geminiFlashContent] = await Promise.all([
+      callOneModel('google/gemini-3-pro-preview'),
+      callOneModel('openai/gpt-5'),
+      callOneModel('google/gemini-2.5-flash'),
     ]);
-    
-    const [gemini3ProData, gpt5Data, geminiFlashData] = await Promise.all([
-      gemini3ProResponse.json(),
-      gpt5Response.json(),
-      geminiFlashResponse.json()
-    ]);
-    
-    // Parse results from all models
-    const parseResult = (data: any) => {
-      const content = data.choices[0].message.content;
-      return JSON.parse(content.includes('```') ? content.match(/\{[\s\S]*\}/)?.[0] || '{}' : content);
+
+    const parseContent = (content: string) => {
+      if (!content) return {};
+      try {
+        return JSON.parse(content.includes('```') ? content.match(/\{[\s\S]*\}/)?.[0] || '{}' : content);
+      } catch {
+        const m = content.match(/\{[\s\S]*\}/);
+        try { return m ? JSON.parse(m[0]) : {}; } catch { return {}; }
+      }
     };
-    
-    const gemini3ProResult = parseResult(gemini3ProData);
-    const gpt5Result = parseResult(gpt5Data);
-    const geminiFlashResult = parseResult(geminiFlashData);
+
+    const gemini3ProResult = parseContent(gemini3ProContent);
+    const gpt5Result = parseContent(gpt5Content);
+    const geminiFlashResult = parseContent(geminiFlashContent);
+
     
     console.log('✅ All 3 models completed speech analysis');
     
