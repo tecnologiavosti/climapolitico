@@ -3,6 +3,7 @@
 // Usa Lovable AI Gateway (gpt-5-mini) com tool calling para garantir JSON válido.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { callAIChatCompat } from "../_shared/cerebras-ai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
