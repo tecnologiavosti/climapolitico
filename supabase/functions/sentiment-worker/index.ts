@@ -2,6 +2,7 @@
 // Cache L1 (in-memory, per-invocation) + L2 (analysis_cache table, SHA-256 keyed)
 // Provider routing with circuit breaker (provider_health table)
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
