@@ -76,40 +76,24 @@ function heuristicRegion(text: string | null, author: string | null, profileUrl:
 }
 
 async function classifyBatchWithCerebras(items: { id: string; text: string }[]): Promise<Record<string, RegionLabel>> {
-  const apiKey = Deno.env.get("CEREBRAS_API_KEY");
-  if (!apiKey) throw new Error("CEREBRAS_API_KEY missing");
-
   const numbered = items.map((it, i) => `[${i + 1}] ${(it.text || "").slice(0, 400).replace(/\s+/g, " ")}`).join("\n");
 
   const sys = `Você é um classificador de região brasileira. Para cada texto numerado, escolha OBRIGATORIAMENTE uma das 5 regiões do Brasil: Norte, Nordeste, Centro-Oeste, Sudeste, Sul. NUNCA use "Indefinido" — você DEVE chutar com base em qualquer pista mínima (gírias, cidades, UF, times de futebol, sotaque escrito, nome de usuário, URL de perfil, temas políticos locais, governadores citados, prefeitos, deputados regionais, eventos locais).
 Quando não houver QUALQUER pista, distribua entre o lote seguindo a população do Brasil: Sudeste 42%, Nordeste 27%, Sul 14%, Norte 9%, Centro-Oeste 8%. Importante: GARANTA que pelo menos 1 item de cada lote de 25 receba "Centro-Oeste" e pelo menos 1 receba "Norte" — isso evita viés e reflete a realidade demográfica.
 Responda APENAS um JSON no formato {"results":[{"i":1,"region":"Sudeste"}, ...]}. Use exatamente esses 5 rótulos: Norte, Nordeste, Centro-Oeste, Sudeste, Sul.`;
 
-  const models = ["qwen-3-235b-a22b-instruct-2507", "llama3.1-8b"];
-  let json: any = null;
-  let lastErr = "";
-  for (const model of models) {
-    const resp = await fetch("https://api.cerebras.ai/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: sys },
-          { role: "user", content: numbered },
-        ],
-        response_format: { type: "json_object" },
-        max_tokens: 2000,
-        temperature: 0.4,
-      }),
-    });
-    if (resp.ok) { json = await resp.json(); break; }
-    lastErr = `${model} ${resp.status}: ${(await resp.text()).slice(0, 200)}`;
-    console.warn("[classify-region]", lastErr);
-  }
-  if (!json) throw new Error(`Cerebras failed: ${lastErr}`);
-  const content = json.choices?.[0]?.message?.content ?? "{}";
-  const parsed = JSON.parse(content);
+  const aiRes = await callAICerebrasFirst({
+    systemMsg: sys,
+    userPrompt: numbered,
+    jsonMode: true,
+    maxTokens: 2000,
+    temperature: 0.4,
+    tag: "classify-region",
+  });
+  const content = aiRes.content || "{}";
+  let parsed: any = {};
+  try { parsed = JSON.parse(content); } catch { const m = content.match(/\{[\s\S]*\}/); if (m) parsed = JSON.parse(m[0]); }
+  console.log(`[classify-region] ✅ ${aiRes.provider}:${aiRes.model}`);
   const out: Record<string, RegionLabel> = {};
   for (const r of parsed.results ?? []) {
     const idx = Number(r.i) - 1;
