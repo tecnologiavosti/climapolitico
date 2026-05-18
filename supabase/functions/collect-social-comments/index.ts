@@ -83,50 +83,24 @@ Retorne um JSON array com objetos {"label": "Positivo|Negativo|Neutro", "score":
 
     console.log(`[SENTIMENT:${requestId}] Entradas=${comments.length} | Exemplo="${comments[0]?.substring(0, 80)}..."`);
 
-    const maxAttempts = 3;
-    let lastStatus: number | undefined;
-    let lastBody = '';
-    let response: Response | null = null;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'google/gemini-2.5-flash',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: prompt }
-          ],
-          temperature: 0.1,
-          max_tokens: comments.length * 50 + 100,
-        }),
+    let content = '';
+    try {
+      const data = await callAIChatCompat({
+        systemMsg: systemPrompt,
+        userPrompt: prompt,
+        jsonMode: false,
+        temperature: 0.1,
+        maxTokens: comments.length * 50 + 100,
+        tag: `collect-social-comments:${requestId}`,
+        maxRetries: 2,
       });
-
-      if (response.ok) break;
-
-      lastStatus = response.status;
-      lastBody = await response.text().catch(() => '');
-      console.error(`[SENTIMENT:${requestId}] Gateway erro ${response.status} (tentativa ${attempt}/${maxAttempts}): ${lastBody.substring(0, 400)}`);
-
-      if (response.status === 429 && attempt < maxAttempts) {
-        const backoffMs = 1500 * attempt;
-        await new Promise((r) => setTimeout(r, backoffMs));
-        continue;
-      }
-      break;
-    }
-
-    if (!response || !response.ok) {
-      console.error(`[SENTIMENT:${requestId}] Falha definitiva (status=${lastStatus ?? 'desconhecido'}). Sentimento NÃO será persistido.`);
+      content = data.choices?.[0]?.message?.content || '';
+      console.log(`[SENTIMENT:${requestId}] ✅ ${data.provider}:${data.model}`);
+    } catch (e) {
+      console.error(`[SENTIMENT:${requestId}] Todos os provedores falharam:`, (e as Error).message);
       return null;
     }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || '';
     
     console.log(`[SENTIMENT:${requestId}] Saída bruta (500):`, content.substring(0, 500));
     
