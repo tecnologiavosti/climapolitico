@@ -524,6 +524,8 @@ Formate sua resposta como JSON com estes campos: sentiment, sentimentScore, ideo
 });
 
 async function analyzeWithAI(model: string, prompt: string, apiKey: string): Promise<Omit<AIResult, 'model'>> {
+  // Try Lovable Gateway with the requested model first; on failure, fall back to multi-provider chain.
+  let content = '';
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -536,15 +538,42 @@ async function analyzeWithAI(model: string, prompt: string, apiKey: string): Pro
         messages: [{ role: 'user', content: prompt }],
       }),
     });
-
-    if (!response.ok) {
-      throw new Error(`AI API error: ${response.status}`);
+    if (response.ok) {
+      const data = await response.json();
+      content = data.choices?.[0]?.message?.content || '';
+    } else {
+      console.warn(`Lovable ${model} failed ${response.status}, trying fallback chain`);
     }
+  } catch (e) {
+    console.warn(`Lovable ${model} threw, trying fallback chain:`, (e as Error).message);
+  }
 
-    const data = await response.json();
-    const content = data.choices[0].message.content;
+  if (!content) {
+    try {
+      const fb = await callAIChatCompat({
+        systemMsg: 'Você é um analista político. Responda APENAS JSON válido.',
+        userPrompt: prompt,
+        jsonMode: true,
+        maxTokens: 800,
+        temperature: 0.4,
+        tag: `analyze-candidate:${model}`,
+      });
+      content = fb.choices?.[0]?.message?.content || '';
+      console.log(`✅ Fallback ${fb.provider}:${fb.model} for requested ${model}`);
+    } catch (e) {
+      console.error(`All providers failed for ${model}:`, (e as Error).message);
+      return {
+        sentiment: 'neutral',
+        sentimentScore: 50,
+        confidence: 0.3,
+        ideology: 'neutral',
+        keywords: [],
+        reasoning: 'Analysis failed: all AI providers unavailable',
+      };
+    }
+  }
 
-    // Parse JSON response
+  try {
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
@@ -557,27 +586,18 @@ async function analyzeWithAI(model: string, prompt: string, apiKey: string): Pro
         reasoning: parsed.reasoning || '',
       };
     }
-
-    // Fallback if JSON parsing fails
-    return {
-      sentiment: 'neutral',
-      sentimentScore: 50,
-      confidence: 0.5,
-      ideology: 'neutral',
-      keywords: [],
-      reasoning: content,
-    };
-  } catch (error) {
-    console.error(`Error analyzing with ${model}:`, error);
-    return {
-      sentiment: 'neutral',
-      sentimentScore: 50,
-      confidence: 0.3,
-      ideology: 'neutral',
-      keywords: [],
-      reasoning: 'Analysis failed',
-    };
+  } catch (e) {
+    console.error('JSON parse failed:', (e as Error).message);
   }
+
+  return {
+    sentiment: 'neutral',
+    sentimentScore: 50,
+    confidence: 0.5,
+    ideology: 'neutral',
+    keywords: [],
+    reasoning: content.slice(0, 500),
+  };
 }
 
 function aggregateResults(results: AIResult[], candidate: any): AggregatedResult {
