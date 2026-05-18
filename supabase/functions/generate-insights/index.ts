@@ -316,57 +316,72 @@ Gere um insight estratégico identificando:
   if (!prompt) return null;
 
   try {
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: selectModelForInsightType(type),
-        messages: [
-          { role: 'system', content: 'Você é um analista político estratégico. Responda em português do Brasil.' },
-          { role: 'user', content: prompt }
-        ],
-        tools: [{
-          type: 'function',
-          function: {
-            name: 'create_insight',
-            description: 'Criar um insight estratégico estruturado',
-            parameters: {
-              type: 'object',
-              properties: {
-                title: { type: 'string', description: 'Título curto e impactante do insight' },
-                description: { type: 'string', description: 'Descrição detalhada do insight' },
-                recommended_actions: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  description: '2-3 ações práticas e específicas'
+    // Try tool-call (Lovable) first for structured output, then fall back to multi-provider JSON chain.
+    let insightData: any = null;
+    try {
+      const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: selectModelForInsightType(type),
+          messages: [
+            { role: 'system', content: 'Você é um analista político estratégico. Responda em português do Brasil.' },
+            { role: 'user', content: prompt }
+          ],
+          tools: [{
+            type: 'function',
+            function: {
+              name: 'create_insight',
+              description: 'Criar um insight estratégico estruturado',
+              parameters: {
+                type: 'object',
+                properties: {
+                  title: { type: 'string' },
+                  description: { type: 'string' },
+                  recommended_actions: { type: 'array', items: { type: 'string' } },
+                  confidence_score: { type: 'integer' }
                 },
-                confidence_score: { type: 'integer', description: 'Score de confiança 0-100' }
-              },
-              required: ['title', 'description', 'recommended_actions', 'confidence_score']
+                required: ['title', 'description', 'recommended_actions', 'confidence_score']
+              }
             }
-          }
-        }],
-        tool_choice: { type: 'function', function: { name: 'create_insight' } }
-      })
-    });
-
-    if (!response.ok) {
-      console.error('AI API error:', response.status, await response.text());
-      return null;
+          }],
+          tool_choice: { type: 'function', function: { name: 'create_insight' } }
+        })
+      });
+      if (response.ok) {
+        const result = await response.json();
+        const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
+        if (toolCall?.function?.arguments) insightData = JSON.parse(toolCall.function.arguments);
+      } else {
+        console.warn('Lovable tool-call failed:', response.status);
+      }
+    } catch (e) {
+      console.warn('Lovable tool-call threw:', (e as Error).message);
     }
 
-    const result = await response.json();
-    const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
-    
-    if (!toolCall) {
-      console.error('No tool call in AI response');
-      return null;
+    if (!insightData) {
+      try {
+        const fb = await callAIChatCompat({
+          systemMsg: 'Você é um analista político estratégico. Responda APENAS JSON válido em português do Brasil.',
+          userPrompt: `${prompt}\n\nResponda APENAS JSON: {"title":"...","description":"...","recommended_actions":["...","..."],"confidence_score":80}`,
+          jsonMode: true,
+          maxTokens: 800,
+          temperature: 0.5,
+          tag: 'generate-insights',
+        });
+        const content = fb.choices?.[0]?.message?.content || '{}';
+        const m = content.match(/\{[\s\S]*\}/);
+        insightData = JSON.parse(m?.[0] ?? content);
+        console.log(`✅ Insight fallback ${fb.provider}:${fb.model}`);
+      } catch (e) {
+        console.error('All AI providers failed for insight:', (e as Error).message);
+        return null;
+      }
     }
 
-    const insightData = JSON.parse(toolCall.function.arguments);
     
     return {
       title: insightData.title,
