@@ -113,8 +113,8 @@ const Auth = () => {
         await supabase.auth.setSession(result.tokens);
         navigate("/dashboard");
       }
-    } catch (e: any) {
-      toast({ title: "Erro Google", description: e?.message || "Falha", variant: "destructive" });
+    } catch (e: unknown) {
+      toast({ title: "Erro Google", description: e instanceof Error ? e.message : "Falha", variant: "destructive" });
       setLoading(false);
     }
   };
