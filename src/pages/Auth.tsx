@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { createLovableAuth } from "@lovable.dev/cloud-auth-js";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import { z } from "zod";
 const emailSchema = z.string().email("Email inválido");
 const passwordSchema = z.string().min(6, "Senha deve ter no mínimo 6 caracteres");
 const fullNameSchema = z.string().min(2, "Nome deve ter no mínimo 2 caracteres");
+const LOVABLE_PROJECT_ID = "a499df7b-ed03-4453-8bfa-ee4c0df3dd55";
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -97,10 +98,20 @@ const Auth = () => {
   const handleGoogle = async () => {
     setLoading(true);
     try {
-      const result = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
+      const oauth = createLovableAuth({ oauthBrokerUrl: "https://oauth.lovable.app/initiate" });
+      const result = await oauth.signInWithOAuth("google", {
+        redirect_uri: window.location.origin,
+        extraParams: { project_id: LOVABLE_PROJECT_ID },
+      });
       if (result.error) {
         toast({ title: "Erro Google", description: String(result.error), variant: "destructive" });
         setLoading(false);
+        return;
+      }
+      if (result.redirected) return;
+      if (result.tokens) {
+        await supabase.auth.setSession(result.tokens);
+        navigate("/dashboard");
       }
     } catch (e: any) {
       toast({ title: "Erro Google", description: e?.message || "Falha", variant: "destructive" });
