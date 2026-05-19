@@ -75,16 +75,16 @@ const Dashboard = () => {
           <AppSidebar />
         </div>
 
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col min-w-0">
           <header className="border-b glass sticky top-0 z-10">
-            <div className="flex items-center justify-between px-6 py-4">
-              <div className="flex items-center gap-4">
+            <div className="flex items-center justify-between gap-2 px-3 sm:px-6 py-3 sm:py-4">
+              <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
                 <SidebarTrigger aria-label="Abrir ou fechar menu lateral" />
-                <div data-onboarding="breadcrumbs">
+                <div data-onboarding="breadcrumbs" className="min-w-0 overflow-hidden hidden sm:block">
                   <Breadcrumbs />
                 </div>
               </div>
-              <div className="flex items-center gap-2" data-onboarding="user-menu">
+              <div className="flex items-center gap-2 shrink-0" data-onboarding="user-menu">
                 <Button
                   onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
                   variant="outline"
@@ -94,14 +94,14 @@ const Dashboard = () => {
                   {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                 </Button>
                 <Button onClick={signOut} variant="outline" size="sm" className="hover-lift" aria-label="Sair da conta">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Sair
+                  <LogOut className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Sair</span>
                 </Button>
               </div>
             </div>
           </header>
 
-          <main className="flex-1 p-6 animate-fade-in">
+          <main className="flex-1 p-3 sm:p-6 animate-fade-in overflow-x-hidden">
             <Suspense fallback={<PageLoader />}>
               <Routes>
                 <Route path="/" element={wrap("Overview", Overview)} />
