@@ -554,7 +554,7 @@ export default function Candidates() {
     (candidate.region && candidate.region.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const isLimitReached = subscription && candidates.length >= subscription.max_candidates;
+  const isLimitReached = false;
 
   return (
     <div className="space-y-6">
