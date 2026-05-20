@@ -3,7 +3,7 @@ import { useNavigate, Routes, Route } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSessionHealthCheck } from "@/hooks/useSessionHealthCheck";
 import { Button } from "@/components/ui/button";
-import { LogOut, Sun, Moon } from "lucide-react";
+import { LogOut, Sun, Moon, BarChart3 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
