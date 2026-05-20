@@ -12,6 +12,8 @@ export interface CerebrasCallOptions {
   cerebrasModels?: string[];
   groqModels?: string[];
   geminiModels?: string[];
+  openrouterModels?: string[];
+  mistralModels?: string[];
   lovableModel?: string;
   tag?: string;
   // Max retry attempts per model on transient errors (429, 5xx)
@@ -21,7 +23,7 @@ export interface CerebrasCallOptions {
 export interface CerebrasCallResult {
   content: string;
   raw: any;
-  provider: "cerebras" | "groq" | "gemini" | "lovable";
+  provider: "cerebras" | "groq" | "gemini" | "openrouter" | "mistral" | "lovable";
   model: string;
   quotaExceeded: boolean;
 }
