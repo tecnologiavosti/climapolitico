@@ -855,8 +855,8 @@ export default function Candidates() {
                             <Badge variant="outline" className="text-xs">Nunca coletado</Badge>
                           )}
                         </TableCell>
-                        <TableCell className="text-right p-2 sm:p-4">
-                          <div className="grid grid-cols-4 gap-1 sm:flex sm:justify-end sm:gap-2 sm:flex-nowrap">
+                        <TableCell className="text-right p-2 sm:p-4 align-top">
+                          <div className="grid grid-cols-4 gap-1.5 w-[140px] sm:w-auto sm:flex sm:justify-end sm:gap-2 sm:flex-nowrap [&_button]:h-8 [&_button]:w-8 [&_button]:p-0 sm:[&_button]:h-9 sm:[&_button]:w-9">
                             <TooltipProvider>
                               {/* View Details Button */}
                               <Tooltip>
