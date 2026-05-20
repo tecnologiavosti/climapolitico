@@ -322,7 +322,7 @@ const EventReportPage = () => {
           <div className="flex flex-row flex-wrap gap-3 items-end">
             <HelpTooltip text="Escolha o candidato cujo evento você quer analisar.">
               <Select value={selectedCandidate} onValueChange={handleCandidateChange}>
-                <SelectTrigger className="w-[160px] sm:w-[280px]">
+                <SelectTrigger className="w-[140px] sm:w-[280px]">
                   <SelectValue placeholder="Selecione um candidato" />
                 </SelectTrigger>
                 <SelectContent>
@@ -335,10 +335,10 @@ const EventReportPage = () => {
               </Select>
             </HelpTooltip>
             <HelpTooltip text="A IA varre comentários dos últimos 3 meses e identifica picos de menções (entrevistas, debates, viralizações) que tiveram repercussão.">
-              <Button variant="outline" onClick={handleDetectEvents} disabled={isDetecting || !selectedCandidate}>
+              <Button variant="outline" size="sm" className="sm:size-default" onClick={handleDetectEvents} disabled={isDetecting || !selectedCandidate}>
                 {isDetecting
-                  ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Identificando picos...</>
-                  : <><Zap className="mr-2 h-4 w-4" />Identificar picos</>}
+                  ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Detectando...</>
+                  : <><Zap className="mr-2 h-4 w-4" />Picos</>}
               </Button>
             </HelpTooltip>
           </div>
@@ -376,13 +376,13 @@ const EventReportPage = () => {
             <div className="space-y-1">
               <label className="text-sm text-muted-foreground">Data Início</label>
               <HelpTooltip text="Dia em que o evento começou.">
-                <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-[140px] sm:w-[180px]" />
+                <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-[130px] sm:w-[180px]" />
               </HelpTooltip>
             </div>
             <div className="space-y-1">
               <label className="text-sm text-muted-foreground">Data Fim</label>
               <HelpTooltip text="Até quando você quer analisar a repercussão.">
-                <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-[140px] sm:w-[180px]" />
+                <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-[130px] sm:w-[180px]" />
               </HelpTooltip>
             </div>
             <HelpTooltip text="Clica aqui pra IA olhar tudo que falaram nesse período e te dizer se foi bom ou ruim.">
