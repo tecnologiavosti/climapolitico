@@ -216,7 +216,70 @@ export async function callAICerebrasFirst(opts: CerebrasCallOptions): Promise<Ce
     }
   }
 
-  // 4) Lovable AI Gateway (last resort)
+  // 4) OpenRouter (free tier with multiple models)
+  if (OPENROUTER_API_KEY) {
+    for (const model of openrouterModels) {
+      const res = await callWithRetry(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://climapolitico.lovable.app",
+            "X-Title": "Clima Politico",
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+            ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+            max_tokens: maxTokens,
+            temperature,
+          }),
+        },
+        maxRetries,
+        tag,
+        `openrouter:${model}`,
+      );
+      if (res.ok) {
+        const content = res.json?.choices?.[0]?.message?.content ?? "";
+        if (content) return { content, raw: res.json, provider: "openrouter", model, quotaExceeded };
+      }
+      lastErr = `openrouter:${model} ${res.status}: ${res.text}`;
+      if (isQuotaError(res.status, res.text)) break;
+    }
+  }
+
+  // 5) Mistral
+  if (MISTRAL_API_KEY) {
+    for (const model of mistralModels) {
+      const res = await callWithRetry(
+        "https://api.mistral.ai/v1/chat/completions",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${MISTRAL_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model,
+            messages,
+            ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+            max_tokens: maxTokens,
+            temperature,
+          }),
+        },
+        maxRetries,
+        tag,
+        `mistral:${model}`,
+      );
+      if (res.ok) {
+        const content = res.json?.choices?.[0]?.message?.content ?? "";
+        if (content) return { content, raw: res.json, provider: "mistral", model, quotaExceeded };
+      }
+      lastErr = `mistral:${model} ${res.status}: ${res.text}`;
+      if (isQuotaError(res.status, res.text)) break;
+    }
+  }
+
+  // 6) Lovable AI Gateway (last resort)
   if (LOVABLE_API_KEY) {
     const res = await callWithRetry(
       "https://ai.gateway.lovable.dev/v1/chat/completions",
