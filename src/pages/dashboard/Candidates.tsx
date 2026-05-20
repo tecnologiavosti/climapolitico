@@ -786,7 +786,7 @@ export default function Candidates() {
                 <TableHead className="hidden sm:table-cell">Menções</TableHead>
                 <TableHead>Sentimento</TableHead>
                 <TableHead className="hidden md:table-cell">Última Coleta</TableHead>
-                <TableHead className="hidden md:table-cell text-right">Ações</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -855,8 +855,8 @@ export default function Candidates() {
                             <Badge variant="outline" className="text-xs">Nunca coletado</Badge>
                           )}
                         </TableCell>
-                        <TableCell className="hidden md:table-cell text-right">
-                          <div className="flex justify-end gap-1 sm:gap-2 flex-nowrap">
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1 flex-wrap">
                             <TooltipProvider>
                               {/* View Details Button */}
                               <Tooltip>
