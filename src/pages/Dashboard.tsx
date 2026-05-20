@@ -8,6 +8,7 @@ import { useTheme } from "next-themes";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { RouteErrorBoundary } from "@/components/RouteErrorBoundary";
+import { MobileBottomNav } from "@/components/MobileBottomNav";
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs";
 import { PageLoader } from "@/components/ui/page-loader";
 import { useOnboarding } from "@/hooks/useOnboarding";
@@ -101,7 +102,7 @@ const Dashboard = () => {
             </div>
           </header>
 
-          <main className="flex-1 p-3 sm:p-6 animate-fade-in overflow-x-hidden">
+          <main className="flex-1 p-3 sm:p-6 pb-20 md:pb-6 animate-fade-in overflow-x-hidden">
             <Suspense fallback={<PageLoader />}>
               <Routes>
                 <Route path="/" element={wrap("Overview", Overview)} />
@@ -135,6 +136,7 @@ const Dashboard = () => {
             </Suspense>
           </main>
         </div>
+        <MobileBottomNav />
       </div>
 
       <OnboardingTour
