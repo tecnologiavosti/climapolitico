@@ -1,6 +1,7 @@
 // Shared helper: multi-provider AI calls with automatic fallback chain.
-// Chain: Cerebras → Groq → Gemini direct → Lovable AI Gateway
+// Chain: Cerebras → Groq → Gemini → OpenRouter → Mistral → Lovable AI Gateway
 // Each provider is retried on transient errors (429/5xx) with exponential backoff.
+// Circuit breaker: providers marked as "open" in provider_health are skipped.
 
 export interface CerebrasCallOptions {
   systemMsg: string;
