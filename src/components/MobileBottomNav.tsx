@@ -157,21 +157,11 @@ export function MobileBottomNav() {
         <SheetContent
           side="bottom"
           className="md:hidden h-[88vh] rounded-t-3xl p-0 flex flex-col"
-          hideClose
         >
           {/* Drag handle */}
           <div className="pt-3 pb-1 flex justify-center shrink-0">
             <div className="h-1.5 w-12 rounded-full bg-muted-foreground/30" />
           </div>
-
-          {/* Close */}
-          <button
-            onClick={() => setOpen(false)}
-            className="absolute top-4 right-4 p-1 rounded-full hover:bg-muted"
-            aria-label="Fechar"
-          >
-            <X className="h-5 w-5" />
-          </button>
 
           {/* Profile header */}
           <div className="px-5 py-3 flex items-center gap-3 border-b shrink-0">
