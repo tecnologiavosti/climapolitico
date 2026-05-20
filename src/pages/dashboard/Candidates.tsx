@@ -783,9 +783,9 @@ export default function Candidates() {
               <TableRow>
                 <TableHead className="w-10"></TableHead>
                 <TableHead>Candidato</TableHead>
-                <TableHead>Menções</TableHead>
+                <TableHead className="hidden sm:table-cell">Menções</TableHead>
                 <TableHead>Sentimento</TableHead>
-                <TableHead>Última Coleta</TableHead>
+                <TableHead className="hidden md:table-cell">Última Coleta</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
@@ -824,7 +824,7 @@ export default function Candidates() {
                             <p className="text-sm text-muted-foreground">{candidate.region || 'N/A'}</p>
                           </div>
                         </TableCell>
-                        <TableCell>{candidate.mentions?.toLocaleString() || 0}</TableCell>
+                        <TableCell className="hidden sm:table-cell">{candidate.mentions?.toLocaleString() || 0}</TableCell>
                         <TableCell>
                           {candidate.sentiment !== null ? (
                             <div className="flex items-center gap-2">
@@ -841,7 +841,7 @@ export default function Candidates() {
                           )}
                         </TableCell>
                         {/* Coluna de Tendência removida temporariamente - só exibir quando houver comparação real de períodos */}
-                        <TableCell>
+                        <TableCell className="hidden md:table-cell">
                           {candidate.last_analysis_at ? (
                             <span className="text-sm text-muted-foreground">
                               {new Date(candidate.last_analysis_at).toLocaleDateString('pt-BR', {
@@ -856,7 +856,7 @@ export default function Candidates() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-1 sm:gap-2 flex-nowrap">
+                          <div className="flex justify-end gap-1 flex-wrap">
                             <TooltipProvider>
                               {/* View Details Button */}
                               <Tooltip>
