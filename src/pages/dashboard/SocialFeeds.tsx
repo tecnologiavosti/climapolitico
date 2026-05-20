@@ -96,6 +96,45 @@ const sentimentVariant = (label: string | null): "default" | "secondary" | "dest
   return "outline";
 };
 
+// Detecta conteúdo que parece código/markup e deve ser ocultado do feed
+const looksLikeCode = (text: string | null): boolean => {
+  if (!text) return false;
+  const t = text.trim();
+  if (t.length < 3) return false;
+  const codePatterns: RegExp[] = [
+    /<\/?[a-z][\s\S]*?>/i,                       // tags HTML/XML
+    /&(?:lt|gt|amp|quot|nbsp|#\d+);/i,           // entidades HTML
+    /\b(function|const|let|var|return|import|export|class)\s/, // JS
+    /=>\s*[\{\(]/,                               // arrow functions
+    /\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}/,           // templates
+    /\$\{[^}]+\}/,                               // template literals
+    /^\s*(?:SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER)\s/i, // SQL
+    /^\s*[\[\{][\s\S]*[\]\}]\s*$/,               // JSON puro
+    /\b(?:document|window|console)\.[a-z]/i,     // JS APIs
+    /```|^\s{4,}\S/m,                            // code fences / indent
+    /\b[a-z_][\w-]*\s*:\s*[^,\n]+;/i,            // CSS-like
+  ];
+  let hits = 0;
+  for (const re of codePatterns) if (re.test(t)) hits++;
+  // densidade de símbolos típicos de código
+  const symbols = (t.match(/[<>{};=]/g) || []).length;
+  const density = symbols / Math.max(t.length, 1);
+  return hits >= 2 || density > 0.08;
+};
+
+const dedupeItems = (arr: FeedItem[]): FeedItem[] => {
+  const seen = new Set<string>();
+  const out: FeedItem[] = [];
+  for (const it of arr) {
+    const norm = (it.comment_text || "").toLowerCase().replace(/\s+/g, " ").trim().slice(0, 200);
+    const key = `${it.author_profile_url || it.comment_author || ""}::${norm}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(it);
+  }
+  return out;
+};
+
 function NetworkFeed({ network }: { network: NetworkConfig }) {
   const [candidates, setCandidates] = useState<CandidateOption[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState<string>("all");
@@ -160,6 +199,11 @@ function NetworkFeed({ network }: { network: NetworkConfig }) {
   }, [candidates]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const visibleItems = useMemo(
+    () => dedupeItems(items.filter((it) => !looksLikeCode(it.comment_text))),
+    [items]
+  );
+  const hiddenCount = items.length - visibleItems.length;
 
   const handleRunCollector = async () => {
     if (!network.collectorFn) {
@@ -230,16 +274,22 @@ function NetworkFeed({ network }: { network: NetworkConfig }) {
             <Skeleton key={i} className="h-28 w-full" />
           ))}
         </div>
-      ) : items.length === 0 ? (
+      ) : visibleItems.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
-            Nenhum item de {network.label} encontrado ainda.
-            {network.collectorFn ? ' Clique em "Coletar agora" para iniciar.' : " A coleta acontece automaticamente."}
+            Nenhum item válido de {network.label} para exibir
+            {hiddenCount > 0 ? ` (${hiddenCount} item(ns) ocultos por conterem código ou duplicatas).` : "."}
+            {network.collectorFn ? ' Clique em "Coletar agora" para buscar mais.' : " A coleta acontece automaticamente."}
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-3">
-          {items.map((p) => {
+          {hiddenCount > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {hiddenCount} item(ns) ocultos nesta página (código ou duplicatas).
+            </p>
+          )}
+          {visibleItems.map((p) => {
             const { title, description } = splitTitleDescription(p.comment_text);
             const date = p.original_posted_at || p.collected_at;
             return (
