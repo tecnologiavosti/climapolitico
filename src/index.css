@@ -133,10 +133,23 @@ All colors MUST be HSL.
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    /* Render desktop layout on mobile (viewport meta is fixed at 1280px).
-       Browser will scale the page down to fit smaller screens, keeping
-       all grids, charts and buttons side-by-side just like on desktop. */
-    min-width: 1280px;
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+
+  /* Mobile: promove grids de coluna única para 2 colunas, mantendo
+     os blocos lado a lado como no desktop. Aplica-se também a flex-col
+     com utilitários comuns de KPI/cards. */
+  @media (max-width: 640px) {
+    .grid.grid-cols-1 {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+    /* Reduz fontes grandes para caber 2 colunas confortavelmente */
+    .text-4xl { font-size: 1.5rem !important; line-height: 1.2 !important; }
+    .text-3xl { font-size: 1.25rem !important; line-height: 1.2 !important; }
+    .text-2xl { font-size: 1.125rem !important; line-height: 1.25 !important; }
+    /* Quebra palavras longas (URLs, handles) dentro de cards estreitos */
+    .card, [class*="card"] { overflow-wrap: anywhere; word-break: break-word; }
   }
 
   h1, h2, h3, h4, h5, h6 {
