@@ -560,18 +560,18 @@ export default function Candidates() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
+        <div className="w-full sm:w-auto">
           <HelpTooltip text="Aqui você adiciona, remove e cuida dos candidatos que está acompanhando.">
-            <h2 className="text-3xl font-bold">Candidatos</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold">Candidatos</h2>
           </HelpTooltip>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground text-sm sm:text-base">
             Gerencie e monitore candidatos políticos
-            <span className="ml-2 text-sm">
+            <span className="ml-2 text-xs sm:text-sm">
               ({candidates.length} candidato{candidates.length === 1 ? '' : 's'})
             </span>
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto [&>*]:flex-1 sm:[&>*]:flex-none [&_button]:w-full sm:[&_button]:w-auto">
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -856,7 +856,7 @@ export default function Candidates() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
+                          <div className="flex justify-end gap-1 sm:gap-2 flex-nowrap">
                             <TooltipProvider>
                               {/* View Details Button */}
                               <Tooltip>
