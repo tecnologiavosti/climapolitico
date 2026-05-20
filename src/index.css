@@ -140,7 +140,10 @@ All colors MUST be HSL.
   /* Mobile: promove grids de coluna única para 2 colunas, mantendo
      os blocos lado a lado como no desktop. */
   @media (max-width: 640px) {
-    .grid.grid-cols-1 {
+    /* Só promove para 2 colunas grids de KPIs (md:grid-cols-*).
+       Grids de gráficos usam lg:grid-cols-* e ficam em coluna única
+       para o gráfico ter largura suficiente. */
+    .grid.grid-cols-1[class*="md\:grid-cols-"] {
       grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
       gap: 0.75rem !important;
     }
