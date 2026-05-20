@@ -199,6 +199,11 @@ function NetworkFeed({ network }: { network: NetworkConfig }) {
   }, [candidates]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const visibleItems = useMemo(
+    () => dedupeItems(items.filter((it) => !looksLikeCode(it.comment_text))),
+    [items]
+  );
+  const hiddenCount = items.length - visibleItems.length;
 
   const handleRunCollector = async () => {
     if (!network.collectorFn) {
