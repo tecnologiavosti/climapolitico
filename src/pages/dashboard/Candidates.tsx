@@ -566,11 +566,9 @@ export default function Candidates() {
           </HelpTooltip>
           <p className="text-muted-foreground">
             Gerencie e monitore candidatos políticos
-            {subscription && (
-              <span className="ml-2 text-sm">
-                ({candidates.length} / {subscription.max_candidates} candidatos)
-              </span>
-            )}
+            <span className="ml-2 text-sm">
+              ({candidates.length} candidato{candidates.length === 1 ? '' : 's'})
+            </span>
           </p>
         </div>
         <div className="flex gap-2">
