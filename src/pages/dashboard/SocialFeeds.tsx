@@ -274,16 +274,22 @@ function NetworkFeed({ network }: { network: NetworkConfig }) {
             <Skeleton key={i} className="h-28 w-full" />
           ))}
         </div>
-      ) : items.length === 0 ? (
+      ) : visibleItems.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
-            Nenhum item de {network.label} encontrado ainda.
-            {network.collectorFn ? ' Clique em "Coletar agora" para iniciar.' : " A coleta acontece automaticamente."}
+            Nenhum item válido de {network.label} para exibir
+            {hiddenCount > 0 ? ` (${hiddenCount} item(ns) ocultos por conterem código ou duplicatas).` : "."}
+            {network.collectorFn ? ' Clique em "Coletar agora" para buscar mais.' : " A coleta acontece automaticamente."}
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-3">
-          {items.map((p) => {
+          {hiddenCount > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {hiddenCount} item(ns) ocultos nesta página (código ou duplicatas).
+            </p>
+          )}
+          {visibleItems.map((p) => {
             const { title, description } = splitTitleDescription(p.comment_text);
             const date = p.original_posted_at || p.collected_at;
             return (
