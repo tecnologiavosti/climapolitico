@@ -100,9 +100,7 @@ export default function Candidates() {
 
       const validatedData = candidateSchema.parse(formData);
 
-      if (subscription && candidates.length >= subscription.max_candidates) {
-        throw new Error(`Limite de ${subscription.max_candidates} candidatos atingido. Faça upgrade do seu plano.`);
-      }
+      // Limite de candidatos removido — usuários podem adicionar quantos quiserem.
 
       const { data, error } = await supabase
         .from('candidates')
@@ -556,7 +554,7 @@ export default function Candidates() {
     (candidate.region && candidate.region.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const isLimitReached = subscription && candidates.length >= subscription.max_candidates;
+  const isLimitReached = false;
 
   return (
     <div className="space-y-6">
@@ -568,11 +566,9 @@ export default function Candidates() {
           </HelpTooltip>
           <p className="text-muted-foreground">
             Gerencie e monitore candidatos políticos
-            {subscription && (
-              <span className="ml-2 text-sm">
-                ({candidates.length} / {subscription.max_candidates} candidatos)
-              </span>
-            )}
+            <span className="ml-2 text-sm">
+              ({candidates.length} candidato{candidates.length === 1 ? '' : 's'})
+            </span>
           </p>
         </div>
         <div className="flex gap-2">
@@ -660,17 +656,9 @@ export default function Candidates() {
             <DialogHeader>
               <DialogTitle>Adicionar Novo Candidato</DialogTitle>
               <DialogDescription>
-                {subscription
-                  ? `Plano ${String(subscription.tier).toUpperCase()} — ${candidates.length}/${subscription.max_candidates} candidatos utilizados.`
-                  : "Insira as informações do candidato que deseja monitorar."}
+                Insira as informações do candidato que deseja monitorar.
               </DialogDescription>
             </DialogHeader>
-            {isLimitReached && (
-              <div className="mt-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-                Você atingiu o limite de <strong>{subscription?.max_candidates}</strong> candidatos do plano <strong>{String(subscription?.tier).toUpperCase()}</strong>.
-                Remova um candidato existente ou faça upgrade para adicionar mais.
-              </div>
-            )}
             <form onSubmit={handleSubmit} className="space-y-4 mt-4">
               <div className="space-y-2">
                 <Label htmlFor="fullName">Nome Completo *</Label>
