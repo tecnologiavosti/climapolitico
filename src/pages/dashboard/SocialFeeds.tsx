@@ -96,6 +96,45 @@ const sentimentVariant = (label: string | null): "default" | "secondary" | "dest
   return "outline";
 };
 
+// Detecta conteúdo que parece código/markup e deve ser ocultado do feed
+const looksLikeCode = (text: string | null): boolean => {
+  if (!text) return false;
+  const t = text.trim();
+  if (t.length < 3) return false;
+  const codePatterns: RegExp[] = [
+    /<\/?[a-z][\s\S]*?>/i,                       // tags HTML/XML
+    /&(?:lt|gt|amp|quot|nbsp|#\d+);/i,           // entidades HTML
+    /\b(function|const|let|var|return|import|export|class)\s/, // JS
+    /=>\s*[\{\(]/,                               // arrow functions
+    /\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}/,           // templates
+    /\$\{[^}]+\}/,                               // template literals
+    /^\s*(?:SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER)\s/i, // SQL
+    /^\s*[\[\{][\s\S]*[\]\}]\s*$/,               // JSON puro
+    /\b(?:document|window|console)\.[a-z]/i,     // JS APIs
+    /```|^\s{4,}\S/m,                            // code fences / indent
+    /\b[a-z_][\w-]*\s*:\s*[^,\n]+;/i,            // CSS-like
+  ];
+  let hits = 0;
+  for (const re of codePatterns) if (re.test(t)) hits++;
+  // densidade de símbolos típicos de código
+  const symbols = (t.match(/[<>{};=]/g) || []).length;
+  const density = symbols / Math.max(t.length, 1);
+  return hits >= 2 || density > 0.08;
+};
+
+const dedupeItems = (arr: FeedItem[]): FeedItem[] => {
+  const seen = new Set<string>();
+  const out: FeedItem[] = [];
+  for (const it of arr) {
+    const norm = (it.comment_text || "").toLowerCase().replace(/\s+/g, " ").trim().slice(0, 200);
+    const key = `${it.author_profile_url || it.comment_author || ""}::${norm}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(it);
+  }
+  return out;
+};
+
 function NetworkFeed({ network }: { network: NetworkConfig }) {
   const [candidates, setCandidates] = useState<CandidateOption[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState<string>("all");
