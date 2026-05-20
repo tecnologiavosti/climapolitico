@@ -349,10 +349,12 @@ const EventReportPage = () => {
                 <SelectTrigger className="w-full sm:w-[480px]">
                   <SelectValue placeholder={`${detectedEvents.length} evento(s) detectado(s) — escolha um`} />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-w-[calc(100vw-2rem)]">
                   {detectedEvents.map((e, i) => (
-                    <SelectItem key={i} value={String(i)}>
-                      {e.name} • {e.start_date} ({e.mentions_estimate} menções)
+                    <SelectItem key={i} value={String(i)} className="whitespace-normal break-words pr-8">
+                      <span className="block text-sm leading-snug">
+                        {e.name} • {e.start_date} ({e.mentions_estimate} menções)
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
