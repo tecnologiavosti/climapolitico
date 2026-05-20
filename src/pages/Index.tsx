@@ -8,7 +8,7 @@ import { useNavigate } from "react-router-dom";
 
 const Index = () => {
   const navigate = useNavigate();
-  
+
   return (
     <div className="min-h-screen bg-gradient-secondary">
       {/* Hero Section */}
@@ -26,14 +26,15 @@ const Index = () => {
           <h2 className="text-3xl md:text-5xl font-bold mb-4">
             Planos <span className="gradient-text">Flexíveis</span>
           </h2>
-          <p className="text-muted-foreground text-lg">
-            Escolha o plano ideal para suas necessidades
-          </p>
+          <p className="text-muted-foreground text-lg">Escolha o plano ideal para suas necessidades</p>
         </div>
 
         <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
           {/* Basic Plan */}
-          <Card className="p-8 hover-lift hover-glow transition-all duration-300 border-2 animate-fade-in-up" style={{ animationDelay: "0ms" }}>
+          <Card
+            className="p-8 hover-lift hover-glow transition-all duration-300 border-2 animate-fade-in-up"
+            style={{ animationDelay: "0ms" }}
+          >
             <div className="space-y-6">
               <div>
                 <h3 className="text-2xl font-bold mb-2">Básico</h3>
@@ -48,8 +49,7 @@ const Index = () => {
                   Até 3 candidatos
                 </li>
                 <li className="flex items-center gap-2">
-                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  3 atualizações/mês
+                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />3 atualizações/mês
                 </li>
                 <li className="flex items-center gap-2">
                   <div className="h-1.5 w-1.5 rounded-full bg-primary" />
@@ -57,7 +57,39 @@ const Index = () => {
                 </li>
                 <li className="flex items-center gap-2">
                   <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  Export CSV
+                  Abertura de CNPJ
+                </li>
+                <li className="flex items-center gap-2">
+                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                  Registro de marca (INPI)
+                </li>
+                <li className="flex items-center gap-2">
+                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                  Consultoria jurídica
+                </li>
+                <li className="flex items-center gap-2">
+                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                  Diagnóstico de marketing
+                </li>
+                <li className="flex items-center gap-2">
+                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                  Criação de site
+                </li>
+                <li className="flex items-center gap-2">
+                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                  Branding e identidade visual
+                </li>
+                <li className="flex items-center gap-2">
+                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                  Social media
+                </li>
+                <li className="flex items-center gap-2">
+                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                  Emissor de nota fiscal
+                </li>
+                <li className="flex items-center gap-2">
+                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                  Consultoria financeira
                 </li>
               </ul>
               <a href="https://wa.me/5561998117985" target="_blank" rel="noopener noreferrer" className="block w-full">
@@ -69,7 +101,10 @@ const Index = () => {
           </Card>
 
           {/* Pro Plan */}
-          <Card className="p-8 hover-lift hover-glow transition-all duration-300 border-2 border-primary relative animate-fade-in-up" style={{ animationDelay: "100ms" }}>
+          <Card
+            className="p-8 hover-lift hover-glow transition-all duration-300 border-2 border-primary relative animate-fade-in-up"
+            style={{ animationDelay: "100ms" }}
+          >
             <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-primary animate-glow-pulse">
               Mais Popular
             </Badge>
@@ -100,15 +135,16 @@ const Index = () => {
                 </li>
               </ul>
               <a href="https://wa.me/5561998117985" target="_blank" rel="noopener noreferrer" className="block w-full">
-                <Button className="w-full bg-gradient-primary hover-glow">
-                  Começar
-                </Button>
+                <Button className="w-full bg-gradient-primary hover-glow">Começar</Button>
               </a>
             </div>
           </Card>
 
           {/* Enterprise Plan */}
-          <Card className="p-8 hover-lift hover-glow transition-all duration-300 border-2 animate-fade-in-up" style={{ animationDelay: "200ms" }}>
+          <Card
+            className="p-8 hover-lift hover-glow transition-all duration-300 border-2 animate-fade-in-up"
+            style={{ animationDelay: "200ms" }}
+          >
             <div className="space-y-6">
               <div>
                 <h3 className="text-2xl font-bold mb-2">Enterprise</h3>
@@ -149,17 +185,15 @@ const Index = () => {
         <Card className="p-12 md:p-16 bg-gradient-hero text-white text-center relative overflow-hidden animate-fade-in-up">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.1),transparent_70%)]" />
           <div className="relative z-10 space-y-6">
-            <h2 className="text-3xl md:text-5xl font-bold mb-4">
-              Pronto para transformar sua estratégia política?
-            </h2>
+            <h2 className="text-3xl md:text-5xl font-bold mb-4">Pronto para transformar sua estratégia política?</h2>
             <p className="text-xl md:text-2xl mb-8 opacity-90 max-w-2xl mx-auto">
               Comece hoje e tenha acesso a insights que fazem a diferença
             </p>
-            <Button 
-              size="lg" 
-              variant="secondary" 
+            <Button
+              size="lg"
+              variant="secondary"
               className="hover-scale text-base h-12 px-8"
-              onClick={() => navigate('/auth')}
+              onClick={() => navigate("/auth")}
             >
               Iniciar Teste Gratuito
             </Button>
