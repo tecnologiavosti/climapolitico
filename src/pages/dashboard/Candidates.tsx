@@ -856,7 +856,7 @@ export default function Candidates() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
+                          <div className="flex justify-end gap-1 sm:gap-2 flex-nowrap">
                             <TooltipProvider>
                               {/* View Details Button */}
                               <Tooltip>
