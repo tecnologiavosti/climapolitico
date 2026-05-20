@@ -147,10 +147,10 @@ const NarrativeRecommendationsPage = () => {
       {/* Controls */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex flex-row flex-wrap gap-3 items-end">
             <HelpTooltip text="Escolha pra qual candidato você quer receber as dicas de comunicação.">
               <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
-                <SelectTrigger className="w-full sm:w-[280px]">
+                <SelectTrigger className="w-[160px] sm:w-[280px]">
                   <SelectValue placeholder="Selecione um candidato" />
                 </SelectTrigger>
                 <SelectContent>
@@ -165,7 +165,7 @@ const NarrativeRecommendationsPage = () => {
 
             <HelpTooltip text="De quantos dias atrás a IA vai considerar os comentários.">
               <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-                <SelectTrigger className="w-full sm:w-[200px]">
+                <SelectTrigger className="w-[120px] sm:w-[200px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
