@@ -3,7 +3,7 @@ import { useNavigate, Routes, Route } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSessionHealthCheck } from "@/hooks/useSessionHealthCheck";
 import { Button } from "@/components/ui/button";
-import { LogOut, Sun, Moon } from "lucide-react";
+import { LogOut, Sun, Moon, BarChart3 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -80,7 +80,15 @@ const Dashboard = () => {
           <header className="border-b glass sticky top-0 z-10">
             <div className="flex items-center justify-between gap-2 px-3 sm:px-6 py-3 sm:py-4">
               <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
-                <SidebarTrigger aria-label="Abrir ou fechar menu lateral" />
+                <SidebarTrigger aria-label="Abrir ou fechar menu lateral" className="hidden md:inline-flex" />
+                <div className="flex items-center gap-2 md:hidden">
+                  <div className="p-1.5 bg-gradient-primary rounded-lg">
+                    <BarChart3 className="h-4 w-4 text-white" />
+                  </div>
+                  <span className="font-bold text-base bg-gradient-primary bg-clip-text text-transparent truncate">
+                    Clima Político
+                  </span>
+                </div>
                 <div data-onboarding="breadcrumbs" className="min-w-0 overflow-hidden hidden sm:block">
                   <Breadcrumbs />
                 </div>
