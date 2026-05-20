@@ -92,11 +92,11 @@ export default function Notifications() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div className="min-w-0">
           <HelpTooltip text="Avisos importantes pra você: mudanças no sentimento, novos comentários e novidades do sistema.">
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Bell className="h-8 w-8 text-primary" />
+        <h1 className="text-3xl font-bold flex items-center gap-2 flex-wrap">
+            <Bell className="h-8 w-8 text-primary shrink-0" />
             Notificações
             {unreadCount > 0 && <Badge variant="destructive">{unreadCount} não lidas</Badge>}
           </h1>
@@ -106,7 +106,7 @@ export default function Notifications() {
           </p>
         </div>
         {unreadCount > 0 && (
-          <Button variant="outline" onClick={() => markAllRead.mutate()} disabled={markAllRead.isPending}>
+          <Button variant="outline" size="sm" className="w-full sm:w-auto sm:size-default shrink-0" onClick={() => markAllRead.mutate()} disabled={markAllRead.isPending}>
             <CheckCheck className="mr-2 h-4 w-4" />
             Marcar tudo como lido
           </Button>
