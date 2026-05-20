@@ -138,18 +138,24 @@ All colors MUST be HSL.
   }
 
   /* Mobile: promove grids de coluna única para 2 colunas, mantendo
-     os blocos lado a lado como no desktop. Aplica-se também a flex-col
-     com utilitários comuns de KPI/cards. */
+     os blocos lado a lado como no desktop. */
   @media (max-width: 640px) {
     .grid.grid-cols-1 {
       grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      gap: 0.75rem !important;
     }
     /* Reduz fontes grandes para caber 2 colunas confortavelmente */
     .text-4xl { font-size: 1.5rem !important; line-height: 1.2 !important; }
-    .text-3xl { font-size: 1.25rem !important; line-height: 1.2 !important; }
+    .text-3xl { font-size: 1.375rem !important; line-height: 1.2 !important; }
     .text-2xl { font-size: 1.125rem !important; line-height: 1.25 !important; }
-    /* Quebra palavras longas (URLs, handles) dentro de cards estreitos */
-    .card, [class*="card"] { overflow-wrap: anywhere; word-break: break-word; }
+    /* Padding mais enxuto em cards no mobile pra dar respiro interno */
+    .p-6 { padding: 0.875rem !important; }
+    .p-4 { padding: 0.75rem !important; }
+    /* Não quebra palavras no meio — só onde há espaço/hífen natural */
+    * { word-break: normal !important; overflow-wrap: break-word !important; }
+    /* Ícones decorativos dos StatCards menores no mobile */
+    .p-3.rounded-lg { padding: 0.5rem !important; }
+    .p-3.rounded-lg svg { width: 1rem !important; height: 1rem !important; }
   }
 
   h1, h2, h3, h4, h5, h6 {
