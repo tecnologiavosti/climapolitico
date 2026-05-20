@@ -159,8 +159,6 @@ All colors MUST be HSL.
     input, textarea, select { font-size: 16px; }
     /* Tables get a touch-friendly scroll */
     table { font-size: 0.875rem; }
-    /* Cards/sections never overflow viewport */
-    [class*="rounded-"], section, article { max-width: 100%; }
     /* Code blocks scroll horizontally instead of breaking page */
     pre { overflow-x: auto; max-width: 100%; }
   }
