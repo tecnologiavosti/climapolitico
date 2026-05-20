@@ -97,7 +97,7 @@ const CandidateSummary = () => {
       {/* Controls */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row gap-4 items-end">
+          <div className="flex flex-row flex-wrap gap-3 items-end">
             <div className="flex-1 space-y-2">
               <label className="text-sm font-medium">Candidato</label>
               <HelpTooltip text="Escolha de qual candidato você quer ver o resumo.">
@@ -115,7 +115,7 @@ const CandidateSummary = () => {
                 </Select>
               </HelpTooltip>
             </div>
-            <div className="w-40 space-y-2">
+            <div className="w-32 sm:w-40 space-y-2">
               <label className="text-sm font-medium">Período</label>
               <HelpTooltip text="Quantos dias atrás a IA vai olhar pra montar o resumo.">
                 <Select value={daysBack} onValueChange={setDaysBack}>
