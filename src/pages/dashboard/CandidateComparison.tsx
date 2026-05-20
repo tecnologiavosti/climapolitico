@@ -153,7 +153,7 @@ const CandidateComparisonPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-row items-center justify-between gap-3 flex-wrap">
         <div>
           <HelpTooltip text="Coloca seus candidatos lado a lado pra ver, num olhar só, quem está melhor em cada coisa.">
             <h1 className="text-3xl font-bold">Comparação de Candidatos</h1>
@@ -162,7 +162,7 @@ const CandidateComparisonPage = () => {
         </div>
         <HelpTooltip text="Escolha como ordenar a lista: por menções, por sentimento, etc.">
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortKey)}>
-            <SelectTrigger className="w-[200px]">
+            <SelectTrigger className="w-[140px] sm:w-[200px]">
               <SelectValue placeholder="Ordenar por" />
             </SelectTrigger>
             <SelectContent>

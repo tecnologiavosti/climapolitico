@@ -144,10 +144,10 @@ const RejectionAnalysisPage = () => {
       {/* Controls */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex flex-row flex-wrap gap-3 items-end">
             <HelpTooltip text="Escolha de qual candidato você quer ver os motivos de rejeição.">
               <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
-                <SelectTrigger className="w-full sm:w-[280px]">
+                <SelectTrigger className="w-[160px] sm:w-[280px]">
                   <SelectValue placeholder="Selecione um candidato" />
                 </SelectTrigger>
                 <SelectContent>
@@ -162,7 +162,7 @@ const RejectionAnalysisPage = () => {
 
             <HelpTooltip text="De quantos dias atrás a IA vai pegar os comentários pra analisar.">
               <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-                <SelectTrigger className="w-full sm:w-[200px]">
+                <SelectTrigger className="w-[120px] sm:w-[200px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
