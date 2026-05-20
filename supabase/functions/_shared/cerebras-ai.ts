@@ -97,6 +97,8 @@ export async function callAICerebrasFirst(opts: CerebrasCallOptions): Promise<Ce
     cerebrasModels = ["qwen-3-235b-a22b-instruct-2507", "llama-3.3-70b", "llama3.1-8b"],
     groqModels = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"],
     geminiModels = ["gemini-2.0-flash", "gemini-2.0-flash-lite"],
+    openrouterModels = ["meta-llama/llama-3.3-70b-instruct:free", "google/gemini-2.0-flash-exp:free", "deepseek/deepseek-chat-v3.1:free"],
+    mistralModels = ["mistral-small-latest", "open-mistral-7b"],
     lovableModel = "google/gemini-2.5-flash",
     tag = "ai",
     maxRetries = 2,
@@ -105,6 +107,8 @@ export async function callAICerebrasFirst(opts: CerebrasCallOptions): Promise<Ce
   const CEREBRAS_API_KEY = Deno.env.get("CEREBRAS_API_KEY");
   const GROQ_API_KEY = Deno.env.get("GROQ_API_KEY");
   const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+  const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
+  const MISTRAL_API_KEY = Deno.env.get("MISTRAL_API_KEY");
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
   let lastErr = "";
