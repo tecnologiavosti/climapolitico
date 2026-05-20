@@ -100,9 +100,7 @@ export default function Candidates() {
 
       const validatedData = candidateSchema.parse(formData);
 
-      if (subscription && candidates.length >= subscription.max_candidates) {
-        throw new Error(`Limite de ${subscription.max_candidates} candidatos atingido. Faça upgrade do seu plano.`);
-      }
+      // Limite de candidatos removido — usuários podem adicionar quantos quiserem.
 
       const { data, error } = await supabase
         .from('candidates')
