@@ -1,6 +1,7 @@
 // Shared helper: multi-provider AI calls with automatic fallback chain.
-// Chain: Cerebras → Groq → Gemini direct → Lovable AI Gateway
+// Chain: Cerebras → Groq → Gemini → OpenRouter → Mistral → Lovable AI Gateway
 // Each provider is retried on transient errors (429/5xx) with exponential backoff.
+// Circuit breaker: providers marked as "open" in provider_health are skipped.
 
 export interface CerebrasCallOptions {
   systemMsg: string;
@@ -11,6 +12,8 @@ export interface CerebrasCallOptions {
   cerebrasModels?: string[];
   groqModels?: string[];
   geminiModels?: string[];
+  openrouterModels?: string[];
+  mistralModels?: string[];
   lovableModel?: string;
   tag?: string;
   // Max retry attempts per model on transient errors (429, 5xx)
@@ -20,7 +23,7 @@ export interface CerebrasCallOptions {
 export interface CerebrasCallResult {
   content: string;
   raw: any;
-  provider: "cerebras" | "groq" | "gemini" | "lovable";
+  provider: "cerebras" | "groq" | "gemini" | "openrouter" | "mistral" | "lovable";
   model: string;
   quotaExceeded: boolean;
 }
@@ -94,6 +97,8 @@ export async function callAICerebrasFirst(opts: CerebrasCallOptions): Promise<Ce
     cerebrasModels = ["qwen-3-235b-a22b-instruct-2507", "llama-3.3-70b", "llama3.1-8b"],
     groqModels = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"],
     geminiModels = ["gemini-2.0-flash", "gemini-2.0-flash-lite"],
+    openrouterModels = ["meta-llama/llama-3.3-70b-instruct:free", "google/gemini-2.0-flash-exp:free", "deepseek/deepseek-chat-v3.1:free"],
+    mistralModels = ["mistral-small-latest", "open-mistral-7b"],
     lovableModel = "google/gemini-2.5-flash",
     tag = "ai",
     maxRetries = 2,
@@ -102,6 +107,8 @@ export async function callAICerebrasFirst(opts: CerebrasCallOptions): Promise<Ce
   const CEREBRAS_API_KEY = Deno.env.get("CEREBRAS_API_KEY");
   const GROQ_API_KEY = Deno.env.get("GROQ_API_KEY");
   const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+  const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
+  const MISTRAL_API_KEY = Deno.env.get("MISTRAL_API_KEY");
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
   let lastErr = "";
@@ -209,7 +216,70 @@ export async function callAICerebrasFirst(opts: CerebrasCallOptions): Promise<Ce
     }
   }
 
-  // 4) Lovable AI Gateway (last resort)
+  // 4) OpenRouter (free tier with multiple models)
+  if (OPENROUTER_API_KEY) {
+    for (const model of openrouterModels) {
+      const res = await callWithRetry(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://climapolitico.lovable.app",
+            "X-Title": "Clima Politico",
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+            ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+            max_tokens: maxTokens,
+            temperature,
+          }),
+        },
+        maxRetries,
+        tag,
+        `openrouter:${model}`,
+      );
+      if (res.ok) {
+        const content = res.json?.choices?.[0]?.message?.content ?? "";
+        if (content) return { content, raw: res.json, provider: "openrouter", model, quotaExceeded };
+      }
+      lastErr = `openrouter:${model} ${res.status}: ${res.text}`;
+      if (isQuotaError(res.status, res.text)) break;
+    }
+  }
+
+  // 5) Mistral
+  if (MISTRAL_API_KEY) {
+    for (const model of mistralModels) {
+      const res = await callWithRetry(
+        "https://api.mistral.ai/v1/chat/completions",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${MISTRAL_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model,
+            messages,
+            ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+            max_tokens: maxTokens,
+            temperature,
+          }),
+        },
+        maxRetries,
+        tag,
+        `mistral:${model}`,
+      );
+      if (res.ok) {
+        const content = res.json?.choices?.[0]?.message?.content ?? "";
+        if (content) return { content, raw: res.json, provider: "mistral", model, quotaExceeded };
+      }
+      lastErr = `mistral:${model} ${res.status}: ${res.text}`;
+      if (isQuotaError(res.status, res.text)) break;
+    }
+  }
+
+  // 6) Lovable AI Gateway (last resort)
   if (LOVABLE_API_KEY) {
     const res = await callWithRetry(
       "https://ai.gateway.lovable.dev/v1/chat/completions",
