@@ -330,7 +330,7 @@ export default function RegionalAnalysis() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* ─── Cabeçalho com seletores ─── */}
-      <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <MapPinned className="h-7 w-7 text-primary" />
@@ -342,8 +342,8 @@ export default function RegionalAnalysis() {
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
-          <div className="min-w-[200px]">
+        <div className="flex flex-row flex-wrap gap-2 items-end">
+          <div className="min-w-[150px] flex-1">
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Candidato</label>
             <Select value={candidateId} onValueChange={setCandidateId}>
               <SelectTrigger>
@@ -358,7 +358,7 @@ export default function RegionalAnalysis() {
               </SelectContent>
             </Select>
           </div>
-          <div className="min-w-[180px]">
+          <div className="min-w-[140px] flex-1">
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Rede social</label>
             <Select value={network} onValueChange={setNetwork}>
               <SelectTrigger>
