@@ -319,10 +319,10 @@ const EventReportPage = () => {
       {/* Controls */}
       <Card>
         <CardContent className="pt-6 space-y-4">
-          <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex flex-row flex-wrap gap-3 items-end">
             <HelpTooltip text="Escolha o candidato cujo evento você quer analisar.">
               <Select value={selectedCandidate} onValueChange={handleCandidateChange}>
-                <SelectTrigger className="w-full sm:w-[280px]">
+                <SelectTrigger className="w-[160px] sm:w-[280px]">
                   <SelectValue placeholder="Selecione um candidato" />
                 </SelectTrigger>
                 <SelectContent>
@@ -372,17 +372,17 @@ const EventReportPage = () => {
             </div>
           )}
 
-          <div className="flex flex-col sm:flex-row gap-4 items-end">
+          <div className="flex flex-row flex-wrap gap-3 items-end">
             <div className="space-y-1">
               <label className="text-sm text-muted-foreground">Data Início</label>
               <HelpTooltip text="Dia em que o evento começou.">
-                <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-[180px]" />
+                <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-[140px] sm:w-[180px]" />
               </HelpTooltip>
             </div>
             <div className="space-y-1">
               <label className="text-sm text-muted-foreground">Data Fim</label>
               <HelpTooltip text="Até quando você quer analisar a repercussão.">
-                <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-[180px]" />
+                <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-[140px] sm:w-[180px]" />
               </HelpTooltip>
             </div>
             <HelpTooltip text="Clica aqui pra IA olhar tudo que falaram nesse período e te dizer se foi bom ou ruim.">

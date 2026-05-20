@@ -75,7 +75,7 @@ const RealTimeMonitor = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-row justify-between items-center gap-3 flex-wrap">
         <div>
           <HelpTooltip text="Acompanhe os comentários chegando ao vivo, na hora em que o povo posta nas redes.">
         <h1 className="text-3xl font-bold flex items-center gap-2">
@@ -114,14 +114,14 @@ const RealTimeMonitor = () => {
       {/* Candidate Selector */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <div className="flex flex-row items-center gap-3 flex-wrap">
             <label className="text-sm font-medium">Monitorar candidato:</label>
             {loadingCandidates ? (
               <Skeleton className="h-10 w-64" />
             ) : (
               <HelpTooltip text="Escolha qual candidato você quer ficar de olho ao vivo.">
                 <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
-                  <SelectTrigger className="w-64">
+                  <SelectTrigger className="w-[180px] sm:w-64">
                     <SelectValue placeholder="Selecione um candidato" />
                   </SelectTrigger>
                   <SelectContent>
