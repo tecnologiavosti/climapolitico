@@ -144,6 +144,32 @@ All colors MUST be HSL.
   p {
     text-wrap: pretty;
   }
+
+  /* Responsive: long words/URLs/IDs never break layout on mobile */
+  @media (max-width: 640px) {
+    p, span, td, th, li, h1, h2, h3, h4, h5, h6, code, pre {
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    /* Scale down very large display headings on phones */
+    .text-4xl { font-size: 1.875rem; line-height: 2.25rem; }
+    .text-3xl { font-size: 1.5rem;   line-height: 2rem; }
+    .text-2xl { font-size: 1.25rem;  line-height: 1.75rem; }
+    /* Inputs at >=16px to prevent iOS zoom on focus */
+    input, textarea, select { font-size: 16px; }
+    /* Tables get a touch-friendly scroll */
+    table { font-size: 0.875rem; }
+    /* Code blocks scroll horizontally instead of breaking page */
+    pre { overflow-x: auto; max-width: 100%; }
+  }
+
+  /* All Tabs lists scroll horizontally on small screens instead of stacking */
+  [role="tablist"] {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  [role="tablist"]::-webkit-scrollbar { height: 4px; }
 }
 
 @layer utilities {
