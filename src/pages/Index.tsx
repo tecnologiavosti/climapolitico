@@ -60,9 +60,11 @@ const Index = () => {
                   Export CSV
                 </li>
               </ul>
-              <Button className="w-full" variant="outline" onClick={() => navigate('/auth')}>
-                Começar
-              </Button>
+              <a href="https://wa.me/5561998117985" target="_blank" rel="noopener noreferrer" className="block w-full">
+                <Button className="w-full" variant="outline">
+                  Começar
+                </Button>
+              </a>
             </div>
           </Card>
 
@@ -97,9 +99,11 @@ const Index = () => {
                   Alertas por email/SMS
                 </li>
               </ul>
-              <Button className="w-full bg-gradient-primary hover-glow" onClick={() => navigate('/auth')}>
-                Começar
-              </Button>
+              <a href="https://wa.me/5561998117985" target="_blank" rel="noopener noreferrer" className="block w-full">
+                <Button className="w-full bg-gradient-primary hover-glow">
+                  Começar
+                </Button>
+              </a>
             </div>
           </Card>
 
@@ -130,9 +134,11 @@ const Index = () => {
                   Múltiplos usuários
                 </li>
               </ul>
-              <Button className="w-full" variant="outline" onClick={() => navigate('/auth')}>
-                Falar com Vendas
-              </Button>
+              <a href="https://wa.me/5561998117985" target="_blank" rel="noopener noreferrer" className="block w-full">
+                <Button className="w-full" variant="outline">
+                  Falar com Vendas
+                </Button>
+              </a>
             </div>
           </Card>
         </div>
