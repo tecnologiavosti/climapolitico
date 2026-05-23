@@ -390,18 +390,3 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
     </Card>
   );
 }
-
-// Calcula o centro aproximado do path "M x,y L ... Z" das caixas (formato usado
-// em brazilMapSvg.ts). É um cálculo simples (média de todos os pares numéricos).
-function parsePathCenter(d: string): { x: number; y: number } {
-  const nums = d.match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? [];
-  const xs: number[] = [];
-  const ys: number[] = [];
-  for (let i = 0; i + 1 < nums.length; i += 2) {
-    xs.push(nums[i]); ys.push(nums[i + 1]);
-  }
-  if (!xs.length) return { x: 0, y: 0 };
-  const x = (Math.min(...xs) + Math.max(...xs)) / 2;
-  const y = (Math.min(...ys) + Math.max(...ys)) / 2;
-  return { x, y };
-}
