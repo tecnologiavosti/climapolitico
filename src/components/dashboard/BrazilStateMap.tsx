@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { MapPin, MessageSquare, ThumbsUp, ThumbsDown, Minus, Info } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { brazilStates } from "@/lib/brazilMapSvg";
+import { BR_STATES_MAP } from "@/data/brStatesMap";
 import { UFS, UF_NAME, inferLocation, type UF } from "@/lib/brazilStatesInference";
 import { NETWORKS, ALL_NETWORKS_VALUE } from "@/pages/dashboard/regionalAnalysis.helpers";
 
