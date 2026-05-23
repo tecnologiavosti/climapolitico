@@ -596,6 +596,11 @@ export default function RegionalAnalysis() {
         </div>
       )}
 
+      {/* ─── Mapa por UF e cidade (drill-down) ─── */}
+      {candidateId && user && (
+        <BrazilStateMap userId={user.id} candidateId={candidateId} network={network} />
+      )}
+
       {/* ─── Detalhe da região selecionada ─── */}
       {candidateId && !mapLoading && (
         <Card className="border-primary/30">
