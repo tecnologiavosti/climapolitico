@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { MapPin, MessageSquare, ThumbsUp, ThumbsDown, Minus, Info } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { brazilStates } from "@/lib/brazilMapSvg";
+import { BR_STATES_MAP } from "@/data/brStatesMap";
 import { UFS, UF_NAME, inferLocation, type UF } from "@/lib/brazilStatesInference";
 import { NETWORKS, ALL_NETWORKS_VALUE } from "@/pages/dashboard/regionalAnalysis.helpers";
 
@@ -193,69 +193,71 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
               <TooltipProvider delayDuration={120}>
                 <div className="w-full flex justify-center">
                   <svg
-                    viewBox="0 0 600 650"
+                    viewBox={BR_STATES_MAP.viewBox}
                     className="w-full max-w-lg h-auto"
                     role="img"
                     aria-label="Mapa do Brasil por estado"
                   >
-                    {brazilStates.map((s) => {
-                      const a = aggs[s.code as UF];
-                      const fill = a ? colorFor(a.total, a.pos, a.neg) : "hsl(var(--muted))";
-                      const hasData = a && a.total > 0;
-                      return (
-                        <Tooltip key={s.code}>
-                          <TooltipTrigger asChild>
-                            <g
-                              onClick={() => hasData && setOpenUF(s.code as UF)}
-                              className={hasData ? "cursor-pointer" : "cursor-not-allowed opacity-60"}
-                            >
-                              <path
-                                d={s.path}
-                                fill={fill}
-                                stroke="hsl(var(--background))"
-                                strokeWidth={1.5}
-                                className="transition-all hover:opacity-80"
-                              />
-                              <text
-                                x={parsePathCenter(s.path).x}
-                                y={parsePathCenter(s.path).y}
-                                textAnchor="middle"
-                                dominantBaseline="middle"
-                                className="fill-white font-bold pointer-events-none"
-                                style={{
-                                  fontSize: 11,
-                                  paintOrder: "stroke",
-                                  stroke: "rgba(0,0,0,0.55)",
-                                  strokeWidth: 2.5,
-                                  strokeLinejoin: "round",
-                                }}
+                    {(Object.entries(BR_STATES_MAP.states) as [UF, { path: string; cx: number; cy: number }][])
+                      .map(([code, geom]) => {
+                        const a = aggs[code];
+                        const fill = a && a.total > 0 ? colorFor(a.total, a.pos, a.neg) : "hsl(220, 13%, 88%)";
+                        const hasData = a && a.total > 0;
+                        return (
+                          <Tooltip key={code}>
+                            <TooltipTrigger asChild>
+                              <g
+                                onClick={() => hasData && setOpenUF(code)}
+                                className={hasData ? "cursor-pointer" : "cursor-not-allowed"}
                               >
-                                {s.code}
-                              </text>
-                            </g>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <div className="text-sm space-y-0.5">
-                              <div className="font-semibold">{s.name} ({s.code})</div>
-                              {hasData ? (
-                                <>
-                                  <div>Menções: {a!.total.toLocaleString("pt-BR")}</div>
-                                  <div className="text-green-600">+ {a!.pos} positivos</div>
-                                  <div className="text-red-600">- {a!.neg} negativos</div>
-                                  <div className="text-muted-foreground">= {a!.neu} neutros</div>
-                                  <div className="text-xs text-muted-foreground mt-1">
-                                    Clique para detalhes
-                                  </div>
-                                </>
-                              ) : (
-                                <div className="text-muted-foreground">Sem dados identificados</div>
-                              )}
-                            </div>
-                          </TooltipContent>
-                        </Tooltip>
-                      );
-                    })}
+                                <path
+                                  d={geom.path}
+                                  fill={fill}
+                                  stroke="hsl(var(--background))"
+                                  strokeWidth={0.8}
+                                  className="transition-all hover:opacity-80"
+                                />
+                                <text
+                                  x={geom.cx}
+                                  y={geom.cy}
+                                  textAnchor="middle"
+                                  dominantBaseline="middle"
+                                  className="fill-white font-bold pointer-events-none"
+                                  style={{
+                                    fontSize: 11,
+                                    paintOrder: "stroke",
+                                    stroke: "rgba(0,0,0,0.6)",
+                                    strokeWidth: 2.5,
+                                    strokeLinejoin: "round",
+                                  }}
+                                >
+                                  {code}
+                                </text>
+                              </g>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <div className="text-sm space-y-0.5">
+                                <div className="font-semibold">{UF_NAME[code]} ({code})</div>
+                                {hasData ? (
+                                  <>
+                                    <div>Menções: {a!.total.toLocaleString("pt-BR")}</div>
+                                    <div className="text-green-600">+ {a!.pos} positivos</div>
+                                    <div className="text-red-600">- {a!.neg} negativos</div>
+                                    <div className="text-muted-foreground">= {a!.neu} neutros</div>
+                                    <div className="text-xs text-muted-foreground mt-1">
+                                      Clique para detalhes
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="text-muted-foreground">Sem dados identificados</div>
+                                )}
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        );
+                      })}
                   </svg>
+
                 </div>
                 <p className="text-[11px] text-muted-foreground text-center mt-2">
                   Mapa esquemático. As cores indicam aceitação (verde &gt;65%, amarelo 35-65%, vermelho &lt;35%).
@@ -387,19 +389,4 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
       </Dialog>
     </Card>
   );
-}
-
-// Calcula o centro aproximado do path "M x,y L ... Z" das caixas (formato usado
-// em brazilMapSvg.ts). É um cálculo simples (média de todos os pares numéricos).
-function parsePathCenter(d: string): { x: number; y: number } {
-  const nums = d.match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? [];
-  const xs: number[] = [];
-  const ys: number[] = [];
-  for (let i = 0; i + 1 < nums.length; i += 2) {
-    xs.push(nums[i]); ys.push(nums[i + 1]);
-  }
-  if (!xs.length) return { x: 0, y: 0 };
-  const x = (Math.min(...xs) + Math.max(...xs)) / 2;
-  const y = (Math.min(...ys) + Math.max(...ys)) / 2;
-  return { x, y };
 }
