@@ -110,16 +110,20 @@ export function CandidatesComparisonPanel({ candidates }: Props) {
   // Cores estáveis para linhas
   const colors = ["hsl(var(--primary))", "hsl(var(--success))", "hsl(var(--warning))", "hsl(var(--destructive))", "hsl(var(--accent))"];
 
-  // Participação de sentimento (positivo) entre top 5
-  const sentimentShare = useMemo(() =>
-    rows.slice(0, 5)
-      .filter((r) => r.positive > 0)
-      .map((r, i) => ({
-        name: r.candidate.full_name,
-        value: r.positive,
-        color: colors[i % colors.length],
-      })),
-  [rows]);
+  // Participação de sentimentos (Pos/Neg/Neu) por candidato — top 5
+  const sentimentBreakdown = useMemo(
+    () =>
+      rows.slice(0, 5).map((r) => {
+        const t = r.positive + r.negative + r.neutral;
+        return {
+          name: r.candidate.full_name,
+          Positivo: t > 0 ? Math.round((r.positive / t) * 100) : 0,
+          Negativo: t > 0 ? Math.round((r.negative / t) * 100) : 0,
+          Neutro: t > 0 ? Math.round((r.neutral / t) * 100) : 0,
+        };
+      }).filter((d) => d.Positivo + d.Negativo + d.Neutro > 0),
+    [rows],
+  );
 
   return (
     <Card className="p-6 space-y-6">
