@@ -495,15 +495,8 @@ Retorne ESTRITAMENTE JSON neste formato (sem markdown):
       fromCache,
     });
 
-    // Timeout 35s para Cerebras; se falhar por quota/rate/timeout, não quebra a tela: usa análise local.
-    const ctrl1 = new AbortController();
-    const to1 = setTimeout(() => ctrl1.abort(), 35000);
-    const cerebrasResult = await callAi("cerebras", prompt, ctrl1.signal);
-    clearTimeout(to1);
 
-    let aiPayload: any;
-    let provider = "cerebras";
-    let aiNotice: { errorType: string; message: string; provider: string; userMessage: string } | null = null;
+
 
     // Cascata dedicada à Comparação Histórica IA:
     // 1) Gateway Pro (Gemini 2.5 Pro)  2) Gateway Flash  3) Cerebras  4) Análise local (regras)
