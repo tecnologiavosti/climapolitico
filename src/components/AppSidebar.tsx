@@ -91,6 +91,7 @@ const adminItems = [
   { title: "SLO & SLA", url: "/dashboard/slo", icon: Shield, tip: "Metas de serviço (latência, throughput, erro) e fila de jobs mortos (DLQ)." },
   { title: "Worker Tokens", url: "/dashboard/worker-tokens", icon: Key, tip: "Tokens para conectar workers externos (Docker/Railway) à fila distribuída." },
   { title: "Tenant Analytics", url: "/dashboard/tenant-analytics", icon: Shield, tip: "Consumo agregado por usuário: top tenants, custos e atividade." },
+  { title: "Enriquecimento de Dados", url: "/dashboard/data-enrichment", icon: Database, tip: "Infere cidade/UF nas menções e roda backfill histórico via GDELT (notícias antigas)." },
 ];
 
 const settingsItems = [
