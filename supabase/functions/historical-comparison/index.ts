@@ -505,39 +505,47 @@ Retorne ESTRITAMENTE JSON neste formato (sem markdown):
     let provider = "cerebras";
     let aiNotice: { errorType: string; message: string; provider: string; userMessage: string } | null = null;
 
-    if (cerebrasResult.ok) {
-      aiPayload = cerebrasResult.data;
-      provider = cerebrasResult.provider;
-      console.log(`[historical-comparison] status Cerebras=OK tempo=${cerebrasResult.latencyMs}ms tokens=${cerebrasResult.tokens ?? "?"}`);
-    } else {
-      console.warn(`[historical-comparison] status Cerebras=${cerebrasResult.errorType} status=${cerebrasResult.status ?? "n/a"} — usando fallback apropriado`);
-      if (!["QUOTA_EXCEEDED", "RATE_LIMIT", "TIMEOUT", "MODEL_UNAVAILABLE"].includes(cerebrasResult.errorType)) {
-        const ctrl2 = new AbortController();
-        const to2 = setTimeout(() => ctrl2.abort(), 30000);
-        const gatewayResult = await callAi("gateway", prompt, ctrl2.signal);
-        clearTimeout(to2);
-        if (gatewayResult.ok) {
-          aiPayload = gatewayResult.data;
-          provider = gatewayResult.provider;
-          console.log(`[historical-comparison] status Gateway=OK tempo=${gatewayResult.latencyMs}ms tokens=${gatewayResult.tokens ?? "?"}`);
-        } else {
-          aiNotice = { errorType: gatewayResult.errorType, message: gatewayResult.message, provider: gatewayResult.provider, userMessage: userFacingError(gatewayResult.errorType) };
-          aiPayload = buildLocalAnalysis(summary, aiNotice.userMessage);
-          provider = "local_fallback";
-        }
-      } else {
-        aiNotice = { errorType: cerebrasResult.errorType, message: cerebrasResult.message, provider: cerebrasResult.provider, userMessage: userFacingError(cerebrasResult.errorType) };
-        aiPayload = buildLocalAnalysis(summary, aiNotice.userMessage);
-        provider = "local_fallback";
+    // Cascata dedicada à Comparação Histórica IA:
+    // 1) Gateway Pro (Gemini 2.5 Pro)  2) Gateway Flash  3) Cerebras  4) Análise local (regras)
+    let aiPayload: any = null;
+    let provider = "local_fallback";
+    let aiNotice: { errorType: string; message: string; provider: string; userMessage: string } | null = null;
+    const attempts: Array<{ provider: string; status: string; errorType?: string; latencyMs?: number; tokens?: number | null }> = [];
+
+    const cascade: Array<{ name: ProviderName; timeoutMs: number }> = [
+      { name: "gateway-pro", timeoutMs: 45000 },
+      { name: "gateway-flash", timeoutMs: 30000 },
+      { name: "cerebras", timeoutMs: 30000 },
+    ];
+
+    for (const step of cascade) {
+      const r = await tryProvider(step.name, prompt, step.timeoutMs);
+      if (r.ok) {
+        aiPayload = r.data;
+        provider = r.provider;
+        attempts.push({ provider: step.name, status: "ok", latencyMs: r.latencyMs, tokens: r.tokens ?? null });
+        console.log(`[historical-comparison] cascata OK em ${step.name} (${r.latencyMs}ms)`);
+        break;
+      }
+      attempts.push({ provider: step.name, status: "fail", errorType: r.errorType });
+      console.warn(`[historical-comparison] cascata falhou em ${step.name}: ${r.errorType}`);
+      // Em erros não recuperáveis de auth, encerra a cascata.
+      if (r.errorType === "AUTH" || r.errorType === "MISSING_KEY") {
+        aiNotice = { errorType: r.errorType, message: r.message, provider: r.provider, userMessage: userFacingError(r.errorType) };
+        if (r.errorType === "AUTH") break;
       }
     }
 
     if (!aiPayload) {
-      aiPayload = buildLocalAnalysis(summary, "Dados limitados para este período; análise baseada nas informações disponíveis.");
+      const lastFail = attempts.filter(a => a.status === "fail").pop();
+      const reason = lastFail ? userFacingError(lastFail.errorType || "INTERNAL") : "Dados limitados para este período; análise baseada nas informações disponíveis.";
+      aiNotice = aiNotice || { errorType: lastFail?.errorType || "INTERNAL", message: "Todos provedores indisponíveis", provider: "cascade", userMessage: reason };
+      aiPayload = buildLocalAnalysis(summary, reason);
       provider = "local_fallback";
+      console.warn(`[historical-comparison] cascata esgotada, usando análise local`);
     }
 
-    const responsePayload = buildResponse(aiPayload, provider, aiNotice);
+    const responsePayload = { ...buildResponse(aiPayload, provider, aiNotice), attempts };
     await supabase.from("analysis_cache").upsert({
       cache_key: cacheKey,
       analysis_type: "historical_comparison",
@@ -545,6 +553,7 @@ Retorne ESTRITAMENTE JSON neste formato (sem markdown):
       provider,
       expires_at: new Date(Date.now() + (provider === "local_fallback" ? 6 : 30) * 24 * 60 * 60 * 1000).toISOString(),
     }, { onConflict: "cache_key" });
+
 
     return new Response(JSON.stringify(responsePayload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
