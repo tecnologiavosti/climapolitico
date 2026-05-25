@@ -46,7 +46,7 @@ const WorkerTokens = lazy(() => import("./dashboard/WorkerTokens"));
 const TenantAnalytics = lazy(() => import("./dashboard/TenantAnalytics"));
 const CommentTree = lazy(() => import("./dashboard/CommentTree"));
 const PoliticalEvents = lazy(() => import("./dashboard/PoliticalEvents"));
-const NarrativeAlerts = lazy(() => import("./dashboard/NarrativeAlerts"));
+
 const DataEnrichment = lazy(() => import("./dashboard/DataEnrichment"));
 
 /** Wraps a lazy route element in a per-route error boundary. */
