@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
       const { data: existing } = await supabase
         .from("narrative_alerts")
         .select("id")
-        .eq("user_id", user.id)
+        .eq("user_id", candUserId)
         .eq("candidate_id", cand.id)
         .gte("created_at", new Date(now - 6 * 3600_000).toISOString())
         .limit(1);
