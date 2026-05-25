@@ -219,7 +219,7 @@ Deno.serve(async (req) => {
         .lte("event_date", end.toISOString())
         .order("event_date"),
       supabase.from("social_interactions")
-        .select("created_at, platform, interaction_type, content, sentiment_label, sentiment_score, themes, region")
+        .select("created_at, social_network, interaction_type, comment_text, sentiment_label, sentiment_score, region, state")
         .eq("candidate_id", candidateId)
         .gte("created_at", start.toISOString())
         .lte("created_at", end.toISOString())
