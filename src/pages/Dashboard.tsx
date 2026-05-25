@@ -147,7 +147,7 @@ const Dashboard = () => {
                 <Route path="/network-view" element={wrap("NetworkView", NetworkView)} />
                 <Route path="/comment-tree" element={wrap("CommentTree", CommentTree)} />
                 <Route path="/political-events" element={wrap("PoliticalEvents", PoliticalEvents)} />
-                <Route path="/narrative-alerts" element={wrap("NarrativeAlerts", NarrativeAlerts)} />
+                
                 <Route path="/data-enrichment" element={wrap("DataEnrichment", DataEnrichment)} />
                 <Route path="/settings" element={wrap("Settings", Settings)} />
               </Routes>
