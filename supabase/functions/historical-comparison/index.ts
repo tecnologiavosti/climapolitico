@@ -224,7 +224,9 @@ async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: 
   try {
     const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+      headers: isCerebras
+        ? { "Content-Type": "application/json", "Authorization": `Bearer ${key}` }
+        : { "Content-Type": "application/json", "Lovable-API-Key": key, "X-Lovable-AIG-SDK": "clima-politico-edge" },
       body: JSON.stringify(body),
       signal,
     });
@@ -264,9 +266,9 @@ async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: 
 
 function userFacingError(errorType: string): string {
   switch (errorType) {
-    case "QUOTA_EXCEEDED": return "Limite da IA atingido ou requisição excedeu capacidade.";
-    case "TIMEOUT": return "A análise está demorando mais que o esperado. Tente um período menor.";
-    case "RATE_LIMIT": return "Muitas requisições à IA — tente novamente em alguns segundos.";
+    case "QUOTA_EXCEEDED": return "Limite temporário da IA atingido. Exibindo análise baseada nos dados já coletados.";
+    case "TIMEOUT": return "Tempo limite da IA atingido. Exibindo análise baseada nos dados já coletados.";
+    case "RATE_LIMIT": return "Limite temporário da IA atingido. Exibindo análise baseada nos dados já coletados.";
     case "AUTH": return "Falha de autenticação com o provedor de IA.";
     case "PARSE": return "A IA retornou um formato inesperado.";
     case "MISSING_KEY": return "Provedor de IA não configurado.";
