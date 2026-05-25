@@ -152,34 +152,26 @@ export default function RegionalAnalysis() {
       const netCfg = isAllNetworks ? null : NETWORKS.find((n) => n.label === network);
       const netValues = netCfg ? netCfg.values : null;
 
-      // Paginação manual para superar o limite de 1000 do PostgREST
-      const PAGE = 1000;
-      const HARD_CAP = 50000;
-      let from = 0;
-      const rows: {
+      // Paginação completa — sem cap arbitrário
+      const { fetchAllPaginated } = await import("@/lib/supabasePagination");
+      const rows = await fetchAllPaginated<{
         region: string | null;
         social_network: string;
         sentiment_label: string | null;
         likes_count: number | null;
         replies_count: number | null;
         shares_count: number | null;
-      }[] = [];
-      while (rows.length < HARD_CAP) {
+      }>((from, to) => {
         let q = supabase
           .from("social_interactions")
           .select("region, social_network, sentiment_label, likes_count, replies_count, shares_count")
           .eq("user_id", user.id)
           .eq("candidate_id", candidateId)
           .not("social_network", "in", "(mastodon,lemmy,pinterest)")
-          .range(from, from + PAGE - 1);
+          .range(from, to);
         if (netValues) q = q.in("social_network", netValues);
-        const { data: page, error } = await q;
-        if (error) throw error;
-        if (!page || page.length === 0) break;
-        rows.push(...page);
-        if (page.length < PAGE) break;
-        from += PAGE;
-      }
+        return q;
+      });
 
       if (seq !== requestSeqRef.current) return; // descartar resposta obsoleta
 
