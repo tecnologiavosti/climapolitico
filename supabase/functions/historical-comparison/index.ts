@@ -193,7 +193,9 @@ type AiResult =
 
 type AiErrorType = Extract<AiResult, { ok: false }>["errorType"];
 
-async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: AbortSignal): Promise<AiResult> {
+type ProviderName = "gateway-pro" | "gateway-flash" | "cerebras";
+
+async function callAi(provider: ProviderName, prompt: string, signal: AbortSignal): Promise<AiResult> {
   const started = Date.now();
   const isCerebras = provider === "cerebras";
   const key = Deno.env.get(isCerebras ? "CEREBRAS_API_KEY" : "LOVABLE_API_KEY");
@@ -202,6 +204,8 @@ async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: 
   const url = isCerebras
     ? "https://api.cerebras.ai/v1/chat/completions"
     : "https://ai.gateway.lovable.dev/v1/chat/completions";
+
+  const gatewayModel = provider === "gateway-pro" ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash";
 
   const body = isCerebras
     ? {
@@ -215,9 +219,9 @@ async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: 
         max_tokens: 2500,
       }
     : {
-        model: "google/gemini-2.5-flash",
+        model: gatewayModel,
         messages: [
-          { role: "system", content: "Você é um analista político brasileiro. Retorne APENAS JSON válido." },
+          { role: "system", content: "Você é um analista político brasileiro sênior, especialista em análise histórica de percepção pública. Responda em PT-BR. Retorne APENAS JSON válido, sem markdown." },
           { role: "user", content: prompt },
         ],
         response_format: { type: "json_object" },
@@ -228,7 +232,7 @@ async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: 
       method: "POST",
       headers: isCerebras
         ? { "Content-Type": "application/json", "Authorization": `Bearer ${key}` }
-        : { "Content-Type": "application/json", "Lovable-API-Key": key, "X-Lovable-AIG-SDK": "clima-politico-edge" },
+        : { "Content-Type": "application/json", "Lovable-API-Key": key, "X-Lovable-AIG-SDK": "clima-politico-edge-historical" },
       body: JSON.stringify(body),
       signal,
     });
@@ -264,6 +268,16 @@ async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: 
       message: String(e?.message || e),
       provider,
     };
+  }
+}
+
+async function tryProvider(name: ProviderName, prompt: string, timeoutMs: number): Promise<AiResult> {
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await callAi(name, prompt, ctrl.signal);
+  } finally {
+    clearTimeout(to);
   }
 }
 
