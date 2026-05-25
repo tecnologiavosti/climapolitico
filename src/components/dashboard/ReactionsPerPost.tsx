@@ -178,51 +178,34 @@ export function ReactionsPerPost({ candidateId }: Props) {
 
   // Totais — sentimento agregado sobre TUDO (raiz + comentários + respostas + subcomentários)
   const totals = useMemo(() => {
-    const list = interactions || [];
-    const pos = list.filter((r) => r.sentiment_label === "positive").length;
-    const neg = list.filter((r) => r.sentiment_label === "negative").length;
-    const neu = list.filter((r) => r.sentiment_label === "neutral").length;
-    const labeled = pos + neg + neu;
-    const unanalyzed = list.length - labeled;
-    const totalLikes = list.reduce((s, r) => s + (r.likes_count || 0), 0);
-    const totalReplies = list.reduce((s, r) => s + (r.replies_count || 0), 0);
-    const totalShares = list.reduce((s, r) => s + (r.shares_count || 0), 0);
-    // Posts = registros distintos de post_id (cada post_id = 1 post)
-    const postSet = new Set<string>();
-    list.forEach((r) => { if (r.post_id) postSet.add(r.post_id); });
-    const postsCount = postSet.size;
-    // Comentários = qualquer registro que NÃO é o post raiz (tem parent ou root_comment_id)
-    const commentsCount = list.filter((r) => r.parent_comment_id || r.root_comment_id).length;
+    const data = summary;
+    const pos = data?.positiveCount || 0;
+    const neg = data?.negativeCount || 0;
+    const neu = data?.neutralCount || 0;
+    const labeled = data?.classifiedCount || 0;
+    const unanalyzed = data?.pendingCount || 0;
     return {
       pos, neg, neu, labeled, unanalyzed,
-      totalRecords: list.length,
-      postsCount,
-      commentsCount,
-      totalLikes, totalReplies, totalShares,
-      totalInteractions: totalLikes + totalReplies + totalShares,
+      totalRecords: data?.totalRecords || 0,
+      postsCount: data?.postsCount || 0,
+      commentsCount: data?.commentsCount || 0,
+      totalLikes: data?.totalLikes || 0,
+      totalReplies: data?.totalReplies || 0,
+      totalShares: data?.totalShares || 0,
+      totalInteractions: data?.totalInteractions || 0,
       posPct: labeled > 0 ? Math.round((pos / labeled) * 100) : 0,
       negPct: labeled > 0 ? Math.round((neg / labeled) * 100) : 0,
       neuPct: labeled > 0 ? Math.round((neu / labeled) * 100) : 0,
     };
-  }, [interactions]);
+  }, [summary]);
 
 
-  // Top assuntos (tokens dominantes em posts raiz)
+  // Assuntos dominantes — agrupamento semântico vindo do banco, não nomes isolados
   const topTopics = useMemo(() => {
-    const list = interactions || [];
-    const counts = new Map<string, number>();
-    list.forEach((r) => {
-      if (!r.comment_text) return;
-      tokenize(r.comment_text).forEach((tok) => {
-        if (STOPWORDS.has(tok)) return;
-        counts.set(tok, (counts.get(tok) || 0) + 1);
-      });
-    });
-    return [...counts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([word]) => word.charAt(0).toUpperCase() + word.slice(1));
-  }, [interactions]);
+    return (summary?.dominantTopics || [])
+      .slice(0, 8)
+      .map((item) => ({ label: item.topic.charAt(0).toUpperCase() + item.topic.slice(1), mentions: item.mentions }));
+  }, [summary?.dominantTopics]);
 
   // Agrupar por post
   const groupedPosts = useMemo<Group[]>(() => {
