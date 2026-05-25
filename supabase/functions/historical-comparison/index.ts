@@ -107,61 +107,93 @@ function bucketThemes(items: Array<{ themes?: string[] | null }>): Array<{ theme
   return Object.entries(m).map(([theme, count]) => ({ theme, count })).sort((a, b) => b.count - a.count);
 }
 
-async function callCerebras(prompt: string): Promise<any | null> {
-  const key = Deno.env.get("CEREBRAS_API_KEY");
-  if (!key) return null;
-  try {
-    const res = await fetch("https://api.cerebras.ai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-      body: JSON.stringify({
+type AiResult =
+  | { ok: true; data: any; provider: string; latencyMs: number; tokens?: number }
+  | { ok: false; errorType: "QUOTA_EXCEEDED" | "TIMEOUT" | "RATE_LIMIT" | "AUTH" | "INTERNAL" | "PARSE" | "MISSING_KEY"; message: string; status?: number; provider: string };
+
+async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: AbortSignal): Promise<AiResult> {
+  const started = Date.now();
+  const isCerebras = provider === "cerebras";
+  const key = Deno.env.get(isCerebras ? "CEREBRAS_API_KEY" : "LOVABLE_API_KEY");
+  if (!key) return { ok: false, errorType: "MISSING_KEY", message: `${provider} key não configurada`, provider };
+
+  const url = isCerebras
+    ? "https://api.cerebras.ai/v1/chat/completions"
+    : "https://ai.gateway.lovable.dev/v1/chat/completions";
+
+  const body = isCerebras
+    ? {
         model: "llama-3.3-70b",
         messages: [
-          { role: "system", content: "Você é um analista político brasileiro experiente. Responda SEMPRE em português do Brasil, com profundidade analítica. Retorne APENAS JSON válido, sem markdown." },
+          { role: "system", content: "Você é um analista político brasileiro experiente. Responda SEMPRE em português do Brasil. Retorne APENAS JSON válido, sem markdown." },
           { role: "user", content: prompt },
         ],
         response_format: { type: "json_object" },
         temperature: 0.4,
-        max_tokens: 4000,
-      }),
-    });
-    if (!res.ok) {
-      const txt = await res.text();
-      console.error("[cerebras] error", res.status, txt);
-      return { error: `Cerebras ${res.status}` };
-    }
-    const json = await res.json();
-    const content = json?.choices?.[0]?.message?.content ?? "";
-    try { return JSON.parse(content); } catch { return { summary: content }; }
-  } catch (e) {
-    console.error("[cerebras] exception", e);
-    return { error: String(e) };
-  }
-}
-
-async function callCerebrasFallback(prompt: string): Promise<any | null> {
-  // fallback para Lovable AI Gateway
-  const key = Deno.env.get("LOVABLE_API_KEY");
-  if (!key) return null;
-  try {
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-      body: JSON.stringify({
+        max_tokens: 2500,
+      }
+    : {
         model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: "Você é um analista político brasileiro. Responda em português do Brasil, retorne APENAS JSON válido." },
+          { role: "system", content: "Você é um analista político brasileiro. Retorne APENAS JSON válido." },
           { role: "user", content: prompt },
         ],
         response_format: { type: "json_object" },
-      }),
+      };
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+      body: JSON.stringify(body),
+      signal,
     });
-    if (!res.ok) return { error: `Gateway ${res.status}` };
+    const latencyMs = Date.now() - started;
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      console.error(`[ai:${provider}] HTTP ${res.status} (${latencyMs}ms)`, txt.slice(0, 400));
+      let errorType: AiResult extends { ok: false; errorType: infer T } ? T : never;
+      if (res.status === 402) errorType = "QUOTA_EXCEEDED";
+      else if (res.status === 429) errorType = "RATE_LIMIT";
+      else if (res.status === 401 || res.status === 403) errorType = "AUTH";
+      else errorType = "INTERNAL";
+      return { ok: false, errorType, message: `${provider} HTTP ${res.status}`, status: res.status, provider };
+    }
     const json = await res.json();
     const content = json?.choices?.[0]?.message?.content ?? "";
-    try { return JSON.parse(content); } catch { return { summary: content }; }
-  } catch (e) { return { error: String(e) }; }
+    const tokens = json?.usage?.total_tokens;
+    console.log(`[ai:${provider}] ok ${latencyMs}ms tokens=${tokens ?? "?"} chars=${content.length}`);
+    try {
+      const parsed = JSON.parse(content);
+      return { ok: true, data: parsed, provider, latencyMs, tokens };
+    } catch {
+      return { ok: false, errorType: "PARSE", message: `${provider} retornou JSON inválido`, provider };
+    }
+  } catch (e: any) {
+    const latencyMs = Date.now() - started;
+    const isTimeout = e?.name === "AbortError" || /abort|timeout/i.test(String(e));
+    console.error(`[ai:${provider}] exception ${latencyMs}ms`, e);
+    return {
+      ok: false,
+      errorType: isTimeout ? "TIMEOUT" : "INTERNAL",
+      message: String(e?.message || e),
+      provider,
+    };
+  }
 }
+
+function userFacingError(errorType: string): string {
+  switch (errorType) {
+    case "QUOTA_EXCEEDED": return "Limite da IA atingido ou requisição excedeu capacidade.";
+    case "TIMEOUT": return "A análise está demorando mais que o esperado. Tente um período menor.";
+    case "RATE_LIMIT": return "Muitas requisições à IA — tente novamente em alguns segundos.";
+    case "AUTH": return "Falha de autenticação com o provedor de IA.";
+    case "PARSE": return "A IA retornou um formato inesperado.";
+    case "MISSING_KEY": return "Provedor de IA não configurado.";
+    default: return "Erro ao processar análise.";
+  }
+}
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -252,83 +284,125 @@ Deno.serve(async (req) => {
 
     const sumOf = (arr: any[], key: string) => arr.reduce((s, x) => s + Number(x[key] || 0), 0);
 
-    const stats = {
-      total_signals: hist.length + interactions.length + events.length,
-      historical_records: hist.length,
-      realtime_records: interactions.length,
-      events: events.length,
-      first_half: {
-        label: `${ymd(start)} → ${ymd(mid)}`,
-        mentions: sumOf(histFirst, "mentions") + intFirst.length,
-        positive: sumOf(histFirst, "sentiment_positive") + intFirst.filter(i => i.sentiment_label === "positive").length,
-        negative: sumOf(histFirst, "sentiment_negative") + intFirst.filter(i => i.sentiment_label === "negative").length,
-        neutral: sumOf(histFirst, "sentiment_neutral") + intFirst.filter(i => i.sentiment_label === "neutral").length,
-        top_themes: themesFirst.slice(0, 6),
-        events: evtFirst.slice(0, 10).map(e => ({ name: e.event_name, date: e.event_date, type: e.event_type, location: e.location })),
-      },
-      second_half: {
-        label: `${ymd(mid)} → ${ymd(end)}`,
-        mentions: sumOf(histSecond, "mentions") + intSecond.length,
-        positive: sumOf(histSecond, "sentiment_positive") + intSecond.filter(i => i.sentiment_label === "positive").length,
-        negative: sumOf(histSecond, "sentiment_negative") + intSecond.filter(i => i.sentiment_label === "negative").length,
-        neutral: sumOf(histSecond, "sentiment_neutral") + intSecond.filter(i => i.sentiment_label === "neutral").length,
-        top_themes: themesSecond.slice(0, 6),
-        events: evtSecond.slice(0, 10).map(e => ({ name: e.event_name, date: e.event_date, type: e.event_type, location: e.location })),
-      },
-      sample_titles: hist.slice(0, 25).map(() => null), // placeholder
-      sample_comments: enrichedInt.slice(0, 30).map((i: any) => ({ text: (i.comment_text || "").slice(0, 200), sentiment: i.sentiment_label, themes: i.themes, region: i.region })),
+    // Resumo COMPACTO — sem dados brutos enviados à IA
+    const pct = (a: number, b: number) => (a + b) > 0 ? Math.round((a / (a + b)) * 100) : 0;
+    const intSentLabel = (lbl: any) => (lbl || "").toString().toLowerCase();
+    const countSent = (arr: any[], target: string) => arr.filter(i => intSentLabel(i.sentiment_label).includes(target)).length;
+
+    const buildHalf = (label: string, h: any[], i: any[], e: any[]) => {
+      const pos = sumOf(h, "sentiment_positive") + countSent(i, "positive") + countSent(i, "positivo");
+      const neg = sumOf(h, "sentiment_negative") + countSent(i, "negative") + countSent(i, "negativo");
+      const neu = sumOf(h, "sentiment_neutral") + countSent(i, "neutral") + countSent(i, "neutro");
+      const total = pos + neg + neu;
+      const regions: Record<string, number> = {};
+      for (const it of i) if (it.region) regions[it.region] = (regions[it.region] || 0) + 1;
+      const topRegions = Object.entries(regions).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([r, c]) => ({ region: r, count: c }));
+      return {
+        label,
+        mentions: sumOf(h, "mentions") + i.length,
+        sentimentPositivePct: total > 0 ? Math.round((pos / total) * 100) : null,
+        sentimentNegativePct: total > 0 ? Math.round((neg / total) * 100) : null,
+        sentimentNeutralPct: total > 0 ? Math.round((neu / total) * 100) : null,
+        topThemes: bucketThemes([...h, ...i]).slice(0, 5).map(t => t.theme),
+        topRegions,
+        events: e.slice(0, 5).map(ev => ({ name: ev.event_name, type: ev.event_type, date: (ev.event_date || "").slice(0, 10) })),
+      };
     };
 
-    const hasMinimumData = stats.total_signals >= 5;
+    const summary = {
+      candidate: cand.full_name + (cand.party ? ` (${cand.party})` : ""),
+      registeredAt: ymd(candCreated),
+      period: { start: ymd(start), end: ymd(end) },
+      totals: {
+        signals: hist.length + interactions.length + events.length,
+        historicalRecords: hist.length,
+        realtimeInteractions: interactions.length,
+        events: events.length,
+      },
+      first_half: buildHalf(`${ymd(start)} → ${ymd(mid)}`, histFirst, intFirst, evtFirst),
+      second_half: buildHalf(`${ymd(mid)} → ${ymd(end)}`, histSecond, intSecond, evtSecond),
+    };
 
-    const prompt = `Analise a evolução da percepção pública do candidato político brasileiro a seguir entre ${ymd(start)} e ${ymd(end)}.
+    const hasMinimumData = summary.totals.signals >= 1;
+    const summaryJson = JSON.stringify(summary);
+    console.log(`[historical-comparison] summary size=${summaryJson.length} chars, signals=${summary.totals.signals}`);
 
-CANDIDATO: ${cand.full_name}${cand.party ? ` (${cand.party})` : ""}${cand.region ? ` — ${cand.region}` : ""}
-CADASTRADO NA PLATAFORMA EM: ${ymd(candCreated)}
-DADOS DISPONÍVEIS NO PERÍODO:
-${JSON.stringify(stats, null, 0)}
+    const prompt = `Analise a evolução da percepção pública do candidato político brasileiro a seguir.
 
-Sintetize o contexto, identifique mudanças e padrões. Mesmo com poucos dados, produza análise útil baseada no que existe (nunca diga "insuficiente", "—" ou "0"; se houver pouco volume, diga: "dados limitados; análise baseada nas informações disponíveis").
+DADOS AGREGADOS (já resumidos, NÃO há texto bruto):
+${summaryJson}
 
-Retorne JSON ESTRITAMENTE neste formato:
+Produza análise política em PT-BR como um analista experiente. Mesmo com poucos dados, gere narrativa baseada no que existe — NUNCA diga "insuficiente". Se o volume for baixo, registre no campo dataNote.
+
+Retorne ESTRITAMENTE JSON neste formato (sem markdown):
 {
-  "summary": "parágrafo narrativo de 4-8 frases descrevendo a evolução da percepção pública ao longo do período (volume, sentimento, narrativas, regiões, eventos). Cite fatos concretos quando possível.",
+  "summary": "parágrafo narrativo de 4 a 8 frases descrevendo a evolução da percepção pública (volume, sentimento, temas, narrativas, regiões, eventos relevantes).",
   "detectedChanges": [
-    { "type": "growth_support | rejection_increase | polarization | regional_shift | thematic_shift | narrative_shift | event_impact", "title": "título curto", "description": "explicação em 1-2 frases" }
+    { "type": "growth_support|rejection_increase|polarization|regional_shift|thematic_shift|narrative_shift|event_impact", "title": "título curto", "description": "1-2 frases" }
   ],
   "narratives": {
-    "early": { "label": "narrativa predominante no início do período", "evidence": "evidência curta" },
-    "late": { "label": "narrativa predominante no fim do período", "evidence": "evidência curta" }
+    "early": { "label": "narrativa predominante no início", "evidence": "evidência curta" },
+    "late": { "label": "narrativa predominante no fim", "evidence": "evidência curta" }
   },
-  "perceptionShifts": [
-    { "group": "grupo afetado (jovens, eleitorado X, região Y)", "shift": "descrição da mudança" }
-  ],
-  "associatedEvents": [
-    { "name": "nome do evento", "date": "AAAA-MM-DD", "type": "debate|entrevista|discurso|notícia|outro", "impact": "como afetou a percepção" }
-  ],
-  "dominantThemesByPeriod": {
-    "early": ["tema1", "tema2", "tema3"],
-    "late": ["tema1", "tema2", "tema3"]
-  },
-  "dataNote": "frase curta sobre completude (ex: 'Análise baseada em X menções e Y eventos' ou 'Dados limitados para este período; análise baseada nas informações disponíveis.')"
+  "perceptionShifts": [ { "group": "grupo afetado", "shift": "descrição" } ],
+  "associatedEvents": [ { "name": "evento", "date": "AAAA-MM-DD", "type": "debate|entrevista|discurso|notícia|outro", "impact": "como afetou" } ],
+  "dominantThemesByPeriod": { "early": ["t1","t2","t3"], "late": ["t1","t2","t3"] },
+  "dataNote": "frase curta sobre completude (ex: 'Análise baseada em N sinais')."
 }`;
 
-    let ai = await callCerebras(prompt);
-    if (!ai || ai.error) {
-      console.warn("[historical-comparison] cerebras falhou, fallback gateway", ai?.error);
-      ai = await callCerebrasFallback(prompt);
+    // Timeout 35s para Cerebras, depois fallback
+    const ctrl1 = new AbortController();
+    const to1 = setTimeout(() => ctrl1.abort(), 35000);
+    const cerebrasResult = await callAi("cerebras", prompt, ctrl1.signal);
+    clearTimeout(to1);
+
+    let aiPayload: any;
+    let aiError: { errorType: string; message: string; provider: string } | null = null;
+
+    if (cerebrasResult.ok) {
+      aiPayload = cerebrasResult.data;
+      console.log(`[historical-comparison] cerebras OK (${cerebrasResult.latencyMs}ms, tokens=${cerebrasResult.tokens ?? "?"})`);
+    } else {
+      console.warn(`[historical-comparison] cerebras falhou: ${cerebrasResult.errorType} — tentando fallback gateway`);
+      // Só usa fallback se NÃO for quota (quota provavelmente afeta ambos)
+      if (cerebrasResult.errorType !== "QUOTA_EXCEEDED" && cerebrasResult.errorType !== "MISSING_KEY") {
+        const ctrl2 = new AbortController();
+        const to2 = setTimeout(() => ctrl2.abort(), 30000);
+        const gatewayResult = await callAi("gateway", prompt, ctrl2.signal);
+        clearTimeout(to2);
+        if (gatewayResult.ok) {
+          aiPayload = gatewayResult.data;
+          console.log(`[historical-comparison] fallback gateway OK (${gatewayResult.latencyMs}ms)`);
+        } else {
+          aiError = { errorType: gatewayResult.errorType, message: gatewayResult.message, provider: gatewayResult.provider };
+        }
+      } else {
+        // tenta gateway mesmo assim como última cartada para quota
+        const ctrl2 = new AbortController();
+        const to2 = setTimeout(() => ctrl2.abort(), 30000);
+        const gatewayResult = await callAi("gateway", prompt, ctrl2.signal);
+        clearTimeout(to2);
+        if (gatewayResult.ok) {
+          aiPayload = gatewayResult.data;
+        } else {
+          aiError = { errorType: cerebrasResult.errorType, message: cerebrasResult.message, provider: "cerebras" };
+        }
+      }
     }
-    if (!ai) ai = { summary: "Não foi possível gerar a análise no momento. Tente novamente.", dataNote: "Análise indisponível." };
 
     return new Response(JSON.stringify({
       candidate: { id: cand.id, name: cand.full_name, createdAt: cand.created_at, party: cand.party, region: cand.region },
       period: { start: startDate, end: endDate, mid: mid.toISOString() },
-      stats,
+      summary,
       hasMinimumData,
-      analysis: ai,
+      analysis: aiPayload || null,
+      aiError: aiError ? { ...aiError, userMessage: userFacingError(aiError.errorType) } : null,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
-    console.error("[historical-comparison] error", e);
-    return new Response(JSON.stringify({ error: String(e) }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    console.error("[historical-comparison] fatal", e);
+    return new Response(JSON.stringify({
+      analysis: null,
+      aiError: { errorType: "EDGE_FUNCTION_ERROR", message: String(e), userMessage: "Erro interno na função de análise." },
+    }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

@@ -26,10 +26,10 @@ interface PerceptionShift { group: string; shift: string }
 interface AssociatedEvent { name: string; date?: string; type?: string; impact?: string }
 
 interface AnalysisResponse {
-  candidate: { id: string; name: string; createdAt: string; party?: string; region?: string };
-  period: { start: string; end: string; mid: string };
-  stats: any;
-  hasMinimumData: boolean;
+  candidate?: { id: string; name: string; createdAt: string; party?: string; region?: string };
+  period?: { start: string; end: string; mid: string };
+  summary?: any;
+  hasMinimumData?: boolean;
   analysis: {
     summary?: string;
     detectedChanges?: DetectedChange[];
@@ -38,8 +38,8 @@ interface AnalysisResponse {
     associatedEvents?: AssociatedEvent[];
     dominantThemesByPeriod?: { early?: string[]; late?: string[] };
     dataNote?: string;
-    error?: string;
-  };
+  } | null;
+  aiError?: { errorType: string; message: string; provider: string; userMessage: string } | null;
 }
 
 type Shortcut = "7d" | "30d" | "90d" | "6m" | "1y" | "same_year_ago" | "total";
@@ -186,26 +186,42 @@ export default function HistoricalComparison() {
 
       {result && (
         <>
+          {/* Erro de IA — separado de "sem dados" */}
+          {result.aiError && (
+            <Card className="border-destructive/50 bg-destructive/5">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2 text-destructive">
+                  <AlertTriangle className="h-5 w-5" />Falha na análise de IA
+                </CardTitle>
+                <CardDescription>{result.aiError.userMessage}</CardDescription>
+              </CardHeader>
+              <CardContent className="text-xs text-muted-foreground">
+                <p>Tipo: <span className="font-mono">{result.aiError.errorType}</span> • Provedor: {result.aiError.provider}</p>
+                <p className="mt-1">Os dados do período foram coletados normalmente — apenas a geração da narrativa falhou. Tente novamente em alguns segundos.</p>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Resumo narrativo */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" />Análise narrativa</CardTitle>
-              <CardDescription>
-                {result.candidate.name} • {format(new Date(result.period.start), "dd/MM/yyyy")} → {format(new Date(result.period.end), "dd/MM/yyyy")}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {result.analysis?.error && (
-                <p className="text-sm text-destructive flex items-center gap-2"><AlertTriangle className="h-4 w-4" />{result.analysis.error}</p>
-              )}
-              <p className="leading-relaxed text-sm md:text-base whitespace-pre-line">
-                {result.analysis?.summary || "Dados limitados para este período; análise baseada nas informações disponíveis."}
-              </p>
-              {result.analysis?.dataNote && (
-                <p className="text-xs text-muted-foreground italic">{result.analysis.dataNote}</p>
-              )}
-            </CardContent>
-          </Card>
+          {result.analysis && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" />Análise narrativa</CardTitle>
+                <CardDescription>
+                  {result.candidate?.name} • {result.period && `${format(new Date(result.period.start), "dd/MM/yyyy")} → ${format(new Date(result.period.end), "dd/MM/yyyy")}`}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="leading-relaxed text-sm md:text-base whitespace-pre-line">
+                  {result.analysis.summary}
+                </p>
+                {result.analysis.dataNote && (
+                  <p className="text-xs text-muted-foreground italic">{result.analysis.dataNote}</p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
 
           {/* Mudanças detectadas */}
           {result.analysis?.detectedChanges && result.analysis.detectedChanges.length > 0 && (
