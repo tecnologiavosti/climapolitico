@@ -110,16 +110,20 @@ export function CandidatesComparisonPanel({ candidates }: Props) {
   // Cores estáveis para linhas
   const colors = ["hsl(var(--primary))", "hsl(var(--success))", "hsl(var(--warning))", "hsl(var(--destructive))", "hsl(var(--accent))"];
 
-  // Participação de sentimento (positivo) entre top 5
-  const sentimentShare = useMemo(() =>
-    rows.slice(0, 5)
-      .filter((r) => r.positive > 0)
-      .map((r, i) => ({
-        name: r.candidate.full_name,
-        value: r.positive,
-        color: colors[i % colors.length],
-      })),
-  [rows]);
+  // Participação de sentimentos (Pos/Neg/Neu) por candidato — top 5
+  const sentimentBreakdown = useMemo(
+    () =>
+      rows.slice(0, 5).map((r) => {
+        const t = r.positive + r.negative + r.neutral;
+        return {
+          name: r.candidate.full_name,
+          Positivo: t > 0 ? Math.round((r.positive / t) * 100) : 0,
+          Negativo: t > 0 ? Math.round((r.negative / t) * 100) : 0,
+          Neutro: t > 0 ? Math.round((r.neutral / t) * 100) : 0,
+        };
+      }).filter((d) => d.Positivo + d.Negativo + d.Neutro > 0),
+    [rows],
+  );
 
   return (
     <Card className="p-6 space-y-6">
@@ -199,19 +203,23 @@ export function CandidatesComparisonPanel({ candidates }: Props) {
               </ResponsiveContainer>
             </div>
 
-            {/* Pizza: participação de positivas */}
+            {/* Barras empilhadas: participação de sentimentos por candidato */}
             <div>
-              <p className="text-sm font-medium mb-2">Participação de reações positivas (top 5)</p>
-              {sentimentShare.length === 0 ? (
-                <div className="h-[240px] flex items-center justify-center text-muted-foreground text-sm">Sem reações positivas analisadas.</div>
+              <p className="text-sm font-medium mb-2">Participação de sentimentos (top 5)</p>
+              {sentimentBreakdown.length === 0 ? (
+                <div className="h-[240px] flex items-center justify-center text-muted-foreground text-sm">Sem sentimentos analisados.</div>
               ) : (
                 <ResponsiveContainer width="100%" height={240}>
-                  <PieChart>
-                    <Pie data={sentimentShare} cx="50%" cy="50%" outerRadius={85} dataKey="value" label={(e: any) => `${e.name}`}>
-                      {sentimentShare.map((d, i) => <Cell key={i} fill={d.color} />)}
-                    </Pie>
-                    <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
-                  </PieChart>
+                  <BarChart data={sentimentBreakdown} layout="vertical" stackOffset="expand">
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis type="number" tickFormatter={(v) => `${Math.round(v * 100)}%`} className="text-muted-foreground" />
+                    <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11 }} className="text-muted-foreground" />
+                    <Tooltip formatter={(v: any) => `${v}%`} contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
+                    <Legend />
+                    <Bar dataKey="Positivo" stackId="s" fill="hsl(var(--success))" />
+                    <Bar dataKey="Negativo" stackId="s" fill="hsl(var(--destructive))" />
+                    <Bar dataKey="Neutro" stackId="s" fill="hsl(var(--warning))" />
+                  </BarChart>
                 </ResponsiveContainer>
               )}
             </div>
