@@ -305,11 +305,16 @@ export function ReactionsPerPost({ candidateId, days = 7 }: Props) {
             </div>
           </div>
 
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center gap-1.5">
             <Button onClick={() => setOpen(true)} variant="default">
-              Ver mais posts ({groupedPosts.length.toLocaleString("pt-BR")}) <ArrowRight className="h-4 w-4 ml-2" />
+              Ver mais posts <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
+            <p className="text-[11px] text-muted-foreground text-center">
+              Total disponível: <strong>{totals.postsCount.toLocaleString("pt-BR")}</strong> posts •{" "}
+              <strong>{totals.commentsCount.toLocaleString("pt-BR")}</strong> comentários
+            </p>
           </div>
+
         </>
       )}
 
