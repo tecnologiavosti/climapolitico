@@ -193,7 +193,9 @@ type AiResult =
 
 type AiErrorType = Extract<AiResult, { ok: false }>["errorType"];
 
-async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: AbortSignal): Promise<AiResult> {
+type ProviderName = "gateway-pro" | "gateway-flash" | "cerebras";
+
+async function callAi(provider: ProviderName, prompt: string, signal: AbortSignal): Promise<AiResult> {
   const started = Date.now();
   const isCerebras = provider === "cerebras";
   const key = Deno.env.get(isCerebras ? "CEREBRAS_API_KEY" : "LOVABLE_API_KEY");
@@ -202,6 +204,8 @@ async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: 
   const url = isCerebras
     ? "https://api.cerebras.ai/v1/chat/completions"
     : "https://ai.gateway.lovable.dev/v1/chat/completions";
+
+  const gatewayModel = provider === "gateway-pro" ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash";
 
   const body = isCerebras
     ? {
@@ -215,9 +219,9 @@ async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: 
         max_tokens: 2500,
       }
     : {
-        model: "google/gemini-2.5-flash",
+        model: gatewayModel,
         messages: [
-          { role: "system", content: "Você é um analista político brasileiro. Retorne APENAS JSON válido." },
+          { role: "system", content: "Você é um analista político brasileiro sênior, especialista em análise histórica de percepção pública. Responda em PT-BR. Retorne APENAS JSON válido, sem markdown." },
           { role: "user", content: prompt },
         ],
         response_format: { type: "json_object" },
@@ -228,7 +232,7 @@ async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: 
       method: "POST",
       headers: isCerebras
         ? { "Content-Type": "application/json", "Authorization": `Bearer ${key}` }
-        : { "Content-Type": "application/json", "Lovable-API-Key": key, "X-Lovable-AIG-SDK": "clima-politico-edge" },
+        : { "Content-Type": "application/json", "Lovable-API-Key": key, "X-Lovable-AIG-SDK": "clima-politico-edge-historical" },
       body: JSON.stringify(body),
       signal,
     });
@@ -264,6 +268,16 @@ async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: 
       message: String(e?.message || e),
       provider,
     };
+  }
+}
+
+async function tryProvider(name: ProviderName, prompt: string, timeoutMs: number): Promise<AiResult> {
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await callAi(name, prompt, ctrl.signal);
+  } finally {
+    clearTimeout(to);
   }
 }
 
@@ -481,49 +495,50 @@ Retorne ESTRITAMENTE JSON neste formato (sem markdown):
       fromCache,
     });
 
-    // Timeout 35s para Cerebras; se falhar por quota/rate/timeout, não quebra a tela: usa análise local.
-    const ctrl1 = new AbortController();
-    const to1 = setTimeout(() => ctrl1.abort(), 35000);
-    const cerebrasResult = await callAi("cerebras", prompt, ctrl1.signal);
-    clearTimeout(to1);
 
-    let aiPayload: any;
-    let provider = "cerebras";
+
+
+    // Cascata dedicada à Comparação Histórica IA:
+    // 1) Gateway Pro (Gemini 2.5 Pro)  2) Gateway Flash  3) Cerebras  4) Análise local (regras)
+    let aiPayload: any = null;
+    let provider = "local_fallback";
     let aiNotice: { errorType: string; message: string; provider: string; userMessage: string } | null = null;
+    const attempts: Array<{ provider: string; status: string; errorType?: string; latencyMs?: number; tokens?: number | null }> = [];
 
-    if (cerebrasResult.ok) {
-      aiPayload = cerebrasResult.data;
-      provider = cerebrasResult.provider;
-      console.log(`[historical-comparison] status Cerebras=OK tempo=${cerebrasResult.latencyMs}ms tokens=${cerebrasResult.tokens ?? "?"}`);
-    } else {
-      console.warn(`[historical-comparison] status Cerebras=${cerebrasResult.errorType} status=${cerebrasResult.status ?? "n/a"} — usando fallback apropriado`);
-      if (!["QUOTA_EXCEEDED", "RATE_LIMIT", "TIMEOUT", "MODEL_UNAVAILABLE"].includes(cerebrasResult.errorType)) {
-        const ctrl2 = new AbortController();
-        const to2 = setTimeout(() => ctrl2.abort(), 30000);
-        const gatewayResult = await callAi("gateway", prompt, ctrl2.signal);
-        clearTimeout(to2);
-        if (gatewayResult.ok) {
-          aiPayload = gatewayResult.data;
-          provider = gatewayResult.provider;
-          console.log(`[historical-comparison] status Gateway=OK tempo=${gatewayResult.latencyMs}ms tokens=${gatewayResult.tokens ?? "?"}`);
-        } else {
-          aiNotice = { errorType: gatewayResult.errorType, message: gatewayResult.message, provider: gatewayResult.provider, userMessage: userFacingError(gatewayResult.errorType) };
-          aiPayload = buildLocalAnalysis(summary, aiNotice.userMessage);
-          provider = "local_fallback";
-        }
-      } else {
-        aiNotice = { errorType: cerebrasResult.errorType, message: cerebrasResult.message, provider: cerebrasResult.provider, userMessage: userFacingError(cerebrasResult.errorType) };
-        aiPayload = buildLocalAnalysis(summary, aiNotice.userMessage);
-        provider = "local_fallback";
+    const cascade: Array<{ name: ProviderName; timeoutMs: number }> = [
+      { name: "gateway-pro", timeoutMs: 45000 },
+      { name: "gateway-flash", timeoutMs: 30000 },
+      { name: "cerebras", timeoutMs: 30000 },
+    ];
+
+    for (const step of cascade) {
+      const r = await tryProvider(step.name, prompt, step.timeoutMs);
+      if (r.ok) {
+        aiPayload = r.data;
+        provider = r.provider;
+        attempts.push({ provider: step.name, status: "ok", latencyMs: r.latencyMs, tokens: r.tokens ?? null });
+        console.log(`[historical-comparison] cascata OK em ${step.name} (${r.latencyMs}ms)`);
+        break;
+      }
+      attempts.push({ provider: step.name, status: "fail", errorType: r.errorType });
+      console.warn(`[historical-comparison] cascata falhou em ${step.name}: ${r.errorType}`);
+      // Em erros não recuperáveis de auth, encerra a cascata.
+      if (r.errorType === "AUTH" || r.errorType === "MISSING_KEY") {
+        aiNotice = { errorType: r.errorType, message: r.message, provider: r.provider, userMessage: userFacingError(r.errorType) };
+        if (r.errorType === "AUTH") break;
       }
     }
 
     if (!aiPayload) {
-      aiPayload = buildLocalAnalysis(summary, "Dados limitados para este período; análise baseada nas informações disponíveis.");
+      const lastFail = attempts.filter(a => a.status === "fail").pop();
+      const reason = lastFail ? userFacingError(lastFail.errorType || "INTERNAL") : "Dados limitados para este período; análise baseada nas informações disponíveis.";
+      aiNotice = aiNotice || { errorType: lastFail?.errorType || "INTERNAL", message: "Todos provedores indisponíveis", provider: "cascade", userMessage: reason };
+      aiPayload = buildLocalAnalysis(summary, reason);
       provider = "local_fallback";
+      console.warn(`[historical-comparison] cascata esgotada, usando análise local`);
     }
 
-    const responsePayload = buildResponse(aiPayload, provider, aiNotice);
+    const responsePayload = { ...buildResponse(aiPayload, provider, aiNotice), attempts };
     await supabase.from("analysis_cache").upsert({
       cache_key: cacheKey,
       analysis_type: "historical_comparison",
@@ -531,6 +546,7 @@ Retorne ESTRITAMENTE JSON neste formato (sem markdown):
       provider,
       expires_at: new Date(Date.now() + (provider === "local_fallback" ? 6 : 30) * 24 * 60 * 60 * 1000).toISOString(),
     }, { onConflict: "cache_key" });
+
 
     return new Response(JSON.stringify(responsePayload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
