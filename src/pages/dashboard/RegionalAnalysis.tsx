@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import BrazilStateMap from "@/components/dashboard/BrazilStateMap";
+import CitiesRanking from "@/components/dashboard/CitiesRanking";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { BR_MAP } from "@/data/brRegionsMap";
@@ -599,6 +600,10 @@ export default function RegionalAnalysis() {
       {/* ─── Mapa por UF e cidade (drill-down) ─── */}
       {candidateId && user && (
         <BrazilStateMap userId={user.id} candidateId={candidateId} network={network} />
+      )}
+
+      {candidateId && user && (
+        <CitiesRanking userId={user.id} candidateId={candidateId} network={network} />
       )}
 
       {/* ─── Detalhe da região selecionada ─── */}
