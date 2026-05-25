@@ -439,10 +439,128 @@ Deno.serve(async (req) => {
       themesReduced: (summary.first_half.topThemes || []).filter((t: string) => !(summary.second_half.topThemes || []).includes(t)).slice(0, 5),
     };
 
+    // ----- Agregações avançadas para análise histórica profunda -----
+    const weekKey = (d: Date) => {
+      const onejan = new Date(d.getUTCFullYear(), 0, 1);
+      const week = Math.ceil((((d.getTime() - onejan.getTime()) / 86400000) + onejan.getUTCDay() + 1) / 7);
+      return `${d.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+    };
+    const sentBuckets: Record<string, { week: string; pos: number; neg: number; neu: number }> = {};
+    for (const h of hist) {
+      const k = weekKey(new Date(h.date));
+      const b = sentBuckets[k] || { week: k, pos: 0, neg: 0, neu: 0 };
+      b.pos += Number(h.sentiment_positive || 0);
+      b.neg += Number(h.sentiment_negative || 0);
+      b.neu += Number(h.sentiment_neutral || 0);
+      sentBuckets[k] = b;
+    }
+    for (const i of enrichedInt) {
+      if (!i.created_at) continue;
+      const k = weekKey(new Date(i.created_at));
+      const b = sentBuckets[k] || { week: k, pos: 0, neg: 0, neu: 0 };
+      const lbl = intSentLabel(i.sentiment_label);
+      if (lbl.includes("positiv")) b.pos++;
+      else if (lbl.includes("negativ")) b.neg++;
+      else if (lbl.includes("neutr")) b.neu++;
+      sentBuckets[k] = b;
+    }
+    const sentimentTimeline = Object.values(sentBuckets).sort((a, b) => a.week.localeCompare(b.week));
+
+    const regionAgg = (arr: any[]) => {
+      const m: Record<string, { mentions: number; pos: number; neg: number; neu: number }> = {};
+      for (const it of arr) {
+        const r = it.region || it.state;
+        if (!r) continue;
+        const b = m[r] || { mentions: 0, pos: 0, neg: 0, neu: 0 };
+        b.mentions += 1;
+        const lbl = intSentLabel(it.sentiment_label);
+        if (lbl.includes("positiv")) b.pos++;
+        else if (lbl.includes("negativ")) b.neg++;
+        else if (lbl.includes("neutr")) b.neu++;
+        m[r] = b;
+      }
+      return m;
+    };
+    const regFirst = regionAgg(intFirst);
+    const regSecond = regionAgg(intSecond);
+    const allRegions = Array.from(new Set([...Object.keys(regFirst), ...Object.keys(regSecond)]));
+    const regionalShift = allRegions.map((r) => {
+      const a = regFirst[r] || { mentions: 0, pos: 0, neg: 0, neu: 0 };
+      const b = regSecond[r] || { mentions: 0, pos: 0, neg: 0, neu: 0 };
+      const sentA = a.pos - a.neg;
+      const sentB = b.pos - b.neg;
+      return {
+        region: r,
+        mentionsEarly: a.mentions,
+        mentionsLate: b.mentions,
+        mentionsDelta: b.mentions - a.mentions,
+        sentimentDelta: sentB - sentA,
+        direction: b.mentions > a.mentions * 1.3 ? "alta" : b.mentions < a.mentions * 0.7 ? "queda" : "estável",
+      };
+    }).sort((a, b) => Math.abs(b.mentionsDelta) - Math.abs(a.mentionsDelta)).slice(0, 8);
+
+    const emotionRegex: Record<string, RegExp> = {
+      indignação: /(absurdo|vergonha|revoltante|inaceitável|nojo)/i,
+      aprovação: /(parabéns|excelente|ótimo|incrível|maravilhoso)/i,
+      apoio: /(apoio|junto|com você|força)/i,
+      rejeição: /(fora|nunca|jamais|não voto|repúdio)/i,
+      polarização: /(sempre|nunca|todos|ninguém|verdade absoluta)/i,
+      confiança: /(confio|acredito|honesto|sério|comprometido)/i,
+    };
+    const countEmotions = (arr: any[]) => {
+      const m: Record<string, number> = {};
+      for (const it of arr) {
+        const t = String(it.comment_text || "");
+        for (const [emo, re] of Object.entries(emotionRegex)) if (re.test(t)) m[emo] = (m[emo] || 0) + 1;
+      }
+      return m;
+    };
+    const emoEarly = countEmotions(intFirst);
+    const emoLate = countEmotions(intSecond);
+    const allEmotions = Array.from(new Set([...Object.keys(emoEarly), ...Object.keys(emoLate)]));
+    const emotionalShift = allEmotions.map((e) => ({
+      emotion: e,
+      early: emoEarly[e] || 0,
+      late: emoLate[e] || 0,
+      delta: (emoLate[e] || 0) - (emoEarly[e] || 0),
+    })).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+
+    const dailyMentions: Record<string, number> = {};
+    for (const h of hist) dailyMentions[h.date] = (dailyMentions[h.date] || 0) + Number(h.mentions || 0);
+    for (const i of enrichedInt) {
+      if (!i.created_at) continue;
+      const d = ymd(new Date(i.created_at));
+      dailyMentions[d] = (dailyMentions[d] || 0) + 1;
+    }
+    const dailyValues = Object.values(dailyMentions);
+    const avgDaily = dailyValues.length ? dailyValues.reduce((s, n) => s + n, 0) / dailyValues.length : 0;
+    const peaks = Object.entries(dailyMentions)
+      .filter(([, v]) => v > avgDaily * 2 && v >= 5)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([date, v]) => ({ date, type: "spike", label: `Pico de menções (${v})`, mentions: v }));
+    const eventTimeline = [
+      ...events.map((e: any) => ({
+        date: (e.event_date || "").slice(0, 10),
+        type: e.event_type || "evento",
+        label: e.event_name,
+        description: e.description || null,
+        location: e.location || [e.city, e.state].filter(Boolean).join(", ") || null,
+      })),
+      ...peaks,
+    ].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+
+    (summary as any).advanced = {
+      sentimentTimeline,
+      regionalShift,
+      emotionalShift,
+      eventTimeline,
+    };
+
     const hasMinimumData = summary.totals.signals >= 1;
     const summaryJson = JSON.stringify(summary);
-    const cacheKey = `historical_comparison:v5:${await sha256(`${candidateId}:${ymd(start)}:${ymd(end)}:${summaryJson}`)}`;
-    console.log(`[historical-comparison] registros enviados=0 raw; sinais agregados=${summary.totals.signals}; resumo=${summaryJson.length} chars; cache=${cacheKey.slice(0, 40)}`);
+    const cacheKey = `historical_comparison:v6:${await sha256(`${candidateId}:${ymd(start)}:${ymd(end)}:${summaryJson}`)}`;
+    console.log(`[historical-comparison] sinais=${summary.totals.signals}; resumo=${summaryJson.length} chars; cache=${cacheKey.slice(0, 40)}`);
 
     const { data: cached } = await supabase
       .from("analysis_cache")
