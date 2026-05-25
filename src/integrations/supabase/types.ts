@@ -972,6 +972,60 @@ export type Database = {
         }
         Relationships: []
       }
+      historical_metrics: {
+        Row: {
+          average_sentiment: number | null
+          candidate_id: string
+          created_at: string
+          data_source: string
+          engagement: number
+          id: string
+          mentions: number
+          metric_date: string
+          negative_count: number
+          network_breakdown: Json
+          neutral_count: number
+          positive_count: number
+          region_breakdown: Json
+          top_topics: Json
+          user_id: string
+        }
+        Insert: {
+          average_sentiment?: number | null
+          candidate_id: string
+          created_at?: string
+          data_source?: string
+          engagement?: number
+          id?: string
+          mentions?: number
+          metric_date: string
+          negative_count?: number
+          network_breakdown?: Json
+          neutral_count?: number
+          positive_count?: number
+          region_breakdown?: Json
+          top_topics?: Json
+          user_id: string
+        }
+        Update: {
+          average_sentiment?: number | null
+          candidate_id?: string
+          created_at?: string
+          data_source?: string
+          engagement?: number
+          id?: string
+          mentions?: number
+          metric_date?: string
+          negative_count?: number
+          network_breakdown?: Json
+          neutral_count?: number
+          positive_count?: number
+          region_breakdown?: Json
+          top_topics?: Json
+          user_id?: string
+        }
+        Relationships: []
+      }
       job_execution_history: {
         Row: {
           duration_ms: number | null
@@ -1005,6 +1059,69 @@ export type Database = {
           started_at?: string
           status?: string
           worker_id?: string | null
+        }
+        Relationships: []
+      }
+      narrative_alerts: {
+        Row: {
+          affected_groups: Json
+          alternative_narrative: string | null
+          candidate_id: string
+          confidence: number | null
+          created_at: string
+          detected_bubble: string | null
+          dominant_sentiment: string | null
+          dominant_theme: string | null
+          id: string
+          is_dismissed: boolean
+          metadata: Json
+          opportunities: Json
+          region: string | null
+          risks: Json
+          spike_volume: number | null
+          suggested_action: string | null
+          trigger_reason: string
+          user_id: string
+        }
+        Insert: {
+          affected_groups?: Json
+          alternative_narrative?: string | null
+          candidate_id: string
+          confidence?: number | null
+          created_at?: string
+          detected_bubble?: string | null
+          dominant_sentiment?: string | null
+          dominant_theme?: string | null
+          id?: string
+          is_dismissed?: boolean
+          metadata?: Json
+          opportunities?: Json
+          region?: string | null
+          risks?: Json
+          spike_volume?: number | null
+          suggested_action?: string | null
+          trigger_reason: string
+          user_id: string
+        }
+        Update: {
+          affected_groups?: Json
+          alternative_narrative?: string | null
+          candidate_id?: string
+          confidence?: number | null
+          created_at?: string
+          detected_bubble?: string | null
+          dominant_sentiment?: string | null
+          dominant_theme?: string | null
+          id?: string
+          is_dismissed?: boolean
+          metadata?: Json
+          opportunities?: Json
+          region?: string | null
+          risks?: Json
+          spike_volume?: number | null
+          suggested_action?: string | null
+          trigger_reason?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -1112,6 +1229,57 @@ export type Database = {
           metric_name?: string
           metric_value?: number
           recorded_at?: string
+        }
+        Relationships: []
+      }
+      political_events: {
+        Row: {
+          candidate_id: string
+          city: string | null
+          created_at: string
+          description: string | null
+          event_date: string
+          event_name: string
+          event_type: string
+          id: string
+          keywords: string[]
+          location: string | null
+          metadata: Json
+          state: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          candidate_id: string
+          city?: string | null
+          created_at?: string
+          description?: string | null
+          event_date: string
+          event_name: string
+          event_type?: string
+          id?: string
+          keywords?: string[]
+          location?: string | null
+          metadata?: Json
+          state?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          candidate_id?: string
+          city?: string | null
+          created_at?: string
+          description?: string | null
+          event_date?: string
+          event_name?: string
+          event_type?: string
+          id?: string
+          keywords?: string[]
+          location?: string | null
+          metadata?: Json
+          state?: string | null
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -1436,21 +1604,30 @@ export type Database = {
           analysis_id: string | null
           author_profile_url: string | null
           candidate_id: string
+          city: string | null
           collected_at: string | null
           comment_author: string | null
           comment_text: string | null
           created_at: string | null
+          event_id: string | null
+          external_id: string | null
           id: string
           interaction_type: string
+          latitude: number | null
           likes_count: number | null
+          longitude: number | null
           original_posted_at: string | null
+          parent_comment_id: string | null
+          post_id: string | null
           region: string | null
           replies_count: number | null
+          root_comment_id: string | null
           sentiment_confidence: number | null
           sentiment_label: string | null
           sentiment_score: number | null
           shares_count: number | null
           social_network: string
+          state: string | null
           user_id: string
         }
         Insert: {
@@ -1458,21 +1635,30 @@ export type Database = {
           analysis_id?: string | null
           author_profile_url?: string | null
           candidate_id: string
+          city?: string | null
           collected_at?: string | null
           comment_author?: string | null
           comment_text?: string | null
           created_at?: string | null
+          event_id?: string | null
+          external_id?: string | null
           id?: string
           interaction_type?: string
+          latitude?: number | null
           likes_count?: number | null
+          longitude?: number | null
           original_posted_at?: string | null
+          parent_comment_id?: string | null
+          post_id?: string | null
           region?: string | null
           replies_count?: number | null
+          root_comment_id?: string | null
           sentiment_confidence?: number | null
           sentiment_label?: string | null
           sentiment_score?: number | null
           shares_count?: number | null
           social_network: string
+          state?: string | null
           user_id: string
         }
         Update: {
@@ -1480,21 +1666,30 @@ export type Database = {
           analysis_id?: string | null
           author_profile_url?: string | null
           candidate_id?: string
+          city?: string | null
           collected_at?: string | null
           comment_author?: string | null
           comment_text?: string | null
           created_at?: string | null
+          event_id?: string | null
+          external_id?: string | null
           id?: string
           interaction_type?: string
+          latitude?: number | null
           likes_count?: number | null
+          longitude?: number | null
           original_posted_at?: string | null
+          parent_comment_id?: string | null
+          post_id?: string | null
           region?: string | null
           replies_count?: number | null
+          root_comment_id?: string | null
           sentiment_confidence?: number | null
           sentiment_label?: string | null
           sentiment_score?: number | null
           shares_count?: number | null
           social_network?: string
+          state?: string | null
           user_id?: string
         }
         Relationships: [
