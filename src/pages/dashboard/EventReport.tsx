@@ -372,16 +372,16 @@ const EventReportPage = () => {
           </div>
 
           {detectedEvents.length > 0 && (
-            <HelpTooltip text="Selecione um evento detectado. Só os comentários sobre ele serão analisados.">
+            <HelpTooltip text="Selecione um dia com pico de menções. Só os comentários desse dia serão analisados.">
               <Select value={selectedEventIdx} onValueChange={handleSelectEvent}>
                 <SelectTrigger className="w-full sm:w-[480px]">
-                  <SelectValue placeholder={`${detectedEvents.length} evento(s) detectado(s) — escolha um`} />
+                  <SelectValue placeholder={`${detectedEvents.length} dia(s) com pico — escolha um`} />
                 </SelectTrigger>
                 <SelectContent className="max-w-[calc(100vw-2rem)]">
                   {detectedEvents.map((e, i) => (
                     <SelectItem key={i} value={String(i)} className="whitespace-normal break-words pr-8">
                       <span className="block text-sm leading-snug">
-                        {e.name} • {e.start_date} ({e.mentions_estimate} menções)
+                        {e.name} — {e.mentions_estimate} menções
                       </span>
                     </SelectItem>
                   ))}
@@ -394,11 +394,6 @@ const EventReportPage = () => {
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
               <p className="font-medium">{detectedEvents[Number(selectedEventIdx)].name}</p>
               <p className="text-muted-foreground mt-1">{detectedEvents[Number(selectedEventIdx)].description}</p>
-              <div className="flex flex-wrap gap-1 mt-2">
-                {detectedEvents[Number(selectedEventIdx)].keywords.map((k, i) => (
-                  <Badge key={i} variant="secondary" className="text-xs">{k}</Badge>
-                ))}
-              </div>
             </div>
           )}
 
