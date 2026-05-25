@@ -45,6 +45,7 @@ const SLO = lazy(() => import("./dashboard/SLO"));
 const WorkerTokens = lazy(() => import("./dashboard/WorkerTokens"));
 const TenantAnalytics = lazy(() => import("./dashboard/TenantAnalytics"));
 const PoliticalEvents = lazy(() => import("./dashboard/PoliticalEvents"));
+const HistoricalComparison = lazy(() => import("./dashboard/HistoricalComparison"));
 
 const DataEnrichment = lazy(() => import("./dashboard/DataEnrichment"));
 
