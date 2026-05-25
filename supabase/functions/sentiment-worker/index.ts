@@ -33,8 +33,6 @@ function logJSON(level: string, msg: string, extra: Record<string, unknown> = {}
   console.log(JSON.stringify({ level, msg, worker: WORKER_ID, correlation: CORRELATION, ts: new Date().toISOString(), ...extra }));
 }
 
-const sb = createClient(SUPABASE_URL, SERVICE_KEY);
-
 type Provider = { name: string; call: (text: string) => Promise<{ label: string; score: number; confidence: number }> };
 
 // Heuristic PT-BR fallback — calibrated to be decisive (less Neutro)
@@ -90,7 +88,7 @@ async function analyze(text: string) {
   const { data: health } = await sb.from("provider_health").select("provider,state,health_score").order("health_score", { ascending: false });
   const healthy = (health || []).filter((h: any) => h.state !== "open").map((h: any) => h.provider);
   for (const p of providers) {
-    if (!healthy.includes(p.name)) continue;
+    if (healthy.length > 0 && !healthy.includes(p.name)) continue;
     try {
       return await p.call(text);
     } catch (_) { /* try next */ }
@@ -120,7 +118,7 @@ async function processJob(job: any) {
       if (c?.result) {
         r = c.result as any;
         cached = true;
-        await sb.from("analysis_cache").update({ hit_count: (c as any).hit_count ? undefined : 1, last_hit_at: new Date().toISOString() }).eq("cache_key", key);
+        await sb.from("analysis_cache").update({ last_hit_at: new Date().toISOString() }).eq("cache_key", key);
       }
     }
     if (!r) {
@@ -182,14 +180,18 @@ async function processJob(job: any) {
       _failed_delta: ok ? 0 : 1,
     });
     if (ok && job.user_id) {
-      await sb.rpc("record_usage_event", {
-        _user_id: job.user_id,
-        _event_type: "ai_analysis",
-        _resource: "sentiment",
-        _quantity: 1,
-        _cost_units: 1,
-        _metadata: { job_id: job.id, duration_ms: Date.now() - t0 },
-      }).catch(() => {});
+      try {
+        await sb.rpc("record_usage_event", {
+          _user_id: job.user_id,
+          _event_type: "ai_analysis",
+          _resource: "sentiment",
+          _quantity: 1,
+          _cost_units: 1,
+          _metadata: { job_id: job.id, duration_ms: Date.now() - t0 },
+        });
+      } catch (_) {
+        // Métrica de uso é não-bloqueante para o processamento de sentimento.
+      }
     }
   }
 }

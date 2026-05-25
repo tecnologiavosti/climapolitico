@@ -1,5 +1,5 @@
-import { useMemo, useState, useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
@@ -10,9 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { isHiddenNetwork } from "@/lib/networkVisibility";
-import { Heart, MessageCircle, Share2, ExternalLink, ThumbsUp, ThumbsDown, Minus, ArrowRight } from "lucide-react";
+import { Heart, MessageCircle, Share2, ThumbsUp, ThumbsDown, Minus, ArrowRight, Loader2 } from "lucide-react";
 import { subDays } from "date-fns";
 import { fetchAllPaginated } from "@/lib/supabasePagination";
 
@@ -51,6 +52,24 @@ interface Group {
   score: number;
 }
 
+type PeriodKey = "total" | "7d" | "30d" | "90d" | "6m" | "1y" | "custom";
+
+interface SummaryData {
+  totalRecords: number;
+  postsCount: number;
+  commentsCount: number;
+  positiveCount: number;
+  negativeCount: number;
+  neutralCount: number;
+  classifiedCount: number;
+  pendingCount: number;
+  totalLikes: number;
+  totalReplies: number;
+  totalShares: number;
+  totalInteractions: number;
+  dominantTopics: { topic: string; mentions: number }[];
+}
+
 const STOPWORDS = new Set([
   "para","como","mais","muito","pela","pelo","isso","essa","esse","esta","este","entre","sobre","quando","onde","tambem","também","presidente","candidato","brasil","politica","política","governo","partido","povo","gente","tudo","todos","todas","agora","hoje","ontem","sempre","nunca","assim","porque","mesmo","quem","tem","tinha","foi","sao","são","dos","das","com","sem","por","seu","sua","meu","minha","nos","nas","que","dele","dela","aqui","ali","ainda","depois","antes","pouco","você","voce","eles","elas","ser","ter","vai","vou","era","pra","pro","não","nao","sim","cada","anos","contra","favor","https","http","aaaa","aaaaa"
 ]);
@@ -59,28 +78,69 @@ function tokenize(text: string): string[] {
   return text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").match(/[a-z]{5,}/g) || [];
 }
 
-export function ReactionsPerPost({ candidateId, days = 7 }: Props) {
+function normalizeSentiment(label: string | null): "positive" | "negative" | "neutral" | null {
+  const value = (label || "").trim().toLowerCase();
+  if (["positivo", "positive", "pos"].includes(value)) return "positive";
+  if (["negativo", "negative", "neg"].includes(value)) return "negative";
+  if (["neutro", "neutral", "neu"].includes(value)) return "neutral";
+  return null;
+}
+
+function periodRange(period: PeriodKey, customStart: string, customEnd: string) {
+  const end = period === "custom" && customEnd ? new Date(`${customEnd}T23:59:59`).toISOString() : null;
+  if (period === "total") return { start: null, end };
+  if (period === "custom") return { start: customStart ? new Date(`${customStart}T00:00:00`).toISOString() : null, end };
+  const days = period === "7d" ? 7 : period === "30d" ? 30 : period === "90d" ? 90 : period === "6m" ? 180 : 365;
+  return { start: subDays(new Date(), days).toISOString(), end };
+}
+
+export function ReactionsPerPost({ candidateId }: Props) {
   const { user } = useAuth();
   const { isAdmin } = useAdminCheck();
+  const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Group | null>(null);
   const [open, setOpen] = useState(false);
+  const [selectedPeriod, setSelectedPeriod] = useState<PeriodKey>("total");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
   const [filterSentiment, setFilterSentiment] = useState<string>("all");
   const [filterNetwork, setFilterNetwork] = useState<string>("all");
   const [filterDate, setFilterDate] = useState<string>("");
   const [visibleCount, setVisibleCount] = useState(50);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const { data: interactions, isLoading } = useQuery({
-    queryKey: ["reactions-per-post-full", user?.id, isAdmin, candidateId, days],
+  const range = useMemo(() => periodRange(selectedPeriod, customStart, customEnd), [selectedPeriod, customStart, customEnd]);
+
+  const summaryKey = ["reactions-summary", user?.id, isAdmin, candidateId, range.start, range.end];
+
+  const { data: summary, isLoading: summaryLoading } = useQuery({
+    queryKey: summaryKey,
     queryFn: async () => {
-      const since = subDays(new Date(), days).toISOString();
+      const { data, error } = await supabase.rpc("get_reactions_per_post_summary" as any, {
+        _user_id: user!.id,
+        _candidate_id: candidateId ?? null,
+        _period_start: range.start,
+        _period_end: range.end,
+      });
+      if (error) throw error;
+      return data as SummaryData;
+    },
+    enabled: !!user,
+    staleTime: 30_000,
+    refetchInterval: (query) => ((query.state.data as SummaryData | undefined)?.pendingCount ?? 0) > 0 ? 20_000 : false,
+  });
+
+  const { data: interactions, isLoading } = useQuery({
+    queryKey: ["reactions-per-post-full", user?.id, isAdmin, candidateId, range.start, range.end],
+    queryFn: async () => {
       const rows = await fetchAllPaginated<Row>((from, to) => {
         let q = supabase
           .from("social_interactions")
           .select("id, social_network, comment_text, comment_author, likes_count, replies_count, shares_count, sentiment_label, collected_at, candidate_id, post_id, parent_comment_id, root_comment_id")
-          .gte("collected_at", since)
           .order("collected_at", { ascending: false })
           .range(from, to);
+        if (range.start) q = q.gte("collected_at", range.start);
+        if (range.end) q = q.lte("collected_at", range.end);
         if (!isAdmin && user) q = q.eq("user_id", user.id);
         if (candidateId) q = q.eq("candidate_id", candidateId);
         return q;
@@ -89,55 +149,63 @@ export function ReactionsPerPost({ candidateId, days = 7 }: Props) {
     },
     enabled: !!user,
     staleTime: 60_000,
+    refetchInterval: summary?.pendingCount ? 20_000 : false,
   });
+
+  const triggerSentimentQueue = useCallback(async () => {
+    if (!user || !summary?.pendingCount) return;
+    await supabase.rpc("enqueue_pending_sentiment_jobs" as any, {
+      _user_id: user.id,
+      _candidate_id: candidateId ?? null,
+      _period_start: range.start,
+      _period_end: range.end,
+      _batch_size: 1000,
+    });
+
+    await Promise.allSettled([
+      supabase.functions.invoke("sentiment-worker", { body: {} }),
+      supabase.functions.invoke("sentiment-worker", { body: {} }),
+      supabase.functions.invoke("sentiment-worker", { body: {} }),
+    ]);
+    queryClient.invalidateQueries({ queryKey: ["reactions-summary"] });
+    queryClient.invalidateQueries({ queryKey: ["reactions-per-post-full"] });
+  }, [candidateId, queryClient, range.end, range.start, summary?.pendingCount, user]);
+
+  useEffect(() => {
+    if (!summary?.pendingCount) return;
+    triggerSentimentQueue().catch(() => null);
+  }, [summary?.pendingCount, triggerSentimentQueue]);
 
   // Totais — sentimento agregado sobre TUDO (raiz + comentários + respostas + subcomentários)
   const totals = useMemo(() => {
-    const list = interactions || [];
-    const pos = list.filter((r) => r.sentiment_label === "positive").length;
-    const neg = list.filter((r) => r.sentiment_label === "negative").length;
-    const neu = list.filter((r) => r.sentiment_label === "neutral").length;
-    const labeled = pos + neg + neu;
-    const unanalyzed = list.length - labeled;
-    const totalLikes = list.reduce((s, r) => s + (r.likes_count || 0), 0);
-    const totalReplies = list.reduce((s, r) => s + (r.replies_count || 0), 0);
-    const totalShares = list.reduce((s, r) => s + (r.shares_count || 0), 0);
-    // Posts = registros distintos de post_id (cada post_id = 1 post)
-    const postSet = new Set<string>();
-    list.forEach((r) => { if (r.post_id) postSet.add(r.post_id); });
-    const postsCount = postSet.size;
-    // Comentários = qualquer registro que NÃO é o post raiz (tem parent ou root_comment_id)
-    const commentsCount = list.filter((r) => r.parent_comment_id || r.root_comment_id).length;
+    const data = summary;
+    const pos = data?.positiveCount || 0;
+    const neg = data?.negativeCount || 0;
+    const neu = data?.neutralCount || 0;
+    const labeled = data?.classifiedCount || 0;
+    const unanalyzed = data?.pendingCount || 0;
     return {
       pos, neg, neu, labeled, unanalyzed,
-      totalRecords: list.length,
-      postsCount,
-      commentsCount,
-      totalLikes, totalReplies, totalShares,
-      totalInteractions: totalLikes + totalReplies + totalShares,
+      totalRecords: data?.totalRecords || 0,
+      postsCount: data?.postsCount || 0,
+      commentsCount: data?.commentsCount || 0,
+      totalLikes: data?.totalLikes || 0,
+      totalReplies: data?.totalReplies || 0,
+      totalShares: data?.totalShares || 0,
+      totalInteractions: data?.totalInteractions || 0,
       posPct: labeled > 0 ? Math.round((pos / labeled) * 100) : 0,
       negPct: labeled > 0 ? Math.round((neg / labeled) * 100) : 0,
       neuPct: labeled > 0 ? Math.round((neu / labeled) * 100) : 0,
     };
-  }, [interactions]);
+  }, [summary]);
 
 
-  // Top assuntos (tokens dominantes em posts raiz)
+  // Assuntos dominantes — agrupamento semântico vindo do banco, não nomes isolados
   const topTopics = useMemo(() => {
-    const list = interactions || [];
-    const counts = new Map<string, number>();
-    list.forEach((r) => {
-      if (!r.comment_text) return;
-      tokenize(r.comment_text).forEach((tok) => {
-        if (STOPWORDS.has(tok)) return;
-        counts.set(tok, (counts.get(tok) || 0) + 1);
-      });
-    });
-    return [...counts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([word]) => word.charAt(0).toUpperCase() + word.slice(1));
-  }, [interactions]);
+    return (summary?.dominantTopics || [])
+      .slice(0, 8)
+      .map((item) => ({ label: item.topic.charAt(0).toUpperCase() + item.topic.slice(1), mentions: item.mentions }));
+  }, [summary?.dominantTopics]);
 
   // Agrupar por post
   const groupedPosts = useMemo<Group[]>(() => {
@@ -156,9 +224,10 @@ export function ReactionsPerPost({ candidateId, days = 7 }: Props) {
       g.replies += r.replies_count || 0;
       g.shares += r.shares_count || 0;
       g.eng += (r.likes_count || 0) + (r.replies_count || 0) + (r.shares_count || 0);
-      if (r.sentiment_label === "positive") g.pos++;
-      else if (r.sentiment_label === "negative") g.neg++;
-      else if (r.sentiment_label === "neutral") g.neu++;
+      const sentiment = normalizeSentiment(r.sentiment_label);
+      if (sentiment === "positive") g.pos++;
+      else if (sentiment === "negative") g.neg++;
+      else if (sentiment === "neutral") g.neu++;
     }
     // score = engajamento × (1 + relevância via respostas) × |sentimento|
     return Array.from(groups.values())
@@ -223,17 +292,46 @@ export function ReactionsPerPost({ candidateId, days = 7 }: Props) {
         <HelpTooltip text="Resumo de 100% dos posts do período. Os detalhes ficam no drawer lateral para não poluir a visão geral.">
           <div className="cursor-help">
             <h3 className="text-lg font-bold">Reações por posts</h3>
-            <p className="text-sm text-muted-foreground">Resumo estratégico dos últimos {days} dias</p>
+            <p className="text-sm text-muted-foreground">Resumo estratégico — Período Total</p>
           </div>
         </HelpTooltip>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={selectedPeriod} onValueChange={(value) => setSelectedPeriod(value as PeriodKey)}>
+            <SelectTrigger className="w-[190px]"><SelectValue placeholder="Período" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="total">Total</SelectItem>
+              <SelectItem value="7d">7 dias</SelectItem>
+              <SelectItem value="30d">30 dias</SelectItem>
+              <SelectItem value="90d">90 dias</SelectItem>
+              <SelectItem value="6m">6 meses</SelectItem>
+              <SelectItem value="1y">1 ano</SelectItem>
+              <SelectItem value="custom">Período personalizado</SelectItem>
+            </SelectContent>
+          </Select>
+          {selectedPeriod === "custom" && (
+            <>
+              <Input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="w-[150px]" />
+              <Input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="w-[150px]" />
+            </>
+          )}
+        </div>
       </div>
 
-      {isLoading ? (
+      {(summaryLoading || isLoading) ? (
         <Skeleton className="h-24 w-full" />
       ) : totals.totalRecords === 0 ? (
         <div className="text-sm text-muted-foreground py-8 text-center">Nenhum comentário no período.</div>
       ) : (
         <>
+          {totals.unanalyzed > 0 && (
+            <Alert className="border-warning/40 bg-warning/10">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <AlertDescription>
+                Processando {totals.unanalyzed.toLocaleString("pt-BR")} registros restantes. A dashboard atualiza automaticamente até consolidar 100% dos sentimentos.
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Posts & interações */}
           <div>
             <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-2">Posts e interações</h4>
@@ -246,17 +344,15 @@ export function ReactionsPerPost({ candidateId, days = 7 }: Props) {
             </div>
           </div>
 
-          {/* Classificação de sentimento — sobre TODOS os registros (raiz + comentários + respostas + subcomentários) */}
+          {/* Sentimento consolidado — sobre TODOS os registros (raiz + comentários + respostas + subcomentários) */}
           <div>
             <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-2">
-              Classificação de sentimento
-              <span className="ml-2 text-[10px] font-normal normal-case text-muted-foreground">
-                {totals.labeled.toLocaleString("pt-BR")} de {totals.totalRecords.toLocaleString("pt-BR")} registros analisados
-                {totals.unanalyzed > 0 && ` • ${totals.unanalyzed.toLocaleString("pt-BR")} pendente(s)`}
-              </span>
+              Sentimento consolidado
             </h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-              <KpiBox label="Total analisado" value={totals.labeled} />
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-3">
+              <KpiBox label="Registros totais" value={totals.totalRecords} />
+              <KpiBox label="Registros classificados" value={totals.labeled} />
+              <KpiBox label="Pendentes" value={totals.unanalyzed} highlight={totals.unanalyzed > 0} />
               <KpiBox label={`Positivo (${totals.posPct}%)`} value={totals.pos} tone="pos" />
               <KpiBox label={`Negativo (${totals.negPct}%)`} value={totals.neg} tone="neg" />
               <KpiBox label={`Neutro (${totals.neuPct}%)`} value={totals.neu} tone="neu" />
@@ -270,9 +366,9 @@ export function ReactionsPerPost({ candidateId, days = 7 }: Props) {
 
           {topTopics.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted-foreground">Top assuntos:</span>
+              <span className="text-xs text-muted-foreground">Assuntos dominantes:</span>
               {topTopics.map((t) => (
-                <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
+                <Badge key={t.label} variant="secondary" className="text-xs">{t.label} · {t.mentions.toLocaleString("pt-BR")}</Badge>
               ))}
             </div>
           )}

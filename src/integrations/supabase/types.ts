@@ -2593,6 +2593,16 @@ export type Database = {
         }
         Returns: Json
       }
+      enqueue_pending_sentiment_jobs: {
+        Args: {
+          _batch_size?: number
+          _candidate_id?: string
+          _period_end?: string
+          _period_start?: string
+          _user_id: string
+        }
+        Returns: Json
+      }
       get_network_profiles_stats: {
         Args: { _user_id?: string }
         Returns: {
@@ -2616,6 +2626,15 @@ export type Database = {
           samples: number
           sum_value: number
         }[]
+      }
+      get_reactions_per_post_summary: {
+        Args: {
+          _candidate_id?: string
+          _period_end?: string
+          _period_start?: string
+          _user_id: string
+        }
+        Returns: Json
       }
       get_tenant_analytics: {
         Args: { _days?: number; _limit?: number }

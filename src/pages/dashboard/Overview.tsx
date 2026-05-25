@@ -791,7 +791,7 @@ export default function Overview() {
       </Card>
 
       {/* Fase 6 — Reações por post */}
-      <ReactionsPerPost candidateId={selectedCandidateId || undefined} days={7} />
+      <ReactionsPerPost candidateId={selectedCandidateId || undefined} />
 
       {/* Fase 8 — Comparativo consolidado */}
       {candidates && candidates.length > 0 && (
