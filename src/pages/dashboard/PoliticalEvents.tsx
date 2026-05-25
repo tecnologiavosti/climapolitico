@@ -119,8 +119,13 @@ export default function PoliticalEvents() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Eventos & Entrevistas</h1>
-          <p className="text-muted-foreground">Cadastre entrevistas, debates e comícios. Medimos o impacto antes / durante / depois nas redes.</p>
+          <p className="text-muted-foreground">Detectamos picos de menções automaticamente. Você também pode cadastrar eventos manualmente.</p>
         </div>
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" onClick={handleAutoDetect} disabled={detecting}>
+            {detecting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+            Detectar eventos com IA
+          </Button>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-2" />Novo evento</Button></DialogTrigger>
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
