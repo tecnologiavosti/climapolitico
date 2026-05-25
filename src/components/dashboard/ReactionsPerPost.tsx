@@ -291,17 +291,46 @@ export function ReactionsPerPost({ candidateId }: Props) {
         <HelpTooltip text="Resumo de 100% dos posts do período. Os detalhes ficam no drawer lateral para não poluir a visão geral.">
           <div className="cursor-help">
             <h3 className="text-lg font-bold">Reações por posts</h3>
-            <p className="text-sm text-muted-foreground">Resumo estratégico dos últimos {days} dias</p>
+            <p className="text-sm text-muted-foreground">Resumo estratégico — Período Total</p>
           </div>
         </HelpTooltip>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={selectedPeriod} onValueChange={(value) => setSelectedPeriod(value as PeriodKey)}>
+            <SelectTrigger className="w-[190px]"><SelectValue placeholder="Período" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="total">Total</SelectItem>
+              <SelectItem value="7d">7 dias</SelectItem>
+              <SelectItem value="30d">30 dias</SelectItem>
+              <SelectItem value="90d">90 dias</SelectItem>
+              <SelectItem value="6m">6 meses</SelectItem>
+              <SelectItem value="1y">1 ano</SelectItem>
+              <SelectItem value="custom">Período personalizado</SelectItem>
+            </SelectContent>
+          </Select>
+          {selectedPeriod === "custom" && (
+            <>
+              <Input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="w-[150px]" />
+              <Input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="w-[150px]" />
+            </>
+          )}
+        </div>
       </div>
 
-      {isLoading ? (
+      {(summaryLoading || isLoading) ? (
         <Skeleton className="h-24 w-full" />
       ) : totals.totalRecords === 0 ? (
         <div className="text-sm text-muted-foreground py-8 text-center">Nenhum comentário no período.</div>
       ) : (
         <>
+          {totals.unanalyzed > 0 && (
+            <Alert className="border-warning/40 bg-warning/10">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <AlertDescription>
+                Processando {totals.unanalyzed.toLocaleString("pt-BR")} registros restantes. A dashboard atualiza automaticamente até consolidar 100% dos sentimentos.
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Posts & interações */}
           <div>
             <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-2">Posts e interações</h4>
@@ -314,17 +343,15 @@ export function ReactionsPerPost({ candidateId }: Props) {
             </div>
           </div>
 
-          {/* Classificação de sentimento — sobre TODOS os registros (raiz + comentários + respostas + subcomentários) */}
+          {/* Sentimento consolidado — sobre TODOS os registros (raiz + comentários + respostas + subcomentários) */}
           <div>
             <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-2">
-              Classificação de sentimento
-              <span className="ml-2 text-[10px] font-normal normal-case text-muted-foreground">
-                {totals.labeled.toLocaleString("pt-BR")} de {totals.totalRecords.toLocaleString("pt-BR")} registros analisados
-                {totals.unanalyzed > 0 && ` • ${totals.unanalyzed.toLocaleString("pt-BR")} pendente(s)`}
-              </span>
+              Sentimento consolidado
             </h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-              <KpiBox label="Total analisado" value={totals.labeled} />
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-3">
+              <KpiBox label="Registros totais" value={totals.totalRecords} />
+              <KpiBox label="Registros classificados" value={totals.labeled} />
+              <KpiBox label="Pendentes" value={totals.unanalyzed} highlight={totals.unanalyzed > 0} />
               <KpiBox label={`Positivo (${totals.posPct}%)`} value={totals.pos} tone="pos" />
               <KpiBox label={`Negativo (${totals.negPct}%)`} value={totals.neg} tone="neg" />
               <KpiBox label={`Neutro (${totals.neuPct}%)`} value={totals.neu} tone="neu" />
@@ -338,9 +365,9 @@ export function ReactionsPerPost({ candidateId }: Props) {
 
           {topTopics.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted-foreground">Top assuntos:</span>
+              <span className="text-xs text-muted-foreground">Assuntos dominantes:</span>
               {topTopics.map((t) => (
-                <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
+                <Badge key={t.label} variant="secondary" className="text-xs">{t.label} · {t.mentions.toLocaleString("pt-BR")}</Badge>
               ))}
             </div>
           )}
