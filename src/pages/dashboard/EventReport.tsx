@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CalendarDays, MessageSquare, TrendingUp, AlertTriangle, Lightbulb, BookOpen, Zap } from "lucide-react";
+import { Loader2, CalendarDays, MessageSquare, TrendingUp, AlertTriangle, Lightbulb, BookOpen, Zap, Users, Radio, Layers } from "lucide-react";
 import { toast } from "sonner";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 
@@ -168,6 +168,67 @@ const EventReportPage = () => {
   const [endDate, setEndDate] = useState("");
   const [result, setResult] = useState<ReportResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Enriquecimento: bolhas, temas dominantes (com sentimento) e origem do pico
+  const enrichQueryKey = result?.period ? `${selectedCandidate}|${result.period.startDate}|${result.period.endDate}` : "";
+  const { data: enrichment } = useQuery({
+    queryKey: ["peak-enrichment", enrichQueryKey],
+    enabled: !!result?.report && !!result?.period && !!selectedCandidate,
+    queryFn: async () => {
+      const p = result!.period!;
+      const { data, error } = await supabase
+        .from("social_interactions")
+        .select("social_network, region, state, city, comment_text, sentiment_label")
+        .eq("candidate_id", selectedCandidate)
+        .or(`and(original_posted_at.gte.${p.startDate},original_posted_at.lte.${p.endDate}),and(original_posted_at.is.null,created_at.gte.${p.startDate},created_at.lte.${p.endDate})`)
+        .limit(8000);
+      if (error) throw error;
+      const rows = data || [];
+      const norm = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+      // Origem do pico (rede)
+      const networkMap = new Map<string, number>();
+      rows.forEach(r => { if (r.social_network) networkMap.set(r.social_network, (networkMap.get(r.social_network) || 0) + 1); });
+      const networkOrigin = [...networkMap.entries()].sort((a, b) => b[1] - a[1]);
+
+      // Bolhas detectadas (região + estado)
+      const bubbleMap = new Map<string, number>();
+      rows.forEach(r => {
+        if (r.region) bubbleMap.set(r.region, (bubbleMap.get(r.region) || 0) + 1);
+        else if (r.state) bubbleMap.set(r.state, (bubbleMap.get(r.state) || 0) + 1);
+      });
+      const bubbles = [...bubbleMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+      // Temas dominantes com sentimento (cruza main_topics × comentários)
+      const topics = (result?.report?.main_topics || []).slice(0, 10);
+      const themes = topics.map((topic) => {
+        const ntopic = norm(topic);
+        let total = 0, pos = 0, neg = 0, neu = 0;
+        rows.forEach(r => {
+          if (!r.comment_text) return;
+          if (norm(r.comment_text).includes(ntopic)) {
+            total++;
+            if (r.sentiment_label === "positive") pos++;
+            else if (r.sentiment_label === "negative") neg++;
+            else if (r.sentiment_label === "neutral") neu++;
+          }
+        });
+        const labeled = pos + neg + neu;
+        return {
+          topic,
+          total,
+          positivePct: labeled > 0 ? Math.round((pos / labeled) * 100) : 0,
+          negativePct: labeled > 0 ? Math.round((neg / labeled) * 100) : 0,
+          neutralPct: labeled > 0 ? Math.round((neu / labeled) * 100) : 0,
+        };
+      }).filter(t => t.total > 0).sort((a, b) => b.total - a.total);
+
+      return { networkOrigin, bubbles, themes, totalSample: rows.length };
+    },
+    staleTime: 60_000,
+  });
+
+
 
   const { data: candidates = [] } = useQuery({
     queryKey: ['candidates-for-event', user?.id],
@@ -545,7 +606,107 @@ const EventReportPage = () => {
             </CardContent>
           </Card>
 
+          {/* Bolhas detectadas */}
+          {enrichment && enrichment.bubbles.length > 0 && (
+            <Card>
+              <CardHeader>
+                <HelpTooltip text="Regiões/estados onde o pico mais ressoou.">
+                  <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" />Bolhas detectadas</CardTitle>
+                </HelpTooltip>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {enrichment.bubbles.map(([name, n]) => (
+                    <Badge key={name} variant="outline" className="text-sm px-3 py-1">
+                      {name} <span className="ml-2 text-muted-foreground">{n}</span>
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Narrativas detectadas */}
+          {report.main_topics && report.main_topics.length > 0 && (
+            <Card>
+              <CardHeader>
+                <HelpTooltip text="Linhas narrativas dominantes no pico, extraídas dos temas mais discutidos.">
+                  <CardTitle className="flex items-center gap-2"><Layers className="h-5 w-5" />Narrativas detectadas</CardTitle>
+                </HelpTooltip>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {report.main_topics.slice(0, 6).map((t, i) => (
+                    <div key={i} className="rounded-md border bg-muted/30 p-3 text-sm">
+                      <span className="text-xs text-muted-foreground">Narrativa {String.fromCharCode(65 + i)}</span>
+                      <p className="font-medium mt-0.5">{t}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Temas dominantes com sentimento */}
+          {enrichment && enrichment.themes.length > 0 && (
+            <Card>
+              <CardHeader>
+                <HelpTooltip text="Para cada tema, total de menções e distribuição de sentimento.">
+                  <CardTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5" />Temas dominantes</CardTitle>
+                </HelpTooltip>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {enrichment.themes.map((t) => (
+                    <div key={t.topic} className="space-y-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="font-medium text-sm">{t.topic}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {t.total.toLocaleString("pt-BR")} menções • {t.positivePct}% positivo
+                        </span>
+                      </div>
+                      <div className="flex h-2 w-full rounded overflow-hidden bg-muted">
+                        <div className="bg-green-500" style={{ width: `${t.positivePct}%` }} />
+                        <div className="bg-yellow-400" style={{ width: `${t.neutralPct}%` }} />
+                        <div className="bg-red-500" style={{ width: `${t.negativePct}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Origem do pico (redes) */}
+          {enrichment && enrichment.networkOrigin.length > 0 && (
+            <Card>
+              <CardHeader>
+                <HelpTooltip text="De onde partiu o pico — distribuição por rede social.">
+                  <CardTitle className="flex items-center gap-2"><Radio className="h-5 w-5" />Origem do pico</CardTitle>
+                </HelpTooltip>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {enrichment.networkOrigin.map(([net, n]) => {
+                    const max = enrichment.networkOrigin[0][1];
+                    const pct = Math.round((n / max) * 100);
+                    return (
+                      <div key={net} className="flex items-center gap-3">
+                        <span className="text-sm w-24 capitalize">{net}</span>
+                        <div className="flex-1 h-3 bg-muted rounded overflow-hidden">
+                          <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="text-xs font-medium w-16 text-right">{n.toLocaleString("pt-BR")}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Top Comments */}
+
           {result.topComments && result.topComments.length > 0 && (
             <Card>
               <CardHeader>
