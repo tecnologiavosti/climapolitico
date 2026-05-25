@@ -163,8 +163,16 @@ function buildLocalAnalysis(summary: any, reason: string) {
   const uniqueRegions = Array.from(new Set(regions)).slice(0, 3);
   const regionText = uniqueRegions.length ? ` com maior presença em ${uniqueRegions.join(", ")}` : " sem concentração regional clara";
 
+  const advanced = summary.advanced || {};
   return {
     summary: `Entre ${summary.period?.start} e ${summary.period?.end}, a percepção pública sobre ${summary.candidate} apresentou ${trend}, com ${volumeMove} do volume relativo de sinais na segunda metade do período. No início, a conversa se concentrou em ${earlyMain}; ao final, o eixo mais visível passou a envolver ${lateMain}, indicando deslocamento de pauta ou reforço da narrativa dominante. A leitura regional aparece${regionText}. Eventos registrados no período foram considerados como possíveis pontos de inflexão, sem inventar fatos além dos dados coletados.`,
+    narrativeShift: {
+      from: earlyMain,
+      to: lateMain,
+      explanation: earlyMain === lateMain
+        ? `A narrativa dominante manteve-se em torno de ${earlyMain}, com variações de intensidade.`
+        : `O eixo do debate migrou de ${earlyMain} para ${lateMain} ao longo do período analisado.`,
+    },
     detectedChanges: [
       { type: "narrative_shift", title: "Reorganização de narrativa", description: `A pauta saiu de ${earlyMain} e passou a enfatizar ${lateMain}, conforme os sinais agregados disponíveis.` },
       { type: trend.includes("polarização") ? "polarization" : trend.includes("negativa") ? "rejection_increase" : "thematic_shift", title: "Mudança de percepção", description: `A trajetória agregada aponta ${trend}, com análise baseada em dados consolidados, não em registros brutos.` },
@@ -181,6 +189,22 @@ function buildLocalAnalysis(summary: any, reason: string) {
       date: e.date,
       type: e.type || "outro",
       impact: "Incluído como contexto temporal da análise local.",
+    })),
+    timelineInsights: (advanced.eventTimeline || []).slice(0, 8).map((e: any) => ({
+      date: e.date,
+      title: e.label,
+      description: e.description || (e.type === "spike" ? `Pico de menções detectado (${e.mentions}).` : `Evento do tipo ${e.type}.`),
+    })),
+    regionalInsights: (advanced.regionalShift || []).slice(0, 6).map((r: any) => ({
+      region: r.region,
+      movement: r.direction,
+      explanation: `Menções variaram ${r.mentionsDelta >= 0 ? "+" : ""}${r.mentionsDelta} entre o início e o fim do período.`,
+    })),
+    demographicInsights: [],
+    emotionalInsights: (advanced.emotionalShift || []).slice(0, 6).map((e: any) => ({
+      emotion: e.emotion,
+      movement: e.delta > 0 ? "alta" : e.delta < 0 ? "queda" : "estável",
+      explanation: `Variação detectada: ${e.delta >= 0 ? "+" : ""}${e.delta} sinais entre os dois momentos.`,
     })),
     dominantThemesByPeriod: { early: earlyThemes.slice(0, 3), late: lateThemes.slice(0, 3) },
     dataNote: reason || `Dados limitados para este período; análise baseada nas informações disponíveis (${signals} sinais agregados).`,
