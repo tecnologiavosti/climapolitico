@@ -275,25 +275,13 @@ const EventReportPage = () => {
     setDetectedEvents([]);
     setSelectedEventIdx("");
     try {
-      const { data, error } = await supabase.functions.invoke('detect-candidate-events', {
-        body: { candidateId: selectedCandidate, monthsBack: 3 },
-      });
-      if (error) throw error;
-      const evts: DetectedEvent[] = await refineEventCounts(data.events || []);
+      const evts = await fetchLocalEvents();
       setDetectedEvents(evts);
-      if (evts.length === 0) toast.info(data.message || "Nenhum pico detectado nos últimos meses.");
-      else toast.success(`${evts.length} pico(s) detectado(s)`);
+      if (evts.length === 0) toast.info("Nenhum dia com pico detectado nos últimos meses.");
+      else toast.success(`${evts.length} dia(s) com pico detectado(s)`);
     } catch (err: any) {
       console.error(err);
-      try {
-        const fallbackEvents = await refineEventCounts(await fetchLocalEvents());
-        setDetectedEvents(fallbackEvents);
-        if (fallbackEvents.length === 0) toast.info("Nenhum pico detectado nos últimos meses.");
-        else toast.success(`${fallbackEvents.length} pico(s) detectado(s)`);
-      } catch (fallbackError: any) {
-        console.error(fallbackError);
-        toast.error(fallbackError.message || err.message || "Erro ao detectar picos");
-      }
+      toast.error(err.message || "Erro ao detectar picos");
     } finally {
       setIsDetecting(false);
     }
