@@ -40,6 +40,9 @@ interface AnalysisResponse {
     dataNote?: string;
   } | null;
   aiError?: { errorType: string; message: string; provider: string; userMessage: string } | null;
+  aiNotice?: { errorType: string; message: string; provider: string; userMessage: string } | null;
+  provider?: string;
+  fromCache?: boolean;
 }
 
 type Shortcut = "7d" | "30d" | "90d" | "6m" | "1y" | "same_year_ago" | "total";
@@ -79,6 +82,7 @@ export default function HistoricalComparison() {
   const [candidateId, setCandidateId] = useState<string>("");
   const [range, setRange] = useState<DateRange | undefined>({ from: subDays(new Date(), 365), to: new Date() });
   const [loading, setLoading] = useState(false);
+  const [progressMessage, setProgressMessage] = useState<string>("");
   const [result, setResult] = useState<AnalysisResponse | null>(null);
 
   useEffect(() => {
