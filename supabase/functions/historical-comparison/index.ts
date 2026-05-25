@@ -205,7 +205,7 @@ async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: 
 
   const body = isCerebras
     ? {
-        model: "llama-4-scout-17b-16e-instruct",
+        model: "llama3.1-8b",
         messages: [
           { role: "system", content: "Você é um analista político brasileiro experiente. Responda SEMPRE em português do Brasil. Retorne APENAS JSON válido, sem markdown." },
           { role: "user", content: prompt },
@@ -427,7 +427,7 @@ Deno.serve(async (req) => {
 
     const hasMinimumData = summary.totals.signals >= 1;
     const summaryJson = JSON.stringify(summary);
-    const cacheKey = `historical_comparison:v4:${await sha256(`${candidateId}:${ymd(start)}:${ymd(end)}:${summaryJson}`)}`;
+    const cacheKey = `historical_comparison:v5:${await sha256(`${candidateId}:${ymd(start)}:${ymd(end)}:${summaryJson}`)}`;
     console.log(`[historical-comparison] registros enviados=0 raw; sinais agregados=${summary.totals.signals}; resumo=${summaryJson.length} chars; cache=${cacheKey.slice(0, 40)}`);
 
     const { data: cached } = await supabase
