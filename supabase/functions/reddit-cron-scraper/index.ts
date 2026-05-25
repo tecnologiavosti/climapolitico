@@ -4,6 +4,7 @@
 // Disparada por cron a cada 30 minutos para todos os candidatos ativos.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { enrichRecordLocation } from "../_shared/infer-location.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
