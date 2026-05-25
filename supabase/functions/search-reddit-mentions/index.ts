@@ -204,7 +204,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { error } = await supabase.from("social_interactions").insert(fresh);
+    const freshEnriched = fresh.map((r) => enrichRecordLocation(r));
+    const { error } = await supabase.from("social_interactions").insert(freshEnriched);
     if (error) throw error;
 
     return new Response(JSON.stringify({ collected: fresh.length, raw: dedupedLocal.length }), {
