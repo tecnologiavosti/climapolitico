@@ -3,6 +3,7 @@
 // Reddit oficial bloqueia IPs de cloud.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { enrichRecordLocation } from "../_shared/infer-location.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
