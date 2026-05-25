@@ -19,19 +19,27 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "LOVABLE_API_KEY missing" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const authHeader = req.headers.get("Authorization") || "";
+    const apiKeyHeader = req.headers.get("apikey") || "";
+    const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || "";
+    const cronModeHeader = req.headers.get("x-cron-mode") === "1";
+    const token = authHeader.replace("Bearer ", "");
 
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
-    const { data: userRes } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
-    const user = userRes?.user;
-    if (!user) return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const isCronMode = token === SERVICE_KEY || (cronModeHeader && apiKeyHeader === ANON_KEY);
 
     const body = await req.json().catch(() => ({}));
     const candidateFilter: string | undefined = body.candidate_id;
 
-    // Buscar candidatos do user
-    let candQ = supabase.from("candidates").select("id, full_name").eq("user_id", user.id).eq("status", "active");
+    // Buscar candidatos (cron: todos os ativos; user: só do user)
+    let candQ = supabase.from("candidates").select("id, full_name, user_id").eq("status", "active");
+    if (!isCronMode) {
+      if (!authHeader) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const { data: userRes } = await supabase.auth.getUser(token);
+      const user = userRes?.user;
+      if (!user) return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      candQ = candQ.eq("user_id", user.id);
+    }
     if (candidateFilter) candQ = candQ.eq("id", candidateFilter);
     const { data: candidates, error: candErr } = await candQ;
     if (candErr) throw candErr;
@@ -44,11 +52,12 @@ Deno.serve(async (req) => {
     const alertsCreated: any[] = [];
 
     for (const cand of candidates || []) {
+      const candUserId = (cand as any).user_id;
       // Pegar interações últimas 24h
       const { data: interactions } = await supabase
         .from("social_interactions")
         .select("comment_text, sentiment_label, social_network, region, city, state, original_posted_at, created_at")
-        .eq("user_id", user.id)
+        .eq("user_id", candUserId)
         .eq("candidate_id", cand.id)
         .gte("original_posted_at", baselineStart)
         .limit(2000);
@@ -72,7 +81,7 @@ Deno.serve(async (req) => {
       const { data: existing } = await supabase
         .from("narrative_alerts")
         .select("id")
-        .eq("user_id", user.id)
+        .eq("user_id", candUserId)
         .eq("candidate_id", cand.id)
         .gte("created_at", new Date(now - 6 * 3600_000).toISOString())
         .limit(1);
@@ -129,7 +138,7 @@ Responda APENAS em JSON válido com este schema exato:
       const { data: inserted, error: insErr } = await supabase
         .from("narrative_alerts")
         .insert({
-          user_id: user.id,
+          user_id: candUserId,
           candidate_id: cand.id,
           trigger_reason: parsed.trigger_reason || `Pico de ${recent.length} menções em 6h (${ratio.toFixed(1)}x baseline)`,
           detected_bubble: parsed.detected_bubble || null,

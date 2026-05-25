@@ -4,6 +4,7 @@
 // Disparada por cron a cada 30 minutos para todos os candidatos ativos.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { enrichRecordLocation } from "../_shared/infer-location.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -207,7 +208,8 @@ async function collectRedditForCandidate(
     return { collected: 0, skipped, raw: dedupedLocal.length };
   }
 
-  const { error } = await supabase.from("social_interactions").insert(fresh);
+  const freshEnriched = fresh.map((r) => enrichRecordLocation(r));
+  const { error } = await supabase.from("social_interactions").insert(freshEnriched);
   if (error) {
     console.error(`[REDDIT-CRON] insert falhou ${candidate.full_name}: ${error.message}`);
     return { collected: 0, skipped, raw: dedupedLocal.length };

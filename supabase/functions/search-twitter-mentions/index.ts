@@ -8,6 +8,7 @@
 // Mantém a mesma API: { candidateId, candidateName, candidateAliases?, userId?, maxTweets? }
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { enrichRecordLocation } from "../_shared/infer-location.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1017,9 +1018,10 @@ Deno.serve(async (req) => {
           interaction_type: 'tweet',
         };
       });
+      const enrichedRecords = records.map((r) => enrichRecordLocation(r));
       const { data: inserted, error: insertError } = await db
         .from('social_interactions')
-        .insert(records)
+        .insert(enrichedRecords)
         .select('id');
       if (insertError) {
         console.error('[TWITTER] erro insert:', insertError);
@@ -1082,9 +1084,10 @@ Deno.serve(async (req) => {
             r.sentiment_label = s?.label ?? null;
             r.sentiment_score = s?.score ?? null;
           });
+          const enrichedBatch = batch.map((r) => enrichRecordLocation(r));
           const { data: ins, error: repErr } = await db
             .from('social_interactions')
-            .insert(batch)
+            .insert(enrichedBatch)
             .select('id');
           if (repErr) {
             console.error('[TWITTER-Replies] insert falhou:', repErr.message);
