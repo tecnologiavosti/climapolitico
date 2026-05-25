@@ -67,15 +67,17 @@ Deno.serve(async (req) => {
     const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const authHeader = req.headers.get("Authorization") || "";
+    const apiKeyHeader = req.headers.get("apikey") || "";
+    const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || "";
+    const cronModeHeader = req.headers.get("x-cron-mode") === "1";
     const token = authHeader.replace("Bearer ", "");
 
     const body = await req.json().catch(() => ({}));
     const limit = Math.min(Number(body.limit) || 2000, 5000);
 
-    // Modo cron: token === SERVICE_KEY → roda para todos os usuários (sem filtro user_id)
-    const isCronMode = token === SERVICE_KEY;
+    // Cron mode: SERVICE_KEY OU (x-cron-mode header + apikey anon válida)
+    const isCronMode = token === SERVICE_KEY || (cronModeHeader && apiKeyHeader === ANON_KEY);
 
     let rows: any[] | null = null;
     let queryErr: any = null;
