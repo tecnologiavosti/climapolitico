@@ -107,9 +107,91 @@ function bucketThemes(items: Array<{ themes?: string[] | null }>): Array<{ theme
   return Object.entries(m).map(([theme, count]) => ({ theme, count })).sort((a, b) => b.count - a.count);
 }
 
+async function sha256(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function topEntries(map: Record<string, number>, limit = 8) {
+  return Object.entries(map)
+    .filter(([k]) => Boolean(k && k.trim()))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([label, count]) => ({ label, count }));
+}
+
+function detectHashtags(text: string): string[] {
+  return Array.from(new Set((text.match(/#[\p{L}\p{N}_-]+/giu) || []).map((h) => h.toLowerCase()).slice(0, 8)));
+}
+
+function detectNarratives(text: string): string[] {
+  const t = text.toLowerCase();
+  const checks: Array<[string, RegExp]> = [
+    ["gestão econômica", /(economia|inflação|emprego|renda|preço|juros|custo de vida)/],
+    ["segurança e ordem pública", /(segurança|crime|violência|polícia|tráfico|facção|assalto)/],
+    ["proteção social", /(bolsa família|auxílio|benefício|pobreza|fome|programa social|cadúnico)/],
+    ["integridade pública", /(corrupção|propina|fraude|desvio|rachadinha|lava jato)/],
+    ["disputa eleitoral", /(eleição|campanha|voto|urna|pesquisa|debate|mandato)/],
+    ["serviços públicos", /(saúde|hospital|sus|educação|escola|transporte|saneamento)/],
+  ];
+  return checks.filter(([, re]) => re.test(t)).map(([label]) => label);
+}
+
+function sentimentTrend(first: any, second: any): string {
+  const fNeg = Number(first.sentimentNegativePct ?? 0);
+  const sNeg = Number(second.sentimentNegativePct ?? 0);
+  const fPos = Number(first.sentimentPositivePct ?? 0);
+  const sPos = Number(second.sentimentPositivePct ?? 0);
+  if (sNeg - fNeg >= 10 && sPos - fPos >= 5) return "polarização crescente";
+  if (sNeg - fNeg >= 10) return "aumento de pressão negativa";
+  if (sPos - fPos >= 10) return "ganho de percepção favorável";
+  if (Math.abs(sNeg - fNeg) < 6 && Math.abs(sPos - fPos) < 6) return "percepção relativamente estável";
+  return "mudança moderada de percepção";
+}
+
+function buildLocalAnalysis(summary: any, reason: string) {
+  const first = summary.first_half || {};
+  const second = summary.second_half || {};
+  const earlyThemes = first.topThemes || [];
+  const lateThemes = second.topThemes || [];
+  const trend = sentimentTrend(first, second);
+  const earlyMain = earlyThemes[0] || "temas institucionais";
+  const lateMain = lateThemes[0] || earlyMain;
+  const signals = summary.totals?.signals ?? 0;
+  const volumeMove = Number(second.mentions || 0) > Number(first.mentions || 0) ? "aumento" : Number(second.mentions || 0) < Number(first.mentions || 0) ? "redução" : "estabilidade";
+  const regions = [...(first.topRegions || []), ...(second.topRegions || [])].map((r: any) => r.region).filter(Boolean);
+  const uniqueRegions = Array.from(new Set(regions)).slice(0, 3);
+  const regionText = uniqueRegions.length ? ` com maior presença em ${uniqueRegions.join(", ")}` : " sem concentração regional clara";
+
+  return {
+    summary: `Entre ${summary.period?.start} e ${summary.period?.end}, a percepção pública sobre ${summary.candidate} apresentou ${trend}, com ${volumeMove} do volume relativo de sinais na segunda metade do período. No início, a conversa se concentrou em ${earlyMain}; ao final, o eixo mais visível passou a envolver ${lateMain}, indicando deslocamento de pauta ou reforço da narrativa dominante. A leitura regional aparece${regionText}. Eventos registrados no período foram considerados como possíveis pontos de inflexão, sem inventar fatos além dos dados coletados.`,
+    detectedChanges: [
+      { type: "narrative_shift", title: "Reorganização de narrativa", description: `A pauta saiu de ${earlyMain} e passou a enfatizar ${lateMain}, conforme os sinais agregados disponíveis.` },
+      { type: trend.includes("polarização") ? "polarization" : trend.includes("negativa") ? "rejection_increase" : "thematic_shift", title: "Mudança de percepção", description: `A trajetória agregada aponta ${trend}, com análise baseada em dados consolidados, não em registros brutos.` },
+    ],
+    narratives: {
+      early: { label: earlyMain, evidence: `Tema recorrente no início do período (${first.label || "primeira metade"}).` },
+      late: { label: lateMain, evidence: `Tema recorrente no fim do período (${second.label || "segunda metade"}).` },
+    },
+    perceptionShifts: [
+      { group: "Opinião pública monitorada", shift: `Sinais agregados indicam ${trend} e mudança de foco temático ao longo do intervalo.` },
+    ],
+    associatedEvents: (second.events || first.events || []).slice(0, 3).map((e: any) => ({
+      name: e.name || "Evento político registrado",
+      date: e.date,
+      type: e.type || "outro",
+      impact: "Incluído como contexto temporal da análise local.",
+    })),
+    dominantThemesByPeriod: { early: earlyThemes.slice(0, 3), late: lateThemes.slice(0, 3) },
+    dataNote: reason || `Dados limitados para este período; análise baseada nas informações disponíveis (${signals} sinais agregados).`,
+  };
+}
+
 type AiResult =
   | { ok: true; data: any; provider: string; latencyMs: number; tokens?: number }
-  | { ok: false; errorType: "QUOTA_EXCEEDED" | "TIMEOUT" | "RATE_LIMIT" | "AUTH" | "INTERNAL" | "PARSE" | "MISSING_KEY"; message: string; status?: number; provider: string };
+  | { ok: false; errorType: "QUOTA_EXCEEDED" | "TIMEOUT" | "RATE_LIMIT" | "AUTH" | "MODEL_UNAVAILABLE" | "INTERNAL" | "PARSE" | "MISSING_KEY"; message: string; status?: number; provider: string };
+
+type AiErrorType = Extract<AiResult, { ok: false }>["errorType"];
 
 async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: AbortSignal): Promise<AiResult> {
   const started = Date.now();
@@ -123,7 +205,7 @@ async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: 
 
   const body = isCerebras
     ? {
-        model: "llama-3.3-70b",
+        model: "llama3.1-8b",
         messages: [
           { role: "system", content: "Você é um analista político brasileiro experiente. Responda SEMPRE em português do Brasil. Retorne APENAS JSON válido, sem markdown." },
           { role: "user", content: prompt },
@@ -144,7 +226,9 @@ async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: 
   try {
     const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+      headers: isCerebras
+        ? { "Content-Type": "application/json", "Authorization": `Bearer ${key}` }
+        : { "Content-Type": "application/json", "Lovable-API-Key": key, "X-Lovable-AIG-SDK": "clima-politico-edge" },
       body: JSON.stringify(body),
       signal,
     });
@@ -152,10 +236,11 @@ async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: 
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       console.error(`[ai:${provider}] HTTP ${res.status} (${latencyMs}ms)`, txt.slice(0, 400));
-      let errorType: AiResult extends { ok: false; errorType: infer T } ? T : never;
+      let errorType: AiErrorType;
       if (res.status === 402) errorType = "QUOTA_EXCEEDED";
       else if (res.status === 429) errorType = "RATE_LIMIT";
       else if (res.status === 401 || res.status === 403) errorType = "AUTH";
+      else if (res.status === 404 && /model|not_found/i.test(txt)) errorType = "MODEL_UNAVAILABLE";
       else errorType = "INTERNAL";
       return { ok: false, errorType, message: `${provider} HTTP ${res.status}`, status: res.status, provider };
     }
@@ -184,10 +269,11 @@ async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: 
 
 function userFacingError(errorType: string): string {
   switch (errorType) {
-    case "QUOTA_EXCEEDED": return "Limite da IA atingido ou requisição excedeu capacidade.";
-    case "TIMEOUT": return "A análise está demorando mais que o esperado. Tente um período menor.";
-    case "RATE_LIMIT": return "Muitas requisições à IA — tente novamente em alguns segundos.";
+    case "QUOTA_EXCEEDED": return "Limite temporário da IA atingido. Exibindo análise baseada nos dados já coletados.";
+    case "TIMEOUT": return "Tempo limite da IA atingido. Exibindo análise baseada nos dados já coletados.";
+    case "RATE_LIMIT": return "Limite temporário da IA atingido. Exibindo análise baseada nos dados já coletados.";
     case "AUTH": return "Falha de autenticação com o provedor de IA.";
+    case "MODEL_UNAVAILABLE": return "Modelo de IA indisponível no momento. Exibindo análise baseada nos dados já coletados.";
     case "PARSE": return "A IA retornou um formato inesperado.";
     case "MISSING_KEY": return "Provedor de IA não configurado.";
     default: return "Erro ao processar análise.";
@@ -295,7 +381,15 @@ Deno.serve(async (req) => {
       const neu = sumOf(h, "sentiment_neutral") + countSent(i, "neutral") + countSent(i, "neutro");
       const total = pos + neg + neu;
       const regions: Record<string, number> = {};
+      const hashtags: Record<string, number> = {};
+      const narratives: Record<string, number> = {};
       for (const it of i) if (it.region) regions[it.region] = (regions[it.region] || 0) + 1;
+      for (const it of i) {
+        const text = String(it.comment_text || "");
+        for (const tag of detectHashtags(text)) hashtags[tag] = (hashtags[tag] || 0) + 1;
+        for (const n of detectNarratives(text)) narratives[n] = (narratives[n] || 0) + 1;
+      }
+      for (const ev of e) for (const kw of (ev.keywords || [])) narratives[String(kw).toLowerCase()] = (narratives[String(kw).toLowerCase()] || 0) + 1;
       const topRegions = Object.entries(regions).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([r, c]) => ({ region: r, count: c }));
       return {
         label,
@@ -305,6 +399,8 @@ Deno.serve(async (req) => {
         sentimentNeutralPct: total > 0 ? Math.round((neu / total) * 100) : null,
         topThemes: bucketThemes([...h, ...i]).slice(0, 5).map(t => t.theme),
         topRegions,
+        topHashtags: topEntries(hashtags, 6),
+        detectedNarratives: topEntries(narratives, 6),
         events: e.slice(0, 5).map(ev => ({ name: ev.event_name, type: ev.event_type, date: (ev.event_date || "").slice(0, 10) })),
       };
     };
@@ -322,10 +418,33 @@ Deno.serve(async (req) => {
       first_half: buildHalf(`${ymd(start)} → ${ymd(mid)}`, histFirst, intFirst, evtFirst),
       second_half: buildHalf(`${ymd(mid)} → ${ymd(end)}`, histSecond, intSecond, evtSecond),
     };
+    (summary as any).temporalChanges = {
+      mentionDelta: (summary.second_half.mentions || 0) - (summary.first_half.mentions || 0),
+      sentimentDirection: sentimentTrend(summary.first_half, summary.second_half),
+      themesAdded: (summary.second_half.topThemes || []).filter((t: string) => !(summary.first_half.topThemes || []).includes(t)).slice(0, 5),
+      themesReduced: (summary.first_half.topThemes || []).filter((t: string) => !(summary.second_half.topThemes || []).includes(t)).slice(0, 5),
+    };
 
     const hasMinimumData = summary.totals.signals >= 1;
     const summaryJson = JSON.stringify(summary);
-    console.log(`[historical-comparison] summary size=${summaryJson.length} chars, signals=${summary.totals.signals}`);
+    const cacheKey = `historical_comparison:v5:${await sha256(`${candidateId}:${ymd(start)}:${ymd(end)}:${summaryJson}`)}`;
+    console.log(`[historical-comparison] registros enviados=0 raw; sinais agregados=${summary.totals.signals}; resumo=${summaryJson.length} chars; cache=${cacheKey.slice(0, 40)}`);
+
+    const { data: cached } = await supabase
+      .from("analysis_cache")
+      .select("result, provider, hit_count")
+      .eq("cache_key", cacheKey)
+      .gt("expires_at", new Date().toISOString())
+      .maybeSingle();
+
+    if (cached?.result) {
+      await supabase.from("analysis_cache").update({ last_hit_at: new Date().toISOString(), hit_count: Number(cached.hit_count || 0) + 1 }).eq("cache_key", cacheKey);
+      console.log(`[historical-comparison] cache hit provider=${cached.provider || "cache"}`);
+      return new Response(JSON.stringify({
+        ...(cached.result as Record<string, unknown>),
+        fromCache: true,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     const prompt = `Analise a evolução da percepção pública do candidato político brasileiro a seguir.
 
@@ -350,54 +469,70 @@ Retorne ESTRITAMENTE JSON neste formato (sem markdown):
   "dataNote": "frase curta sobre completude (ex: 'Análise baseada em N sinais')."
 }`;
 
-    // Timeout 35s para Cerebras, depois fallback
+    const buildResponse = (analysis: any, provider: string, aiNotice: any = null, fromCache = false) => ({
+      candidate: { id: cand.id, name: cand.full_name, createdAt: cand.created_at, party: cand.party, region: cand.region },
+      period: { start: startDate, end: endDate, mid: mid.toISOString() },
+      summary,
+      hasMinimumData,
+      analysis,
+      aiError: null,
+      aiNotice,
+      provider,
+      fromCache,
+    });
+
+    // Timeout 35s para Cerebras; se falhar por quota/rate/timeout, não quebra a tela: usa análise local.
     const ctrl1 = new AbortController();
     const to1 = setTimeout(() => ctrl1.abort(), 35000);
     const cerebrasResult = await callAi("cerebras", prompt, ctrl1.signal);
     clearTimeout(to1);
 
     let aiPayload: any;
-    let aiError: { errorType: string; message: string; provider: string } | null = null;
+    let provider = "cerebras";
+    let aiNotice: { errorType: string; message: string; provider: string; userMessage: string } | null = null;
 
     if (cerebrasResult.ok) {
       aiPayload = cerebrasResult.data;
-      console.log(`[historical-comparison] cerebras OK (${cerebrasResult.latencyMs}ms, tokens=${cerebrasResult.tokens ?? "?"})`);
+      provider = cerebrasResult.provider;
+      console.log(`[historical-comparison] status Cerebras=OK tempo=${cerebrasResult.latencyMs}ms tokens=${cerebrasResult.tokens ?? "?"}`);
     } else {
-      console.warn(`[historical-comparison] cerebras falhou: ${cerebrasResult.errorType} — tentando fallback gateway`);
-      // Só usa fallback se NÃO for quota (quota provavelmente afeta ambos)
-      if (cerebrasResult.errorType !== "QUOTA_EXCEEDED" && cerebrasResult.errorType !== "MISSING_KEY") {
+      console.warn(`[historical-comparison] status Cerebras=${cerebrasResult.errorType} status=${cerebrasResult.status ?? "n/a"} — usando fallback apropriado`);
+      if (!["QUOTA_EXCEEDED", "RATE_LIMIT", "TIMEOUT", "MODEL_UNAVAILABLE"].includes(cerebrasResult.errorType)) {
         const ctrl2 = new AbortController();
         const to2 = setTimeout(() => ctrl2.abort(), 30000);
         const gatewayResult = await callAi("gateway", prompt, ctrl2.signal);
         clearTimeout(to2);
         if (gatewayResult.ok) {
           aiPayload = gatewayResult.data;
-          console.log(`[historical-comparison] fallback gateway OK (${gatewayResult.latencyMs}ms)`);
+          provider = gatewayResult.provider;
+          console.log(`[historical-comparison] status Gateway=OK tempo=${gatewayResult.latencyMs}ms tokens=${gatewayResult.tokens ?? "?"}`);
         } else {
-          aiError = { errorType: gatewayResult.errorType, message: gatewayResult.message, provider: gatewayResult.provider };
+          aiNotice = { errorType: gatewayResult.errorType, message: gatewayResult.message, provider: gatewayResult.provider, userMessage: userFacingError(gatewayResult.errorType) };
+          aiPayload = buildLocalAnalysis(summary, aiNotice.userMessage);
+          provider = "local_fallback";
         }
       } else {
-        // tenta gateway mesmo assim como última cartada para quota
-        const ctrl2 = new AbortController();
-        const to2 = setTimeout(() => ctrl2.abort(), 30000);
-        const gatewayResult = await callAi("gateway", prompt, ctrl2.signal);
-        clearTimeout(to2);
-        if (gatewayResult.ok) {
-          aiPayload = gatewayResult.data;
-        } else {
-          aiError = { errorType: cerebrasResult.errorType, message: cerebrasResult.message, provider: "cerebras" };
-        }
+        aiNotice = { errorType: cerebrasResult.errorType, message: cerebrasResult.message, provider: cerebrasResult.provider, userMessage: userFacingError(cerebrasResult.errorType) };
+        aiPayload = buildLocalAnalysis(summary, aiNotice.userMessage);
+        provider = "local_fallback";
       }
     }
 
-    return new Response(JSON.stringify({
-      candidate: { id: cand.id, name: cand.full_name, createdAt: cand.created_at, party: cand.party, region: cand.region },
-      period: { start: startDate, end: endDate, mid: mid.toISOString() },
-      summary,
-      hasMinimumData,
-      analysis: aiPayload || null,
-      aiError: aiError ? { ...aiError, userMessage: userFacingError(aiError.errorType) } : null,
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!aiPayload) {
+      aiPayload = buildLocalAnalysis(summary, "Dados limitados para este período; análise baseada nas informações disponíveis.");
+      provider = "local_fallback";
+    }
+
+    const responsePayload = buildResponse(aiPayload, provider, aiNotice);
+    await supabase.from("analysis_cache").upsert({
+      cache_key: cacheKey,
+      analysis_type: "historical_comparison",
+      result: responsePayload,
+      provider,
+      expires_at: new Date(Date.now() + (provider === "local_fallback" ? 6 : 30) * 24 * 60 * 60 * 1000).toISOString(),
+    }, { onConflict: "cache_key" });
+
+    return new Response(JSON.stringify(responsePayload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     console.error("[historical-comparison] fatal", e);
     return new Response(JSON.stringify({

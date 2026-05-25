@@ -40,6 +40,9 @@ interface AnalysisResponse {
     dataNote?: string;
   } | null;
   aiError?: { errorType: string; message: string; provider: string; userMessage: string } | null;
+  aiNotice?: { errorType: string; message: string; provider: string; userMessage: string } | null;
+  provider?: string;
+  fromCache?: boolean;
 }
 
 type Shortcut = "7d" | "30d" | "90d" | "6m" | "1y" | "same_year_ago" | "total";
@@ -79,6 +82,7 @@ export default function HistoricalComparison() {
   const [candidateId, setCandidateId] = useState<string>("");
   const [range, setRange] = useState<DateRange | undefined>({ from: subDays(new Date(), 365), to: new Date() });
   const [loading, setLoading] = useState(false);
+  const [progressMessage, setProgressMessage] = useState<string>("");
   const [result, setResult] = useState<AnalysisResponse | null>(null);
 
   useEffect(() => {
@@ -98,7 +102,10 @@ export default function HistoricalComparison() {
     if (!candidateId) { toast.error("Selecione um candidato"); return; }
     if (!range?.from || !range?.to) { toast.error("Selecione o período"); return; }
     setLoading(true);
+    setProgressMessage("Analisando evolução histórica...");
     setResult(null);
+    const progressTimer = window.setTimeout(() => setProgressMessage("Consolidando sentimentos, temas, regiões e eventos..."), 1800);
+    const narrativeTimer = window.setTimeout(() => setProgressMessage("Gerando narrativa política a partir do resumo estruturado..."), 4200);
     try {
       const { data, error } = await supabase.functions.invoke("historical-comparison", {
         body: { candidateId, startDate: toISOStart(range.from), endDate: toISOEnd(range.to) },
@@ -108,6 +115,9 @@ export default function HistoricalComparison() {
     } catch (e: any) {
       toast.error("Falha na análise: " + (e?.message || e));
     } finally {
+      window.clearTimeout(progressTimer);
+      window.clearTimeout(narrativeTimer);
+      setProgressMessage("");
       setLoading(false);
     }
   };
@@ -178,9 +188,17 @@ export default function HistoricalComparison() {
 
       {loading && (
         <div className="grid gap-4">
+          <Card className="border-primary/30 bg-primary/5">
+            <CardContent className="py-6 flex items-center gap-3">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              <div>
+                <p className="font-medium">{progressMessage || "Analisando evolução histórica..."}</p>
+                <p className="text-sm text-muted-foreground">Os dados são pré-processados antes da IA para evitar envio de conteúdo bruto.</p>
+              </div>
+            </CardContent>
+          </Card>
           <Skeleton className="h-40" />
-          <Skeleton className="h-64" />
-          <Skeleton className="h-64" />
+          <Skeleton className="h-56" />
         </div>
       )}
 
@@ -197,7 +215,21 @@ export default function HistoricalComparison() {
               </CardHeader>
               <CardContent className="text-xs text-muted-foreground">
                 <p>Tipo: <span className="font-mono">{result.aiError.errorType}</span> • Provedor: {result.aiError.provider}</p>
-                <p className="mt-1">Os dados do período foram coletados normalmente — apenas a geração da narrativa falhou. Tente novamente em alguns segundos.</p>
+                <p className="mt-1">Os dados do período foram coletados normalmente — apenas a geração da narrativa falhou.</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {result.aiNotice && (
+            <Card className="border-primary/30 bg-primary/5">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5" />Análise local aplicada
+                </CardTitle>
+                <CardDescription>{result.aiNotice.userMessage}</CardDescription>
+              </CardHeader>
+              <CardContent className="text-xs text-muted-foreground">
+                <p>Tipo: <span className="font-mono">{result.aiNotice.errorType}</span> • Provedor original: {result.aiNotice.provider}</p>
               </CardContent>
             </Card>
           )}
