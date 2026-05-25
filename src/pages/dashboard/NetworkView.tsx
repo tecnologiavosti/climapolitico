@@ -14,10 +14,10 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 import { MessageSquare, TrendingUp, TrendingDown, Heart, Hash, Clock, Users } from "lucide-react";
-import { format, subDays, parseISO, getHours } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { format, subDays, getHours } from "date-fns";
+import { fetchAllPaginated } from "@/lib/supabasePagination";
+import { relevanceScore, type CandidateContext } from "@/lib/candidateMatcher";
 
-/** Lista canônica das redes exibidas no filtro */
 const NETWORKS: { value: string; label: string }[] = [
   { value: "all", label: "Todas" },
   { value: "instagram", label: "Instagram" },
@@ -43,12 +43,19 @@ const STOPWORDS = new Set([
   "a","o","e","de","da","do","das","dos","em","um","uma","para","por","com",
   "que","se","na","no","nas","nos","é","ao","aos","ou","mais","como","muito",
   "ser","ter","seu","sua","seus","suas","mas","já","só","pra","pro","isso",
-  "isso","esse","essa","este","esta","tudo","nada","quem","onde","quando",
+  "esse","essa","este","esta","tudo","nada","quem","onde","quando",
   "porque","quer","tá","tô","aqui","ali","lá","sim","não","você","voce",
   "ele","ela","eles","elas","nós","vocês","minha","meu","this","that","the",
   "of","and","to","in","is","it","for","on","at","with","i","you","https",
   "http","www","com","br",
 ]);
+
+interface CandidateRow {
+  id: string;
+  full_name: string;
+  party: string | null;
+  region: string | null;
+}
 
 export default function NetworkView() {
   const { user } = useAuth();
@@ -57,41 +64,43 @@ export default function NetworkView() {
   const [candidateId, setCandidateId] = useState<string>("all");
   const [days, setDays] = useState(7);
 
-  // Lista de candidatos
   const { data: candidates } = useQuery({
     queryKey: ["nv-candidates", user?.id, isAdmin],
     queryFn: async () => {
-      let q = supabase.from("candidates").select("id, full_name").eq("status", "active");
+      let q = supabase.from("candidates").select("id, full_name, party, region").eq("status", "active");
       if (!isAdmin && user) q = q.eq("user_id", user.id);
       const { data, error } = await q.order("full_name");
       if (error) throw error;
-      return data || [];
+      return (data || []) as CandidateRow[];
     },
     enabled: !!user,
   });
 
-  // Interações do período
+  // 100% das interações do período (paginação completa)
   const { data: interactions, isLoading } = useQuery({
-    queryKey: ["nv-interactions", user?.id, isAdmin, network, candidateId, days],
+    queryKey: ["nv-interactions-full", user?.id, isAdmin, network, candidateId, days],
     queryFn: async () => {
       const since = subDays(new Date(), days).toISOString();
-      let q = supabase
-        .from("social_interactions")
-        .select("id, social_network, comment_text, comment_author, likes_count, replies_count, shares_count, sentiment_label, sentiment_score, original_posted_at, collected_at, candidate_id")
-        .gte("collected_at", since)
-        .order("collected_at", { ascending: false })
-        .limit(5000);
-      if (!isAdmin && user) q = q.eq("user_id", user.id);
-      if (network !== "all") q = q.eq("social_network", network);
-      if (candidateId !== "all") q = q.eq("candidate_id", candidateId);
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data || []).filter((r) => !isHiddenNetwork(r.social_network));
+      const rows = await fetchAllPaginated<any>((from, to) => {
+        let q = supabase
+          .from("social_interactions")
+          .select(
+            "id, social_network, comment_text, comment_author, likes_count, replies_count, shares_count, sentiment_label, sentiment_score, original_posted_at, collected_at, candidate_id",
+          )
+          .gte("collected_at", since)
+          .order("collected_at", { ascending: false })
+          .range(from, to);
+        if (!isAdmin && user) q = q.eq("user_id", user.id);
+        if (network !== "all") q = q.eq("social_network", network);
+        if (candidateId !== "all") q = q.eq("candidate_id", candidateId);
+        return q;
+      });
+      return rows.filter((r) => !isHiddenNetwork(r.social_network));
     },
     enabled: !!user,
+    staleTime: 60_000,
   });
 
-  // KPIs agregados
   const kpis = useMemo(() => {
     const list = interactions || [];
     const total = list.length;
@@ -105,19 +114,15 @@ export default function NetworkView() {
     const labeled = pos + neg + neu;
     const sentimentPct = labeled > 0 ? Math.round((pos / labeled) * 100) : 0;
 
-    // crescimento: comparar primeira metade vs segunda metade
     const half = Math.floor(days / 2);
     const cutoff = subDays(new Date(), half).getTime();
     const recent = list.filter((r) => new Date(r.collected_at || 0).getTime() >= cutoff).length;
     const previous = list.length - recent;
     const growth = previous > 0 ? Math.round(((recent - previous) / previous) * 100) : recent > 0 ? 100 : 0;
-
     const authors = new Set(list.map((r) => r.comment_author).filter(Boolean)).size;
-
     return { total, engagement, sentimentPct, growth, pos, neg, neu, authors, likes, replies, shares };
   }, [interactions, days]);
 
-  // Série diária de sentimento
   const sentimentSeries = useMemo(() => {
     const map = new Map<string, { date: string; positive: number; negative: number; neutral: number }>();
     for (let i = days - 1; i >= 0; i--) {
@@ -136,14 +141,12 @@ export default function NetworkView() {
     return Array.from(map.values());
   }, [interactions, days]);
 
-  // Distribuição pizza
   const sentimentPie = useMemo(() => [
     { name: "Positivo", value: kpis.pos, color: COLORS.positive },
     { name: "Negativo", value: kpis.neg, color: COLORS.negative },
     { name: "Neutro", value: kpis.neu, color: COLORS.neutral },
   ].filter((d) => d.value > 0), [kpis]);
 
-  // Engajamento por rede (quando "all")
   const engagementByNetwork = useMemo(() => {
     const m = new Map<string, { network: string; engagement: number; mentions: number }>();
     for (const r of interactions || []) {
@@ -156,18 +159,33 @@ export default function NetworkView() {
     return Array.from(m.values()).sort((a, b) => b.engagement - a.engagement);
   }, [interactions]);
 
-  // Top posts (por engajamento)
+  // Contexto do candidato selecionado p/ desambiguação
+  const candidateCtx: CandidateContext | null = useMemo(() => {
+    if (candidateId === "all") return null;
+    const c = candidates?.find((x) => x.id === candidateId);
+    if (!c) return null;
+    return {
+      fullName: c.full_name,
+      party: c.party,
+      state: c.region,
+      role: null,
+    };
+  }, [candidateId, candidates]);
+
+  // Top posts — com filtro de relevância contextual
   const topPosts = useMemo(() => {
-    return [...(interactions || [])]
-      .map((r) => ({
+    const arr = [...(interactions || [])].map((r) => {
+      const score = candidateCtx ? relevanceScore(r.comment_text, candidateCtx) : 1;
+      return {
         ...r,
         eng: (r.likes_count || 0) + (r.replies_count || 0) + (r.shares_count || 0),
-      }))
-      .sort((a, b) => b.eng - a.eng)
-      .slice(0, 8);
-  }, [interactions]);
+        relevance: score,
+      };
+    });
+    const filtered = candidateCtx ? arr.filter((r) => r.relevance >= 0.4) : arr;
+    return filtered.sort((a, b) => b.eng - a.eng).slice(0, 8);
+  }, [interactions, candidateCtx]);
 
-  // Hashtags
   const topHashtags = useMemo(() => {
     const counter = new Map<string, number>();
     for (const r of interactions || []) {
@@ -183,7 +201,6 @@ export default function NetworkView() {
       .map(([tag, count]) => ({ tag, count }));
   }, [interactions]);
 
-  // Horários (heatmap simples por hora 0-23)
   const hourBuckets = useMemo(() => {
     const bins = Array.from({ length: 24 }, (_, h) => ({ hour: h, count: 0 }));
     for (const r of interactions || []) {
@@ -195,7 +212,6 @@ export default function NetworkView() {
   }, [interactions]);
   const maxHour = Math.max(1, ...hourBuckets.map((b) => b.count));
 
-  // Word cloud (palavras mais frequentes)
   const wordCloud = useMemo(() => {
     const counter = new Map<string, number>();
     for (const r of interactions || []) {
@@ -221,25 +237,21 @@ export default function NetworkView() {
             Visão por Rede Social
           </h1>
           <p className="text-muted-foreground mt-1">
-            KPIs, gráficos, top posts e horários — filtre por rede e candidato.
+            Métricas calculadas sobre 100% das coletas do período — sem amostragem.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Select value={network} onValueChange={setNetwork}>
             <SelectTrigger className="w-[180px]"><SelectValue placeholder="Rede" /></SelectTrigger>
             <SelectContent>
-              {NETWORKS.map((n) => (
-                <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>
-              ))}
+              {NETWORKS.map((n) => <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={candidateId} onValueChange={setCandidateId}>
             <SelectTrigger className="w-[200px]"><SelectValue placeholder="Candidato" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos candidatos</SelectItem>
-              {candidates?.map((c) => (
-                <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>
-              ))}
+              {candidates?.map((c) => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
@@ -253,22 +265,13 @@ export default function NetworkView() {
         </div>
       </div>
 
-      {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <KpiCard label="Total de menções" value={kpis.total.toLocaleString("pt-BR")} icon={<MessageSquare className="h-5 w-5" />} loading={isLoading} sub={`${kpis.authors} autores únicos`} />
-        <KpiCard
-          label="Crescimento"
-          value={`${kpis.growth >= 0 ? "+" : ""}${kpis.growth}%`}
-          icon={kpis.growth >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
-          loading={isLoading}
-          sub="vs. metade anterior"
-          tone={kpis.growth >= 0 ? "success" : "destructive"}
-        />
+        <KpiCard label="Crescimento" value={`${kpis.growth >= 0 ? "+" : ""}${kpis.growth}%`} icon={kpis.growth >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />} loading={isLoading} sub="vs. metade anterior" tone={kpis.growth >= 0 ? "success" : "destructive"} />
         <KpiCard label="Sentimento positivo" value={`${kpis.sentimentPct}%`} icon={<Heart className="h-5 w-5" />} loading={isLoading} sub={`${kpis.pos} pos · ${kpis.neg} neg · ${kpis.neu} neu`} />
         <KpiCard label="Engajamento" value={kpis.engagement.toLocaleString("pt-BR")} icon={<Users className="h-5 w-5" />} loading={isLoading} sub={`${kpis.likes} likes · ${kpis.replies} resp · ${kpis.shares} comp`} />
       </div>
 
-      {/* Gráficos linha + pizza */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="p-6">
           <h3 className="text-lg font-bold mb-1">Sentimento ao longo do tempo</h3>
@@ -307,7 +310,6 @@ export default function NetworkView() {
         </Card>
       </div>
 
-      {/* Engajamento por rede (só quando 'all') */}
       {network === "all" && (
         <Card className="p-6">
           <h3 className="text-lg font-bold mb-1">Engajamento por rede</h3>
@@ -330,12 +332,16 @@ export default function NetworkView() {
         </Card>
       )}
 
-      {/* Top posts + Hashtags */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="p-6">
-          <h3 className="text-lg font-bold mb-4">Posts mais relevantes</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold">Posts mais relevantes</h3>
+            {candidateCtx && (
+              <Badge variant="outline" className="text-[10px]">desambiguação contextual ativa</Badge>
+            )}
+          </div>
           {isLoading ? <Skeleton className="h-[300px] w-full" /> : topPosts.length === 0 ? (
-            <div className="text-muted-foreground text-sm">Sem posts no período.</div>
+            <div className="text-muted-foreground text-sm">Sem posts relevantes no período.</div>
           ) : (
             <div className="space-y-3 max-h-[400px] overflow-y-auto">
               {topPosts.map((p) => (
@@ -347,11 +353,16 @@ export default function NetworkView() {
                   <p className="text-sm line-clamp-2">{p.comment_text || "(sem texto)"}</p>
                   <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
                     <span>{p.comment_author || "anônimo"}</span>
-                    {p.sentiment_label && (
-                      <Badge variant={p.sentiment_label === "positive" ? "default" : p.sentiment_label === "negative" ? "destructive" : "secondary"} className="text-[10px]">
-                        {p.sentiment_label}
-                      </Badge>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {candidateCtx && (
+                        <span className="text-[10px] opacity-70">rel: {Math.round(p.relevance * 100)}%</span>
+                      )}
+                      {p.sentiment_label && (
+                        <Badge variant={p.sentiment_label === "positive" ? "default" : p.sentiment_label === "negative" ? "destructive" : "secondary"} className="text-[10px]">
+                          {p.sentiment_label}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -376,49 +387,37 @@ export default function NetworkView() {
         </Card>
       </div>
 
-      {/* Horários + Nuvem */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="p-6">
-          <h3 className="text-lg font-bold mb-1 flex items-center gap-2"><Clock className="h-5 w-5" /> Horários com mais atividade</h3>
-          <p className="text-sm text-muted-foreground mb-4">Distribuição por hora do dia (0-23)</p>
-          {isLoading ? <Skeleton className="h-[180px] w-full" /> : (
-            <div className="grid grid-cols-12 gap-1 items-end h-[160px]">
+          <h3 className="text-lg font-bold mb-1 flex items-center gap-2"><Clock className="h-5 w-5" /> Horários de maior atividade</h3>
+          <p className="text-sm text-muted-foreground mb-4">Distribuição por hora do dia</p>
+          {isLoading ? <Skeleton className="h-[200px] w-full" /> : (
+            <div className="grid grid-cols-12 gap-1">
               {hourBuckets.map((b) => (
-                <HelpTooltip key={b.hour} text={`${String(b.hour).padStart(2, "0")}h — ${b.count} menções`}>
-                  <div className="flex flex-col items-center justify-end h-full cursor-help">
-                    <div
-                      className="w-full bg-primary/70 hover:bg-primary transition-colors rounded-t"
-                      style={{ height: `${(b.count / maxHour) * 100}%`, minHeight: "2px" }}
-                    />
-                    <span className="text-[10px] text-muted-foreground mt-1">{b.hour}</span>
-                  </div>
-                </HelpTooltip>
+                <div key={b.hour} className="flex flex-col items-center gap-1">
+                  <div
+                    className="w-full bg-primary/30 rounded-sm"
+                    style={{ height: `${(b.count / maxHour) * 100}px`, minHeight: 4, backgroundColor: `hsl(var(--primary) / ${0.2 + (b.count / maxHour) * 0.8})` }}
+                    title={`${b.count} menções`}
+                  />
+                  <span className="text-[9px] text-muted-foreground">{b.hour}h</span>
+                </div>
               ))}
             </div>
           )}
         </Card>
 
         <Card className="p-6">
-          <h3 className="text-lg font-bold mb-1">Nuvem de palavras</h3>
-          <p className="text-sm text-muted-foreground mb-4">Termos mais usados (excluídas stopwords)</p>
-          {isLoading ? <Skeleton className="h-[180px] w-full" /> : wordCloud.length === 0 ? (
-            <div className="text-sm text-muted-foreground">Sem palavras suficientes para gerar a nuvem.</div>
+          <h3 className="text-lg font-bold mb-4">Palavras mais usadas</h3>
+          {isLoading ? <Skeleton className="h-[200px] w-full" /> : wordCloud.length === 0 ? (
+            <div className="text-sm text-muted-foreground">Sem texto suficiente.</div>
           ) : (
-            <div className="flex flex-wrap gap-2 items-baseline">
-              {wordCloud.map((w) => {
-                const scale = 0.8 + (w.count / maxWord) * 1.6;
-                const opacity = 0.5 + (w.count / maxWord) * 0.5;
-                return (
-                  <span
-                    key={w.word}
-                    className="text-primary font-semibold"
-                    style={{ fontSize: `${scale}rem`, opacity }}
-                    title={`${w.count} ocorrências`}
-                  >
-                    {w.word}
-                  </span>
-                );
-              })}
+            <div className="flex flex-wrap gap-2">
+              {wordCloud.map((w) => (
+                <span key={w.word} className="text-foreground/80" style={{ fontSize: `${0.7 + (w.count / maxWord) * 1.1}rem`, opacity: 0.5 + (w.count / maxWord) * 0.5 }}>
+                  {w.word}
+                </span>
+              ))}
             </div>
           )}
         </Card>
@@ -427,25 +426,15 @@ export default function NetworkView() {
   );
 }
 
-function KpiCard({
-  label, value, sub, icon, loading, tone,
-}: {
-  label: string; value: string; sub?: string; icon: React.ReactNode; loading?: boolean;
-  tone?: "success" | "destructive" | "default";
-}) {
-  const toneClass = tone === "success" ? "text-success" : tone === "destructive" ? "text-destructive" : "text-foreground";
+function KpiCard({ label, value, icon, loading, sub, tone }: { label: string; value: string; icon: React.ReactNode; loading?: boolean; sub?: string; tone?: "success" | "destructive" }) {
   return (
     <Card className="p-5">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs text-muted-foreground uppercase tracking-wide">{label}</p>
-          {loading ? <Skeleton className="h-8 w-20 mt-2" /> : (
-            <p className={`text-2xl font-bold mt-1 ${toneClass}`}>{value}</p>
-          )}
-          {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
-        </div>
-        <div className="p-2 bg-gradient-primary rounded-md text-white">{icon}</div>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className={tone === "destructive" ? "text-destructive" : tone === "success" ? "text-success" : "text-primary"}>{icon}</span>
       </div>
+      {loading ? <Skeleton className="h-7 w-20" /> : <div className="text-2xl font-bold">{value}</div>}
+      {sub && <div className="text-[10px] text-muted-foreground mt-1">{sub}</div>}
     </Card>
   );
 }
