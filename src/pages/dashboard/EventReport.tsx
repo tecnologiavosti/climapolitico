@@ -169,6 +169,67 @@ const EventReportPage = () => {
   const [result, setResult] = useState<ReportResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Enriquecimento: bolhas, temas dominantes (com sentimento) e origem do pico
+  const enrichQueryKey = result?.period ? `${selectedCandidate}|${result.period.startDate}|${result.period.endDate}` : "";
+  const { data: enrichment } = useQuery({
+    queryKey: ["peak-enrichment", enrichQueryKey],
+    enabled: !!result?.report && !!result?.period && !!selectedCandidate,
+    queryFn: async () => {
+      const p = result!.period!;
+      const { data, error } = await supabase
+        .from("social_interactions")
+        .select("social_network, region, state, city, comment_text, sentiment_label")
+        .eq("candidate_id", selectedCandidate)
+        .or(`and(original_posted_at.gte.${p.startDate},original_posted_at.lte.${p.endDate}),and(original_posted_at.is.null,created_at.gte.${p.startDate},created_at.lte.${p.endDate})`)
+        .limit(8000);
+      if (error) throw error;
+      const rows = data || [];
+      const norm = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+      // Origem do pico (rede)
+      const networkMap = new Map<string, number>();
+      rows.forEach(r => { if (r.social_network) networkMap.set(r.social_network, (networkMap.get(r.social_network) || 0) + 1); });
+      const networkOrigin = [...networkMap.entries()].sort((a, b) => b[1] - a[1]);
+
+      // Bolhas detectadas (região + estado)
+      const bubbleMap = new Map<string, number>();
+      rows.forEach(r => {
+        if (r.region) bubbleMap.set(r.region, (bubbleMap.get(r.region) || 0) + 1);
+        else if (r.state) bubbleMap.set(r.state, (bubbleMap.get(r.state) || 0) + 1);
+      });
+      const bubbles = [...bubbleMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+      // Temas dominantes com sentimento (cruza main_topics × comentários)
+      const topics = (result?.report?.main_topics || []).slice(0, 10);
+      const themes = topics.map((topic) => {
+        const ntopic = norm(topic);
+        let total = 0, pos = 0, neg = 0, neu = 0;
+        rows.forEach(r => {
+          if (!r.comment_text) return;
+          if (norm(r.comment_text).includes(ntopic)) {
+            total++;
+            if (r.sentiment_label === "positive") pos++;
+            else if (r.sentiment_label === "negative") neg++;
+            else if (r.sentiment_label === "neutral") neu++;
+          }
+        });
+        const labeled = pos + neg + neu;
+        return {
+          topic,
+          total,
+          positivePct: labeled > 0 ? Math.round((pos / labeled) * 100) : 0,
+          negativePct: labeled > 0 ? Math.round((neg / labeled) * 100) : 0,
+          neutralPct: labeled > 0 ? Math.round((neu / labeled) * 100) : 0,
+        };
+      }).filter(t => t.total > 0).sort((a, b) => b.total - a.total);
+
+      return { networkOrigin, bubbles, themes, totalSample: rows.length };
+    },
+    staleTime: 60_000,
+  });
+
+
+
   const { data: candidates = [] } = useQuery({
     queryKey: ['candidates-for-event', user?.id],
     enabled: !!user?.id,
