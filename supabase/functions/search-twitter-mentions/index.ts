@@ -1018,9 +1018,10 @@ Deno.serve(async (req) => {
           interaction_type: 'tweet',
         };
       });
+      const enrichedRecords = records.map((r) => enrichRecordLocation(r));
       const { data: inserted, error: insertError } = await db
         .from('social_interactions')
-        .insert(records)
+        .insert(enrichedRecords)
         .select('id');
       if (insertError) {
         console.error('[TWITTER] erro insert:', insertError);
