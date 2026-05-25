@@ -1008,6 +1008,68 @@ export type Database = {
         }
         Relationships: []
       }
+      historical_mentions: {
+        Row: {
+          candidate_id: string
+          created_at: string
+          date: string
+          engagement: number
+          fetched_at: string
+          id: string
+          mentions: number
+          platform: string
+          region: string | null
+          sentiment_negative: number
+          sentiment_neutral: number
+          sentiment_positive: number
+          source: string
+          themes: string[]
+          user_id: string
+        }
+        Insert: {
+          candidate_id: string
+          created_at?: string
+          date: string
+          engagement?: number
+          fetched_at?: string
+          id?: string
+          mentions?: number
+          platform?: string
+          region?: string | null
+          sentiment_negative?: number
+          sentiment_neutral?: number
+          sentiment_positive?: number
+          source?: string
+          themes?: string[]
+          user_id: string
+        }
+        Update: {
+          candidate_id?: string
+          created_at?: string
+          date?: string
+          engagement?: number
+          fetched_at?: string
+          id?: string
+          mentions?: number
+          platform?: string
+          region?: string | null
+          sentiment_negative?: number
+          sentiment_neutral?: number
+          sentiment_positive?: number
+          source?: string
+          themes?: string[]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "historical_mentions_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       historical_metrics: {
         Row: {
           average_sentiment: number | null
@@ -2599,6 +2661,15 @@ export type Database = {
           _candidate_id?: string
           _period_end?: string
           _period_start?: string
+          _user_id: string
+        }
+        Returns: Json
+      }
+      get_historical_period_aggregate: {
+        Args: {
+          _candidate_id: string
+          _period_end: string
+          _period_start: string
           _user_id: string
         }
         Returns: Json
