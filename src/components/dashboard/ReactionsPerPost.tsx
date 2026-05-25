@@ -322,9 +322,12 @@ export function ReactionsPerPost({ candidateId, days = 7 }: Props) {
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" className="w-full sm:max-w-3xl lg:max-w-5xl overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Todos os posts ({filtered.length.toLocaleString("pt-BR")})</SheetTitle>
-            <SheetDescription>Use os filtros para refinar.</SheetDescription>
+            <SheetTitle>Todos os posts</SheetTitle>
+            <SheetDescription>
+              Total disponível: {totals.postsCount.toLocaleString("pt-BR")} posts • {totals.commentsCount.toLocaleString("pt-BR")} comentários — exibindo {Math.min(visibleCount, filtered.length).toLocaleString("pt-BR")} de {filtered.length.toLocaleString("pt-BR")}.
+            </SheetDescription>
           </SheetHeader>
+
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-4">
             <Select value={filterSentiment} onValueChange={setFilterSentiment}>
