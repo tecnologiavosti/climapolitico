@@ -61,7 +61,7 @@ export default function CitiesRanking({ userId, candidateId, network }: Props) {
       let city = (r.city || "").trim();
       let uf: UF | null = (r.state || null) as UF | null;
       if (!city) {
-        const inf = inferLocation(`${r.comment_text || ""} ${r.comment_author || ""}`);
+        const inf = inferLocation(r.comment_text, r.comment_author);
         city = inf.city || "";
         uf = inf.uf || uf;
       }
