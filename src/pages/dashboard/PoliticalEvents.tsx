@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CalendarDays, Plus, Trash2, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { CalendarDays, Plus, Trash2, TrendingUp, TrendingDown, Minus, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -22,6 +22,22 @@ export default function PoliticalEvents() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+
+  const handleAutoDetect = async () => {
+    setDetecting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("auto-detect-events", { body: { days: 30, spike_multiplier: 2.0 } });
+      if (error) throw error;
+      const n = data?.events_created ?? 0;
+      toast.success(n > 0 ? `${n} evento(s) detectado(s) automaticamente` : "Nenhum pico anômalo encontrado nos últimos 30 dias");
+      qc.invalidateQueries({ queryKey: ["political-events"] });
+    } catch (e: any) {
+      toast.error(`Falha na detecção: ${e?.message || e}`);
+    } finally {
+      setDetecting(false);
+    }
+  };
   const [form, setForm] = useState({
     event_name: "",
     candidate_id: "",
@@ -103,8 +119,13 @@ export default function PoliticalEvents() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Eventos & Entrevistas</h1>
-          <p className="text-muted-foreground">Cadastre entrevistas, debates e comícios. Medimos o impacto antes / durante / depois nas redes.</p>
+          <p className="text-muted-foreground">Detectamos picos de menções automaticamente. Você também pode cadastrar eventos manualmente.</p>
         </div>
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" onClick={handleAutoDetect} disabled={detecting}>
+            {detecting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+            Detectar eventos com IA
+          </Button>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-2" />Novo evento</Button></DialogTrigger>
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
@@ -161,7 +182,9 @@ export default function PoliticalEvents() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
+
 
       {isLoading ? (
         <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40 w-full" />)}</div>
@@ -239,6 +262,7 @@ function EventImpactCard({ event, onDelete }: { event: any; onDelete: (id: strin
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <h3 className="text-lg font-semibold">{event.event_name}</h3>
             <Badge variant="outline">{event.event_type}</Badge>
+            {event.metadata?.auto_detected && <Badge className="bg-primary/10 text-primary border-primary/30"><Sparkles className="h-3 w-3 mr-1" />auto</Badge>}
             {event.candidates?.full_name && <Badge variant="secondary">{event.candidates.full_name}</Badge>}
           </div>
           <p className="text-sm text-muted-foreground">
