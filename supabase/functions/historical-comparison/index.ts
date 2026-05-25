@@ -428,13 +428,13 @@ Deno.serve(async (req) => {
 
     const { data: cached } = await supabase
       .from("analysis_cache")
-      .select("result, provider")
+      .select("result, provider, hit_count")
       .eq("cache_key", cacheKey)
       .gt("expires_at", new Date().toISOString())
       .maybeSingle();
 
     if (cached?.result) {
-      await supabase.from("analysis_cache").update({ last_hit_at: new Date().toISOString(), hit_count: 1 }).eq("cache_key", cacheKey);
+      await supabase.from("analysis_cache").update({ last_hit_at: new Date().toISOString(), hit_count: Number(cached.hit_count || 0) + 1 }).eq("cache_key", cacheKey);
       console.log(`[historical-comparison] cache hit provider=${cached.provider || "cache"}`);
       return new Response(JSON.stringify({
         ...(cached.result as Record<string, unknown>),
