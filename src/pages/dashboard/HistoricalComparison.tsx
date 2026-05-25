@@ -26,10 +26,10 @@ interface PerceptionShift { group: string; shift: string }
 interface AssociatedEvent { name: string; date?: string; type?: string; impact?: string }
 
 interface AnalysisResponse {
-  candidate: { id: string; name: string; createdAt: string; party?: string; region?: string };
-  period: { start: string; end: string; mid: string };
-  stats: any;
-  hasMinimumData: boolean;
+  candidate?: { id: string; name: string; createdAt: string; party?: string; region?: string };
+  period?: { start: string; end: string; mid: string };
+  summary?: any;
+  hasMinimumData?: boolean;
   analysis: {
     summary?: string;
     detectedChanges?: DetectedChange[];
@@ -38,8 +38,8 @@ interface AnalysisResponse {
     associatedEvents?: AssociatedEvent[];
     dominantThemesByPeriod?: { early?: string[]; late?: string[] };
     dataNote?: string;
-    error?: string;
-  };
+  } | null;
+  aiError?: { errorType: string; message: string; provider: string; userMessage: string } | null;
 }
 
 type Shortcut = "7d" | "30d" | "90d" | "6m" | "1y" | "same_year_ago" | "total";
