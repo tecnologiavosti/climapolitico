@@ -107,61 +107,93 @@ function bucketThemes(items: Array<{ themes?: string[] | null }>): Array<{ theme
   return Object.entries(m).map(([theme, count]) => ({ theme, count })).sort((a, b) => b.count - a.count);
 }
 
-async function callCerebras(prompt: string): Promise<any | null> {
-  const key = Deno.env.get("CEREBRAS_API_KEY");
-  if (!key) return null;
-  try {
-    const res = await fetch("https://api.cerebras.ai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-      body: JSON.stringify({
+type AiResult =
+  | { ok: true; data: any; provider: string; latencyMs: number; tokens?: number }
+  | { ok: false; errorType: "QUOTA_EXCEEDED" | "TIMEOUT" | "RATE_LIMIT" | "AUTH" | "INTERNAL" | "PARSE" | "MISSING_KEY"; message: string; status?: number; provider: string };
+
+async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: AbortSignal): Promise<AiResult> {
+  const started = Date.now();
+  const isCerebras = provider === "cerebras";
+  const key = Deno.env.get(isCerebras ? "CEREBRAS_API_KEY" : "LOVABLE_API_KEY");
+  if (!key) return { ok: false, errorType: "MISSING_KEY", message: `${provider} key não configurada`, provider };
+
+  const url = isCerebras
+    ? "https://api.cerebras.ai/v1/chat/completions"
+    : "https://ai.gateway.lovable.dev/v1/chat/completions";
+
+  const body = isCerebras
+    ? {
         model: "llama-3.3-70b",
         messages: [
-          { role: "system", content: "Você é um analista político brasileiro experiente. Responda SEMPRE em português do Brasil, com profundidade analítica. Retorne APENAS JSON válido, sem markdown." },
+          { role: "system", content: "Você é um analista político brasileiro experiente. Responda SEMPRE em português do Brasil. Retorne APENAS JSON válido, sem markdown." },
           { role: "user", content: prompt },
         ],
         response_format: { type: "json_object" },
         temperature: 0.4,
-        max_tokens: 4000,
-      }),
-    });
-    if (!res.ok) {
-      const txt = await res.text();
-      console.error("[cerebras] error", res.status, txt);
-      return { error: `Cerebras ${res.status}` };
-    }
-    const json = await res.json();
-    const content = json?.choices?.[0]?.message?.content ?? "";
-    try { return JSON.parse(content); } catch { return { summary: content }; }
-  } catch (e) {
-    console.error("[cerebras] exception", e);
-    return { error: String(e) };
-  }
-}
-
-async function callCerebrasFallback(prompt: string): Promise<any | null> {
-  // fallback para Lovable AI Gateway
-  const key = Deno.env.get("LOVABLE_API_KEY");
-  if (!key) return null;
-  try {
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-      body: JSON.stringify({
+        max_tokens: 2500,
+      }
+    : {
         model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: "Você é um analista político brasileiro. Responda em português do Brasil, retorne APENAS JSON válido." },
+          { role: "system", content: "Você é um analista político brasileiro. Retorne APENAS JSON válido." },
           { role: "user", content: prompt },
         ],
         response_format: { type: "json_object" },
-      }),
+      };
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+      body: JSON.stringify(body),
+      signal,
     });
-    if (!res.ok) return { error: `Gateway ${res.status}` };
+    const latencyMs = Date.now() - started;
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      console.error(`[ai:${provider}] HTTP ${res.status} (${latencyMs}ms)`, txt.slice(0, 400));
+      let errorType: AiResult extends { ok: false; errorType: infer T } ? T : never;
+      if (res.status === 402) errorType = "QUOTA_EXCEEDED";
+      else if (res.status === 429) errorType = "RATE_LIMIT";
+      else if (res.status === 401 || res.status === 403) errorType = "AUTH";
+      else errorType = "INTERNAL";
+      return { ok: false, errorType, message: `${provider} HTTP ${res.status}`, status: res.status, provider };
+    }
     const json = await res.json();
     const content = json?.choices?.[0]?.message?.content ?? "";
-    try { return JSON.parse(content); } catch { return { summary: content }; }
-  } catch (e) { return { error: String(e) }; }
+    const tokens = json?.usage?.total_tokens;
+    console.log(`[ai:${provider}] ok ${latencyMs}ms tokens=${tokens ?? "?"} chars=${content.length}`);
+    try {
+      const parsed = JSON.parse(content);
+      return { ok: true, data: parsed, provider, latencyMs, tokens };
+    } catch {
+      return { ok: false, errorType: "PARSE", message: `${provider} retornou JSON inválido`, provider };
+    }
+  } catch (e: any) {
+    const latencyMs = Date.now() - started;
+    const isTimeout = e?.name === "AbortError" || /abort|timeout/i.test(String(e));
+    console.error(`[ai:${provider}] exception ${latencyMs}ms`, e);
+    return {
+      ok: false,
+      errorType: isTimeout ? "TIMEOUT" : "INTERNAL",
+      message: String(e?.message || e),
+      provider,
+    };
+  }
 }
+
+function userFacingError(errorType: string): string {
+  switch (errorType) {
+    case "QUOTA_EXCEEDED": return "Limite da IA atingido ou requisição excedeu capacidade.";
+    case "TIMEOUT": return "A análise está demorando mais que o esperado. Tente um período menor.";
+    case "RATE_LIMIT": return "Muitas requisições à IA — tente novamente em alguns segundos.";
+    case "AUTH": return "Falha de autenticação com o provedor de IA.";
+    case "PARSE": return "A IA retornou um formato inesperado.";
+    case "MISSING_KEY": return "Provedor de IA não configurado.";
+    default: return "Erro ao processar análise.";
+  }
+}
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
