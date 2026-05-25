@@ -188,9 +188,17 @@ export default function HistoricalComparison() {
 
       {loading && (
         <div className="grid gap-4">
+          <Card className="border-primary/30 bg-primary/5">
+            <CardContent className="py-6 flex items-center gap-3">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              <div>
+                <p className="font-medium">{progressMessage || "Analisando evolução histórica..."}</p>
+                <p className="text-sm text-muted-foreground">Os dados são pré-processados antes da IA para evitar envio de conteúdo bruto.</p>
+              </div>
+            </CardContent>
+          </Card>
           <Skeleton className="h-40" />
-          <Skeleton className="h-64" />
-          <Skeleton className="h-64" />
+          <Skeleton className="h-56" />
         </div>
       )}
 
