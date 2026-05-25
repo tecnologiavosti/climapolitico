@@ -49,11 +49,12 @@ Deno.serve(async (req) => {
     const alertsCreated: any[] = [];
 
     for (const cand of candidates || []) {
+      const candUserId = (cand as any).user_id;
       // Pegar interações últimas 24h
       const { data: interactions } = await supabase
         .from("social_interactions")
         .select("comment_text, sentiment_label, social_network, region, city, state, original_posted_at, created_at")
-        .eq("user_id", user.id)
+        .eq("user_id", candUserId)
         .eq("candidate_id", cand.id)
         .gte("original_posted_at", baselineStart)
         .limit(2000);
