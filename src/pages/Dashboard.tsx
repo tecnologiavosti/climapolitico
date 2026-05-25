@@ -37,6 +37,7 @@ const Notifications = lazy(() => import("./dashboard/Notifications"));
 const DataCollectionMethodology = lazy(() => import("./dashboard/DataCollectionMethodology"));
 const RegionalAnalysis = lazy(() => import("./dashboard/RegionalAnalysis"));
 const SocialFeeds = lazy(() => import("./dashboard/SocialFeeds"));
+const NetworkView = lazy(() => import("./dashboard/NetworkView"));
 const SystemHealth = lazy(() => import("./dashboard/SystemHealth"));
 const Observability = lazy(() => import("./dashboard/Observability"));
 const Operations = lazy(() => import("./dashboard/Operations"));
