@@ -1,5 +1,5 @@
-import { useMemo, useState, useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
@@ -10,9 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { isHiddenNetwork } from "@/lib/networkVisibility";
-import { Heart, MessageCircle, Share2, ExternalLink, ThumbsUp, ThumbsDown, Minus, ArrowRight } from "lucide-react";
+import { Heart, MessageCircle, Share2, ThumbsUp, ThumbsDown, Minus, ArrowRight, Loader2 } from "lucide-react";
 import { subDays } from "date-fns";
 import { fetchAllPaginated } from "@/lib/supabasePagination";
 
@@ -51,12 +52,46 @@ interface Group {
   score: number;
 }
 
+type PeriodKey = "total" | "7d" | "30d" | "90d" | "6m" | "1y" | "custom";
+
+interface SummaryData {
+  totalRecords: number;
+  postsCount: number;
+  commentsCount: number;
+  positiveCount: number;
+  negativeCount: number;
+  neutralCount: number;
+  classifiedCount: number;
+  pendingCount: number;
+  totalLikes: number;
+  totalReplies: number;
+  totalShares: number;
+  totalInteractions: number;
+  dominantTopics: { topic: string; mentions: number }[];
+}
+
 const STOPWORDS = new Set([
   "para","como","mais","muito","pela","pelo","isso","essa","esse","esta","este","entre","sobre","quando","onde","tambem","também","presidente","candidato","brasil","politica","política","governo","partido","povo","gente","tudo","todos","todas","agora","hoje","ontem","sempre","nunca","assim","porque","mesmo","quem","tem","tinha","foi","sao","são","dos","das","com","sem","por","seu","sua","meu","minha","nos","nas","que","dele","dela","aqui","ali","ainda","depois","antes","pouco","você","voce","eles","elas","ser","ter","vai","vou","era","pra","pro","não","nao","sim","cada","anos","contra","favor","https","http","aaaa","aaaaa"
 ]);
 
 function tokenize(text: string): string[] {
   return text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").match(/[a-z]{5,}/g) || [];
+}
+
+function normalizeSentiment(label: string | null): "positive" | "negative" | "neutral" | null {
+  const value = (label || "").trim().toLowerCase();
+  if (["positivo", "positive", "pos"].includes(value)) return "positive";
+  if (["negativo", "negative", "neg"].includes(value)) return "negative";
+  if (["neutro", "neutral", "neu"].includes(value)) return "neutral";
+  return null;
+}
+
+function periodRange(period: PeriodKey, customStart: string, customEnd: string) {
+  const end = period === "custom" && customEnd ? new Date(`${customEnd}T23:59:59`).toISOString() : null;
+  if (period === "total") return { start: null, end };
+  if (period === "custom") return { start: customStart ? new Date(`${customStart}T00:00:00`).toISOString() : null, end };
+  const days = period === "7d" ? 7 : period === "30d" ? 30 : period === "90d" ? 90 : period === "6m" ? 180 : 365;
+  return { start: subDays(new Date(), days).toISOString(), end };
 }
 
 export function ReactionsPerPost({ candidateId, days = 7 }: Props) {
