@@ -240,8 +240,10 @@ Deno.serve(async (req) => {
 
     const histFirst = hist.filter(inFirst);
     const histSecond = hist.filter((h) => !inFirst(h));
-    const intFirst = interactions.filter(inFirst);
-    const intSecond = interactions.filter((h) => !inFirst(h));
+    // Enriquece interações com temas detectados a partir do texto
+    const enrichedInt = interactions.map((i: any) => ({ ...i, themes: detectThemes(i.comment_text || "") }));
+    const intFirst = enrichedInt.filter(inFirst);
+    const intSecond = enrichedInt.filter((h: any) => !inFirst(h));
     const evtFirst = events.filter(inFirst);
     const evtSecond = events.filter((h) => !inFirst(h));
 
