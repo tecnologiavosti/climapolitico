@@ -1,6 +1,5 @@
-// Comparação Histórica IA — agrega dois períodos arbitrários para um candidato
-// e gera análise narrativa com Lovable AI Gateway.
-// Body: { candidateId, periodA: { start, end }, periodB: { start, end } }
+// Comparação Histórica IA — análise narrativa de evolução temporal usando Cerebras.
+// Body: { candidateId, startDate, endDate }
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -11,9 +10,6 @@ const corsHeaders = {
 const GDELT = "https://api.gdeltproject.org/api/v2/doc/doc";
 
 interface Article { url: string; title: string; seendate: string; domain?: string; tone?: number }
-
-const MIN_VOLUME_FULL = 30;
-const MIN_VOLUME_PARTIAL = 5;
 
 function ymd(d: string | Date): string {
   const dt = typeof d === "string" ? new Date(d) : d;
@@ -35,20 +31,22 @@ function nameMatches(text: string, fullName: string): boolean {
   return t.includes(parts[0]);
 }
 
+const THEME_MAP: Record<string, RegExp> = {
+  "Economia": /(economia|emprego|inflação|preço|renda|salário|juros|pib|custo de vida)/,
+  "Segurança pública": /(segurança|crime|violência|polícia|tráfico|assalto|homicídio)/,
+  "Saúde": /(saúde|hospital|sus|médico|vacina|remédio)/,
+  "Educação": /(educação|escola|professor|aluno|ensino|universidade|enem)/,
+  "Corrupção": /(corrupção|propina|desvio|fraude|rachadinha|lava jato)/,
+  "Impostos": /(imposto|tributo|taxa|arrecadação)/,
+  "Meio ambiente": /(meio ambiente|amazônia|clima|desmatamento|queimada|enchente)/,
+  "Programas sociais": /(bolsa família|auxílio|benefício|pobreza|fome|cadúnico)/,
+  "Eleições": /(eleição|eleições|campanha|urna|tse|voto)/,
+};
+
 function detectThemes(text: string): string[] {
   const t = text.toLowerCase();
   const themes: string[] = [];
-  const map: Record<string, RegExp> = {
-    "Economia": /(economia|emprego|inflação|preço|renda|salário|juros|pib|custo de vida)/,
-    "Segurança pública": /(segurança|crime|violência|polícia|tráfico|assalto|homicídio)/,
-    "Saúde": /(saúde|hospital|sus|médico|vacina|remédio)/,
-    "Educação": /(educação|escola|professor|aluno|ensino|universidade|enem)/,
-    "Corrupção": /(corrupção|propina|desvio|fraude|rachadinha|lava jato)/,
-    "Impostos": /(imposto|tributo|taxa|arrecadação)/,
-    "Meio ambiente": /(meio ambiente|amazônia|clima|desmatamento|queimada|enchente)/,
-    "Programas sociais": /(bolsa família|auxílio|benefício|pobreza|fome|cadúnico)/,
-  };
-  for (const [k, re] of Object.entries(map)) if (re.test(t)) themes.push(k);
+  for (const [k, re] of Object.entries(THEME_MAP)) if (re.test(t)) themes.push(k);
   return themes;
 }
 
@@ -65,12 +63,13 @@ async function fetchGdeltRange(query: string, start: Date, end: Date): Promise<A
   } catch { return []; }
 }
 
-async function collectHistorical(supabase: any, userId: string, candidateId: string, fullName: string, start: Date, end: Date) {
-  // Coleta GDELT no intervalo e persiste agregado diário em historical_mentions
+async function collectHistorical(supabase: any, userId: string, candidateId: string, fullName: string, start: Date, end: Date): Promise<Article[]> {
   const articles = await fetchGdeltRange(`"${fullName}"`, start, end);
+  const matched: Article[] = [];
   const buckets: Record<string, { mentions: number; tone: number; toneN: number; themes: Set<string> }> = {};
   for (const a of articles) {
     if (!a.title || !nameMatches(a.title, fullName)) continue;
+    matched.push(a);
     const d = parseGdeltDate(a.seendate);
     if (!d) continue;
     const key = ymd(d);
@@ -86,70 +85,82 @@ async function collectHistorical(supabase: any, userId: string, candidateId: str
     const neg = avg < -1 ? b.mentions : 0;
     const neu = b.mentions - pos - neg;
     return {
-      user_id: userId,
-      candidate_id: candidateId,
-      date,
-      platform: "gdelt_news",
-      mentions: b.mentions,
-      engagement: 0,
-      sentiment_positive: pos,
-      sentiment_negative: neg,
-      sentiment_neutral: neu,
-      themes: Array.from(b.themes),
-      source: "historical_fetch",
+      user_id: userId, candidate_id: candidateId, date, platform: "gdelt_news",
+      mentions: b.mentions, engagement: 0,
+      sentiment_positive: pos, sentiment_negative: neg, sentiment_neutral: neu,
+      themes: Array.from(b.themes), source: "historical_fetch",
     };
   });
   if (rows.length > 0) {
     await supabase.from("historical_mentions").upsert(rows, { onConflict: "candidate_id,date,platform,source", ignoreDuplicates: false });
   }
-  return rows.length;
+  return matched;
 }
 
-function completeness(total: number): "full" | "partial" | "insufficient" {
-  if (total >= MIN_VOLUME_FULL) return "full";
-  if (total >= MIN_VOLUME_PARTIAL) return "partial";
-  return "insufficient";
+function splitMid(start: Date, end: Date): Date {
+  return new Date(Math.round((start.getTime() + end.getTime()) / 2));
 }
 
-async function generateAiAnalysis(candidateName: string, periodA: any, periodB: any, aggA: any, aggB: any): Promise<any> {
-  const apiKey = Deno.env.get("LOVABLE_API_KEY");
-  if (!apiKey) return null;
-  const prompt = `Você é analista político brasileiro. Compare dois períodos para o candidato ${candidateName}.
-
-PERÍODO A (${periodA.start} a ${periodA.end}):
-${JSON.stringify(aggA, null, 0)}
-
-PERÍODO B (${periodB.start} a ${periodB.end}):
-${JSON.stringify(aggB, null, 0)}
-
-Responda APENAS com JSON válido (sem markdown), no formato:
-{
-  "summary": "parágrafo narrativo em português comparando os dois períodos (volume, sentimento, temas, regiões)",
-  "insights": ["insight 1", "insight 2", "insight 3"],
-  "themeShift": "como os temas dominantes mudaram",
-  "regionalShift": "como a distribuição regional mudou",
-  "sentimentShift": "como o sentimento mudou",
-  "alerts": ["alerta 1 (opcional)"]
+function bucketThemes(items: Array<{ themes?: string[] | null }>): Array<{ theme: string; count: number }> {
+  const m: Record<string, number> = {};
+  for (const it of items) for (const t of (it.themes || [])) m[t] = (m[t] || 0) + 1;
+  return Object.entries(m).map(([theme, count]) => ({ theme, count })).sort((a, b) => b.count - a.count);
 }
-Nunca invente dados — baseie-se apenas nos números fornecidos. Se um período tiver volume muito baixo, diga isso.`;
 
+async function callCerebras(prompt: string): Promise<any | null> {
+  const key = Deno.env.get("CEREBRAS_API_KEY");
+  if (!key) return null;
+  try {
+    const res = await fetch("https://api.cerebras.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+      body: JSON.stringify({
+        model: "llama-3.3-70b",
+        messages: [
+          { role: "system", content: "Você é um analista político brasileiro experiente. Responda SEMPRE em português do Brasil, com profundidade analítica. Retorne APENAS JSON válido, sem markdown." },
+          { role: "user", content: prompt },
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.4,
+        max_tokens: 4000,
+      }),
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      console.error("[cerebras] error", res.status, txt);
+      return { error: `Cerebras ${res.status}` };
+    }
+    const json = await res.json();
+    const content = json?.choices?.[0]?.message?.content ?? "";
+    try { return JSON.parse(content); } catch { return { summary: content }; }
+  } catch (e) {
+    console.error("[cerebras] exception", e);
+    return { error: String(e) };
+  }
+}
+
+async function callCerebrasFallback(prompt: string): Promise<any | null> {
+  // fallback para Lovable AI Gateway
+  const key = Deno.env.get("LOVABLE_API_KEY");
+  if (!key) return null;
   try {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
-        messages: [{ role: "user", content: prompt }],
+        messages: [
+          { role: "system", content: "Você é um analista político brasileiro. Responda em português do Brasil, retorne APENAS JSON válido." },
+          { role: "user", content: prompt },
+        ],
         response_format: { type: "json_object" },
       }),
     });
-    if (!res.ok) return { error: `IA respondeu ${res.status}` };
+    if (!res.ok) return { error: `Gateway ${res.status}` };
     const json = await res.json();
-    const txt = json?.choices?.[0]?.message?.content ?? "";
-    try { return JSON.parse(txt); } catch { return { summary: txt }; }
-  } catch (e) {
-    return { error: String(e) };
-  }
+    const content = json?.choices?.[0]?.message?.content ?? "";
+    try { return JSON.parse(content); } catch { return { summary: content }; }
+  } catch (e) { return { error: String(e) }; }
 }
 
 Deno.serve(async (req) => {
@@ -168,75 +179,151 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const candidateId: string = body.candidateId;
-    const periodA = body.periodA;
-    const periodB = body.periodB;
-    if (!candidateId || !periodA?.start || !periodA?.end || !periodB?.start || !periodB?.end) {
-      return new Response(JSON.stringify({ error: "candidateId, periodA, periodB são obrigatórios" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const startDate: string = body.startDate;
+    const endDate: string = body.endDate;
+    if (!candidateId || !startDate || !endDate) {
+      return new Response(JSON.stringify({ error: "candidateId, startDate, endDate são obrigatórios" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const { data: cand, error: candErr } = await supabase
       .from("candidates")
-      .select("id, full_name, user_id, created_at")
+      .select("id, full_name, user_id, created_at, party, region")
       .eq("id", candidateId)
       .maybeSingle();
-    if (candErr || !cand) return new Response(JSON.stringify({ error: "Candidato não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-
-    const candCreated = new Date(cand.created_at);
-
-    // Para cada período, se houver janela anterior ao cadastro, dispara coleta histórica
-    async function ensureHistorical(period: { start: string; end: string }) {
-      const start = new Date(period.start);
-      const end = new Date(period.end);
-      if (end < candCreated) {
-        // intervalo totalmente histórico — coleta a janela inteira
-        return await collectHistorical(supabase, cand.user_id, cand.id, cand.full_name, start, end);
-      }
-      if (start < candCreated) {
-        // intervalo parcialmente histórico — coleta a parte anterior
-        const partialEnd = new Date(Math.min(end.getTime(), candCreated.getTime()));
-        return await collectHistorical(supabase, cand.user_id, cand.id, cand.full_name, start, partialEnd);
-      }
-      return 0;
+    if (candErr || !cand) {
+      return new Response(JSON.stringify({ error: "Candidato não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const [, , aggARes, aggBRes] = await Promise.all([
-      ensureHistorical(periodA),
-      ensureHistorical(periodB),
-      supabase.rpc("get_historical_period_aggregate", {
-        _user_id: cand.user_id,
-        _candidate_id: cand.id,
-        _period_start: periodA.start,
-        _period_end: periodA.end,
-      }),
-      supabase.rpc("get_historical_period_aggregate", {
-        _user_id: cand.user_id,
-        _candidate_id: cand.id,
-        _period_start: periodB.start,
-        _period_end: periodB.end,
-      }),
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const candCreated = new Date(cand.created_at);
+
+    // Coleta histórica se intervalo anterior ao cadastro
+    if (start < candCreated) {
+      const partialEnd = new Date(Math.min(end.getTime(), candCreated.getTime()));
+      await collectHistorical(supabase, cand.user_id, cand.id, cand.full_name, start, partialEnd);
+    }
+
+    // Carrega tudo do período
+    const [histRes, eventsRes, interactionsRes] = await Promise.all([
+      supabase.from("historical_mentions")
+        .select("date, platform, mentions, engagement, sentiment_positive, sentiment_negative, sentiment_neutral, themes, region, source")
+        .eq("candidate_id", candidateId)
+        .gte("date", ymd(start))
+        .lte("date", ymd(end))
+        .order("date"),
+      supabase.from("political_events")
+        .select("event_name, event_type, event_date, description, location, state, city, keywords")
+        .eq("candidate_id", candidateId)
+        .gte("event_date", start.toISOString())
+        .lte("event_date", end.toISOString())
+        .order("event_date"),
+      supabase.from("social_interactions")
+        .select("created_at, platform, interaction_type, content, sentiment_label, sentiment_score, themes, region")
+        .eq("candidate_id", candidateId)
+        .gte("created_at", start.toISOString())
+        .lte("created_at", end.toISOString())
+        .order("created_at")
+        .limit(2000),
     ]);
 
-    const aggA = aggARes.data || {};
-    const aggB = aggBRes.data || {};
+    const hist = histRes.data || [];
+    const events = eventsRes.data || [];
+    const interactions = interactionsRes.data || [];
 
-    const totalA = Number(aggA.totalMentions || 0);
-    const totalB = Number(aggB.totalMentions || 0);
+    // Divide em dois sub-períodos para detectar evolução
+    const mid = splitMid(start, end);
+    const inFirst = <T extends { date?: string; created_at?: string; event_date?: string }>(it: T) => {
+      const d = new Date((it.date || it.created_at || it.event_date) as string);
+      return d < mid;
+    };
 
-    const completenessA = completeness(totalA);
-    const completenessB = completeness(totalB);
+    const histFirst = hist.filter(inFirst);
+    const histSecond = hist.filter((h) => !inFirst(h));
+    const intFirst = interactions.filter(inFirst);
+    const intSecond = interactions.filter((h) => !inFirst(h));
+    const evtFirst = events.filter(inFirst);
+    const evtSecond = events.filter((h) => !inFirst(h));
 
-    const deltaMentionsPct = totalA > 0 ? Math.round(((totalB - totalA) / totalA) * 100) : (totalB > 0 ? 100 : 0);
+    const themesFirst = bucketThemes([...histFirst, ...intFirst]);
+    const themesSecond = bucketThemes([...histSecond, ...intSecond]);
 
-    const aiAnalysis = (completenessA !== "insufficient" && completenessB !== "insufficient")
-      ? await generateAiAnalysis(cand.full_name, periodA, periodB, aggA, aggB)
-      : { summary: "Dados históricos insuficientes para análise completa em pelo menos um dos períodos selecionados." };
+    const sumOf = (arr: any[], key: string) => arr.reduce((s, x) => s + Number(x[key] || 0), 0);
+
+    const stats = {
+      total_signals: hist.length + interactions.length + events.length,
+      historical_records: hist.length,
+      realtime_records: interactions.length,
+      events: events.length,
+      first_half: {
+        label: `${ymd(start)} → ${ymd(mid)}`,
+        mentions: sumOf(histFirst, "mentions") + intFirst.length,
+        positive: sumOf(histFirst, "sentiment_positive") + intFirst.filter(i => i.sentiment_label === "positive").length,
+        negative: sumOf(histFirst, "sentiment_negative") + intFirst.filter(i => i.sentiment_label === "negative").length,
+        neutral: sumOf(histFirst, "sentiment_neutral") + intFirst.filter(i => i.sentiment_label === "neutral").length,
+        top_themes: themesFirst.slice(0, 6),
+        events: evtFirst.slice(0, 10).map(e => ({ name: e.event_name, date: e.event_date, type: e.event_type, location: e.location })),
+      },
+      second_half: {
+        label: `${ymd(mid)} → ${ymd(end)}`,
+        mentions: sumOf(histSecond, "mentions") + intSecond.length,
+        positive: sumOf(histSecond, "sentiment_positive") + intSecond.filter(i => i.sentiment_label === "positive").length,
+        negative: sumOf(histSecond, "sentiment_negative") + intSecond.filter(i => i.sentiment_label === "negative").length,
+        neutral: sumOf(histSecond, "sentiment_neutral") + intSecond.filter(i => i.sentiment_label === "neutral").length,
+        top_themes: themesSecond.slice(0, 6),
+        events: evtSecond.slice(0, 10).map(e => ({ name: e.event_name, date: e.event_date, type: e.event_type, location: e.location })),
+      },
+      sample_titles: hist.slice(0, 25).map(() => null), // placeholder
+      sample_comments: interactions.slice(0, 30).map(i => ({ text: (i.content || "").slice(0, 200), sentiment: i.sentiment_label, themes: i.themes })),
+    };
+
+    const hasMinimumData = stats.total_signals >= 5;
+
+    const prompt = `Analise a evolução da percepção pública do candidato político brasileiro a seguir entre ${ymd(start)} e ${ymd(end)}.
+
+CANDIDATO: ${cand.full_name}${cand.party ? ` (${cand.party})` : ""}${cand.region ? ` — ${cand.region}` : ""}
+CADASTRADO NA PLATAFORMA EM: ${ymd(candCreated)}
+DADOS DISPONÍVEIS NO PERÍODO:
+${JSON.stringify(stats, null, 0)}
+
+Sintetize o contexto, identifique mudanças e padrões. Mesmo com poucos dados, produza análise útil baseada no que existe (nunca diga "insuficiente", "—" ou "0"; se houver pouco volume, diga: "dados limitados; análise baseada nas informações disponíveis").
+
+Retorne JSON ESTRITAMENTE neste formato:
+{
+  "summary": "parágrafo narrativo de 4-8 frases descrevendo a evolução da percepção pública ao longo do período (volume, sentimento, narrativas, regiões, eventos). Cite fatos concretos quando possível.",
+  "detectedChanges": [
+    { "type": "growth_support | rejection_increase | polarization | regional_shift | thematic_shift | narrative_shift | event_impact", "title": "título curto", "description": "explicação em 1-2 frases" }
+  ],
+  "narratives": {
+    "early": { "label": "narrativa predominante no início do período", "evidence": "evidência curta" },
+    "late": { "label": "narrativa predominante no fim do período", "evidence": "evidência curta" }
+  },
+  "perceptionShifts": [
+    { "group": "grupo afetado (jovens, eleitorado X, região Y)", "shift": "descrição da mudança" }
+  ],
+  "associatedEvents": [
+    { "name": "nome do evento", "date": "AAAA-MM-DD", "type": "debate|entrevista|discurso|notícia|outro", "impact": "como afetou a percepção" }
+  ],
+  "dominantThemesByPeriod": {
+    "early": ["tema1", "tema2", "tema3"],
+    "late": ["tema1", "tema2", "tema3"]
+  },
+  "dataNote": "frase curta sobre completude (ex: 'Análise baseada em X menções e Y eventos' ou 'Dados limitados para este período; análise baseada nas informações disponíveis.')"
+}`;
+
+    let ai = await callCerebras(prompt);
+    if (!ai || ai.error) {
+      console.warn("[historical-comparison] cerebras falhou, fallback gateway", ai?.error);
+      ai = await callCerebrasFallback(prompt);
+    }
+    if (!ai) ai = { summary: "Não foi possível gerar a análise no momento. Tente novamente.", dataNote: "Análise indisponível." };
 
     return new Response(JSON.stringify({
-      candidate: { id: cand.id, name: cand.full_name, createdAt: cand.created_at },
-      periodA: { ...periodA, ...aggA, completeness: completenessA },
-      periodB: { ...periodB, ...aggB, completeness: completenessB },
-      deltas: { mentionsPct: deltaMentionsPct, mentionsAbs: totalB - totalA },
-      aiAnalysis,
+      candidate: { id: cand.id, name: cand.full_name, createdAt: cand.created_at, party: cand.party, region: cand.region },
+      period: { start: startDate, end: endDate, mid: mid.toISOString() },
+      stats,
+      hasMinimumData,
+      analysis: ai,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     console.error("[historical-comparison] error", e);
