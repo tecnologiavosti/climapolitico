@@ -44,7 +44,6 @@ const Operations = lazy(() => import("./dashboard/Operations"));
 const SLO = lazy(() => import("./dashboard/SLO"));
 const WorkerTokens = lazy(() => import("./dashboard/WorkerTokens"));
 const TenantAnalytics = lazy(() => import("./dashboard/TenantAnalytics"));
-const CommentTree = lazy(() => import("./dashboard/CommentTree"));
 const PoliticalEvents = lazy(() => import("./dashboard/PoliticalEvents"));
 
 const DataEnrichment = lazy(() => import("./dashboard/DataEnrichment"));
@@ -145,7 +144,6 @@ const Dashboard = () => {
                 <Route path="/regional-analysis" element={wrap("RegionalAnalysis", RegionalAnalysis)} />
                 <Route path="/social-feeds" element={wrap("SocialFeeds", SocialFeeds)} />
                 <Route path="/network-view" element={wrap("NetworkView", NetworkView)} />
-                <Route path="/comment-tree" element={wrap("CommentTree", CommentTree)} />
                 <Route path="/political-events" element={wrap("PoliticalEvents", PoliticalEvents)} />
                 
                 <Route path="/data-enrichment" element={wrap("DataEnrichment", DataEnrichment)} />
