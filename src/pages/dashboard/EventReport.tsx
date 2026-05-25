@@ -96,10 +96,9 @@ const tokenizeEventText = (text: string) => normalizeEventText(text).match(/[a-z
 
 const titleFromPhrase = (phrase: string) => phrase.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
-function detectEventsFromInteractions(comments: LocalInteraction[], candidateName: string): DetectedEvent[] {
+function detectEventsFromInteractions(comments: LocalInteraction[], _candidateName: string): DetectedEvent[] {
   if (comments.length < 5) return [];
 
-  const candidateStop = new Set(tokenizeEventText(candidateName));
   const byDay = new Map<string, LocalInteraction[]>();
   comments.forEach((comment) => {
     const day = (comment.original_posted_at || comment.created_at || '').substring(0, 10);
@@ -109,43 +108,23 @@ function detectEventsFromInteractions(comments: LocalInteraction[], candidateNam
 
   const days = [...byDay.entries()].sort((a, b) => b[0].localeCompare(a[0]));
   const avg = days.reduce((sum, [, rows]) => sum + rows.length, 0) / Math.max(days.length, 1);
-  const peakDays = days.filter(([, rows]) => rows.length >= Math.max(4, avg * 1.25)).slice(0, 10);
+  const peakDays = days
+    .filter(([, rows]) => rows.length >= Math.max(4, avg * 1.25))
+    .sort((a, b) => b[1].length - a[1].length)
+    .slice(0, 15);
 
   return peakDays.map(([day, rows]) => {
-    const wordCounts = new Map<string, number>();
-    const phraseCounts = new Map<string, number>();
-
-    rows.forEach((row) => {
-      const normalized = normalizeEventText(row.comment_text || '');
-      EVENT_PHRASES.forEach((phrase) => {
-        if (normalized.includes(normalizeEventText(phrase))) {
-          phraseCounts.set(phrase, (phraseCounts.get(phrase) || 0) + 1);
-        }
-      });
-
-      const seen = new Set<string>();
-      tokenizeEventText(row.comment_text || '').forEach((word) => {
-        if (EVENT_STOP_WORDS.has(word) || candidateStop.has(word) || /^\d+$/.test(word) || seen.has(word)) return;
-        seen.add(word);
-        wordCounts.set(word, (wordCounts.get(word) || 0) + 1);
-      });
-    });
-
-    const phrases = [...phraseCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([phrase]) => phrase);
-    const words = [...wordCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([word]) => word);
-    const keywords = [...new Set([...phrases, ...words])].slice(0, 7);
-    const label = phrases[0] ? titleFromPhrase(phrases[0]) : words.slice(0, 2).join(', ');
-
+    const formatted = day.split('-').reverse().join('/');
     return {
-      name: label ? `Repercussão: ${label} (${day})` : `Pico de repercussão em ${day}`,
-      type: phrases[0] ? 'evento' : 'pico',
-      keywords: keywords.length ? keywords : words,
+      name: `Dia ${formatted}`,
+      type: 'pico',
+      keywords: [],
       start_date: day,
       end_date: day,
       mentions_estimate: rows.length,
-      description: `Evento detectado por concentração real de comentários em ${day}${keywords.length ? `. Termos associados: ${keywords.join(', ')}.` : '.'}`,
+      description: `Pico de menções detectado em ${formatted} — ${rows.length} comentários nesse dia.`,
     };
-  }).filter(event => event.keywords.length > 0).slice(0, 8);
+  });
 }
 
 interface DetectedEvent {
