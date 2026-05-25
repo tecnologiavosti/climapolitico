@@ -262,6 +262,7 @@ function EventImpactCard({ event, onDelete }: { event: any; onDelete: (id: strin
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <h3 className="text-lg font-semibold">{event.event_name}</h3>
             <Badge variant="outline">{event.event_type}</Badge>
+            {event.metadata?.auto_detected && <Badge className="bg-primary/10 text-primary border-primary/30"><Sparkles className="h-3 w-3 mr-1" />auto</Badge>}
             {event.candidates?.full_name && <Badge variant="secondary">{event.candidates.full_name}</Badge>}
           </div>
           <p className="text-sm text-muted-foreground">
