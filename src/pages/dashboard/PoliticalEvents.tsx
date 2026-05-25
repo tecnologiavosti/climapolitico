@@ -26,15 +26,58 @@ export default function PoliticalEvents() {
 
   const handleAutoDetect = async () => {
     setDetecting(true);
+    const tId = toast.loading("Iniciando detecção em background...");
     try {
       const { data, error } = await supabase.functions.invoke("auto-detect-events", { body: { days: 30, spike_multiplier: 2.0 } });
       if (error) throw error;
-      const n = data?.events_created ?? 0;
-      toast.success(n > 0 ? `${n} evento(s) detectado(s) automaticamente` : "Nenhum pico anômalo encontrado nos últimos 30 dias");
-      qc.invalidateQueries({ queryKey: ["political-events"] });
+      const jobId = data?.job_id;
+      if (!jobId) {
+        toast.dismiss(tId);
+        toast.error("Não foi possível iniciar a detecção");
+        setDetecting(false);
+        return;
+      }
+      toast.dismiss(tId);
+      toast.loading("Processando picos de menções...", { id: "detect-poll" });
+
+      const projId = (import.meta as any).env?.VITE_SUPABASE_PROJECT_ID;
+      const sess = (await supabase.auth.getSession()).data.session?.access_token;
+      const url = `https://${projId}.functions.supabase.co/auto-detect-events?status=1&job_id=${jobId}`;
+
+      const maxAttempts = 45;
+      let attempts = 0;
+      const poll = async (): Promise<void> => {
+        attempts++;
+        try {
+          const r = await fetch(url, { headers: { Authorization: `Bearer ${sess}`, apikey: (import.meta as any).env?.VITE_SUPABASE_PUBLISHABLE_KEY || "" } });
+          const j = await r.json();
+          if (j?.status === "completed") {
+            toast.dismiss("detect-poll");
+            const n = j?.events_created ?? 0;
+            toast.success(n > 0 ? `${n} evento(s) detectado(s)` : "Nenhum pico anômalo encontrado");
+            qc.invalidateQueries({ queryKey: ["political-events"] });
+            setDetecting(false);
+            return;
+          }
+          if (j?.status === "failed") {
+            toast.dismiss("detect-poll");
+            toast.error(`Falha: ${j?.error_message || "erro desconhecido"}`);
+            setDetecting(false);
+            return;
+          }
+        } catch (_e) { /* retry */ }
+        if (attempts >= maxAttempts) {
+          toast.dismiss("detect-poll");
+          toast.message("Detecção ainda em andamento — recarregue em alguns minutos.");
+          setDetecting(false);
+          return;
+        }
+        setTimeout(poll, 4000);
+      };
+      setTimeout(poll, 3000);
     } catch (e: any) {
-      toast.error(`Falha na detecção: ${e?.message || e}`);
-    } finally {
+      toast.dismiss(tId);
+      toast.error("Erro ao processar eventos. Tente novamente.");
       setDetecting(false);
     }
   };
