@@ -293,7 +293,7 @@ export function ReactionsPerPost({ candidateId, days = 7 }: Props) {
                       <Badge className={`text-[10px] border ${ds.color}`}><ds.Icon className="h-3 w-3 mr-1" />{ds.label}</Badge>
                     </div>
                     <p className="text-xs line-clamp-3 min-h-[3.6em]">{r?.comment_text || <span className="text-muted-foreground italic">(sem texto)</span>}</p>
-                    <div className="text-[10px] text-muted-foreground truncate">{r?.comment_author || "anônimo"}</div>
+                    <div className="text-[10px] text-muted-foreground truncate">{r?.comment_author || "anônimo"} • {g.children.length} resposta(s)</div>
                     <div className="flex justify-between text-xs pt-2 border-t mt-auto">
                       <span className="flex items-center gap-1"><Heart className="h-3 w-3" />{g.likes.toLocaleString("pt-BR")}</span>
                       <span className="flex items-center gap-1"><MessageCircle className="h-3 w-3" />{g.replies.toLocaleString("pt-BR")}</span>
