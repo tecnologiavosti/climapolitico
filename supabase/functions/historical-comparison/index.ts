@@ -189,7 +189,7 @@ function buildLocalAnalysis(summary: any, reason: string) {
 
 type AiResult =
   | { ok: true; data: any; provider: string; latencyMs: number; tokens?: number }
-  | { ok: false; errorType: "QUOTA_EXCEEDED" | "TIMEOUT" | "RATE_LIMIT" | "AUTH" | "INTERNAL" | "PARSE" | "MISSING_KEY"; message: string; status?: number; provider: string };
+  | { ok: false; errorType: "QUOTA_EXCEEDED" | "TIMEOUT" | "RATE_LIMIT" | "AUTH" | "MODEL_UNAVAILABLE" | "INTERNAL" | "PARSE" | "MISSING_KEY"; message: string; status?: number; provider: string };
 
 type AiErrorType = Extract<AiResult, { ok: false }>["errorType"];
 
@@ -205,7 +205,7 @@ async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: 
 
   const body = isCerebras
     ? {
-        model: "llama-3.3-70b",
+        model: "llama-4-scout-17b-16e-instruct",
         messages: [
           { role: "system", content: "Você é um analista político brasileiro experiente. Responda SEMPRE em português do Brasil. Retorne APENAS JSON válido, sem markdown." },
           { role: "user", content: prompt },
@@ -240,6 +240,7 @@ async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: 
       if (res.status === 402) errorType = "QUOTA_EXCEEDED";
       else if (res.status === 429) errorType = "RATE_LIMIT";
       else if (res.status === 401 || res.status === 403) errorType = "AUTH";
+      else if (res.status === 404 && /model|not_found/i.test(txt)) errorType = "MODEL_UNAVAILABLE";
       else errorType = "INTERNAL";
       return { ok: false, errorType, message: `${provider} HTTP ${res.status}`, status: res.status, provider };
     }
@@ -272,6 +273,7 @@ function userFacingError(errorType: string): string {
     case "TIMEOUT": return "Tempo limite da IA atingido. Exibindo análise baseada nos dados já coletados.";
     case "RATE_LIMIT": return "Limite temporário da IA atingido. Exibindo análise baseada nos dados já coletados.";
     case "AUTH": return "Falha de autenticação com o provedor de IA.";
+    case "MODEL_UNAVAILABLE": return "Modelo de IA indisponível no momento. Exibindo análise baseada nos dados já coletados.";
     case "PARSE": return "A IA retornou um formato inesperado.";
     case "MISSING_KEY": return "Provedor de IA não configurado.";
     default: return "Erro ao processar análise.";
