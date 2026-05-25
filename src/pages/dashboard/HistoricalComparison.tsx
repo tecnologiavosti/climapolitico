@@ -44,14 +44,19 @@ interface AdvancedAgg {
 interface AnalysisResponse {
   candidate?: { id: string; name: string; createdAt: string; party?: string; region?: string };
   period?: { start: string; end: string; mid: string };
-  summary?: any;
+  summary?: { advanced?: AdvancedAgg; [k: string]: any };
   hasMinimumData?: boolean;
   analysis: {
     summary?: string;
+    narrativeShift?: NarrativeShift;
     detectedChanges?: DetectedChange[];
     narratives?: { early?: NarrativeBlock; late?: NarrativeBlock };
     perceptionShifts?: PerceptionShift[];
     associatedEvents?: AssociatedEvent[];
+    timelineInsights?: TimelineInsight[];
+    regionalInsights?: RegionalInsight[];
+    demographicInsights?: DemographicInsight[];
+    emotionalInsights?: EmotionalInsight[];
     dominantThemesByPeriod?: { early?: string[]; late?: string[] };
     dataNote?: string;
   } | null;
