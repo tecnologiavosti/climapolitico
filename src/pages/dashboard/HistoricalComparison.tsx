@@ -102,7 +102,10 @@ export default function HistoricalComparison() {
     if (!candidateId) { toast.error("Selecione um candidato"); return; }
     if (!range?.from || !range?.to) { toast.error("Selecione o período"); return; }
     setLoading(true);
+    setProgressMessage("Analisando evolução histórica...");
     setResult(null);
+    const progressTimer = window.setTimeout(() => setProgressMessage("Consolidando sentimentos, temas, regiões e eventos..."), 1800);
+    const narrativeTimer = window.setTimeout(() => setProgressMessage("Gerando narrativa política a partir do resumo estruturado..."), 4200);
     try {
       const { data, error } = await supabase.functions.invoke("historical-comparison", {
         body: { candidateId, startDate: toISOStart(range.from), endDate: toISOEnd(range.to) },
@@ -112,6 +115,9 @@ export default function HistoricalComparison() {
     } catch (e: any) {
       toast.error("Falha na análise: " + (e?.message || e));
     } finally {
+      window.clearTimeout(progressTimer);
+      window.clearTimeout(narrativeTimer);
+      setProgressMessage("");
       setLoading(false);
     }
   };
