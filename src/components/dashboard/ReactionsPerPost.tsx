@@ -91,21 +91,36 @@ export function ReactionsPerPost({ candidateId, days = 7 }: Props) {
     staleTime: 60_000,
   });
 
-  // Totais
+  // Totais — sentimento agregado sobre TUDO (raiz + comentários + respostas + subcomentários)
   const totals = useMemo(() => {
     const list = interactions || [];
     const pos = list.filter((r) => r.sentiment_label === "positive").length;
     const neg = list.filter((r) => r.sentiment_label === "negative").length;
     const neu = list.filter((r) => r.sentiment_label === "neutral").length;
     const labeled = pos + neg + neu;
+    const unanalyzed = list.length - labeled;
+    const totalLikes = list.reduce((s, r) => s + (r.likes_count || 0), 0);
+    const totalReplies = list.reduce((s, r) => s + (r.replies_count || 0), 0);
+    const totalShares = list.reduce((s, r) => s + (r.shares_count || 0), 0);
+    // Posts = registros distintos de post_id (cada post_id = 1 post)
+    const postSet = new Set<string>();
+    list.forEach((r) => { if (r.post_id) postSet.add(r.post_id); });
+    const postsCount = postSet.size;
+    // Comentários = qualquer registro que NÃO é o post raiz (tem parent ou root_comment_id)
+    const commentsCount = list.filter((r) => r.parent_comment_id || r.root_comment_id).length;
     return {
-      pos, neg, neu, labeled,
+      pos, neg, neu, labeled, unanalyzed,
       totalRecords: list.length,
+      postsCount,
+      commentsCount,
+      totalLikes, totalReplies, totalShares,
+      totalInteractions: totalLikes + totalReplies + totalShares,
       posPct: labeled > 0 ? Math.round((pos / labeled) * 100) : 0,
       negPct: labeled > 0 ? Math.round((neg / labeled) * 100) : 0,
       neuPct: labeled > 0 ? Math.round((neu / labeled) * 100) : 0,
     };
   }, [interactions]);
+
 
   // Top assuntos (tokens dominantes em posts raiz)
   const topTopics = useMemo(() => {
@@ -219,18 +234,38 @@ export function ReactionsPerPost({ candidateId, days = 7 }: Props) {
         <div className="text-sm text-muted-foreground py-8 text-center">Nenhum comentário no período.</div>
       ) : (
         <>
-          {/* Resumo */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <KpiBox label="Total de posts" value={groupedPosts.length} />
-            <KpiBox label={`Positivas (${totals.posPct}%)`} value={totals.pos} tone="pos" />
-            <KpiBox label={`Negativas (${totals.negPct}%)`} value={totals.neg} tone="neg" />
-            <KpiBox label={`Neutras (${totals.neuPct}%)`} value={totals.neu} tone="neu" />
+          {/* Posts & interações */}
+          <div>
+            <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-2">Posts e interações</h4>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <KpiBox label="Posts coletados" value={totals.postsCount} />
+              <KpiBox label="Comentários coletados" value={totals.commentsCount} />
+              <KpiBox label="Curtidas" value={totals.totalLikes} />
+              <KpiBox label="Compartilhamentos" value={totals.totalShares} />
+              <KpiBox label="Interações totais" value={totals.totalInteractions} highlight />
+            </div>
           </div>
 
-          <div className="flex h-3 w-full rounded overflow-hidden border border-border">
-            <div className="bg-success" style={{ width: `${totals.posPct}%` }} />
-            <div className="bg-warning" style={{ width: `${totals.neuPct}%` }} />
-            <div className="bg-destructive" style={{ width: `${totals.negPct}%` }} />
+          {/* Classificação de sentimento — sobre TODOS os registros (raiz + comentários + respostas + subcomentários) */}
+          <div>
+            <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-2">
+              Classificação de sentimento
+              <span className="ml-2 text-[10px] font-normal normal-case text-muted-foreground">
+                {totals.labeled.toLocaleString("pt-BR")} de {totals.totalRecords.toLocaleString("pt-BR")} registros analisados
+                {totals.unanalyzed > 0 && ` • ${totals.unanalyzed.toLocaleString("pt-BR")} pendente(s)`}
+              </span>
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+              <KpiBox label="Total analisado" value={totals.labeled} />
+              <KpiBox label={`Positivo (${totals.posPct}%)`} value={totals.pos} tone="pos" />
+              <KpiBox label={`Negativo (${totals.negPct}%)`} value={totals.neg} tone="neg" />
+              <KpiBox label={`Neutro (${totals.neuPct}%)`} value={totals.neu} tone="neu" />
+            </div>
+            <div className="flex h-3 w-full rounded overflow-hidden border border-border">
+              <div className="bg-success" style={{ width: `${totals.posPct}%` }} />
+              <div className="bg-warning" style={{ width: `${totals.neuPct}%` }} />
+              <div className="bg-destructive" style={{ width: `${totals.negPct}%` }} />
+            </div>
           </div>
 
           {topTopics.length > 0 && (
@@ -241,6 +276,8 @@ export function ReactionsPerPost({ candidateId, days = 7 }: Props) {
               ))}
             </div>
           )}
+
+
 
           {/* Top 5 */}
           <div>
@@ -256,7 +293,7 @@ export function ReactionsPerPost({ candidateId, days = 7 }: Props) {
                       <Badge className={`text-[10px] border ${ds.color}`}><ds.Icon className="h-3 w-3 mr-1" />{ds.label}</Badge>
                     </div>
                     <p className="text-xs line-clamp-3 min-h-[3.6em]">{r?.comment_text || <span className="text-muted-foreground italic">(sem texto)</span>}</p>
-                    <div className="text-[10px] text-muted-foreground truncate">{r?.comment_author || "anônimo"}</div>
+                    <div className="text-[10px] text-muted-foreground truncate">{r?.comment_author || "anônimo"} • {g.children.length} resposta(s)</div>
                     <div className="flex justify-between text-xs pt-2 border-t mt-auto">
                       <span className="flex items-center gap-1"><Heart className="h-3 w-3" />{g.likes.toLocaleString("pt-BR")}</span>
                       <span className="flex items-center gap-1"><MessageCircle className="h-3 w-3" />{g.replies.toLocaleString("pt-BR")}</span>
@@ -268,11 +305,16 @@ export function ReactionsPerPost({ candidateId, days = 7 }: Props) {
             </div>
           </div>
 
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center gap-1.5">
             <Button onClick={() => setOpen(true)} variant="default">
-              Ver mais posts ({groupedPosts.length.toLocaleString("pt-BR")}) <ArrowRight className="h-4 w-4 ml-2" />
+              Ver mais posts <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
+            <p className="text-[11px] text-muted-foreground text-center">
+              Total disponível: <strong>{totals.postsCount.toLocaleString("pt-BR")}</strong> posts •{" "}
+              <strong>{totals.commentsCount.toLocaleString("pt-BR")}</strong> comentários
+            </p>
           </div>
+
         </>
       )}
 
@@ -280,9 +322,12 @@ export function ReactionsPerPost({ candidateId, days = 7 }: Props) {
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" className="w-full sm:max-w-3xl lg:max-w-5xl overflow-y-auto">
           <SheetHeader>
-            <SheetTitle>Todos os posts ({filtered.length.toLocaleString("pt-BR")})</SheetTitle>
-            <SheetDescription>Use os filtros para refinar.</SheetDescription>
+            <SheetTitle>Todos os posts</SheetTitle>
+            <SheetDescription>
+              Total disponível: {totals.postsCount.toLocaleString("pt-BR")} posts • {totals.commentsCount.toLocaleString("pt-BR")} comentários — exibindo {Math.min(visibleCount, filtered.length).toLocaleString("pt-BR")} de {filtered.length.toLocaleString("pt-BR")}.
+            </SheetDescription>
           </SheetHeader>
+
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-4">
             <Select value={filterSentiment} onValueChange={setFilterSentiment}>
