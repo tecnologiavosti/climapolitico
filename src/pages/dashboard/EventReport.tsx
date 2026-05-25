@@ -606,7 +606,107 @@ const EventReportPage = () => {
             </CardContent>
           </Card>
 
+          {/* Bolhas detectadas */}
+          {enrichment && enrichment.bubbles.length > 0 && (
+            <Card>
+              <CardHeader>
+                <HelpTooltip text="Regiões/estados onde o pico mais ressoou.">
+                  <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" />Bolhas detectadas</CardTitle>
+                </HelpTooltip>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {enrichment.bubbles.map(([name, n]) => (
+                    <Badge key={name} variant="outline" className="text-sm px-3 py-1">
+                      {name} <span className="ml-2 text-muted-foreground">{n}</span>
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Narrativas detectadas */}
+          {report.main_topics && report.main_topics.length > 0 && (
+            <Card>
+              <CardHeader>
+                <HelpTooltip text="Linhas narrativas dominantes no pico, extraídas dos temas mais discutidos.">
+                  <CardTitle className="flex items-center gap-2"><Layers className="h-5 w-5" />Narrativas detectadas</CardTitle>
+                </HelpTooltip>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {report.main_topics.slice(0, 6).map((t, i) => (
+                    <div key={i} className="rounded-md border bg-muted/30 p-3 text-sm">
+                      <span className="text-xs text-muted-foreground">Narrativa {String.fromCharCode(65 + i)}</span>
+                      <p className="font-medium mt-0.5">{t}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Temas dominantes com sentimento */}
+          {enrichment && enrichment.themes.length > 0 && (
+            <Card>
+              <CardHeader>
+                <HelpTooltip text="Para cada tema, total de menções e distribuição de sentimento.">
+                  <CardTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5" />Temas dominantes</CardTitle>
+                </HelpTooltip>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {enrichment.themes.map((t) => (
+                    <div key={t.topic} className="space-y-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="font-medium text-sm">{t.topic}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {t.total.toLocaleString("pt-BR")} menções • {t.positivePct}% positivo
+                        </span>
+                      </div>
+                      <div className="flex h-2 w-full rounded overflow-hidden bg-muted">
+                        <div className="bg-green-500" style={{ width: `${t.positivePct}%` }} />
+                        <div className="bg-yellow-400" style={{ width: `${t.neutralPct}%` }} />
+                        <div className="bg-red-500" style={{ width: `${t.negativePct}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Origem do pico (redes) */}
+          {enrichment && enrichment.networkOrigin.length > 0 && (
+            <Card>
+              <CardHeader>
+                <HelpTooltip text="De onde partiu o pico — distribuição por rede social.">
+                  <CardTitle className="flex items-center gap-2"><Radio className="h-5 w-5" />Origem do pico</CardTitle>
+                </HelpTooltip>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {enrichment.networkOrigin.map(([net, n]) => {
+                    const max = enrichment.networkOrigin[0][1];
+                    const pct = Math.round((n / max) * 100);
+                    return (
+                      <div key={net} className="flex items-center gap-3">
+                        <span className="text-sm w-24 capitalize">{net}</span>
+                        <div className="flex-1 h-3 bg-muted rounded overflow-hidden">
+                          <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="text-xs font-medium w-16 text-right">{n.toLocaleString("pt-BR")}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Top Comments */}
+
           {result.topComments && result.topComments.length > 0 && (
             <Card>
               <CardHeader>
