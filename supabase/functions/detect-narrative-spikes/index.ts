@@ -21,17 +21,22 @@ Deno.serve(async (req) => {
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const token = authHeader.replace("Bearer ", "");
 
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
-    const { data: userRes } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
-    const user = userRes?.user;
-    if (!user) return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const isCronMode = token === SERVICE_KEY;
 
     const body = await req.json().catch(() => ({}));
     const candidateFilter: string | undefined = body.candidate_id;
 
-    // Buscar candidatos do user
-    let candQ = supabase.from("candidates").select("id, full_name").eq("user_id", user.id).eq("status", "active");
+    // Buscar candidatos (cron: todos os ativos; user: só do user)
+    let candQ = supabase.from("candidates").select("id, full_name, user_id").eq("status", "active");
+    if (!isCronMode) {
+      const { data: userRes } = await supabase.auth.getUser(token);
+      const user = userRes?.user;
+      if (!user) return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      candQ = candQ.eq("user_id", user.id);
+    }
     if (candidateFilter) candQ = candQ.eq("id", candidateFilter);
     const { data: candidates, error: candErr } = await candQ;
     if (candErr) throw candErr;
