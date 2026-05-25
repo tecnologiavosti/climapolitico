@@ -789,6 +789,14 @@ export default function Overview() {
           </div>
         )}
       </Card>
+
+      {/* Fase 6 — Reações por post */}
+      <ReactionsPerPost candidateId={selectedCandidateId || undefined} days={7} />
+
+      {/* Fase 8 — Comparativo consolidado */}
+      {candidates && candidates.length > 0 && (
+        <CandidatesComparisonPanel candidates={candidates as any} />
+      )}
     </div>
   );
 }
