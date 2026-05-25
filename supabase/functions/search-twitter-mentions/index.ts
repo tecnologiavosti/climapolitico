@@ -1084,9 +1084,10 @@ Deno.serve(async (req) => {
             r.sentiment_label = s?.label ?? null;
             r.sentiment_score = s?.score ?? null;
           });
+          const enrichedBatch = batch.map((r) => enrichRecordLocation(r));
           const { data: ins, error: repErr } = await db
             .from('social_interactions')
-            .insert(batch)
+            .insert(enrichedBatch)
             .select('id');
           if (repErr) {
             console.error('[TWITTER-Replies] insert falhou:', repErr.message);
