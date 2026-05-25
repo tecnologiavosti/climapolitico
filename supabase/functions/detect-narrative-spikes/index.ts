@@ -135,7 +135,7 @@ Responda APENAS em JSON válido com este schema exato:
       const { data: inserted, error: insErr } = await supabase
         .from("narrative_alerts")
         .insert({
-          user_id: user.id,
+          user_id: candUserId,
           candidate_id: cand.id,
           trigger_reason: parsed.trigger_reason || `Pico de ${recent.length} menções em 6h (${ratio.toFixed(1)}x baseline)`,
           detected_bubble: parsed.detected_bubble || null,
