@@ -29,6 +29,9 @@ import {
   Linkedin,
   Rss,
   Network,
+  MessagesSquare,
+  CalendarClock,
+  AlertTriangle,
 } from "lucide-react";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { useTooltipsEnabled } from "@/hooks/useTooltipsEnabled";
@@ -57,6 +60,9 @@ const mainItems = [
   { title: "Monitor Tempo Real", url: "/dashboard/realtime-monitor", icon: Radio, tip: "Acompanhe os comentários chegando ao vivo, na hora em que o povo posta." },
   { title: "Análise Regional", url: "/dashboard/regional-analysis", icon: MapPinned, tip: "Veja como seu candidato performa em cada região do Brasil por rede social." },
   { title: "Visão por Rede Social", url: "/dashboard/network-view", icon: Network, tip: "Filtre por rede (Instagram, X, YouTube, etc.) e veja KPIs, gráficos, top posts, hashtags e horários." },
+  { title: "Árvore de Comentários", url: "/dashboard/comment-tree", icon: MessagesSquare, tip: "Veja posts raiz e suas respostas agrupados. Descubra quais conversas estão bombando." },
+  { title: "Eventos & Entrevistas", url: "/dashboard/political-events", icon: CalendarClock, tip: "Cadastre entrevistas, debates e comícios e meça o impacto nas redes (antes/durante/depois)." },
+  { title: "IA Narrativa de Picos", url: "/dashboard/narrative-alerts", icon: AlertTriangle, tip: "A IA detecta picos de menções, identifica a bolha que está reagindo e sugere narrativa de contra-resposta." },
   { title: "Feeds Redes Sociais", url: "/dashboard/social-feeds", icon: Rss, tip: "Feeds com posts e menções de todas as redes sociais (LinkedIn, YouTube, Twitter, Reddit, Telegram, Notícias e mais)." },
   { title: "Candidatos", url: "/dashboard/candidates", icon: Users, tip: "Onde você adiciona, remove e cuida dos candidatos que está acompanhando." },
   { title: "Catálogo de Candidatos", url: "/dashboard/candidates-catalog", icon: BookUser, tip: "Lista de candidatos já prontos. Escolha um e adicione na sua conta com 1 clique." },

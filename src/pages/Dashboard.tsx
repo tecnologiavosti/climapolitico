@@ -44,6 +44,9 @@ const Operations = lazy(() => import("./dashboard/Operations"));
 const SLO = lazy(() => import("./dashboard/SLO"));
 const WorkerTokens = lazy(() => import("./dashboard/WorkerTokens"));
 const TenantAnalytics = lazy(() => import("./dashboard/TenantAnalytics"));
+const CommentTree = lazy(() => import("./dashboard/CommentTree"));
+const PoliticalEvents = lazy(() => import("./dashboard/PoliticalEvents"));
+const NarrativeAlerts = lazy(() => import("./dashboard/NarrativeAlerts"));
 
 /** Wraps a lazy route element in a per-route error boundary. */
 const wrap = (name: string, El: React.ComponentType) => (
@@ -141,6 +144,9 @@ const Dashboard = () => {
                 <Route path="/regional-analysis" element={wrap("RegionalAnalysis", RegionalAnalysis)} />
                 <Route path="/social-feeds" element={wrap("SocialFeeds", SocialFeeds)} />
                 <Route path="/network-view" element={wrap("NetworkView", NetworkView)} />
+                <Route path="/comment-tree" element={wrap("CommentTree", CommentTree)} />
+                <Route path="/political-events" element={wrap("PoliticalEvents", PoliticalEvents)} />
+                <Route path="/narrative-alerts" element={wrap("NarrativeAlerts", NarrativeAlerts)} />
                 <Route path="/settings" element={wrap("Settings", Settings)} />
               </Routes>
             </Suspense>
