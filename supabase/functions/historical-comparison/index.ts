@@ -497,7 +497,7 @@ Retorne ESTRITAMENTE JSON neste formato (sem markdown):
       console.log(`[historical-comparison] status Cerebras=OK tempo=${cerebrasResult.latencyMs}ms tokens=${cerebrasResult.tokens ?? "?"}`);
     } else {
       console.warn(`[historical-comparison] status Cerebras=${cerebrasResult.errorType} status=${cerebrasResult.status ?? "n/a"} — usando fallback apropriado`);
-      if (!["QUOTA_EXCEEDED", "RATE_LIMIT", "TIMEOUT"].includes(cerebrasResult.errorType)) {
+      if (!["QUOTA_EXCEEDED", "RATE_LIMIT", "TIMEOUT", "MODEL_UNAVAILABLE"].includes(cerebrasResult.errorType)) {
         const ctrl2 = new AbortController();
         const to2 = setTimeout(() => ctrl2.abort(), 30000);
         const gatewayResult = await callAi("gateway", prompt, ctrl2.signal);
