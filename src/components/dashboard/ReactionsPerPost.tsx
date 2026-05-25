@@ -94,28 +94,53 @@ function periodRange(period: PeriodKey, customStart: string, customEnd: string) 
   return { start: subDays(new Date(), days).toISOString(), end };
 }
 
-export function ReactionsPerPost({ candidateId, days = 7 }: Props) {
+export function ReactionsPerPost({ candidateId }: Props) {
   const { user } = useAuth();
   const { isAdmin } = useAdminCheck();
+  const queryClient = useQueryClient();
   const [selected, setSelected] = useState<Group | null>(null);
   const [open, setOpen] = useState(false);
+  const [selectedPeriod, setSelectedPeriod] = useState<PeriodKey>("total");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
   const [filterSentiment, setFilterSentiment] = useState<string>("all");
   const [filterNetwork, setFilterNetwork] = useState<string>("all");
   const [filterDate, setFilterDate] = useState<string>("");
   const [visibleCount, setVisibleCount] = useState(50);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const { data: interactions, isLoading } = useQuery({
-    queryKey: ["reactions-per-post-full", user?.id, isAdmin, candidateId, days],
+  const range = useMemo(() => periodRange(selectedPeriod, customStart, customEnd), [selectedPeriod, customStart, customEnd]);
+
+  const summaryKey = ["reactions-summary", user?.id, isAdmin, candidateId, range.start, range.end];
+
+  const { data: summary, isLoading: summaryLoading } = useQuery({
+    queryKey: summaryKey,
     queryFn: async () => {
-      const since = subDays(new Date(), days).toISOString();
+      const { data, error } = await supabase.rpc("get_reactions_per_post_summary" as any, {
+        _user_id: user!.id,
+        _candidate_id: candidateId ?? null,
+        _period_start: range.start,
+        _period_end: range.end,
+      });
+      if (error) throw error;
+      return data as SummaryData;
+    },
+    enabled: !!user,
+    staleTime: 30_000,
+    refetchInterval: (query) => ((query.state.data as SummaryData | undefined)?.pendingCount ?? 0) > 0 ? 20_000 : false,
+  });
+
+  const { data: interactions, isLoading } = useQuery({
+    queryKey: ["reactions-per-post-full", user?.id, isAdmin, candidateId, range.start, range.end],
+    queryFn: async () => {
       const rows = await fetchAllPaginated<Row>((from, to) => {
         let q = supabase
           .from("social_interactions")
           .select("id, social_network, comment_text, comment_author, likes_count, replies_count, shares_count, sentiment_label, collected_at, candidate_id, post_id, parent_comment_id, root_comment_id")
-          .gte("collected_at", since)
           .order("collected_at", { ascending: false })
           .range(from, to);
+        if (range.start) q = q.gte("collected_at", range.start);
+        if (range.end) q = q.lte("collected_at", range.end);
         if (!isAdmin && user) q = q.eq("user_id", user.id);
         if (candidateId) q = q.eq("candidate_id", candidateId);
         return q;
@@ -124,7 +149,32 @@ export function ReactionsPerPost({ candidateId, days = 7 }: Props) {
     },
     enabled: !!user,
     staleTime: 60_000,
+    refetchInterval: summary?.pendingCount ? 20_000 : false,
   });
+
+  const triggerSentimentQueue = useCallback(async () => {
+    if (!user || !summary?.pendingCount) return;
+    await supabase.rpc("enqueue_pending_sentiment_jobs" as any, {
+      _user_id: user.id,
+      _candidate_id: candidateId ?? null,
+      _period_start: range.start,
+      _period_end: range.end,
+      _batch_size: 1000,
+    });
+
+    await Promise.allSettled([
+      supabase.functions.invoke("sentiment-worker", { body: {} }),
+      supabase.functions.invoke("sentiment-worker", { body: {} }),
+      supabase.functions.invoke("sentiment-worker", { body: {} }),
+    ]);
+    queryClient.invalidateQueries({ queryKey: ["reactions-summary"] });
+    queryClient.invalidateQueries({ queryKey: ["reactions-per-post-full"] });
+  }, [candidateId, queryClient, range.end, range.start, summary?.pendingCount, user]);
+
+  useEffect(() => {
+    if (!summary?.pendingCount) return;
+    triggerSentimentQueue().catch(() => null);
+  }, [summary?.pendingCount, triggerSentimentQueue]);
 
   // Totais — sentimento agregado sobre TUDO (raiz + comentários + respostas + subcomentários)
   const totals = useMemo(() => {
