@@ -140,6 +140,7 @@ const Dashboard = () => {
                 <Route path="/data-collection-methodology" element={wrap("DataCollectionMethodology", DataCollectionMethodology)} />
                 <Route path="/regional-analysis" element={wrap("RegionalAnalysis", RegionalAnalysis)} />
                 <Route path="/social-feeds" element={wrap("SocialFeeds", SocialFeeds)} />
+                <Route path="/network-view" element={wrap("NetworkView", NetworkView)} />
                 <Route path="/settings" element={wrap("Settings", Settings)} />
               </Routes>
             </Suspense>
