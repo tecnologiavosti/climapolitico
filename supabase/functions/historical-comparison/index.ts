@@ -377,7 +377,15 @@ Deno.serve(async (req) => {
       const neu = sumOf(h, "sentiment_neutral") + countSent(i, "neutral") + countSent(i, "neutro");
       const total = pos + neg + neu;
       const regions: Record<string, number> = {};
+      const hashtags: Record<string, number> = {};
+      const narratives: Record<string, number> = {};
       for (const it of i) if (it.region) regions[it.region] = (regions[it.region] || 0) + 1;
+      for (const it of i) {
+        const text = String(it.comment_text || "");
+        for (const tag of detectHashtags(text)) hashtags[tag] = (hashtags[tag] || 0) + 1;
+        for (const n of detectNarratives(text)) narratives[n] = (narratives[n] || 0) + 1;
+      }
+      for (const ev of e) for (const kw of (ev.keywords || [])) narratives[String(kw).toLowerCase()] = (narratives[String(kw).toLowerCase()] || 0) + 1;
       const topRegions = Object.entries(regions).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([r, c]) => ({ region: r, count: c }));
       return {
         label,
@@ -387,6 +395,8 @@ Deno.serve(async (req) => {
         sentimentNeutralPct: total > 0 ? Math.round((neu / total) * 100) : null,
         topThemes: bucketThemes([...h, ...i]).slice(0, 5).map(t => t.theme),
         topRegions,
+        topHashtags: topEntries(hashtags, 6),
+        detectedNarratives: topEntries(narratives, 6),
         events: e.slice(0, 5).map(ev => ({ name: ev.event_name, type: ev.event_type, date: (ev.event_date || "").slice(0, 10) })),
       };
     };
@@ -404,10 +414,33 @@ Deno.serve(async (req) => {
       first_half: buildHalf(`${ymd(start)} → ${ymd(mid)}`, histFirst, intFirst, evtFirst),
       second_half: buildHalf(`${ymd(mid)} → ${ymd(end)}`, histSecond, intSecond, evtSecond),
     };
+    (summary as any).temporalChanges = {
+      mentionDelta: (summary.second_half.mentions || 0) - (summary.first_half.mentions || 0),
+      sentimentDirection: sentimentTrend(summary.first_half, summary.second_half),
+      themesAdded: (summary.second_half.topThemes || []).filter((t: string) => !(summary.first_half.topThemes || []).includes(t)).slice(0, 5),
+      themesReduced: (summary.first_half.topThemes || []).filter((t: string) => !(summary.second_half.topThemes || []).includes(t)).slice(0, 5),
+    };
 
     const hasMinimumData = summary.totals.signals >= 1;
     const summaryJson = JSON.stringify(summary);
-    console.log(`[historical-comparison] summary size=${summaryJson.length} chars, signals=${summary.totals.signals}`);
+    const cacheKey = `historical_comparison:v3:${await sha256(`${candidateId}:${ymd(start)}:${ymd(end)}:${summaryJson}`)}`;
+    console.log(`[historical-comparison] registros enviados=0 raw; sinais agregados=${summary.totals.signals}; resumo=${summaryJson.length} chars; cache=${cacheKey.slice(0, 40)}`);
+
+    const { data: cached } = await supabase
+      .from("analysis_cache")
+      .select("result, provider")
+      .eq("cache_key", cacheKey)
+      .gt("expires_at", new Date().toISOString())
+      .maybeSingle();
+
+    if (cached?.result) {
+      await supabase.from("analysis_cache").update({ last_hit_at: new Date().toISOString(), hit_count: 1 }).eq("cache_key", cacheKey);
+      console.log(`[historical-comparison] cache hit provider=${cached.provider || "cache"}`);
+      return new Response(JSON.stringify({
+        ...(cached.result as Record<string, unknown>),
+        fromCache: true,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     const prompt = `Analise a evolução da percepção pública do candidato político brasileiro a seguir.
 
