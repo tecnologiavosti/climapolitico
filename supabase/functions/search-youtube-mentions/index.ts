@@ -724,15 +724,16 @@ Deno.serve(async (req) => {
 
     const insertBatch = async (batchItems: any[]) => {
       if (batchItems.length === 0) return;
-      console.log(`Inserting batch: ${batchItems.length} comments`);
+      const enriched = batchItems.map((it) => enrichRecordLocation(it));
+      console.log(`Inserting batch: ${enriched.length} comments`);
       const { error: insertError } = await supabase
         .from('social_interactions')
-        .insert(batchItems);
+        .insert(enriched);
       if (insertError) {
         console.error('Database insert error (batch):', insertError);
         // Partial success strategy: don't throw; let the run finish and return stats.
       }
-      insertedRowsForStats.push(...batchItems);
+      insertedRowsForStats.push(...enriched);
     };
 
     for (const video of allVideos) {
