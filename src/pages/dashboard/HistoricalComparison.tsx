@@ -215,7 +215,21 @@ export default function HistoricalComparison() {
               </CardHeader>
               <CardContent className="text-xs text-muted-foreground">
                 <p>Tipo: <span className="font-mono">{result.aiError.errorType}</span> • Provedor: {result.aiError.provider}</p>
-                <p className="mt-1">Os dados do período foram coletados normalmente — apenas a geração da narrativa falhou. Tente novamente em alguns segundos.</p>
+                <p className="mt-1">Os dados do período foram coletados normalmente — apenas a geração da narrativa falhou.</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {result.aiNotice && (
+            <Card className="border-amber-500/40 bg-amber-500/10">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2 text-amber-700">
+                  <AlertTriangle className="h-5 w-5" />Análise local aplicada
+                </CardTitle>
+                <CardDescription>{result.aiNotice.userMessage}</CardDescription>
+              </CardHeader>
+              <CardContent className="text-xs text-muted-foreground">
+                <p>Tipo: <span className="font-mono">{result.aiNotice.errorType}</span> • Provedor original: {result.aiNotice.provider}</p>
               </CardContent>
             </Card>
           )}
