@@ -17,6 +17,8 @@ import { useAllCandidateMetrics, CandidateMetrics } from "@/hooks/useCandidateMe
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { NetworkLegendWithTooltips } from "@/components/dashboard/NetworkLegendWithTooltips";
 import { isHiddenNetwork } from "@/lib/networkVisibility";
+import { ReactionsPerPost } from "@/components/dashboard/ReactionsPerPost";
+import { CandidatesComparisonPanel } from "@/components/dashboard/CandidatesComparisonPanel";
 
 // Componentes temporariamente ocultos da Visão Geral (mantidos para uso futuro)
 // import { AIModelsPanel } from "@/components/dashboard/AIModelsPanel";
@@ -787,6 +789,14 @@ export default function Overview() {
           </div>
         )}
       </Card>
+
+      {/* Fase 6 — Reações por post */}
+      <ReactionsPerPost candidateId={selectedCandidateId || undefined} days={7} />
+
+      {/* Fase 8 — Comparativo consolidado */}
+      {candidates && candidates.length > 0 && (
+        <CandidatesComparisonPanel candidates={candidates as any} />
+      )}
     </div>
   );
 }
