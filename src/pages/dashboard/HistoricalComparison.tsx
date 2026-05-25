@@ -4,8 +4,12 @@ import { ptBR } from "date-fns/locale";
 import {
   CalendarIcon, GitCompareArrows, Loader2, Sparkles, TrendingUp, TrendingDown,
   AlertTriangle, Megaphone, Users, CalendarDays, Tags, ArrowRight,
+  MapPinned, Heart, Activity,
 } from "lucide-react";
 import { DateRange } from "react-day-picker";
+import {
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Legend,
+} from "recharts";
 
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -24,18 +28,35 @@ interface DetectedChange { type: string; title: string; description: string }
 interface NarrativeBlock { label: string; evidence?: string }
 interface PerceptionShift { group: string; shift: string }
 interface AssociatedEvent { name: string; date?: string; type?: string; impact?: string }
+interface TimelineInsight { date?: string; title: string; description?: string }
+interface RegionalInsight { region: string; movement: string; explanation?: string }
+interface DemographicInsight { group: string; trend: string }
+interface EmotionalInsight { emotion: string; movement: string; explanation?: string }
+interface NarrativeShift { from: string; to: string; explanation?: string }
+
+interface AdvancedAgg {
+  sentimentTimeline?: { week: string; pos: number; neg: number; neu: number }[];
+  regionalShift?: { region: string; mentionsEarly: number; mentionsLate: number; mentionsDelta: number; sentimentDelta: number; direction: string }[];
+  emotionalShift?: { emotion: string; early: number; late: number; delta: number }[];
+  eventTimeline?: { date: string; type: string; label: string; description?: string | null; location?: string | null; mentions?: number }[];
+}
 
 interface AnalysisResponse {
   candidate?: { id: string; name: string; createdAt: string; party?: string; region?: string };
   period?: { start: string; end: string; mid: string };
-  summary?: any;
+  summary?: { advanced?: AdvancedAgg; [k: string]: any };
   hasMinimumData?: boolean;
   analysis: {
     summary?: string;
+    narrativeShift?: NarrativeShift;
     detectedChanges?: DetectedChange[];
     narratives?: { early?: NarrativeBlock; late?: NarrativeBlock };
     perceptionShifts?: PerceptionShift[];
     associatedEvents?: AssociatedEvent[];
+    timelineInsights?: TimelineInsight[];
+    regionalInsights?: RegionalInsight[];
+    demographicInsights?: DemographicInsight[];
+    emotionalInsights?: EmotionalInsight[];
     dominantThemesByPeriod?: { early?: string[]; late?: string[] };
     dataNote?: string;
   } | null;
@@ -253,6 +274,162 @@ export default function HistoricalComparison() {
               </CardContent>
             </Card>
           )}
+
+          {/* Mudança narrativa (antes → depois) */}
+          {result.analysis?.narrativeShift && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2"><Megaphone className="h-5 w-5 text-primary" />Mudança narrativa</CardTitle>
+                <CardDescription>O eixo dominante do debate público no período.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-[1fr_auto_1fr] items-stretch">
+                  <div className="rounded-lg border p-4 bg-muted/30">
+                    <p className="text-xs text-muted-foreground mb-1">Antes</p>
+                    <p className="text-lg font-semibold">{result.analysis.narrativeShift.from}</p>
+                  </div>
+                  <div className="flex items-center justify-center"><ArrowRight className="h-6 w-6 text-muted-foreground hidden md:block" /></div>
+                  <div className="rounded-lg border p-4 bg-primary/5">
+                    <p className="text-xs text-muted-foreground mb-1">Depois</p>
+                    <p className="text-lg font-semibold">{result.analysis.narrativeShift.to}</p>
+                  </div>
+                </div>
+                {result.analysis.narrativeShift.explanation && (
+                  <p className="text-sm mt-3">{result.analysis.narrativeShift.explanation}</p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Mapa temporal de sentimento */}
+          {result.summary?.advanced?.sentimentTimeline && result.summary.advanced.sentimentTimeline.length > 1 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2"><Activity className="h-5 w-5 text-primary" />Mapa temporal de sentimento</CardTitle>
+                <CardDescription>Como sentimentos positivos, neutros e negativos evoluíram semana a semana.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={result.summary.advanced.sentimentTimeline}>
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                      <XAxis dataKey="week" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} />
+                      <RTooltip />
+                      <Legend />
+                      <Area type="monotone" dataKey="pos" stackId="1" name="Positivo" stroke="hsl(var(--success))" fill="hsl(var(--success))" fillOpacity={0.6} />
+                      <Area type="monotone" dataKey="neu" stackId="1" name="Neutro" stroke="hsl(var(--warning))" fill="hsl(var(--warning))" fillOpacity={0.6} />
+                      <Area type="monotone" dataKey="neg" stackId="1" name="Negativo" stroke="hsl(var(--destructive))" fill="hsl(var(--destructive))" fillOpacity={0.6} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Linha temporal de acontecimentos */}
+          {((result.analysis?.timelineInsights && result.analysis.timelineInsights.length > 0) ||
+            (result.summary?.advanced?.eventTimeline && result.summary.advanced.eventTimeline.length > 0)) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2"><CalendarDays className="h-5 w-5 text-primary" />Linha temporal de acontecimentos</CardTitle>
+                <CardDescription>Eventos, debates, picos e marcos relevantes do período.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ol className="relative border-l-2 border-border ml-3 space-y-4">
+                  {(result.analysis?.timelineInsights && result.analysis.timelineInsights.length > 0
+                    ? result.analysis.timelineInsights
+                    : (result.summary?.advanced?.eventTimeline || []).map(e => ({
+                        date: e.date, title: e.label, description: e.description || (e.type === "spike" ? `Pico de menções (${e.mentions})` : `Evento: ${e.type}`),
+                      }))
+                  ).map((t, i) => (
+                    <li key={i} className="ml-4">
+                      <div className="absolute -left-1.5 mt-1.5 w-3 h-3 rounded-full bg-primary" />
+                      <p className="text-xs text-muted-foreground">{t.date || "—"}</p>
+                      <p className="font-semibold text-sm">{t.title}</p>
+                      {t.description && <p className="text-sm text-muted-foreground">{t.description}</p>}
+                    </li>
+                  ))}
+                </ol>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Mudanças regionais */}
+          {((result.analysis?.regionalInsights && result.analysis.regionalInsights.length > 0) ||
+            (result.summary?.advanced?.regionalShift && result.summary.advanced.regionalShift.length > 0)) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2"><MapPinned className="h-5 w-5 text-primary" />Mudanças regionais</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-2">
+                {(result.summary?.advanced?.regionalShift || []).map((r, i) => {
+                  const ai = result.analysis?.regionalInsights?.find(x => x.region === r.region);
+                  const color = r.direction === "alta" ? "text-emerald-600" : r.direction === "queda" ? "text-rose-600" : "text-muted-foreground";
+                  return (
+                    <div key={i} className="rounded-lg border p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="font-semibold text-sm">{r.region}</p>
+                        <Badge variant="outline" className={cn("text-xs capitalize", color)}>{r.direction}</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Menções: {r.mentionsEarly} → {r.mentionsLate} ({r.mentionsDelta >= 0 ? "+" : ""}{r.mentionsDelta})
+                      </p>
+                      {ai?.explanation && <p className="text-sm mt-1">{ai.explanation}</p>}
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Mudanças emocionais */}
+          {((result.analysis?.emotionalInsights && result.analysis.emotionalInsights.length > 0) ||
+            (result.summary?.advanced?.emotionalShift && result.summary.advanced.emotionalShift.length > 0)) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2"><Heart className="h-5 w-5 text-primary" />Mudanças emocionais</CardTitle>
+                <CardDescription>Tons emocionais detectados nas conversas ao longo do período.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {(result.summary?.advanced?.emotionalShift || []).map((e, i) => {
+                  const max = Math.max(1, ...(result.summary?.advanced?.emotionalShift || []).map(x => Math.max(x.early, x.late)));
+                  return (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="w-28 text-sm capitalize">{e.emotion}</div>
+                      <div className="flex-1 flex gap-1 items-center">
+                        <div className="h-2 rounded bg-muted-foreground/30" style={{ width: `${(e.early / max) * 100}%` }} />
+                        <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                        <div className="h-2 rounded bg-primary" style={{ width: `${(e.late / max) * 100}%` }} />
+                      </div>
+                      <Badge variant="outline" className="text-xs">
+                        {e.delta >= 0 ? "+" : ""}{e.delta}
+                      </Badge>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Mudanças demográficas (só se IA preencher) */}
+          {result.analysis?.demographicInsights && result.analysis.demographicInsights.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2"><Users className="h-5 w-5 text-primary" />Mudanças demográficas</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-2">
+                {result.analysis.demographicInsights.map((d, i) => (
+                  <div key={i} className="rounded-lg border p-3">
+                    <Badge variant="secondary" className="mb-2 capitalize">{d.group}</Badge>
+                    <p className="text-sm">{d.trend}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+
 
 
           {/* Mudanças detectadas */}
