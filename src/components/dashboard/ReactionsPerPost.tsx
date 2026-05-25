@@ -234,18 +234,38 @@ export function ReactionsPerPost({ candidateId, days = 7 }: Props) {
         <div className="text-sm text-muted-foreground py-8 text-center">Nenhum comentário no período.</div>
       ) : (
         <>
-          {/* Resumo */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <KpiBox label="Total de posts" value={groupedPosts.length} />
-            <KpiBox label={`Positivas (${totals.posPct}%)`} value={totals.pos} tone="pos" />
-            <KpiBox label={`Negativas (${totals.negPct}%)`} value={totals.neg} tone="neg" />
-            <KpiBox label={`Neutras (${totals.neuPct}%)`} value={totals.neu} tone="neu" />
+          {/* Posts & interações */}
+          <div>
+            <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-2">Posts e interações</h4>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <KpiBox label="Posts coletados" value={totals.postsCount} />
+              <KpiBox label="Comentários coletados" value={totals.commentsCount} />
+              <KpiBox label="Curtidas" value={totals.totalLikes} />
+              <KpiBox label="Compartilhamentos" value={totals.totalShares} />
+              <KpiBox label="Interações totais" value={totals.totalInteractions} highlight />
+            </div>
           </div>
 
-          <div className="flex h-3 w-full rounded overflow-hidden border border-border">
-            <div className="bg-success" style={{ width: `${totals.posPct}%` }} />
-            <div className="bg-warning" style={{ width: `${totals.neuPct}%` }} />
-            <div className="bg-destructive" style={{ width: `${totals.negPct}%` }} />
+          {/* Classificação de sentimento — sobre TODOS os registros (raiz + comentários + respostas + subcomentários) */}
+          <div>
+            <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-2">
+              Classificação de sentimento
+              <span className="ml-2 text-[10px] font-normal normal-case text-muted-foreground">
+                {totals.labeled.toLocaleString("pt-BR")} de {totals.totalRecords.toLocaleString("pt-BR")} registros analisados
+                {totals.unanalyzed > 0 && ` • ${totals.unanalyzed.toLocaleString("pt-BR")} pendente(s)`}
+              </span>
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+              <KpiBox label="Total analisado" value={totals.labeled} />
+              <KpiBox label={`Positivo (${totals.posPct}%)`} value={totals.pos} tone="pos" />
+              <KpiBox label={`Negativo (${totals.negPct}%)`} value={totals.neg} tone="neg" />
+              <KpiBox label={`Neutro (${totals.neuPct}%)`} value={totals.neu} tone="neu" />
+            </div>
+            <div className="flex h-3 w-full rounded overflow-hidden border border-border">
+              <div className="bg-success" style={{ width: `${totals.posPct}%` }} />
+              <div className="bg-warning" style={{ width: `${totals.neuPct}%` }} />
+              <div className="bg-destructive" style={{ width: `${totals.negPct}%` }} />
+            </div>
           </div>
 
           {topTopics.length > 0 && (
@@ -256,6 +276,8 @@ export function ReactionsPerPost({ candidateId, days = 7 }: Props) {
               ))}
             </div>
           )}
+
+
 
           {/* Top 5 */}
           <div>
