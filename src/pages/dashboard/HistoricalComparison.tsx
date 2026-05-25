@@ -4,8 +4,12 @@ import { ptBR } from "date-fns/locale";
 import {
   CalendarIcon, GitCompareArrows, Loader2, Sparkles, TrendingUp, TrendingDown,
   AlertTriangle, Megaphone, Users, CalendarDays, Tags, ArrowRight,
+  MapPinned, Heart, Activity,
 } from "lucide-react";
 import { DateRange } from "react-day-picker";
+import {
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Legend,
+} from "recharts";
 
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -24,6 +28,18 @@ interface DetectedChange { type: string; title: string; description: string }
 interface NarrativeBlock { label: string; evidence?: string }
 interface PerceptionShift { group: string; shift: string }
 interface AssociatedEvent { name: string; date?: string; type?: string; impact?: string }
+interface TimelineInsight { date?: string; title: string; description?: string }
+interface RegionalInsight { region: string; movement: string; explanation?: string }
+interface DemographicInsight { group: string; trend: string }
+interface EmotionalInsight { emotion: string; movement: string; explanation?: string }
+interface NarrativeShift { from: string; to: string; explanation?: string }
+
+interface AdvancedAgg {
+  sentimentTimeline?: { week: string; pos: number; neg: number; neu: number }[];
+  regionalShift?: { region: string; mentionsEarly: number; mentionsLate: number; mentionsDelta: number; sentimentDelta: number; direction: string }[];
+  emotionalShift?: { emotion: string; early: number; late: number; delta: number }[];
+  eventTimeline?: { date: string; type: string; label: string; description?: string | null; location?: string | null; mentions?: number }[];
+}
 
 interface AnalysisResponse {
   candidate?: { id: string; name: string; createdAt: string; party?: string; region?: string };
