@@ -284,83 +284,125 @@ Deno.serve(async (req) => {
 
     const sumOf = (arr: any[], key: string) => arr.reduce((s, x) => s + Number(x[key] || 0), 0);
 
-    const stats = {
-      total_signals: hist.length + interactions.length + events.length,
-      historical_records: hist.length,
-      realtime_records: interactions.length,
-      events: events.length,
-      first_half: {
-        label: `${ymd(start)} → ${ymd(mid)}`,
-        mentions: sumOf(histFirst, "mentions") + intFirst.length,
-        positive: sumOf(histFirst, "sentiment_positive") + intFirst.filter(i => i.sentiment_label === "positive").length,
-        negative: sumOf(histFirst, "sentiment_negative") + intFirst.filter(i => i.sentiment_label === "negative").length,
-        neutral: sumOf(histFirst, "sentiment_neutral") + intFirst.filter(i => i.sentiment_label === "neutral").length,
-        top_themes: themesFirst.slice(0, 6),
-        events: evtFirst.slice(0, 10).map(e => ({ name: e.event_name, date: e.event_date, type: e.event_type, location: e.location })),
-      },
-      second_half: {
-        label: `${ymd(mid)} → ${ymd(end)}`,
-        mentions: sumOf(histSecond, "mentions") + intSecond.length,
-        positive: sumOf(histSecond, "sentiment_positive") + intSecond.filter(i => i.sentiment_label === "positive").length,
-        negative: sumOf(histSecond, "sentiment_negative") + intSecond.filter(i => i.sentiment_label === "negative").length,
-        neutral: sumOf(histSecond, "sentiment_neutral") + intSecond.filter(i => i.sentiment_label === "neutral").length,
-        top_themes: themesSecond.slice(0, 6),
-        events: evtSecond.slice(0, 10).map(e => ({ name: e.event_name, date: e.event_date, type: e.event_type, location: e.location })),
-      },
-      sample_titles: hist.slice(0, 25).map(() => null), // placeholder
-      sample_comments: enrichedInt.slice(0, 30).map((i: any) => ({ text: (i.comment_text || "").slice(0, 200), sentiment: i.sentiment_label, themes: i.themes, region: i.region })),
+    // Resumo COMPACTO — sem dados brutos enviados à IA
+    const pct = (a: number, b: number) => (a + b) > 0 ? Math.round((a / (a + b)) * 100) : 0;
+    const intSentLabel = (lbl: any) => (lbl || "").toString().toLowerCase();
+    const countSent = (arr: any[], target: string) => arr.filter(i => intSentLabel(i.sentiment_label).includes(target)).length;
+
+    const buildHalf = (label: string, h: any[], i: any[], e: any[]) => {
+      const pos = sumOf(h, "sentiment_positive") + countSent(i, "positive") + countSent(i, "positivo");
+      const neg = sumOf(h, "sentiment_negative") + countSent(i, "negative") + countSent(i, "negativo");
+      const neu = sumOf(h, "sentiment_neutral") + countSent(i, "neutral") + countSent(i, "neutro");
+      const total = pos + neg + neu;
+      const regions: Record<string, number> = {};
+      for (const it of i) if (it.region) regions[it.region] = (regions[it.region] || 0) + 1;
+      const topRegions = Object.entries(regions).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([r, c]) => ({ region: r, count: c }));
+      return {
+        label,
+        mentions: sumOf(h, "mentions") + i.length,
+        sentimentPositivePct: total > 0 ? Math.round((pos / total) * 100) : null,
+        sentimentNegativePct: total > 0 ? Math.round((neg / total) * 100) : null,
+        sentimentNeutralPct: total > 0 ? Math.round((neu / total) * 100) : null,
+        topThemes: bucketThemes([...h, ...i]).slice(0, 5).map(t => t.theme),
+        topRegions,
+        events: e.slice(0, 5).map(ev => ({ name: ev.event_name, type: ev.event_type, date: (ev.event_date || "").slice(0, 10) })),
+      };
     };
 
-    const hasMinimumData = stats.total_signals >= 5;
+    const summary = {
+      candidate: cand.full_name + (cand.party ? ` (${cand.party})` : ""),
+      registeredAt: ymd(candCreated),
+      period: { start: ymd(start), end: ymd(end) },
+      totals: {
+        signals: hist.length + interactions.length + events.length,
+        historicalRecords: hist.length,
+        realtimeInteractions: interactions.length,
+        events: events.length,
+      },
+      first_half: buildHalf(`${ymd(start)} → ${ymd(mid)}`, histFirst, intFirst, evtFirst),
+      second_half: buildHalf(`${ymd(mid)} → ${ymd(end)}`, histSecond, intSecond, evtSecond),
+    };
 
-    const prompt = `Analise a evolução da percepção pública do candidato político brasileiro a seguir entre ${ymd(start)} e ${ymd(end)}.
+    const hasMinimumData = summary.totals.signals >= 1;
+    const summaryJson = JSON.stringify(summary);
+    console.log(`[historical-comparison] summary size=${summaryJson.length} chars, signals=${summary.totals.signals}`);
 
-CANDIDATO: ${cand.full_name}${cand.party ? ` (${cand.party})` : ""}${cand.region ? ` — ${cand.region}` : ""}
-CADASTRADO NA PLATAFORMA EM: ${ymd(candCreated)}
-DADOS DISPONÍVEIS NO PERÍODO:
-${JSON.stringify(stats, null, 0)}
+    const prompt = `Analise a evolução da percepção pública do candidato político brasileiro a seguir.
 
-Sintetize o contexto, identifique mudanças e padrões. Mesmo com poucos dados, produza análise útil baseada no que existe (nunca diga "insuficiente", "—" ou "0"; se houver pouco volume, diga: "dados limitados; análise baseada nas informações disponíveis").
+DADOS AGREGADOS (já resumidos, NÃO há texto bruto):
+${summaryJson}
 
-Retorne JSON ESTRITAMENTE neste formato:
+Produza análise política em PT-BR como um analista experiente. Mesmo com poucos dados, gere narrativa baseada no que existe — NUNCA diga "insuficiente". Se o volume for baixo, registre no campo dataNote.
+
+Retorne ESTRITAMENTE JSON neste formato (sem markdown):
 {
-  "summary": "parágrafo narrativo de 4-8 frases descrevendo a evolução da percepção pública ao longo do período (volume, sentimento, narrativas, regiões, eventos). Cite fatos concretos quando possível.",
+  "summary": "parágrafo narrativo de 4 a 8 frases descrevendo a evolução da percepção pública (volume, sentimento, temas, narrativas, regiões, eventos relevantes).",
   "detectedChanges": [
-    { "type": "growth_support | rejection_increase | polarization | regional_shift | thematic_shift | narrative_shift | event_impact", "title": "título curto", "description": "explicação em 1-2 frases" }
+    { "type": "growth_support|rejection_increase|polarization|regional_shift|thematic_shift|narrative_shift|event_impact", "title": "título curto", "description": "1-2 frases" }
   ],
   "narratives": {
-    "early": { "label": "narrativa predominante no início do período", "evidence": "evidência curta" },
-    "late": { "label": "narrativa predominante no fim do período", "evidence": "evidência curta" }
+    "early": { "label": "narrativa predominante no início", "evidence": "evidência curta" },
+    "late": { "label": "narrativa predominante no fim", "evidence": "evidência curta" }
   },
-  "perceptionShifts": [
-    { "group": "grupo afetado (jovens, eleitorado X, região Y)", "shift": "descrição da mudança" }
-  ],
-  "associatedEvents": [
-    { "name": "nome do evento", "date": "AAAA-MM-DD", "type": "debate|entrevista|discurso|notícia|outro", "impact": "como afetou a percepção" }
-  ],
-  "dominantThemesByPeriod": {
-    "early": ["tema1", "tema2", "tema3"],
-    "late": ["tema1", "tema2", "tema3"]
-  },
-  "dataNote": "frase curta sobre completude (ex: 'Análise baseada em X menções e Y eventos' ou 'Dados limitados para este período; análise baseada nas informações disponíveis.')"
+  "perceptionShifts": [ { "group": "grupo afetado", "shift": "descrição" } ],
+  "associatedEvents": [ { "name": "evento", "date": "AAAA-MM-DD", "type": "debate|entrevista|discurso|notícia|outro", "impact": "como afetou" } ],
+  "dominantThemesByPeriod": { "early": ["t1","t2","t3"], "late": ["t1","t2","t3"] },
+  "dataNote": "frase curta sobre completude (ex: 'Análise baseada em N sinais')."
 }`;
 
-    let ai = await callCerebras(prompt);
-    if (!ai || ai.error) {
-      console.warn("[historical-comparison] cerebras falhou, fallback gateway", ai?.error);
-      ai = await callCerebrasFallback(prompt);
+    // Timeout 35s para Cerebras, depois fallback
+    const ctrl1 = new AbortController();
+    const to1 = setTimeout(() => ctrl1.abort(), 35000);
+    const cerebrasResult = await callAi("cerebras", prompt, ctrl1.signal);
+    clearTimeout(to1);
+
+    let aiPayload: any;
+    let aiError: { errorType: string; message: string; provider: string } | null = null;
+
+    if (cerebrasResult.ok) {
+      aiPayload = cerebrasResult.data;
+      console.log(`[historical-comparison] cerebras OK (${cerebrasResult.latencyMs}ms, tokens=${cerebrasResult.tokens ?? "?"})`);
+    } else {
+      console.warn(`[historical-comparison] cerebras falhou: ${cerebrasResult.errorType} — tentando fallback gateway`);
+      // Só usa fallback se NÃO for quota (quota provavelmente afeta ambos)
+      if (cerebrasResult.errorType !== "QUOTA_EXCEEDED" && cerebrasResult.errorType !== "MISSING_KEY") {
+        const ctrl2 = new AbortController();
+        const to2 = setTimeout(() => ctrl2.abort(), 30000);
+        const gatewayResult = await callAi("gateway", prompt, ctrl2.signal);
+        clearTimeout(to2);
+        if (gatewayResult.ok) {
+          aiPayload = gatewayResult.data;
+          console.log(`[historical-comparison] fallback gateway OK (${gatewayResult.latencyMs}ms)`);
+        } else {
+          aiError = { errorType: gatewayResult.errorType, message: gatewayResult.message, provider: gatewayResult.provider };
+        }
+      } else {
+        // tenta gateway mesmo assim como última cartada para quota
+        const ctrl2 = new AbortController();
+        const to2 = setTimeout(() => ctrl2.abort(), 30000);
+        const gatewayResult = await callAi("gateway", prompt, ctrl2.signal);
+        clearTimeout(to2);
+        if (gatewayResult.ok) {
+          aiPayload = gatewayResult.data;
+        } else {
+          aiError = { errorType: cerebrasResult.errorType, message: cerebrasResult.message, provider: "cerebras" };
+        }
+      }
     }
-    if (!ai) ai = { summary: "Não foi possível gerar a análise no momento. Tente novamente.", dataNote: "Análise indisponível." };
 
     return new Response(JSON.stringify({
       candidate: { id: cand.id, name: cand.full_name, createdAt: cand.created_at, party: cand.party, region: cand.region },
       period: { start: startDate, end: endDate, mid: mid.toISOString() },
-      stats,
+      summary,
       hasMinimumData,
-      analysis: ai,
+      analysis: aiPayload || null,
+      aiError: aiError ? { ...aiError, userMessage: userFacingError(aiError.errorType) } : null,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
-    console.error("[historical-comparison] error", e);
-    return new Response(JSON.stringify({ error: String(e) }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    console.error("[historical-comparison] fatal", e);
+    return new Response(JSON.stringify({
+      analysis: null,
+      aiError: { errorType: "EDGE_FUNCTION_ERROR", message: String(e), userMessage: "Erro interno na função de análise." },
+    }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
