@@ -91,21 +91,36 @@ export function ReactionsPerPost({ candidateId, days = 7 }: Props) {
     staleTime: 60_000,
   });
 
-  // Totais
+  // Totais — sentimento agregado sobre TUDO (raiz + comentários + respostas + subcomentários)
   const totals = useMemo(() => {
     const list = interactions || [];
     const pos = list.filter((r) => r.sentiment_label === "positive").length;
     const neg = list.filter((r) => r.sentiment_label === "negative").length;
     const neu = list.filter((r) => r.sentiment_label === "neutral").length;
     const labeled = pos + neg + neu;
+    const unanalyzed = list.length - labeled;
+    const totalLikes = list.reduce((s, r) => s + (r.likes_count || 0), 0);
+    const totalReplies = list.reduce((s, r) => s + (r.replies_count || 0), 0);
+    const totalShares = list.reduce((s, r) => s + (r.shares_count || 0), 0);
+    // Posts = registros distintos de post_id (cada post_id = 1 post)
+    const postSet = new Set<string>();
+    list.forEach((r) => { if (r.post_id) postSet.add(r.post_id); });
+    const postsCount = postSet.size;
+    // Comentários = qualquer registro que NÃO é o post raiz (tem parent ou root_comment_id)
+    const commentsCount = list.filter((r) => r.parent_comment_id || r.root_comment_id).length;
     return {
-      pos, neg, neu, labeled,
+      pos, neg, neu, labeled, unanalyzed,
       totalRecords: list.length,
+      postsCount,
+      commentsCount,
+      totalLikes, totalReplies, totalShares,
+      totalInteractions: totalLikes + totalReplies + totalShares,
       posPct: labeled > 0 ? Math.round((pos / labeled) * 100) : 0,
       negPct: labeled > 0 ? Math.round((neg / labeled) * 100) : 0,
       neuPct: labeled > 0 ? Math.round((neu / labeled) * 100) : 0,
     };
   }, [interactions]);
+
 
   // Top assuntos (tokens dominantes em posts raiz)
   const topTopics = useMemo(() => {
