@@ -276,7 +276,7 @@ Deno.serve(async (req) => {
         events: evtSecond.slice(0, 10).map(e => ({ name: e.event_name, date: e.event_date, type: e.event_type, location: e.location })),
       },
       sample_titles: hist.slice(0, 25).map(() => null), // placeholder
-      sample_comments: interactions.slice(0, 30).map(i => ({ text: (i.content || "").slice(0, 200), sentiment: i.sentiment_label, themes: i.themes })),
+      sample_comments: enrichedInt.slice(0, 30).map((i: any) => ({ text: (i.comment_text || "").slice(0, 200), sentiment: i.sentiment_label, themes: i.themes, region: i.region })),
     };
 
     const hasMinimumData = stats.total_signals >= 5;
