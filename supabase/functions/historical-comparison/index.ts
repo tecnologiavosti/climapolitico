@@ -427,7 +427,7 @@ Deno.serve(async (req) => {
 
     const hasMinimumData = summary.totals.signals >= 1;
     const summaryJson = JSON.stringify(summary);
-    const cacheKey = `historical_comparison:v3:${await sha256(`${candidateId}:${ymd(start)}:${ymd(end)}:${summaryJson}`)}`;
+    const cacheKey = `historical_comparison:v4:${await sha256(`${candidateId}:${ymd(start)}:${ymd(end)}:${summaryJson}`)}`;
     console.log(`[historical-comparison] registros enviados=0 raw; sinais agregados=${summary.totals.signals}; resumo=${summaryJson.length} chars; cache=${cacheKey.slice(0, 40)}`);
 
     const { data: cached } = await supabase
