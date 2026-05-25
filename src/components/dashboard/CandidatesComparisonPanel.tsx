@@ -203,19 +203,23 @@ export function CandidatesComparisonPanel({ candidates }: Props) {
               </ResponsiveContainer>
             </div>
 
-            {/* Pizza: participação de positivas */}
+            {/* Barras empilhadas: participação de sentimentos por candidato */}
             <div>
-              <p className="text-sm font-medium mb-2">Participação de reações positivas (top 5)</p>
-              {sentimentShare.length === 0 ? (
-                <div className="h-[240px] flex items-center justify-center text-muted-foreground text-sm">Sem reações positivas analisadas.</div>
+              <p className="text-sm font-medium mb-2">Participação de sentimentos (top 5)</p>
+              {sentimentBreakdown.length === 0 ? (
+                <div className="h-[240px] flex items-center justify-center text-muted-foreground text-sm">Sem sentimentos analisados.</div>
               ) : (
                 <ResponsiveContainer width="100%" height={240}>
-                  <PieChart>
-                    <Pie data={sentimentShare} cx="50%" cy="50%" outerRadius={85} dataKey="value" label={(e: any) => `${e.name}`}>
-                      {sentimentShare.map((d, i) => <Cell key={i} fill={d.color} />)}
-                    </Pie>
-                    <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
-                  </PieChart>
+                  <BarChart data={sentimentBreakdown} layout="vertical" stackOffset="expand">
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                    <XAxis type="number" tickFormatter={(v) => `${Math.round(v * 100)}%`} className="text-muted-foreground" />
+                    <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11 }} className="text-muted-foreground" />
+                    <Tooltip formatter={(v: any) => `${v}%`} contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
+                    <Legend />
+                    <Bar dataKey="Positivo" stackId="s" fill="hsl(var(--success))" />
+                    <Bar dataKey="Negativo" stackId="s" fill="hsl(var(--destructive))" />
+                    <Bar dataKey="Neutro" stackId="s" fill="hsl(var(--warning))" />
+                  </BarChart>
                 </ResponsiveContainer>
               )}
             </div>
