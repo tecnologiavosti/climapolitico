@@ -69,22 +69,41 @@ Deno.serve(async (req) => {
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    const { data: userRes } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
-    const user = userRes?.user;
-    if (!user) return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const token = authHeader.replace("Bearer ", "");
 
     const body = await req.json().catch(() => ({}));
     const limit = Math.min(Number(body.limit) || 2000, 5000);
 
-    const { data: rows, error } = await supabase
-      .from("social_interactions")
-      .select("id, comment_text, comment_author")
-      .eq("user_id", user.id)
-      .is("city", null)
-      .is("state", null)
-      .order("created_at", { ascending: false })
-      .limit(limit);
-    if (error) throw error;
+    // Modo cron: token === SERVICE_KEY → roda para todos os usuários (sem filtro user_id)
+    const isCronMode = token === SERVICE_KEY;
+
+    let rows: any[] | null = null;
+    let queryErr: any = null;
+
+    if (isCronMode) {
+      const { data, error } = await supabase
+        .from("social_interactions")
+        .select("id, comment_text, comment_author")
+        .is("city", null)
+        .is("state", null)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      rows = data; queryErr = error;
+    } else {
+      const { data: userRes } = await supabase.auth.getUser(token);
+      const user = userRes?.user;
+      if (!user) return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const { data, error } = await supabase
+        .from("social_interactions")
+        .select("id, comment_text, comment_author")
+        .eq("user_id", user.id)
+        .is("city", null)
+        .is("state", null)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      rows = data; queryErr = error;
+    }
+    if (queryErr) throw queryErr;
 
     let enriched = 0;
     for (const r of rows || []) {
