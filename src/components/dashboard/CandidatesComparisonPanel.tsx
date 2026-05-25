@@ -1,11 +1,9 @@
 import { useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from "recharts";
-import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from "recharts";
 import { useAllCandidateMetrics, CandidateMetrics } from "@/hooks/useCandidateMetrics";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -25,13 +23,13 @@ interface Props {
 }
 
 /**
- * Fase 8 — Comparativo consolidado.
- * Tabela multi-candidato + barras comparativas + pizza de participação + linha temporal.
+ * Comparativo consolidado — TODOS os candidatos.
+ * Barra horizontal empilhada Pos/Neg normalizada (Pos + Neg = 100%, neutros ignorados).
+ * Ordenado por volume total de menções.
  */
 export function CandidatesComparisonPanel({ candidates }: Props) {
   const { user } = useAuth();
   const { isAdmin } = useAdminCheck();
-  const candidateIds = candidates.map((c) => c.id);
   const { data: allMetrics, isLoading } = useAllCandidateMetrics();
 
   const metricsMap = useMemo(() => {
@@ -40,25 +38,34 @@ export function CandidatesComparisonPanel({ candidates }: Props) {
     return map;
   }, [allMetrics]);
 
-  // Linhas: candidato + métricas agregadas
   const rows = useMemo(() => {
     return candidates.map((c) => {
-      const m: CandidateMetrics | undefined = metricsMap[c.id];
+      const m = metricsMap[c.id];
       return {
         candidate: c,
         mentions: m?.totalMentions ?? 0,
-        engagement: m?.totalEngagement ?? 0,
-        sentiment: Math.round(m?.averageSentiment ?? 50),
         positive: m?.positiveCount ?? 0,
         negative: m?.negativeCount ?? 0,
-        neutral: m?.neutralCount ?? 0,
       };
     }).sort((a, b) => b.mentions - a.mentions);
   }, [candidates, metricsMap]);
 
-  // Evolução temporal — últimos 14 dias por candidato (top 5)
+  const chartData = useMemo(
+    () => rows.map((r) => {
+      const t = r.positive + r.negative;
+      return {
+        name: r.candidate.full_name,
+        Positivo: t > 0 ? Math.round((r.positive / t) * 100) : 0,
+        Negativo: t > 0 ? Math.round((r.negative / t) * 100) : 0,
+        mentions: r.mentions,
+        opinionated: t,
+      };
+    }).filter((d) => d.opinionated > 0),
+    [rows],
+  );
+
   const top5Ids = rows.slice(0, 5).map((r) => r.candidate.id);
-  const { data: timeline, isLoading: loadingTimeline } = useQuery({
+  const { data: timeline } = useQuery({
     queryKey: ["comparison-timeline", user?.id, isAdmin, top5Ids.join(",")],
     queryFn: async () => {
       if (top5Ids.length === 0) return [];
@@ -94,143 +101,48 @@ export function CandidatesComparisonPanel({ candidates }: Props) {
     return Object.values(buckets);
   }, [timeline, top5Ids]);
 
-  // Crescimento: comparar primeira semana vs segunda semana
-  const growthMap = useMemo(() => {
-    const map: Record<string, number> = {};
-    const cutoff = subDays(new Date(), 7).getTime();
-    for (const id of candidateIds) {
-      const all = (timeline || []).filter((r) => r.candidate_id === id);
-      const recent = all.filter((r) => new Date(r.collected_at || 0).getTime() >= cutoff).length;
-      const previous = all.length - recent;
-      map[id] = previous > 0 ? Math.round(((recent - previous) / previous) * 100) : recent > 0 ? 100 : 0;
-    }
-    return map;
-  }, [timeline, candidateIds]);
-
-  // Cores estáveis para linhas
   const colors = ["hsl(var(--primary))", "hsl(var(--success))", "hsl(var(--warning))", "hsl(var(--destructive))", "hsl(var(--accent))"];
-
-  // Participação de sentimentos (Pos/Neg/Neu) por candidato — top 5
-  const sentimentBreakdown = useMemo(
-    () =>
-      rows.slice(0, 5).map((r) => {
-        const t = r.positive + r.negative + r.neutral;
-        return {
-          name: r.candidate.full_name,
-          Positivo: t > 0 ? Math.round((r.positive / t) * 100) : 0,
-          Negativo: t > 0 ? Math.round((r.negative / t) * 100) : 0,
-          Neutro: t > 0 ? Math.round((r.neutral / t) * 100) : 0,
-        };
-      }).filter((d) => d.Positivo + d.Negativo + d.Neutro > 0),
-    [rows],
-  );
+  const chartHeight = Math.max(280, chartData.length * 36);
 
   return (
     <Card className="p-6 space-y-6">
-      <HelpTooltip text="Compara todos os seus candidatos lado a lado: menções, sentimento, engajamento e crescimento na mesma tabela.">
+      <HelpTooltip text="Compara TODOS os candidatos por aceitação (Positivo) e rejeição (Negativo) normalizados — neutros excluídos. Ordenado pelo volume total de menções.">
         <div className="cursor-help">
-          <h3 className="text-lg font-bold">Comparativo consolidado</h3>
-          <p className="text-sm text-muted-foreground">Todos os candidatos lado a lado</p>
+          <h3 className="text-lg font-bold">Comparativo consolidado — Aceitação vs Rejeição</h3>
+          <p className="text-sm text-muted-foreground">{rows.length} candidato(s) • Pos + Neg = 100% (neutros excluídos)</p>
         </div>
       </HelpTooltip>
 
       {isLoading ? (
         <Skeleton className="h-64 w-full" />
-      ) : rows.length === 0 ? (
-        <div className="text-sm text-muted-foreground py-8 text-center">Nenhum candidato cadastrado.</div>
+      ) : chartData.length === 0 ? (
+        <div className="text-sm text-muted-foreground py-8 text-center">
+          Sem menções classificadas com Positivo/Negativo.
+        </div>
       ) : (
         <>
-          {/* Tabela */}
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Candidato</TableHead>
-                  <TableHead className="text-right">Menções</TableHead>
-                  <TableHead className="text-right">Sentimento</TableHead>
-                  <TableHead className="text-right">Engajamento</TableHead>
-                  <TableHead className="text-right">Crescimento 7d</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((r) => {
-                  const growth = growthMap[r.candidate.id] ?? 0;
-                  return (
-                    <TableRow key={r.candidate.id}>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">{r.candidate.full_name}</p>
-                          <div className="flex gap-1 mt-0.5">
-                            {r.candidate.party && <Badge variant="outline" className="text-[10px]">{r.candidate.party}</Badge>}
-                            {r.candidate.region && <Badge variant="secondary" className="text-[10px]">{r.candidate.region}</Badge>}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">{r.mentions.toLocaleString("pt-BR")}</TableCell>
-                      <TableCell className="text-right">
-                        <span className={r.sentiment >= 60 ? "text-success font-semibold" : r.sentiment <= 40 ? "text-destructive font-semibold" : "text-warning"}>
-                          {r.sentiment}%
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">{r.engagement.toLocaleString("pt-BR")}</TableCell>
-                      <TableCell className="text-right">
-                        <span className={`inline-flex items-center gap-1 font-medium ${growth > 0 ? "text-success" : growth < 0 ? "text-destructive" : "text-muted-foreground"}`}>
-                          {growth > 0 ? <TrendingUp className="h-3.5 w-3.5" /> : growth < 0 ? <TrendingDown className="h-3.5 w-3.5" /> : <Minus className="h-3.5 w-3.5" />}
-                          {growth > 0 ? "+" : ""}{growth}%
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
+          <ResponsiveContainer width="100%" height={chartHeight}>
+            <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 16 }}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} className="text-muted-foreground" />
+              <YAxis type="category" dataKey="name" width={160} tick={{ fontSize: 11 }} className="text-muted-foreground" />
+              <Tooltip
+                formatter={(v: any, n: any) => [`${v}%`, n]}
+                labelFormatter={(label, items) => {
+                  const it: any = items?.[0]?.payload;
+                  return `${label}${it ? ` • ${it.mentions.toLocaleString("pt-BR")} menções` : ""}`;
+                }}
+                contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
+              />
+              <Legend />
+              <Bar dataKey="Positivo" stackId="s" fill="hsl(var(--success))" />
+              <Bar dataKey="Negativo" stackId="s" fill="hsl(var(--destructive))" />
+            </BarChart>
+          </ResponsiveContainer>
 
-          {/* Gráficos */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Barras: menções por candidato */}
+          {top5Ids.length > 0 && (
             <div>
-              <p className="text-sm font-medium mb-2">Menções por candidato</p>
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={rows.slice(0, 10).map((r) => ({ name: r.candidate.full_name, mentions: r.mentions, sentiment: r.sentiment }))}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="name" className="text-muted-foreground" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={70} />
-                  <YAxis className="text-muted-foreground" />
-                  <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
-                  <Legend />
-                  <Bar dataKey="mentions" fill="hsl(var(--primary))" name="Menções" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Barras empilhadas: participação de sentimentos por candidato */}
-            <div>
-              <p className="text-sm font-medium mb-2">Participação de sentimentos (top 5)</p>
-              {sentimentBreakdown.length === 0 ? (
-                <div className="h-[240px] flex items-center justify-center text-muted-foreground text-sm">Sem sentimentos analisados.</div>
-              ) : (
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={sentimentBreakdown} layout="vertical" stackOffset="expand">
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis type="number" tickFormatter={(v) => `${Math.round(v * 100)}%`} className="text-muted-foreground" />
-                    <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11 }} className="text-muted-foreground" />
-                    <Tooltip formatter={(v: any) => `${v}%`} contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
-                    <Legend />
-                    <Bar dataKey="Positivo" stackId="s" fill="hsl(var(--success))" />
-                    <Bar dataKey="Negativo" stackId="s" fill="hsl(var(--destructive))" />
-                    <Bar dataKey="Neutro" stackId="s" fill="hsl(var(--warning))" />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          </div>
-
-          {/* Linhas: evolução 14 dias */}
-          <div>
-            <p className="text-sm font-medium mb-2">Evolução temporal — top 5 (últimos 14 dias)</p>
-            {loadingTimeline ? <Skeleton className="h-[240px] w-full" /> : top5Ids.length === 0 ? (
-              <div className="h-[240px] flex items-center justify-center text-muted-foreground text-sm">Sem dados temporais.</div>
-            ) : (
+              <p className="text-sm font-medium mb-2">Evolução temporal — top 5 (últimos 14 dias)</p>
               <ResponsiveContainer width="100%" height={240}>
                 <LineChart data={timelineData}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -244,10 +156,18 @@ export function CandidatesComparisonPanel({ candidates }: Props) {
                   })}
                 </LineChart>
               </ResponsiveContainer>
-            )}
-          </div>
+            </div>
+          )}
         </>
       )}
+
+      <div className="text-xs text-muted-foreground flex flex-wrap gap-2 pt-3 border-t">
+        {rows.slice(0, 12).map((r) => (
+          <Badge key={r.candidate.id} variant="outline" className="text-[10px]">
+            {r.candidate.full_name}: {r.mentions.toLocaleString("pt-BR")}
+          </Badge>
+        ))}
+      </div>
     </Card>
   );
 }

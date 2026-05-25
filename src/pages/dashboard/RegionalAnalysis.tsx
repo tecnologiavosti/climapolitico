@@ -352,31 +352,8 @@ export default function RegionalAnalysis() {
               </SelectContent>
             </Select>
           </div>
-          <div className="min-w-[140px] flex-1">
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Rede social</label>
-            <Select value={network} onValueChange={setNetwork}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_NETWORKS_VALUE}>
-                  <div className="flex items-center gap-2">
-                    <Globe className="h-4 w-4" />
-                    Todas as redes
-                  </div>
-                </SelectItem>
-                {NETWORKS.map((n) => (
-                  <SelectItem key={n.label} value={n.label}>
-                    <div className="flex items-center gap-2">
-                      <n.Icon className="h-4 w-4" />
-                      {n.label}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+          {/* Filtro de rede removido — análise agora usa TODAS as redes. */}
+
       </div>
 
       {/* ─── Estado vazio: nenhum candidato ─── */}

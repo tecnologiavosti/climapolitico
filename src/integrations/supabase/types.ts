@@ -873,6 +873,42 @@ export type Database = {
         }
         Relationships: []
       }
+      event_detection_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          events_created: number | null
+          id: string
+          params: Json | null
+          result: Json | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          events_created?: number | null
+          id: string
+          params?: Json | null
+          result?: Json | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          events_created?: number | null
+          id?: string
+          params?: Json | null
+          result?: Json | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       export_jobs: {
         Row: {
           completed_at: string | null
