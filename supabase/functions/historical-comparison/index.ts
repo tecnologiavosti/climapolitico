@@ -465,54 +465,70 @@ Retorne ESTRITAMENTE JSON neste formato (sem markdown):
   "dataNote": "frase curta sobre completude (ex: 'Análise baseada em N sinais')."
 }`;
 
-    // Timeout 35s para Cerebras, depois fallback
+    const buildResponse = (analysis: any, provider: string, aiNotice: any = null, fromCache = false) => ({
+      candidate: { id: cand.id, name: cand.full_name, createdAt: cand.created_at, party: cand.party, region: cand.region },
+      period: { start: startDate, end: endDate, mid: mid.toISOString() },
+      summary,
+      hasMinimumData,
+      analysis,
+      aiError: null,
+      aiNotice,
+      provider,
+      fromCache,
+    });
+
+    // Timeout 35s para Cerebras; se falhar por quota/rate/timeout, não quebra a tela: usa análise local.
     const ctrl1 = new AbortController();
     const to1 = setTimeout(() => ctrl1.abort(), 35000);
     const cerebrasResult = await callAi("cerebras", prompt, ctrl1.signal);
     clearTimeout(to1);
 
     let aiPayload: any;
-    let aiError: { errorType: string; message: string; provider: string } | null = null;
+    let provider = "cerebras";
+    let aiNotice: { errorType: string; message: string; provider: string; userMessage: string } | null = null;
 
     if (cerebrasResult.ok) {
       aiPayload = cerebrasResult.data;
-      console.log(`[historical-comparison] cerebras OK (${cerebrasResult.latencyMs}ms, tokens=${cerebrasResult.tokens ?? "?"})`);
+      provider = cerebrasResult.provider;
+      console.log(`[historical-comparison] status Cerebras=OK tempo=${cerebrasResult.latencyMs}ms tokens=${cerebrasResult.tokens ?? "?"}`);
     } else {
-      console.warn(`[historical-comparison] cerebras falhou: ${cerebrasResult.errorType} — tentando fallback gateway`);
-      // Só usa fallback se NÃO for quota (quota provavelmente afeta ambos)
-      if (cerebrasResult.errorType !== "QUOTA_EXCEEDED" && cerebrasResult.errorType !== "MISSING_KEY") {
+      console.warn(`[historical-comparison] status Cerebras=${cerebrasResult.errorType} status=${cerebrasResult.status ?? "n/a"} — usando fallback apropriado`);
+      if (!["QUOTA_EXCEEDED", "RATE_LIMIT", "TIMEOUT"].includes(cerebrasResult.errorType)) {
         const ctrl2 = new AbortController();
         const to2 = setTimeout(() => ctrl2.abort(), 30000);
         const gatewayResult = await callAi("gateway", prompt, ctrl2.signal);
         clearTimeout(to2);
         if (gatewayResult.ok) {
           aiPayload = gatewayResult.data;
-          console.log(`[historical-comparison] fallback gateway OK (${gatewayResult.latencyMs}ms)`);
+          provider = gatewayResult.provider;
+          console.log(`[historical-comparison] status Gateway=OK tempo=${gatewayResult.latencyMs}ms tokens=${gatewayResult.tokens ?? "?"}`);
         } else {
-          aiError = { errorType: gatewayResult.errorType, message: gatewayResult.message, provider: gatewayResult.provider };
+          aiNotice = { errorType: gatewayResult.errorType, message: gatewayResult.message, provider: gatewayResult.provider, userMessage: userFacingError(gatewayResult.errorType) };
+          aiPayload = buildLocalAnalysis(summary, aiNotice.userMessage);
+          provider = "local_fallback";
         }
       } else {
-        // tenta gateway mesmo assim como última cartada para quota
-        const ctrl2 = new AbortController();
-        const to2 = setTimeout(() => ctrl2.abort(), 30000);
-        const gatewayResult = await callAi("gateway", prompt, ctrl2.signal);
-        clearTimeout(to2);
-        if (gatewayResult.ok) {
-          aiPayload = gatewayResult.data;
-        } else {
-          aiError = { errorType: cerebrasResult.errorType, message: cerebrasResult.message, provider: "cerebras" };
-        }
+        aiNotice = { errorType: cerebrasResult.errorType, message: cerebrasResult.message, provider: cerebrasResult.provider, userMessage: userFacingError(cerebrasResult.errorType) };
+        aiPayload = buildLocalAnalysis(summary, aiNotice.userMessage);
+        provider = "local_fallback";
       }
     }
 
-    return new Response(JSON.stringify({
-      candidate: { id: cand.id, name: cand.full_name, createdAt: cand.created_at, party: cand.party, region: cand.region },
-      period: { start: startDate, end: endDate, mid: mid.toISOString() },
-      summary,
-      hasMinimumData,
-      analysis: aiPayload || null,
-      aiError: aiError ? { ...aiError, userMessage: userFacingError(aiError.errorType) } : null,
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!aiPayload) {
+      aiPayload = buildLocalAnalysis(summary, "Dados limitados para este período; análise baseada nas informações disponíveis.");
+      provider = "local_fallback";
+    }
+
+    const responsePayload = buildResponse(aiPayload, provider, aiNotice);
+    await supabase.from("analysis_cache").upsert({
+      cache_key: cacheKey,
+      analysis_type: "historical_comparison",
+      result: responsePayload,
+      provider,
+      expires_at: new Date(Date.now() + (provider === "local_fallback" ? 6 : 30) * 24 * 60 * 60 * 1000).toISOString(),
+    }, { onConflict: "cache_key" });
+
+    return new Response(JSON.stringify(responsePayload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     console.error("[historical-comparison] fatal", e);
     return new Response(JSON.stringify({
