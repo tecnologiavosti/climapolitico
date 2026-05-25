@@ -208,7 +208,8 @@ async function collectRedditForCandidate(
     return { collected: 0, skipped, raw: dedupedLocal.length };
   }
 
-  const { error } = await supabase.from("social_interactions").insert(fresh);
+  const freshEnriched = fresh.map((r) => enrichRecordLocation(r));
+  const { error } = await supabase.from("social_interactions").insert(freshEnriched);
   if (error) {
     console.error(`[REDDIT-CRON] insert falhou ${candidate.full_name}: ${error.message}`);
     return { collected: 0, skipped, raw: dedupedLocal.length };
