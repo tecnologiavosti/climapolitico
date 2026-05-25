@@ -191,6 +191,8 @@ type AiResult =
   | { ok: true; data: any; provider: string; latencyMs: number; tokens?: number }
   | { ok: false; errorType: "QUOTA_EXCEEDED" | "TIMEOUT" | "RATE_LIMIT" | "AUTH" | "INTERNAL" | "PARSE" | "MISSING_KEY"; message: string; status?: number; provider: string };
 
+type AiErrorType = Extract<AiResult, { ok: false }>["errorType"];
+
 async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: AbortSignal): Promise<AiResult> {
   const started = Date.now();
   const isCerebras = provider === "cerebras";
@@ -234,7 +236,7 @@ async function callAi(provider: "cerebras" | "gateway", prompt: string, signal: 
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       console.error(`[ai:${provider}] HTTP ${res.status} (${latencyMs}ms)`, txt.slice(0, 400));
-      let errorType: AiResult extends { ok: false; errorType: infer T } ? T : never;
+      let errorType: AiErrorType;
       if (res.status === 402) errorType = "QUOTA_EXCEEDED";
       else if (res.status === 429) errorType = "RATE_LIMIT";
       else if (res.status === 401 || res.status === 403) errorType = "AUTH";
