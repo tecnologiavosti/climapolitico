@@ -28,6 +28,7 @@ import {
   MapPinned,
   Linkedin,
   Rss,
+  Network,
 } from "lucide-react";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { useTooltipsEnabled } from "@/hooks/useTooltipsEnabled";
