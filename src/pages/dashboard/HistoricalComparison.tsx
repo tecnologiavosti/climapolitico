@@ -221,9 +221,9 @@ export default function HistoricalComparison() {
           )}
 
           {result.aiNotice && (
-            <Card className="border-amber-500/40 bg-amber-500/10">
+            <Card className="border-primary/30 bg-primary/5">
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2 text-amber-700">
+                <CardTitle className="text-base flex items-center gap-2">
                   <AlertTriangle className="h-5 w-5" />Análise local aplicada
                 </CardTitle>
                 <CardDescription>{result.aiNotice.userMessage}</CardDescription>
