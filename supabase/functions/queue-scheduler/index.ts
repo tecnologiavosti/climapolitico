@@ -12,14 +12,14 @@ const PROJECT_REF = Deno.env.get("SUPABASE_URL")!.split("//")[1].split(".")[0];
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
-    // Enqueue up to 200 unlabeled interactions that are not already queued
+    // Enfileira um lote maior para cobrir todo o backlog sem amostragem silenciosa
     const { data: pending } = await sb
       .from("social_interactions")
       .select("id,candidate_id,user_id")
       .is("sentiment_label", null)
       .lt("analysis_attempts", 5)
       .not("comment_text", "is", null)
-      .limit(200);
+      .limit(1000);
 
     let enqueued = 0;
     if (pending?.length) {
@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
     }
 
     // Fan out: invoke sentiment worker N times
-    const workers = 3;
+    const workers = 6;
     const url = `https://${PROJECT_REF}.supabase.co/functions/v1/sentiment-worker`;
     await Promise.all(
       Array.from({ length: workers }).map(() =>
