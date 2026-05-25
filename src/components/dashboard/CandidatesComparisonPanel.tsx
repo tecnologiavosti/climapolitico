@@ -32,7 +32,13 @@ export function CandidatesComparisonPanel({ candidates }: Props) {
   const { user } = useAuth();
   const { isAdmin } = useAdminCheck();
   const candidateIds = candidates.map((c) => c.id);
-  const { metricsMap, isLoading } = useAllCandidateMetrics(candidateIds);
+  const { data: allMetrics, isLoading } = useAllCandidateMetrics();
+
+  const metricsMap = useMemo(() => {
+    const map: Record<string, CandidateMetrics> = {};
+    for (const m of allMetrics || []) map[m.candidateId] = m;
+    return map;
+  }, [allMetrics]);
 
   // Linhas: candidato + métricas agregadas
   const rows = useMemo(() => {
