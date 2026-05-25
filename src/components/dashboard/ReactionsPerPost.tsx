@@ -224,9 +224,10 @@ export function ReactionsPerPost({ candidateId }: Props) {
       g.replies += r.replies_count || 0;
       g.shares += r.shares_count || 0;
       g.eng += (r.likes_count || 0) + (r.replies_count || 0) + (r.shares_count || 0);
-      if (r.sentiment_label === "positive") g.pos++;
-      else if (r.sentiment_label === "negative") g.neg++;
-      else if (r.sentiment_label === "neutral") g.neu++;
+      const sentiment = normalizeSentiment(r.sentiment_label);
+      if (sentiment === "positive") g.pos++;
+      else if (sentiment === "negative") g.neg++;
+      else if (sentiment === "neutral") g.neu++;
     }
     // score = engajamento × (1 + relevância via respostas) × |sentimento|
     return Array.from(groups.values())
