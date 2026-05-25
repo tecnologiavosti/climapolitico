@@ -353,8 +353,9 @@ export default function RegionalAnalysis() {
             </Select>
           </div>
           {/* Filtro de rede removido — análise agora usa TODAS as redes. */}
-
+        </div>
       </div>
+
 
       {/* ─── Estado vazio: nenhum candidato ─── */}
       {!candidateId && !mapLoading && (
