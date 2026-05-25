@@ -275,10 +275,19 @@ const EventReportPage = () => {
     setDetectedEvents([]);
     setSelectedEventIdx("");
     try {
-      const evts = await fetchLocalEvents();
-      setDetectedEvents(evts);
-      if (evts.length === 0) toast.info("Nenhum dia com pico detectado nos últimos meses.");
-      else toast.success(`${evts.length} dia(s) com pico detectado(s)`);
+      const detected = await fetchLocalEvents();
+      // Atualiza contagens com o total real do dia (mesma query usada no relatório),
+      // pois a amostra local é limitada a 800 registros.
+      const refined = (await refineEventCounts(detected)).map((evt) => {
+        const formatted = evt.start_date.split('-').reverse().join('/');
+        return {
+          ...evt,
+          description: `Pico de menções detectado em ${formatted} — ${evt.mentions_estimate} comentários nesse dia.`,
+        };
+      }).sort((a, b) => b.mentions_estimate - a.mentions_estimate);
+      setDetectedEvents(refined);
+      if (refined.length === 0) toast.info("Nenhum dia com pico detectado nos últimos meses.");
+      else toast.success(`${refined.length} dia(s) com pico detectado(s)`);
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || "Erro ao detectar picos");
