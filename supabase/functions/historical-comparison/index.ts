@@ -107,6 +107,86 @@ function bucketThemes(items: Array<{ themes?: string[] | null }>): Array<{ theme
   return Object.entries(m).map(([theme, count]) => ({ theme, count })).sort((a, b) => b.count - a.count);
 }
 
+async function sha256(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function topEntries(map: Record<string, number>, limit = 8) {
+  return Object.entries(map)
+    .filter(([k]) => Boolean(k && k.trim()))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([label, count]) => ({ label, count }));
+}
+
+function detectHashtags(text: string): string[] {
+  return Array.from(new Set((text.match(/#[\p{L}\p{N}_-]+/giu) || []).map((h) => h.toLowerCase()).slice(0, 8)));
+}
+
+function detectNarratives(text: string): string[] {
+  const t = text.toLowerCase();
+  const checks: Array<[string, RegExp]> = [
+    ["gestão econômica", /(economia|inflação|emprego|renda|preço|juros|custo de vida)/],
+    ["segurança e ordem pública", /(segurança|crime|violência|polícia|tráfico|facção|assalto)/],
+    ["proteção social", /(bolsa família|auxílio|benefício|pobreza|fome|programa social|cadúnico)/],
+    ["integridade pública", /(corrupção|propina|fraude|desvio|rachadinha|lava jato)/],
+    ["disputa eleitoral", /(eleição|campanha|voto|urna|pesquisa|debate|mandato)/],
+    ["serviços públicos", /(saúde|hospital|sus|educação|escola|transporte|saneamento)/],
+  ];
+  return checks.filter(([, re]) => re.test(t)).map(([label]) => label);
+}
+
+function sentimentTrend(first: any, second: any): string {
+  const fNeg = Number(first.sentimentNegativePct ?? 0);
+  const sNeg = Number(second.sentimentNegativePct ?? 0);
+  const fPos = Number(first.sentimentPositivePct ?? 0);
+  const sPos = Number(second.sentimentPositivePct ?? 0);
+  if (sNeg - fNeg >= 10 && sPos - fPos >= 5) return "polarização crescente";
+  if (sNeg - fNeg >= 10) return "aumento de pressão negativa";
+  if (sPos - fPos >= 10) return "ganho de percepção favorável";
+  if (Math.abs(sNeg - fNeg) < 6 && Math.abs(sPos - fPos) < 6) return "percepção relativamente estável";
+  return "mudança moderada de percepção";
+}
+
+function buildLocalAnalysis(summary: any, reason: string) {
+  const first = summary.first_half || {};
+  const second = summary.second_half || {};
+  const earlyThemes = first.topThemes || [];
+  const lateThemes = second.topThemes || [];
+  const trend = sentimentTrend(first, second);
+  const earlyMain = earlyThemes[0] || "temas institucionais";
+  const lateMain = lateThemes[0] || earlyMain;
+  const signals = summary.totals?.signals ?? 0;
+  const volumeMove = Number(second.mentions || 0) > Number(first.mentions || 0) ? "aumento" : Number(second.mentions || 0) < Number(first.mentions || 0) ? "redução" : "estabilidade";
+  const regions = [...(first.topRegions || []), ...(second.topRegions || [])].map((r: any) => r.region).filter(Boolean);
+  const uniqueRegions = Array.from(new Set(regions)).slice(0, 3);
+  const regionText = uniqueRegions.length ? ` com maior presença em ${uniqueRegions.join(", ")}` : " sem concentração regional clara";
+
+  return {
+    summary: `Entre ${summary.period?.start} e ${summary.period?.end}, a percepção pública sobre ${summary.candidate} apresentou ${trend}, com ${volumeMove} do volume relativo de sinais na segunda metade do período. No início, a conversa se concentrou em ${earlyMain}; ao final, o eixo mais visível passou a envolver ${lateMain}, indicando deslocamento de pauta ou reforço da narrativa dominante. A leitura regional aparece${regionText}. Eventos registrados no período foram considerados como possíveis pontos de inflexão, sem inventar fatos além dos dados coletados.`,
+    detectedChanges: [
+      { type: "narrative_shift", title: "Reorganização de narrativa", description: `A pauta saiu de ${earlyMain} e passou a enfatizar ${lateMain}, conforme os sinais agregados disponíveis.` },
+      { type: trend.includes("polarização") ? "polarization" : trend.includes("negativa") ? "rejection_increase" : "thematic_shift", title: "Mudança de percepção", description: `A trajetória agregada aponta ${trend}, com análise baseada em dados consolidados, não em registros brutos.` },
+    ],
+    narratives: {
+      early: { label: earlyMain, evidence: `Tema recorrente no início do período (${first.label || "primeira metade"}).` },
+      late: { label: lateMain, evidence: `Tema recorrente no fim do período (${second.label || "segunda metade"}).` },
+    },
+    perceptionShifts: [
+      { group: "Opinião pública monitorada", shift: `Sinais agregados indicam ${trend} e mudança de foco temático ao longo do intervalo.` },
+    ],
+    associatedEvents: (second.events || first.events || []).slice(0, 3).map((e: any) => ({
+      name: e.name || "Evento político registrado",
+      date: e.date,
+      type: e.type || "outro",
+      impact: "Incluído como contexto temporal da análise local.",
+    })),
+    dominantThemesByPeriod: { early: earlyThemes.slice(0, 3), late: lateThemes.slice(0, 3) },
+    dataNote: reason || `Dados limitados para este período; análise baseada nas informações disponíveis (${signals} sinais agregados).`,
+  };
+}
+
 type AiResult =
   | { ok: true; data: any; provider: string; latencyMs: number; tokens?: number }
   | { ok: false; errorType: "QUOTA_EXCEEDED" | "TIMEOUT" | "RATE_LIMIT" | "AUTH" | "INTERNAL" | "PARSE" | "MISSING_KEY"; message: string; status?: number; provider: string };
