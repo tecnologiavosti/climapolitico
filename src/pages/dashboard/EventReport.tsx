@@ -96,10 +96,9 @@ const tokenizeEventText = (text: string) => normalizeEventText(text).match(/[a-z
 
 const titleFromPhrase = (phrase: string) => phrase.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
-function detectEventsFromInteractions(comments: LocalInteraction[], candidateName: string): DetectedEvent[] {
+function detectEventsFromInteractions(comments: LocalInteraction[], _candidateName: string): DetectedEvent[] {
   if (comments.length < 5) return [];
 
-  const candidateStop = new Set(tokenizeEventText(candidateName));
   const byDay = new Map<string, LocalInteraction[]>();
   comments.forEach((comment) => {
     const day = (comment.original_posted_at || comment.created_at || '').substring(0, 10);
@@ -109,43 +108,23 @@ function detectEventsFromInteractions(comments: LocalInteraction[], candidateNam
 
   const days = [...byDay.entries()].sort((a, b) => b[0].localeCompare(a[0]));
   const avg = days.reduce((sum, [, rows]) => sum + rows.length, 0) / Math.max(days.length, 1);
-  const peakDays = days.filter(([, rows]) => rows.length >= Math.max(4, avg * 1.25)).slice(0, 10);
+  const peakDays = days
+    .filter(([, rows]) => rows.length >= Math.max(4, avg * 1.25))
+    .sort((a, b) => b[1].length - a[1].length)
+    .slice(0, 15);
 
   return peakDays.map(([day, rows]) => {
-    const wordCounts = new Map<string, number>();
-    const phraseCounts = new Map<string, number>();
-
-    rows.forEach((row) => {
-      const normalized = normalizeEventText(row.comment_text || '');
-      EVENT_PHRASES.forEach((phrase) => {
-        if (normalized.includes(normalizeEventText(phrase))) {
-          phraseCounts.set(phrase, (phraseCounts.get(phrase) || 0) + 1);
-        }
-      });
-
-      const seen = new Set<string>();
-      tokenizeEventText(row.comment_text || '').forEach((word) => {
-        if (EVENT_STOP_WORDS.has(word) || candidateStop.has(word) || /^\d+$/.test(word) || seen.has(word)) return;
-        seen.add(word);
-        wordCounts.set(word, (wordCounts.get(word) || 0) + 1);
-      });
-    });
-
-    const phrases = [...phraseCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([phrase]) => phrase);
-    const words = [...wordCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([word]) => word);
-    const keywords = [...new Set([...phrases, ...words])].slice(0, 7);
-    const label = phrases[0] ? titleFromPhrase(phrases[0]) : words.slice(0, 2).join(', ');
-
+    const formatted = day.split('-').reverse().join('/');
     return {
-      name: label ? `Repercussão: ${label} (${day})` : `Pico de repercussão em ${day}`,
-      type: phrases[0] ? 'evento' : 'pico',
-      keywords: keywords.length ? keywords : words,
+      name: `Dia ${formatted}`,
+      type: 'pico',
+      keywords: [],
       start_date: day,
       end_date: day,
       mentions_estimate: rows.length,
-      description: `Evento detectado por concentração real de comentários em ${day}${keywords.length ? `. Termos associados: ${keywords.join(', ')}.` : '.'}`,
+      description: `Pico de menções detectado em ${formatted} — ${rows.length} comentários nesse dia.`,
     };
-  }).filter(event => event.keywords.length > 0).slice(0, 8);
+  });
 }
 
 interface DetectedEvent {
@@ -296,25 +275,13 @@ const EventReportPage = () => {
     setDetectedEvents([]);
     setSelectedEventIdx("");
     try {
-      const { data, error } = await supabase.functions.invoke('detect-candidate-events', {
-        body: { candidateId: selectedCandidate, monthsBack: 3 },
-      });
-      if (error) throw error;
-      const evts: DetectedEvent[] = await refineEventCounts(data.events || []);
+      const evts = await fetchLocalEvents();
       setDetectedEvents(evts);
-      if (evts.length === 0) toast.info(data.message || "Nenhum pico detectado nos últimos meses.");
-      else toast.success(`${evts.length} pico(s) detectado(s)`);
+      if (evts.length === 0) toast.info("Nenhum dia com pico detectado nos últimos meses.");
+      else toast.success(`${evts.length} dia(s) com pico detectado(s)`);
     } catch (err: any) {
       console.error(err);
-      try {
-        const fallbackEvents = await refineEventCounts(await fetchLocalEvents());
-        setDetectedEvents(fallbackEvents);
-        if (fallbackEvents.length === 0) toast.info("Nenhum pico detectado nos últimos meses.");
-        else toast.success(`${fallbackEvents.length} pico(s) detectado(s)`);
-      } catch (fallbackError: any) {
-        console.error(fallbackError);
-        toast.error(fallbackError.message || err.message || "Erro ao detectar picos");
-      }
+      toast.error(err.message || "Erro ao detectar picos");
     } finally {
       setIsDetecting(false);
     }
@@ -405,16 +372,16 @@ const EventReportPage = () => {
           </div>
 
           {detectedEvents.length > 0 && (
-            <HelpTooltip text="Selecione um evento detectado. Só os comentários sobre ele serão analisados.">
+            <HelpTooltip text="Selecione um dia com pico de menções. Só os comentários desse dia serão analisados.">
               <Select value={selectedEventIdx} onValueChange={handleSelectEvent}>
                 <SelectTrigger className="w-full sm:w-[480px]">
-                  <SelectValue placeholder={`${detectedEvents.length} evento(s) detectado(s) — escolha um`} />
+                  <SelectValue placeholder={`${detectedEvents.length} dia(s) com pico — escolha um`} />
                 </SelectTrigger>
                 <SelectContent className="max-w-[calc(100vw-2rem)]">
                   {detectedEvents.map((e, i) => (
                     <SelectItem key={i} value={String(i)} className="whitespace-normal break-words pr-8">
                       <span className="block text-sm leading-snug">
-                        {e.name} • {e.start_date} ({e.mentions_estimate} menções)
+                        {e.name} — {e.mentions_estimate} menções
                       </span>
                     </SelectItem>
                   ))}
@@ -427,11 +394,6 @@ const EventReportPage = () => {
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
               <p className="font-medium">{detectedEvents[Number(selectedEventIdx)].name}</p>
               <p className="text-muted-foreground mt-1">{detectedEvents[Number(selectedEventIdx)].description}</p>
-              <div className="flex flex-wrap gap-1 mt-2">
-                {detectedEvents[Number(selectedEventIdx)].keywords.map((k, i) => (
-                  <Badge key={i} variant="secondary" className="text-xs">{k}</Badge>
-                ))}
-              </div>
             </div>
           )}
 
