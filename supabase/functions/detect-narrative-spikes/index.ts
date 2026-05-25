@@ -19,12 +19,14 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "LOVABLE_API_KEY missing" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const authHeader = req.headers.get("Authorization") || "";
+    const apiKeyHeader = req.headers.get("apikey") || "";
+    const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || "";
+    const cronModeHeader = req.headers.get("x-cron-mode") === "1";
     const token = authHeader.replace("Bearer ", "");
 
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
-    const isCronMode = token === SERVICE_KEY;
+    const isCronMode = token === SERVICE_KEY || (cronModeHeader && apiKeyHeader === ANON_KEY);
 
     const body = await req.json().catch(() => ({}));
     const candidateFilter: string | undefined = body.candidate_id;
@@ -32,6 +34,7 @@ Deno.serve(async (req) => {
     // Buscar candidatos (cron: todos os ativos; user: só do user)
     let candQ = supabase.from("candidates").select("id, full_name, user_id").eq("status", "active");
     if (!isCronMode) {
+      if (!authHeader) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       const { data: userRes } = await supabase.auth.getUser(token);
       const user = userRes?.user;
       if (!user) return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
