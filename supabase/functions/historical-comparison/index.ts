@@ -583,11 +583,12 @@ Deno.serve(async (req) => {
 DADOS AGREGADOS (já resumidos, NÃO há texto bruto):
 ${summaryJson}
 
-Produza análise política em PT-BR como um analista experiente. Mesmo com poucos dados, gere narrativa baseada no que existe — NUNCA diga "insuficiente". Se o volume for baixo, registre no campo dataNote.
+Produza análise política PROFUNDA em PT-BR como um analista experiente. Explique o QUE aconteceu e COMO isso afetou a percepção pública. Mesmo com poucos dados, gere narrativa. NUNCA diga "insuficiente"; se o volume for baixo, registre em dataNote.
 
 Retorne ESTRITAMENTE JSON neste formato (sem markdown):
 {
-  "summary": "parágrafo narrativo de 4 a 8 frases descrevendo a evolução da percepção pública (volume, sentimento, temas, narrativas, regiões, eventos relevantes).",
+  "summary": "parágrafo narrativo de 4 a 8 frases.",
+  "narrativeShift": { "from": "tema/narrativa dominante no início", "to": "tema/narrativa dominante no fim", "explanation": "1-2 frases explicando a migração de discurso" },
   "detectedChanges": [
     { "type": "growth_support|rejection_increase|polarization|regional_shift|thematic_shift|narrative_shift|event_impact", "title": "título curto", "description": "1-2 frases" }
   ],
@@ -597,8 +598,12 @@ Retorne ESTRITAMENTE JSON neste formato (sem markdown):
   },
   "perceptionShifts": [ { "group": "grupo afetado", "shift": "descrição" } ],
   "associatedEvents": [ { "name": "evento", "date": "AAAA-MM-DD", "type": "debate|entrevista|discurso|notícia|outro", "impact": "como afetou" } ],
+  "timelineInsights": [ { "date": "AAAA-MM", "title": "marco do período", "description": "o que aconteceu e impacto" } ],
+  "regionalInsights": [ { "region": "UF/região", "movement": "alta|queda|estável", "explanation": "1 frase" } ],
+  "demographicInsights": [ { "group": "jovens|adultos|homens|mulheres|...", "trend": "descrição curta" } ],
+  "emotionalInsights": [ { "emotion": "indignação|aprovação|apoio|rejeição|polarização|confiança", "movement": "alta|queda|estável", "explanation": "1 frase" } ],
   "dominantThemesByPeriod": { "early": ["t1","t2","t3"], "late": ["t1","t2","t3"] },
-  "dataNote": "frase curta sobre completude (ex: 'Análise baseada em N sinais')."
+  "dataNote": "frase curta sobre completude."
 }`;
 
     const buildResponse = (analysis: any, provider: string, aiNotice: any = null, fromCache = false) => ({
