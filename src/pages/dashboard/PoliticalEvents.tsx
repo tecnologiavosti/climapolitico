@@ -22,6 +22,22 @@ export default function PoliticalEvents() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+
+  const handleAutoDetect = async () => {
+    setDetecting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("auto-detect-events", { body: { days: 30, spike_multiplier: 2.0 } });
+      if (error) throw error;
+      const n = data?.events_created ?? 0;
+      toast.success(n > 0 ? `${n} evento(s) detectado(s) automaticamente` : "Nenhum pico anômalo encontrado nos últimos 30 dias");
+      qc.invalidateQueries({ queryKey: ["political-events"] });
+    } catch (e: any) {
+      toast.error(`Falha na detecção: ${e?.message || e}`);
+    } finally {
+      setDetecting(false);
+    }
+  };
   const [form, setForm] = useState({
     event_name: "",
     candidate_id: "",
