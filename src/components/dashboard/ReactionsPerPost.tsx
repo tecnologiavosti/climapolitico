@@ -136,17 +136,43 @@ export function ReactionsPerPost({ candidateId }: Props) {
     const neu = d?.neutralCount || 0;
     const labeled = d?.classifiedCount || 0;
     const totalRecords = d?.totalRecords || 0;
+    const pending = d?.pendingCount ?? Math.max(0, totalRecords - labeled);
+    const sumCheck = pos + neg + neu + pending;
+    if (d) {
+      // eslint-disable-next-line no-console
+      console.log("[ReactionsPerPost] DEBUG agregação", {
+        totalRecords,
+        classificados: labeled,
+        positivos: pos,
+        neutros: neu,
+        negativos: neg,
+        semClassificacao: pending,
+        somaTotal: sumCheck,
+        diferenca: totalRecords - sumCheck,
+        postsCount: d.postsCount,
+        commentsCount: d.commentsCount,
+        topPostsRecebidos: d.topPosts?.length || 0,
+      });
+      if (sumCheck !== totalRecords) {
+        // eslint-disable-next-line no-console
+        console.warn("[ReactionsPerPost] INCONSISTÊNCIA pos+neu+neg+pending ≠ totalRecords", {
+          totalRecords, sumCheck, diff: totalRecords - sumCheck,
+        });
+      }
+    }
+    const denom = totalRecords > 0 ? totalRecords : 1;
     return {
-      pos, neg, neu, labeled,
+      pos, neg, neu, labeled, pending,
       totalRecords,
       postsCount: d?.postsCount || 0,
       commentsCount: d?.commentsCount || 0,
       totalLikes: d?.totalLikes || 0,
       totalShares: d?.totalShares || 0,
       totalInteractions: d?.totalInteractions || 0,
-      posPct: labeled > 0 ? Math.round((pos / labeled) * 100) : 0,
-      negPct: labeled > 0 ? Math.round((neg / labeled) * 100) : 0,
-      neuPct: labeled > 0 ? Math.round((neu / labeled) * 100) : 0,
+      posPct: Math.round((pos / denom) * 100),
+      negPct: Math.round((neg / denom) * 100),
+      neuPct: Math.round((neu / denom) * 100),
+      pendingPct: Math.round((pending / denom) * 100),
     };
   }, [summary]);
 
@@ -258,16 +284,23 @@ export function ReactionsPerPost({ candidateId }: Props) {
 
           {/* Barra de sentimento consolidado */}
           <div>
-            <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-2">Sentimento consolidado</h4>
-            <div className="grid grid-cols-3 gap-3 mb-3">
+            <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-2">
+              Sentimento consolidado{" "}
+              <span className="ml-1 normal-case text-[10px] text-muted-foreground/80">
+                (pos + neu + neg + sem classificação = {totals.totalRecords.toLocaleString("pt-BR")})
+              </span>
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
               <KpiBox label={`Positivo (${totals.posPct}%)`} value={totals.pos} tone="pos" />
               <KpiBox label={`Neutro (${totals.neuPct}%)`} value={totals.neu} tone="neu" />
               <KpiBox label={`Negativo (${totals.negPct}%)`} value={totals.neg} tone="neg" />
+              <KpiBox label={`Sem classificação (${totals.pendingPct}%)`} value={totals.pending} />
             </div>
             <div className="flex h-3 w-full rounded overflow-hidden border border-border">
               <div className="bg-success" style={{ width: `${totals.posPct}%` }} />
               <div className="bg-warning" style={{ width: `${totals.neuPct}%` }} />
               <div className="bg-destructive" style={{ width: `${totals.negPct}%` }} />
+              <div className="bg-muted" style={{ width: `${totals.pendingPct}%` }} />
             </div>
           </div>
 
