@@ -18,6 +18,8 @@ import { SocialMediaPeakHours } from "@/components/dashboard/SocialMediaPeakHour
 import { SocialMediaKeywordAnalysis } from "@/components/dashboard/SocialMediaKeywordAnalysis";
 import { SocialMediaInfluencers } from "@/components/dashboard/SocialMediaInfluencers";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { fetchAllPaginated } from "@/lib/supabasePagination";
+import { isHiddenNetwork } from "@/lib/networkVisibility";
 
 export interface SocialMediaReportData {
   network: string;
