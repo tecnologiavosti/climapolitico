@@ -12,6 +12,7 @@ import { RealTimeKPIs } from "@/components/dashboard/realtime/RealTimeKPIs";
 import { RealTimeSentimentChart } from "@/components/dashboard/realtime/RealTimeSentimentChart";
 import { RealTimeSentimentGauge } from "@/components/dashboard/realtime/RealTimeSentimentGauge";
 import { RealTimeCommentsFeed } from "@/components/dashboard/realtime/RealTimeCommentsFeed";
+import { ProcessingStatusCard } from "@/components/dashboard/realtime/ProcessingStatusCard";
 import { cn } from "@/lib/utils";
 
 interface Candidate {
