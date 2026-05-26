@@ -60,8 +60,8 @@ type Agg = {
   series: { day: string; p: number; n: number; u: number }[];
   by_network: { network: string; mentions: number; likes: number; replies: number; shares: number; engagement: number }[];
   heatmap: { dow: number; hr: number; c: number }[];
-  hashtags: { tag: string; c: number }[];
-  topics: { theme: string; mentions: number; pos: number; neg: number; neu: number }[];
+  hashtags: { tag: string; c: number; pos: number; neg: number; neu: number; prev_c: number }[];
+  topics: { theme: string; mentions: number; pos: number; neg: number; neu: number; prev_mentions: number }[];
   top_posts: { id: string; social_network: string; comment_text: string; comment_author: string; sent: string; eng: number; likes: number; replies: number; shares: number; original_posted_at: string; collected_at: string }[];
 };
 
@@ -337,17 +337,25 @@ export default function NetworkView() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="p-6">
           <h3 className="text-lg font-bold mb-1">Assuntos dominantes</h3>
-          <p className="text-sm text-muted-foreground mb-4">Temas detectados nas menções</p>
+          <p className="text-sm text-muted-foreground mb-4">Temas detectados em posts, comentários e respostas (agrupamento semântico)</p>
           {isLoading ? <Skeleton className="h-[200px] w-full" /> : !agg?.topics.length ? <EmptyState /> : (
-            <div className="space-y-2">
+            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-2">
               {agg.topics.map((t) => {
                 const lab = t.pos + t.neg + t.neu;
+                const variation = growth(t.mentions, t.prev_mentions);
+                const posP = pct(t.pos, lab);
                 return (
                   <div key={t.theme} className="border border-border rounded-md p-3">
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-1">
                       <span className="font-semibold">{t.theme}</span>
-                      <span className="text-sm text-muted-foreground">{fmt(t.mentions)} menções</span>
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-muted-foreground">{fmt(t.mentions)} menções</span>
+                        <span className={`font-medium ${variation >= 0 ? "text-success" : "text-destructive"}`}>
+                          {variation >= 0 ? "+" : ""}{variation}%
+                        </span>
+                      </div>
                     </div>
+                    <div className="text-[11px] text-muted-foreground mb-1">{posP}% positivo</div>
                     <div className="flex h-2 rounded-full overflow-hidden bg-muted">
                       <div style={{ width: `${pct(t.pos, lab)}%`, backgroundColor: COLORS.positive }} />
                       <div style={{ width: `${pct(t.neu, lab)}%`, backgroundColor: COLORS.neutral }} />
@@ -367,18 +375,26 @@ export default function NetworkView() {
 
         <Card className="p-6">
           <h3 className="text-lg font-bold mb-1 flex items-center gap-2"><Hash className="h-5 w-5" /> Hashtags recorrentes</h3>
-          <p className="text-sm text-muted-foreground mb-4">Top 15 do período</p>
+          <p className="text-sm text-muted-foreground mb-4">Top 20 — explícitas e implícitas, com variação e sentimento</p>
           {isLoading ? <Skeleton className="h-[200px] w-full" /> : !agg?.hashtags.length ? <EmptyState /> : (
-            <div className="flex flex-wrap gap-2">
-              {agg.hashtags.map((h) => (
-                <Badge
-                  key={h.tag}
-                  variant="secondary"
-                  style={{ fontSize: `${0.75 + (h.c / maxHashtag) * 0.6}rem` }}
-                >
-                  {h.tag} <span className="ml-1 opacity-60">{fmt(h.c)}</span>
-                </Badge>
-              ))}
+            <div className="space-y-1.5 max-h-[420px] overflow-y-auto pr-2">
+              {agg.hashtags.map((h) => {
+                const lab = h.pos + h.neg + h.neu;
+                const variation = growth(h.c, h.prev_c);
+                const posP = pct(h.pos, lab);
+                return (
+                  <div key={h.tag} className="flex items-center justify-between border border-border rounded-md p-2 text-sm">
+                    <span className="font-medium truncate max-w-[40%]">{h.tag}</span>
+                    <div className="flex items-center gap-3 text-xs">
+                      <span className="text-muted-foreground">{fmt(h.c)}</span>
+                      <span className={`font-medium ${variation >= 0 ? "text-success" : "text-destructive"}`}>
+                        {variation >= 0 ? "+" : ""}{variation}%
+                      </span>
+                      {lab > 0 && <span className="text-success">{posP}% pos</span>}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </Card>
