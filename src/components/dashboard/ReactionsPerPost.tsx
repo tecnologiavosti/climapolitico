@@ -92,15 +92,14 @@ export function ReactionsPerPost({ candidateId }: Props) {
     gcTime: 30 * 60_000,
   });
 
-  // Posts (sem comentários) — para gráficos + top 5. Limite duro de 1000 linhas.
+  // Amostra de interações (posts + comentários + respostas) para gráficos + top 5.
+  // Totais reais vêm do RPC agregado; aqui trazemos só uma amostra p/ visualizações.
   const { data: posts, isLoading: postsLoading } = useQuery({
-    queryKey: ["reactions-posts-only", user?.id, isAdmin, candidateId, range.start, range.end],
+    queryKey: ["reactions-interactions", user?.id, isAdmin, candidateId, range.start, range.end],
     queryFn: async () => {
       let q = supabase
         .from("social_interactions")
         .select("id, social_network, likes_count, replies_count, shares_count, sentiment_label, collected_at")
-        .is("parent_comment_id", null)
-        .is("root_comment_id", null)
         .order("collected_at", { ascending: false })
         .limit(1000);
       if (range.start) q = q.gte("collected_at", range.start);
@@ -122,9 +121,12 @@ export function ReactionsPerPost({ candidateId }: Props) {
     const neg = d?.negativeCount || 0;
     const neu = d?.neutralCount || 0;
     const labeled = d?.classifiedCount || 0;
+    const totalRecords = d?.totalRecords || 0;
     return {
       pos, neg, neu, labeled,
+      totalRecords,
       postsCount: d?.postsCount || 0,
+      commentsCount: d?.commentsCount || 0,
       totalLikes: d?.totalLikes || 0,
       totalShares: d?.totalShares || 0,
       totalInteractions: d?.totalInteractions || 0,
@@ -190,16 +192,16 @@ export function ReactionsPerPost({ candidateId }: Props) {
 
       {summaryLoading ? (
         <Skeleton className="h-24 w-full" />
-      ) : totals.postsCount === 0 ? (
-        <div className="text-sm text-muted-foreground py-8 text-center">Nenhum post no período.</div>
+      ) : totals.totalRecords === 0 ? (
+        <div className="text-sm text-muted-foreground py-8 text-center">Nenhum registro no período.</div>
       ) : (
         <>
           {/* KPIs principais */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <KpiBox label="Posts coletados" value={totals.postsCount} />
-            <KpiBox label="Curtidas" value={totals.totalLikes} />
-            <KpiBox label="Compartilhamentos" value={totals.totalShares} />
-            <KpiBox label="Interações totais" value={totals.totalInteractions} highlight />
+            <KpiBox label="Registros analisados" value={totals.totalRecords} highlight />
+            <KpiBox label="Posts" value={totals.postsCount} />
+            <KpiBox label="Comentários / respostas" value={totals.commentsCount} />
+            <KpiBox label="Interações totais" value={totals.totalInteractions} />
             <KpiBox label="Sentimento geral" value={totals.posPct - totals.negPct} suffix="%" tone={totals.posPct >= totals.negPct ? "pos" : "neg"} />
           </div>
 
