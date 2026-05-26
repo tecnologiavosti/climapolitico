@@ -189,8 +189,13 @@ export function ReactionsPerPost({ candidateId }: Props) {
         semClassificacao: pending,
         somaTotal: sumCheck,
         diferenca: totalRecords - sumCheck,
-        postsCount: d.postsCount,
-        commentsCount: d.commentsCount,
+        postsEncontrados: d.debug?.postsEncontrados ?? d.postsCount,
+        comentariosEncontrados: d.debug?.comentariosEncontrados ?? d.directCommentsCount,
+        respostasEncontradas: d.debug?.respostasEncontradas ?? d.repliesRowsCount,
+        subcomentariosEncontrados: d.debug?.subcomentariosEncontrados ?? d.subcommentsCount,
+        outrosRegistrosEncontrados: d.debug?.outrosRegistrosEncontrados ?? d.otherRecordsCount,
+        redesEncontradas: d.debug?.redesEncontradas ?? d.networkBreakdown?.length,
+        registrosPorRede: d.debug?.registrosPorRede ?? d.networkBreakdown,
         topPostsRecebidos: d.topPosts?.length || 0,
       });
       if (sumCheck !== totalRecords) {
@@ -217,15 +222,15 @@ export function ReactionsPerPost({ candidateId }: Props) {
   }, [summary]);
 
   const top5 = useMemo(() => {
-    const list = summary?.topPosts?.length ? summary.topPosts : (posts || []);
+    const list = summary?.topPosts || [];
     return [...list]
       .map((p) => ({
         ...p,
-        engagement: (p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0),
+        engagement: p.engagement ?? ((p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0)),
       }))
       .sort((a, b) => b.engagement - a.engagement)
       .slice(0, 5);
-  }, [posts, summary?.topPosts]);
+  }, [summary?.topPosts]);
 
   const topTopics = useMemo(() => {
     return (summary?.dominantTopics || []).slice(0, 8)
