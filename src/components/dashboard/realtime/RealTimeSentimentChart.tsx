@@ -99,9 +99,9 @@ export const RealTimeSentimentChart = ({ metrics }: Props) => {
                 <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} width={36} />
                 <Tooltip content={<CustomTooltip />} cursor={{ stroke: "hsl(var(--border))", strokeWidth: 1 }} />
                 <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} iconType="circle" />
-                <Area type="monotone" dataKey="positive" name="Positivo" stackId="1" stroke={COLORS.positive} strokeWidth={2} fill="url(#gPos)" animationDuration={600} />
-                <Area type="monotone" dataKey="neutral" name="Neutro" stackId="1" stroke={COLORS.neutral} strokeWidth={2} fill="url(#gNeu)" animationDuration={600} />
-                <Area type="monotone" dataKey="negative" name="Negativo" stackId="1" stroke={COLORS.negative} strokeWidth={2} fill="url(#gNeg)" animationDuration={600} />
+                <Area type="monotoneX" dataKey="positive" name="Positivo" stackId="1" stroke={COLORS.positive} strokeWidth={2} fill="url(#gPos)" animationDuration={600} />
+                <Area type="monotoneX" dataKey="neutral" name="Neutro" stackId="1" stroke={COLORS.neutral} strokeWidth={2} fill="url(#gNeu)" animationDuration={600} />
+                <Area type="monotoneX" dataKey="negative" name="Negativo" stackId="1" stroke={COLORS.negative} strokeWidth={2} fill="url(#gNeg)" animationDuration={600} />
               </AreaChart>
             </ResponsiveContainer>
           </motion.div>
