@@ -18,6 +18,8 @@ import { SocialMediaPeakHours } from "@/components/dashboard/SocialMediaPeakHour
 import { SocialMediaKeywordAnalysis } from "@/components/dashboard/SocialMediaKeywordAnalysis";
 import { SocialMediaInfluencers } from "@/components/dashboard/SocialMediaInfluencers";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { fetchAllPaginated } from "@/lib/supabasePagination";
+import { isHiddenNetwork } from "@/lib/networkVisibility";
 
 export interface SocialMediaReportData {
   network: string;
@@ -62,112 +64,68 @@ export default function SocialMediaReport() {
     }
   });
 
-  // Query: Dados de redes sociais agregados
+  // Query: agregados por rede a partir de social_interactions (SSOT)
   const { data: reportData, isLoading: loadingReport } = useQuery({
-    queryKey: ['social-media-report', selectedCandidate, selectedNetwork, dateRange, isAdmin],
+    queryKey: ['social-media-report-v2', selectedCandidate, selectedNetwork, dateRange, isAdmin, user?.id],
     queryFn: async () => {
-      // Buscar análises no período
-      let analysesQuery = supabase
-        .from('candidate_analyses')
-        .select('id, candidate_id, sentiment_label')
-        .order('created_at', { ascending: false });
+      const rows = await fetchAllPaginated<any>((from, to) => {
+        let q = supabase
+          .from('social_interactions')
+          .select('social_network, sentiment_label, comment_author, author_profile_url, likes_count, replies_count, shares_count, created_at')
+          .not('social_network', 'in', '(mastodon,lemmy,pinterest,gdelt)');
 
-      if (!isAdmin && user) {
-        analysesQuery = analysesQuery.eq('user_id', user.id);
-      }
+        if (!isAdmin && user) q = q.eq('user_id', user.id);
+        if (selectedCandidate !== 'all') q = q.eq('candidate_id', selectedCandidate);
+        if (selectedNetwork !== 'all') q = q.eq('social_network', selectedNetwork);
+        if (dateRange?.from) q = q.gte('created_at', dateRange.from.toISOString());
+        if (dateRange?.to) q = q.lte('created_at', dateRange.to.toISOString());
 
-      if (selectedCandidate !== 'all') {
-        analysesQuery = analysesQuery.eq('candidate_id', selectedCandidate);
-      }
+        return q.range(from, to);
+      });
 
-      if (dateRange?.from) {
-        analysesQuery = analysesQuery.gte('created_at', dateRange.from.toISOString());
-      }
-      if (dateRange?.to) {
-        analysesQuery = analysesQuery.lte('created_at', dateRange.to.toISOString());
-      }
-
-      const { data: analyses, error: analysesError } = await analysesQuery;
-      if (analysesError) throw analysesError;
-
-      if (!analyses || analyses.length === 0) {
-        return [];
-      }
-
-      // Buscar sources para essas análises
-      const analysisIds = analyses.map(a => a.id);
-      let sourcesQuery = supabase
-        .from('analysis_sources')
-        .select('*')
-        .in('analysis_id', analysisIds);
-
-      // Filtrar por rede social se selecionada
-      if (selectedNetwork !== 'all') {
-        sourcesQuery = sourcesQuery.eq('social_network', selectedNetwork);
-      }
-
-      const { data: sources, error: sourcesError } = await sourcesQuery;
-
-      if (sourcesError) throw sourcesError;
-
-      // Agregar dados por rede social
-      return aggregateByNetwork(sources || [], analyses);
-    }
+      return aggregateByNetwork(rows);
+    },
+    enabled: !!user,
   });
 
-  function aggregateByNetwork(
-    sources: any[],
-    analyses: any[]
-  ): SocialMediaReportData[] {
+  function aggregateByNetwork(rows: any[]): SocialMediaReportData[] {
     const networkMap: Record<string, any> = {};
 
-    sources.forEach(source => {
-      const network = source.social_network || 'Desconhecida';
-      const analysis = analyses.find(a => a.id === source.analysis_id);
+    rows.forEach((r) => {
+      const network = r.social_network || 'Desconhecida';
+      if (isHiddenNetwork(network)) return;
 
       if (!networkMap[network]) {
         networkMap[network] = {
           network,
           totalMentions: 0,
-          uniqueProfiles: new Set(),
+          uniqueProfiles: new Set<string>(),
           totalInteractions: 0,
-          sentiments: { Positivo: 0, Negativo: 0, Neutro: 0 }
+          sentiments: { Positivo: 0, Negativo: 0, Neutro: 0 },
         };
       }
 
-      // Somar menções
-      networkMap[network].totalMentions += 
-        (source.posts_collected || 0) + (source.comments_collected || 0);
-      
-      // Adicionar perfil único
-      if (source.profile_unique_id) {
-        networkMap[network].uniqueProfiles.add(source.profile_unique_id);
-      }
-      
-      // Somar interações
-      networkMap[network].totalInteractions += source.interactions_count || 0;
+      const bucket = networkMap[network];
+      bucket.totalMentions += 1;
+      const profileKey = r.author_profile_url || r.comment_author;
+      if (profileKey) bucket.uniqueProfiles.add(String(profileKey).toLowerCase());
+      bucket.totalInteractions += (r.likes_count || 0) + (r.replies_count || 0) + (r.shares_count || 0);
 
-      // Contar sentimento
-      if (analysis?.sentiment_label) {
-        const sentiment = analysis.sentiment_label;
-        if (networkMap[network].sentiments[sentiment] !== undefined) {
-          networkMap[network].sentiments[sentiment]++;
-        }
+      const s = r.sentiment_label;
+      if (s === 'Positivo' || s === 'Negativo' || s === 'Neutro') {
+        bucket.sentiments[s]++;
       }
     });
 
-    // Converter para array e calcular percentuais
     return Object.values(networkMap).map((data: any) => {
-      const total = Object.values(data.sentiments).reduce((a: number, b: any) => a + Number(b), 0) as number;
-      const uniqueCount = data.uniqueProfiles.size;
-      
-      const positiveCount = Number(data.sentiments.Positivo) || 0;
-      const neutralCount = Number(data.sentiments.Neutro) || 0;
-      const negativeCount = Number(data.sentiments.Negativo) || 0;
+      const positiveCount = data.sentiments.Positivo;
+      const neutralCount = data.sentiments.Neutro;
+      const negativeCount = data.sentiments.Negativo;
+      const total = positiveCount + neutralCount + negativeCount;
 
-      const positivePercent = total > 0 ? (positiveCount / total * 100) : 0;
-      const neutralPercent = total > 0 ? (neutralCount / total * 100) : 0;
-      const negativePercent = total > 0 ? (negativeCount / total * 100) : 0;
+      const positivePercent = total > 0 ? (positiveCount / total) * 100 : 0;
+      const neutralPercent = total > 0 ? (neutralCount / total) * 100 : 0;
+      const negativePercent = total > 0 ? (negativeCount / total) * 100 : 0;
 
       let dominantSentiment: "Positivo" | "Negativo" | "Neutro" = "Neutro";
       const maxCount = Math.max(positiveCount, neutralCount, negativeCount);
@@ -177,7 +135,7 @@ export default function SocialMediaReport() {
       return {
         network: data.network,
         totalMentions: data.totalMentions,
-        uniqueProfiles: uniqueCount,
+        uniqueProfiles: data.uniqueProfiles.size,
         totalInteractions: data.totalInteractions,
         positiveCount,
         neutralCount,
@@ -185,7 +143,7 @@ export default function SocialMediaReport() {
         positivePercent: parseFloat(positivePercent.toFixed(1)),
         neutralPercent: parseFloat(neutralPercent.toFixed(1)),
         negativePercent: parseFloat(negativePercent.toFixed(1)),
-        dominantSentiment
+        dominantSentiment,
       };
     }).sort((a, b) => b.totalMentions - a.totalMentions);
   }

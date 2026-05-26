@@ -47,114 +47,98 @@ export const SocialMediaTemporalEvolution = ({
   const [selectedNetwork, setSelectedNetwork] = useState<string>("all");
 
   const { data: temporalData, isLoading } = useQuery({
-    queryKey: ['social-media-temporal', selectedCandidate, selectedNetwork, dateRange, isAdmin],
+    queryKey: ['social-media-temporal-v2', selectedCandidate, selectedNetwork, dateRange, isAdmin, user?.id],
     queryFn: async () => {
-      // Buscar análises no período
-      let analysesQuery = supabase
-        .from('candidate_analyses')
-        .select('id, created_at, sentiment_score, sentiment_label')
-        .order('created_at', { ascending: true });
+      const { fetchAllPaginated } = await import('@/lib/supabasePagination');
 
-      if (!isAdmin && user) {
-        analysesQuery = analysesQuery.eq('user_id', user.id);
-      }
+      const rows = await fetchAllPaginated<any>((from, to) => {
+        let q = supabase
+          .from('social_interactions')
+          .select('social_network, sentiment_label, sentiment_score, likes_count, replies_count, shares_count, created_at')
+          .not('social_network', 'in', '(mastodon,lemmy,pinterest,gdelt)');
 
-      if (selectedCandidate !== 'all') {
-        analysesQuery = analysesQuery.eq('candidate_id', selectedCandidate);
-      }
+        if (!isAdmin && user) q = q.eq('user_id', user.id);
+        if (selectedCandidate !== 'all') q = q.eq('candidate_id', selectedCandidate);
+        if (selectedNetwork !== 'all') q = q.eq('social_network', selectedNetwork);
+        if (dateRange?.from) q = q.gte('created_at', dateRange.from.toISOString());
+        if (dateRange?.to) q = q.lte('created_at', dateRange.to.toISOString());
 
-      if (dateRange?.from) {
-        analysesQuery = analysesQuery.gte('created_at', dateRange.from.toISOString());
-      }
-      if (dateRange?.to) {
-        analysesQuery = analysesQuery.lte('created_at', dateRange.to.toISOString());
-      }
+        return q.range(from, to);
+      });
 
-      const { data: analyses, error: analysesError } = await analysesQuery;
-      if (analysesError) throw analysesError;
-
-      if (!analyses || analyses.length === 0) {
+      if (!rows || rows.length === 0) {
         return { networks: [], temporalDataByNetwork: {} };
       }
 
-      // Buscar sources
-      const analysisIds = analyses.map(a => a.id);
-      let sourcesQuery = supabase
-        .from('analysis_sources')
-        .select('*')
-        .in('analysis_id', analysisIds);
+      // Determinar granularidade dinâmica
+      const spanMs = (dateRange?.to?.getTime() ?? Date.now()) - (dateRange?.from?.getTime() ?? Date.now() - 30 * 86400000);
+      const days = spanMs / 86400000;
+      const granularity: 'hour' | 'day' | 'week' | 'month' =
+        days <= 2 ? 'hour' : days <= 90 ? 'day' : days <= 365 ? 'week' : 'month';
 
-      if (selectedNetwork !== 'all') {
-        sourcesQuery = sourcesQuery.eq('social_network', selectedNetwork);
-      }
+      const bucketKey = (iso: string) => {
+        const d = new Date(iso);
+        if (granularity === 'hour') {
+          return `${d.toLocaleDateString('pt-BR')} ${String(d.getHours()).padStart(2, '0')}h`;
+        }
+        if (granularity === 'week') {
+          const onejan = new Date(d.getFullYear(), 0, 1);
+          const week = Math.ceil((((d.getTime() - onejan.getTime()) / 86400000) + onejan.getDay() + 1) / 7);
+          return `S${week}/${d.getFullYear()}`;
+        }
+        if (granularity === 'month') {
+          return d.toLocaleDateString('pt-BR', { month: '2-digit', year: 'numeric' });
+        }
+        return d.toLocaleDateString('pt-BR');
+      };
 
-      const { data: sources, error: sourcesError } = await sourcesQuery;
-      if (sourcesError) throw sourcesError;
-
-      // Agrupar por rede social e data
-      const networkMap: Record<string, Record<string, TemporalData>> = {};
+      const networkMap: Record<string, Record<string, TemporalData & { _scoreSum: number; _scoreCnt: number; _ts: number }>> = {};
       const networksSet = new Set<string>();
 
-      sources?.forEach(source => {
-        const network = source.social_network || 'Outro';
+      rows.forEach((r) => {
+        const network = r.social_network || 'Outro';
         networksSet.add(network);
+        const key = bucketKey(r.created_at);
+        const ts = new Date(r.created_at).getTime();
 
-        const analysis = analyses.find(a => a.id === source.analysis_id);
-        if (!analysis) return;
-
-        const date = new Date(source.created_at || analysis.created_at).toLocaleDateString('pt-BR');
-
-        if (!networkMap[network]) {
-          networkMap[network] = {};
-        }
-
-        if (!networkMap[network][date]) {
-          networkMap[network][date] = {
-            date,
+        if (!networkMap[network]) networkMap[network] = {};
+        if (!networkMap[network][key]) {
+          networkMap[network][key] = {
+            date: key,
             mentions: 0,
             sentimentScore: 0,
             positiveCount: 0,
             neutralCount: 0,
             negativeCount: 0,
+            _scoreSum: 0,
+            _scoreCnt: 0,
+            _ts: ts,
           };
         }
-
-        const mentions = (source.posts_collected || 0) + (source.comments_collected || 0);
-        networkMap[network][date].mentions += mentions;
-
-        // Contar sentimentos
-        const sentiment = analysis.sentiment_label;
-        if (sentiment === 'Positivo') {
-          networkMap[network][date].positiveCount++;
-        } else if (sentiment === 'Neutro') {
-          networkMap[network][date].neutralCount++;
-        } else if (sentiment === 'Negativo') {
-          networkMap[network][date].negativeCount++;
-        }
-
-        // Calcular score médio
-        if (analysis.sentiment_score) {
-          networkMap[network][date].sentimentScore += Number(analysis.sentiment_score);
+        const b = networkMap[network][key];
+        b._ts = Math.min(b._ts, ts);
+        b.mentions += 1;
+        if (r.sentiment_label === 'Positivo') b.positiveCount++;
+        else if (r.sentiment_label === 'Neutro') b.neutralCount++;
+        else if (r.sentiment_label === 'Negativo') b.negativeCount++;
+        if (r.sentiment_score != null) {
+          b._scoreSum += Number(r.sentiment_score);
+          b._scoreCnt += 1;
         }
       });
 
-      // Converter para array e calcular médias
       const temporalDataByNetwork: Record<string, TemporalData[]> = {};
-      
       Object.entries(networkMap).forEach(([network, dateMap]) => {
         temporalDataByNetwork[network] = Object.values(dateMap)
-          .map(data => {
-            const totalSentiments = data.positiveCount + data.neutralCount + data.negativeCount;
-            return {
-              ...data,
-              sentimentScore: totalSentiments > 0 ? data.sentimentScore / totalSentiments : 0,
-            };
-          })
-          .sort((a, b) => {
-            const dateA = new Date(a.date.split('/').reverse().join('-'));
-            const dateB = new Date(b.date.split('/').reverse().join('-'));
-            return dateA.getTime() - dateB.getTime();
-          });
+          .sort((a, b) => a._ts - b._ts)
+          .map((b) => ({
+            date: b.date,
+            mentions: b.mentions,
+            sentimentScore: b._scoreCnt > 0 ? b._scoreSum / b._scoreCnt : 0,
+            positiveCount: b.positiveCount,
+            neutralCount: b.neutralCount,
+            negativeCount: b.negativeCount,
+          }));
       });
 
       return {
@@ -162,6 +146,7 @@ export const SocialMediaTemporalEvolution = ({
         temporalDataByNetwork,
       };
     },
+    enabled: !!user,
   });
 
   if (isLoading) {
