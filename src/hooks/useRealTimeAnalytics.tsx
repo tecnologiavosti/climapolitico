@@ -23,7 +23,22 @@ export interface SocialInteraction {
   created_at: string;
 }
 
+export interface SourceBreakdown {
+  network: string;
+  collected: number;
+  processed: number;
+  pending: number;
+  lowConfidence: number;
+}
+
 export interface RealTimeMetrics {
+  // Totais
+  totalCollected: number;       // tudo que existe na base
+  processedMentions: number;    // positivos + neutros + negativos (com label)
+  pendingMentions: number;      // sem label / aguardando análise
+  processingRate: number;       // 0-100
+  duplicateMentions: number;    // duplicados detectados (texto normalizado)
+  // Compat: totalMentions = processedMentions (alimenta gráficos antigos)
   totalMentions: number;
   positiveMentions: number;
   negativeMentions: number;
@@ -37,6 +52,7 @@ export interface RealTimeMetrics {
   trend: 'up' | 'down' | 'stable';
   mentionsByNetwork: { network: string; count: number }[];
   sentimentHistory: { time: string; positive: number; neutral: number; negative: number }[];
+  sourceBreakdown: SourceBreakdown[];
 }
 
 interface UseRealTimeAnalyticsReturn {
@@ -140,45 +156,63 @@ export const useRealTimeAnalytics = (
       
       console.log(`[Monitor] Fetched ${data.length} interactions (total count: ${totalCount}) for user ${user.id}`);
       
-      // Calculate metrics from ALL data
-      const positiveMentions = data.filter(i => i.sentiment_label === 'Positivo').length;
-      const negativeMentions = data.filter(i => i.sentiment_label === 'Negativo').length;
-      const neutralMentions = data.filter(i => i.sentiment_label === 'Neutro').length;
-      // Total exibido = soma das três classes (pos+neu+neg). Garante consistência visual.
-      const totalMentions = positiveMentions + negativeMentions + neutralMentions;
-      const totalCollected = totalCount || data.length;
-      
-      // Total engagement (sum of likes)
-      const totalEngagement = data.reduce((sum, i) => sum + (i.likes_count || 0), 0);
-      
-      // Sentiment score (0-100)
-      const sentimentScore = totalMentions > 0 
-        ? Math.round(((positiveMentions - negativeMentions) / totalMentions + 1) * 50) 
-        : 50;
+      // ===== SEPARAÇÃO ESTRITA: processado vs pendente =====
+      // Pendente = sem sentiment_label OU label não reconhecido.
+      // NUNCA tratar nulos como Neutro.
+      const validLabels = new Set(['Positivo', 'Negativo', 'Neutro']);
+      const processed = data.filter(i => i.sentiment_label && validLabels.has(i.sentiment_label));
+      const pending = data.filter(i => !i.sentiment_label || !validLabels.has(i.sentiment_label));
 
-      // Engagement per minute (based on data from last 60 minutes)
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-      const recentInteractions = data.filter(i => i.created_at >= oneHourAgo);
-      const engagementPerMinute = recentInteractions.length > 0 
-        ? Math.round(recentInteractions.length / 60 * 10) / 10 
+      const positiveMentions = processed.filter(i => i.sentiment_label === 'Positivo').length;
+      const negativeMentions = processed.filter(i => i.sentiment_label === 'Negativo').length;
+      const neutralMentions = processed.filter(i => i.sentiment_label === 'Neutro').length;
+      const processedMentions = positiveMentions + negativeMentions + neutralMentions;
+      const pendingMentions = pending.length;
+      const totalCollected = totalCount ?? data.length;
+      const processingRate = totalCollected > 0
+        ? Math.round((processedMentions / totalCollected) * 1000) / 10
         : 0;
 
-      // Trend calculation (comparing recent data to older data)
+      // Detecta duplicados por texto normalizado (somente nos processados)
+      const seenTextCount = new Map<string, number>();
+      for (const i of data) {
+        const k = (i.comment_text || '').trim().toLowerCase();
+        if (!k) continue;
+        seenTextCount.set(k, (seenTextCount.get(k) || 0) + 1);
+      }
+      let duplicateMentions = 0;
+      seenTextCount.forEach(v => { if (v > 1) duplicateMentions += (v - 1); });
+
+      // Compat
+      const totalMentions = processedMentions;
+
+      // Total engagement (sum of likes) — usa toda a base coletada
+      const totalEngagement = data.reduce((sum, i) => sum + (i.likes_count || 0), 0);
+
+      const sentimentScore = processedMentions > 0
+        ? Math.round(((positiveMentions - negativeMentions) / processedMentions + 1) * 50)
+        : 50;
+
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const recentInteractions = data.filter(i => i.created_at >= oneHourAgo);
+      const engagementPerMinute = recentInteractions.length > 0
+        ? Math.round(recentInteractions.length / 60 * 10) / 10
+        : 0;
+
       const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
       const last30 = data.filter(i => i.created_at >= thirtyMinutesAgo).length;
-      const previous30 = data.filter(i => 
+      const previous30 = data.filter(i =>
         i.created_at < thirtyMinutesAgo && i.created_at >= oneHourAgo
       ).length;
-      
       let trend: 'up' | 'down' | 'stable' = 'stable';
       if (last30 > 0 || previous30 > 0) {
-        trend = last30 > previous30 * 1.1 ? 'up' : 
+        trend = last30 > previous30 * 1.1 ? 'up' :
                 last30 < previous30 * 0.9 ? 'down' : 'stable';
       }
 
-      // Mentions by network
+      // Mentions by network — usa apenas processados (coerente com sentimento)
       const networkCounts: Record<string, number> = {};
-      data.forEach(i => {
+      processed.forEach(i => {
         networkCounts[i.social_network] = (networkCounts[i.social_network] || 0) + 1;
       });
       const mentionsByNetwork = Object.entries(networkCounts)
@@ -186,29 +220,42 @@ export const useRealTimeAnalytics = (
         .map(([network, count]) => ({ network, count }))
         .sort((a, b) => b.count - a.count);
 
-      // Sentiment history
+      // Breakdown por fonte (coletado/processado/pendente)
+      const bySource = new Map<string, SourceBreakdown>();
+      const ensure = (n: string) => {
+        if (!bySource.has(n)) bySource.set(n, { network: n, collected: 0, processed: 0, pending: 0, lowConfidence: 0 });
+        return bySource.get(n)!;
+      };
+      data.forEach(i => {
+        if (isHiddenNetwork(i.social_network)) return;
+        const b = ensure(i.social_network);
+        b.collected++;
+        if (i.sentiment_label && validLabels.has(i.sentiment_label)) {
+          b.processed++;
+          if ((i.sentiment_confidence ?? 1) < 0.5) b.lowConfidence++;
+        } else {
+          b.pending++;
+        }
+      });
+      const sourceBreakdown = Array.from(bySource.values()).sort((a, b) => b.collected - a.collected);
+
+      // Sentiment history — usa apenas processados
       const sentimentHistory: { time: string; positive: number; neutral: number; negative: number }[] = [];
-      
-      if (data.length > 0) {
-        const oldestData = new Date(data[data.length - 1].created_at);
+      if (processed.length > 0) {
+        const oldestData = new Date(processed[processed.length - 1].created_at);
         const now = new Date();
         const daysDiff = Math.ceil((now.getTime() - oldestData.getTime()) / (1000 * 60 * 60 * 24));
-        
         if (daysDiff > 1) {
-          // Use daily buckets for the last 7 days
           for (let i = 6; i >= 0; i--) {
             const dayStart = new Date(now);
             dayStart.setDate(dayStart.getDate() - i);
             dayStart.setHours(0, 0, 0, 0);
-            
             const dayEnd = new Date(dayStart);
             dayEnd.setDate(dayEnd.getDate() + 1);
-            
-            const bucketData = data.filter(d => {
+            const bucketData = processed.filter(d => {
               const time = new Date(d.created_at);
               return time >= dayStart && time < dayEnd;
             });
-            
             sentimentHistory.push({
               time: dayStart.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
               positive: bucketData.filter(d => d.sentiment_label === 'Positivo').length,
@@ -217,11 +264,10 @@ export const useRealTimeAnalytics = (
             });
           }
         } else {
-          // Use hourly buckets for the last 12 hours
           for (let i = 11; i >= 0; i--) {
             const bucketStart = new Date(Date.now() - (i + 1) * 60 * 60 * 1000);
             const bucketEnd = new Date(Date.now() - i * 60 * 60 * 1000);
-            const bucketData = data.filter(d => {
+            const bucketData = processed.filter(d => {
               const time = new Date(d.created_at);
               return time >= bucketStart && time < bucketEnd;
             });
@@ -235,12 +281,11 @@ export const useRealTimeAnalytics = (
         }
       }
 
-      // Polarização e engajamento por sentimento
-      const lowConfidenceMentions = data.filter(i => (i.sentiment_confidence ?? 1) < 0.5).length;
-      const polarizationRate = totalMentions > 0
-        ? Math.round(((positiveMentions + negativeMentions) / totalMentions) * 100)
+      const lowConfidenceMentions = processed.filter(i => (i.sentiment_confidence ?? 1) < 0.5).length;
+      const polarizationRate = processedMentions > 0
+        ? Math.round(((positiveMentions + negativeMentions) / processedMentions) * 100)
         : 0;
-      const engagementBySentiment = data.reduce(
+      const engagementBySentiment = processed.reduce(
         (acc, i) => {
           const eng = (i.likes_count || 0) + (i.replies_count || 0) + (i.shares_count || 0);
           if (i.sentiment_label === 'Positivo') acc.positive += eng;
@@ -251,7 +296,25 @@ export const useRealTimeAnalytics = (
         { positive: 0, neutral: 0, negative: 0 }
       );
 
+      // Log interno de consistência
+      console.log('[Monitor] Pipeline:', {
+        totalCollected,
+        processedMentions,
+        pendingMentions,
+        processingRate: `${processingRate}%`,
+        duplicates: duplicateMentions,
+        lowConfidence: lowConfidenceMentions,
+        bySource: Object.fromEntries(
+          sourceBreakdown.map(s => [s.network, `${s.processed}/${s.collected}`])
+        ),
+      });
+
       setMetrics({
+        totalCollected,
+        processedMentions,
+        pendingMentions,
+        processingRate,
+        duplicateMentions,
         totalMentions,
         positiveMentions,
         negativeMentions,
@@ -265,9 +328,10 @@ export const useRealTimeAnalytics = (
         trend,
         mentionsByNetwork,
         sentimentHistory,
+        sourceBreakdown,
       });
 
-      // Set comments (most recent 50, deduplicated by normalized text — defesa extra)
+      // Feed: inclui processados E pendentes (com flag), deduplicado por texto
       const seenTexts = new Set<string>();
       const uniqueComments: SocialInteraction[] = [];
       for (const item of data as SocialInteraction[]) {
@@ -276,7 +340,7 @@ export const useRealTimeAnalytics = (
         if (seenTexts.has(key)) continue;
         seenTexts.add(key);
         uniqueComments.push(item);
-        if (uniqueComments.length >= 50) break;
+        if (uniqueComments.length >= 80) break;
       }
       setComments(uniqueComments);
       setError(null);

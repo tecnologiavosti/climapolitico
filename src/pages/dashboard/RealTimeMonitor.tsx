@@ -12,6 +12,7 @@ import { RealTimeKPIs } from "@/components/dashboard/realtime/RealTimeKPIs";
 import { RealTimeSentimentChart } from "@/components/dashboard/realtime/RealTimeSentimentChart";
 import { RealTimeSentimentGauge } from "@/components/dashboard/realtime/RealTimeSentimentGauge";
 import { RealTimeCommentsFeed } from "@/components/dashboard/realtime/RealTimeCommentsFeed";
+import { ProcessingStatusCard } from "@/components/dashboard/realtime/ProcessingStatusCard";
 import { cn } from "@/lib/utils";
 
 interface Candidate {
@@ -154,7 +155,13 @@ const RealTimeMonitor = () => {
           )}
           {selectedCandidate && metrics && (
             <span className="text-xs text-muted-foreground ml-auto">
-              <span className="font-semibold text-foreground tabular-nums">{metrics.totalMentions.toLocaleString("pt-BR")}</span> menções analisadas
+              <span className="font-semibold text-foreground tabular-nums">{metrics.processedMentions.toLocaleString("pt-BR")}</span>
+              {" de "}
+              <span className="tabular-nums">{metrics.totalCollected.toLocaleString("pt-BR")}</span>
+              {" analisados"}
+              {metrics.pendingMentions > 0 && (
+                <span className="ml-2 text-amber-500">• {metrics.pendingMentions.toLocaleString("pt-BR")} pendentes</span>
+              )}
             </span>
           )}
         </CardContent>
@@ -201,6 +208,15 @@ const RealTimeMonitor = () => {
             transition={{ duration: 0.4 }}
           >
             <RealTimeKPIs metrics={metrics} />
+          </motion.div>
+
+          {/* Status do processamento */}
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.03 }}
+          >
+            <ProcessingStatusCard metrics={metrics} />
           </motion.div>
 
           {/* Chart + Gauge */}
