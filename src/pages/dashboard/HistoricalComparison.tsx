@@ -1,11 +1,11 @@
-// Análise Histórica Narrativa IA — período atual vs equivalente anterior.
+// IA de Pesquisa Histórica Externa — não usa dados internos.
+// Pesquisa GDELT + Google News + Wikipedia e gera análise narrativa com IA.
 import { useEffect, useState } from "react";
 import { format, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  CalendarIcon, GitCompareArrows, Loader2, Sparkles, TrendingUp, TrendingDown,
-  AlertTriangle, Megaphone, Users, CalendarDays, MessageSquareQuote, Zap, ArrowRight,
-  Activity, Quote,
+  CalendarIcon, GitCompareArrows, Loader2, Sparkles, AlertTriangle,
+  Megaphone, CalendarDays, Quote, Zap, Activity, ArrowRight, Globe2, BookOpen, ExternalLink,
 } from "lucide-react";
 import { DateRange } from "react-day-picker";
 
@@ -22,50 +22,27 @@ import { cn } from "@/lib/utils";
 
 interface Candidate { id: string; full_name: string }
 
-interface ThemeEvolution {
-  theme: string;
-  mentionsCurrent: number;
-  mentionsPrevious: number;
-  deltaPct: number;
-  sentNegPct: number;
-  sentPosPct: number;
-  sentNeuPct: number;
+interface ExternalDoc {
+  title: string;
+  url: string;
+  date: string;
+  source: string;
+  domain?: string;
+  snippet?: string;
 }
 
 interface AnalysisResponse {
   candidate?: { id: string; name: string; party?: string };
-  summary?: {
-    candidate: string;
-    currentPeriod: { start: string; end: string; days: number; label: string };
-    previousPeriod: { start: string; end: string; days: number; label: string };
-    kpi: {
-      currentMentions: number;
-      previousMentions: number;
-      mentionsDeltaPct: number;
-      climateLevel: string;
-      climateEmoji: string;
-      sentPosPct: number;
-      sentNegPct: number;
-      sentNeuPct: number;
-      currentSentimentScore: number;
-      previousSentimentScore: number;
-    };
-    themesEvolution: ThemeEvolution[];
-    voicesOfThePeople: { phrases: { phrase: string; count: number }[]; words: { word: string; count: number }[]; totalAnalyzed: number };
-    groups: { group: string; mentions: number; theme: string; sentiment: number }[];
-    eventsImpact: {
-      name: string; date: string; type: string; description?: string | null;
-      mentionsBefore: number; mentionsAfter: number; mentionsDelta: number;
-      sentimentBefore: number; sentimentAfter: number; sentimentDelta: number;
-    }[];
-    smartTimeline: { date: string; type: string; label: string; description?: string | null; mentions?: number }[];
-  };
+  period?: { start: string; end: string };
+  sources?: { gdelt: number; googleNews: number; wikipedia: boolean; total: number };
+  wikipedia?: { extract: string; url: string } | null;
+  documents?: ExternalDoc[];
   analysis: {
-    popularClimate?: { level: string; narrative: string };
+    popularClimate?: string;
+    topThemes?: { theme: string; description: string }[];
+    voicesOfThePeople?: string[];
+    eventsImpact?: { name: string; date: string; description: string; impact: string }[];
     perceptionShift?: { from: string; to: string; explanation: string };
-    groupsNarrative?: { group: string; narrative: string }[];
-    eventsNarrative?: { event: string; impact: string }[];
-    timelineNarrative?: { date: string; title: string; narrative: string }[];
     aiFinal?: string;
     dataNote?: string;
   } | null;
@@ -82,18 +59,10 @@ function toISOEnd(d: Date): string {
   return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59)).toISOString();
 }
 
-const CLIMATE_COLOR: Record<string, string> = {
-  "Muito favorável": "bg-emerald-500/15 text-emerald-700 border-emerald-500/40",
-  "Favorável": "bg-emerald-500/10 text-emerald-600 border-emerald-500/30",
-  "Neutro": "bg-muted text-muted-foreground border-border",
-  "Desfavorável": "bg-rose-500/10 text-rose-600 border-rose-500/30",
-  "Muito desfavorável": "bg-rose-500/15 text-rose-700 border-rose-500/40",
-};
-
 export default function HistoricalComparison() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [candidateId, setCandidateId] = useState<string>("");
-  const [range, setRange] = useState<DateRange | undefined>({ from: subDays(new Date(), 30), to: new Date() });
+  const [range, setRange] = useState<DateRange | undefined>({ from: subDays(new Date(), 365), to: new Date() });
   const [loading, setLoading] = useState(false);
   const [progressMessage, setProgressMessage] = useState<string>("");
   const [result, setResult] = useState<AnalysisResponse | null>(null);
@@ -110,10 +79,10 @@ export default function HistoricalComparison() {
     if (!candidateId) { toast.error("Selecione um candidato"); return; }
     if (!range?.from || !range?.to) { toast.error("Selecione o período"); return; }
     setLoading(true);
-    setProgressMessage("Carregando interações e eventos do período...");
+    setProgressMessage("Pesquisando GDELT, Google News e Wikipedia...");
     setResult(null);
-    const t1 = window.setTimeout(() => setProgressMessage("Agregando temas, grupos e eventos..."), 2000);
-    const t2 = window.setTimeout(() => setProgressMessage("Gerando análise narrativa com IA..."), 5000);
+    const t1 = window.setTimeout(() => setProgressMessage("Consolidando fontes externas..."), 3000);
+    const t2 = window.setTimeout(() => setProgressMessage("Gerando análise narrativa histórica com IA..."), 7000);
     try {
       const { data, error } = await supabase.functions.invoke("historical-comparison", {
         body: { candidateId, startDate: toISOStart(range.from), endDate: toISOEnd(range.to) },
@@ -121,30 +90,32 @@ export default function HistoricalComparison() {
       if (error) throw error;
       setResult(data as AnalysisResponse);
     } catch (e: any) {
-      toast.error("Falha na análise: " + (e?.message || e));
+      toast.error("Falha na pesquisa: " + (e?.message || e));
     } finally {
       window.clearTimeout(t1); window.clearTimeout(t2);
       setProgressMessage(""); setLoading(false);
     }
   };
 
-  const summary = result?.summary;
   const analysis = result?.analysis;
+  const sources = result?.sources;
 
   return (
     <div className="space-y-6">
       <div>
         <div className="flex items-center gap-2">
           <GitCompareArrows className="h-6 w-6 text-primary" />
-          <h1 className="text-2xl font-bold">Análise Histórica Narrativa IA</h1>
+          <h1 className="text-2xl font-bold">IA de Pesquisa Histórica</h1>
         </div>
-        <p className="text-muted-foreground mt-1">Entenda como a percepção pública evoluiu ao longo do tempo.</p>
+        <p className="text-muted-foreground mt-1">
+          Pesquisa automática em fontes externas (GDELT, Google News, Wikipedia) e síntese narrativa com IA — independente das coletas internas.
+        </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Filtros</CardTitle>
-          <CardDescription>O sistema compara automaticamente o período selecionado com o equivalente do ano anterior (ou imediatamente anterior, se não houver dados).</CardDescription>
+          <CardTitle className="text-base">Pesquisa externa</CardTitle>
+          <CardDescription>Selecione o candidato e o período histórico. A IA buscará notícias e contexto público do período.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-3">
           <div className="space-y-2">
@@ -158,7 +129,7 @@ export default function HistoricalComparison() {
           </div>
 
           <div className="space-y-2 md:col-span-2">
-            <p className="text-sm font-medium">Período (data inicial → data final)</p>
+            <p className="text-sm font-medium">Período histórico (data inicial → data final)</p>
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !range && "text-muted-foreground")}>
@@ -178,8 +149,8 @@ export default function HistoricalComparison() {
           <div className="md:col-span-3">
             <Button onClick={handleAnalyze} disabled={loading} className="w-full md:w-auto">
               {loading
-                ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analisando narrativa histórica…</>
-                : <><Sparkles className="mr-2 h-4 w-4" />Gerar análise narrativa</>}
+                ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Pesquisando…</>
+                : <><Sparkles className="mr-2 h-4 w-4" />Pesquisar e gerar análise</>}
             </Button>
           </div>
         </CardContent>
@@ -191,8 +162,8 @@ export default function HistoricalComparison() {
             <CardContent className="py-6 flex items-center gap-3">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
               <div>
-                <p className="font-medium">{progressMessage || "Analisando..."}</p>
-                <p className="text-sm text-muted-foreground">Os dados são agregados no servidor antes da IA.</p>
+                <p className="font-medium">{progressMessage || "Pesquisando..."}</p>
+                <p className="text-sm text-muted-foreground">Buscando em múltiplas fontes públicas, sem usar a base interna.</p>
               </div>
             </CardContent>
           </Card>
@@ -200,9 +171,8 @@ export default function HistoricalComparison() {
         </div>
       )}
 
-      {result && summary && (
+      {result && (
         <>
-          {/* Aviso IA */}
           {result.aiError && (
             <Card className="border-destructive/50 bg-destructive/5">
               <CardHeader>
@@ -222,106 +192,74 @@ export default function HistoricalComparison() {
             </Card>
           )}
 
-          {/* Períodos comparados */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2"><CalendarDays className="h-5 w-5 text-primary" />Períodos comparados</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-[1fr_auto_1fr] items-center">
-              <div className="rounded-lg border p-4 bg-muted/30">
-                <p className="text-xs text-muted-foreground mb-1">{summary.previousPeriod.label}</p>
-                <p className="font-semibold">{format(new Date(summary.previousPeriod.start), "dd/MM/yyyy")} → {format(new Date(summary.previousPeriod.end), "dd/MM/yyyy")}</p>
-                <p className="text-sm text-muted-foreground mt-2">{summary.kpi.previousMentions.toLocaleString("pt-BR")} menções</p>
-              </div>
-              <ArrowRight className="h-6 w-6 text-muted-foreground hidden md:block mx-auto" />
-              <div className="rounded-lg border p-4 bg-primary/5">
-                <p className="text-xs text-muted-foreground mb-1">{summary.currentPeriod.label}</p>
-                <p className="font-semibold">{format(new Date(summary.currentPeriod.start), "dd/MM/yyyy")} → {format(new Date(summary.currentPeriod.end), "dd/MM/yyyy")}</p>
-                <p className="text-sm text-muted-foreground mt-2">
-                  {summary.kpi.currentMentions.toLocaleString("pt-BR")} menções
-                  <span className={cn("ml-2 font-semibold", summary.kpi.mentionsDeltaPct >= 0 ? "text-emerald-600" : "text-rose-600")}>
-                    {summary.kpi.mentionsDeltaPct >= 0 ? "+" : ""}{summary.kpi.mentionsDeltaPct}%
-                  </span>
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Clima Popular */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2"><Activity className="h-5 w-5 text-primary" />Clima popular</CardTitle>
-              <CardDescription>Como o povo falava do candidato no período selecionado.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-3">
-                <span className="text-4xl">{summary.kpi.climateEmoji}</span>
-                <Badge className={cn("text-sm px-3 py-1 border", CLIMATE_COLOR[summary.kpi.climateLevel] || CLIMATE_COLOR["Neutro"])}>
-                  {analysis?.popularClimate?.level || summary.kpi.climateLevel}
-                </Badge>
-                <div className="flex gap-3 text-xs ml-auto">
-                  <span className="text-emerald-600">{summary.kpi.sentPosPct}% positivo</span>
-                  <span className="text-muted-foreground">{summary.kpi.sentNeuPct}% neutro</span>
-                  <span className="text-rose-600">{summary.kpi.sentNegPct}% negativo</span>
-                </div>
-              </div>
-              {analysis?.popularClimate?.narrative && (
-                <p className="leading-relaxed text-sm md:text-base">{analysis.popularClimate.narrative}</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Mudança de Percepção */}
-          {analysis?.perceptionShift && (
+          {/* Fontes externas */}
+          {sources && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2"><Megaphone className="h-5 w-5 text-primary" />Mudança de percepção</CardTitle>
-                <CardDescription>O que mudou entre os dois períodos.</CardDescription>
+                <CardTitle className="text-base flex items-center gap-2"><Globe2 className="h-5 w-5 text-primary" />Fontes externas pesquisadas</CardTitle>
+                <CardDescription>Esta análise NÃO utiliza coletas internas. Todos os dados vêm de fontes públicas externas.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid gap-4 md:grid-cols-[1fr_auto_1fr] items-center">
-                  <div className="rounded-lg border p-4 bg-muted/30">
-                    <p className="text-xs text-muted-foreground mb-1">Antes</p>
-                    <p className="font-semibold">{analysis.perceptionShift.from}</p>
-                  </div>
-                  <ArrowRight className="h-6 w-6 text-muted-foreground hidden md:block mx-auto" />
-                  <div className="rounded-lg border p-4 bg-primary/5">
-                    <p className="text-xs text-muted-foreground mb-1">Agora</p>
-                    <p className="font-semibold">{analysis.perceptionShift.to}</p>
-                  </div>
+              <CardContent className="grid gap-3 md:grid-cols-4">
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">GDELT (notícias históricas)</p>
+                  <p className="text-2xl font-bold">{sources.gdelt}</p>
                 </div>
-                <p className="text-sm">{analysis.perceptionShift.explanation}</p>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">Google News</p>
+                  <p className="text-2xl font-bold">{sources.googleNews}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">Wikipedia</p>
+                  <p className="text-2xl font-bold">{sources.wikipedia ? "✓" : "—"}</p>
+                </div>
+                <div className="rounded-lg border p-3 bg-primary/5">
+                  <p className="text-xs text-muted-foreground">Total de documentos</p>
+                  <p className="text-2xl font-bold">{sources.total}</p>
+                </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Evolução das Narrativas (Temas) */}
-          {summary.themesEvolution?.length > 0 && (
+          {/* Contexto Wikipedia */}
+          {result.wikipedia && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2"><TrendingUp className="h-5 w-5 text-primary" />Evolução das narrativas</CardTitle>
-                <CardDescription>Temas dominantes com variação em relação ao período anterior.</CardDescription>
+                <CardTitle className="text-base flex items-center gap-2"><BookOpen className="h-5 w-5 text-primary" />Contexto biográfico (Wikipedia)</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2">
-                {summary.themesEvolution.map((t) => (
-                  <div key={t.theme} className="grid grid-cols-12 items-center gap-2 py-2 border-b last:border-0">
-                    <div className="col-span-12 md:col-span-3 font-medium text-sm">{t.theme}</div>
-                    <div className="col-span-4 md:col-span-2 text-sm">{t.mentionsCurrent.toLocaleString("pt-BR")}</div>
-                    <div className={cn("col-span-4 md:col-span-2 text-sm font-semibold flex items-center gap-1",
-                      t.deltaPct > 0 ? "text-emerald-600" : t.deltaPct < 0 ? "text-rose-600" : "text-muted-foreground")}>
-                      {t.deltaPct > 0 ? <TrendingUp className="h-3 w-3" /> : t.deltaPct < 0 ? <TrendingDown className="h-3 w-3" /> : null}
-                      {t.deltaPct >= 0 ? "+" : ""}{t.deltaPct}%
-                    </div>
-                    <div className="col-span-4 md:col-span-5">
-                      <div className="flex h-2 rounded overflow-hidden bg-muted">
-                        <div className="bg-emerald-500" style={{ width: `${t.sentPosPct}%` }} />
-                        <div className="bg-muted-foreground/40" style={{ width: `${t.sentNeuPct}%` }} />
-                        <div className="bg-rose-500" style={{ width: `${t.sentNegPct}%` }} />
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {t.sentPosPct}% pos · {t.sentNeuPct}% neu · {t.sentNegPct}% neg
-                      </p>
-                    </div>
+              <CardContent>
+                <p className="text-sm leading-relaxed">{result.wikipedia.extract}</p>
+                <a href={result.wikipedia.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary mt-2 hover:underline">
+                  Ver na Wikipedia <ExternalLink className="h-3 w-3" />
+                </a>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Clima Popular */}
+          {analysis?.popularClimate && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2"><Activity className="h-5 w-5 text-primary" />Clima popular da época</CardTitle>
+                <CardDescription>Como o povo falava do candidato no período.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="leading-relaxed text-sm md:text-base">{analysis.popularClimate}</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Temas mais discutidos */}
+          {analysis?.topThemes && analysis.topThemes.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2"><Megaphone className="h-5 w-5 text-primary" />Temas mais discutidos</CardTitle>
+                <CardDescription>Tópicos que dominavam o debate público no período.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-2">
+                {analysis.topThemes.map((t, i) => (
+                  <div key={i} className="rounded-lg border p-3">
+                    <p className="font-semibold text-sm mb-1">{t.theme}</p>
+                    <p className="text-sm text-muted-foreground">{t.description}</p>
                   </div>
                 ))}
               </CardContent>
@@ -329,129 +267,62 @@ export default function HistoricalComparison() {
           )}
 
           {/* Como o povo falava */}
-          {(summary.voicesOfThePeople?.phrases?.length > 0 || summary.voicesOfThePeople?.words?.length > 0) && (
+          {analysis?.voicesOfThePeople && analysis.voicesOfThePeople.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2"><Quote className="h-5 w-5 text-primary" />Como o povo falava</CardTitle>
-                <CardDescription>Expressões e palavras mais frequentes em posts, comentários e respostas ({summary.voicesOfThePeople.totalAnalyzed.toLocaleString("pt-BR")} textos analisados).</CardDescription>
+                <CardDescription>Expressões e frases recorrentes da época.</CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-6 md:grid-cols-2">
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase">Expressões recorrentes</p>
-                  <div className="space-y-2">
-                    {summary.voicesOfThePeople.phrases.slice(0, 12).map((p, i) => (
-                      <div key={i} className="flex items-center justify-between gap-2 text-sm">
-                        <span className="italic">"{p.phrase}"</span>
-                        <Badge variant="outline" className="text-xs">{p.count}</Badge>
-                      </div>
-                    ))}
-                    {summary.voicesOfThePeople.phrases.length === 0 && <p className="text-sm text-muted-foreground">Sem expressões recorrentes detectadas.</p>}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase">Palavras frequentes</p>
-                  <div className="flex flex-wrap gap-2">
-                    {summary.voicesOfThePeople.words.slice(0, 24).map((w, i) => {
-                      const size = Math.min(24, 12 + Math.log2(w.count) * 2);
-                      return <span key={i} className="text-foreground" style={{ fontSize: `${size}px` }}>{w.word}</span>;
-                    })}
-                    {summary.voicesOfThePeople.words.length === 0 && <p className="text-sm text-muted-foreground">Sem palavras suficientes.</p>}
-                  </div>
-                </div>
+              <CardContent className="flex flex-wrap gap-2">
+                {analysis.voicesOfThePeople.map((v, i) => (
+                  <Badge key={i} variant="outline" className="text-sm italic px-3 py-1">"{v}"</Badge>
+                ))}
               </CardContent>
             </Card>
           )}
 
-          {/* Bolhas e Grupos */}
-          {summary.groups?.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2"><Users className="h-5 w-5 text-primary" />Bolhas e grupos</CardTitle>
-                <CardDescription>Grupos discutindo o candidato, tema dominante e sentimento.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-3 md:grid-cols-2">
-                {summary.groups.map((g, i) => {
-                  const aiG = analysis?.groupsNarrative?.find(x => x.group === g.group);
-                  const sentColor = g.sentiment > 0.2 ? "text-emerald-600" : g.sentiment < -0.2 ? "text-rose-600" : "text-muted-foreground";
-                  const sentLabel = g.sentiment > 0.2 ? "Positivo" : g.sentiment < -0.2 ? "Negativo" : "Neutro";
-                  return (
-                    <div key={i} className="rounded-lg border p-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <Badge variant="secondary">{g.group}</Badge>
-                        <Badge variant="outline" className={cn("text-xs", sentColor)}>{sentLabel}</Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground mb-2">{g.mentions.toLocaleString("pt-BR")} menções · tema: <span className="font-medium text-foreground">{g.theme}</span></p>
-                      {aiG?.narrative && <p className="text-sm">{aiG.narrative}</p>}
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Eventos que Impactaram */}
-          {summary.eventsImpact?.length > 0 && (
+          {/* Eventos que impactaram */}
+          {analysis?.eventsImpact && analysis.eventsImpact.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2"><Zap className="h-5 w-5 text-primary" />Eventos que impactaram</CardTitle>
-                <CardDescription>Eventos detectados e seu efeito nas menções e sentimento (janela ±7 dias).</CardDescription>
+                <CardDescription>Acontecimentos detectados nas fontes externas e seu impacto na percepção.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                {summary.eventsImpact.map((e, i) => {
-                  const aiE = analysis?.eventsNarrative?.find(x => x.event === e.name);
-                  return (
-                    <div key={i} className="rounded-lg border p-3">
-                      <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <p className="font-semibold text-sm">{e.name}</p>
-                        <Badge variant="outline" className="text-xs">{e.type}</Badge>
-                        <span className="text-xs text-muted-foreground">{e.date}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3 text-xs mb-2">
-                        <div>
-                          <span className="text-muted-foreground">Menções: </span>
-                          <span className="font-medium">{e.mentionsBefore} → {e.mentionsAfter}</span>
-                          <span className={cn("ml-1 font-semibold", e.mentionsDelta >= 0 ? "text-emerald-600" : "text-rose-600")}>
-                            ({e.mentionsDelta >= 0 ? "+" : ""}{e.mentionsDelta})
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Sentimento: </span>
-                          <span className="font-medium">{e.sentimentBefore} → {e.sentimentAfter}</span>
-                          <span className={cn("ml-1 font-semibold", e.sentimentDelta >= 0 ? "text-emerald-600" : "text-rose-600")}>
-                            ({e.sentimentDelta >= 0 ? "+" : ""}{e.sentimentDelta}pp)
-                          </span>
-                        </div>
-                      </div>
-                      {aiE?.impact && <p className="text-sm">{aiE.impact}</p>}
+                {analysis.eventsImpact.map((e, i) => (
+                  <div key={i} className="rounded-lg border p-3">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <p className="font-semibold text-sm">{e.name}</p>
+                      <span className="text-xs text-muted-foreground">{e.date}</span>
                     </div>
-                  );
-                })}
+                    <p className="text-sm text-muted-foreground mb-2">{e.description}</p>
+                    <p className="text-sm"><span className="font-medium text-primary">Impacto:</span> {e.impact}</p>
+                  </div>
+                ))}
               </CardContent>
             </Card>
           )}
 
-          {/* Linha do Tempo Inteligente */}
-          {summary.smartTimeline?.length > 0 && (
+          {/* Mudança de Narrativa */}
+          {analysis?.perceptionShift && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2"><CalendarDays className="h-5 w-5 text-primary" />Linha do tempo inteligente</CardTitle>
-                <CardDescription>Eventos detectados e picos de menções com mudanças narrativas.</CardDescription>
+                <CardTitle className="text-base flex items-center gap-2"><Megaphone className="h-5 w-5 text-primary" />Mudança de narrativa</CardTitle>
+                <CardDescription>Como o debate evoluiu ao longo do período.</CardDescription>
               </CardHeader>
-              <CardContent>
-                <ol className="relative border-l-2 border-border ml-3 space-y-4">
-                  {summary.smartTimeline.map((t, i) => {
-                    const aiT = analysis?.timelineNarrative?.find(x => x.date === t.date);
-                    return (
-                      <li key={i} className="ml-4">
-                        <div className="absolute -left-1.5 mt-1.5 w-3 h-3 rounded-full bg-primary" />
-                        <p className="text-xs text-muted-foreground">{t.date}</p>
-                        <p className="font-semibold text-sm">{t.label}</p>
-                        {t.description && <p className="text-sm text-muted-foreground">{t.description}</p>}
-                        {aiT?.narrative && <p className="text-sm mt-1 italic text-primary/80">↪ {aiT.narrative}</p>}
-                      </li>
-                    );
-                  })}
-                </ol>
+              <CardContent className="space-y-3">
+                <div className="grid gap-4 md:grid-cols-[1fr_auto_1fr] items-center">
+                  <div className="rounded-lg border p-4 bg-muted/30">
+                    <p className="text-xs text-muted-foreground mb-1">Antes</p>
+                    <p className="font-semibold text-sm">{analysis.perceptionShift.from}</p>
+                  </div>
+                  <ArrowRight className="h-6 w-6 text-muted-foreground hidden md:block mx-auto" />
+                  <div className="rounded-lg border p-4 bg-primary/5">
+                    <p className="text-xs text-muted-foreground mb-1">Depois</p>
+                    <p className="font-semibold text-sm">{analysis.perceptionShift.to}</p>
+                  </div>
+                </div>
+                <p className="text-sm">{analysis.perceptionShift.explanation}</p>
               </CardContent>
             </Card>
           )}
@@ -460,14 +331,42 @@ export default function HistoricalComparison() {
           {analysis?.aiFinal && (
             <Card className="border-primary/40 bg-gradient-to-br from-primary/5 to-transparent">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" />Análise IA final</CardTitle>
-                <CardDescription>Síntese narrativa profunda gerada por IA.</CardDescription>
+                <CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" />Análise histórica final</CardTitle>
+                <CardDescription>Síntese narrativa profunda gerada pela IA a partir das fontes externas.</CardDescription>
               </CardHeader>
               <CardContent>
                 <p className="leading-relaxed text-sm md:text-base whitespace-pre-line">{analysis.aiFinal}</p>
                 {analysis.dataNote && (
                   <p className="text-xs text-muted-foreground italic mt-3">{analysis.dataNote}</p>
                 )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Documentos consultados */}
+          {result.documents && result.documents.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2"><CalendarDays className="h-5 w-5 text-primary" />Documentos consultados</CardTitle>
+                <CardDescription>Amostra das fontes externas usadas pela IA (ordenadas por data).</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="max-h-96 overflow-y-auto divide-y">
+                  {result.documents.map((d, i) => (
+                    <a key={i} href={d.url} target="_blank" rel="noopener noreferrer" className="block py-2 hover:bg-muted/30 px-2 rounded transition-colors">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium line-clamp-2 flex-1">{d.title}</p>
+                        <ExternalLink className="h-3 w-3 text-muted-foreground flex-shrink-0 mt-1" />
+                      </div>
+                      <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                        <Badge variant="outline" className="text-[10px] py-0">{d.source}</Badge>
+                        {d.domain && <span>{d.domain}</span>}
+                        <span>·</span>
+                        <span>{d.date.slice(0, 10)}</span>
+                      </div>
+                    </a>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           )}
