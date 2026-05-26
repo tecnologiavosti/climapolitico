@@ -112,10 +112,13 @@ export const RealTimeCommentsFeed = ({ comments, isLoading }: Props) => {
         </div>
 
         <div className="flex flex-wrap gap-1.5">
-          <SentimentChip active={sentiment === "all"} label="Todos" color="hsl(var(--primary))" onClick={() => setSentiment("all")} />
+          <SentimentChip active={sentiment === "all"} label={`Todos (${comments.length})`} color="hsl(var(--primary))" onClick={() => setSentiment("all")} />
           <SentimentChip active={sentiment === "Positivo"} label="Positivos" color="#22c55e" onClick={() => setSentiment("Positivo")} />
           <SentimentChip active={sentiment === "Neutro"} label="Neutros" color="#eab308" onClick={() => setSentiment("Neutro")} />
           <SentimentChip active={sentiment === "Negativo"} label="Negativos" color="#ef4444" onClick={() => setSentiment("Negativo")} />
+          {pendingCount > 0 && (
+            <SentimentChip active={sentiment === "Pendente"} label={`Pendentes (${pendingCount})`} color="#94a3b8" onClick={() => setSentiment("Pendente")} />
+          )}
         </div>
 
         {networks.length > 0 && (
