@@ -159,7 +159,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
       }))
       .sort((a, b) => b.engagement - a.engagement)
       .slice(0, 5);
-  }, [posts]);
+  }, [posts, summary?.topPosts]);
 
   const topTopics = useMemo(() => {
     return (summary?.dominantTopics || []).slice(0, 8)
