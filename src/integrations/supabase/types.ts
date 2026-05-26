@@ -2698,7 +2698,63 @@ export type Database = {
           sum_value: number
         }[]
       }
+      get_reactions_activity_hour_week: {
+        Args: {
+          _candidate_id?: string
+          _period_end?: string
+          _period_start?: string
+          _user_id: string
+        }
+        Returns: Json
+      }
+      get_reactions_dominant_topics: {
+        Args: {
+          _candidate_id?: string
+          _period_end?: string
+          _period_start?: string
+          _sample_limit?: number
+          _user_id: string
+        }
+        Returns: Json
+      }
+      get_reactions_engagement_by_network: {
+        Args: {
+          _candidate_id?: string
+          _period_end?: string
+          _period_start?: string
+          _user_id: string
+        }
+        Returns: Json
+      }
       get_reactions_per_post_summary: {
+        Args: {
+          _candidate_id?: string
+          _period_end?: string
+          _period_start?: string
+          _user_id: string
+        }
+        Returns: Json
+      }
+      get_reactions_sentiment_by_network: {
+        Args: {
+          _candidate_id?: string
+          _period_end?: string
+          _period_start?: string
+          _user_id: string
+        }
+        Returns: Json
+      }
+      get_reactions_top_posts: {
+        Args: {
+          _candidate_id?: string
+          _limit?: number
+          _period_end?: string
+          _period_start?: string
+          _user_id: string
+        }
+        Returns: Json
+      }
+      get_reactions_totals: {
         Args: {
           _candidate_id?: string
           _period_end?: string

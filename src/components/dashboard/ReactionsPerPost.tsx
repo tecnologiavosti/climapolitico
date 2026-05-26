@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, lazy, Suspense } from "react";
-import { useQuery } from "@tanstack/react-query";
+
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
@@ -109,44 +109,95 @@ function normalizeSentiment(label: string | null): "positive" | "negative" | "ne
   return null;
 }
 
+type SectionState<T> = { data: T | null; loading: boolean; error: string | null; ms: number };
+
+async function callRpc<T>(name: string, args: Record<string, unknown>): Promise<{ data: T | null; ms: number; error: string | null; bytes: number }> {
+  const t0 = performance.now();
+  try {
+    const { data, error } = await supabase.rpc(name as any, args);
+    const ms = Math.round(performance.now() - t0);
+    if (error) {
+      console.warn(`[ReactionsPerPost] RPC ${name} falhou em ${ms}ms`, error);
+      return { data: null, ms, error: error.message || "Falha desconhecida", bytes: 0 };
+    }
+    const bytes = JSON.stringify(data ?? null).length;
+    console.log(`[ReactionsPerPost] RPC ${name} OK em ${ms}ms — payload ${(bytes / 1024).toFixed(1)} KB`);
+    return { data: data as T, ms, error: null, bytes };
+  } catch (e: any) {
+    const ms = Math.round(performance.now() - t0);
+    console.warn(`[ReactionsPerPost] RPC ${name} exception em ${ms}ms`, e);
+    return { data: null, ms, error: e?.message || "Erro de rede", bytes: 0 };
+  }
+}
+
 export function ReactionsPerPost({ candidateId }: Props) {
   const { user } = useAuth();
-  const { isAdmin } = useAdminCheck();
+  const { isAdmin: _isAdmin } = useAdminCheck();
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodKey>("total");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
-  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   const [sentimentEnqueuedKey, setSentimentEnqueuedKey] = useState<string | null>(null);
 
   const range = useMemo(() => periodRange(selectedPeriod, customStart, customEnd), [selectedPeriod, customStart, customEnd]);
 
-  // KPIs agregados — vem 100% pré-computado do banco (RPC).
-  const { data: summary, isLoading: summaryLoading, isError: summaryIsError, refetch: refetchSummary, isFetching: summaryFetching } = useQuery({
-    queryKey: ["reactions-summary", user?.id, isAdmin, candidateId, range.start, range.end],
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_reactions_per_post_summary" as any, {
-        _user_id: user!.id,
-        _candidate_id: candidateId ?? null,
-        _period_start: range.start,
-        _period_end: range.end,
-      });
-      if (error) throw error;
-      return data as SummaryData;
-    },
-    enabled: !!user,
-    retry: 1,
-    staleTime: 5 * 60_000,
-    gcTime: 30 * 60_000,
-  });
+  type TotalsT = Omit<SummaryData, "dominantTopics" | "engagementByNetwork" | "sentimentByNetwork" | "activityHourWeek" | "topPosts">;
+  const [totalsState, setTotalsState] = useState<SectionState<TotalsT>>({ data: null, loading: true, error: null, ms: 0 });
+  const [engState, setEngState] = useState<SectionState<EngagementByNetwork[]>>({ data: [], loading: true, error: null, ms: 0 });
+  const [sentNetState, setSentNetState] = useState<SectionState<SentimentByNetwork[]>>({ data: [], loading: true, error: null, ms: 0 });
+  const [actState, setActState] = useState<SectionState<ActivityHourWeek[]>>({ data: [], loading: true, error: null, ms: 0 });
+  const [topState, setTopState] = useState<SectionState<PostRow[]>>({ data: [], loading: true, error: null, ms: 0 });
+  const [topicsState, setTopicsState] = useState<SectionState<{ topic: string; mentions: number }[]>>({ data: [], loading: true, error: null, ms: 0 });
 
-  useEffect(() => {
-    if (!summaryLoading) {
-      setLoadingTimedOut(false);
-      return;
-    }
-    const timer = window.setTimeout(() => setLoadingTimedOut(true), 15_000);
-    return () => window.clearTimeout(timer);
-  }, [summaryLoading, range.start, range.end, candidateId]);
+  const reqKey = `${user?.id}|${candidateId || "all"}|${range.start || "ALL"}|${range.end || "OPEN"}`;
+
+  const loadAll = useMemo(() => async () => {
+    if (!user) return;
+    const args = {
+      _user_id: user.id,
+      _candidate_id: candidateId ?? null,
+      _period_start: range.start,
+      _period_end: range.end,
+    };
+    setTotalsState((s) => ({ ...s, loading: true, error: null }));
+    setEngState((s) => ({ ...s, loading: true, error: null }));
+    setSentNetState((s) => ({ ...s, loading: true, error: null }));
+    setActState((s) => ({ ...s, loading: true, error: null }));
+    setTopState((s) => ({ ...s, loading: true, error: null }));
+    setTopicsState((s) => ({ ...s, loading: true, error: null }));
+
+    const tStart = performance.now();
+    const [totals, eng, sentNet, act, top, topics] = await Promise.all([
+      callRpc<TotalsT>("get_reactions_totals", args),
+      callRpc<EngagementByNetwork[]>("get_reactions_engagement_by_network", args),
+      callRpc<SentimentByNetwork[]>("get_reactions_sentiment_by_network", args),
+      callRpc<ActivityHourWeek[]>("get_reactions_activity_hour_week", args),
+      callRpc<PostRow[]>("get_reactions_top_posts", args),
+      callRpc<{ topic: string; mentions: number }[]>("get_reactions_dominant_topics", args),
+    ]);
+    console.log("[ReactionsPerPost] DEBUG carga total", {
+      tempoTotalMs: Math.round(performance.now() - tStart),
+      totaisMs: totals.ms, totaisErro: totals.error, totaisKB: (totals.bytes / 1024).toFixed(1),
+      engajamentoMs: eng.ms, engajamentoErro: eng.error,
+      sentimentoMs: sentNet.ms, sentimentoErro: sentNet.error,
+      atividadeMs: act.ms, atividadeErro: act.error,
+      topPostsMs: top.ms, topPostsErro: top.error,
+      topicosMs: topics.ms, topicosErro: topics.error,
+    });
+    setTotalsState({ data: totals.data, loading: false, error: totals.error, ms: totals.ms });
+    setEngState({ data: eng.data ?? [], loading: false, error: eng.error, ms: eng.ms });
+    setSentNetState({ data: sentNet.data ?? [], loading: false, error: sentNet.error, ms: sentNet.ms });
+    setActState({ data: act.data ?? [], loading: false, error: act.error, ms: act.ms });
+    setTopState({ data: top.data ?? [], loading: false, error: top.error, ms: top.ms });
+    setTopicsState({ data: topics.data ?? [], loading: false, error: topics.error, ms: topics.ms });
+  }, [user, candidateId, range.start, range.end]);
+
+  useEffect(() => { void loadAll(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [reqKey]);
+
+  const summary = totalsState.data;
+  const summaryLoading = totalsState.loading;
+  const summaryIsError = !!totalsState.error && !summary;
+  const summaryFetching = totalsState.loading;
+  const refetchSummary = loadAll;
 
   useEffect(() => {
     if (!user || !summary || (summary.pendingCount || 0) <= 0) return;
@@ -186,38 +237,9 @@ export function ReactionsPerPost({ candidateId }: Props) {
     const labeled = d?.classifiedCount || 0;
     const totalRecords = d?.totalRecords || 0;
     const pending = d?.pendingCount ?? Math.max(0, totalRecords - labeled);
-    const sumCheck = pos + neg + neu + pending;
-    if (d) {
-      // eslint-disable-next-line no-console
-      console.log("[ReactionsPerPost] DEBUG agregação", {
-        totalRecords,
-        classificados: labeled,
-        positivos: pos,
-        neutros: neu,
-        negativos: neg,
-        semClassificacao: pending,
-        somaTotal: sumCheck,
-        diferenca: totalRecords - sumCheck,
-        postsEncontrados: d.debug?.postsEncontrados ?? d.postsCount,
-        comentariosEncontrados: d.debug?.comentariosEncontrados ?? d.directCommentsCount,
-        respostasEncontradas: d.debug?.respostasEncontradas ?? d.repliesRowsCount,
-        subcomentariosEncontrados: d.debug?.subcomentariosEncontrados ?? d.subcommentsCount,
-        outrosRegistrosEncontrados: d.debug?.outrosRegistrosEncontrados ?? d.otherRecordsCount,
-        redesEncontradas: d.debug?.redesEncontradas ?? d.networkBreakdown?.length,
-        registrosPorRede: d.debug?.registrosPorRede ?? d.networkBreakdown,
-        topPostsRecebidos: d.topPosts?.length || 0,
-      });
-      if (sumCheck !== totalRecords) {
-        // eslint-disable-next-line no-console
-        console.warn("[ReactionsPerPost] INCONSISTÊNCIA pos+neu+neg+pending ≠ totalRecords", {
-          totalRecords, sumCheck, diff: totalRecords - sumCheck,
-        });
-      }
-    }
     const denom = totalRecords > 0 ? totalRecords : 1;
     return {
-      pos, neg, neu, labeled, pending,
-      totalRecords,
+      pos, neg, neu, labeled, pending, totalRecords,
       postsCount: d?.postsCount || 0,
       commentsCount: d?.commentsCount || 0,
       totalLikes: d?.totalLikes || 0,
@@ -231,20 +253,17 @@ export function ReactionsPerPost({ candidateId }: Props) {
   }, [summary]);
 
   const top5 = useMemo(() => {
-    const list = summary?.topPosts || [];
+    const list = topState.data || [];
     return [...list]
-      .map((p) => ({
-        ...p,
-        engagement: p.engagement ?? ((p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0)),
-      }))
-      .sort((a, b) => b.engagement - a.engagement)
+      .map((p) => ({ ...p, engagement: p.engagement ?? ((p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0)) }))
+      .sort((a, b) => (b.engagement || 0) - (a.engagement || 0))
       .slice(0, 5);
-  }, [summary?.topPosts]);
+  }, [topState.data]);
 
   const topTopics = useMemo(() => {
-    return (summary?.dominantTopics || []).slice(0, 8)
+    return (topicsState.data || []).slice(0, 8)
       .map((t) => ({ label: t.topic.charAt(0).toUpperCase() + t.topic.slice(1), mentions: t.mentions }));
-  }, [summary?.dominantTopics]);
+  }, [topicsState.data]);
 
   function dominantSentiment(label: string | null) {
     const s = normalizeSentiment(label);
@@ -284,39 +303,23 @@ export function ReactionsPerPost({ candidateId }: Props) {
         </div>
       </div>
 
-      {(summaryLoading || loadingTimedOut) && !summaryIsError ? (
-        loadingTimedOut ? (
-          <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-border bg-muted/30 py-8 text-center">
-            <AlertCircle className="h-5 w-5 text-muted-foreground" />
-            <p className="text-sm font-medium">Não foi possível carregar os dados</p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setLoadingTimedOut(false);
-                refetchSummary();
-              }}
-              disabled={summaryFetching}
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />Atualizar análise
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
-            <p className="text-sm text-muted-foreground">Carregando análise de reações...</p>
-            <Skeleton className="h-24 w-full" />
-          </div>
-        )
+      {summaryLoading && !summaryIsError ? (
+        <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
+          <p className="text-sm text-muted-foreground">Processando análise...</p>
+          <Skeleton className="h-24 w-full" />
+        </div>
       ) : summaryIsError ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-border bg-muted/30 py-8 text-center">
           <AlertCircle className="h-5 w-5 text-muted-foreground" />
           <p className="text-sm font-medium">Não foi possível carregar os dados</p>
+          <p className="text-xs text-muted-foreground max-w-md">
+            Detalhe: {totalsState.error}
+          </p>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => {
-              refetchSummary();
-            }}
+            onClick={() => { refetchSummary(); }}
+            disabled={summaryFetching}
           >
             <RefreshCw className="mr-2 h-4 w-4" />Atualizar análise
           </Button>
@@ -372,9 +375,9 @@ export function ReactionsPerPost({ candidateId }: Props) {
               negative={totals.neg}
               neutral={totals.neu}
               pending={totals.pending}
-              engagementByNetwork={summary?.engagementByNetwork || []}
-              sentimentByNetwork={summary?.sentimentByNetwork || []}
-              activityHourWeek={summary?.activityHourWeek || []}
+              engagementByNetwork={engState.data || []}
+              sentimentByNetwork={sentNetState.data || []}
+              activityHourWeek={actState.data || []}
             />
           </Suspense>
 
