@@ -35,21 +35,42 @@ function logJSON(level: string, msg: string, extra: Record<string, unknown> = {}
 
 type Provider = { name: string; call: (text: string) => Promise<{ label: string; score: number; confidence: number }> };
 
-// Heuristic PT-BR fallback — calibrated to be decisive (less Neutro)
+// Heurística PT-BR contextual — score contínuo -1..+1
+// Considera apoio/mobilização, crítica/denúncia, factual neutralizador, hashtags, emojis, intensificadores.
 function heuristic(text: string) {
   const t = text.toLowerCase();
-  const pos = /(bom|[óo]tim|excelen|adoro|maravilh|parab[ée]n|melhor|apoio|forte|incr[íi]vel|gosto|gostei|mito|her[óo]i|orgulho|votarei|voto\s+em|te\s+amo|presidente|for[cç]a|vai\s+ganhar|vencer|vit[óo]ria|sucesso|deus\s+aben|honesto|trabalhador|competente|sensacional|brilhante|admiro|respeito|salvou|melhorou|fant[áa]stico|top|fenomenal|✨|❤|👏|🙏|✊|🇧🇷|💚|💛|🥰|😍|🤩|👍|💪|🫡)/g;
-  const neg = /(ruim|p[ée]ssim|horr[íi]ve|odeio|ladr[ãa]o|corrupt|mentiros|vagabund|bandido|\bfora\b|jamais|nunca|safad|canalha|vergonha|nojo|[óo]dio|fracass|incompetente|idiota|burro|imbecil|lixo|merda|fdp|gado|petralha|bolsominion|destru|enganador|farsa|hip[óo]crita|trai[cç][ãa]o|escroto|absurdo|cad[ée]ia|preso|impeachment|criminoso|pilantra|in[úu]til|decep[cç][ãa]o|odiei|💩|👎|🤮|😡|🤡|🤬|🙄|😤|🖕)/g;
-  const p = (t.match(pos) || []).length;
-  const n = (t.match(neg) || []).length;
-  if (p === 0 && n === 0) return { label: "Neutro", score: 0, confidence: 0.3 };
-  const score = (p - n) / Math.max(1, p + n);
-  // Lowered threshold from 0.15 → 0.05 to reduce false-Neutro classifications
-  return {
-    label: score > 0.05 ? "Positivo" : score < -0.05 ? "Negativo" : "Neutro",
-    score,
-    confidence: 0.6 + 0.05 * Math.min(4, p + n),
-  };
+
+  const supportLex = /(juntos|vamos\s+vencer|vamos\s+ganhar|conta\s+comigo|estou\s+com|fechad[ao]\s+com|apoio\s+total|incondicional|nosso\s+candidato|meu\s+voto|votarei|voto\s+\d+|mito|lenda|her[óo]i|orgulho|salvador|melhor\s+do\s+brasil|grande\s+l[íi]der|vencer|vit[óo]ria|esperan[cç]a|mudan[cç]a|trabalhador|honesto|competente|brilhante|sensacional|maravilh|admiro|respeito|gratid[ãa]o|deus\s+aben|for[cç]a|continue|n[ãa]o\s+desista|estamos\s+contigo|parab[ée]n|excelen|fant[áa]stico|fenomenal)/g;
+  const supportEmoji = /(❤|♥|💚|💛|💙|🧡|🤍|👏|🙏|✊|💪|🇧🇷|🥰|😍|🤩|👍|🫡|✨|🌟|⭐|🔥)/gu;
+  const supportHashtag = /#(fechado?com\w*|juntos\w*|apoio\w*|mito\w*|mudan[cç]a\w*|vamos\w*|forca\w*|for[cç]a\w*|euvoto\w*|votoem\w*)/g;
+
+  const attackLex = /(corrupt|ladr[ãa]o|roubou|desviou|propin|esc[âa]ndalo|acusad[ao]|investig|denunciad|criminoso|pilantra|bandido|vagabund|mentiros|farsant|hip[óo]crita|traidor|trai[cç][ãa]o|covarde|incompetente|despreparad|idiota|burro|imbecil|in[úu]til|lixo|merda|fdp|ot[áa]rio|cad[ée]ia|preso|impeachment|\bfora\b|jamais|nunca\s+mais|fracass|destru|desastr|terr[íi]vel|p[ée]ssim|horr[íi]ve|nojo|nojent|[óo]dio|odeio|odiei|vergonha|verg[oô]nha|absurdo|inaceit[áa]vel|chocante|revolt|indigna)/g;
+  const attackEmoji = /(💩|👎|🤮|😡|🤡|🤬|🙄|😤|🖕|💀)/gu;
+  const attackHashtag = /#(fora\w*|impeachment\w*|cad[ée]ia\w*|corrupt\w*|nuncamais\w*)/g;
+
+  const factualLex = /(segundo\s+\w+|de\s+acordo\s+com|informou|declarou|afirmou|disse\s+que|agenda\s+oficial|reuni[ãa]o\s+com|expectativa\s+por|movimenta\s+viagem|registra|n[ãa]o\s+registra|comunicado|nota\s+oficial|confirmou|negou|esclareceu)/g;
+  const intens = /(muito|extrem|absurdamente|completamente|totalmente|sempre|infinit)/g;
+
+  const sup = (t.match(supportLex) || []).length
+            + (text.match(supportEmoji) || []).length * 1.2
+            + (t.match(supportHashtag) || []).length * 1.5;
+  const atk = (t.match(attackLex) || []).length
+            + (text.match(attackEmoji) || []).length * 1.2
+            + (t.match(attackHashtag) || []).length * 1.5;
+  const fact = (t.match(factualLex) || []).length;
+  const boost = 1 + Math.min(0.5, (t.match(intens) || []).length * 0.15);
+
+  if (sup === 0 && atk === 0) {
+    return { label: "Neutro", score: 0, confidence: fact > 0 ? 0.55 : 0.3 };
+  }
+
+  let raw = (sup - atk) / Math.max(1, sup + atk);
+  raw = Math.max(-1, Math.min(1, raw * boost));
+  if (fact >= 2 && Math.abs(raw) < 0.5) raw *= 0.4;
+
+  const label = raw > 0.20 ? "Positivo" : raw < -0.20 ? "Negativo" : "Neutro";
+  const confidence = Math.min(0.95, 0.55 + 0.07 * Math.min(5, sup + atk));
+  return { label, score: raw, confidence };
 }
 
 async function callLovable(text: string) {
