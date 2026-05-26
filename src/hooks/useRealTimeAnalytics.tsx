@@ -27,7 +27,10 @@ export interface RealTimeMetrics {
   positiveMentions: number;
   negativeMentions: number;
   neutralMentions: number;
+  lowConfidenceMentions: number;
   sentimentScore: number;
+  polarizationRate: number;
+  engagementBySentiment: { positive: number; neutral: number; negative: number };
   totalEngagement: number;
   engagementPerMinute: number;
   trend: 'up' | 'down' | 'stable';
