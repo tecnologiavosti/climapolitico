@@ -1,4 +1,4 @@
-import { useMemo, useState, lazy, Suspense } from "react";
+import { useEffect, useMemo, useState, lazy, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -7,9 +7,10 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { Heart, Share2, ThumbsUp, ThumbsDown, Minus } from "lucide-react";
+import { AlertCircle, Heart, RefreshCw, Share2, ThumbsUp, ThumbsDown, Minus } from "lucide-react";
 import { subDays } from "date-fns";
 import { isHiddenNetwork } from "@/lib/networkVisibility";
 
@@ -37,6 +38,7 @@ interface SummaryData {
   totalShares: number;
   totalInteractions: number;
   dominantTopics: { topic: string; mentions: number }[];
+  topPosts?: PostRow[];
 }
 
 export interface PostRow {
@@ -71,11 +73,12 @@ export function ReactionsPerPost({ candidateId }: Props) {
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodKey>("total");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
 
   const range = useMemo(() => periodRange(selectedPeriod, customStart, customEnd), [selectedPeriod, customStart, customEnd]);
 
   // KPIs agregados — vem 100% pré-computado do banco (RPC).
-  const { data: summary, isLoading: summaryLoading } = useQuery({
+  const { data: summary, isLoading: summaryLoading, isError: summaryIsError, refetch: refetchSummary, isFetching: summaryFetching } = useQuery({
     queryKey: ["reactions-summary", user?.id, isAdmin, candidateId, range.start, range.end],
     queryFn: async () => {
       const { data, error } = await supabase.rpc("get_reactions_per_post_summary" as any, {
@@ -88,13 +91,14 @@ export function ReactionsPerPost({ candidateId }: Props) {
       return data as SummaryData;
     },
     enabled: !!user,
+    retry: 1,
     staleTime: 5 * 60_000,
     gcTime: 30 * 60_000,
   });
 
   // Amostra de interações (posts + comentários + respostas) para gráficos + top 5.
   // Totais reais vêm do RPC agregado; aqui trazemos só uma amostra p/ visualizações.
-  const { data: posts, isLoading: postsLoading } = useQuery({
+  const { data: posts, isLoading: postsLoading, isError: postsIsError, refetch: refetchPosts } = useQuery({
     queryKey: ["reactions-interactions", user?.id, isAdmin, candidateId, range.start, range.end],
     queryFn: async () => {
       let q = supabase
@@ -111,9 +115,19 @@ export function ReactionsPerPost({ candidateId }: Props) {
       return (data as PostRow[]).filter((r) => !isHiddenNetwork(r.social_network));
     },
     enabled: !!user,
+    retry: 1,
     staleTime: 5 * 60_000,
     gcTime: 30 * 60_000,
   });
+
+  useEffect(() => {
+    if (!summaryLoading && !postsLoading) {
+      setLoadingTimedOut(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setLoadingTimedOut(true), 15_000);
+    return () => window.clearTimeout(timer);
+  }, [summaryLoading, postsLoading, range.start, range.end, candidateId]);
 
   const totals = useMemo(() => {
     const d = summary;
@@ -137,7 +151,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
   }, [summary]);
 
   const top5 = useMemo(() => {
-    const list = posts || [];
+    const list = summary?.topPosts?.length ? summary.topPosts : (posts || []);
     return [...list]
       .map((p) => ({
         ...p,
