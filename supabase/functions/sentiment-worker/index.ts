@@ -77,7 +77,28 @@ async function callLovable(text: string) {
   const t0 = Date.now();
   try {
     const res = await callAICerebrasFirst({
-      systemMsg: "Você classifica sentimento político em PT-BR. Seja DECISIVO: use 'Neutro' APENAS quando o texto for puramente informativo, uma pergunta sem opinião, ou impossível de determinar polaridade. Comentários curtos de apoio ('Lula presidente', 'Parabéns', 'mito') são Positivo. Críticas, xingamentos, sarcasmo crítico são Negativo. Responda APENAS JSON: {\"label\":\"Positivo|Negativo|Neutro\",\"score\":-1..1,\"confidence\":0..1}",
+      systemMsg: `Você é um analista sênior de mídia social política brasileira. Classifique o sentimento considerando CONTEXTO completo, não palavras isoladas.
+
+ESCALA -1.0 a +1.0:
+• POSITIVO (+0.20 a +1.0): apoio explícito, mobilização ("Juntos vamos vencer"), elogios, celebração, hashtags #fechadoCom #mito #vamos, emojis ❤️👏🙏🇧🇷, gratidão, defesa.
+• NEGATIVO (-1.0 a -0.20): críticas, acusações, denúncias, ataques, ironia destrutiva, xingamentos, hashtags #fora #impeachment #cadeia, emojis 💩🤡🤬, pedidos de prisão/saída.
+• NEUTRO (-0.19 a +0.19): notícias factuais sem juízo ("Agenda oficial não registra encontro"), anúncios, perguntas informativas.
+
+EXEMPLOS:
+"Juntos vamos vencer! Compartilhe para mostrar apoio" → {"label":"Positivo","score":0.75,"confidence":0.9}
+"Expectativa por reunião com Trump movimenta viagem de Flávio" → {"label":"Neutro","score":0.1,"confidence":0.65}
+"Agenda oficial não registra encontro" → {"label":"Neutro","score":0,"confidence":0.7}
+"Mais um escândalo de corrupção, vergonha!" → {"label":"Negativo","score":-0.85,"confidence":0.95}
+"Mito! O melhor presidente que tivemos 🇧🇷👏" → {"label":"Positivo","score":0.9,"confidence":0.95}
+"que governo maravilhoso, só destruiu tudo" → {"label":"Negativo","score":-0.7,"confidence":0.85} (ironia)
+
+REGRAS:
+- Detecte IRONIA e SARCASMO.
+- Hashtags e emojis são FORTES sinais de polaridade.
+- NÃO classifique como Neutro apenas porque o texto é curto ou cita nome próprio.
+- Se realmente incerto, use confidence < 0.5.
+
+Responda APENAS JSON: {"label":"Positivo|Negativo|Neutro","score":-1..1,"confidence":0..1}`,
       userPrompt: text.slice(0, 500),
       jsonMode: true,
       maxTokens: 200,
@@ -89,11 +110,13 @@ async function callLovable(text: string) {
     const m = content.match(/\{[\s\S]*?\}/);
     const parsed = JSON.parse(m?.[0] ?? "{}");
     await sb.rpc("record_provider_call", { _provider: res.provider, _success: true, _latency_ms: latency });
-    return {
-      label: parsed.label || "Neutro",
-      score: Number(parsed.score) || 0,
-      confidence: Number(parsed.confidence) || 0.5,
-    };
+    const score = Number(parsed.score) || 0;
+    // Reconcilia label com score (defesa contra inconsistência da IA)
+    let label = parsed.label || "Neutro";
+    if (score > 0.20) label = "Positivo";
+    else if (score < -0.20) label = "Negativo";
+    else label = "Neutro";
+    return { label, score, confidence: Number(parsed.confidence) || 0.5 };
   } catch (e) {
     const latency = Date.now() - t0;
     await sb.rpc("record_provider_call", { _provider: "ai_chain", _success: false, _latency_ms: latency });
