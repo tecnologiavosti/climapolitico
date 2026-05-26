@@ -286,7 +286,6 @@ export function ReactionsPerPost({ candidateId }: Props) {
               onClick={() => {
                 setLoadingTimedOut(false);
                 refetchSummary();
-                refetchPosts();
               }}
               disabled={summaryFetching}
             >
@@ -308,7 +307,6 @@ export function ReactionsPerPost({ candidateId }: Props) {
             size="sm"
             onClick={() => {
               refetchSummary();
-              refetchPosts();
             }}
           >
             <RefreshCw className="mr-2 h-4 w-4" />Atualizar análise
@@ -359,22 +357,17 @@ export function ReactionsPerPost({ candidateId }: Props) {
           )}
 
           {/* Gráficos — lazy loaded */}
-          {postsLoading ? (
-            <Skeleton className="h-80 w-full" />
-          ) : postsIsError ? (
-            <div className="rounded-lg border border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-              Gráficos indisponíveis no momento. As métricas agregadas e o top 5 foram carregados.
-            </div>
-          ) : (
-            <Suspense fallback={<Skeleton className="h-80 w-full" />}>
-              <ChartsBlock
-                posts={posts || []}
-                positive={totals.pos}
-                negative={totals.neg}
-                neutral={totals.neu}
-              />
-            </Suspense>
-          )}
+          <Suspense fallback={<Skeleton className="h-80 w-full" />}>
+            <ChartsBlock
+              positive={totals.pos}
+              negative={totals.neg}
+              neutral={totals.neu}
+              pending={totals.pending}
+              engagementByNetwork={summary?.engagementByNetwork || []}
+              sentimentByNetwork={summary?.sentimentByNetwork || []}
+              activityHourWeek={summary?.activityHourWeek || []}
+            />
+          </Suspense>
 
           {/* Top 5 posts */}
           <div>
