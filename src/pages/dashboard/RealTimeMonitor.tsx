@@ -155,7 +155,13 @@ const RealTimeMonitor = () => {
           )}
           {selectedCandidate && metrics && (
             <span className="text-xs text-muted-foreground ml-auto">
-              <span className="font-semibold text-foreground tabular-nums">{metrics.totalMentions.toLocaleString("pt-BR")}</span> menções analisadas
+              <span className="font-semibold text-foreground tabular-nums">{metrics.processedMentions.toLocaleString("pt-BR")}</span>
+              {" de "}
+              <span className="tabular-nums">{metrics.totalCollected.toLocaleString("pt-BR")}</span>
+              {" analisados"}
+              {metrics.pendingMentions > 0 && (
+                <span className="ml-2 text-amber-500">• {metrics.pendingMentions.toLocaleString("pt-BR")} pendentes</span>
+              )}
             </span>
           )}
         </CardContent>
