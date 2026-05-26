@@ -92,13 +92,14 @@ export const SocialMediaTemporalEvolution = ({
         return d.toLocaleDateString('pt-BR');
       };
 
-      const networkMap: Record<string, Record<string, TemporalData & { _scoreSum: number; _scoreCnt: number }>> = {};
+      const networkMap: Record<string, Record<string, TemporalData & { _scoreSum: number; _scoreCnt: number; _ts: number }>> = {};
       const networksSet = new Set<string>();
 
       rows.forEach((r) => {
         const network = r.social_network || 'Outro';
         networksSet.add(network);
         const key = bucketKey(r.created_at);
+        const ts = new Date(r.created_at).getTime();
 
         if (!networkMap[network]) networkMap[network] = {};
         if (!networkMap[network][key]) {
@@ -111,9 +112,11 @@ export const SocialMediaTemporalEvolution = ({
             negativeCount: 0,
             _scoreSum: 0,
             _scoreCnt: 0,
+            _ts: ts,
           };
         }
         const b = networkMap[network][key];
+        b._ts = Math.min(b._ts, ts);
         b.mentions += 1;
         if (r.sentiment_label === 'Positivo') b.positiveCount++;
         else if (r.sentiment_label === 'Neutro') b.neutralCount++;
@@ -127,6 +130,7 @@ export const SocialMediaTemporalEvolution = ({
       const temporalDataByNetwork: Record<string, TemporalData[]> = {};
       Object.entries(networkMap).forEach(([network, dateMap]) => {
         temporalDataByNetwork[network] = Object.values(dateMap)
+          .sort((a, b) => a._ts - b._ts)
           .map((b) => ({
             date: b.date,
             mentions: b.mentions,
@@ -134,11 +138,7 @@ export const SocialMediaTemporalEvolution = ({
             positiveCount: b.positiveCount,
             neutralCount: b.neutralCount,
             negativeCount: b.negativeCount,
-          }))
-          .sort((a, b) => {
-            // ordena por primeira ocorrência cronológica
-            return 0;
-          });
+          }));
       });
 
       return {
