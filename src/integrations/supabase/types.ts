@@ -2736,6 +2736,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      network_view_aggregate: {
+        Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
+        Returns: Json
+      }
       prune_edge_function_logs: { Args: never; Returns: undefined }
       reactivate_youtube_keys: { Args: never; Returns: undefined }
       record_collector_call: {

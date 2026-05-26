@@ -7,29 +7,37 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { isHiddenNetwork } from "@/lib/networkVisibility";
+import { Button } from "@/components/ui/button";
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
-import { MessageSquare, TrendingUp, TrendingDown, Heart, Hash, Clock, Users } from "lucide-react";
-import { format, subDays, getHours } from "date-fns";
-import { fetchAllPaginated } from "@/lib/supabasePagination";
-import { relevanceScore, type CandidateContext } from "@/lib/candidateMatcher";
+import {
+  MessageSquare, TrendingUp, TrendingDown, Heart, Hash, Users, Activity, Crown, Sparkles, ExternalLink,
+} from "lucide-react";
+import { format, parseISO } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
-const NETWORKS: { value: string; label: string }[] = [
+const NETWORKS = [
   { value: "all", label: "Todas" },
   { value: "instagram", label: "Instagram" },
   { value: "twitter", label: "X / Twitter" },
   { value: "facebook", label: "Facebook" },
   { value: "youtube", label: "YouTube" },
   { value: "tiktok", label: "TikTok" },
-  { value: "reddit", label: "Reddit" },
   { value: "telegram", label: "Telegram" },
+  { value: "reddit", label: "Reddit" },
   { value: "google_news", label: "Notícias" },
   { value: "linkedin", label: "LinkedIn" },
-  { value: "bluesky", label: "Bluesky" },
+];
+
+const PERIODS = [
+  { value: 7, label: "7 dias" },
+  { value: 30, label: "30 dias" },
+  { value: 90, label: "90 dias" },
+  { value: 180, label: "6 meses" },
+  { value: 365, label: "1 ano" },
+  { value: 3650, label: "Total" },
 ];
 
 const COLORS = {
@@ -37,256 +45,208 @@ const COLORS = {
   negative: "hsl(var(--destructive))",
   neutral: "hsl(var(--warning))",
   primary: "hsl(var(--primary))",
+  accent: "hsl(var(--accent))",
 };
 
-const STOPWORDS = new Set([
-  "a","o","e","de","da","do","das","dos","em","um","uma","para","por","com",
-  "que","se","na","no","nas","nos","é","ao","aos","ou","mais","como","muito",
-  "ser","ter","seu","sua","seus","suas","mas","já","só","pra","pro","isso",
-  "esse","essa","este","esta","tudo","nada","quem","onde","quando",
-  "porque","quer","tá","tô","aqui","ali","lá","sim","não","você","voce",
-  "ele","ela","eles","elas","nós","vocês","minha","meu","this","that","the",
-  "of","and","to","in","is","it","for","on","at","with","i","you","https",
-  "http","www","com","br",
-]);
+const DOW = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
-interface CandidateRow {
-  id: string;
-  full_name: string;
-  party: string | null;
-  region: string | null;
-}
+type Agg = {
+  kpis: {
+    total: number; authors: number; engagement: number;
+    likes: number; replies: number; shares: number;
+    pos: number; neg: number; neu: number;
+    prev_total: number; prev_pos: number; prev_neg: number; prev_neu: number;
+  };
+  series: { day: string; p: number; n: number; u: number }[];
+  by_network: { network: string; mentions: number; likes: number; replies: number; shares: number; engagement: number }[];
+  heatmap: { dow: number; hr: number; c: number }[];
+  hashtags: { tag: string; c: number }[];
+  topics: { theme: string; mentions: number; pos: number; neg: number; neu: number }[];
+  top_posts: { id: string; social_network: string; comment_text: string; comment_author: string; sent: string; eng: number; likes: number; replies: number; shares: number; original_posted_at: string; collected_at: string }[];
+};
+
+const fmt = (n: number) => n.toLocaleString("pt-BR");
+const compact = (n: number) => Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
+const growth = (cur: number, prev: number) => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : cur > 0 ? 100 : 0);
 
 export default function NetworkView() {
   const { user } = useAuth();
   const { isAdmin } = useAdminCheck();
   const [network, setNetwork] = useState("all");
   const [candidateId, setCandidateId] = useState<string>("all");
-  const [days, setDays] = useState(7);
+  const [days, setDays] = useState(30);
 
   const { data: candidates } = useQuery({
     queryKey: ["nv-candidates", user?.id, isAdmin],
     queryFn: async () => {
-      let q = supabase.from("candidates").select("id, full_name, party, region").eq("status", "active");
+      let q = supabase.from("candidates").select("id, full_name").eq("status", "active");
       if (!isAdmin && user) q = q.eq("user_id", user.id);
       const { data, error } = await q.order("full_name");
       if (error) throw error;
-      return (data || []) as CandidateRow[];
+      return data || [];
     },
     enabled: !!user,
   });
 
-  // 100% das interações do período (paginação completa)
-  const { data: interactions, isLoading } = useQuery({
-    queryKey: ["nv-interactions-full", user?.id, isAdmin, network, candidateId, days],
-    queryFn: async () => {
-      const since = subDays(new Date(), days).toISOString();
-      const rows = await fetchAllPaginated<any>((from, to) => {
-        let q = supabase
-          .from("social_interactions")
-          .select(
-            "id, social_network, comment_text, comment_author, likes_count, replies_count, shares_count, sentiment_label, sentiment_score, original_posted_at, collected_at, candidate_id",
-          )
-          .gte("collected_at", since)
-          .order("collected_at", { ascending: false })
-          .range(from, to);
-        if (!isAdmin && user) q = q.eq("user_id", user.id);
-        if (network !== "all") q = q.eq("social_network", network);
-        if (candidateId !== "all") q = q.eq("candidate_id", candidateId);
-        return q;
+  const { data: agg, isLoading, error } = useQuery({
+    queryKey: ["nv-agg", user?.id, network, candidateId, days],
+    queryFn: async (): Promise<Agg> => {
+      const { data, error } = await supabase.rpc("network_view_aggregate", {
+        p_candidate_id: candidateId === "all" ? null : candidateId,
+        p_network: network === "all" ? null : network,
+        p_days: days,
       });
-      return rows.filter((r) => !isHiddenNetwork(r.social_network));
+      if (error) throw error;
+      return data as unknown as Agg;
     },
     enabled: !!user,
-    staleTime: 60_000,
+    staleTime: 5 * 60_000,
   });
 
-  const kpis = useMemo(() => {
-    const list = interactions || [];
-    const total = list.length;
-    const likes = list.reduce((s, r) => s + (r.likes_count || 0), 0);
-    const replies = list.reduce((s, r) => s + (r.replies_count || 0), 0);
-    const shares = list.reduce((s, r) => s + (r.shares_count || 0), 0);
-    const engagement = likes + replies + shares;
-    const pos = list.filter((r) => r.sentiment_label === "positive").length;
-    const neg = list.filter((r) => r.sentiment_label === "negative").length;
-    const neu = list.filter((r) => r.sentiment_label === "neutral").length;
-    const labeled = pos + neg + neu;
-    const sentimentPct = labeled > 0 ? Math.round((pos / labeled) * 100) : 0;
-
-    const half = Math.floor(days / 2);
-    const cutoff = subDays(new Date(), half).getTime();
-    const recent = list.filter((r) => new Date(r.collected_at || 0).getTime() >= cutoff).length;
-    const previous = list.length - recent;
-    const growth = previous > 0 ? Math.round(((recent - previous) / previous) * 100) : recent > 0 ? 100 : 0;
-    const authors = new Set(list.map((r) => r.comment_author).filter(Boolean)).size;
-    return { total, engagement, sentimentPct, growth, pos, neg, neu, authors, likes, replies, shares };
-  }, [interactions, days]);
+  const k = agg?.kpis;
+  const total = k?.total ?? 0;
+  const labeled = (k?.pos ?? 0) + (k?.neg ?? 0) + (k?.neu ?? 0);
+  const posPct = pct(k?.pos ?? 0, labeled);
+  const negPct = pct(k?.neg ?? 0, labeled);
+  const neuPct = pct(k?.neu ?? 0, labeled);
+  const prevLabeled = (k?.prev_pos ?? 0) + (k?.prev_neg ?? 0) + (k?.prev_neu ?? 0);
+  const prevPosPct = pct(k?.prev_pos ?? 0, prevLabeled);
+  const prevNegPct = pct(k?.prev_neg ?? 0, prevLabeled);
+  const prevNeuPct = pct(k?.prev_neu ?? 0, prevLabeled);
+  const growthPct = growth(total, k?.prev_total ?? 0);
+  const dominant = agg?.by_network?.[0]?.network ?? "—";
 
   const sentimentSeries = useMemo(() => {
-    const map = new Map<string, { date: string; positive: number; negative: number; neutral: number }>();
-    for (let i = days - 1; i >= 0; i--) {
-      const d = format(subDays(new Date(), i), "dd/MM");
-      map.set(d, { date: d, positive: 0, negative: 0, neutral: 0 });
-    }
-    for (const r of interactions || []) {
-      if (!r.collected_at) continue;
-      const key = format(new Date(r.collected_at), "dd/MM");
-      const e = map.get(key);
-      if (!e) continue;
-      if (r.sentiment_label === "positive") e.positive++;
-      else if (r.sentiment_label === "negative") e.negative++;
-      else if (r.sentiment_label === "neutral") e.neutral++;
-    }
-    return Array.from(map.values());
-  }, [interactions, days]);
-
-  const sentimentPie = useMemo(() => [
-    { name: "Positivo", value: kpis.pos, color: COLORS.positive },
-    { name: "Negativo", value: kpis.neg, color: COLORS.negative },
-    { name: "Neutro", value: kpis.neu, color: COLORS.neutral },
-  ].filter((d) => d.value > 0), [kpis]);
-
-  const engagementByNetwork = useMemo(() => {
-    const m = new Map<string, { network: string; engagement: number; mentions: number }>();
-    for (const r of interactions || []) {
-      const k = r.social_network || "outro";
-      const e = m.get(k) || { network: k, engagement: 0, mentions: 0 };
-      e.engagement += (r.likes_count || 0) + (r.replies_count || 0) + (r.shares_count || 0);
-      e.mentions += 1;
-      m.set(k, e);
-    }
-    return Array.from(m.values()).sort((a, b) => b.engagement - a.engagement);
-  }, [interactions]);
-
-  // Contexto do candidato selecionado p/ desambiguação
-  const candidateCtx: CandidateContext | null = useMemo(() => {
-    if (candidateId === "all") return null;
-    const c = candidates?.find((x) => x.id === candidateId);
-    if (!c) return null;
-    return {
-      fullName: c.full_name,
-      party: c.party,
-      state: c.region,
-      role: null,
-    };
-  }, [candidateId, candidates]);
-
-  // Top posts — com filtro de relevância contextual
-  const topPosts = useMemo(() => {
-    const arr = [...(interactions || [])].map((r) => {
-      const score = candidateCtx ? relevanceScore(r.comment_text, candidateCtx) : 1;
+    return (agg?.series ?? []).map((d) => {
+      const tot = d.p + d.n + d.u;
       return {
-        ...r,
-        eng: (r.likes_count || 0) + (r.replies_count || 0) + (r.shares_count || 0),
-        relevance: score,
+        date: format(parseISO(d.day), "dd/MM"),
+        positivo: d.p,
+        negativo: d.n,
+        neutro: d.u,
+        positivoPct: pct(d.p, tot),
+        negativoPct: pct(d.n, tot),
+        neutroPct: pct(d.u, tot),
       };
     });
-    const filtered = candidateCtx ? arr.filter((r) => r.relevance >= 0.4) : arr;
-    return filtered.sort((a, b) => b.eng - a.eng).slice(0, 8);
-  }, [interactions, candidateCtx]);
+  }, [agg]);
 
-  const topHashtags = useMemo(() => {
-    const counter = new Map<string, number>();
-    for (const r of interactions || []) {
-      const matches = (r.comment_text || "").match(/#[\p{L}0-9_]+/gu) || [];
-      for (const tag of matches) {
-        const k = tag.toLowerCase();
-        counter.set(k, (counter.get(k) || 0) + 1);
-      }
-    }
-    return Array.from(counter.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 15)
-      .map(([tag, count]) => ({ tag, count }));
-  }, [interactions]);
+  const sentimentPie = [
+    { name: "Positivo", value: k?.pos ?? 0, color: COLORS.positive },
+    { name: "Negativo", value: k?.neg ?? 0, color: COLORS.negative },
+    { name: "Neutro", value: k?.neu ?? 0, color: COLORS.neutral },
+  ].filter((d) => d.value > 0);
 
-  const hourBuckets = useMemo(() => {
-    const bins = Array.from({ length: 24 }, (_, h) => ({ hour: h, count: 0 }));
-    for (const r of interactions || []) {
-      const dt = r.original_posted_at || r.collected_at;
-      if (!dt) continue;
-      bins[getHours(new Date(dt))].count++;
+  const heat = useMemo(() => {
+    const m = new Map<string, number>();
+    let max = 0;
+    for (const h of agg?.heatmap ?? []) {
+      m.set(`${h.dow}-${h.hr}`, h.c);
+      if (h.c > max) max = h.c;
     }
-    return bins;
-  }, [interactions]);
-  const maxHour = Math.max(1, ...hourBuckets.map((b) => b.count));
+    return { m, max: Math.max(1, max) };
+  }, [agg]);
 
-  const wordCloud = useMemo(() => {
-    const counter = new Map<string, number>();
-    for (const r of interactions || []) {
-      const txt = (r.comment_text || "").toLowerCase();
-      const words = txt.match(/[\p{L}]{4,}/gu) || [];
-      for (const w of words) {
-        if (STOPWORDS.has(w)) continue;
-        counter.set(w, (counter.get(w) || 0) + 1);
-      }
-    }
-    return Array.from(counter.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 30)
-      .map(([word, count]) => ({ word, count }));
-  }, [interactions]);
-  const maxWord = Math.max(1, ...wordCloud.map((w) => w.count));
+  const maxHashtag = Math.max(1, ...(agg?.hashtags ?? []).map((h) => h.c));
+
+  const aiSummary = useMemo(() => {
+    if (!agg || !agg.by_network.length) return null;
+    const top = agg.by_network[0];
+    const sorted = [...agg.by_network].sort((a, b) => {
+      const aPos = (agg.top_posts.filter((p) => p.social_network === a.network && p.sent === "positive").length);
+      const bPos = (agg.top_posts.filter((p) => p.social_network === b.network && p.sent === "positive").length);
+      return bPos - aPos;
+    });
+    const mostPositive = sorted[0]?.network ?? top.network;
+    const trend = growthPct >= 0 ? `crescimento de ${growthPct}%` : `queda de ${Math.abs(growthPct)}%`;
+    return `${top.network.charAt(0).toUpperCase() + top.network.slice(1)} concentra o maior volume de menções (${compact(top.mentions)}), com ${trend} no período. ${mostPositive.charAt(0).toUpperCase() + mostPositive.slice(1)} aparece como a rede com maior proporção de apoio entre os posts mais relevantes. O sentimento geral está em ${posPct}% positivo, ${negPct}% negativo e ${neuPct}% neutro.`;
+  }, [agg, growthPct, posPct, negPct, neuPct]);
 
   return (
     <div className="space-y-6">
+      {/* Header + Filters */}
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">
             Visão por Rede Social
           </h1>
           <p className="text-muted-foreground mt-1">
-            Métricas calculadas sobre 100% das coletas do período — sem amostragem.
+            Análise detalhada de comportamento, sentimento e repercussão por plataforma.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Select value={network} onValueChange={setNetwork}>
-            <SelectTrigger className="w-[180px]"><SelectValue placeholder="Rede" /></SelectTrigger>
-            <SelectContent>
-              {NETWORKS.map((n) => <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
           <Select value={candidateId} onValueChange={setCandidateId}>
             <SelectTrigger className="w-[200px]"><SelectValue placeholder="Candidato" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos candidatos</SelectItem>
-              {candidates?.map((c) => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)}
+              {candidates?.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)}
             </SelectContent>
+          </Select>
+          <Select value={network} onValueChange={setNetwork}>
+            <SelectTrigger className="w-[170px]"><SelectValue /></SelectTrigger>
+            <SelectContent>{NETWORKS.map((n) => <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>)}</SelectContent>
           </Select>
           <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
             <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7">Últimos 7 dias</SelectItem>
-              <SelectItem value="14">Últimos 14 dias</SelectItem>
-              <SelectItem value="30">Últimos 30 dias</SelectItem>
-            </SelectContent>
+            <SelectContent>{PERIODS.map((p) => <SelectItem key={p.value} value={String(p.value)}>{p.label}</SelectItem>)}</SelectContent>
           </Select>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KpiCard label="Total de menções" value={kpis.total.toLocaleString("pt-BR")} icon={<MessageSquare className="h-5 w-5" />} loading={isLoading} sub={`${kpis.authors} autores únicos`} />
-        <KpiCard label="Crescimento" value={`${kpis.growth >= 0 ? "+" : ""}${kpis.growth}%`} icon={kpis.growth >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />} loading={isLoading} sub="vs. metade anterior" tone={kpis.growth >= 0 ? "success" : "destructive"} />
-        <KpiCard label="Sentimento positivo" value={`${kpis.sentimentPct}%`} icon={<Heart className="h-5 w-5" />} loading={isLoading} sub={`${kpis.pos} pos · ${kpis.neg} neg · ${kpis.neu} neu`} />
-        <KpiCard label="Engajamento" value={kpis.engagement.toLocaleString("pt-BR")} icon={<Users className="h-5 w-5" />} loading={isLoading} sub={`${kpis.likes} likes · ${kpis.replies} resp · ${kpis.shares} comp`} />
+      {error && (
+        <Card className="p-4 border-destructive/40 bg-destructive/5 text-sm text-destructive">
+          Erro ao carregar dados: {(error as Error).message}
+        </Card>
+      )}
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <Kpi label="Total de menções" value={fmt(total)} icon={<MessageSquare className="h-4 w-4" />} loading={isLoading} />
+        <Kpi label="Interações" value={compact(k?.engagement ?? 0)} icon={<Activity className="h-4 w-4" />} loading={isLoading} sub={`${fmt(k?.likes ?? 0)} curtidas`} />
+        <Kpi label="Sentimento positivo" value={`${posPct}%`} icon={<Heart className="h-4 w-4 text-success" />} loading={isLoading} sub={`${fmt(k?.pos ?? 0)} menções`} tone="success" delta={posPct - prevPosPct} />
+        <Kpi label="Sentimento negativo" value={`${negPct}%`} icon={<TrendingDown className="h-4 w-4 text-destructive" />} loading={isLoading} sub={`${fmt(k?.neg ?? 0)} menções`} tone="destructive" delta={negPct - prevNegPct} invertDelta />
+        <Kpi label="Crescimento" value={`${growthPct >= 0 ? "+" : ""}${growthPct}%`} icon={growthPct >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} loading={isLoading} sub="vs. período anterior" tone={growthPct >= 0 ? "success" : "destructive"} />
+        <Kpi label="Rede dominante" value={dominant === "—" ? "—" : dominant.charAt(0).toUpperCase() + dominant.slice(1)} icon={<Crown className="h-4 w-4" />} loading={isLoading} sub={agg?.by_network?.[0] ? `${compact(agg.by_network[0].mentions)} menções` : ""} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="p-6">
+      {/* AI Insight */}
+      {!isLoading && aiSummary && (
+        <Card className="p-5 bg-gradient-to-br from-primary/5 to-accent/5 border-primary/20">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-lg bg-primary/10"><Sparkles className="h-5 w-5 text-primary" /></div>
+            <div>
+              <h3 className="font-bold mb-1">Resumo da IA</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">{aiSummary}</p>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Sentiment temporal + distribution */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card className="p-6 lg:col-span-2">
           <h3 className="text-lg font-bold mb-1">Sentimento ao longo do tempo</h3>
-          <p className="text-sm text-muted-foreground mb-4">Últimos {days} dias</p>
-          {isLoading ? <Skeleton className="h-[280px] w-full" /> : (
-            <ResponsiveContainer width="100%" height={280}>
+          <p className="text-sm text-muted-foreground mb-4">Evolução de positivo, negativo e neutro</p>
+          {isLoading ? <Skeleton className="h-[300px] w-full" /> : sentimentSeries.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <ResponsiveContainer width="100%" height={300}>
               <LineChart data={sentimentSeries}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="date" className="text-muted-foreground" />
-                <YAxis className="text-muted-foreground" />
-                <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
+                <XAxis dataKey="date" className="text-xs" />
+                <YAxis className="text-xs" />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
+                  formatter={(value: any, name: any, props: any) => {
+                    const pctKey = name === "Positivo" ? "positivoPct" : name === "Negativo" ? "negativoPct" : "neutroPct";
+                    return [`${value} (${props.payload[pctKey]}%)`, name];
+                  }}
+                />
                 <Legend />
-                <Line type="monotone" dataKey="positive" stroke={COLORS.positive} strokeWidth={2} name="Positivo" />
-                <Line type="monotone" dataKey="negative" stroke={COLORS.negative} strokeWidth={2} name="Negativo" />
-                <Line type="monotone" dataKey="neutral" stroke={COLORS.neutral} strokeWidth={2} name="Neutro" />
+                <Line type="monotone" dataKey="positivo" stroke={COLORS.positive} strokeWidth={2} name="Positivo" dot={false} />
+                <Line type="monotone" dataKey="negativo" stroke={COLORS.negative} strokeWidth={2} name="Negativo" dot={false} />
+                <Line type="monotone" dataKey="neutro" stroke={COLORS.neutral} strokeWidth={2} name="Neutro" dot={false} />
               </LineChart>
             </ResponsiveContainer>
           )}
@@ -294,92 +254,129 @@ export default function NetworkView() {
 
         <Card className="p-6">
           <h3 className="text-lg font-bold mb-1">Distribuição de sentimento</h3>
-          <p className="text-sm text-muted-foreground mb-4">Proporção positivo / negativo / neutro</p>
-          {isLoading ? <Skeleton className="h-[280px] w-full" /> : sentimentPie.length === 0 ? (
-            <div className="h-[280px] flex items-center justify-center text-muted-foreground">Sem comentários analisados no período</div>
+          <p className="text-sm text-muted-foreground mb-4">Proporção atual e variação</p>
+          {isLoading ? <Skeleton className="h-[300px] w-full" /> : sentimentPie.length === 0 ? (
+            <EmptyState />
           ) : (
-            <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie data={sentimentPie} cx="50%" cy="50%" outerRadius={95} dataKey="value" label={(e: any) => `${e.name}: ${e.value}`}>
-                  {sentimentPie.map((d, i) => <Cell key={i} fill={d.color} />)}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
+            <>
+              <ResponsiveContainer width="100%" height={180}>
+                <PieChart>
+                  <Pie data={sentimentPie} cx="50%" cy="50%" innerRadius={50} outerRadius={75} dataKey="value" paddingAngle={2}>
+                    {sentimentPie.map((d, i) => <Cell key={i} fill={d.color} />)}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="space-y-2 mt-2">
+                <SentBar label="Positivo" pct={posPct} delta={posPct - prevPosPct} color={COLORS.positive} />
+                <SentBar label="Negativo" pct={negPct} delta={negPct - prevNegPct} color={COLORS.negative} invert />
+                <SentBar label="Neutro" pct={neuPct} delta={neuPct - prevNeuPct} color={COLORS.neutral} />
+              </div>
+            </>
           )}
         </Card>
       </div>
 
+      {/* Engagement by network */}
       {network === "all" && (
         <Card className="p-6">
           <h3 className="text-lg font-bold mb-1">Engajamento por rede</h3>
-          <p className="text-sm text-muted-foreground mb-4">Soma de curtidas + respostas + compartilhamentos</p>
-          {isLoading ? <Skeleton className="h-[280px] w-full" /> : engagementByNetwork.length === 0 ? (
-            <div className="h-[200px] flex items-center justify-center text-muted-foreground">Sem dados</div>
-          ) : (
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={engagementByNetwork}>
+          <p className="text-sm text-muted-foreground mb-4">Curtidas, respostas e compartilhamentos</p>
+          {isLoading ? <Skeleton className="h-[280px] w-full" /> : !agg?.by_network.length ? <EmptyState /> : (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={agg.by_network}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="network" className="text-muted-foreground" />
-                <YAxis className="text-muted-foreground" />
+                <XAxis dataKey="network" className="text-xs" />
+                <YAxis className="text-xs" />
                 <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
                 <Legend />
-                <Bar dataKey="engagement" fill={COLORS.primary} name="Engajamento" />
-                <Bar dataKey="mentions" fill="hsl(var(--accent))" name="Menções" />
+                <Bar dataKey="likes" fill={COLORS.positive} name="Curtidas" stackId="a" />
+                <Bar dataKey="replies" fill={COLORS.primary} name="Comentários" stackId="a" />
+                <Bar dataKey="shares" fill={COLORS.accent} name="Compartilhamentos" stackId="a" />
+                <Bar dataKey="mentions" fill={COLORS.neutral} name="Menções" />
               </BarChart>
             </ResponsiveContainer>
           )}
         </Card>
       )}
 
+      {/* Heatmap */}
+      <Card className="p-6">
+        <h3 className="text-lg font-bold mb-1">Horários de maior movimento</h3>
+        <p className="text-sm text-muted-foreground mb-4">Dia da semana × hora — concentração de atividade</p>
+        {isLoading ? <Skeleton className="h-[220px] w-full" /> : !agg?.heatmap.length ? <EmptyState /> : (
+          <div className="overflow-x-auto">
+            <div className="inline-grid gap-1" style={{ gridTemplateColumns: "auto repeat(24, minmax(20px, 1fr))" }}>
+              <div />
+              {Array.from({ length: 24 }, (_, h) => (
+                <div key={h} className="text-[9px] text-center text-muted-foreground">{h}</div>
+              ))}
+              {DOW.map((dn, di) => (
+                <>
+                  <div key={`l-${di}`} className="text-[10px] text-muted-foreground pr-2 flex items-center">{dn}</div>
+                  {Array.from({ length: 24 }, (_, h) => {
+                    const c = heat.m.get(`${di}-${h}`) || 0;
+                    const intensity = c / heat.max;
+                    return (
+                      <div
+                        key={`${di}-${h}`}
+                        title={`${dn} ${h}h — ${fmt(c)} menções`}
+                        className="aspect-square rounded-sm"
+                        style={{ backgroundColor: `hsl(var(--primary) / ${0.08 + intensity * 0.85})` }}
+                      />
+                    );
+                  })}
+                </>
+              ))}
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* Topics + Hashtags */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold">Posts mais relevantes</h3>
-            {candidateCtx && (
-              <Badge variant="outline" className="text-[10px]">desambiguação contextual ativa</Badge>
-            )}
-          </div>
-          {isLoading ? <Skeleton className="h-[300px] w-full" /> : topPosts.length === 0 ? (
-            <div className="text-muted-foreground text-sm">Sem posts relevantes no período.</div>
-          ) : (
-            <div className="space-y-3 max-h-[400px] overflow-y-auto">
-              {topPosts.map((p) => (
-                <div key={p.id} className="border border-border rounded-md p-3 hover:bg-muted/30 transition-colors">
-                  <div className="flex items-center justify-between mb-1">
-                    <Badge variant="outline" className="text-xs">{p.social_network}</Badge>
-                    <span className="text-xs text-muted-foreground">{p.eng.toLocaleString("pt-BR")} interações</span>
-                  </div>
-                  <p className="text-sm line-clamp-2">{p.comment_text || "(sem texto)"}</p>
-                  <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
-                    <span>{p.comment_author || "anônimo"}</span>
-                    <div className="flex items-center gap-2">
-                      {candidateCtx && (
-                        <span className="text-[10px] opacity-70">rel: {Math.round(p.relevance * 100)}%</span>
-                      )}
-                      {p.sentiment_label && (
-                        <Badge variant={p.sentiment_label === "positive" ? "default" : p.sentiment_label === "negative" ? "destructive" : "secondary"} className="text-[10px]">
-                          {p.sentiment_label}
-                        </Badge>
-                      )}
+          <h3 className="text-lg font-bold mb-1">Assuntos dominantes</h3>
+          <p className="text-sm text-muted-foreground mb-4">Temas detectados nas menções</p>
+          {isLoading ? <Skeleton className="h-[200px] w-full" /> : !agg?.topics.length ? <EmptyState /> : (
+            <div className="space-y-2">
+              {agg.topics.map((t) => {
+                const lab = t.pos + t.neg + t.neu;
+                return (
+                  <div key={t.theme} className="border border-border rounded-md p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-semibold">{t.theme}</span>
+                      <span className="text-sm text-muted-foreground">{fmt(t.mentions)} menções</span>
+                    </div>
+                    <div className="flex h-2 rounded-full overflow-hidden bg-muted">
+                      <div style={{ width: `${pct(t.pos, lab)}%`, backgroundColor: COLORS.positive }} />
+                      <div style={{ width: `${pct(t.neu, lab)}%`, backgroundColor: COLORS.neutral }} />
+                      <div style={{ width: `${pct(t.neg, lab)}%`, backgroundColor: COLORS.negative }} />
+                    </div>
+                    <div className="flex justify-between mt-1 text-[10px] text-muted-foreground">
+                      <span>+{pct(t.pos, lab)}%</span>
+                      <span>~{pct(t.neu, lab)}%</span>
+                      <span>−{pct(t.neg, lab)}%</span>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </Card>
 
         <Card className="p-6">
-          <h3 className="text-lg font-bold mb-1 flex items-center gap-2"><Hash className="h-5 w-5" /> Hashtags mais frequentes</h3>
+          <h3 className="text-lg font-bold mb-1 flex items-center gap-2"><Hash className="h-5 w-5" /> Hashtags recorrentes</h3>
           <p className="text-sm text-muted-foreground mb-4">Top 15 do período</p>
-          {isLoading ? <Skeleton className="h-[200px] w-full" /> : topHashtags.length === 0 ? (
-            <div className="text-sm text-muted-foreground">Nenhuma hashtag encontrada nos comentários.</div>
-          ) : (
+          {isLoading ? <Skeleton className="h-[200px] w-full" /> : !agg?.hashtags.length ? <EmptyState /> : (
             <div className="flex flex-wrap gap-2">
-              {topHashtags.map((h) => (
-                <Badge key={h.tag} variant="secondary" className="text-sm" style={{ fontSize: `${Math.max(0.75, Math.min(1.4, h.count / Math.max(1, topHashtags[0].count) * 1.4))}rem` }}>
-                  {h.tag} <span className="ml-1 opacity-60">{h.count}</span>
+              {agg.hashtags.map((h) => (
+                <Badge
+                  key={h.tag}
+                  variant="secondary"
+                  style={{ fontSize: `${0.75 + (h.c / maxHashtag) * 0.6}rem` }}
+                >
+                  {h.tag} <span className="ml-1 opacity-60">{fmt(h.c)}</span>
                 </Badge>
               ))}
             </div>
@@ -387,54 +384,95 @@ export default function NetworkView() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="p-6">
-          <h3 className="text-lg font-bold mb-1 flex items-center gap-2"><Clock className="h-5 w-5" /> Horários de maior atividade</h3>
-          <p className="text-sm text-muted-foreground mb-4">Distribuição por hora do dia</p>
-          {isLoading ? <Skeleton className="h-[200px] w-full" /> : (
-            <div className="grid grid-cols-12 gap-1">
-              {hourBuckets.map((b) => (
-                <div key={b.hour} className="flex flex-col items-center gap-1">
-                  <div
-                    className="w-full bg-primary/30 rounded-sm"
-                    style={{ height: `${(b.count / maxHour) * 100}px`, minHeight: 4, backgroundColor: `hsl(var(--primary) / ${0.2 + (b.count / maxHour) * 0.8})` }}
-                    title={`${b.count} menções`}
-                  />
-                  <span className="text-[9px] text-muted-foreground">{b.hour}h</span>
+      {/* Top posts */}
+      <Card className="p-6">
+        <h3 className="text-lg font-bold mb-1">Top 5 posts</h3>
+        <p className="text-sm text-muted-foreground mb-4">Posts com maior engajamento no período</p>
+        {isLoading ? <Skeleton className="h-[300px] w-full" /> : !agg?.top_posts.length ? <EmptyState /> : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {agg.top_posts.map((p) => (
+              <div key={p.id} className="border border-border rounded-lg p-4 hover:bg-muted/30 transition">
+                <div className="flex items-center justify-between mb-2">
+                  <Badge variant="outline" className="text-xs">{p.social_network}</Badge>
+                  {p.sent && (
+                    <Badge variant={p.sent === "positive" ? "default" : p.sent === "negative" ? "destructive" : "secondary"} className="text-[10px]">
+                      {p.sent === "positive" ? "Positivo" : p.sent === "negative" ? "Negativo" : "Neutro"}
+                    </Badge>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
-        </Card>
+                <p className="text-sm line-clamp-3 mb-2">{p.comment_text}</p>
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span className="truncate max-w-[140px]">{p.comment_author || "anônimo"}</span>
+                  <span><Users className="h-3 w-3 inline mr-1" />{compact(p.eng)} interações</span>
+                </div>
+                <div className="text-[10px] text-muted-foreground mt-1">
+                  {p.original_posted_at && format(parseISO(p.original_posted_at), "dd MMM yyyy", { locale: ptBR })}
+                </div>
+                <Button variant="ghost" size="sm" className="mt-2 w-full text-xs h-7" disabled>
+                  <ExternalLink className="h-3 w-3 mr-1" /> Ver detalhes
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
 
-        <Card className="p-6">
-          <h3 className="text-lg font-bold mb-4">Palavras mais usadas</h3>
-          {isLoading ? <Skeleton className="h-[200px] w-full" /> : wordCloud.length === 0 ? (
-            <div className="text-sm text-muted-foreground">Sem texto suficiente.</div>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {wordCloud.map((w) => (
-                <span key={w.word} className="text-foreground/80" style={{ fontSize: `${0.7 + (w.count / maxWord) * 1.1}rem`, opacity: 0.5 + (w.count / maxWord) * 0.5 }}>
-                  {w.word}
-                </span>
-              ))}
-            </div>
+function Kpi({ label, value, icon, loading, sub, tone, delta, invertDelta }: {
+  label: string; value: string; icon: React.ReactNode; loading?: boolean; sub?: string;
+  tone?: "success" | "destructive"; delta?: number; invertDelta?: boolean;
+}) {
+  const goodDelta = invertDelta ? (delta ?? 0) < 0 : (delta ?? 0) > 0;
+  return (
+    <Card className="p-4">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[11px] text-muted-foreground">{label}</span>
+        <span className={tone === "destructive" ? "text-destructive" : tone === "success" ? "text-success" : "text-primary"}>{icon}</span>
+      </div>
+      {loading ? <Skeleton className="h-7 w-20" /> : <div className="text-xl font-bold">{value}</div>}
+      <div className="flex items-center justify-between mt-1">
+        {sub && <span className="text-[10px] text-muted-foreground truncate">{sub}</span>}
+        {delta !== undefined && delta !== 0 && (
+          <span className={`text-[10px] font-medium ${goodDelta ? "text-success" : "text-destructive"}`}>
+            {delta > 0 ? "+" : ""}{delta}pp
+          </span>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function SentBar({ label, pct: p, delta, color, invert }: { label: string; pct: number; delta: number; color: string; invert?: boolean }) {
+  const goodDelta = invert ? delta < 0 : delta > 0;
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs mb-1">
+        <span className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+          {label}
+        </span>
+        <span className="flex items-center gap-2">
+          <span className="font-semibold">{p}%</span>
+          {delta !== 0 && (
+            <span className={goodDelta ? "text-success" : "text-destructive"}>
+              ({delta > 0 ? "+" : ""}{delta}pp)
+            </span>
           )}
-        </Card>
+        </span>
+      </div>
+      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+        <div className="h-full rounded-full" style={{ width: `${p}%`, backgroundColor: color }} />
       </div>
     </div>
   );
 }
 
-function KpiCard({ label, value, icon, loading, sub, tone }: { label: string; value: string; icon: React.ReactNode; loading?: boolean; sub?: string; tone?: "success" | "destructive" }) {
+function EmptyState() {
   return (
-    <Card className="p-5">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs text-muted-foreground">{label}</span>
-        <span className={tone === "destructive" ? "text-destructive" : tone === "success" ? "text-success" : "text-primary"}>{icon}</span>
-      </div>
-      {loading ? <Skeleton className="h-7 w-20" /> : <div className="text-2xl font-bold">{value}</div>}
-      {sub && <div className="text-[10px] text-muted-foreground mt-1">{sub}</div>}
-    </Card>
+    <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground text-center px-4">
+      Nenhum dado encontrado para esta rede no período selecionado.
+    </div>
   );
 }
