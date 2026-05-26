@@ -2544,6 +2544,16 @@ export type Database = {
       }
     }
     Functions: {
+      _region_from_uf: { Args: { uf: string }; Returns: string }
+      _regional_city_dict: {
+        Args: never
+        Returns: {
+          city: string
+          norm: string
+          region: string
+          uf: string
+        }[]
+      }
       check_api_rate_limit: {
         Args: { _key_id: string; _limit: number }
         Returns: boolean
@@ -2665,6 +2675,10 @@ export type Database = {
         }
         Returns: Json
       }
+      get_cities_ranking_summary: {
+        Args: { _candidate_id: string; _user_id: string }
+        Returns: Json
+      }
       get_historical_period_aggregate: {
         Args: {
           _candidate_id: string
@@ -2761,6 +2775,10 @@ export type Database = {
           _period_start?: string
           _user_id: string
         }
+        Returns: Json
+      }
+      get_regional_map_summary: {
+        Args: { _candidate_id: string; _user_id: string }
         Returns: Json
       }
       get_tenant_analytics: {
