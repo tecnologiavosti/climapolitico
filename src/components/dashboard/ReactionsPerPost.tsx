@@ -92,15 +92,14 @@ export function ReactionsPerPost({ candidateId }: Props) {
     gcTime: 30 * 60_000,
   });
 
-  // Posts (sem comentários) — para gráficos + top 5. Limite duro de 1000 linhas.
+  // Amostra de interações (posts + comentários + respostas) para gráficos + top 5.
+  // Totais reais vêm do RPC agregado; aqui trazemos só uma amostra p/ visualizações.
   const { data: posts, isLoading: postsLoading } = useQuery({
-    queryKey: ["reactions-posts-only", user?.id, isAdmin, candidateId, range.start, range.end],
+    queryKey: ["reactions-interactions", user?.id, isAdmin, candidateId, range.start, range.end],
     queryFn: async () => {
       let q = supabase
         .from("social_interactions")
         .select("id, social_network, likes_count, replies_count, shares_count, sentiment_label, collected_at")
-        .is("parent_comment_id", null)
-        .is("root_comment_id", null)
         .order("collected_at", { ascending: false })
         .limit(1000);
       if (range.start) q = q.gte("collected_at", range.start);
