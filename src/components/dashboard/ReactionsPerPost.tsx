@@ -121,9 +121,12 @@ export function ReactionsPerPost({ candidateId }: Props) {
     const neg = d?.negativeCount || 0;
     const neu = d?.neutralCount || 0;
     const labeled = d?.classifiedCount || 0;
+    const totalRecords = d?.totalRecords || 0;
     return {
       pos, neg, neu, labeled,
+      totalRecords,
       postsCount: d?.postsCount || 0,
+      commentsCount: d?.commentsCount || 0,
       totalLikes: d?.totalLikes || 0,
       totalShares: d?.totalShares || 0,
       totalInteractions: d?.totalInteractions || 0,
