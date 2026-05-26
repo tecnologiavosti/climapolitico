@@ -106,6 +106,32 @@ export const RealTimeSentimentChart = ({ metrics }: Props) => {
             </ResponsiveContainer>
           </motion.div>
         )}
+
+        {/* Estatísticas adicionais */}
+        {metrics && metrics.totalMentions > 0 && (
+          <div className="mt-4 grid grid-cols-2 gap-3 pt-4 border-t border-border/40">
+            <div className="space-y-1">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Taxa de polarização</p>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-bold tabular-nums">{metrics.polarizationRate}%</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {metrics.lowConfidenceMentions > 0 && `${metrics.lowConfidenceMentions} baixa conf.`}
+                </span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-muted/40 overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-emerald-500 via-amber-500 to-red-500" style={{ width: `${metrics.polarizationRate}%` }} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Engajamento por sentimento</p>
+              <div className="space-y-0.5 text-xs">
+                <div className="flex justify-between"><span className="text-emerald-500">❤️ Positivos</span><span className="font-semibold tabular-nums">{metrics.engagementBySentiment.positive.toLocaleString("pt-BR")}</span></div>
+                <div className="flex justify-between"><span className="text-amber-500">💬 Neutros</span><span className="font-semibold tabular-nums">{metrics.engagementBySentiment.neutral.toLocaleString("pt-BR")}</span></div>
+                <div className="flex justify-between"><span className="text-red-500">⚠️ Negativos</span><span className="font-semibold tabular-nums">{metrics.engagementBySentiment.negative.toLocaleString("pt-BR")}</span></div>
+              </div>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
