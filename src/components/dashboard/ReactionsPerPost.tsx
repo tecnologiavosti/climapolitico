@@ -154,19 +154,28 @@ export function ReactionsPerPost({ candidateId }: Props) {
     if (sentimentEnqueuedKey === key) return;
     setSentimentEnqueuedKey(key);
 
-    supabase.rpc("enqueue_pending_sentiment_jobs" as any, {
-      _user_id: user.id,
-      _candidate_id: candidateId ?? null,
-      _period_start: range.start,
-      _period_end: range.end,
-      _batch_size: 1000,
-    }).then(({ data, error }) => {
-      if (error) {
-        console.warn("[ReactionsPerPost] Falha ao enfileirar classificação IA automática", error);
-        return;
+    (async () => {
+      let pendingRemaining = summary.pendingCount || 0;
+      let totalEnqueued = 0;
+      for (let batch = 0; batch < 20 && pendingRemaining > 0; batch += 1) {
+        const { data, error } = await supabase.rpc("enqueue_pending_sentiment_jobs" as any, {
+          _user_id: user.id,
+          _candidate_id: candidateId ?? null,
+          _period_start: range.start,
+          _period_end: range.end,
+          _batch_size: 5000,
+        });
+        if (error) {
+          console.warn("[ReactionsPerPost] Falha ao enfileirar classificação IA automática", error);
+          return;
+        }
+        const result = data as { enqueued?: number; pendingRemaining?: number } | null;
+        totalEnqueued += result?.enqueued || 0;
+        pendingRemaining = result?.pendingRemaining ?? 0;
+        if (!result?.enqueued) break;
       }
-      console.log("[ReactionsPerPost] Classificação IA automática enfileirada", data);
-    });
+      console.log("[ReactionsPerPost] Classificação IA automática enfileirada", { totalEnqueued, pendingRemaining });
+    })();
   }, [candidateId, range.end, range.start, sentimentEnqueuedKey, summary, user]);
 
   const totals = useMemo(() => {
