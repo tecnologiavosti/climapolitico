@@ -23,7 +23,22 @@ export interface SocialInteraction {
   created_at: string;
 }
 
+export interface SourceBreakdown {
+  network: string;
+  collected: number;
+  processed: number;
+  pending: number;
+  lowConfidence: number;
+}
+
 export interface RealTimeMetrics {
+  // Totais
+  totalCollected: number;       // tudo que existe na base
+  processedMentions: number;    // positivos + neutros + negativos (com label)
+  pendingMentions: number;      // sem label / aguardando análise
+  processingRate: number;       // 0-100
+  duplicateMentions: number;    // duplicados detectados (texto normalizado)
+  // Compat: totalMentions = processedMentions (alimenta gráficos antigos)
   totalMentions: number;
   positiveMentions: number;
   negativeMentions: number;
@@ -37,6 +52,7 @@ export interface RealTimeMetrics {
   trend: 'up' | 'down' | 'stable';
   mentionsByNetwork: { network: string; count: number }[];
   sentimentHistory: { time: string; positive: number; neutral: number; negative: number }[];
+  sourceBreakdown: SourceBreakdown[];
 }
 
 interface UseRealTimeAnalyticsReturn {
