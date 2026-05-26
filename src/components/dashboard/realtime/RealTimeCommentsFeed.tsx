@@ -165,6 +165,17 @@ export const RealTimeCommentsFeed = ({ comments, isLoading }: Props) => {
                               <span className={cn("h-1 w-1 rounded-full", tone.dot)} />
                               {c.sentiment_label || "—"}
                             </span>
+                            {typeof c.sentiment_score === "number" && (
+                              <span className="text-[10px] font-mono tabular-nums text-muted-foreground" title="Score interno (-100 a +100)">
+                                {c.sentiment_label === "Positivo" ? "🟢" : c.sentiment_label === "Negativo" ? "🔴" : "🟡"}
+                                {c.sentiment_score > 0 ? "+" : ""}{Math.round(c.sentiment_score * 100)}
+                              </span>
+                            )}
+                            {typeof c.sentiment_confidence === "number" && c.sentiment_confidence < 0.5 && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground border border-border/40">
+                                baixa confiança
+                              </span>
+                            )}
                           </div>
 
                           <p className={cn(
