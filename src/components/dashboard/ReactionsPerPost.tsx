@@ -10,9 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { AlertCircle, Heart, RefreshCw, Share2, ThumbsUp, ThumbsDown, Minus } from "lucide-react";
+import { AlertCircle, Heart, MessageCircle, RefreshCw, Share2, ThumbsUp, ThumbsDown, Minus } from "lucide-react";
 import { subDays } from "date-fns";
-import { isHiddenNetwork } from "@/lib/networkVisibility";
 
 // Carrega Recharts apenas quando o usuário entra na aba — reduz JS inicial.
 const ChartsBlock = lazy(() => import("./ReactionsPerPostCharts"));
@@ -28,6 +27,10 @@ interface SummaryData {
   totalRecords: number;
   postsCount: number;
   commentsCount: number;
+  directCommentsCount?: number;
+  repliesRowsCount?: number;
+  subcommentsCount?: number;
+  otherRecordsCount?: number;
   positiveCount: number;
   negativeCount: number;
   neutralCount: number;
@@ -38,7 +41,45 @@ interface SummaryData {
   totalShares: number;
   totalInteractions: number;
   dominantTopics: { topic: string; mentions: number }[];
+  networkBreakdown?: { network: string; total: number }[];
+  engagementByNetwork?: EngagementByNetwork[];
+  sentimentByNetwork?: SentimentByNetwork[];
+  activityHourWeek?: ActivityHourWeek[];
+  debug?: {
+    postsEncontrados: number;
+    comentariosEncontrados: number;
+    respostasEncontradas: number;
+    subcomentariosEncontrados: number;
+    outrosRegistrosEncontrados: number;
+    redesEncontradas: number;
+    registrosPorRede: Record<string, number>;
+  };
   topPosts?: PostRow[];
+}
+
+export interface EngagementByNetwork {
+  rede: string;
+  registros: number;
+  curtidas: number;
+  comentarios_respostas: number;
+  compartilhamentos: number;
+  engajamento: number;
+}
+
+export interface SentimentByNetwork {
+  rede: string;
+  total: number;
+  positivo: number;
+  neutro: number;
+  negativo: number;
+  sem_classificacao: number;
+}
+
+export interface ActivityHourWeek {
+  dia_semana: number;
+  hora: number;
+  registros: number;
+  engajamento: number;
 }
 
 export interface PostRow {
@@ -49,6 +90,7 @@ export interface PostRow {
   shares_count: number | null;
   sentiment_label: string | null;
   collected_at: string | null;
+  engagement?: number;
 }
 
 function periodRange(period: PeriodKey, customStart: string, customEnd: string) {
@@ -74,6 +116,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
+  const [sentimentEnqueuedKey, setSentimentEnqueuedKey] = useState<string | null>(null);
 
   const range = useMemo(() => periodRange(selectedPeriod, customStart, customEnd), [selectedPeriod, customStart, customEnd]);
 
@@ -96,38 +139,44 @@ export function ReactionsPerPost({ candidateId }: Props) {
     gcTime: 30 * 60_000,
   });
 
-  // Amostra de interações (posts + comentários + respostas) para gráficos + top 5.
-  // Totais reais vêm do RPC agregado; aqui trazemos só uma amostra p/ visualizações.
-  const { data: posts, isLoading: postsLoading, isError: postsIsError, refetch: refetchPosts } = useQuery({
-    queryKey: ["reactions-interactions", user?.id, isAdmin, candidateId, range.start, range.end],
-    queryFn: async () => {
-      let q = supabase
-        .from("social_interactions")
-        .select("id, social_network, likes_count, replies_count, shares_count, sentiment_label, collected_at")
-        .order("collected_at", { ascending: false })
-        .limit(1000);
-      if (range.start) q = q.gte("collected_at", range.start);
-      if (range.end) q = q.lte("collected_at", range.end);
-      if (!isAdmin && user) q = q.eq("user_id", user.id);
-      if (candidateId) q = q.eq("candidate_id", candidateId);
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data as PostRow[]).filter((r) => !isHiddenNetwork(r.social_network));
-    },
-    enabled: !!user,
-    retry: 1,
-    staleTime: 5 * 60_000,
-    gcTime: 30 * 60_000,
-  });
-
   useEffect(() => {
-    if (!summaryLoading && !postsLoading) {
+    if (!summaryLoading) {
       setLoadingTimedOut(false);
       return;
     }
     const timer = window.setTimeout(() => setLoadingTimedOut(true), 15_000);
     return () => window.clearTimeout(timer);
-  }, [summaryLoading, postsLoading, range.start, range.end, candidateId]);
+  }, [summaryLoading, range.start, range.end, candidateId]);
+
+  useEffect(() => {
+    if (!user || !summary || (summary.pendingCount || 0) <= 0) return;
+    const key = `${user.id}:${candidateId || "all"}:${range.start || "total"}:${range.end || "open"}:${summary.pendingCount}`;
+    if (sentimentEnqueuedKey === key) return;
+    setSentimentEnqueuedKey(key);
+
+    (async () => {
+      let pendingRemaining = summary.pendingCount || 0;
+      let totalEnqueued = 0;
+      for (let batch = 0; batch < 20 && pendingRemaining > 0; batch += 1) {
+        const { data, error } = await supabase.rpc("enqueue_pending_sentiment_jobs" as any, {
+          _user_id: user.id,
+          _candidate_id: candidateId ?? null,
+          _period_start: range.start,
+          _period_end: range.end,
+          _batch_size: 5000,
+        });
+        if (error) {
+          console.warn("[ReactionsPerPost] Falha ao enfileirar classificação IA automática", error);
+          return;
+        }
+        const result = data as { enqueued?: number; pendingRemaining?: number } | null;
+        totalEnqueued += result?.enqueued || 0;
+        pendingRemaining = result?.pendingRemaining ?? 0;
+        if (!result?.enqueued) break;
+      }
+      console.log("[ReactionsPerPost] Classificação IA automática enfileirada", { totalEnqueued, pendingRemaining });
+    })();
+  }, [candidateId, range.end, range.start, sentimentEnqueuedKey, summary, user]);
 
   const totals = useMemo(() => {
     const d = summary;
@@ -149,8 +198,13 @@ export function ReactionsPerPost({ candidateId }: Props) {
         semClassificacao: pending,
         somaTotal: sumCheck,
         diferenca: totalRecords - sumCheck,
-        postsCount: d.postsCount,
-        commentsCount: d.commentsCount,
+        postsEncontrados: d.debug?.postsEncontrados ?? d.postsCount,
+        comentariosEncontrados: d.debug?.comentariosEncontrados ?? d.directCommentsCount,
+        respostasEncontradas: d.debug?.respostasEncontradas ?? d.repliesRowsCount,
+        subcomentariosEncontrados: d.debug?.subcomentariosEncontrados ?? d.subcommentsCount,
+        outrosRegistrosEncontrados: d.debug?.outrosRegistrosEncontrados ?? d.otherRecordsCount,
+        redesEncontradas: d.debug?.redesEncontradas ?? d.networkBreakdown?.length,
+        registrosPorRede: d.debug?.registrosPorRede ?? d.networkBreakdown,
         topPostsRecebidos: d.topPosts?.length || 0,
       });
       if (sumCheck !== totalRecords) {
@@ -177,15 +231,15 @@ export function ReactionsPerPost({ candidateId }: Props) {
   }, [summary]);
 
   const top5 = useMemo(() => {
-    const list = summary?.topPosts?.length ? summary.topPosts : (posts || []);
+    const list = summary?.topPosts || [];
     return [...list]
       .map((p) => ({
         ...p,
-        engagement: (p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0),
+        engagement: p.engagement ?? ((p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0)),
       }))
       .sort((a, b) => b.engagement - a.engagement)
       .slice(0, 5);
-  }, [posts, summary?.topPosts]);
+  }, [summary?.topPosts]);
 
   const topTopics = useMemo(() => {
     return (summary?.dominantTopics || []).slice(0, 8)
@@ -241,7 +295,6 @@ export function ReactionsPerPost({ candidateId }: Props) {
               onClick={() => {
                 setLoadingTimedOut(false);
                 refetchSummary();
-                refetchPosts();
               }}
               disabled={summaryFetching}
             >
@@ -263,7 +316,6 @@ export function ReactionsPerPost({ candidateId }: Props) {
             size="sm"
             onClick={() => {
               refetchSummary();
-              refetchPosts();
             }}
           >
             <RefreshCw className="mr-2 h-4 w-4" />Atualizar análise
@@ -314,22 +366,17 @@ export function ReactionsPerPost({ candidateId }: Props) {
           )}
 
           {/* Gráficos — lazy loaded */}
-          {postsLoading ? (
-            <Skeleton className="h-80 w-full" />
-          ) : postsIsError ? (
-            <div className="rounded-lg border border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-              Gráficos indisponíveis no momento. As métricas agregadas e o top 5 foram carregados.
-            </div>
-          ) : (
-            <Suspense fallback={<Skeleton className="h-80 w-full" />}>
-              <ChartsBlock
-                posts={posts || []}
-                positive={totals.pos}
-                negative={totals.neg}
-                neutral={totals.neu}
-              />
-            </Suspense>
-          )}
+          <Suspense fallback={<Skeleton className="h-80 w-full" />}>
+            <ChartsBlock
+              positive={totals.pos}
+              negative={totals.neg}
+              neutral={totals.neu}
+              pending={totals.pending}
+              engagementByNetwork={summary?.engagementByNetwork || []}
+              sentimentByNetwork={summary?.sentimentByNetwork || []}
+              activityHourWeek={summary?.activityHourWeek || []}
+            />
+          </Suspense>
 
           {/* Top 5 posts */}
           <div>
@@ -350,8 +397,9 @@ export function ReactionsPerPost({ candidateId }: Props) {
                     </div>
                     <div className="text-2xl font-bold">{p.engagement.toLocaleString("pt-BR")}</div>
                     <div className="text-[10px] text-muted-foreground -mt-1">Engajamento total</div>
-                    <div className="flex justify-between text-xs pt-2 border-t mt-auto">
+                    <div className="flex justify-between gap-2 text-xs pt-2 border-t mt-auto">
                       <span className="flex items-center gap-1"><Heart className="h-3 w-3" />{(p.likes_count || 0).toLocaleString("pt-BR")}</span>
+                      <span className="flex items-center gap-1"><MessageCircle className="h-3 w-3" />{(p.replies_count || 0).toLocaleString("pt-BR")}</span>
                       <span className="flex items-center gap-1"><Share2 className="h-3 w-3" />{(p.shares_count || 0).toLocaleString("pt-BR")}</span>
                     </div>
                   </Card>
