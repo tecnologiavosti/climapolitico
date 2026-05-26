@@ -235,12 +235,31 @@ export const useRealTimeAnalytics = (
         }
       }
 
+      // Polarização e engajamento por sentimento
+      const lowConfidenceMentions = data.filter(i => (i.sentiment_confidence ?? 1) < 0.5).length;
+      const polarizationRate = totalMentions > 0
+        ? Math.round(((positiveMentions + negativeMentions) / totalMentions) * 100)
+        : 0;
+      const engagementBySentiment = data.reduce(
+        (acc, i) => {
+          const eng = (i.likes_count || 0) + (i.replies_count || 0) + (i.shares_count || 0);
+          if (i.sentiment_label === 'Positivo') acc.positive += eng;
+          else if (i.sentiment_label === 'Negativo') acc.negative += eng;
+          else if (i.sentiment_label === 'Neutro') acc.neutral += eng;
+          return acc;
+        },
+        { positive: 0, neutral: 0, negative: 0 }
+      );
+
       setMetrics({
         totalMentions,
         positiveMentions,
         negativeMentions,
         neutralMentions,
+        lowConfidenceMentions,
         sentimentScore,
+        polarizationRate,
+        engagementBySentiment,
         totalEngagement,
         engagementPerMinute,
         trend,
