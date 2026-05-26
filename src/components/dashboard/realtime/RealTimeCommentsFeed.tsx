@@ -73,7 +73,7 @@ const FeedSkeleton = () => (
 );
 
 export const RealTimeCommentsFeed = ({ comments, isLoading }: Props) => {
-  const [sentiment, setSentiment] = useState<"all" | "Positivo" | "Neutro" | "Negativo">("all");
+  const [sentiment, setSentiment] = useState<"all" | "Positivo" | "Neutro" | "Negativo" | "Pendente">("all");
   const [network, setNetwork] = useState<string>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -83,8 +83,16 @@ export const RealTimeCommentsFeed = ({ comments, isLoading }: Props) => {
     return Array.from(set);
   }, [comments]);
 
+  const validLabels = new Set(["Positivo", "Neutro", "Negativo"]);
+  const isPending = (c: SocialInteraction) => !c.sentiment_label || !validLabels.has(c.sentiment_label);
+  const pendingCount = comments.filter(isPending).length;
+
   const filtered = comments.filter(c => {
-    if (sentiment !== "all" && c.sentiment_label !== sentiment) return false;
+    if (sentiment === "Pendente") {
+      if (!isPending(c)) return false;
+    } else if (sentiment !== "all") {
+      if (c.sentiment_label !== sentiment) return false;
+    }
     if (network !== "all" && c.social_network !== network) return false;
     return true;
   });
