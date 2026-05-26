@@ -192,16 +192,16 @@ export function ReactionsPerPost({ candidateId }: Props) {
 
       {summaryLoading ? (
         <Skeleton className="h-24 w-full" />
-      ) : totals.postsCount === 0 ? (
-        <div className="text-sm text-muted-foreground py-8 text-center">Nenhum post no período.</div>
+      ) : totals.totalRecords === 0 ? (
+        <div className="text-sm text-muted-foreground py-8 text-center">Nenhum registro no período.</div>
       ) : (
         <>
           {/* KPIs principais */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <KpiBox label="Posts coletados" value={totals.postsCount} />
-            <KpiBox label="Curtidas" value={totals.totalLikes} />
-            <KpiBox label="Compartilhamentos" value={totals.totalShares} />
-            <KpiBox label="Interações totais" value={totals.totalInteractions} highlight />
+            <KpiBox label="Registros analisados" value={totals.totalRecords} highlight />
+            <KpiBox label="Posts" value={totals.postsCount} />
+            <KpiBox label="Comentários / respostas" value={totals.commentsCount} />
+            <KpiBox label="Interações totais" value={totals.totalInteractions} />
             <KpiBox label="Sentimento geral" value={totals.posPct - totals.negPct} suffix="%" tone={totals.posPct >= totals.negPct ? "pos" : "neg"} />
           </div>
 
