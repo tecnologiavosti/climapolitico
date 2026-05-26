@@ -144,7 +144,16 @@ export const RealTimeCommentsFeed = ({ comments, isLoading }: Props) => {
             <div className="divide-y divide-border/40">
               <AnimatePresence initial={false}>
                 {filtered.map((c, idx) => {
-                  const tone = sentimentTone[c.sentiment_label ?? ""] ?? sentimentTone.Neutro;
+                  const pendingItem = isPending(c);
+                  const lowConf = typeof c.sentiment_confidence === "number" && c.sentiment_confidence < 0.5;
+                  const statusBadge = pendingItem
+                    ? { icon: "⚪", label: "Pendente", cls: "bg-muted text-muted-foreground border-border/40" }
+                    : lowConf
+                      ? { icon: "🟡", label: "Baixa confiança", cls: "bg-amber-500/10 text-amber-500 border-amber-500/30" }
+                      : { icon: "🟢", label: "Processado", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/30" };
+                  const tone = pendingItem
+                    ? { bg: "bg-muted/40 border-border/40", text: "text-muted-foreground", dot: "bg-muted-foreground/60" }
+                    : sentimentTone[c.sentiment_label ?? ""] ?? sentimentTone.Neutro;
                   const expanded = expandedId === c.id;
                   return (
                     <motion.div
@@ -172,19 +181,19 @@ export const RealTimeCommentsFeed = ({ comments, isLoading }: Props) => {
                               {c.comment_author || "Usuário"}
                             </span>
                             <span className="text-[10px] text-muted-foreground">{c.social_network}</span>
-                            <span className={cn("inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium border", tone.bg, tone.text)}>
-                              <span className={cn("h-1 w-1 rounded-full", tone.dot)} />
-                              {c.sentiment_label || "—"}
+                            <span className={cn("inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium border", statusBadge.cls)}>
+                              <span>{statusBadge.icon}</span>
+                              {statusBadge.label}
                             </span>
-                            {typeof c.sentiment_score === "number" && (
-                              <span className="text-[10px] font-mono tabular-nums text-muted-foreground" title="Score interno (-100 a +100)">
-                                {c.sentiment_label === "Positivo" ? "🟢" : c.sentiment_label === "Negativo" ? "🔴" : "🟡"}
-                                {c.sentiment_score > 0 ? "+" : ""}{Math.round(c.sentiment_score * 100)}
+                            {!pendingItem && (
+                              <span className={cn("inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium border", tone.bg, tone.text)}>
+                                <span className={cn("h-1 w-1 rounded-full", tone.dot)} />
+                                {c.sentiment_label}
                               </span>
                             )}
-                            {typeof c.sentiment_confidence === "number" && c.sentiment_confidence < 0.5 && (
-                              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground border border-border/40">
-                                baixa confiança
+                            {!pendingItem && typeof c.sentiment_score === "number" && (
+                              <span className="text-[10px] font-mono tabular-nums text-muted-foreground" title="Score interno (-100 a +100)">
+                                {c.sentiment_score > 0 ? "+" : ""}{Math.round(c.sentiment_score * 100)}
                               </span>
                             )}
                           </div>
