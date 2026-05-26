@@ -12,7 +12,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { AlertCircle, Heart, RefreshCw, Share2, ThumbsUp, ThumbsDown, Minus } from "lucide-react";
 import { subDays } from "date-fns";
-import { isHiddenNetwork } from "@/lib/networkVisibility";
 
 // Carrega Recharts apenas quando o usuário entra na aba — reduz JS inicial.
 const ChartsBlock = lazy(() => import("./ReactionsPerPostCharts"));
@@ -28,6 +27,10 @@ interface SummaryData {
   totalRecords: number;
   postsCount: number;
   commentsCount: number;
+  directCommentsCount?: number;
+  repliesRowsCount?: number;
+  subcommentsCount?: number;
+  otherRecordsCount?: number;
   positiveCount: number;
   negativeCount: number;
   neutralCount: number;
@@ -38,7 +41,45 @@ interface SummaryData {
   totalShares: number;
   totalInteractions: number;
   dominantTopics: { topic: string; mentions: number }[];
+  networkBreakdown?: { network: string; total: number }[];
+  engagementByNetwork?: EngagementByNetwork[];
+  sentimentByNetwork?: SentimentByNetwork[];
+  activityHourWeek?: ActivityHourWeek[];
+  debug?: {
+    postsEncontrados: number;
+    comentariosEncontrados: number;
+    respostasEncontradas: number;
+    subcomentariosEncontrados: number;
+    outrosRegistrosEncontrados: number;
+    redesEncontradas: number;
+    registrosPorRede: Record<string, number>;
+  };
   topPosts?: PostRow[];
+}
+
+export interface EngagementByNetwork {
+  rede: string;
+  registros: number;
+  curtidas: number;
+  comentarios_respostas: number;
+  compartilhamentos: number;
+  engajamento: number;
+}
+
+export interface SentimentByNetwork {
+  rede: string;
+  total: number;
+  positivo: number;
+  neutro: number;
+  negativo: number;
+  sem_classificacao: number;
+}
+
+export interface ActivityHourWeek {
+  dia_semana: number;
+  hora: number;
+  registros: number;
+  engajamento: number;
 }
 
 export interface PostRow {
@@ -49,6 +90,7 @@ export interface PostRow {
   shares_count: number | null;
   sentiment_label: string | null;
   collected_at: string | null;
+  engagement?: number;
 }
 
 function periodRange(period: PeriodKey, customStart: string, customEnd: string) {
@@ -74,6 +116,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
+  const [sentimentEnqueuedKey, setSentimentEnqueuedKey] = useState<string | null>(null);
 
   const range = useMemo(() => periodRange(selectedPeriod, customStart, customEnd), [selectedPeriod, customStart, customEnd]);
 
@@ -96,38 +139,35 @@ export function ReactionsPerPost({ candidateId }: Props) {
     gcTime: 30 * 60_000,
   });
 
-  // Amostra de interações (posts + comentários + respostas) para gráficos + top 5.
-  // Totais reais vêm do RPC agregado; aqui trazemos só uma amostra p/ visualizações.
-  const { data: posts, isLoading: postsLoading, isError: postsIsError, refetch: refetchPosts } = useQuery({
-    queryKey: ["reactions-interactions", user?.id, isAdmin, candidateId, range.start, range.end],
-    queryFn: async () => {
-      let q = supabase
-        .from("social_interactions")
-        .select("id, social_network, likes_count, replies_count, shares_count, sentiment_label, collected_at")
-        .order("collected_at", { ascending: false })
-        .limit(1000);
-      if (range.start) q = q.gte("collected_at", range.start);
-      if (range.end) q = q.lte("collected_at", range.end);
-      if (!isAdmin && user) q = q.eq("user_id", user.id);
-      if (candidateId) q = q.eq("candidate_id", candidateId);
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data as PostRow[]).filter((r) => !isHiddenNetwork(r.social_network));
-    },
-    enabled: !!user,
-    retry: 1,
-    staleTime: 5 * 60_000,
-    gcTime: 30 * 60_000,
-  });
-
   useEffect(() => {
-    if (!summaryLoading && !postsLoading) {
+    if (!summaryLoading) {
       setLoadingTimedOut(false);
       return;
     }
     const timer = window.setTimeout(() => setLoadingTimedOut(true), 15_000);
     return () => window.clearTimeout(timer);
-  }, [summaryLoading, postsLoading, range.start, range.end, candidateId]);
+  }, [summaryLoading, range.start, range.end, candidateId]);
+
+  useEffect(() => {
+    if (!user || !summary || (summary.pendingCount || 0) <= 0) return;
+    const key = `${user.id}:${candidateId || "all"}:${range.start || "total"}:${range.end || "open"}:${summary.pendingCount}`;
+    if (sentimentEnqueuedKey === key) return;
+    setSentimentEnqueuedKey(key);
+
+    supabase.rpc("enqueue_pending_sentiment_jobs" as any, {
+      _user_id: user.id,
+      _candidate_id: candidateId ?? null,
+      _period_start: range.start,
+      _period_end: range.end,
+      _batch_size: 1000,
+    }).then(({ data, error }) => {
+      if (error) {
+        console.warn("[ReactionsPerPost] Falha ao enfileirar classificação IA automática", error);
+        return;
+      }
+      console.log("[ReactionsPerPost] Classificação IA automática enfileirada", data);
+    });
+  }, [candidateId, range.end, range.start, sentimentEnqueuedKey, summary, user]);
 
   const totals = useMemo(() => {
     const d = summary;
