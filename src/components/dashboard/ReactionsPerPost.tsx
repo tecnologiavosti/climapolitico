@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { AlertCircle, Heart, RefreshCw, Share2, ThumbsUp, ThumbsDown, Minus } from "lucide-react";
+import { AlertCircle, Heart, MessageCircle, RefreshCw, Share2, ThumbsUp, ThumbsDown, Minus } from "lucide-react";
 import { subDays } from "date-fns";
 
 // Carrega Recharts apenas quando o usuário entra na aba — reduz JS inicial.
@@ -388,8 +388,9 @@ export function ReactionsPerPost({ candidateId }: Props) {
                     </div>
                     <div className="text-2xl font-bold">{p.engagement.toLocaleString("pt-BR")}</div>
                     <div className="text-[10px] text-muted-foreground -mt-1">Engajamento total</div>
-                    <div className="flex justify-between text-xs pt-2 border-t mt-auto">
+                    <div className="flex justify-between gap-2 text-xs pt-2 border-t mt-auto">
                       <span className="flex items-center gap-1"><Heart className="h-3 w-3" />{(p.likes_count || 0).toLocaleString("pt-BR")}</span>
+                      <span className="flex items-center gap-1"><MessageCircle className="h-3 w-3" />{(p.replies_count || 0).toLocaleString("pt-BR")}</span>
                       <span className="flex items-center gap-1"><Share2 className="h-3 w-3" />{(p.shares_count || 0).toLocaleString("pt-BR")}</span>
                     </div>
                   </Card>
