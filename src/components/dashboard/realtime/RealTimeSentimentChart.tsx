@@ -99,12 +99,38 @@ export const RealTimeSentimentChart = ({ metrics }: Props) => {
                 <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} width={36} />
                 <Tooltip content={<CustomTooltip />} cursor={{ stroke: "hsl(var(--border))", strokeWidth: 1 }} />
                 <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} iconType="circle" />
-                <Area type="monotone" dataKey="positive" name="Positivo" stackId="1" stroke={COLORS.positive} strokeWidth={2} fill="url(#gPos)" animationDuration={600} />
-                <Area type="monotone" dataKey="neutral" name="Neutro" stackId="1" stroke={COLORS.neutral} strokeWidth={2} fill="url(#gNeu)" animationDuration={600} />
-                <Area type="monotone" dataKey="negative" name="Negativo" stackId="1" stroke={COLORS.negative} strokeWidth={2} fill="url(#gNeg)" animationDuration={600} />
+                <Area type="monotoneX" dataKey="positive" name="Positivo" stackId="1" stroke={COLORS.positive} strokeWidth={2} fill="url(#gPos)" animationDuration={600} />
+                <Area type="monotoneX" dataKey="neutral" name="Neutro" stackId="1" stroke={COLORS.neutral} strokeWidth={2} fill="url(#gNeu)" animationDuration={600} />
+                <Area type="monotoneX" dataKey="negative" name="Negativo" stackId="1" stroke={COLORS.negative} strokeWidth={2} fill="url(#gNeg)" animationDuration={600} />
               </AreaChart>
             </ResponsiveContainer>
           </motion.div>
+        )}
+
+        {/* Estatísticas adicionais */}
+        {metrics && metrics.totalMentions > 0 && (
+          <div className="mt-4 grid grid-cols-2 gap-3 pt-4 border-t border-border/40">
+            <div className="space-y-1">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Taxa de polarização</p>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-bold tabular-nums">{metrics.polarizationRate}%</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {metrics.lowConfidenceMentions > 0 && `${metrics.lowConfidenceMentions} baixa conf.`}
+                </span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-muted/40 overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-emerald-500 via-amber-500 to-red-500" style={{ width: `${metrics.polarizationRate}%` }} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Engajamento por sentimento</p>
+              <div className="space-y-0.5 text-xs">
+                <div className="flex justify-between"><span className="text-emerald-500">❤️ Positivos</span><span className="font-semibold tabular-nums">{metrics.engagementBySentiment.positive.toLocaleString("pt-BR")}</span></div>
+                <div className="flex justify-between"><span className="text-amber-500">💬 Neutros</span><span className="font-semibold tabular-nums">{metrics.engagementBySentiment.neutral.toLocaleString("pt-BR")}</span></div>
+                <div className="flex justify-between"><span className="text-red-500">⚠️ Negativos</span><span className="font-semibold tabular-nums">{metrics.engagementBySentiment.negative.toLocaleString("pt-BR")}</span></div>
+              </div>
+            </div>
+          </div>
         )}
       </CardContent>
     </Card>
