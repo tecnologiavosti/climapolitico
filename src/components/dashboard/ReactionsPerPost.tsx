@@ -204,8 +204,45 @@ export function ReactionsPerPost({ candidateId }: Props) {
         </div>
       </div>
 
-      {summaryLoading ? (
-        <Skeleton className="h-24 w-full" />
+      {(summaryLoading || loadingTimedOut) && !summaryIsError ? (
+        loadingTimedOut ? (
+          <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-border bg-muted/30 py-8 text-center">
+            <AlertCircle className="h-5 w-5 text-muted-foreground" />
+            <p className="text-sm font-medium">Não foi possível carregar os dados</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setLoadingTimedOut(false);
+                refetchSummary();
+                refetchPosts();
+              }}
+              disabled={summaryFetching}
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />Atualizar análise
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
+            <p className="text-sm text-muted-foreground">Carregando análise de reações...</p>
+            <Skeleton className="h-24 w-full" />
+          </div>
+        )
+      ) : summaryIsError ? (
+        <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-border bg-muted/30 py-8 text-center">
+          <AlertCircle className="h-5 w-5 text-muted-foreground" />
+          <p className="text-sm font-medium">Não foi possível carregar os dados</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              refetchSummary();
+              refetchPosts();
+            }}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" />Atualizar análise
+          </Button>
+        </div>
       ) : totals.totalRecords === 0 ? (
         <div className="text-sm text-muted-foreground py-8 text-center">Nenhum registro no período.</div>
       ) : (
@@ -246,6 +283,10 @@ export function ReactionsPerPost({ candidateId }: Props) {
           {/* Gráficos — lazy loaded */}
           {postsLoading ? (
             <Skeleton className="h-80 w-full" />
+          ) : postsIsError ? (
+            <div className="rounded-lg border border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+              Gráficos indisponíveis no momento. As métricas agregadas e o top 5 foram carregados.
+            </div>
           ) : (
             <Suspense fallback={<Skeleton className="h-80 w-full" />}>
               <ChartsBlock
