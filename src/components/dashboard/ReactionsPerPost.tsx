@@ -375,9 +375,9 @@ export function ReactionsPerPost({ candidateId }: Props) {
               negative={totals.neg}
               neutral={totals.neu}
               pending={totals.pending}
-              engagementByNetwork={summary?.engagementByNetwork || []}
-              sentimentByNetwork={summary?.sentimentByNetwork || []}
-              activityHourWeek={summary?.activityHourWeek || []}
+              engagementByNetwork={engState.data || []}
+              sentimentByNetwork={sentNetState.data || []}
+              activityHourWeek={actState.data || []}
             />
           </Suspense>
 
