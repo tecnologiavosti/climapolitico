@@ -303,39 +303,23 @@ export function ReactionsPerPost({ candidateId }: Props) {
         </div>
       </div>
 
-      {(summaryLoading || loadingTimedOut) && !summaryIsError ? (
-        loadingTimedOut ? (
-          <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-border bg-muted/30 py-8 text-center">
-            <AlertCircle className="h-5 w-5 text-muted-foreground" />
-            <p className="text-sm font-medium">Não foi possível carregar os dados</p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setLoadingTimedOut(false);
-                refetchSummary();
-              }}
-              disabled={summaryFetching}
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />Atualizar análise
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
-            <p className="text-sm text-muted-foreground">Carregando análise de reações...</p>
-            <Skeleton className="h-24 w-full" />
-          </div>
-        )
+      {summaryLoading && !summaryIsError ? (
+        <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
+          <p className="text-sm text-muted-foreground">Processando análise...</p>
+          <Skeleton className="h-24 w-full" />
+        </div>
       ) : summaryIsError ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-border bg-muted/30 py-8 text-center">
           <AlertCircle className="h-5 w-5 text-muted-foreground" />
           <p className="text-sm font-medium">Não foi possível carregar os dados</p>
+          <p className="text-xs text-muted-foreground max-w-md">
+            Detalhe: {totalsState.error}
+          </p>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => {
-              refetchSummary();
-            }}
+            onClick={() => { refetchSummary(); }}
+            disabled={summaryFetching}
           >
             <RefreshCw className="mr-2 h-4 w-4" />Atualizar análise
           </Button>
