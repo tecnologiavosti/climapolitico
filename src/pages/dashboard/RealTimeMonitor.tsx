@@ -1,21 +1,18 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealTimeAnalytics } from "@/hooks/useRealTimeAnalytics";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { RefreshCw, Radio, Clock } from "lucide-react";
-// Componente temporariamente oculto (mantido para uso futuro)
-// import { ConnectionStatus } from "@/components/dashboard/realtime/ConnectionStatus";
+import { CandidateSelector } from "@/components/dashboard/realtime/CandidateSelector";
 import { RealTimeKPIs } from "@/components/dashboard/realtime/RealTimeKPIs";
 import { RealTimeSentimentChart } from "@/components/dashboard/realtime/RealTimeSentimentChart";
-// Componente temporariamente oculto (mantido para uso futuro)
-// import { RealTimeMentionsChart } from "@/components/dashboard/realtime/RealTimeMentionsChart";
 import { RealTimeSentimentGauge } from "@/components/dashboard/realtime/RealTimeSentimentGauge";
 import { RealTimeCommentsFeed } from "@/components/dashboard/realtime/RealTimeCommentsFeed";
-import { Skeleton } from "@/components/ui/skeleton";
-import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { cn } from "@/lib/utils";
 
 interface Candidate {
   id: string;
@@ -25,172 +22,214 @@ interface Candidate {
 const RealTimeMonitor = () => {
   const { user } = useAuth();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [selectedCandidateId, setSelectedCandidateId] = useState<string>('');
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
   const [loadingCandidates, setLoadingCandidates] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const progressTimer = useRef<NodeJS.Timeout | null>(null);
 
   const { metrics, comments, isLoading, error, refreshMetrics } = useRealTimeAnalytics(
     selectedCandidateId ? [selectedCandidateId] : [],
-    60000 // 1 minute refresh
+    60000
   );
 
-  // Fetch candidates
   useEffect(() => {
     const fetchCandidates = async () => {
       if (!user) return;
-
-      const { data, error } = await supabase
-        .from('candidates')
-        .select('id, full_name')
-        .eq('user_id', user.id)
-        .eq('status', 'active')
-        .order('full_name');
-
-      if (!error && data) {
+      const { data } = await supabase
+        .from("candidates")
+        .select("id, full_name")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .order("full_name");
+      if (data) {
         setCandidates(data);
-        if (data.length > 0 && !selectedCandidateId) {
-          setSelectedCandidateId(data[0].id);
-        }
+        if (data.length > 0 && !selectedCandidateId) setSelectedCandidateId(data[0].id);
       }
       setLoadingCandidates(false);
     };
-
     fetchCandidates();
   }, [user]);
 
-  // Track last update time
+  // Realistic progress while loading
   useEffect(() => {
-    if (!isLoading && metrics) {
-      setLastUpdate(new Date());
+    if (isLoading) {
+      setLoadingProgress(8);
+      progressTimer.current && clearInterval(progressTimer.current);
+      progressTimer.current = setInterval(() => {
+        setLoadingProgress(prev => {
+          if (prev >= 92) return prev;
+          const step = prev < 40 ? 6 : prev < 70 ? 3 : 1;
+          return Math.min(92, prev + step);
+        });
+      }, 350);
+    } else {
+      progressTimer.current && clearInterval(progressTimer.current);
+      if (loadingProgress > 0) {
+        setLoadingProgress(100);
+        setTimeout(() => setLoadingProgress(0), 600);
+      }
+      if (metrics) setLastUpdate(new Date());
     }
-  }, [metrics, isLoading]);
+    return () => { progressTimer.current && clearInterval(progressTimer.current); };
+  }, [isLoading, metrics]);
 
   const handleRefresh = async () => {
     await refreshMetrics();
-    setLastUpdate(new Date());
   };
 
   const selectedCandidate = candidates.find(c => c.id === selectedCandidateId);
+  const showLoading = isLoading && !metrics;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 pb-8">
+      {/* Top progress bar */}
+      <AnimatePresence>
+        {loadingProgress > 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed top-0 left-0 right-0 z-50"
+          >
+            <Progress value={loadingProgress} className="h-0.5 rounded-none bg-transparent" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
-      <div className="flex flex-row justify-between items-center gap-3 flex-wrap">
-        <div>
-          <HelpTooltip text="Acompanhe os comentários chegando ao vivo, na hora em que o povo posta nas redes.">
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Radio className="h-8 w-8 text-primary" />
-            Monitor de Comentários
-          </h1>
-      </HelpTooltip>
-          <p className="text-muted-foreground mt-1">
-            Acompanhe menções e sentimentos dos comentários coletados
-          </p>
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="rounded-lg bg-primary/10 p-2.5 mt-0.5">
+            <Radio className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Monitor de Comentários</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Acompanhe menções, engajamento e sentimentos em tempo real
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Indicador de última atualização */}
-          <HelpTooltip text="Hora em que os dados foram atualizados pela última vez aqui na tela.">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm bg-muted/50 text-muted-foreground">
-              <Clock className="h-4 w-4" />
-              <span>Atualizado: {lastUpdate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-            </div>
-          </HelpTooltip>
-
-          <HelpTooltip text="Clica pra buscar os comentários mais novos agora mesmo.">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={isLoading}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              Atualizar
-            </Button>
-          </HelpTooltip>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card/60 px-2.5 py-1 text-xs text-muted-foreground">
+            <Clock className="h-3 w-3" />
+            <span>Atualizado às {lastUpdate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="h-8 gap-1.5"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
+            Atualizar
+          </Button>
         </div>
       </div>
 
-      {/* Candidate Selector */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-row items-center gap-3 flex-wrap">
-            <label className="text-sm font-medium">Monitorar candidato:</label>
-            {loadingCandidates ? (
-              <Skeleton className="h-10 w-64" />
-            ) : (
-              <HelpTooltip text="Escolha qual candidato você quer ficar de olho ao vivo.">
-                <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
-                  <SelectTrigger className="w-[180px] sm:w-64">
-                    <SelectValue placeholder="Selecione um candidato" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {candidates.map((candidate) => (
-                      <SelectItem key={candidate.id} value={candidate.id}>
-                        {candidate.full_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </HelpTooltip>
-            )}
-            {selectedCandidate && (
-              <span className="text-sm text-muted-foreground">
-                Monitorando: <strong>{selectedCandidate.full_name}</strong>
+      {/* Candidate selector bar */}
+      <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
+        <CardContent className="p-3 flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/10 px-2.5 py-1 text-[11px] font-semibold text-red-500">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
               </span>
-            )}
+              EM TEMPO REAL
+            </span>
+            <span className="text-xs text-muted-foreground hidden sm:inline">Monitorar:</span>
           </div>
+          {loadingCandidates ? (
+            <div className="h-11 w-full sm:w-[280px] rounded-md bg-muted/40 animate-pulse" />
+          ) : (
+            <CandidateSelector
+              candidates={candidates}
+              value={selectedCandidateId}
+              onChange={setSelectedCandidateId}
+              disabled={isLoading}
+            />
+          )}
+          {selectedCandidate && metrics && (
+            <span className="text-xs text-muted-foreground ml-auto">
+              <span className="font-semibold text-foreground tabular-nums">{metrics.totalMentions.toLocaleString("pt-BR")}</span> menções analisadas
+            </span>
+          )}
         </CardContent>
       </Card>
 
       {!selectedCandidateId ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Radio className="h-16 w-16 mx-auto mb-4 text-muted-foreground/30" />
-            <h3 className="text-lg font-medium mb-2">Selecione um candidato</h3>
-            <p className="text-muted-foreground">
-              Escolha um candidato acima para visualizar os comentários coletados
-            </p>
+        <Card className="border-border/60 bg-card/60">
+          <CardContent className="py-16 text-center">
+            <Radio className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
+            <h3 className="text-base font-semibold mb-1">Selecione um candidato</h3>
+            <p className="text-sm text-muted-foreground">Escolha um candidato para iniciar o monitoramento</p>
           </CardContent>
         </Card>
       ) : (
         <>
           {error && (
-            <Card className="border-destructive">
-              <CardContent className="py-4">
-                <p className="text-destructive text-sm">{error}</p>
-              </CardContent>
+            <Card className="border-destructive/40 bg-destructive/5">
+              <CardContent className="py-3 text-sm text-destructive">{error}</CardContent>
             </Card>
           )}
 
+          {/* Loading status banner */}
+          {showLoading && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <Card className="border-border/60 bg-card/60">
+                <CardContent className="py-3">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Carregando dados em tempo real...
+                    </span>
+                    <span className="text-xs tabular-nums text-muted-foreground">{loadingProgress}%</span>
+                  </div>
+                  <Progress value={loadingProgress} className="h-1.5" />
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+
           {/* KPIs */}
-          <RealTimeKPIs metrics={metrics} />
+          <motion.div
+            key={selectedCandidateId + "-kpi"}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+          >
+            <RealTimeKPIs metrics={metrics} />
+          </motion.div>
 
-          {/* Charts Grid - apenas sentimento ao longo do tempo */}
-          <div className="grid grid-cols-1 gap-6">
-            <RealTimeSentimentChart metrics={metrics} />
+          {/* Chart + Gauge */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <motion.div
+              className="lg:col-span-2"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.05 }}
+            >
+              <RealTimeSentimentChart metrics={metrics} />
+            </motion.div>
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.1 }}
+            >
+              <RealTimeSentimentGauge metrics={metrics} />
+            </motion.div>
           </div>
 
-          {/* Gauge and Feed */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <RealTimeSentimentGauge metrics={metrics} />
-            <div className="lg:col-span-2">
-              <RealTimeCommentsFeed comments={comments} />
-            </div>
-          </div>
-
-          {/* Info footer */}
-          <Card className="bg-muted/30">
-            <CardContent className="py-4">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Clock className="h-4 w-4" />
-                <span>
-                  Métricas atualizadas automaticamente a cada 1 minuto.
-                  Dados baseados nas interações coletadas, incluindo Twitter/X.
-                </span>
-              </div>
-            </CardContent>
-          </Card>
+          {/* Feed full width */}
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.15 }}
+          >
+            <RealTimeCommentsFeed comments={comments} isLoading={showLoading} />
+          </motion.div>
         </>
       )}
     </div>

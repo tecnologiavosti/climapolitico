@@ -1,102 +1,111 @@
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { useMemo, useState } from "react";
+import { motion } from "framer-motion";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import type { RealTimeMetrics } from "@/hooks/useRealTimeAnalytics";
 
-interface RealTimeSentimentChartProps {
+interface Props {
   metrics: RealTimeMetrics | null;
 }
 
-export const RealTimeSentimentChart = ({ metrics }: RealTimeSentimentChartProps) => {
-  if (!metrics) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Sentimento ao Longo do Tempo</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-64 animate-pulse bg-muted/20 rounded" />
-        </CardContent>
-      </Card>
-    );
-  }
+type Range = "24h" | "7d" | "30d";
+
+const COLORS = {
+  positive: "#22c55e",
+  neutral: "#eab308",
+  negative: "#ef4444",
+};
+
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-lg border border-border/80 bg-popover/95 backdrop-blur-md p-3 shadow-xl">
+      <p className="mb-1.5 text-xs font-medium text-muted-foreground">{label}</p>
+      <div className="space-y-1">
+        {payload.map((p: any) => (
+          <div key={p.dataKey} className="flex items-center justify-between gap-4 text-xs">
+            <div className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full" style={{ background: p.color }} />
+              <span className="capitalize">{p.name}</span>
+            </div>
+            <span className="font-semibold tabular-nums">{Number(p.value).toLocaleString("pt-BR")}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export const RealTimeSentimentChart = ({ metrics }: Props) => {
+  const [range, setRange] = useState<Range>("7d");
+
+  const data = useMemo(() => {
+    const h = metrics?.sentimentHistory ?? [];
+    if (range === "24h") return h.slice(-12);
+    if (range === "30d") return h;
+    return h.slice(-7);
+  }, [metrics, range]);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">Sentimento ao Longo do Tempo</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart
-              data={metrics.sentimentHistory}
-              margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-            >
-              <defs>
-                <linearGradient id="colorPositive" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--chart-2))" stopOpacity={0.8}/>
-                  <stop offset="95%" stopColor="hsl(var(--chart-2))" stopOpacity={0.1}/>
-                </linearGradient>
-                <linearGradient id="colorNeutral" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--chart-4))" stopOpacity={0.8}/>
-                  <stop offset="95%" stopColor="hsl(var(--chart-4))" stopOpacity={0.1}/>
-                </linearGradient>
-                <linearGradient id="colorNegative" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.8}/>
-                  <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0.1}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-              <XAxis 
-                dataKey="time" 
-                tick={{ fontSize: 12 }}
-                className="text-muted-foreground"
-              />
-              <YAxis 
-                tick={{ fontSize: 12 }}
-                className="text-muted-foreground"
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'hsl(var(--card))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '8px',
-                }}
-                labelStyle={{ color: 'hsl(var(--foreground))' }}
-              />
-              <Area
-                type="monotone"
-                dataKey="positive"
-                name="Positivo"
-                stackId="1"
-                stroke="hsl(var(--chart-2))"
-                fill="url(#colorPositive)"
-                animationDuration={500}
-                animationEasing="ease-in-out"
-              />
-              <Area
-                type="monotone"
-                dataKey="neutral"
-                name="Neutro"
-                stackId="1"
-                stroke="hsl(var(--chart-4))"
-                fill="url(#colorNeutral)"
-                animationDuration={500}
-                animationEasing="ease-in-out"
-              />
-              <Area
-                type="monotone"
-                dataKey="negative"
-                name="Negativo"
-                stackId="1"
-                stroke="hsl(var(--chart-1))"
-                fill="url(#colorNegative)"
-                animationDuration={500}
-                animationEasing="ease-in-out"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+    <Card className="border-border/60 bg-card/60 backdrop-blur-sm overflow-hidden">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+        <div>
+          <CardTitle className="text-base font-semibold">Sentimento ao longo do tempo</CardTitle>
+          <p className="text-xs text-muted-foreground mt-0.5">Volume empilhado por classificação</p>
         </div>
+        <div className="inline-flex rounded-md border border-border/70 bg-background/60 p-0.5">
+          {(["24h", "7d", "30d"] as Range[]).map((r) => (
+            <button
+              key={r}
+              onClick={() => setRange(r)}
+              className={cn(
+                "px-2.5 py-1 text-xs font-medium rounded transition-all",
+                range === r ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
+      </CardHeader>
+      <CardContent className="pt-2">
+        {!metrics ? (
+          <div className="h-64 rounded-md bg-muted/30 animate-pulse" />
+        ) : data.length === 0 ? (
+          <div className="h-64 flex items-center justify-center text-sm text-muted-foreground">
+            Sem dados no período
+          </div>
+        ) : (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }} className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="gPos" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={COLORS.positive} stopOpacity={0.6} />
+                    <stop offset="100%" stopColor={COLORS.positive} stopOpacity={0.05} />
+                  </linearGradient>
+                  <linearGradient id="gNeu" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={COLORS.neutral} stopOpacity={0.6} />
+                    <stop offset="100%" stopColor={COLORS.neutral} stopOpacity={0.05} />
+                  </linearGradient>
+                  <linearGradient id="gNeg" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={COLORS.negative} stopOpacity={0.6} />
+                    <stop offset="100%" stopColor={COLORS.negative} stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} vertical={false} />
+                <XAxis dataKey="time" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} width={36} />
+                <Tooltip content={<CustomTooltip />} cursor={{ stroke: "hsl(var(--border))", strokeWidth: 1 }} />
+                <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} iconType="circle" />
+                <Area type="monotone" dataKey="positive" name="Positivo" stackId="1" stroke={COLORS.positive} strokeWidth={2} fill="url(#gPos)" animationDuration={600} />
+                <Area type="monotone" dataKey="neutral" name="Neutro" stackId="1" stroke={COLORS.neutral} strokeWidth={2} fill="url(#gNeu)" animationDuration={600} />
+                <Area type="monotone" dataKey="negative" name="Negativo" stackId="1" stroke={COLORS.negative} strokeWidth={2} fill="url(#gNeg)" animationDuration={600} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </motion.div>
+        )}
       </CardContent>
     </Card>
   );

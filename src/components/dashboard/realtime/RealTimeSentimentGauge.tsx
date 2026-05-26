@@ -1,85 +1,68 @@
-import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
+import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCountUp } from "@/hooks/useCountUp";
 import type { RealTimeMetrics } from "@/hooks/useRealTimeAnalytics";
 
-interface RealTimeSentimentGaugeProps {
+interface Props {
   metrics: RealTimeMetrics | null;
 }
 
-export const RealTimeSentimentGauge = ({ metrics }: RealTimeSentimentGaugeProps) => {
+export const RealTimeSentimentGauge = ({ metrics }: Props) => {
   const score = metrics?.sentimentScore ?? 50;
-  const animatedScore = useCountUp(score, 1000);
+  const animated = useCountUp(score, 900);
 
-  // Create gauge data
-  const gaugeData = [
-    { name: 'score', value: score },
-    { name: 'remaining', value: 100 - score },
-  ];
+  const color = score >= 61 ? "#22c55e" : score >= 31 ? "#eab308" : "#ef4444";
+  const label =
+    score >= 75 ? "Alta aprovação" :
+    score >= 61 ? "Tendência positiva" :
+    score >= 41 ? "Predominância neutra" :
+    score >= 25 ? "Tendência negativa" : "Alta rejeição";
 
-  // Determine color based on score
-  const getColor = () => {
-    if (score >= 70) return 'hsl(var(--chart-2))'; // Green
-    if (score >= 40) return 'hsl(var(--chart-4))'; // Yellow
-    return 'hsl(var(--chart-1))'; // Red
-  };
-
-  const getSentimentLabel = () => {
-    if (score >= 70) return 'Positivo';
-    if (score >= 40) return 'Neutro';
-    return 'Negativo';
-  };
+  const radius = 70;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (score / 100) * circumference;
 
   if (!metrics) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Sentimento Atual</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-48 animate-pulse bg-muted/20 rounded" />
-        </CardContent>
+      <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
+        <CardHeader className="pb-2"><CardTitle className="text-base">Sentimento geral</CardTitle></CardHeader>
+        <CardContent><div className="h-52 rounded-md bg-muted/30 animate-pulse" /></CardContent>
       </Card>
     );
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">Sentimento Atual</CardTitle>
+    <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base font-semibold">Sentimento geral</CardTitle>
+        <p className="text-xs text-muted-foreground">Índice consolidado (0–100)</p>
       </CardHeader>
       <CardContent>
-        <div className="h-48 relative">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={gaugeData}
-                cx="50%"
-                cy="70%"
-                startAngle={180}
-                endAngle={0}
-                innerRadius="60%"
-                outerRadius="80%"
-                paddingAngle={0}
-                dataKey="value"
-                animationDuration={500}
-                animationEasing="ease-in-out"
-              >
-                <Cell fill={getColor()} />
-                <Cell fill="hsl(var(--muted))" />
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-          
-          {/* Center content */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center mt-4">
-            <span className="text-4xl font-bold tabular-nums">{animatedScore}</span>
-            <span className="text-sm text-muted-foreground">{getSentimentLabel()}</span>
+        <div className="flex flex-col items-center justify-center py-2">
+          <div className="relative h-44 w-44">
+            <svg className="h-full w-full -rotate-90" viewBox="0 0 160 160">
+              <circle cx="80" cy="80" r={radius} fill="none" stroke="hsl(var(--muted))" strokeWidth="12" opacity={0.4} />
+              <motion.circle
+                cx="80" cy="80" r={radius} fill="none"
+                stroke={color} strokeWidth="12" strokeLinecap="round"
+                strokeDasharray={circumference}
+                initial={{ strokeDashoffset: circumference }}
+                animate={{ strokeDashoffset: offset }}
+                transition={{ duration: 1.1, ease: "easeOut" }}
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-4xl font-bold tabular-nums tracking-tight" style={{ color }}>{animated}</span>
+              <span className="text-xs text-muted-foreground mt-1">de 100</span>
+            </div>
           </div>
-
-          {/* Scale labels */}
-          <div className="absolute bottom-2 left-0 right-0 flex justify-between px-8 text-xs text-muted-foreground">
+          <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/60 px-3 py-1">
+            <span className="h-2 w-2 rounded-full" style={{ background: color }} />
+            <span className="text-sm font-medium">{label}</span>
+          </div>
+          <div className="mt-3 flex w-full justify-between px-4 text-[10px] text-muted-foreground">
             <span>Negativo</span>
+            <span>Neutro</span>
             <span>Positivo</span>
           </div>
         </div>
