@@ -14,6 +14,7 @@ export interface SocialInteraction {
   interaction_type: string;
   sentiment_label: string | null;
   sentiment_score: number | null;
+  sentiment_confidence: number | null;
   likes_count: number;
   replies_count: number;
   shares_count: number;
