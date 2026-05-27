@@ -303,21 +303,28 @@ Deno.serve(async (req) => {
       phase: d.date < eventDayStr ? "antes" : d.date === eventDayStr ? "durante" : "depois",
     }));
 
-    // Insights
-    const ranked = REGIONS.map((r) => regions[r]).filter((r) => r.mentions >= 5);
-    const mostEngaged = [...ranked].sort((a, b) => b.engagement - a.engagement)[0];
-    const mostCritical = [...ranked].sort((a, b) => a.acceptance - b.acceptance)[0];
-    const mostFavorable = [...ranked].sort((a, b) => b.acceptance - a.acceptance)[0];
-
+    // Insights — populated whenever there's *any* data, using staggered thresholds
     const totalMentions = comments.length;
     const totalPos = REGIONS.reduce((s, r) => s + regions[r].positive, 0);
     const totalNeg = REGIONS.reduce((s, r) => s + regions[r].negative, 0);
     const overallAcceptance = totalPos + totalNeg > 0 ? Math.round((totalPos / (totalPos + totalNeg)) * 100) : 0;
 
+    const rankedStrict = REGIONS.map((r) => regions[r]).filter((r) => r.mentions >= 5);
+    const rankedLoose = REGIONS.map((r) => regions[r]).filter((r) => r.mentions >= 1);
+    const ranked = rankedStrict.length ? rankedStrict : rankedLoose;
+    const opinionRanked = ranked.filter(r => (r.positive + r.negative) >= 2);
+    const mostEngaged = [...ranked].sort((a, b) => b.engagement - a.engagement)[0];
+    const mostCritical = [...(opinionRanked.length ? opinionRanked : ranked)].sort((a, b) => a.acceptance - b.acceptance)[0];
+    const mostFavorable = [...(opinionRanked.length ? opinionRanked : ranked)].sort((a, b) => b.acceptance - a.acceptance)[0];
+
+    // Top growing theme = top word from the most engaged region (or all regions combined)
+    const topThemePool = mostEngaged?.topWords?.length ? mostEngaged.topWords : ranked.flatMap(r => r.topWords);
+    const topGrowingTheme = topThemePool[0] || null;
+
     // AI summary (best-effort, doesn't block response)
     let aiSummary = "";
     let aiAvailable = false;
-    if (totalMentions >= 10) {
+    if (totalMentions >= 5) {
       try {
         const regionalLines = REGIONS
           .filter((r) => regions[r].mentions >= 3)
