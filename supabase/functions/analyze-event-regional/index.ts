@@ -18,6 +18,34 @@ const UF_TO_REGION: Record<string, string> = {
   PR: "Sul", RS: "Sul", SC: "Sul",
 };
 
+const UFS = Object.keys(UF_TO_REGION);
+const UF_NAME: Record<string, string> = {
+  AC: "Acre", AL: "Alagoas", AP: "Amapá", AM: "Amazonas", BA: "Bahia", CE: "Ceará",
+  DF: "Distrito Federal", ES: "Espírito Santo", GO: "Goiás", MA: "Maranhão",
+  MT: "Mato Grosso", MS: "Mato Grosso do Sul", MG: "Minas Gerais", PA: "Pará",
+  PB: "Paraíba", PR: "Paraná", PE: "Pernambuco", PI: "Piauí", RJ: "Rio de Janeiro",
+  RN: "Rio Grande do Norte", RS: "Rio Grande do Sul", RO: "Rondônia", RR: "Roraima",
+  SC: "Santa Catarina", SP: "São Paulo", SE: "Sergipe", TO: "Tocantins",
+};
+
+// Cities → UF (capitals + main metros) for text-based inference
+const CITY_TO_UF: Record<string, string> = {
+  "rio branco":"AC","maceio":"AL","macapa":"AP","manaus":"AM","salvador":"BA",
+  "fortaleza":"CE","brasilia":"DF","vitoria":"ES","goiania":"GO","sao luis":"MA",
+  "cuiaba":"MT","campo grande":"MS","belo horizonte":"MG","belem":"PA",
+  "joao pessoa":"PB","curitiba":"PR","recife":"PE","teresina":"PI",
+  "rio de janeiro":"RJ","natal":"RN","porto alegre":"RS","porto velho":"RO",
+  "boa vista":"RR","florianopolis":"SC","sao paulo":"SP","aracaju":"SE","palmas":"TO",
+  "campinas":"SP","guarulhos":"SP","santos":"SP","sorocaba":"SP","ribeirao preto":"SP",
+  "niteroi":"RJ","duque de caxias":"RJ","nova iguacu":"RJ","sao goncalo":"RJ",
+  "uberlandia":"MG","contagem":"MG","juiz de fora":"MG","betim":"MG",
+  "londrina":"PR","maringa":"PR","foz do iguacu":"PR",
+  "caxias do sul":"RS","pelotas":"RS","canoas":"RS",
+  "joinville":"SC","blumenau":"SC","chapeco":"SC",
+  "feira de santana":"BA","caruaru":"PE","olinda":"PE","petrolina":"PE",
+  "anapolis":"GO",
+};
+
 const REGIONS = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"] as const;
 type Region = typeof REGIONS[number];
 
@@ -36,11 +64,16 @@ function normRegion(raw: string | null | undefined): Region | null {
   return null;
 }
 
-function inferRegionFromText(text: string): Region | null {
+function inferUFFromText(text: string): string | null {
   const t = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  for (const [uf, region] of Object.entries(UF_TO_REGION)) {
-    const re = new RegExp(`\\b${uf.toLowerCase()}\\b`, "i");
-    if (re.test(t)) return region as Region;
+  // Try city names first (more specific)
+  for (const [city, uf] of Object.entries(CITY_TO_UF)) {
+    if (t.includes(city)) return uf;
+  }
+  // Then UF codes as standalone tokens
+  for (const uf of UFS) {
+    const re = new RegExp(`(^|[^a-z0-9])${uf.toLowerCase()}([^a-z0-9]|$)`);
+    if (re.test(t)) return uf;
   }
   return null;
 }
