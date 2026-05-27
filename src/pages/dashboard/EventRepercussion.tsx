@@ -196,14 +196,9 @@ export default function EventRepercussion() {
                     {new Date(analysis.event.date).toLocaleString("pt-BR")} • {analysis.totals.mentions.toLocaleString("pt-BR")} menções • {analysis.totals.coverage}% mapeadas geograficamente
                   </p>
                 </CardHeader>
-                {analysis.insights.aiSummary && (
+                {analysis.event.description && (
                   <CardContent className="pt-0">
-                    <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
-                      <p className="text-sm leading-relaxed flex gap-2">
-                        <Sparkles className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                        <span>{analysis.insights.aiSummary}</span>
-                      </p>
-                    </div>
+                    <p className="text-sm text-foreground/80 leading-relaxed">{analysis.event.description}</p>
                   </CardContent>
                 )}
               </Card>
