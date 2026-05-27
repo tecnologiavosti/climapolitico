@@ -58,6 +58,7 @@ const mainItems = [
   { title: "Comparação de Candidatos", url: "/dashboard/candidate-comparison", icon: GitCompareArrows, tip: "Coloque dois ou mais candidatos lado a lado pra ver quem está melhor." },
   { title: "Picos de Menções", url: "/dashboard/pico-mencao", icon: Calendar, tip: "Descubra os picos de menções do seu candidato: debates, entrevistas, viralizações e momentos que impactaram nas redes." },
   { title: "Monitor Tempo Real", url: "/dashboard/realtime-monitor", icon: Radio, tip: "Acompanhe os comentários chegando ao vivo, na hora em que o povo posta." },
+  { title: "Repercussão por Região", url: "/dashboard/event-repercussion", icon: MessagesSquare, tip: "Descubra como eventos políticos (entrevistas, debates, lives) repercutem em cada região do Brasil, com análise de sentimento em tempo real." },
   { title: "Análise Regional", url: "/dashboard/regional-analysis", icon: MapPinned, tip: "Veja como seu candidato performa em cada região do Brasil por rede social." },
   { title: "Visão por Rede Social", url: "/dashboard/network-view", icon: Network, tip: "Filtre por rede (Instagram, X, YouTube, etc.) e veja KPIs, gráficos, top posts, hashtags e horários." },
   
