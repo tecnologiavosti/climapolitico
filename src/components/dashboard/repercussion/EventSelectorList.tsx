@@ -22,6 +22,8 @@ interface Props {
   loading: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onRetry?: () => void;
+  retrying?: boolean;
 }
 
 const TYPE_ICON: Record<string, any> = {
