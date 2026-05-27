@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, MessageSquare, TrendingUp, Mic, Radio, Newspaper, Search } from "lucide-react";
+import { Calendar, MessageSquare, TrendingUp, Mic, Radio, Newspaper, Search, Video, Megaphone, MapPin } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
@@ -27,13 +27,22 @@ interface Props {
 }
 
 const TYPE_ICON: Record<string, any> = {
-  entrevista: Mic, debate: Mic, live: Radio, podcast: Mic, discurso: Mic,
-  comicio: TrendingUp, noticia: Newspaper, pico: TrendingUp, outro: MessageSquare,
+  entrevista: Mic, debate: Megaphone, live: Video, podcast: Mic, discurso: Megaphone,
+  comicio: Megaphone, noticia: Newspaper, coletiva: Mic, agenda: MapPin,
+  evento: MapPin, programa: Video, declaracao: Megaphone, outro: MessageSquare,
 };
 
 const TYPE_LABEL: Record<string, string> = {
   entrevista: "Entrevista", debate: "Debate", live: "Live", podcast: "Podcast",
-  discurso: "Discurso", comicio: "Comício", noticia: "Notícia", pico: "Pico", outro: "Outro",
+  discurso: "Discurso", comicio: "Comício", noticia: "Notícia", coletiva: "Coletiva",
+  agenda: "Agenda", evento: "Evento", programa: "Programa", declaracao: "Declaração",
+  outro: "Outro",
+};
+
+const TYPE_EMOJI: Record<string, string> = {
+  entrevista: "🎙", debate: "🗣", live: "📺", podcast: "🎧", discurso: "🗣",
+  comicio: "📢", noticia: "📰", coletiva: "🎤", agenda: "📍", evento: "📍",
+  programa: "📺", declaracao: "💬", outro: "💬",
 };
 
 export function EventSelectorList({ events, loading, selectedId, onSelect, onRetry, retrying }: Props) {
