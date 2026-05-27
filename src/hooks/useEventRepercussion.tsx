@@ -30,7 +30,7 @@ export interface StateData {
 
 export interface EventRepercussionData {
   event: { id: string; name: string; type: string; date: string; description?: string; keywords?: string[] };
-  totals: { mentions: number; acceptance: number; positive: number; negative: number; unmapped: number; coverage: number; usedSemanticFallback?: boolean };
+  totals: { mentions: number; acceptance: number; positive: number; negative: number; unmapped: number; coverage: number; usedSemanticFallback?: boolean; candidatePoolSize?: number };
   regions: Record<string, RegionData>;
   states: Record<string, StateData>;
   timeline: { date: string; total: number; pos: number; neg: number; neu: number; phase: "antes" | "durante" | "depois" }[];
@@ -41,6 +41,30 @@ export interface EventRepercussionData {
     topGrowingTheme: string | null;
     aiSummary: string;
     aiAvailable: boolean;
+  };
+  thresholds?: {
+    strong: number;
+    robust: number;
+    canShowRegionInsights: boolean;
+    isRobust: boolean;
+  };
+  confidence?: {
+    level: "Alta" | "Média" | "Baixa";
+    score: number;
+    breakdown: {
+      volume: { score: number; value: number };
+      regionalDiversity: { score: number; value: number };
+      temporalSpread: { score: number; value: number };
+    };
+  };
+  debug?: {
+    candidatePoolSize: number;
+    associatedMentions: number;
+    avgAssociationScore: number;
+    matchedKeywords: string[];
+    matchedTokens: string[];
+    regionsFound: string[];
+    eventWindow: { start: string; end: string };
   };
   cached?: boolean;
 }
