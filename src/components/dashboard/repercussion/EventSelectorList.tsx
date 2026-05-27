@@ -36,7 +36,7 @@ const TYPE_LABEL: Record<string, string> = {
   discurso: "Discurso", comicio: "Comício", noticia: "Notícia", pico: "Pico", outro: "Outro",
 };
 
-export function EventSelectorList({ events, loading, selectedId, onSelect }: Props) {
+export function EventSelectorList({ events, loading, selectedId, onSelect, onRetry, retrying }: Props) {
   const [q, setQ] = useState("");
   const [type, setType] = useState<string>("all");
 
