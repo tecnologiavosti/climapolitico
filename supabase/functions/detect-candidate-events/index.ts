@@ -210,8 +210,82 @@ Responda APENAS com JSON válido (sem markdown):
       events = heuristicEvents(comments);
     }
 
+    // Semantic dedup: group near-duplicate event names ("Flávio na CNN", "Entrevista CNN", ...)
+    const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const tokens = (s: string) => new Set(normalize(s).split(' ').filter(w => w.length > 3 && !STOP.has(w)));
+    const jaccard = (a: Set<string>, b: Set<string>) => {
+      if (!a.size || !b.size) return 0;
+      let inter = 0;
+      for (const t of a) if (b.has(t)) inter++;
+      return inter / (a.size + b.size - inter);
+    };
+    const grouped: DetectedEvent[] = [];
+    for (const ev of events) {
+      const evTok = tokens(ev.name);
+      const dup = grouped.find(g => jaccard(tokens(g.name), evTok) >= 0.45 && g.type === ev.type);
+      if (dup) {
+        dup.mentions_estimate = (dup.mentions_estimate || 0) + (ev.mentions_estimate || 0);
+        dup.keywords = Array.from(new Set([...(dup.keywords || []), ...(ev.keywords || [])])).slice(0, 12);
+      } else {
+        grouped.push({ ...ev });
+      }
+    }
+    events = grouped;
+
+    // Persist to political_events so the UI list (which reads from the table) reflects the result.
+    let saved: any[] = [];
+    if (events.length > 0) {
+      // Avoid creating duplicates of events already saved (match by normalized name within ±2 days)
+      const { data: existing } = await supabaseService
+        .from('political_events')
+        .select('id, event_name, event_date, event_type')
+        .eq('candidate_id', candidateId)
+        .eq('user_id', user.id);
+
+      const existingNorm = (existing || []).map((r: any) => ({
+        ...r,
+        norm: normalize(r.event_name),
+        tok: tokens(r.event_name),
+        t: new Date(r.event_date).getTime(),
+      }));
+
+      const toInsert: any[] = [];
+      const reused: any[] = [];
+      for (const ev of events) {
+        const evTok = tokens(ev.name);
+        const evDate = new Date(`${ev.start_date}T12:00:00Z`).getTime();
+        const match = existingNorm.find(r => r.event_type === ev.type && jaccard(r.tok, evTok) >= 0.45 && Math.abs(r.t - evDate) <= 3 * 86400000);
+        if (match) {
+          reused.push({ id: match.id, ...ev });
+        } else {
+          toInsert.push({
+            user_id: user.id,
+            candidate_id: candidateId,
+            event_name: ev.name.substring(0, 200),
+            event_type: ev.type || 'outro',
+            event_date: new Date(`${ev.start_date}T12:00:00Z`).toISOString(),
+            description: ev.description?.substring(0, 500) || null,
+            keywords: (ev.keywords || []).slice(0, 15),
+            metadata: { mentions_estimate: ev.mentions_estimate || 0, end_date: ev.end_date, auto_detected: true },
+          });
+        }
+      }
+
+      if (toInsert.length > 0) {
+        const { data: inserted, error: insertErr } = await supabaseService
+          .from('political_events')
+          .insert(toInsert)
+          .select('id, event_name, event_type, event_date, keywords, metadata');
+        if (insertErr) console.error('[detect-events] insert error:', insertErr.message);
+        saved = [...(inserted || []), ...reused];
+      } else {
+        saved = reused;
+      }
+    }
+
     return new Response(JSON.stringify({
-      events,
+      events: saved.length > 0 ? saved : events,
+      saved_count: saved.length,
       candidate: { id: candidate.id, full_name: candidate.full_name },
       analyzed_comments: comments.length,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
