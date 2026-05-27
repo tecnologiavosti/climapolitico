@@ -1,5 +1,7 @@
-// Aggregates social_interactions for a single event broken down by Brazilian region.
-// Returns per-region sentiment, engagement, top themes/words, timeline (before/during/after).
+// Aggregates social_interactions for a single event, filtering comments via
+// per-event semantic scoring (keywords + title tokens + temporal proximity).
+// Returns per-region sentiment, engagement, top themes/words, timeline, and
+// a debug payload with traceability info.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 
@@ -28,7 +30,6 @@ const UF_NAME: Record<string, string> = {
   SC: "Santa Catarina", SP: "São Paulo", SE: "Sergipe", TO: "Tocantins",
 };
 
-// Cities → UF (capitals + main metros) for text-based inference
 const CITY_TO_UF: Record<string, string> = {
   "rio branco":"AC","maceio":"AL","macapa":"AP","manaus":"AM","salvador":"BA",
   "fortaleza":"CE","brasilia":"DF","vitoria":"ES","goiania":"GO","sao luis":"MA",
@@ -50,12 +51,14 @@ const REGIONS = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"] as const
 type Region = typeof REGIONS[number];
 
 const STOP = new Set([
-  "para","como","mais","muito","pela","pelo","isso","essa","esse","esta","este","entre","sobre","quando","onde","tambem","também","presidente","candidato","candidata","brasil","politica","política","governo","partido","povo","gente","tudo","todos","todas","agora","hoje","ontem","sempre","nunca","assim","porque","mesmo","quem","vou","tem","tinha","foi","sao","são","dos","das","com","sem","por","seu","sua","meu","minha","nos","nas","que","dele","dela","aqui","ali","ainda","depois","antes","tao","tão","pouco","bom","boa","ruim","https","http","class","href","target","blank","nbsp",
+  "para","como","mais","muito","pela","pelo","isso","essa","esse","esta","este","entre","sobre","quando","onde","tambem","também","presidente","candidato","candidata","brasil","politica","política","governo","partido","povo","gente","tudo","todos","todas","agora","hoje","ontem","sempre","nunca","assim","porque","mesmo","quem","vou","tem","tinha","foi","sao","são","dos","das","com","sem","por","seu","sua","meu","minha","nos","nas","que","dele","dela","aqui","ali","ainda","depois","antes","tao","tão","pouco","bom","boa","ruim","https","http","class","href","target","blank","nbsp","anos","ano","mes","mês","dia","dias","vez","vezes","ver","sera","será",
 ]);
+
+const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
 function normRegion(raw: string | null | undefined): Region | null {
   if (!raw) return null;
-  const n = raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  const n = norm(raw).trim();
   if (n.startsWith("nort") && !n.includes("este")) return "Norte";
   if (n.startsWith("nordest")) return "Nordeste";
   if (n.startsWith("centro")) return "Centro-Oeste";
@@ -65,12 +68,10 @@ function normRegion(raw: string | null | undefined): Region | null {
 }
 
 function inferUFFromText(text: string): string | null {
-  const t = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  // Try city names first (more specific)
+  const t = norm(text);
   for (const [city, uf] of Object.entries(CITY_TO_UF)) {
     if (t.includes(city)) return uf;
   }
-  // Then UF codes as standalone tokens
   for (const uf of UFS) {
     const re = new RegExp(`(^|[^a-z0-9])${uf.toLowerCase()}([^a-z0-9]|$)`);
     if (re.test(t)) return uf;
@@ -79,15 +80,15 @@ function inferUFFromText(text: string): string | null {
 }
 
 function tokenize(text: string): string[] {
-  return text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").match(/[a-z0-9#@]{4,}/g) || [];
+  return norm(text).match(/[a-z0-9#@]{4,}/g) || [];
 }
 
-function topWords(texts: string[], n = 8): string[] {
+function topWords(texts: string[], excluded: Set<string>, n = 8): string[] {
   const counts = new Map<string, number>();
   for (const t of texts) {
     const seen = new Set<string>();
     for (const w of tokenize(t)) {
-      if (STOP.has(w) || /^\d+$/.test(w) || seen.has(w)) continue;
+      if (STOP.has(w) || excluded.has(w) || /^\d+$/.test(w) || seen.has(w)) continue;
       seen.add(w);
       counts.set(w, (counts.get(w) || 0) + 1);
     }
@@ -125,30 +126,47 @@ Deno.serve(async (req) => {
 
     const admin = createClient(SUPABASE_URL, SERVICE_KEY);
 
-    // Load event
     const { data: event } = await admin.from("political_events").select("*").eq("id", eventId).eq("user_id", user.id).maybeSingle();
     if (!event) return new Response(JSON.stringify({ error: "Evento não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    // Cache check
-    const cacheKey = `event_regional:${eventId}:${rangeDays}`;
+    // Load candidate name to exclude from keyword/word-cloud noise
+    const { data: candidate } = await admin.from("candidates").select("full_name").eq("id", event.candidate_id).maybeSingle();
+    const candidateName = candidate?.full_name || "";
+    const candidateTokens = new Set(tokenize(candidateName));
+
+    // Cache check (v2 namespace because filtering logic changed)
+    const cacheKey = `event_regional_v2:${eventId}:${rangeDays}`;
     const { data: cached } = await admin.from("analysis_cache").select("result, expires_at").eq("cache_key", cacheKey).maybeSingle();
     if (cached && new Date(cached.expires_at) > new Date()) {
       return new Response(JSON.stringify({ ...cached.result, cached: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const eventDate = new Date(event.event_date);
-    const start = new Date(eventDate.getTime() - 1 * 86400_000);
-    const end = new Date(eventDate.getTime() + rangeDays * 86400_000);
-    const keywords: string[] = Array.isArray(event.keywords) ? event.keywords.map((k: string) => String(k).toLowerCase().trim()).filter(Boolean) : [];
+    const start = new Date(eventDate.getTime() - 3 * 86400_000);
+    const end = new Date(eventDate.getTime() + Math.max(3, rangeDays) * 86400_000);
 
-    // Pull comments paginated
+    // Build keyword + title-token corpus
+    const rawKeywords: string[] = Array.isArray(event.keywords)
+      ? event.keywords.map((k: string) => norm(String(k)).trim()).filter(Boolean)
+      : [];
+    const titleTokens = tokenize(event.event_name || "")
+      .filter(t => !STOP.has(t) && !candidateTokens.has(t) && t.length >= 4);
+    const keywordPhrases = rawKeywords.filter(k => k.length >= 3 && !candidateTokens.has(k));
+    const keywordTokens = Array.from(new Set(
+      rawKeywords.flatMap(k => k.split(/[\s\-_/]+/))
+        .map(t => norm(t))
+        .filter(t => t.length >= 4 && !STOP.has(t) && !candidateTokens.has(t))
+    ));
+    const allMatchTokens = Array.from(new Set([...titleTokens, ...keywordTokens]));
+
+    // Pull comments paginated within the temporal window
     const all: any[] = [];
     let from = 0;
     const pageSize = 1000;
     while (true) {
       const { data, error } = await admin
         .from("social_interactions")
-        .select("comment_text, sentiment_label, likes_count, replies_count, shares_count, region, social_network, comment_author, created_at, original_posted_at")
+        .select("id, comment_text, sentiment_label, likes_count, replies_count, shares_count, region, social_network, comment_author, created_at, original_posted_at")
         .eq("candidate_id", event.candidate_id)
         .or(`and(original_posted_at.gte.${start.toISOString()},original_posted_at.lte.${end.toISOString()}),and(original_posted_at.is.null,created_at.gte.${start.toISOString()},created_at.lte.${end.toISOString()})`)
         .order("original_posted_at", { ascending: false, nullsFirst: false })
@@ -160,35 +178,61 @@ Deno.serve(async (req) => {
       if (all.length >= 30000) break;
     }
 
-    // Filter by event keywords (semantic match). Falls back to broader matching if too few.
-    let comments = all;
-    let usedFallback = false;
-    if (keywords.length > 0) {
-      const strict = all.filter((c) => {
-        const t = (c.comment_text || "").toLowerCase();
-        return keywords.some((k) => k.length >= 3 && t.includes(k));
-      });
-      if (strict.length >= 20) {
-        comments = strict;
-      } else {
-        // Semantic fallback: split keywords into tokens and accept ANY token match
-        const tokens = Array.from(new Set(keywords.flatMap(k => k.split(/[\s\-_/]+/)).filter(t => t.length >= 4)));
-        const loose = all.filter((c) => {
-          const t = (c.comment_text || "").toLowerCase();
-          return tokens.some((k) => t.includes(k));
-        });
-        if (loose.length >= 10) {
-          comments = loose;
-          usedFallback = true;
-        } else {
-          // Last resort: use all candidate comments in window so map/insights are not empty
-          comments = all;
-          usedFallback = true;
-        }
+    // ============= EVENT-MENTION SCORING =============
+    // For each candidate comment, compute association score against THIS event.
+    // Include only those above threshold.
+    const eventDayMs = eventDate.getTime();
+    type Scored = { c: any; score: number; matchedKeywords: string[]; matchedTokens: string[]; ufInferred: string | null };
+    const scored: Scored[] = [];
+    let kwTotal = 0, kwHits = 0;
+
+    for (const c of all) {
+      const text = norm(`${c.comment_text || ""} ${c.comment_author || ""}`);
+      if (!text.trim()) continue;
+
+      const matchedKeywords: string[] = [];
+      for (const k of keywordPhrases) {
+        if (k.length >= 3 && text.includes(k)) matchedKeywords.push(k);
       }
+      const matchedTokens: string[] = [];
+      for (const t of allMatchTokens) {
+        if (text.includes(t)) matchedTokens.push(t);
+      }
+
+      let score = 0;
+      score += matchedKeywords.length * 3;
+      score += matchedTokens.length * 1;
+
+      // Temporal proximity boost
+      const ts = c.original_posted_at || c.created_at;
+      if (ts) {
+        const dt = Math.abs(new Date(ts).getTime() - eventDayMs) / 86400_000;
+        if (dt <= 1) score += 2;
+        else if (dt <= 3) score += 1;
+        else if (dt <= 7) score += 0.5;
+      }
+
+      // Require at least one explicit keyword OR title-token match
+      const hasExplicitMatch = matchedKeywords.length > 0 || matchedTokens.length > 0;
+      if (!hasExplicitMatch) continue;
+      if (score < 2) continue;
+
+      kwTotal += score;
+      kwHits++;
+      scored.push({
+        c,
+        score,
+        matchedKeywords,
+        matchedTokens,
+        ufInferred: inferUFFromText(`${c.comment_text || ""} ${c.comment_author || ""}`),
+      });
     }
 
-    // Build region + per-UF buckets
+    const comments = scored;
+    const usedFallback = false; // No more last-resort "use all candidate comments"
+    const avgScore = kwHits ? kwTotal / kwHits : 0;
+
+    // ============= REGION + UF BUCKETS =============
     type Bucket = { mentions: number; pos: number; neg: number; neu: number; engagement: number; texts: string[]; samples: any[] };
     const mkBucket = (): Bucket => ({ mentions: 0, pos: 0, neg: 0, neu: 0, engagement: 0, texts: [], samples: [] });
     const buckets: Record<Region, Bucket> = {
@@ -198,13 +242,19 @@ Deno.serve(async (req) => {
     const ufBuckets: Record<string, Bucket> = {};
     for (const uf of UFS) ufBuckets[uf] = mkBucket();
     let unmapped = 0;
+    const matchedKwSet = new Set<string>();
+    const matchedTokenSet = new Set<string>();
+    const regionsFound = new Set<string>();
 
-    for (const c of comments) {
-      const text = `${c.comment_text || ""} ${c.comment_author || ""}`;
-      const uf = inferUFFromText(text);
-      let region: Region | null = uf ? (UF_TO_REGION[uf] as Region) : normRegion(c.region);
+    for (const sc of comments) {
+      const c = sc.c;
+      sc.matchedKeywords.forEach(k => matchedKwSet.add(k));
+      sc.matchedTokens.forEach(t => matchedTokenSet.add(t));
 
+      const uf = sc.ufInferred;
+      const region: Region | null = uf ? (UF_TO_REGION[uf] as Region) : normRegion(c.region);
       if (!region) { unmapped++; continue; }
+      regionsFound.add(region);
 
       const b = buckets[region];
       const s = sentKey(c.sentiment_label);
@@ -219,6 +269,7 @@ Deno.serve(async (req) => {
         network: c.social_network,
         likes: c.likes_count || 0,
         date: c.original_posted_at || c.created_at,
+        score: sc.score,
       });
 
       if (uf) {
@@ -240,6 +291,7 @@ Deno.serve(async (req) => {
       return "very_negative";
     };
 
+    const excludedWords = new Set<string>([...candidateTokens, ...STOP]);
     const regions: Record<string, any> = {};
     for (const r of REGIONS) {
       const b = buckets[r];
@@ -257,8 +309,8 @@ Deno.serve(async (req) => {
         sentiment_class: sc === "insufficient" ? "insufficient"
           : sc === "very_positive" || sc === "positive" ? "positive"
           : sc === "very_negative" || sc === "negative" ? "negative" : "mixed",
-        topWords: topWords(b.texts, 8),
-        topComments: b.samples.sort((x, y) => y.likes - x.likes).slice(0, 5),
+        topWords: topWords(b.texts, excludedWords, 8),
+        topComments: b.samples.sort((x, y) => (y.likes - x.likes) || (y.score - x.score)).slice(0, 5),
       };
     }
 
@@ -278,18 +330,27 @@ Deno.serve(async (req) => {
         engagement: b.engagement,
         acceptance,
         sentiment_class: classify(b.mentions, acceptance, opin),
-        topWords: topWords(b.texts, 6),
+        topWords: topWords(b.texts, excludedWords, 6),
       };
     }
 
-
-    // Timeline buckets per day
+    // ============= TIMELINE: event_date -3 → +3 only =============
+    const tStart = new Date(eventDate.getTime() - 3 * 86400_000);
+    const tEnd = new Date(eventDate.getTime() + 3 * 86400_000);
     const dayMap = new Map<string, { date: string; total: number; pos: number; neg: number; neu: number }>();
-    for (const c of comments) {
+    // Pre-seed all 7 days so timeline is always continuous
+    for (let i = -3; i <= 3; i++) {
+      const d = new Date(eventDate.getTime() + i * 86400_000).toISOString().slice(0, 10);
+      dayMap.set(d, { date: d, total: 0, pos: 0, neg: 0, neu: 0 });
+    }
+    for (const sc of comments) {
+      const c = sc.c;
       const ts = c.original_posted_at || c.created_at;
       if (!ts) continue;
+      const tsDate = new Date(ts);
+      if (tsDate < tStart || tsDate > tEnd) continue;
       const day = String(ts).slice(0, 10);
-      if (!dayMap.has(day)) dayMap.set(day, { date: day, total: 0, pos: 0, neg: 0, neu: 0 });
+      if (!dayMap.has(day)) continue;
       const d = dayMap.get(day)!;
       d.total++;
       const s = sentKey(c.sentiment_label);
@@ -303,47 +364,89 @@ Deno.serve(async (req) => {
       phase: d.date < eventDayStr ? "antes" : d.date === eventDayStr ? "durante" : "depois",
     }));
 
-    // Insights — populated whenever there's *any* data, using staggered thresholds
+    // ============= TOTALS + INSIGHTS WITH STRICT THRESHOLDS =============
     const totalMentions = comments.length;
     const totalPos = REGIONS.reduce((s, r) => s + regions[r].positive, 0);
     const totalNeg = REGIONS.reduce((s, r) => s + regions[r].negative, 0);
     const overallAcceptance = totalPos + totalNeg > 0 ? Math.round((totalPos / (totalPos + totalNeg)) * 100) : 0;
 
-    const rankedStrict = REGIONS.map((r) => regions[r]).filter((r) => r.mentions >= 5);
-    const rankedLoose = REGIONS.map((r) => regions[r]).filter((r) => r.mentions >= 1);
-    const ranked = rankedStrict.length ? rankedStrict : rankedLoose;
-    const opinionRanked = ranked.filter(r => (r.positive + r.negative) >= 2);
-    const mostEngaged = [...ranked].sort((a, b) => b.engagement - a.engagement)[0];
-    const mostCritical = [...(opinionRanked.length ? opinionRanked : ranked)].sort((a, b) => a.acceptance - b.acceptance)[0];
-    const mostFavorable = [...(opinionRanked.length ? opinionRanked : ranked)].sort((a, b) => b.acceptance - a.acceptance)[0];
+    // Mentions threshold for confident region-level insights
+    const STRONG_THRESHOLD = 30;
+    const ROBUST_THRESHOLD = 100;
+    const canShowRegionInsights = totalMentions >= STRONG_THRESHOLD;
 
-    // Top growing theme = top word from the most engaged region (or all regions combined)
-    const topThemePool = mostEngaged?.topWords?.length ? mostEngaged.topWords : ranked.flatMap(r => r.topWords);
-    const topGrowingTheme = topThemePool[0] || null;
+    const opinionRanked = REGIONS
+      .map((r) => regions[r])
+      .filter((r) => (r.positive + r.negative) >= 3);
 
-    // AI summary (best-effort, doesn't block response)
+    // Most critical: max negative ratio. Most favorable: max positive ratio. Force distinct.
+    const withRatios = opinionRanked.map((r) => {
+      const opin = r.positive + r.negative;
+      return {
+        region: r.region,
+        engagement: r.engagement,
+        acceptance: r.acceptance,
+        negRatio: opin > 0 ? r.negative / opin : 0,
+        posRatio: opin > 0 ? r.positive / opin : 0,
+        opin,
+      };
+    });
+
+    let mostCritical: { region: string; acceptance: number } | null = null;
+    let mostFavorable: { region: string; acceptance: number } | null = null;
+    if (canShowRegionInsights && withRatios.length > 0) {
+      const byNeg = [...withRatios].sort((a, b) => b.negRatio - a.negRatio || a.posRatio - b.posRatio);
+      const byPos = [...withRatios].sort((a, b) => b.posRatio - a.posRatio || a.negRatio - b.negRatio);
+      const crit = byNeg[0];
+      let fav = byPos[0];
+      if (fav && crit && fav.region === crit.region) {
+        // Avoid same-region tie: pick the next favorable
+        fav = byPos.find((x) => x.region !== crit.region) || null as any;
+      }
+      mostCritical = crit ? { region: crit.region, acceptance: crit.acceptance } : null;
+      mostFavorable = fav ? { region: fav.region, acceptance: fav.acceptance } : null;
+    }
+
+    const mostEngaged = canShowRegionInsights
+      ? [...withRatios].sort((a, b) => b.engagement - a.engagement)[0] || null
+      : null;
+
+    const topGrowingTheme = canShowRegionInsights
+      ? (mostEngaged?.region && regions[mostEngaged.region]?.topWords?.[0]) || null
+      : null;
+
+    // ============= CONFIDENCE =============
+    const regionsWith10 = REGIONS.filter((r) => regions[r].mentions >= 10).length;
+    const daysWithData = timeline.filter((d) => d.total > 0).length;
+    let volScore = totalMentions >= 200 ? 2 : totalMentions >= 50 ? 1 : 0;
+    let regScore = regionsWith10 >= 3 ? 2 : regionsWith10 >= 2 ? 1 : 0;
+    let tempScore = daysWithData >= 5 ? 2 : daysWithData >= 3 ? 1 : 0;
+    const confTotal = volScore + regScore + tempScore;
+    const confidence: "Alta" | "Média" | "Baixa" = confTotal >= 5 ? "Alta" : confTotal >= 3 ? "Média" : "Baixa";
+
+    // ============= AI SUMMARY (constrained) =============
     let aiSummary = "";
     let aiAvailable = false;
-    if (totalMentions >= 5) {
+    if (totalMentions >= STRONG_THRESHOLD) {
       try {
         const regionalLines = REGIONS
           .filter((r) => regions[r].mentions >= 3)
           .map((r) => `${r}: ${regions[r].mentions} menções, ${regions[r].acceptance}% aceitação, temas: ${regions[r].topWords.slice(0, 4).join(", ")}`)
           .join("\n");
+        const sampleNote = totalMentions < ROBUST_THRESHOLD ? "\n[Aviso: amostra pequena — registre limitação estatística no texto.]" : "";
         const ai = await callAICerebrasFirst({
-          systemMsg: "Você é analista político brasileiro. Escreva SEMPRE em prosa natural, em português do Brasil, fluida e clara. NUNCA retorne JSON, chaves, colchetes, listas com bullet ou objetos — apenas parágrafos corridos. Máximo 5 frases.",
+          systemMsg: "Você é analista político brasileiro. Analise APENAS os comentários relacionados ao evento fornecido. NÃO faça inferências sem evidência explícita nos dados estatísticos abaixo. Se a amostra for pequena, informe a limitação. Escreva em prosa natural, português do Brasil, sem JSON, listas ou bullets. Máximo 5 frases.",
           userPrompt: `Evento: "${event.event_name}" (${event.event_type}) em ${eventDayStr}.
-Total: ${totalMentions} menções. Aceitação geral: ${overallAcceptance}%.
+Total de menções associadas ao evento: ${totalMentions}. Aceitação geral: ${overallAcceptance}%.
 Repercussão por região:
-${regionalLines}
+${regionalLines}${sampleNote}
 
-Escreva um resumo analítico em texto corrido (sem JSON, sem listas) sobre como o evento repercutiu nas diferentes regiões do Brasil. Destaque contrastes regionais reais, temas predominantes e onde houve mais aceitação ou rejeição. Máximo 5 frases. Não invente dados que não estão nas estatísticas acima.`,
+Escreva um resumo analítico em texto corrido baseado SOMENTE nos números acima.`,
           maxTokens: 500,
-          temperature: 0.5,
+          temperature: 0.3,
           tag: "event-regional",
         });
         let raw = (ai.content || "").trim();
-        // Strip accidental JSON wrappers like {"resumo":"..."} or ```json blocks
         raw = raw.replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/i, "").trim();
         const jsonMatch = raw.match(/^\s*\{[\s\S]*"([^"]+)"\s*:\s*"([^]*?)"\s*\}\s*$/);
         if (jsonMatch) raw = jsonMatch[2];
@@ -352,6 +455,8 @@ Escreva um resumo analítico em texto corrido (sem JSON, sem listas) sobre como 
       } catch (e) {
         console.warn("[analyze-event-regional] AI failed:", (e as Error).message);
       }
+    } else {
+      aiSummary = "Dados insuficientes para análise IA confiável (mínimo de 30 menções associadas ao evento).";
     }
 
     const result = {
@@ -371,22 +476,46 @@ Escreva um resumo analítico em texto corrido (sem JSON, sem listas) sobre como 
         unmapped,
         coverage: totalMentions > 0 ? Math.round(((totalMentions - unmapped) / totalMentions) * 100) : 0,
         usedSemanticFallback: usedFallback,
+        candidatePoolSize: all.length,
       },
       regions,
       states,
       timeline,
       insights: {
         mostEngaged: mostEngaged ? { region: mostEngaged.region, value: mostEngaged.engagement } : null,
-        mostCritical: mostCritical ? { region: mostCritical.region, acceptance: mostCritical.acceptance } : null,
-        mostFavorable: mostFavorable ? { region: mostFavorable.region, acceptance: mostFavorable.acceptance } : null,
+        mostCritical,
+        mostFavorable,
         topGrowingTheme,
         aiSummary,
         aiAvailable,
       },
+      thresholds: {
+        strong: STRONG_THRESHOLD,
+        robust: ROBUST_THRESHOLD,
+        canShowRegionInsights,
+        isRobust: totalMentions >= ROBUST_THRESHOLD,
+      },
+      confidence: {
+        level: confidence,
+        score: confTotal,
+        breakdown: {
+          volume: { score: volScore, value: totalMentions },
+          regionalDiversity: { score: regScore, value: regionsWith10 },
+          temporalSpread: { score: tempScore, value: daysWithData },
+        },
+      },
+      debug: {
+        candidatePoolSize: all.length,
+        associatedMentions: totalMentions,
+        avgAssociationScore: Number(avgScore.toFixed(2)),
+        matchedKeywords: [...matchedKwSet].slice(0, 30),
+        matchedTokens: [...matchedTokenSet].slice(0, 30),
+        regionsFound: [...regionsFound],
+        eventWindow: { start: start.toISOString(), end: end.toISOString() },
+      },
       cached: false,
     };
 
-    // Cache 10 minutes
     try {
       await admin.from("analysis_cache").upsert({
         cache_key: cacheKey,
