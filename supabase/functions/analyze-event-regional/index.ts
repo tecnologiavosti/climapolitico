@@ -160,13 +160,32 @@ Deno.serve(async (req) => {
       if (all.length >= 30000) break;
     }
 
-    // Filter by event keywords (semantic match)
+    // Filter by event keywords (semantic match). Falls back to broader matching if too few.
     let comments = all;
+    let usedFallback = false;
     if (keywords.length > 0) {
-      comments = all.filter((c) => {
+      const strict = all.filter((c) => {
         const t = (c.comment_text || "").toLowerCase();
-        return keywords.some((k) => t.includes(k));
+        return keywords.some((k) => k.length >= 3 && t.includes(k));
       });
+      if (strict.length >= 20) {
+        comments = strict;
+      } else {
+        // Semantic fallback: split keywords into tokens and accept ANY token match
+        const tokens = Array.from(new Set(keywords.flatMap(k => k.split(/[\s\-_/]+/)).filter(t => t.length >= 4)));
+        const loose = all.filter((c) => {
+          const t = (c.comment_text || "").toLowerCase();
+          return tokens.some((k) => t.includes(k));
+        });
+        if (loose.length >= 10) {
+          comments = loose;
+          usedFallback = true;
+        } else {
+          // Last resort: use all candidate comments in window so map/insights are not empty
+          comments = all;
+          usedFallback = true;
+        }
+      }
     }
 
     // Build region + per-UF buckets
