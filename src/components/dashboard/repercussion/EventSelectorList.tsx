@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ViewType } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Calendar, MessageSquare, TrendingUp, Mic, Radio, Newspaper, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useState, useMemo } from "react";
