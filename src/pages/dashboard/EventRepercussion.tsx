@@ -130,15 +130,35 @@ export default function EventRepercussion() {
         </div>
       </div>
 
+      {detectMutation.isPending && (
+        <Card className="bg-card/40 border-border/40">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between text-sm mb-2">
+              <span className="flex items-center gap-2 text-foreground">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                Detectando eventos… <span className="text-muted-foreground">{detectStep}</span>
+              </span>
+              <span className="text-muted-foreground tabular-nums">{detectProgress}%</span>
+            </div>
+            <div className="h-1.5 w-full bg-background/60 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-primary/60 to-primary transition-all duration-500" style={{ width: `${detectProgress}%` }} />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid lg:grid-cols-[320px_1fr] gap-4">
         <div>
           <EventSelectorList
             events={events || []}
-            loading={eventsLoading}
+            loading={eventsLoading || detectMutation.isPending}
             selectedId={selectedEvent}
             onSelect={(id) => { setSelectedEvent(id); setSelectedRegion(null); }}
+            onRetry={() => detectMutation.mutate()}
+            retrying={detectMutation.isPending}
           />
         </div>
+
 
         <div className="space-y-4 min-w-0">
           {!selectedEvent && (
