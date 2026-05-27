@@ -1,0 +1,2 @@
+CREATE INDEX IF NOT EXISTS idx_political_events_user_candidate_date ON public.political_events (user_id, candidate_id, event_date DESC);
+CREATE INDEX IF NOT EXISTS idx_social_interactions_candidate_posted ON public.social_interactions (candidate_id, original_posted_at DESC NULLS LAST);
