@@ -346,6 +346,7 @@ Escreva um resumo analítico em texto corrido (sem JSON, sem listas) sobre como 
         coverage: totalMentions > 0 ? Math.round(((totalMentions - unmapped) / totalMentions) * 100) : 0,
       },
       regions,
+      states,
       timeline,
       insights: {
         mostEngaged: mostEngaged ? { region: mostEngaged.region, value: mostEngaged.engagement } : null,
