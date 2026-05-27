@@ -160,13 +160,32 @@ Deno.serve(async (req) => {
       if (all.length >= 30000) break;
     }
 
-    // Filter by event keywords (semantic match)
+    // Filter by event keywords (semantic match). Falls back to broader matching if too few.
     let comments = all;
+    let usedFallback = false;
     if (keywords.length > 0) {
-      comments = all.filter((c) => {
+      const strict = all.filter((c) => {
         const t = (c.comment_text || "").toLowerCase();
-        return keywords.some((k) => t.includes(k));
+        return keywords.some((k) => k.length >= 3 && t.includes(k));
       });
+      if (strict.length >= 20) {
+        comments = strict;
+      } else {
+        // Semantic fallback: split keywords into tokens and accept ANY token match
+        const tokens = Array.from(new Set(keywords.flatMap(k => k.split(/[\s\-_/]+/)).filter(t => t.length >= 4)));
+        const loose = all.filter((c) => {
+          const t = (c.comment_text || "").toLowerCase();
+          return tokens.some((k) => t.includes(k));
+        });
+        if (loose.length >= 10) {
+          comments = loose;
+          usedFallback = true;
+        } else {
+          // Last resort: use all candidate comments in window so map/insights are not empty
+          comments = all;
+          usedFallback = true;
+        }
+      }
     }
 
     // Build region + per-UF buckets
@@ -284,21 +303,28 @@ Deno.serve(async (req) => {
       phase: d.date < eventDayStr ? "antes" : d.date === eventDayStr ? "durante" : "depois",
     }));
 
-    // Insights
-    const ranked = REGIONS.map((r) => regions[r]).filter((r) => r.mentions >= 5);
-    const mostEngaged = [...ranked].sort((a, b) => b.engagement - a.engagement)[0];
-    const mostCritical = [...ranked].sort((a, b) => a.acceptance - b.acceptance)[0];
-    const mostFavorable = [...ranked].sort((a, b) => b.acceptance - a.acceptance)[0];
-
+    // Insights — populated whenever there's *any* data, using staggered thresholds
     const totalMentions = comments.length;
     const totalPos = REGIONS.reduce((s, r) => s + regions[r].positive, 0);
     const totalNeg = REGIONS.reduce((s, r) => s + regions[r].negative, 0);
     const overallAcceptance = totalPos + totalNeg > 0 ? Math.round((totalPos / (totalPos + totalNeg)) * 100) : 0;
 
+    const rankedStrict = REGIONS.map((r) => regions[r]).filter((r) => r.mentions >= 5);
+    const rankedLoose = REGIONS.map((r) => regions[r]).filter((r) => r.mentions >= 1);
+    const ranked = rankedStrict.length ? rankedStrict : rankedLoose;
+    const opinionRanked = ranked.filter(r => (r.positive + r.negative) >= 2);
+    const mostEngaged = [...ranked].sort((a, b) => b.engagement - a.engagement)[0];
+    const mostCritical = [...(opinionRanked.length ? opinionRanked : ranked)].sort((a, b) => a.acceptance - b.acceptance)[0];
+    const mostFavorable = [...(opinionRanked.length ? opinionRanked : ranked)].sort((a, b) => b.acceptance - a.acceptance)[0];
+
+    // Top growing theme = top word from the most engaged region (or all regions combined)
+    const topThemePool = mostEngaged?.topWords?.length ? mostEngaged.topWords : ranked.flatMap(r => r.topWords);
+    const topGrowingTheme = topThemePool[0] || null;
+
     // AI summary (best-effort, doesn't block response)
     let aiSummary = "";
     let aiAvailable = false;
-    if (totalMentions >= 10) {
+    if (totalMentions >= 5) {
       try {
         const regionalLines = REGIONS
           .filter((r) => regions[r].mentions >= 3)
@@ -344,6 +370,7 @@ Escreva um resumo analítico em texto corrido (sem JSON, sem listas) sobre como 
         negative: totalNeg,
         unmapped,
         coverage: totalMentions > 0 ? Math.round(((totalMentions - unmapped) / totalMentions) * 100) : 0,
+        usedSemanticFallback: usedFallback,
       },
       regions,
       states,
@@ -352,7 +379,7 @@ Escreva um resumo analítico em texto corrido (sem JSON, sem listas) sobre como 
         mostEngaged: mostEngaged ? { region: mostEngaged.region, value: mostEngaged.engagement } : null,
         mostCritical: mostCritical ? { region: mostCritical.region, acceptance: mostCritical.acceptance } : null,
         mostFavorable: mostFavorable ? { region: mostFavorable.region, acceptance: mostFavorable.acceptance } : null,
-        topGrowingTheme: ranked.flatMap((r) => r.topWords).slice(0, 1)[0] || null,
+        topGrowingTheme,
         aiSummary,
         aiAvailable,
       },

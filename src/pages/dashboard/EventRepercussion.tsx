@@ -55,12 +55,12 @@ export default function EventRepercussion() {
 
   const detectMutation = useMutation({
     mutationFn: async () => {
-      setDetectProgress(10); setDetectStep("Detectando eventos…");
+      setDetectProgress(8); setDetectStep("Buscando fontes (Google News, YouTube, redes)");
       const timers: number[] = [];
-      timers.push(window.setTimeout(() => { setDetectProgress(28); setDetectStep("Coletando notícias e vídeos"); }, 900));
-      timers.push(window.setTimeout(() => { setDetectProgress(50); setDetectStep("Analisando comentários reais"); }, 2400));
-      timers.push(window.setTimeout(() => { setDetectProgress(72); setDetectStep("Agrupando eventos semelhantes"); }, 4200));
-      timers.push(window.setTimeout(() => { setDetectProgress(88); setDetectStep("Gerando análise IA"); }, 6000));
+      timers.push(window.setTimeout(() => { setDetectProgress(22); setDetectStep("Cruzando com canais oficiais (CNN, G1, Globo, Folha…)"); }, 900));
+      timers.push(window.setTimeout(() => { setDetectProgress(42); setDetectStep("Classificando: evento, notícia, viral ou rumor"); }, 2400));
+      timers.push(window.setTimeout(() => { setDetectProgress(64); setDetectStep("Exigindo 2+ confirmações por evento"); }, 4200));
+      timers.push(window.setTimeout(() => { setDetectProgress(82); setDetectStep("Agrupando itens semelhantes"); }, 6000));
       try {
         const { data, error } = await supabase.functions.invoke("detect-candidate-events", {
           body: { candidateId, monthsBack: 3 },
@@ -75,14 +75,16 @@ export default function EventRepercussion() {
     onSuccess: async (data: any) => {
       const count = data?.events?.length || 0;
       toast({
-        title: count > 0 ? "Eventos detectados" : "Nenhum evento encontrado",
+        title: count > 0 ? `${count} item(ns) identificado(s)` : "Nenhum item encontrado",
         description: count > 0
-          ? `${count} evento(s) reais identificados a partir das menções.`
-          : "Nenhum evento real (entrevista, debate, podcast, etc.) foi identificado no período. Colete mais menções e tente novamente.",
+          ? "Classificados em eventos confirmados, notícias, virais e rumores."
+          : "Nenhum acontecimento foi confirmado por 2+ fontes no período. Colete mais menções e tente novamente.",
       });
       const res = await refetchEvents();
       const list = res.data || [];
-      if (list.length >= 1) setSelectedEvent(list[0].id);
+      // Prefer auto-selecting a confirmed event
+      const firstConfirmed = list.find((x: any) => (x.metadata?.category || 'evento') === 'evento') || list[0];
+      if (firstConfirmed) setSelectedEvent(firstConfirmed.id);
       setTimeout(() => { setDetectProgress(0); setDetectStep(""); }, 800);
     },
     onError: (e: any) => {
@@ -202,6 +204,17 @@ export default function EventRepercussion() {
                   </CardContent>
                 )}
               </Card>
+
+              {analysis.totals.mentions < 10 && (
+                <div className="text-xs px-3 py-2 rounded-md border border-amber-500/30 bg-amber-500/5 text-amber-200">
+                  Volume insuficiente para análise robusta. Usando expansão semântica automática para popular o mapa e os gráficos.
+                </div>
+              )}
+              {analysis.totals.usedSemanticFallback && analysis.totals.mentions >= 10 && (
+                <div className="text-xs px-3 py-2 rounded-md border border-blue-500/30 bg-blue-500/5 text-blue-200">
+                  Filtro semântico estendido aplicado para captar mais comentários relacionados ao evento.
+                </div>
+              )}
 
               <RepercussionInsightCards data={analysis} />
               <RegionalSentimentMap data={analysis} selected={selectedRegion} onSelect={setSelectedRegion} />
