@@ -305,17 +305,23 @@ Deno.serve(async (req) => {
           .map((r) => `${r}: ${regions[r].mentions} menções, ${regions[r].acceptance}% aceitação, temas: ${regions[r].topWords.slice(0, 4).join(", ")}`)
           .join("\n");
         const ai = await callAICerebrasFirst({
-          systemMsg: "Você é analista político brasileiro. Responda em português, máximo 4 frases, conciso e factual.",
+          systemMsg: "Você é analista político brasileiro. Escreva SEMPRE em prosa natural, em português do Brasil, fluida e clara. NUNCA retorne JSON, chaves, colchetes, listas com bullet ou objetos — apenas parágrafos corridos. Máximo 5 frases.",
           userPrompt: `Evento: "${event.event_name}" (${event.event_type}) em ${eventDayStr}.
 Total: ${totalMentions} menções. Aceitação geral: ${overallAcceptance}%.
 Repercussão por região:
 ${regionalLines}
-Resuma como o evento repercutiu nas diferentes regiões do Brasil, destacando contrastes regionais. Máximo 4 frases.`,
-          maxTokens: 400,
-          temperature: 0.4,
+
+Escreva um resumo analítico em texto corrido (sem JSON, sem listas) sobre como o evento repercutiu nas diferentes regiões do Brasil. Destaque contrastes regionais reais, temas predominantes e onde houve mais aceitação ou rejeição. Máximo 5 frases. Não invente dados que não estão nas estatísticas acima.`,
+          maxTokens: 500,
+          temperature: 0.5,
           tag: "event-regional",
         });
-        aiSummary = ai.content?.trim() || "";
+        let raw = (ai.content || "").trim();
+        // Strip accidental JSON wrappers like {"resumo":"..."} or ```json blocks
+        raw = raw.replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/i, "").trim();
+        const jsonMatch = raw.match(/^\s*\{[\s\S]*"([^"]+)"\s*:\s*"([^]*?)"\s*\}\s*$/);
+        if (jsonMatch) raw = jsonMatch[2];
+        aiSummary = raw;
         aiAvailable = !!aiSummary;
       } catch (e) {
         console.warn("[analyze-event-regional] AI failed:", (e as Error).message);
