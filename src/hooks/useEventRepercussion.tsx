@@ -1,69 +1,67 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
-export interface RegionData {
+export interface ExternalSource {
+  url: string;
+  title: string;
+  outlet: string;
   region: string;
-  mentions: number;
-  positive: number;
-  negative: number;
-  neutral: number;
-  engagement: number;
-  acceptance: number;
-  sentiment_class: "positive" | "negative" | "mixed" | "insufficient";
-  topWords: string[];
-  topComments: { text: string; sentiment: string; network: string; likes: number; date: string }[];
+  publishedAt: string | null;
+  snippet: string;
 }
 
-export interface StateData {
-  uf: string;
-  name: string;
-  region: string;
+export interface RegionalDistribution {
+  Sudeste: number; Nordeste: number; Sul: number;
+  "Centro-Oeste": number; Norte: number;
+}
+
+export interface ExternalRepercussion {
+  totalPublications: number;
+  estimatedReach: number;
+  majorTopics: string[];
+  regionalDistribution: RegionalDistribution;
+  positiveSignals: number;
+  negativeSignals: number;
+  neutralSignals: number;
+  narratives: { apoio: string[]; criticas: string[]; debates: string[] };
+  sources: ExternalSource[];
+  timeline: { date: string; count: number; phase: "antes" | "durante" | "depois" }[];
+  summary: string;
+  aiAvailable: boolean;
+}
+
+export interface InternalReaction {
   mentions: number;
   positive: number;
   negative: number;
   neutral: number;
   engagement: number;
-  acceptance: number;
-  sentiment_class: "very_positive" | "positive" | "mixed" | "negative" | "very_negative" | "insufficient";
-  topWords: string[];
+  sample: { text: string; sentiment: string; network: string; likes: number }[];
 }
 
 export interface EventRepercussionData {
-  event: { id: string; name: string; type: string; date: string; description?: string; keywords?: string[] };
-  totals: { mentions: number; acceptance: number; positive: number; negative: number; unmapped: number; coverage: number; usedSemanticFallback?: boolean; candidatePoolSize?: number };
-  regions: Record<string, RegionData>;
-  states: Record<string, StateData>;
-  timeline: { date: string; total: number; pos: number; neg: number; neu: number; phase: "antes" | "durante" | "depois" }[];
-  insights: {
-    mostEngaged: { region: string; value: number } | null;
-    mostCritical: { region: string; acceptance: number } | null;
-    mostFavorable: { region: string; acceptance: number } | null;
-    topGrowingTheme: string | null;
-    aiSummary: string;
-    aiAvailable: boolean;
+  event: {
+    id: string;
+    name: string;
+    type: string;
+    date: string;
+    description?: string | null;
+    keywords?: string[];
+    location?: string | null;
+    importanceScore?: number | null;
   };
-  thresholds?: {
-    strong: number;
-    robust: number;
-    canShowRegionInsights: boolean;
-    isRobust: boolean;
-  };
-  confidence?: {
+  externalRepercussion: ExternalRepercussion;
+  internalReaction: InternalReaction;
+  confidence: {
     level: "Alta" | "Média" | "Baixa";
     score: number;
-    breakdown: {
-      volume: { score: number; value: number };
-      regionalDiversity: { score: number; value: number };
-      temporalSpread: { score: number; value: number };
-    };
+    breakdown: { distinctOutlets: number; distinctRegions: number; distinctDays: number };
   };
-  debug?: {
-    candidatePoolSize: number;
-    associatedMentions: number;
-    avgAssociationScore: number;
-    matchedKeywords: string[];
-    matchedTokens: string[];
-    regionsFound: string[];
+  debug: {
+    publicationsCollected: number;
+    publicationsInWindow: number;
+    usedForAnalysis: number;
+    sourcesByOutlet: Record<string, number>;
     eventWindow: { start: string; end: string };
   };
   cached?: boolean;
