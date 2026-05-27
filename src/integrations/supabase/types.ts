@@ -2854,6 +2854,7 @@ export type Database = {
       }
       reset_provider_circuits: { Args: never; Returns: undefined }
       should_skip_collector: { Args: { _name: string }; Returns: boolean }
+      unaccent: { Args: { "": string }; Returns: string }
       verify_api_key: {
         Args: { _required_scope: string; _token: string }
         Returns: {
