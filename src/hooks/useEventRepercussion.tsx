@@ -14,10 +14,25 @@ export interface RegionData {
   topComments: { text: string; sentiment: string; network: string; likes: number; date: string }[];
 }
 
+export interface StateData {
+  uf: string;
+  name: string;
+  region: string;
+  mentions: number;
+  positive: number;
+  negative: number;
+  neutral: number;
+  engagement: number;
+  acceptance: number;
+  sentiment_class: "very_positive" | "positive" | "mixed" | "negative" | "very_negative" | "insufficient";
+  topWords: string[];
+}
+
 export interface EventRepercussionData {
   event: { id: string; name: string; type: string; date: string; description?: string; keywords?: string[] };
   totals: { mentions: number; acceptance: number; positive: number; negative: number; unmapped: number; coverage: number };
   regions: Record<string, RegionData>;
+  states: Record<string, StateData>;
   timeline: { date: string; total: number; pos: number; neg: number; neu: number; phase: "antes" | "durante" | "depois" }[];
   insights: {
     mostEngaged: { region: string; value: number } | null;

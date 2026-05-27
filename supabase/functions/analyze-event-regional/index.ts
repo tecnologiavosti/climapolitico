@@ -18,6 +18,34 @@ const UF_TO_REGION: Record<string, string> = {
   PR: "Sul", RS: "Sul", SC: "Sul",
 };
 
+const UFS = Object.keys(UF_TO_REGION);
+const UF_NAME: Record<string, string> = {
+  AC: "Acre", AL: "Alagoas", AP: "Amapá", AM: "Amazonas", BA: "Bahia", CE: "Ceará",
+  DF: "Distrito Federal", ES: "Espírito Santo", GO: "Goiás", MA: "Maranhão",
+  MT: "Mato Grosso", MS: "Mato Grosso do Sul", MG: "Minas Gerais", PA: "Pará",
+  PB: "Paraíba", PR: "Paraná", PE: "Pernambuco", PI: "Piauí", RJ: "Rio de Janeiro",
+  RN: "Rio Grande do Norte", RS: "Rio Grande do Sul", RO: "Rondônia", RR: "Roraima",
+  SC: "Santa Catarina", SP: "São Paulo", SE: "Sergipe", TO: "Tocantins",
+};
+
+// Cities → UF (capitals + main metros) for text-based inference
+const CITY_TO_UF: Record<string, string> = {
+  "rio branco":"AC","maceio":"AL","macapa":"AP","manaus":"AM","salvador":"BA",
+  "fortaleza":"CE","brasilia":"DF","vitoria":"ES","goiania":"GO","sao luis":"MA",
+  "cuiaba":"MT","campo grande":"MS","belo horizonte":"MG","belem":"PA",
+  "joao pessoa":"PB","curitiba":"PR","recife":"PE","teresina":"PI",
+  "rio de janeiro":"RJ","natal":"RN","porto alegre":"RS","porto velho":"RO",
+  "boa vista":"RR","florianopolis":"SC","sao paulo":"SP","aracaju":"SE","palmas":"TO",
+  "campinas":"SP","guarulhos":"SP","santos":"SP","sorocaba":"SP","ribeirao preto":"SP",
+  "niteroi":"RJ","duque de caxias":"RJ","nova iguacu":"RJ","sao goncalo":"RJ",
+  "uberlandia":"MG","contagem":"MG","juiz de fora":"MG","betim":"MG",
+  "londrina":"PR","maringa":"PR","foz do iguacu":"PR",
+  "caxias do sul":"RS","pelotas":"RS","canoas":"RS",
+  "joinville":"SC","blumenau":"SC","chapeco":"SC",
+  "feira de santana":"BA","caruaru":"PE","olinda":"PE","petrolina":"PE",
+  "anapolis":"GO",
+};
+
 const REGIONS = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"] as const;
 type Region = typeof REGIONS[number];
 
@@ -36,11 +64,16 @@ function normRegion(raw: string | null | undefined): Region | null {
   return null;
 }
 
-function inferRegionFromText(text: string): Region | null {
+function inferUFFromText(text: string): string | null {
   const t = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  for (const [uf, region] of Object.entries(UF_TO_REGION)) {
-    const re = new RegExp(`\\b${uf.toLowerCase()}\\b`, "i");
-    if (re.test(t)) return region as Region;
+  // Try city names first (more specific)
+  for (const [city, uf] of Object.entries(CITY_TO_UF)) {
+    if (t.includes(city)) return uf;
+  }
+  // Then UF codes as standalone tokens
+  for (const uf of UFS) {
+    const re = new RegExp(`(^|[^a-z0-9])${uf.toLowerCase()}([^a-z0-9]|$)`);
+    if (re.test(t)) return uf;
   }
   return null;
 }
@@ -136,27 +169,30 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Build region buckets
+    // Build region + per-UF buckets
     type Bucket = { mentions: number; pos: number; neg: number; neu: number; engagement: number; texts: string[]; samples: any[] };
+    const mkBucket = (): Bucket => ({ mentions: 0, pos: 0, neg: 0, neu: 0, engagement: 0, texts: [], samples: [] });
     const buckets: Record<Region, Bucket> = {
-      Norte: { mentions: 0, pos: 0, neg: 0, neu: 0, engagement: 0, texts: [], samples: [] },
-      Nordeste: { mentions: 0, pos: 0, neg: 0, neu: 0, engagement: 0, texts: [], samples: [] },
-      "Centro-Oeste": { mentions: 0, pos: 0, neg: 0, neu: 0, engagement: 0, texts: [], samples: [] },
-      Sudeste: { mentions: 0, pos: 0, neg: 0, neu: 0, engagement: 0, texts: [], samples: [] },
-      Sul: { mentions: 0, pos: 0, neg: 0, neu: 0, engagement: 0, texts: [], samples: [] },
+      Norte: mkBucket(), Nordeste: mkBucket(), "Centro-Oeste": mkBucket(),
+      Sudeste: mkBucket(), Sul: mkBucket(),
     };
+    const ufBuckets: Record<string, Bucket> = {};
+    for (const uf of UFS) ufBuckets[uf] = mkBucket();
     let unmapped = 0;
+
     for (const c of comments) {
-      let region = normRegion(c.region);
-      if (!region) region = inferRegionFromText(`${c.comment_text || ""} ${c.comment_author || ""}`);
+      const text = `${c.comment_text || ""} ${c.comment_author || ""}`;
+      const uf = inferUFFromText(text);
+      let region: Region | null = uf ? (UF_TO_REGION[uf] as Region) : normRegion(c.region);
+
       if (!region) { unmapped++; continue; }
+
       const b = buckets[region];
-      b.mentions++;
       const s = sentKey(c.sentiment_label);
-      if (s === "pos") b.pos++;
-      else if (s === "neg") b.neg++;
-      else if (s === "neu") b.neu++;
-      b.engagement += (c.likes_count || 0) + (c.replies_count || 0) + (c.shares_count || 0);
+      const eng = (c.likes_count || 0) + (c.replies_count || 0) + (c.shares_count || 0);
+      b.mentions++;
+      if (s === "pos") b.pos++; else if (s === "neg") b.neg++; else if (s === "neu") b.neu++;
+      b.engagement += eng;
       if (c.comment_text && b.texts.length < 200) b.texts.push(String(c.comment_text).slice(0, 300));
       if (c.comment_text && b.samples.length < 8) b.samples.push({
         text: String(c.comment_text).slice(0, 280),
@@ -165,13 +201,32 @@ Deno.serve(async (req) => {
         likes: c.likes_count || 0,
         date: c.original_posted_at || c.created_at,
       });
+
+      if (uf) {
+        const ub = ufBuckets[uf];
+        ub.mentions++;
+        if (s === "pos") ub.pos++; else if (s === "neg") ub.neg++; else if (s === "neu") ub.neu++;
+        ub.engagement += eng;
+        if (c.comment_text && ub.texts.length < 60) ub.texts.push(String(c.comment_text).slice(0, 220));
+      }
     }
+
+    const classify = (mentions: number, acceptance: number, opin: number) => {
+      if (mentions < 3) return "insufficient";
+      if (opin < 2) return "mixed";
+      if (acceptance >= 75) return "very_positive";
+      if (acceptance >= 55) return "positive";
+      if (acceptance >= 40) return "mixed";
+      if (acceptance >= 25) return "negative";
+      return "very_negative";
+    };
 
     const regions: Record<string, any> = {};
     for (const r of REGIONS) {
       const b = buckets[r];
       const opin = b.pos + b.neg;
       const acceptance = opin > 0 ? Math.round((b.pos / opin) * 100) : 0;
+      const sc = classify(b.mentions, acceptance, opin);
       regions[r] = {
         region: r,
         mentions: b.mentions,
@@ -180,11 +235,34 @@ Deno.serve(async (req) => {
         neutral: b.neu,
         engagement: b.engagement,
         acceptance,
-        sentiment_class: b.mentions < 5 ? "insufficient" : acceptance > 60 ? "positive" : acceptance < 35 ? "negative" : "mixed",
+        sentiment_class: sc === "insufficient" ? "insufficient"
+          : sc === "very_positive" || sc === "positive" ? "positive"
+          : sc === "very_negative" || sc === "negative" ? "negative" : "mixed",
         topWords: topWords(b.texts, 8),
         topComments: b.samples.sort((x, y) => y.likes - x.likes).slice(0, 5),
       };
     }
+
+    const states: Record<string, any> = {};
+    for (const uf of UFS) {
+      const b = ufBuckets[uf];
+      const opin = b.pos + b.neg;
+      const acceptance = opin > 0 ? Math.round((b.pos / opin) * 100) : 0;
+      states[uf] = {
+        uf,
+        name: UF_NAME[uf],
+        region: UF_TO_REGION[uf],
+        mentions: b.mentions,
+        positive: b.pos,
+        negative: b.neg,
+        neutral: b.neu,
+        engagement: b.engagement,
+        acceptance,
+        sentiment_class: classify(b.mentions, acceptance, opin),
+        topWords: topWords(b.texts, 6),
+      };
+    }
+
 
     // Timeline buckets per day
     const dayMap = new Map<string, { date: string; total: number; pos: number; neg: number; neu: number }>();
@@ -227,17 +305,23 @@ Deno.serve(async (req) => {
           .map((r) => `${r}: ${regions[r].mentions} menções, ${regions[r].acceptance}% aceitação, temas: ${regions[r].topWords.slice(0, 4).join(", ")}`)
           .join("\n");
         const ai = await callAICerebrasFirst({
-          systemMsg: "Você é analista político brasileiro. Responda em português, máximo 4 frases, conciso e factual.",
+          systemMsg: "Você é analista político brasileiro. Escreva SEMPRE em prosa natural, em português do Brasil, fluida e clara. NUNCA retorne JSON, chaves, colchetes, listas com bullet ou objetos — apenas parágrafos corridos. Máximo 5 frases.",
           userPrompt: `Evento: "${event.event_name}" (${event.event_type}) em ${eventDayStr}.
 Total: ${totalMentions} menções. Aceitação geral: ${overallAcceptance}%.
 Repercussão por região:
 ${regionalLines}
-Resuma como o evento repercutiu nas diferentes regiões do Brasil, destacando contrastes regionais. Máximo 4 frases.`,
-          maxTokens: 400,
-          temperature: 0.4,
+
+Escreva um resumo analítico em texto corrido (sem JSON, sem listas) sobre como o evento repercutiu nas diferentes regiões do Brasil. Destaque contrastes regionais reais, temas predominantes e onde houve mais aceitação ou rejeição. Máximo 5 frases. Não invente dados que não estão nas estatísticas acima.`,
+          maxTokens: 500,
+          temperature: 0.5,
           tag: "event-regional",
         });
-        aiSummary = ai.content?.trim() || "";
+        let raw = (ai.content || "").trim();
+        // Strip accidental JSON wrappers like {"resumo":"..."} or ```json blocks
+        raw = raw.replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/i, "").trim();
+        const jsonMatch = raw.match(/^\s*\{[\s\S]*"([^"]+)"\s*:\s*"([^]*?)"\s*\}\s*$/);
+        if (jsonMatch) raw = jsonMatch[2];
+        aiSummary = raw;
         aiAvailable = !!aiSummary;
       } catch (e) {
         console.warn("[analyze-event-regional] AI failed:", (e as Error).message);
@@ -262,6 +346,7 @@ Resuma como o evento repercutiu nas diferentes regiões do Brasil, destacando co
         coverage: totalMentions > 0 ? Math.round(((totalMentions - unmapped) / totalMentions) * 100) : 0,
       },
       regions,
+      states,
       timeline,
       insights: {
         mostEngaged: mostEngaged ? { region: mostEngaged.region, value: mostEngaged.engagement } : null,

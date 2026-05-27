@@ -19,70 +19,44 @@ function sanitize(s: unknown): string {
   return str.replace(/\s+/g, " ").trim();
 }
 
+const VALID_TYPES = new Set([
+  'entrevista','debate','live','podcast','discurso','comicio','noticia',
+  'coletiva','agenda','evento','programa','declaracao'
+]);
+
+// Keywords that indicate the comment refers to a real event (not just random chatter)
+const EVENT_HINTS = /\b(entrevist|debat|podcast|live|coletiv|programa|jornal|telejornal|sabatin|cnn|globo|band|sbt|record|jovem pan|globonews|gloob|jn\b|flow|inteligencia ltda|primo rico|pod|youtube|instagram live|comicio|discurso|palestra|conferencia|encontro|reuniao|inaugurac|visita|agenda|plenario|votacao|sessao|congresso|senado|camara)\b/i;
+
 interface DetectedEvent {
   name: string;
+  subtitle?: string;
   type: string;
   keywords: string[];
   start_date: string; // YYYY-MM-DD
   end_date: string;
   mentions_estimate: number;
   description: string;
+  location?: string;
+  source?: string;
 }
 
 const STOP = new Set([
   'para','como','mais','muito','pela','pelo','isso','essa','esse','esta','este','entre','sobre','quando','onde','tambem','também','presidente','candidato','candidata','brasil','politica','política','governo','partido','povo','gente','tudo','todos','todas','agora','hoje','ontem','sempre','nunca','assim','porque','porquê','mesmo','quem','vou','tem','tinha','foi','sao','são','dos','das','com','sem','por','seu','sua','meu','minha','nos','nas','que','dele','dela','aqui','ali','ainda','depois','antes','tao','tão','pouco','bom','boa','ruim'
 ]);
 
-function tokenize(text: string): string[] {
-  return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').match(/[a-z0-9]{4,}/g) || [];
-}
+const normalize = (s: string) =>
+  s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+   .replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 
-function heuristicEvents(comments: any[]): DetectedEvent[] {
-  if (comments.length < 10) return [];
-  const byDay = new Map<string, any[]>();
-  for (const c of comments) {
-    const day = ((c.original_posted_at || c.created_at) || '').substring(0, 10);
-    if (!day) continue;
-    if (!byDay.has(day)) byDay.set(day, []);
-    byDay.get(day)!.push(c);
-  }
-  const days = [...byDay.entries()].sort();
-  if (days.length === 0) return [];
-  const totals = days.map(([, arr]) => arr.length);
-  const avg = totals.reduce((a, b) => a + b, 0) / totals.length;
-  const peakDays = days.filter(([, arr]) => arr.length >= Math.max(5, avg * 1.5));
+const tokens = (s: string) =>
+  new Set(normalize(s).split(' ').filter(w => w.length > 3 && !STOP.has(w)));
 
-  const events: DetectedEvent[] = [];
-  for (const [day, arr] of peakDays) {
-    const wordCounts = new Map<string, number>();
-    for (const c of arr) {
-      const seen = new Set<string>();
-      for (const w of tokenize(sanitize(c.comment_text))) {
-        if (STOP.has(w) || /^\d+$/.test(w)) continue;
-        if (seen.has(w)) continue;
-        seen.add(w);
-        wordCounts.set(w, (wordCounts.get(w) || 0) + 1);
-      }
-    }
-    const top = [...wordCounts.entries()]
-      .filter(([, n]) => n >= Math.max(3, Math.floor(arr.length * 0.15)))
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([w]) => w);
-    if (top.length < 2) continue;
-    events.push({
-      name: `Pico de menções em ${day} — ${top.slice(0, 2).join(', ')}`,
-      type: 'pico',
-      keywords: top,
-      start_date: day,
-      end_date: day,
-      mentions_estimate: arr.length,
-      description: `Concentração atípica de comentários em ${day}. Termos recorrentes: ${top.join(', ')}.`,
-    });
-    if (events.length >= 8) break;
-  }
-  return events;
-}
+const jaccard = (a: Set<string>, b: Set<string>) => {
+  if (!a.size || !b.size) return 0;
+  let inter = 0;
+  for (const t of a) if (b.has(t)) inter++;
+  return inter / (a.size + b.size - inter);
+};
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -129,55 +103,76 @@ serve(async (req) => {
     since.setMonth(since.getMonth() - monthsBack);
     const sinceISO = since.toISOString();
 
-    // Pull a sample of comments from the period (most engaged + recent)
+    // Pull comments that look like they're talking about a real event
     const { data: rows } = await supabaseClient
       .from('social_interactions')
-      .select('comment_text, original_posted_at, created_at, likes_count, replies_count')
+      .select('comment_text, original_posted_at, created_at, likes_count, replies_count, social_network')
       .eq('candidate_id', candidateId)
       .or(`original_posted_at.gte.${sinceISO},and(original_posted_at.is.null,created_at.gte.${sinceISO})`)
       .not('comment_text', 'is', null)
       .order('likes_count', { ascending: false, nullsFirst: false })
-      .limit(800);
+      .limit(1200);
 
-    const comments = (rows || []).filter(r => r.comment_text && r.comment_text.trim().length > 10);
+    const all = (rows || []).filter(r => r.comment_text && r.comment_text.trim().length > 12);
+    // Prioritize event-hint comments, but keep some context
+    const eventish = all.filter(r => EVENT_HINTS.test(r.comment_text!));
+    const sampleSource = eventish.length >= 25 ? eventish : all;
 
-    if (comments.length < 5) {
+    if (sampleSource.length < 8) {
       return new Response(JSON.stringify({
         events: [],
-        message: 'Dados insuficientes para detectar eventos. Colete mais interações.'
+        message: 'Dados insuficientes para detectar eventos reais. Colete mais interações sobre entrevistas, debates ou agendas.'
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const sample = comments.slice(0, 250).map((c, i) => {
+    const sample = sampleSource.slice(0, 280).map((c) => {
       const date = (c.original_posted_at || c.created_at || '').substring(0, 10);
-      return `[${date}] ${sanitize(c.comment_text).substring(0, 220)}`;
+      return `[${date}|${c.social_network || '?'}] ${sanitize(c.comment_text).substring(0, 240)}`;
     });
 
-    const prompt = `Você é um analista político brasileiro. Abaixo estão comentários públicos sobre o candidato ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''} dos últimos ${monthsBack} meses.
+    const prompt = `Você é um analista político brasileiro especializado em detectar EVENTOS REAIS sobre um candidato a partir de comentários de redes sociais e notícias.
 
-Sua tarefa: identificar EVENTOS ESPECÍFICOS sobre os quais as pessoas comentaram (entrevistas em telejornais, debates, programas, falas polêmicas, comícios, viagens oficiais, votações, declarações públicas, etc.).
+Candidato: ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}.
+Janela analisada: últimos ${monthsBack} meses.
 
-REGRAS:
-- Liste apenas eventos com VOLUME RELEVANTE de comentários (pelo menos 3 menções claras).
-- Para cada evento, forneça palavras-chave/termos que aparecem nos comentários sobre ele (ex: "jornal nacional", "william bonner", "JN", "globo").
-- Use o nome real do evento como aparece nos comentários.
-- Estime as datas com base nos timestamps dos comentários relacionados.
-- NÃO invente eventos. Se não há padrão claro, retorne lista vazia.
+Sua tarefa: identificar **acontecimentos reais e concretos** que geraram repercussão. Apenas:
+- entrevistas (em telejornais, podcasts, rádios, programas)
+- debates
+- lives/transmissões
+- podcasts específicos (ex: Flow, Inteligência Ltda, Primo Rico)
+- discursos / pronunciamentos / coletivas de imprensa
+- comícios / agendas públicas / inaugurações / visitas
+- notícias políticas relevantes envolvendo o candidato
+- votações / sessões / declarações públicas pontuais
 
-COMENTÁRIOS (data e texto):
+REGRAS RÍGIDAS:
+- **NÃO** crie eventos genéricos como "Pico de menções", "Aumento de comentários" ou nomes vazios com palavras avulsas.
+- **NÃO** invente eventos que não estão claramente mencionados nos comentários.
+- Cada evento precisa ter um **nome real e identificável** (ex.: "Entrevista no Jornal Nacional", "Debate Globo 2024", "Live no Flow Podcast", "Discurso na Câmara sobre segurança").
+- Inclua um \`subtitle\` curto descrevendo o tema central (ex.: "Sobre economia e reforma tributária").
+- Inclua \`location\` quando aparecer no contexto (cidade ou veículo/programa).
+- Use \`type\` apenas dos valores permitidos: entrevista, debate, live, podcast, discurso, comicio, noticia, coletiva, agenda, evento, programa, declaracao.
+- Estime \`start_date\` (YYYY-MM-DD) com base nos timestamps dos comentários relacionados.
+- \`keywords\` = 4-10 termos curtos que apareçam nos comentários sobre o evento (ex.: ["jornal nacional","bonner","JN","globo"]).
+- Se NÃO houver evidência clara de evento real, retorne lista vazia. Melhor vazio do que inventado.
+
+COMENTÁRIOS (data|rede + texto):
 ${sample.join('\n')}
 
-Responda APENAS com JSON válido (sem markdown):
+Responda APENAS com JSON válido (sem markdown, sem comentários):
 {
   "events": [
     {
       "name": "Entrevista no Jornal Nacional",
-      "type": "entrevista|debate|comício|fala|programa|votação|outro",
-      "keywords": ["jornal nacional", "JN", "bonner"],
+      "subtitle": "Sobre economia e gestão pública",
+      "type": "entrevista",
+      "location": "Globo / Rio de Janeiro",
+      "source": "Globo",
+      "keywords": ["jornal nacional","JN","bonner","globo"],
       "start_date": "2025-XX-XX",
       "end_date": "2025-XX-XX",
       "mentions_estimate": 42,
-      "description": "Breve descrição do evento em 1 linha"
+      "description": "Breve descrição do evento em 1 linha."
     }
   ]
 }`;
@@ -185,11 +180,11 @@ Responda APENAS com JSON válido (sem markdown):
     let result: { events: DetectedEvent[] } = { events: [] };
     try {
       const aiRes = await callAICerebrasFirst({
-        systemMsg: 'Você é um analista político que extrai eventos de comentários. Responde apenas em JSON válido.',
+        systemMsg: 'Você é um analista político que extrai EVENTOS REAIS (entrevistas, debates, podcasts, comícios, notícias) de comentários. NUNCA cria eventos genéricos de "pico de menções". Responde apenas em JSON válido.',
         userPrompt: prompt,
         jsonMode: true,
-        maxTokens: 2500,
-        temperature: 0.2,
+        maxTokens: 3000,
+        temperature: 0.15,
         tag: 'detect-events',
       });
       const content = aiRes.content || '';
@@ -200,25 +195,23 @@ Responda APENAS com JSON válido (sem markdown):
       }
       console.log(`[detect-events] ✅ ${aiRes.provider}:${aiRes.model} -> ${result.events?.length || 0} eventos`);
     } catch (e) {
-      console.error('[detect-events] AI failed, using heuristic fallback:', (e as Error).message);
-      result = { events: heuristicEvents(comments) };
+      console.error('[detect-events] AI failed:', (e as Error).message);
+      result = { events: [] };
     }
 
-    let events = (result.events || []).filter(e => e.name && e.keywords?.length && e.start_date);
-    if (events.length === 0) {
-      // Always offer at least the heuristic fallback so the dropdown is never empty when there is data
-      events = heuristicEvents(comments);
-    }
+    // Strict validation: real events only, valid type, keywords present, name not generic
+    const isGenericName = (n: string) =>
+      /pico de menc|aumento de coment|menc[ao]es em \d|surto de coment|atividade incomum/i.test(n);
 
-    // Semantic dedup: group near-duplicate event names ("Flávio na CNN", "Entrevista CNN", ...)
-    const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-    const tokens = (s: string) => new Set(normalize(s).split(' ').filter(w => w.length > 3 && !STOP.has(w)));
-    const jaccard = (a: Set<string>, b: Set<string>) => {
-      if (!a.size || !b.size) return 0;
-      let inter = 0;
-      for (const t of a) if (b.has(t)) inter++;
-      return inter / (a.size + b.size - inter);
-    };
+    let events = (result.events || []).filter(e =>
+      e.name &&
+      !isGenericName(e.name) &&
+      Array.isArray(e.keywords) && e.keywords.length >= 2 &&
+      e.start_date &&
+      VALID_TYPES.has((e.type || '').toLowerCase())
+    ).map(e => ({ ...e, type: e.type.toLowerCase() }));
+
+    // Semantic dedup: group near-duplicate event names
     const grouped: DetectedEvent[] = [];
     for (const ev of events) {
       const evTok = tokens(ev.name);
@@ -232,19 +225,17 @@ Responda APENAS com JSON válido (sem markdown):
     }
     events = grouped;
 
-    // Persist to political_events so the UI list (which reads from the table) reflects the result.
+    // Persist new ones, reuse existing matches (±3 days)
     let saved: any[] = [];
     if (events.length > 0) {
-      // Avoid creating duplicates of events already saved (match by normalized name within ±2 days)
       const { data: existing } = await supabaseService
         .from('political_events')
-        .select('id, event_name, event_date, event_type')
+        .select('id, event_name, event_date, event_type, keywords, metadata, description')
         .eq('candidate_id', candidateId)
         .eq('user_id', user.id);
 
       const existingNorm = (existing || []).map((r: any) => ({
         ...r,
-        norm: normalize(r.event_name),
         tok: tokens(r.event_name),
         t: new Date(r.event_date).getTime(),
       }));
@@ -256,17 +247,24 @@ Responda APENAS com JSON válido (sem markdown):
         const evDate = new Date(`${ev.start_date}T12:00:00Z`).getTime();
         const match = existingNorm.find(r => r.event_type === ev.type && jaccard(r.tok, evTok) >= 0.45 && Math.abs(r.t - evDate) <= 3 * 86400000);
         if (match) {
-          reused.push({ id: match.id, ...ev });
+          reused.push(match);
         } else {
           toInsert.push({
             user_id: user.id,
             candidate_id: candidateId,
             event_name: ev.name.substring(0, 200),
-            event_type: ev.type || 'outro',
+            event_type: ev.type,
             event_date: new Date(`${ev.start_date}T12:00:00Z`).toISOString(),
-            description: ev.description?.substring(0, 500) || null,
+            description: ev.description?.substring(0, 500) || ev.subtitle?.substring(0, 500) || null,
             keywords: (ev.keywords || []).slice(0, 15),
-            metadata: { mentions_estimate: ev.mentions_estimate || 0, end_date: ev.end_date, auto_detected: true },
+            metadata: {
+              mentions_estimate: ev.mentions_estimate || 0,
+              end_date: ev.end_date,
+              subtitle: ev.subtitle || null,
+              location: ev.location || null,
+              source: ev.source || null,
+              auto_detected: true,
+            },
           });
         }
       }
@@ -275,7 +273,7 @@ Responda APENAS com JSON válido (sem markdown):
         const { data: inserted, error: insertErr } = await supabaseService
           .from('political_events')
           .insert(toInsert)
-          .select('id, event_name, event_type, event_date, keywords, metadata');
+          .select('id, event_name, event_type, event_date, keywords, metadata, description');
         if (insertErr) console.error('[detect-events] insert error:', insertErr.message);
         saved = [...(inserted || []), ...reused];
       } else {
@@ -283,11 +281,21 @@ Responda APENAS com JSON válido (sem markdown):
       }
     }
 
+    // Also delete legacy "pico" / generic events for this candidate so the UI is clean
+    try {
+      await supabaseService
+        .from('political_events')
+        .delete()
+        .eq('candidate_id', candidateId)
+        .eq('user_id', user.id)
+        .eq('event_type', 'pico');
+    } catch (e) { /* ignore */ }
+
     return new Response(JSON.stringify({
-      events: saved.length > 0 ? saved : events,
+      events: saved,
       saved_count: saved.length,
       candidate: { id: candidate.id, full_name: candidate.full_name },
-      analyzed_comments: comments.length,
+      analyzed_comments: sampleSource.length,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
