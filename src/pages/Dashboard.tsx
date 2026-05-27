@@ -48,6 +48,7 @@ const TenantAnalytics = lazy(() => import("./dashboard/TenantAnalytics"));
 const HistoricalComparison = lazy(() => import("./dashboard/HistoricalComparison"));
 
 const DataEnrichment = lazy(() => import("./dashboard/DataEnrichment"));
+const EventRepercussion = lazy(() => import("./dashboard/EventRepercussion"));
 
 /** Wraps a lazy route element in a per-route error boundary. */
 const wrap = (name: string, El: React.ComponentType) => (
