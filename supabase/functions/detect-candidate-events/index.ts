@@ -19,18 +19,40 @@ function sanitize(s: unknown): string {
   return str.replace(/\s+/g, " ").trim();
 }
 
-const VALID_TYPES = new Set([
-  'entrevista','debate','live','podcast','discurso','comicio','noticia',
+// Confirmed live events (person participated in something concrete)
+const EVENT_TYPES = new Set([
+  'entrevista','debate','live','podcast','discurso','comicio',
   'coletiva','agenda','evento','programa','declaracao'
 ]);
+// Other categories
+const NEWS_TYPES = new Set(['noticia']);
+const VIRAL_TYPES = new Set(['viral']);
+const RUMOR_TYPES = new Set(['rumor']);
+const VALID_TYPES = new Set([...EVENT_TYPES, ...NEWS_TYPES, ...VIRAL_TYPES, ...RUMOR_TYPES]);
 
-// Keywords that indicate the comment refers to a real event (not just random chatter)
-const EVENT_HINTS = /\b(entrevist|debat|podcast|live|coletiv|programa|jornal|telejornal|sabatin|cnn|globo|band|sbt|record|jovem pan|globonews|gloob|jn\b|flow|inteligencia ltda|primo rico|pod|youtube|instagram live|comicio|discurso|palestra|conferencia|encontro|reuniao|inaugurac|visita|agenda|plenario|votacao|sessao|congresso|senado|camara)\b/i;
+// Trusted source signals — used to require ≥2 confirmations
+const TRUSTED_SOURCES = [
+  'cnn','globo','globonews','jornal nacional','jn','band','bandnews','sbt','record',
+  'jovem pan','folha','estadao','estadão','uol','g1','veja','o globo','metropoles',
+  'metrópoles','poder360','poder 360','agencia brasil','agência brasil','reuters',
+  'congresso','senado','camara','câmara','planalto','tse','stf',
+  'flow','inteligencia ltda','inteligência ltda','primo rico','podpah','pod','panico','pânico',
+  'youtube','instagram live','twitch'
+];
+// Comment phrases hinting that there was a real public appearance
+const APPEARANCE_HINTS = /\b(entrevist|debat|sabatin|coletiv|discurs|comici|comíci|inaugurac|inaugurac|visit|agend|reuniao|reunião|votac|sessao|sessão|live|podcast|programa|jornal|conferenc|palestra|congresso)\b/i;
+// Viral-only signals (not an event)
+const VIRAL_HINTS = /\b(viral|video viralizou|clip viralizou|meme|cortes|cortes do|polemica nas redes|polêmica nas redes|repercutiu nas redes)\b/i;
+// Rumor signals
+const RUMOR_HINTS = /\b(rumor|boato|fake news|desmente|desmentido|sem confirma|nao confirm|não confirm|circula nas redes)\b/i;
 
 interface DetectedEvent {
   name: string;
   subtitle?: string;
   type: string;
+  category?: 'evento' | 'noticia' | 'viral' | 'rumor';
+  confidence?: number; // 0..1
+  sources?: string[];  // trusted sources mentioned
   keywords: string[];
   start_date: string; // YYYY-MM-DD
   end_date: string;
