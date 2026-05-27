@@ -22,6 +22,8 @@ interface Props {
   loading: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onRetry?: () => void;
+  retrying?: boolean;
 }
 
 const TYPE_ICON: Record<string, any> = {
@@ -34,7 +36,7 @@ const TYPE_LABEL: Record<string, string> = {
   discurso: "Discurso", comicio: "Comício", noticia: "Notícia", pico: "Pico", outro: "Outro",
 };
 
-export function EventSelectorList({ events, loading, selectedId, onSelect }: Props) {
+export function EventSelectorList({ events, loading, selectedId, onSelect, onRetry, retrying }: Props) {
   const [q, setQ] = useState("");
   const [type, setType] = useState<string>("all");
 
@@ -71,11 +73,30 @@ export function EventSelectorList({ events, loading, selectedId, onSelect }: Pro
       </div>
 
       <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
-        {loading && Array.from({ length: 4 }).map((_, i) => (
-          <Card key={i} className="bg-card/40 border-border/40 animate-pulse"><CardContent className="h-20 p-3" /></Card>
+        {loading && Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="rounded-lg border border-border/40 bg-card/40 p-3 animate-pulse">
+            <div className="flex items-start gap-2">
+              <div className="h-6 w-6 rounded-md bg-muted/40" />
+              <div className="flex-1 space-y-2">
+                <div className="h-3 w-4/5 rounded bg-muted/40" />
+                <div className="h-2 w-2/3 rounded bg-muted/30" />
+              </div>
+            </div>
+          </div>
         ))}
         {!loading && filtered.length === 0 && (
-          <div className="text-sm text-muted-foreground text-center py-8">Nenhum evento detectado. Use o botão "Detectar eventos" no topo.</div>
+          <div className="text-sm text-muted-foreground text-center py-8 space-y-3">
+            <p>Nenhum evento encontrado para este período.</p>
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                disabled={retrying}
+                className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-primary/40 text-primary hover:bg-primary/10 transition disabled:opacity-50"
+              >
+                Tentar novamente
+              </button>
+            )}
+          </div>
         )}
         {!loading && filtered.map((e) => {
           const Icon = TYPE_ICON[e.event_type] || MessageSquare;

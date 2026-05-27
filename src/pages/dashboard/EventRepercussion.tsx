@@ -21,6 +21,8 @@ export default function EventRepercussion() {
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const [rangeDays, setRangeDays] = useState(7);
+  const [detectProgress, setDetectProgress] = useState(0);
+  const [detectStep, setDetectStep] = useState<string>("");
 
   const { data: candidates } = useQuery({
     queryKey: ["candidates-min", user?.id],
@@ -53,20 +55,45 @@ export default function EventRepercussion() {
 
   const detectMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("detect-candidate-events", {
-        body: { candidateId, monthsBack: 3 },
+      setDetectProgress(15); setDetectStep("Buscando fontes");
+      const timers: number[] = [];
+      timers.push(window.setTimeout(() => { setDetectProgress(40); setDetectStep("Extraindo entrevistas"); }, 1200));
+      timers.push(window.setTimeout(() => { setDetectProgress(65); setDetectStep("Agrupando eventos semelhantes"); }, 3000));
+      timers.push(window.setTimeout(() => { setDetectProgress(85); setDetectStep("Finalizando"); }, 5200));
+      try {
+        const { data, error } = await supabase.functions.invoke("detect-candidate-events", {
+          body: { candidateId, monthsBack: 3 },
+        });
+        if (error) throw error;
+        return data;
+      } finally {
+        timers.forEach(clearTimeout);
+        setDetectProgress(100); setDetectStep("Concluído");
+      }
+    },
+    onSuccess: async (data: any) => {
+      const count = data?.events?.length || 0;
+      toast({
+        title: count > 0 ? "Eventos detectados" : "Nenhum evento encontrado",
+        description: count > 0 ? `${count} evento(s) identificados e salvos.` : "Tente novamente ou aumente a janela de coleta.",
       });
-      if (error) throw error;
-      return data;
+      const res = await refetchEvents();
+      const list = res.data || [];
+      if (list.length === 1) setSelectedEvent(list[0].id);
+      setTimeout(() => { setDetectProgress(0); setDetectStep(""); }, 800);
     },
-    onSuccess: (data: any) => {
-      toast({ title: "Detecção concluída", description: `${data?.events?.length || 0} eventos identificados.` });
-      refetchEvents();
+    onError: (e: any) => {
+      setDetectProgress(0); setDetectStep("");
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
     },
-    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
-  const { data: analysis, isLoading: analysisLoading, isFetching } = useEventRepercussion(selectedEvent, rangeDays);
+  // Auto-select when list contains a single event
+  useEffect(() => {
+    if (!selectedEvent && events && events.length === 1) setSelectedEvent(events[0].id);
+  }, [events, selectedEvent]);
+
+  const { data: analysis, isLoading: analysisLoading } = useEventRepercussion(selectedEvent, rangeDays);
 
   const selectedEventObj = useMemo(() => events?.find((e) => e.id === selectedEvent), [events, selectedEvent]);
 
@@ -103,15 +130,35 @@ export default function EventRepercussion() {
         </div>
       </div>
 
+      {detectMutation.isPending && (
+        <Card className="bg-card/40 border-border/40">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between text-sm mb-2">
+              <span className="flex items-center gap-2 text-foreground">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                Detectando eventos… <span className="text-muted-foreground">{detectStep}</span>
+              </span>
+              <span className="text-muted-foreground tabular-nums">{detectProgress}%</span>
+            </div>
+            <div className="h-1.5 w-full bg-background/60 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-primary/60 to-primary transition-all duration-500" style={{ width: `${detectProgress}%` }} />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid lg:grid-cols-[320px_1fr] gap-4">
         <div>
           <EventSelectorList
             events={events || []}
-            loading={eventsLoading}
+            loading={eventsLoading || detectMutation.isPending}
             selectedId={selectedEvent}
             onSelect={(id) => { setSelectedEvent(id); setSelectedRegion(null); }}
+            onRetry={() => detectMutation.mutate()}
+            retrying={detectMutation.isPending}
           />
         </div>
+
 
         <div className="space-y-4 min-w-0">
           {!selectedEvent && (
