@@ -30,7 +30,7 @@ export interface StateData {
 
 export interface EventRepercussionData {
   event: { id: string; name: string; type: string; date: string; description?: string; keywords?: string[] };
-  totals: { mentions: number; acceptance: number; positive: number; negative: number; unmapped: number; coverage: number };
+  totals: { mentions: number; acceptance: number; positive: number; negative: number; unmapped: number; coverage: number; usedSemanticFallback?: boolean };
   regions: Record<string, RegionData>;
   states: Record<string, StateData>;
   timeline: { date: string; total: number; pos: number; neg: number; neu: number; phase: "antes" | "durante" | "depois" }[];
