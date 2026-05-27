@@ -55,11 +55,12 @@ export default function EventRepercussion() {
 
   const detectMutation = useMutation({
     mutationFn: async () => {
-      setDetectProgress(15); setDetectStep("Buscando fontes");
+      setDetectProgress(10); setDetectStep("Detectando eventos…");
       const timers: number[] = [];
-      timers.push(window.setTimeout(() => { setDetectProgress(40); setDetectStep("Extraindo entrevistas"); }, 1200));
-      timers.push(window.setTimeout(() => { setDetectProgress(65); setDetectStep("Agrupando eventos semelhantes"); }, 3000));
-      timers.push(window.setTimeout(() => { setDetectProgress(85); setDetectStep("Finalizando"); }, 5200));
+      timers.push(window.setTimeout(() => { setDetectProgress(28); setDetectStep("Coletando notícias e vídeos"); }, 900));
+      timers.push(window.setTimeout(() => { setDetectProgress(50); setDetectStep("Analisando comentários reais"); }, 2400));
+      timers.push(window.setTimeout(() => { setDetectProgress(72); setDetectStep("Agrupando eventos semelhantes"); }, 4200));
+      timers.push(window.setTimeout(() => { setDetectProgress(88); setDetectStep("Gerando análise IA"); }, 6000));
       try {
         const { data, error } = await supabase.functions.invoke("detect-candidate-events", {
           body: { candidateId, monthsBack: 3 },
@@ -68,18 +69,20 @@ export default function EventRepercussion() {
         return data;
       } finally {
         timers.forEach(clearTimeout);
-        setDetectProgress(100); setDetectStep("Concluído");
+        setDetectProgress(100); setDetectStep("Finalizando");
       }
     },
     onSuccess: async (data: any) => {
       const count = data?.events?.length || 0;
       toast({
         title: count > 0 ? "Eventos detectados" : "Nenhum evento encontrado",
-        description: count > 0 ? `${count} evento(s) identificados e salvos.` : "Tente novamente ou aumente a janela de coleta.",
+        description: count > 0
+          ? `${count} evento(s) reais identificados a partir das menções.`
+          : "Nenhum evento real (entrevista, debate, podcast, etc.) foi identificado no período. Colete mais menções e tente novamente.",
       });
       const res = await refetchEvents();
       const list = res.data || [];
-      if (list.length === 1) setSelectedEvent(list[0].id);
+      if (list.length >= 1) setSelectedEvent(list[0].id);
       setTimeout(() => { setDetectProgress(0); setDetectStep(""); }, 800);
     },
     onError: (e: any) => {
