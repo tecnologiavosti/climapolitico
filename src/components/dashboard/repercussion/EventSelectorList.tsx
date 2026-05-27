@@ -159,3 +159,5 @@ export function EventSelectorList({ events, loading, selectedId, onSelect, onRet
       </div>
     </div>
   );
+}
+
