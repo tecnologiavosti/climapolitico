@@ -1,5 +1,5 @@
-// Chat sobre repercussão de evento, opcionalmente filtrado por região.
-// Carrega comentários reais e usa IA (Cerebras→fallback) para responder.
+// External-first chat about event repercussion.
+// Uses cached external publications + (optional) internal comments as evidence.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 
@@ -9,154 +9,81 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const UF_TO_REGION: Record<string, string> = {
-  AC: "Norte", AP: "Norte", AM: "Norte", PA: "Norte", RO: "Norte", RR: "Norte", TO: "Norte",
-  AL: "Nordeste", BA: "Nordeste", CE: "Nordeste", MA: "Nordeste", PB: "Nordeste",
-  PE: "Nordeste", PI: "Nordeste", RN: "Nordeste", SE: "Nordeste",
-  DF: "Centro-Oeste", GO: "Centro-Oeste", MT: "Centro-Oeste", MS: "Centro-Oeste",
-  ES: "Sudeste", MG: "Sudeste", RJ: "Sudeste", SP: "Sudeste",
-  PR: "Sul", RS: "Sul", SC: "Sul",
-};
-
-function normRegion(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  const n = raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-  if (n.startsWith("nort") && !n.includes("este")) return "Norte";
-  if (n.startsWith("nordest")) return "Nordeste";
-  if (n.startsWith("centro")) return "Centro-Oeste";
-  if (n.startsWith("sudest")) return "Sudeste";
-  if (n.startsWith("sul")) return "Sul";
-  return null;
-}
-
-function inferRegion(text: string): string | null {
-  const t = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  for (const [uf, region] of Object.entries(UF_TO_REGION)) {
-    if (new RegExp(`\\b${uf.toLowerCase()}\\b`, "i").test(t)) return region;
-  }
-  return null;
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
     const auth = req.headers.get("Authorization");
     if (!auth) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
-      global: { headers: { Authorization: auth } },
-    });
-    const { data: ud } = await userClient.auth.getUser();
-    const user = ud?.user;
+    const userClient = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: auth } } });
+    const { data: { user } } = await userClient.auth.getUser();
     if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const { eventId, region, question } = await req.json();
-    if (!eventId || !question) return new Response(JSON.stringify({ error: "eventId e question são obrigatórios" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!eventId || !question) return new Response(JSON.stringify({ error: "eventId e question obrigatórios" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const admin = createClient(SUPABASE_URL, SERVICE_KEY);
     const { data: event } = await admin.from("political_events").select("*").eq("id", eventId).eq("user_id", user.id).maybeSingle();
     if (!event) return new Response(JSON.stringify({ error: "Evento não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    const eventDate = new Date(event.event_date);
-    const start = new Date(eventDate.getTime() - 86400_000);
-    const end = new Date(eventDate.getTime() + 7 * 86400_000);
-    const keywords: string[] = Array.isArray(event.keywords) ? event.keywords.map((k: string) => String(k).toLowerCase().trim()).filter(Boolean) : [];
+    const cached = event.metadata?.external_cache?.payload;
+    const sources = cached?.externalRepercussion?.sources || [];
+    const narratives = cached?.externalRepercussion?.narratives || { apoio: [], criticas: [], debates: [] };
+    const dist = cached?.externalRepercussion?.regionalDistribution || {};
+    const internal = cached?.internalReaction || { mentions: 0 };
 
-    // Pull comments (cap 8k)
-    const all: any[] = [];
-    let from = 0;
-    while (true) {
-      const { data, error } = await admin
-        .from("social_interactions")
-        .select("comment_text, sentiment_label, likes_count, replies_count, region, social_network, comment_author, created_at, original_posted_at")
-        .eq("candidate_id", event.candidate_id)
-        .or(`and(original_posted_at.gte.${start.toISOString()},original_posted_at.lte.${end.toISOString()}),and(original_posted_at.is.null,created_at.gte.${start.toISOString()},created_at.lte.${end.toISOString()})`)
-        .order("original_posted_at", { ascending: false, nullsFirst: false })
-        .range(from, from + 999);
-      if (error || !data || !data.length) break;
-      all.push(...data);
-      if (data.length < 1000 || all.length >= 8000) break;
-      from += 1000;
-    }
+    const filteredSources = region
+      ? sources.filter((s: any) => s.region === region)
+      : sources;
+    const sourceList = (filteredSources.length ? filteredSources : sources).slice(0, 30).map((s: any, i: number) =>
+      `[${i + 1}] (${s.outlet}, ${s.region}, ${s.publishedAt?.slice(0, 10) || "?"}) ${s.title} — ${s.snippet}`
+    ).join("\n");
 
-    let filtered = keywords.length > 0
-      ? all.filter((c) => { const t = (c.comment_text || "").toLowerCase(); return keywords.some((k) => t.includes(k)); })
-      : all;
+    const prompt = `Analise apenas dados relacionados ao evento abaixo usando as PUBLICAÇÕES EXTERNAS como fonte principal. Use os dados internos da plataforma apenas como complemento.
 
-    if (region) {
-      filtered = filtered.filter((c) => {
-        const r = normRegion(c.region) || inferRegion(`${c.comment_text || ""} ${c.comment_author || ""}`);
-        return r === region;
-      });
-    }
+Evento: "${event.event_name}" (${event.event_type}) em ${String(event.event_date).slice(0, 10)}.
+${region ? `Foco regional: ${region}.` : "Análise nacional."}
 
-    if (filtered.length < 20) {
-      return new Response(JSON.stringify({
-        answer: `Dados insuficientes para uma análise confiável${region ? ` na região ${region}` : ""}. Foram encontrados apenas ${filtered.length} comentários relevantes.`,
-        sampleCount: filtered.length,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
+DISTRIBUIÇÃO REGIONAL DA COBERTURA (externa):
+${Object.entries(dist).map(([r, p]) => `- ${r}: ${p}%`).join("\n") || "(sem dados)"}
 
-    // Build sample: top engagement
-    const pos = filtered.filter((c) => c.sentiment_label === "Positivo").sort((a, b) => (b.likes_count || 0) - (a.likes_count || 0)).slice(0, 30);
-    const neg = filtered.filter((c) => c.sentiment_label === "Negativo").sort((a, b) => (b.likes_count || 0) - (a.likes_count || 0)).slice(0, 30);
-    const neu = filtered.filter((c) => c.sentiment_label === "Neutro").sort((a, b) => (b.likes_count || 0) - (a.likes_count || 0)).slice(0, 15);
+NARRATIVAS DETECTADAS:
+- Apoio: ${(narratives.apoio || []).join(" | ") || "—"}
+- Críticas: ${(narratives.criticas || []).join(" | ") || "—"}
+- Debates: ${(narratives.debates || []).join(" | ") || "—"}
 
-    const sample = (rows: any[]) => rows.map((r) => `- ${String(r.comment_text || "").slice(0, 220)}`).join("\n");
+REAÇÃO DA PLATAFORMA (complemento): ${internal.mentions} menções internas (${internal.positive || 0} pos / ${internal.negative || 0} neg).
 
-    const stats = {
-      total: filtered.length,
-      pos: filtered.filter((c) => c.sentiment_label === "Positivo").length,
-      neg: filtered.filter((c) => c.sentiment_label === "Negativo").length,
-      neu: filtered.filter((c) => c.sentiment_label === "Neutro").length,
-    };
+PUBLICAÇÕES EXTERNAS:
+${sourceList || "(sem publicações coletadas)"}
 
-    const prompt = `Evento: "${event.event_name}" (${event.event_type}) em ${event.event_date.slice(0, 10)}.
-${region ? `Foco: região ${region} do Brasil.` : "Análise nacional."}
+Pergunta: "${question}"
 
-Estatísticas dos comentários filtrados:
-- Total: ${stats.total}
-- Positivos: ${stats.pos}
-- Negativos: ${stats.neg}
-- Neutros: ${stats.neu}
-
-Amostra positiva:
-${sample(pos)}
-
-Amostra negativa:
-${sample(neg)}
-
-Amostra neutra:
-${sample(neu)}
-
-Pergunta do usuário: "${question}"
-
-Responda em português, de forma direta e baseada SOMENTE nos comentários acima. Máximo 6 frases. Cite tendências reais identificadas, não invente. Se a pergunta não puder ser respondida com os dados, diga isso claramente.`;
+Responda em português, baseado SOMENTE nas evidências acima. Máximo 6 frases. Cite veículos quando relevante. Se a pergunta não puder ser respondida com os dados disponíveis, diga claramente.`;
 
     try {
       const ai = await callAICerebrasFirst({
-        systemMsg: "Você é um analista político brasileiro especialista em análise regional de opinião pública. Responda em português, sempre baseado em dados reais fornecidos.",
+        systemMsg: "Você é um analista político brasileiro. Responde apenas com base nas publicações externas fornecidas, usando dados internos como complemento.",
         userPrompt: prompt,
         maxTokens: 700,
-        temperature: 0.4,
-        tag: "chat-event-region",
+        temperature: 0.35,
+        tag: "chat-event-region-external",
       });
       return new Response(JSON.stringify({
         answer: ai.content?.trim() || "Sem resposta da IA.",
         provider: ai.provider,
         model: ai.model,
-        sampleCount: filtered.length,
-        stats,
+        externalSourceCount: filteredSources.length || sources.length,
+        internalMentions: internal.mentions,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     } catch (e) {
       return new Response(JSON.stringify({
-        answer: `Encontrei ${stats.total} comentários relevantes (${stats.pos} positivos, ${stats.neg} negativos, ${stats.neu} neutros)${region ? ` na região ${region}` : ""}, mas a IA está temporariamente indisponível para gerar a análise contextual. Tente novamente em alguns minutos.`,
+        answer: `Coletei ${sources.length} publicações externas${region ? ` (${filteredSources.length} de ${region})` : ""} sobre este evento, mas a IA está temporariamente indisponível. Tente novamente em alguns instantes.`,
         fallback: true,
         error: (e as Error).message,
-        stats,
-        sampleCount: filtered.length,
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
   } catch (e) {

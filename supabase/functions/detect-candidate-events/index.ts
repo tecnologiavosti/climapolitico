@@ -1,365 +1,251 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// External-first event detector for a candidate.
+// Sources: Firecrawl search (news/web/youtube) + GDELT (free, no auth).
+// AI then groups publications into discrete events with structured metadata.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
+import { firecrawlSearch, gdeltSearch, dedupePublications, computeRegionalDistribution, estimatedReachOf, type ExternalPublication } from "../_shared/external-collector.ts";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Max-Age': '86400',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+const EVENT_TYPES = ["entrevista","debate","live","podcast","discurso","comicio","coletiva","agenda","evento","programa","declaracao","viagem","reuniao","crise","noticia"] as const;
+
+interface DetectedEvent {
+  title: string;
+  description: string;
+  eventType: string;
+  date: string; // YYYY-MM-DD
+  location?: string;
+  entities?: string[];
+  keywords: string[];
+  topics?: string[];
+  importanceScore: number; // 0..100
+  sources: { name: string; url: string; region: string }[];
+  estimatedReach: number;
+  regionalDistribution: Record<string, number>;
+}
 
 function sanitize(s: unknown): string {
   if (s == null) return "";
-  let str = String(s);
-  str = str.replace(/<[^>]*>/g, " ").replace(/https?:\/\/\S+/gi, " ");
-  str = str.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ");
-  str = str.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, "");
-  str = str.replace(/(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "$1");
-  return str.replace(/\s+/g, " ").trim();
+  return String(s).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
 
-// Confirmed live events (person participated in something concrete)
-const EVENT_TYPES = new Set([
-  'entrevista','debate','live','podcast','discurso','comicio',
-  'coletiva','agenda','evento','programa','declaracao'
-]);
-// Other categories
-const NEWS_TYPES = new Set(['noticia']);
-const VIRAL_TYPES = new Set(['viral']);
-const RUMOR_TYPES = new Set(['rumor']);
-const VALID_TYPES = new Set([...EVENT_TYPES, ...NEWS_TYPES, ...VIRAL_TYPES, ...RUMOR_TYPES]);
-
-// Trusted source signals — used to require ≥2 confirmations
-const TRUSTED_SOURCES = [
-  'cnn','globo','globonews','jornal nacional','jn','band','bandnews','sbt','record',
-  'jovem pan','folha','estadao','estadão','uol','g1','veja','o globo','metropoles',
-  'metrópoles','poder360','poder 360','agencia brasil','agência brasil','reuters',
-  'congresso','senado','camara','câmara','planalto','tse','stf',
-  'flow','inteligencia ltda','inteligência ltda','primo rico','podpah','pod','panico','pânico',
-  'youtube','instagram live','twitch'
-];
-// Comment phrases hinting that there was a real public appearance
-const APPEARANCE_HINTS = /\b(entrevist|debat|sabatin|coletiv|discurs|comici|comíci|inaugurac|inaugurac|visit|agend|reuniao|reunião|votac|sessao|sessão|live|podcast|programa|jornal|conferenc|palestra|congresso)\b/i;
-// Viral-only signals (not an event)
-const VIRAL_HINTS = /\b(viral|video viralizou|clip viralizou|meme|cortes|cortes do|polemica nas redes|polêmica nas redes|repercutiu nas redes)\b/i;
-// Rumor signals
-const RUMOR_HINTS = /\b(rumor|boato|fake news|desmente|desmentido|sem confirma|nao confirm|não confirm|circula nas redes)\b/i;
-
-interface DetectedEvent {
-  name: string;
-  subtitle?: string;
-  type: string;
-  category?: 'evento' | 'noticia' | 'viral' | 'rumor';
-  confidence?: number; // 0..1
-  sources?: string[];  // trusted sources mentioned
-  keywords: string[];
-  start_date: string; // YYYY-MM-DD
-  end_date: string;
-  mentions_estimate: number;
-  description: string;
-  location?: string;
-  source?: string;
-}
-
-const STOP = new Set([
-  'para','como','mais','muito','pela','pelo','isso','essa','esse','esta','este','entre','sobre','quando','onde','tambem','também','presidente','candidato','candidata','brasil','politica','política','governo','partido','povo','gente','tudo','todos','todas','agora','hoje','ontem','sempre','nunca','assim','porque','porquê','mesmo','quem','vou','tem','tinha','foi','sao','são','dos','das','com','sem','por','seu','sua','meu','minha','nos','nas','que','dele','dela','aqui','ali','ainda','depois','antes','tao','tão','pouco','bom','boa','ruim'
-]);
-
-const normalize = (s: string) =>
-  s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-   .replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-
-const tokens = (s: string) =>
-  new Set(normalize(s).split(' ').filter(w => w.length > 3 && !STOP.has(w)));
-
-const jaccard = (a: Set<string>, b: Set<string>) => {
-  if (!a.size || !b.size) return 0;
-  let inter = 0;
-  for (const t of a) if (b.has(t)) inter++;
-  return inter / (a.size + b.size - inter);
-};
-
-serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
-
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-    );
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const auth = req.headers.get("Authorization");
+    if (!auth) return new Response(JSON.stringify({ error: "Não autorizado" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: 'Não autorizado' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
+    const userClient = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: auth } } });
+    const { data: { user } } = await userClient.auth.getUser();
+    if (!user) return new Response(JSON.stringify({ error: "Não autorizado" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    const { candidateId, monthsBack = 3 } = await req.json();
-    if (!candidateId) {
-      return new Response(JSON.stringify({ error: 'candidateId obrigatório' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
+    const { candidateId, monthsBack = 1 } = await req.json();
+    if (!candidateId) return new Response(JSON.stringify({ error: "candidateId obrigatório" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    const supabaseService = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
-    const { data: candidate } = await supabaseService
-      .from('candidates')
-      .select('id, full_name, party, user_id')
-      .eq('id', candidateId)
-      .maybeSingle();
-
+    const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+    const { data: candidate } = await admin.from("candidates").select("id, full_name, party, user_id").eq("id", candidateId).maybeSingle();
     if (!candidate || candidate.user_id !== user.id) {
-      return new Response(JSON.stringify({ error: 'Candidato não encontrado' }), {
-        status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      return new Response(JSON.stringify({ error: "Candidato não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const since = new Date();
-    since.setMonth(since.getMonth() - monthsBack);
-    const sinceISO = since.toISOString();
+    const name = candidate.full_name;
+    const partyPart = candidate.party ? ` (${candidate.party})` : "";
+    const tbs = monthsBack <= 1 ? "qdr:m" : monthsBack <= 3 ? "qdr:m" : "qdr:y";
 
-    // Pull comments that look like they're talking about a real event
-    const { data: rows } = await supabaseClient
-      .from('social_interactions')
-      .select('comment_text, original_posted_at, created_at, likes_count, replies_count, social_network')
-      .eq('candidate_id', candidateId)
-      .or(`original_posted_at.gte.${sinceISO},and(original_posted_at.is.null,created_at.gte.${sinceISO})`)
-      .not('comment_text', 'is', null)
-      .order('likes_count', { ascending: false, nullsFirst: false })
-      .limit(1200);
+    // 1) Collect external publications in parallel
+    const queries = [
+      `"${name}" entrevista OR debate OR coletiva OR discurso`,
+      `"${name}" agenda OR viagem OR reuniao OR evento OR comicio`,
+      `"${name}" declaracao OR podcast OR live OR programa`,
+      `"${name}" noticia OR crise OR repercussao`,
+    ];
 
-    const all = (rows || []).filter(r => r.comment_text && r.comment_text.trim().length > 12);
-    const sampleSource = all;
+    const allResults = await Promise.all([
+      ...queries.map((q) => firecrawlSearch(q, { limit: 10, tbs })),
+      gdeltSearch(name, { maxRecords: 40, timespan: monthsBack <= 1 ? "1month" : "3months" }),
+    ]);
+    const pubs: ExternalPublication[] = dedupePublications(allResults.flat());
+    console.log(`[detect-events] collected ${pubs.length} external publications for ${name}`);
 
-    if (sampleSource.length < 8) {
+    if (pubs.length === 0) {
       return new Response(JSON.stringify({
         events: [],
-        message: 'Dados insuficientes para detectar eventos reais. Colete mais interações sobre entrevistas, debates ou agendas.'
-      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        message: "Nenhuma publicação externa encontrada. Tente novamente em alguns minutos ou verifique se o nome do candidato está completo.",
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const sample = sampleSource.slice(0, 320).map((c) => {
-      const date = (c.original_posted_at || c.created_at || '').substring(0, 10);
-      return `[${date}|${c.social_network || '?'}] ${sanitize(c.comment_text).substring(0, 240)}`;
-    });
+    // 2) Build compact corpus for AI grouping
+    const corpus = pubs.slice(0, 60).map((p, i) =>
+      `[${i + 1}] (${p.outlet}, ${p.publishedAt?.slice(0, 10) || "?"}) ${sanitize(p.title).slice(0, 160)} — ${sanitize(p.snippet).slice(0, 220)} | ${p.url}`
+    ).join("\n");
 
-    const prompt = `Você é um analista político brasileiro. Classifique acontecimentos sobre o candidato a partir dos comentários abaixo em 4 CATEGORIAS distintas:
+    const prompt = `Você é um analista político brasileiro. Abaixo estão publicações reais (notícias, vídeos, posts) sobre **${name}${partyPart}** coletadas de jornais, sites e redes nos últimos ${monthsBack} mes(es).
 
-Candidato: ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}.
-Janela analisada: últimos ${monthsBack} meses.
-
-CATEGORIAS (campo \`category\`):
-1) "evento" — participação física ou digital CONFIRMADA do candidato (entrevista, debate, podcast, discurso, coletiva, comício, agenda pública, live, sessão/votação, programa de TV). REQUER: pelo menos UMA fonte oficial/confiável citada nos comentários (CNN, Globo, JN, Band, SBT, Record, G1, UOL, Folha, Estadão, Jovem Pan, Metrópoles, Poder360, Flow, Inteligência Ltda, Podpah, Câmara, Senado, Planalto, canal oficial). Se não houver fonte confiável citada, NÃO classifique como "evento".
-2) "noticia" — acontecimento envolvendo o candidato mas SEM participação direta (ex.: "10 anos do impeachment", investigação, decisão judicial, repercussão histórica).
-3) "viral" — vídeo, meme, corte ou publicação espontânea que viralizou (ex.: "vídeo em voo comercial", "meme do candidato").
-4) "rumor" — boato, fake news, conteúdo não confirmado, "circula nas redes".
+Agrupe essas publicações em ACONTECIMENTOS REAIS (entrevistas, debates, discursos, viagens, agendas, coletivas, podcasts, lives, reuniões, crises, ou notícias relevantes). Um acontecimento = um fato concreto coberto por uma ou mais fontes.
 
 REGRAS:
-- NÃO crie itens genéricos como "Pico de menções", "Aumento de comentários", "Atividade incomum".
-- NÃO invente itens que não estão claramente mencionados.
-- Cada item precisa de \`name\` real e identificável.
-- \`type\` deve corresponder à categoria: para "evento" use entrevista|debate|live|podcast|discurso|comicio|coletiva|agenda|evento|programa|declaracao; para "noticia" use noticia; para "viral" use viral; para "rumor" use rumor.
-- \`sources\`: lista das fontes/veículos confiáveis CITADAS nos comentários (use apenas se realmente aparecerem). Se vazio, não pode ser "evento".
-- \`confidence\`: 0..1 — quantos sinais convergentes (fontes + nome de programa + data + volume).
-- \`keywords\`: 4-10 termos curtos que aparecem nos comentários sobre o item.
-- \`start_date\` (YYYY-MM-DD) estimada pelos timestamps.
+- NÃO crie "Pico de menções", "Aumento de comentários" ou itens genéricos.
+- Cada evento precisa de NOME real e identificável (ex.: "Entrevista no Jornal Nacional", "Comício em Salvador").
+- \`eventType\`: um de ${EVENT_TYPES.join(", ")}.
+- \`importanceScore\` (0-100): quantidade de fontes, alcance dos veículos, magnitude do tema.
+- \`date\` (YYYY-MM-DD): data do acontecimento, não data de publicação.
+- \`keywords\`: 4-8 termos curtos do evento.
+- \`topics\`: 2-5 temas amplos (ex.: "economia", "internacional", "BRICS").
+- \`entities\`: pessoas/instituições mencionadas além do candidato.
+- \`sourceIndices\`: lista de índices [1..N] das publicações que cobrem ESTE evento.
 
-COMENTÁRIOS (data|rede + texto):
-${sample.join('\n')}
+PUBLICAÇÕES:
+${corpus}
 
 Responda APENAS com JSON válido (sem markdown):
 {
   "events": [
     {
-      "name": "Entrevista no Jornal Nacional",
-      "subtitle": "Sobre economia",
-      "category": "evento",
-      "type": "entrevista",
-      "sources": ["Globo","JN"],
-      "confidence": 0.85,
-      "location": "Globo",
-      "keywords": ["jornal nacional","JN","bonner","globo"],
-      "start_date": "2025-01-20",
-      "end_date": "2025-01-20",
-      "mentions_estimate": 42,
-      "description": "Resumo em 1 linha."
+      "title": "Entrevista no Jornal Nacional",
+      "description": "Resumo em 1-2 frases.",
+      "eventType": "entrevista",
+      "date": "2026-05-20",
+      "location": "São Paulo, SP",
+      "entities": ["William Bonner", "Globo"],
+      "keywords": ["jornal nacional", "JN", "bonner"],
+      "topics": ["economia", "midia"],
+      "importanceScore": 78,
+      "sourceIndices": [1, 4, 9]
     }
   ]
 }`;
 
-    let result: { events: DetectedEvent[] } = { events: [] };
+    let aiResult: { events: any[] } = { events: [] };
     try {
-      const aiRes = await callAICerebrasFirst({
-        systemMsg: 'Você é um analista político que classifica acontecimentos em 4 categorias (evento, noticia, viral, rumor). NUNCA cria itens genéricos de "pico de menções". Só classifica como "evento" se houver pelo menos uma fonte oficial confiável citada nos comentários. Responde apenas em JSON válido.',
+      const ai = await callAICerebrasFirst({
+        systemMsg: "Você é um analista político que agrupa publicações reais em acontecimentos concretos. NUNCA cria itens genéricos. Responde apenas em JSON válido.",
         userPrompt: prompt,
         jsonMode: true,
-        maxTokens: 3500,
-        temperature: 0.1,
-        tag: 'detect-events',
+        maxTokens: 4000,
+        temperature: 0.15,
+        tag: "detect-events-external",
       });
-      const content = aiRes.content || '';
-      try { result = JSON.parse(content); }
-      catch {
-        const m = content.match(/\{[\s\S]*\}/);
-        if (m) result = JSON.parse(m[0]);
-      }
-      console.log(`[detect-events] ✅ ${aiRes.provider}:${aiRes.model} -> ${result.events?.length || 0} itens`);
+      const content = ai.content || "";
+      try { aiResult = JSON.parse(content); }
+      catch { const m = content.match(/\{[\s\S]*\}/); if (m) aiResult = JSON.parse(m[0]); }
+      console.log(`[detect-events] ✅ ${ai.provider}:${ai.model} → ${aiResult.events?.length || 0} eventos`);
     } catch (e) {
-      console.error('[detect-events] AI failed:', (e as Error).message);
-      result = { events: [] };
+      console.error("[detect-events] AI failed:", (e as Error).message);
     }
 
-    const isGenericName = (n: string) =>
-      /pico de menc|aumento de coment|menc[ao]es em \d|surto de coment|atividade incomum|^\d+%/i.test(n);
+    // 3) Materialize each event with its real publications + regional distribution
+    const events: DetectedEvent[] = (aiResult.events || []).map((ev: any) => {
+      const indices: number[] = Array.isArray(ev.sourceIndices) ? ev.sourceIndices.map((n: any) => Number(n) - 1).filter((n: number) => n >= 0 && n < pubs.length) : [];
+      const evPubs = indices.map((i) => pubs[i]).filter(Boolean);
+      const sources = evPubs.map((p) => ({ name: p.outlet, url: p.url, region: p.outletRegion }));
+      const dist = computeRegionalDistribution(evPubs.length ? evPubs : pubs.slice(0, 5));
+      const reach = estimatedReachOf(evPubs);
+      const type = String(ev.eventType || "noticia").toLowerCase();
+      return {
+        title: String(ev.title || "").trim().slice(0, 200),
+        description: String(ev.description || "").trim().slice(0, 600),
+        eventType: (EVENT_TYPES as readonly string[]).includes(type) ? type : "noticia",
+        date: String(ev.date || "").slice(0, 10) || new Date().toISOString().slice(0, 10),
+        location: ev.location || undefined,
+        entities: Array.isArray(ev.entities) ? ev.entities.slice(0, 10) : [],
+        keywords: Array.isArray(ev.keywords) ? ev.keywords.slice(0, 10) : [],
+        topics: Array.isArray(ev.topics) ? ev.topics.slice(0, 6) : [],
+        importanceScore: Math.max(0, Math.min(100, Number(ev.importanceScore) || 50)),
+        sources,
+        estimatedReach: reach,
+        regionalDistribution: dist,
+      };
+    }).filter((e) => e.title && e.sources.length > 0)
+      .sort((a, b) => b.importanceScore - a.importanceScore);
 
-    // Build a corpus of comment text for cross-validation
-    const corpus = sampleSource.map(r => sanitize(r.comment_text!).toLowerCase()).join(' \n ');
+    // 4) Persist (reuse existing if title+date match within 3 days)
+    const { data: existing } = await admin
+      .from("political_events").select("id, event_name, event_date, event_type, metadata")
+      .eq("candidate_id", candidateId).eq("user_id", user.id);
+    const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+    const findExisting = (ev: DetectedEvent) => {
+      const evN = norm(ev.title);
+      const evT = new Date(`${ev.date}T12:00:00Z`).getTime();
+      return (existing || []).find((r: any) => {
+        const rT = new Date(r.event_date).getTime();
+        return Math.abs(rT - evT) <= 3 * 86400000 && (norm(r.event_name) === evN || norm(r.event_name).includes(evN.slice(0, 20)));
+      });
+    };
 
-    // Strict validation: real items only, valid type, keywords present, name not generic
-    let events = (result.events || []).filter(e => {
-      if (!e.name || isGenericName(e.name)) return false;
-      if (!Array.isArray(e.keywords) || e.keywords.length < 2) return false;
-      if (!e.start_date) return false;
-      const type = (e.type || '').toLowerCase();
-      if (!VALID_TYPES.has(type)) return false;
-
-      // Cross-validate: at least 2 keywords must actually appear in the corpus
-      const keywordHits = e.keywords.filter(k => k && corpus.includes(String(k).toLowerCase().trim())).length;
-      if (keywordHits < 2) return false;
-
-      return true;
-    }).map(e => {
-      const type = e.type.toLowerCase();
-      // Infer category if missing, and downgrade "evento" without trusted source confirmation
-      let category: 'evento' | 'noticia' | 'viral' | 'rumor' =
-        (e.category as any) ||
-        (VIRAL_TYPES.has(type) ? 'viral'
-          : RUMOR_TYPES.has(type) ? 'rumor'
-          : NEWS_TYPES.has(type) ? 'noticia'
-          : 'evento');
-
-      // Re-validate "evento" classification: must have ≥2 trusted signals
-      if (category === 'evento') {
-        const declaredSources = (e.sources || []).map(s => String(s).toLowerCase());
-        const corpusSourceHits = TRUSTED_SOURCES.filter(s => corpus.includes(s));
-        const allSources = Array.from(new Set([...declaredSources, ...corpusSourceHits.filter(s => declaredSources.some(d => d.includes(s) || s.includes(d)) || corpus.includes(s))]));
-        const hasAppearanceHint = APPEARANCE_HINTS.test(corpus) || APPEARANCE_HINTS.test(e.name);
-        const signals = (allSources.length >= 1 ? 1 : 0) + (hasAppearanceHint ? 1 : 0) + ((e.confidence || 0) >= 0.7 ? 1 : 0);
-        if (signals < 2) {
-          // Downgrade to noticia if it has source-like context, otherwise viral
-          category = allSources.length > 0 || hasAppearanceHint ? 'noticia' : (VIRAL_HINTS.test(corpus) ? 'viral' : 'noticia');
-        }
-        e.sources = allSources.slice(0, 6);
-      }
-
-      // Rumor override
-      if (RUMOR_HINTS.test(e.name) || RUMOR_HINTS.test(e.description || '')) category = 'rumor';
-
-      return { ...e, type, category };
-    });
-
-    // Semantic dedup: group near-duplicate names within same category
-    const grouped: DetectedEvent[] = [];
+    const saved: any[] = [];
     for (const ev of events) {
-      const evTok = tokens(ev.name);
-      const dup = grouped.find(g => jaccard(tokens(g.name), evTok) >= 0.45 && g.category === ev.category);
-      if (dup) {
-        dup.mentions_estimate = (dup.mentions_estimate || 0) + (ev.mentions_estimate || 0);
-        dup.keywords = Array.from(new Set([...(dup.keywords || []), ...(ev.keywords || [])])).slice(0, 12);
-        dup.sources = Array.from(new Set([...(dup.sources || []), ...(ev.sources || [])])).slice(0, 6);
+      const match = findExisting(ev);
+      if (match) {
+        // refresh external metadata
+        await admin.from("political_events").update({
+          description: ev.description || null,
+          keywords: ev.keywords,
+          metadata: {
+            ...(match.metadata || {}),
+            external_sources: ev.sources,
+            estimated_reach: ev.estimatedReach,
+            importance_score: ev.importanceScore,
+            regional_distribution: ev.regionalDistribution,
+            topics: ev.topics,
+            entities: ev.entities,
+            location: ev.location || null,
+            category: "evento",
+            external_first: true,
+            updated_at: new Date().toISOString(),
+          },
+        }).eq("id", match.id);
+        saved.push({ ...match, ...ev });
       } else {
-        grouped.push({ ...ev });
-      }
-    }
-    events = grouped;
-
-    // Persist new ones, reuse existing matches (±3 days)
-    let saved: any[] = [];
-    if (events.length > 0) {
-      const { data: existing } = await supabaseService
-        .from('political_events')
-        .select('id, event_name, event_date, event_type, keywords, metadata, description')
-        .eq('candidate_id', candidateId)
-        .eq('user_id', user.id);
-
-      const existingNorm = (existing || []).map((r: any) => ({
-        ...r,
-        tok: tokens(r.event_name),
-        t: new Date(r.event_date).getTime(),
-      }));
-
-      const toInsert: any[] = [];
-      const reused: any[] = [];
-      for (const ev of events) {
-        const evTok = tokens(ev.name);
-        const evDate = new Date(`${ev.start_date}T12:00:00Z`).getTime();
-        const match = existingNorm.find(r => r.event_type === ev.type && jaccard(r.tok, evTok) >= 0.45 && Math.abs(r.t - evDate) <= 3 * 86400000);
-        if (match) {
-          reused.push(match);
-        } else {
-          toInsert.push({
-            user_id: user.id,
-            candidate_id: candidateId,
-            event_name: ev.name.substring(0, 200),
-            event_type: ev.type,
-            event_date: new Date(`${ev.start_date}T12:00:00Z`).toISOString(),
-            description: ev.description?.substring(0, 500) || ev.subtitle?.substring(0, 500) || null,
-            keywords: (ev.keywords || []).slice(0, 15),
-            metadata: {
-              mentions_estimate: ev.mentions_estimate || 0,
-              end_date: ev.end_date,
-              subtitle: ev.subtitle || null,
-              location: ev.location || null,
-              source: ev.source || null,
-              sources: ev.sources || [],
-              category: ev.category || 'evento',
-              confidence: ev.confidence ?? 0.5,
-              auto_detected: true,
-            },
-          });
-        }
-      }
-
-      if (toInsert.length > 0) {
-        const { data: inserted, error: insertErr } = await supabaseService
-          .from('political_events')
-          .insert(toInsert)
-          .select('id, event_name, event_type, event_date, keywords, metadata, description');
-        if (insertErr) console.error('[detect-events] insert error:', insertErr.message);
-        saved = [...(inserted || []), ...reused];
-      } else {
-        saved = reused;
+        const { data: inserted, error } = await admin.from("political_events").insert({
+          user_id: user.id,
+          candidate_id: candidateId,
+          event_name: ev.title,
+          event_type: ev.eventType,
+          event_date: new Date(`${ev.date}T12:00:00Z`).toISOString(),
+          description: ev.description || null,
+          keywords: ev.keywords,
+          metadata: {
+            external_sources: ev.sources,
+            estimated_reach: ev.estimatedReach,
+            importance_score: ev.importanceScore,
+            regional_distribution: ev.regionalDistribution,
+            topics: ev.topics,
+            entities: ev.entities,
+            location: ev.location || null,
+            category: "evento",
+            external_first: true,
+            auto_detected: true,
+          },
+        }).select("id, event_name, event_type, event_date, keywords, metadata, description").maybeSingle();
+        if (error) console.error("[detect-events] insert error:", error.message);
+        if (inserted) saved.push(inserted);
       }
     }
 
-    // Also delete legacy "pico" / generic events for this candidate so the UI is clean
+    // Clean legacy "pico" events
     try {
-      await supabaseService
-        .from('political_events')
-        .delete()
-        .eq('candidate_id', candidateId)
-        .eq('user_id', user.id)
-        .eq('event_type', 'pico');
-    } catch (e) { /* ignore */ }
+      await admin.from("political_events").delete().eq("candidate_id", candidateId).eq("user_id", user.id).eq("event_type", "pico");
+    } catch (_) { /* ignore */ }
 
     return new Response(JSON.stringify({
       events: saved,
       saved_count: saved.length,
       candidate: { id: candidate.id, full_name: candidate.full_name },
-      analyzed_comments: sampleSource.length,
-    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-
-  } catch (error) {
-    console.error('Error:', error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Erro' }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+      publications_collected: pubs.length,
+      sources_breakdown: {
+        firecrawl: pubs.filter((p) => p.source === "firecrawl").length,
+        gdelt: pubs.filter((p) => p.source === "gdelt").length,
+      },
+    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  } catch (e) {
+    console.error("[detect-events] error:", e);
+    return new Response(JSON.stringify({ error: (e as Error).message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

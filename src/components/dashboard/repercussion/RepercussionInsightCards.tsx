@@ -1,54 +1,60 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { Flame, AlertTriangle, Heart, TrendingUp } from "lucide-react";
+import { Newspaper, Users, TrendingUp, Globe2 } from "lucide-react";
 import type { EventRepercussionData } from "@/hooks/useEventRepercussion";
 
+function formatReach(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`;
+  return String(n);
+}
+
 export function RepercussionInsightCards({ data }: { data: EventRepercussionData }) {
-  const { insights, thresholds } = data;
-  const insufficient = thresholds && !thresholds.canShowRegionInsights;
-  const placeholder = insufficient ? "Dados insuficientes" : "—";
+  const ext = data.externalRepercussion;
+  const topRegion = Object.entries(ext.regionalDistribution).sort((a, b) => b[1] - a[1])[0];
+  const dominantSignal =
+    ext.positiveSignals >= ext.negativeSignals && ext.positiveSignals >= ext.neutralSignals ? { label: "Positiva", value: ext.positiveSignals, color: "text-green-400", bg: "bg-green-500/10" }
+    : ext.negativeSignals >= ext.neutralSignals ? { label: "Negativa", value: ext.negativeSignals, color: "text-red-400", bg: "bg-red-500/10" }
+    : { label: "Neutra", value: ext.neutralSignals, color: "text-amber-400", bg: "bg-amber-500/10" };
 
   const cards = [
     {
-      icon: TrendingUp,
-      label: "Assunto que mais cresceu",
-      value: insufficient ? placeholder : (insights.topGrowingTheme || "—"),
-      sub: insufficient ? `< ${thresholds!.strong} menções` : "",
+      icon: Newspaper,
+      label: "Publicações externas",
+      value: ext.totalPublications.toLocaleString("pt-BR"),
+      sub: `${Object.keys(data.debug.sourcesByOutlet).length} veículos distintos`,
       color: "text-blue-400",
       bg: "bg-blue-500/10",
-      muted: insufficient,
     },
     {
-      icon: Flame,
-      label: "Região mais engajada",
-      value: insufficient ? placeholder : (insights.mostEngaged?.region || "—"),
-      sub: insufficient ? "" : (insights.mostEngaged ? `${insights.mostEngaged.value.toLocaleString("pt-BR")} interações` : ""),
-      color: "text-orange-400",
-      bg: "bg-orange-500/10",
-      muted: insufficient,
+      icon: Users,
+      label: "Alcance estimado",
+      value: formatReach(ext.estimatedReach),
+      sub: "pessoas potencialmente atingidas",
+      color: "text-purple-400",
+      bg: "bg-purple-500/10",
     },
     {
-      icon: AlertTriangle,
-      label: "Região mais crítica",
-      value: insufficient ? placeholder : (insights.mostCritical?.region || "—"),
-      sub: insufficient ? "" : (insights.mostCritical ? `${insights.mostCritical.acceptance}% aceitação` : ""),
-      color: "text-red-400",
-      bg: "bg-red-500/10",
-      muted: insufficient,
+      icon: TrendingUp,
+      label: "Repercussão dominante",
+      value: dominantSignal.label,
+      sub: `${dominantSignal.value}% dos sinais`,
+      color: dominantSignal.color,
+      bg: dominantSignal.bg,
     },
     {
-      icon: Heart,
-      label: "Região mais favorável",
-      value: insufficient ? placeholder : (insights.mostFavorable?.region || "—"),
-      sub: insufficient ? "" : (insights.mostFavorable ? `${insights.mostFavorable.acceptance}% aceitação` : ""),
-      color: "text-green-400",
-      bg: "bg-green-500/10",
-      muted: insufficient,
+      icon: Globe2,
+      label: "Região com mais cobertura",
+      value: topRegion?.[0] || "—",
+      sub: topRegion ? `${topRegion[1]}% das publicações` : "",
+      color: "text-emerald-400",
+      bg: "bg-emerald-500/10",
     },
   ];
+
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       {cards.map((c) => (
-        <Card key={c.label} className={`bg-card/40 border-border/40 backdrop-blur-sm ${c.muted ? "opacity-60" : ""}`}>
+        <Card key={c.label} className="bg-card/40 border-border/40 backdrop-blur-sm">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-2">
               <div className={`p-1.5 rounded-md ${c.bg}`}>
