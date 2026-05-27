@@ -272,6 +272,55 @@ export default function EventRepercussion() {
 
               <RepercussionTimeline data={analysis} />
               <RegionalChat eventId={analysis.event.id} region={selectedRegion} />
+
+              {analysis.debug && (
+                <Card className="bg-card/40 border-dashed border-border/40">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Painel de debug (temporário)</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-xs space-y-2 font-mono">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                      <div>
+                        <p className="text-muted-foreground">Evento</p>
+                        <p className="truncate">{analysis.event.name}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Pool / Associados</p>
+                        <p>{analysis.debug.candidatePoolSize} → <span className="text-primary">{analysis.debug.associatedMentions}</span></p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Score médio</p>
+                        <p>{analysis.debug.avgAssociationScore}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Regiões encontradas</p>
+                        <p>{analysis.debug.regionsFound.join(", ") || "—"}</p>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground mb-1">Keywords casadas</p>
+                      <div className="flex flex-wrap gap-1">
+                        {analysis.debug.matchedKeywords.length === 0 && <span className="text-muted-foreground">nenhuma</span>}
+                        {analysis.debug.matchedKeywords.map((k) => (
+                          <span key={k} className="px-1.5 py-0.5 rounded bg-background/60 border border-border/40">{k}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground mb-1">Tokens casados (título/keywords)</p>
+                      <div className="flex flex-wrap gap-1">
+                        {analysis.debug.matchedTokens.length === 0 && <span className="text-muted-foreground">nenhum</span>}
+                        {analysis.debug.matchedTokens.map((t) => (
+                          <span key={t} className="px-1.5 py-0.5 rounded bg-background/60 border border-border/40">{t}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <p className="text-muted-foreground">
+                      Janela: {new Date(analysis.debug.eventWindow.start).toLocaleDateString("pt-BR")} → {new Date(analysis.debug.eventWindow.end).toLocaleDateString("pt-BR")}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
             </>
           )}
         </div>
