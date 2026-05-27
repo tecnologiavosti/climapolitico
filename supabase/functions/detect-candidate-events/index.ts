@@ -318,6 +318,9 @@ Responda APENAS com JSON válido (sem markdown):
               subtitle: ev.subtitle || null,
               location: ev.location || null,
               source: ev.source || null,
+              sources: ev.sources || [],
+              category: ev.category || 'evento',
+              confidence: ev.confidence ?? 0.5,
               auto_detected: true,
             },
           });
