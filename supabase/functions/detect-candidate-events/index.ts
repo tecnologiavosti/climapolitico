@@ -136,9 +136,7 @@ serve(async (req) => {
       .limit(1200);
 
     const all = (rows || []).filter(r => r.comment_text && r.comment_text.trim().length > 12);
-    // Prioritize event-hint comments, but keep some context
-    const eventish = all.filter(r => EVENT_HINTS.test(r.comment_text!));
-    const sampleSource = eventish.length >= 25 ? eventish : all;
+    const sampleSource = all;
 
     if (sampleSource.length < 8) {
       return new Response(JSON.stringify({
@@ -147,54 +145,51 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const sample = sampleSource.slice(0, 280).map((c) => {
+    const sample = sampleSource.slice(0, 320).map((c) => {
       const date = (c.original_posted_at || c.created_at || '').substring(0, 10);
       return `[${date}|${c.social_network || '?'}] ${sanitize(c.comment_text).substring(0, 240)}`;
     });
 
-    const prompt = `Você é um analista político brasileiro especializado em detectar EVENTOS REAIS sobre um candidato a partir de comentários de redes sociais e notícias.
+    const prompt = `Você é um analista político brasileiro. Classifique acontecimentos sobre o candidato a partir dos comentários abaixo em 4 CATEGORIAS distintas:
 
 Candidato: ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}.
 Janela analisada: últimos ${monthsBack} meses.
 
-Sua tarefa: identificar **acontecimentos reais e concretos** que geraram repercussão. Apenas:
-- entrevistas (em telejornais, podcasts, rádios, programas)
-- debates
-- lives/transmissões
-- podcasts específicos (ex: Flow, Inteligência Ltda, Primo Rico)
-- discursos / pronunciamentos / coletivas de imprensa
-- comícios / agendas públicas / inaugurações / visitas
-- notícias políticas relevantes envolvendo o candidato
-- votações / sessões / declarações públicas pontuais
+CATEGORIAS (campo \`category\`):
+1) "evento" — participação física ou digital CONFIRMADA do candidato (entrevista, debate, podcast, discurso, coletiva, comício, agenda pública, live, sessão/votação, programa de TV). REQUER: pelo menos UMA fonte oficial/confiável citada nos comentários (CNN, Globo, JN, Band, SBT, Record, G1, UOL, Folha, Estadão, Jovem Pan, Metrópoles, Poder360, Flow, Inteligência Ltda, Podpah, Câmara, Senado, Planalto, canal oficial). Se não houver fonte confiável citada, NÃO classifique como "evento".
+2) "noticia" — acontecimento envolvendo o candidato mas SEM participação direta (ex.: "10 anos do impeachment", investigação, decisão judicial, repercussão histórica).
+3) "viral" — vídeo, meme, corte ou publicação espontânea que viralizou (ex.: "vídeo em voo comercial", "meme do candidato").
+4) "rumor" — boato, fake news, conteúdo não confirmado, "circula nas redes".
 
-REGRAS RÍGIDAS:
-- **NÃO** crie eventos genéricos como "Pico de menções", "Aumento de comentários" ou nomes vazios com palavras avulsas.
-- **NÃO** invente eventos que não estão claramente mencionados nos comentários.
-- Cada evento precisa ter um **nome real e identificável** (ex.: "Entrevista no Jornal Nacional", "Debate Globo 2024", "Live no Flow Podcast", "Discurso na Câmara sobre segurança").
-- Inclua um \`subtitle\` curto descrevendo o tema central (ex.: "Sobre economia e reforma tributária").
-- Inclua \`location\` quando aparecer no contexto (cidade ou veículo/programa).
-- Use \`type\` apenas dos valores permitidos: entrevista, debate, live, podcast, discurso, comicio, noticia, coletiva, agenda, evento, programa, declaracao.
-- Estime \`start_date\` (YYYY-MM-DD) com base nos timestamps dos comentários relacionados.
-- \`keywords\` = 4-10 termos curtos que apareçam nos comentários sobre o evento (ex.: ["jornal nacional","bonner","JN","globo"]).
-- Se NÃO houver evidência clara de evento real, retorne lista vazia. Melhor vazio do que inventado.
+REGRAS:
+- NÃO crie itens genéricos como "Pico de menções", "Aumento de comentários", "Atividade incomum".
+- NÃO invente itens que não estão claramente mencionados.
+- Cada item precisa de \`name\` real e identificável.
+- \`type\` deve corresponder à categoria: para "evento" use entrevista|debate|live|podcast|discurso|comicio|coletiva|agenda|evento|programa|declaracao; para "noticia" use noticia; para "viral" use viral; para "rumor" use rumor.
+- \`sources\`: lista das fontes/veículos confiáveis CITADAS nos comentários (use apenas se realmente aparecerem). Se vazio, não pode ser "evento".
+- \`confidence\`: 0..1 — quantos sinais convergentes (fontes + nome de programa + data + volume).
+- \`keywords\`: 4-10 termos curtos que aparecem nos comentários sobre o item.
+- \`start_date\` (YYYY-MM-DD) estimada pelos timestamps.
 
 COMENTÁRIOS (data|rede + texto):
 ${sample.join('\n')}
 
-Responda APENAS com JSON válido (sem markdown, sem comentários):
+Responda APENAS com JSON válido (sem markdown):
 {
   "events": [
     {
       "name": "Entrevista no Jornal Nacional",
-      "subtitle": "Sobre economia e gestão pública",
+      "subtitle": "Sobre economia",
+      "category": "evento",
       "type": "entrevista",
-      "location": "Globo / Rio de Janeiro",
-      "source": "Globo",
+      "sources": ["Globo","JN"],
+      "confidence": 0.85,
+      "location": "Globo",
       "keywords": ["jornal nacional","JN","bonner","globo"],
-      "start_date": "2025-XX-XX",
-      "end_date": "2025-XX-XX",
+      "start_date": "2025-01-20",
+      "end_date": "2025-01-20",
       "mentions_estimate": 42,
-      "description": "Breve descrição do evento em 1 linha."
+      "description": "Resumo em 1 linha."
     }
   ]
 }`;
@@ -202,11 +197,11 @@ Responda APENAS com JSON válido (sem markdown, sem comentários):
     let result: { events: DetectedEvent[] } = { events: [] };
     try {
       const aiRes = await callAICerebrasFirst({
-        systemMsg: 'Você é um analista político que extrai EVENTOS REAIS (entrevistas, debates, podcasts, comícios, notícias) de comentários. NUNCA cria eventos genéricos de "pico de menções". Responde apenas em JSON válido.',
+        systemMsg: 'Você é um analista político que classifica acontecimentos em 4 categorias (evento, noticia, viral, rumor). NUNCA cria itens genéricos de "pico de menções". Só classifica como "evento" se houver pelo menos uma fonte oficial confiável citada nos comentários. Responde apenas em JSON válido.',
         userPrompt: prompt,
         jsonMode: true,
-        maxTokens: 3000,
-        temperature: 0.15,
+        maxTokens: 3500,
+        temperature: 0.1,
         tag: 'detect-events',
       });
       const content = aiRes.content || '';
@@ -215,32 +210,70 @@ Responda APENAS com JSON válido (sem markdown, sem comentários):
         const m = content.match(/\{[\s\S]*\}/);
         if (m) result = JSON.parse(m[0]);
       }
-      console.log(`[detect-events] ✅ ${aiRes.provider}:${aiRes.model} -> ${result.events?.length || 0} eventos`);
+      console.log(`[detect-events] ✅ ${aiRes.provider}:${aiRes.model} -> ${result.events?.length || 0} itens`);
     } catch (e) {
       console.error('[detect-events] AI failed:', (e as Error).message);
       result = { events: [] };
     }
 
-    // Strict validation: real events only, valid type, keywords present, name not generic
     const isGenericName = (n: string) =>
-      /pico de menc|aumento de coment|menc[ao]es em \d|surto de coment|atividade incomum/i.test(n);
+      /pico de menc|aumento de coment|menc[ao]es em \d|surto de coment|atividade incomum|^\d+%/i.test(n);
 
-    let events = (result.events || []).filter(e =>
-      e.name &&
-      !isGenericName(e.name) &&
-      Array.isArray(e.keywords) && e.keywords.length >= 2 &&
-      e.start_date &&
-      VALID_TYPES.has((e.type || '').toLowerCase())
-    ).map(e => ({ ...e, type: e.type.toLowerCase() }));
+    // Build a corpus of comment text for cross-validation
+    const corpus = sampleSource.map(r => sanitize(r.comment_text!).toLowerCase()).join(' \n ');
 
-    // Semantic dedup: group near-duplicate event names
+    // Strict validation: real items only, valid type, keywords present, name not generic
+    let events = (result.events || []).filter(e => {
+      if (!e.name || isGenericName(e.name)) return false;
+      if (!Array.isArray(e.keywords) || e.keywords.length < 2) return false;
+      if (!e.start_date) return false;
+      const type = (e.type || '').toLowerCase();
+      if (!VALID_TYPES.has(type)) return false;
+
+      // Cross-validate: at least 2 keywords must actually appear in the corpus
+      const keywordHits = e.keywords.filter(k => k && corpus.includes(String(k).toLowerCase().trim())).length;
+      if (keywordHits < 2) return false;
+
+      return true;
+    }).map(e => {
+      const type = e.type.toLowerCase();
+      // Infer category if missing, and downgrade "evento" without trusted source confirmation
+      let category: 'evento' | 'noticia' | 'viral' | 'rumor' =
+        (e.category as any) ||
+        (VIRAL_TYPES.has(type) ? 'viral'
+          : RUMOR_TYPES.has(type) ? 'rumor'
+          : NEWS_TYPES.has(type) ? 'noticia'
+          : 'evento');
+
+      // Re-validate "evento" classification: must have ≥2 trusted signals
+      if (category === 'evento') {
+        const declaredSources = (e.sources || []).map(s => String(s).toLowerCase());
+        const corpusSourceHits = TRUSTED_SOURCES.filter(s => corpus.includes(s));
+        const allSources = Array.from(new Set([...declaredSources, ...corpusSourceHits.filter(s => declaredSources.some(d => d.includes(s) || s.includes(d)) || corpus.includes(s))]));
+        const hasAppearanceHint = APPEARANCE_HINTS.test(corpus) || APPEARANCE_HINTS.test(e.name);
+        const signals = (allSources.length >= 1 ? 1 : 0) + (hasAppearanceHint ? 1 : 0) + ((e.confidence || 0) >= 0.7 ? 1 : 0);
+        if (signals < 2) {
+          // Downgrade to noticia if it has source-like context, otherwise viral
+          category = allSources.length > 0 || hasAppearanceHint ? 'noticia' : (VIRAL_HINTS.test(corpus) ? 'viral' : 'noticia');
+        }
+        e.sources = allSources.slice(0, 6);
+      }
+
+      // Rumor override
+      if (RUMOR_HINTS.test(e.name) || RUMOR_HINTS.test(e.description || '')) category = 'rumor';
+
+      return { ...e, type, category };
+    });
+
+    // Semantic dedup: group near-duplicate names within same category
     const grouped: DetectedEvent[] = [];
     for (const ev of events) {
       const evTok = tokens(ev.name);
-      const dup = grouped.find(g => jaccard(tokens(g.name), evTok) >= 0.45 && g.type === ev.type);
+      const dup = grouped.find(g => jaccard(tokens(g.name), evTok) >= 0.45 && g.category === ev.category);
       if (dup) {
         dup.mentions_estimate = (dup.mentions_estimate || 0) + (ev.mentions_estimate || 0);
         dup.keywords = Array.from(new Set([...(dup.keywords || []), ...(ev.keywords || [])])).slice(0, 12);
+        dup.sources = Array.from(new Set([...(dup.sources || []), ...(ev.sources || [])])).slice(0, 6);
       } else {
         grouped.push({ ...ev });
       }
