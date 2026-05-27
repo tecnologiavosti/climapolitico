@@ -4,9 +4,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Radio, RefreshCw, Sparkles } from "lucide-react";
+import { Loader2, Radio, Sparkles, ExternalLink, Globe2, Newspaper, MessageSquare } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { EventSelectorList } from "@/components/dashboard/repercussion/EventSelectorList";
 import { RepercussionInsightCards } from "@/components/dashboard/repercussion/RepercussionInsightCards";
@@ -55,15 +56,15 @@ export default function EventRepercussion() {
 
   const detectMutation = useMutation({
     mutationFn: async () => {
-      setDetectProgress(8); setDetectStep("Buscando fontes (Google News, YouTube, redes)");
+      setDetectProgress(8); setDetectStep("Buscando fontes externas (Google News, GDELT, YouTube)");
       const timers: number[] = [];
-      timers.push(window.setTimeout(() => { setDetectProgress(22); setDetectStep("Cruzando com canais oficiais (CNN, G1, Globo, Folha…)"); }, 900));
-      timers.push(window.setTimeout(() => { setDetectProgress(42); setDetectStep("Classificando: evento, notícia, viral ou rumor"); }, 2400));
-      timers.push(window.setTimeout(() => { setDetectProgress(64); setDetectStep("Exigindo 2+ confirmações por evento"); }, 4200));
-      timers.push(window.setTimeout(() => { setDetectProgress(82); setDetectStep("Agrupando itens semelhantes"); }, 6000));
+      timers.push(window.setTimeout(() => { setDetectProgress(28); setDetectStep("Coletando publicações de CNN, G1, Folha, Metrópoles…"); }, 1200));
+      timers.push(window.setTimeout(() => { setDetectProgress(50); setDetectStep("Identificando acontecimentos reais"); }, 3000));
+      timers.push(window.setTimeout(() => { setDetectProgress(72); setDetectStep("Agrupando fontes por evento"); }, 5200));
+      timers.push(window.setTimeout(() => { setDetectProgress(88); setDetectStep("Calculando alcance e distribuição regional"); }, 7400));
       try {
         const { data, error } = await supabase.functions.invoke("detect-candidate-events", {
-          body: { candidateId, monthsBack: 3 },
+          body: { candidateId, monthsBack: 1 },
         });
         if (error) throw error;
         return data;
@@ -75,16 +76,15 @@ export default function EventRepercussion() {
     onSuccess: async (data: any) => {
       const count = data?.events?.length || 0;
       toast({
-        title: count > 0 ? `${count} item(ns) identificado(s)` : "Nenhum item encontrado",
+        title: count > 0 ? `${count} acontecimento(s) identificado(s)` : "Nenhum evento encontrado",
         description: count > 0
-          ? "Classificados em eventos confirmados, notícias, virais e rumores."
-          : "Nenhum acontecimento foi confirmado por 2+ fontes no período. Colete mais menções e tente novamente.",
+          ? `Coletadas ${data?.publications_collected || 0} publicações externas (Firecrawl + GDELT).`
+          : "Nenhuma publicação externa relevante no período. Tente novamente em alguns minutos.",
       });
       const res = await refetchEvents();
       const list = res.data || [];
-      // Prefer auto-selecting a confirmed event
-      const firstConfirmed = list.find((x: any) => (x.metadata?.category || 'evento') === 'evento') || list[0];
-      if (firstConfirmed) setSelectedEvent(firstConfirmed.id);
+      const first = list.sort((a: any, b: any) => (b.metadata?.importance_score || 0) - (a.metadata?.importance_score || 0))[0];
+      if (first) setSelectedEvent(first.id);
       setTimeout(() => { setDetectProgress(0); setDetectStep(""); }, 800);
     },
     onError: (e: any) => {
@@ -93,14 +93,17 @@ export default function EventRepercussion() {
     },
   });
 
-  // Auto-select when list contains a single event
   useEffect(() => {
     if (!selectedEvent && events && events.length === 1) setSelectedEvent(events[0].id);
   }, [events, selectedEvent]);
 
   const { data: analysis, isLoading: analysisLoading } = useEventRepercussion(selectedEvent, rangeDays);
 
-  const selectedEventObj = useMemo(() => events?.find((e) => e.id === selectedEvent), [events, selectedEvent]);
+  const filteredSources = useMemo(() => {
+    if (!analysis) return [];
+    const all = analysis.externalRepercussion.sources || [];
+    return selectedRegion ? all.filter((s) => s.region === selectedRegion) : all;
+  }, [analysis, selectedRegion]);
 
   return (
     <div className="space-y-4 max-w-[1600px] mx-auto">
@@ -110,22 +113,20 @@ export default function EventRepercussion() {
             <Radio className="h-6 w-6 text-primary" />
             Repercussão por Região
           </h1>
-          <p className="text-sm text-muted-foreground">Detecte eventos do candidato e veja como cada região do Brasil reagiu.</p>
+          <p className="text-sm text-muted-foreground">Acompanhamento de repercussão externa (mídia, web, redes) de acontecimentos políticos.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Select value={candidateId} onValueChange={(v) => { setCandidateId(v); setSelectedEvent(null); }}>
             <SelectTrigger className="w-[240px] bg-card/40 border-border/60"><SelectValue placeholder="Selecionar candidato" /></SelectTrigger>
-            <SelectContent>
-              {candidates?.map((c) => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)}
-            </SelectContent>
+            <SelectContent>{candidates?.map((c) => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)}</SelectContent>
           </Select>
           <Select value={String(rangeDays)} onValueChange={(v) => setRangeDays(Number(v))}>
             <SelectTrigger className="w-[140px] bg-card/40 border-border/60"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="1">24 horas</SelectItem>
-              <SelectItem value="2">48 horas</SelectItem>
-              <SelectItem value="7">7 dias</SelectItem>
-              <SelectItem value="30">30 dias</SelectItem>
+              <SelectItem value="2">±2 dias</SelectItem>
+              <SelectItem value="7">±7 dias</SelectItem>
+              <SelectItem value="14">±14 dias</SelectItem>
+              <SelectItem value="30">±30 dias</SelectItem>
             </SelectContent>
           </Select>
           <Button onClick={() => detectMutation.mutate()} disabled={!candidateId || detectMutation.isPending} variant="outline">
@@ -164,7 +165,6 @@ export default function EventRepercussion() {
           />
         </div>
 
-
         <div className="space-y-4 min-w-0">
           {!selectedEvent && (
             <Card className="bg-card/40 border-border/40">
@@ -181,22 +181,38 @@ export default function EventRepercussion() {
                 {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-lg" />)}
               </div>
               <Skeleton className="h-[400px] rounded-lg" />
-              <Skeleton className="h-[280px] rounded-lg" />
+              <Skeleton className="h-[240px] rounded-lg" />
               <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Analisando comentários reais por região do Brasil...</span>
+                <span>Coletando publicações externas e calculando repercussão nacional…</span>
               </div>
             </div>
           )}
 
           {selectedEvent && analysis && (
             <>
+              {/* Event header */}
               <Card className="bg-card/40 border-border/40">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-lg">{analysis.event.name}</CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    {new Date(analysis.event.date).toLocaleString("pt-BR")} • {analysis.totals.mentions.toLocaleString("pt-BR")} menções • {analysis.totals.coverage}% mapeadas geograficamente
-                  </p>
+                  <div className="flex items-start justify-between flex-wrap gap-3">
+                    <div className="min-w-0">
+                      <CardTitle className="text-lg">{analysis.event.name}</CardTitle>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {new Date(analysis.event.date).toLocaleString("pt-BR")}
+                        {analysis.event.location && <> • {analysis.event.location}</>}
+                        {analysis.event.importanceScore != null && <> • Importância {analysis.event.importanceScore}/100</>}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {analysis.confidence && (
+                        <Badge variant="outline" className={
+                          analysis.confidence.level === "Alta" ? "border-green-500/40 text-green-300"
+                          : analysis.confidence.level === "Média" ? "border-amber-500/40 text-amber-200"
+                          : "border-red-500/40 text-red-300"
+                        }>Confiança: {analysis.confidence.level}</Badge>
+                      )}
+                    </div>
+                  </div>
                 </CardHeader>
                 {analysis.event.description && (
                   <CardContent className="pt-0">
@@ -205,122 +221,173 @@ export default function EventRepercussion() {
                 )}
               </Card>
 
-              {/* Confidence + volume banners */}
-              <div className="flex flex-wrap items-center gap-2">
-                {analysis.confidence && (
-                  <div className={`text-xs px-3 py-1.5 rounded-md border inline-flex items-center gap-2 ${
-                    analysis.confidence.level === "Alta" ? "border-green-500/40 bg-green-500/10 text-green-300"
-                    : analysis.confidence.level === "Média" ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
-                    : "border-red-500/40 bg-red-500/10 text-red-300"
-                  }`}>
-                    <span className="font-semibold">Confiança da análise: {analysis.confidence.level}</span>
-                    <span className="opacity-70">
-                      vol {analysis.confidence.breakdown.volume.value} • {analysis.confidence.breakdown.regionalDiversity.value} regiões • {analysis.confidence.breakdown.temporalSpread.value} dias
-                    </span>
-                  </div>
-                )}
-                {analysis.thresholds && !analysis.thresholds.isRobust && analysis.thresholds.canShowRegionInsights && (
-                  <div className="text-xs px-3 py-1.5 rounded-md border border-amber-500/30 bg-amber-500/5 text-amber-200">
-                    Volume insuficiente para análise regional robusta (mín. {analysis.thresholds.robust} menções).
-                  </div>
-                )}
-                {analysis.thresholds && !analysis.thresholds.canShowRegionInsights && (
-                  <div className="text-xs px-3 py-1.5 rounded-md border border-red-500/30 bg-red-500/5 text-red-300">
-                    Dados insuficientes — mín. {analysis.thresholds.strong} menções associadas ao evento. Insights regionais desabilitados.
-                  </div>
-                )}
+              {/* External repercussion KPI cards */}
+              <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
+                <Globe2 className="h-3.5 w-3.5" /> Repercussão externa (mídia + web)
               </div>
-
-
               <RepercussionInsightCards data={analysis} />
+
+              {/* Sentiment signals bar */}
+              <Card className="bg-card/40 border-border/40">
+                <CardHeader className="pb-2"><CardTitle className="text-sm">Tom geral das publicações</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="flex h-3 rounded-full overflow-hidden">
+                    <div className="bg-green-500/70" style={{ width: `${analysis.externalRepercussion.positiveSignals}%` }} title={`Positivo ${analysis.externalRepercussion.positiveSignals}%`} />
+                    <div className="bg-amber-500/70" style={{ width: `${analysis.externalRepercussion.neutralSignals}%` }} title={`Neutro ${analysis.externalRepercussion.neutralSignals}%`} />
+                    <div className="bg-red-500/70" style={{ width: `${analysis.externalRepercussion.negativeSignals}%` }} title={`Negativo ${analysis.externalRepercussion.negativeSignals}%`} />
+                  </div>
+                  <div className="flex justify-between mt-2 text-[11px] text-muted-foreground">
+                    <span className="text-green-400">Positivo {analysis.externalRepercussion.positiveSignals}%</span>
+                    <span className="text-amber-300">Neutro {analysis.externalRepercussion.neutralSignals}%</span>
+                    <span className="text-red-400">Negativo {analysis.externalRepercussion.negativeSignals}%</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Map */}
               <RegionalSentimentMap data={analysis} selected={selectedRegion} onSelect={setSelectedRegion} />
 
-              {selectedRegion && analysis.regions[selectedRegion] && (
+              {/* Topics + Narratives */}
+              <div className="grid lg:grid-cols-2 gap-4">
                 <Card className="bg-card/40 border-border/40">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Detalhe: {selectedRegion}</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1.5">Palavras mais citadas</p>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm">Temas dominantes</CardTitle></CardHeader>
+                  <CardContent>
+                    {analysis.externalRepercussion.majorTopics.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">Nenhum tema identificado.</p>
+                    ) : (
                       <div className="flex flex-wrap gap-1.5">
-                        {analysis.regions[selectedRegion].topWords.map((w) => (
-                          <span key={w} className="text-xs bg-background/60 border border-border/40 rounded-full px-2.5 py-1">{w}</span>
+                        {analysis.externalRepercussion.majorTopics.map((t) => (
+                          <span key={t} className="text-xs bg-background/60 border border-border/40 rounded-full px-2.5 py-1">{t}</span>
                         ))}
                       </div>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1.5">Comentários relevantes</p>
-                      <div className="space-y-2">
-                        {analysis.regions[selectedRegion].topComments.map((c, i) => (
-                          <div key={i} className="text-sm bg-background/40 border border-border/40 rounded-lg p-3">
-                            <p className="leading-snug">{c.text}</p>
-                            <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground">
-                              <span>{c.network}</span>
-                              <span>•</span>
-                              <span className={c.sentiment === "Positivo" ? "text-green-400" : c.sentiment === "Negativo" ? "text-red-400" : ""}>{c.sentiment || "—"}</span>
-                              <span>•</span>
-                              <span>{c.likes} curtidas</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    )}
                   </CardContent>
                 </Card>
-              )}
+                <Card className="bg-card/40 border-border/40">
+                  <CardHeader className="pb-2"><CardTitle className="text-sm">Narrativas detectadas</CardTitle></CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    {(["apoio", "criticas", "debates"] as const).map((k) => {
+                      const items = analysis.externalRepercussion.narratives[k] || [];
+                      if (!items.length) return null;
+                      const label = k === "apoio" ? "Apoio" : k === "criticas" ? "Críticas" : "Debates";
+                      const color = k === "apoio" ? "text-green-400" : k === "criticas" ? "text-red-400" : "text-amber-300";
+                      return (
+                        <div key={k}>
+                          <p className={`text-[11px] uppercase tracking-wide font-semibold ${color} mb-1`}>{label}</p>
+                          <ul className="space-y-1">
+                            {items.map((s, i) => <li key={i} className="text-xs text-foreground/85 leading-snug">• {s}</li>)}
+                          </ul>
+                        </div>
+                      );
+                    })}
+                    {Object.values(analysis.externalRepercussion.narratives).every((arr) => arr.length === 0) && (
+                      <p className="text-xs text-muted-foreground">Nenhuma narrativa identificada nas publicações.</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
 
+              {/* Sources list */}
+              <Card className="bg-card/40 border-border/40">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Newspaper className="h-4 w-4" />
+                    Fontes coletadas {selectedRegion && <Badge variant="outline" className="text-[10px]">Filtro: {selectedRegion}</Badge>}
+                    <span className="text-xs text-muted-foreground font-normal">({filteredSources.length})</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {filteredSources.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Nenhuma publicação para o filtro atual.</p>
+                  ) : (
+                    <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+                      {filteredSources.slice(0, 30).map((s, i) => (
+                        <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" className="block p-2.5 rounded-md border border-border/40 bg-background/30 hover:border-primary/40 transition">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm font-medium leading-snug line-clamp-2 flex-1">{s.title}</p>
+                            <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                          </div>
+                          <div className="flex items-center gap-2 mt-1 text-[11px] text-muted-foreground">
+                            <span className="font-medium">{s.outlet}</span>
+                            <span>•</span>
+                            <span>{s.region}</span>
+                            {s.publishedAt && (<><span>•</span><span>{new Date(s.publishedAt).toLocaleDateString("pt-BR")}</span></>)}
+                          </div>
+                          {s.snippet && <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{s.snippet}</p>}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Timeline */}
               <RepercussionTimeline data={analysis} />
+
+              {/* Internal reaction (complement) */}
+              <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground pt-2">
+                <MessageSquare className="h-3.5 w-3.5" /> Reação da plataforma (complemento)
+              </div>
+              <Card className="bg-card/40 border-border/40">
+                <CardContent className="p-4">
+                  {analysis.internalReaction.mentions === 0 ? (
+                    <p className="text-sm text-muted-foreground">Nenhum comentário interno relacionado a este evento foi encontrado na janela analisada.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-4 gap-3 text-center">
+                        <div><p className="text-xl font-bold">{analysis.internalReaction.mentions.toLocaleString("pt-BR")}</p><p className="text-[11px] text-muted-foreground">Menções</p></div>
+                        <div><p className="text-xl font-bold text-green-400">{analysis.internalReaction.positive}</p><p className="text-[11px] text-muted-foreground">Positivos</p></div>
+                        <div><p className="text-xl font-bold text-red-400">{analysis.internalReaction.negative}</p><p className="text-[11px] text-muted-foreground">Negativos</p></div>
+                        <div><p className="text-xl font-bold">{analysis.internalReaction.engagement.toLocaleString("pt-BR")}</p><p className="text-[11px] text-muted-foreground">Engajamento</p></div>
+                      </div>
+                      {analysis.internalReaction.sample.length > 0 && (
+                        <div className="space-y-1.5">
+                          {analysis.internalReaction.sample.slice(0, 4).map((c, i) => (
+                            <div key={i} className="text-xs bg-background/40 border border-border/40 rounded p-2">
+                              <p className="leading-snug">{c.text}</p>
+                              <p className="text-[10px] text-muted-foreground mt-1">{c.network} • {c.sentiment} • {c.likes} curtidas</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* AI chat */}
               <RegionalChat eventId={analysis.event.id} region={selectedRegion} />
 
-              {analysis.debug && (
-                <Card className="bg-card/40 border-dashed border-border/40">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Painel de debug (temporário)</CardTitle>
-                  </CardHeader>
-                  <CardContent className="text-xs space-y-2 font-mono">
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                      <div>
-                        <p className="text-muted-foreground">Evento</p>
-                        <p className="truncate">{analysis.event.name}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Pool / Associados</p>
-                        <p>{analysis.debug.candidatePoolSize} → <span className="text-primary">{analysis.debug.associatedMentions}</span></p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Score médio</p>
-                        <p>{analysis.debug.avgAssociationScore}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Regiões encontradas</p>
-                        <p>{analysis.debug.regionsFound.join(", ") || "—"}</p>
-                      </div>
+              {/* Debug */}
+              <Card className="bg-card/40 border-dashed border-border/40">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Painel debug (temporário)</CardTitle>
+                </CardHeader>
+                <CardContent className="text-xs space-y-2 font-mono">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div><p className="text-muted-foreground">Coletadas</p><p>{analysis.debug.publicationsCollected}</p></div>
+                    <div><p className="text-muted-foreground">Na janela</p><p>{analysis.debug.publicationsInWindow}</p></div>
+                    <div><p className="text-muted-foreground">Usadas na análise</p><p className="text-primary">{analysis.debug.usedForAnalysis}</p></div>
+                    <div><p className="text-muted-foreground">Confiança</p><p>{analysis.confidence.level} ({analysis.confidence.score}/100)</p></div>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground mb-1">Veículos ({Object.keys(analysis.debug.sourcesByOutlet).length})</p>
+                    <div className="flex flex-wrap gap-1">
+                      {Object.entries(analysis.debug.sourcesByOutlet).slice(0, 20).map(([o, n]) => (
+                        <span key={o} className="px-1.5 py-0.5 rounded bg-background/60 border border-border/40">{o} <span className="text-muted-foreground">×{n}</span></span>
+                      ))}
                     </div>
-                    <div>
-                      <p className="text-muted-foreground mb-1">Keywords casadas</p>
-                      <div className="flex flex-wrap gap-1">
-                        {analysis.debug.matchedKeywords.length === 0 && <span className="text-muted-foreground">nenhuma</span>}
-                        {analysis.debug.matchedKeywords.map((k) => (
-                          <span key={k} className="px-1.5 py-0.5 rounded bg-background/60 border border-border/40">{k}</span>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground mb-1">Tokens casados (título/keywords)</p>
-                      <div className="flex flex-wrap gap-1">
-                        {analysis.debug.matchedTokens.length === 0 && <span className="text-muted-foreground">nenhum</span>}
-                        {analysis.debug.matchedTokens.map((t) => (
-                          <span key={t} className="px-1.5 py-0.5 rounded bg-background/60 border border-border/40">{t}</span>
-                        ))}
-                      </div>
-                    </div>
-                    <p className="text-muted-foreground">
-                      Janela: {new Date(analysis.debug.eventWindow.start).toLocaleDateString("pt-BR")} → {new Date(analysis.debug.eventWindow.end).toLocaleDateString("pt-BR")}
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
+                  </div>
+                  <div className="grid grid-cols-5 gap-2">
+                    {Object.entries(analysis.externalRepercussion.regionalDistribution).map(([r, p]) => (
+                      <div key={r}><p className="text-muted-foreground">{r}</p><p>{p}%</p></div>
+                    ))}
+                  </div>
+                  <p className="text-muted-foreground">
+                    Janela: {new Date(analysis.debug.eventWindow.start).toLocaleDateString("pt-BR")} → {new Date(analysis.debug.eventWindow.end).toLocaleDateString("pt-BR")}
+                  </p>
+                </CardContent>
+              </Card>
             </>
           )}
         </div>
