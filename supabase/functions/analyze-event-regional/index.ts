@@ -378,7 +378,7 @@ Escreva um resumo analítico em texto corrido (sem JSON, sem listas) sobre como 
         mostEngaged: mostEngaged ? { region: mostEngaged.region, value: mostEngaged.engagement } : null,
         mostCritical: mostCritical ? { region: mostCritical.region, acceptance: mostCritical.acceptance } : null,
         mostFavorable: mostFavorable ? { region: mostFavorable.region, acceptance: mostFavorable.acceptance } : null,
-        topGrowingTheme: ranked.flatMap((r) => r.topWords).slice(0, 1)[0] || null,
+        topGrowingTheme,
         aiSummary,
         aiAvailable,
       },
