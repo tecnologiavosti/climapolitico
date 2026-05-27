@@ -205,6 +205,17 @@ export default function EventRepercussion() {
                 )}
               </Card>
 
+              {analysis.totals.mentions < 10 && (
+                <div className="text-xs px-3 py-2 rounded-md border border-amber-500/30 bg-amber-500/5 text-amber-200">
+                  Volume insuficiente para análise robusta. Usando expansão semântica automática para popular o mapa e os gráficos.
+                </div>
+              )}
+              {analysis.totals.usedSemanticFallback && analysis.totals.mentions >= 10 && (
+                <div className="text-xs px-3 py-2 rounded-md border border-blue-500/30 bg-blue-500/5 text-blue-200">
+                  Filtro semântico estendido aplicado para captar mais comentários relacionados ao evento.
+                </div>
+              )}
+
               <RepercussionInsightCards data={analysis} />
               <RegionalSentimentMap data={analysis} selected={selectedRegion} onSelect={setSelectedRegion} />
 
