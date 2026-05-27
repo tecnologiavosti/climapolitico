@@ -370,6 +370,7 @@ Escreva um resumo analítico em texto corrido (sem JSON, sem listas) sobre como 
         negative: totalNeg,
         unmapped,
         coverage: totalMentions > 0 ? Math.round(((totalMentions - unmapped) / totalMentions) * 100) : 0,
+        usedSemanticFallback: usedFallback,
       },
       regions,
       states,
