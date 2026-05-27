@@ -205,16 +205,32 @@ export default function EventRepercussion() {
                 )}
               </Card>
 
-              {analysis.totals.mentions < 10 && (
-                <div className="text-xs px-3 py-2 rounded-md border border-amber-500/30 bg-amber-500/5 text-amber-200">
-                  Volume insuficiente para análise robusta. Usando expansão semântica automática para popular o mapa e os gráficos.
-                </div>
-              )}
-              {analysis.totals.usedSemanticFallback && analysis.totals.mentions >= 10 && (
-                <div className="text-xs px-3 py-2 rounded-md border border-blue-500/30 bg-blue-500/5 text-blue-200">
-                  Filtro semântico estendido aplicado para captar mais comentários relacionados ao evento.
-                </div>
-              )}
+              {/* Confidence + volume banners */}
+              <div className="flex flex-wrap items-center gap-2">
+                {analysis.confidence && (
+                  <div className={`text-xs px-3 py-1.5 rounded-md border inline-flex items-center gap-2 ${
+                    analysis.confidence.level === "Alta" ? "border-green-500/40 bg-green-500/10 text-green-300"
+                    : analysis.confidence.level === "Média" ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
+                    : "border-red-500/40 bg-red-500/10 text-red-300"
+                  }`}>
+                    <span className="font-semibold">Confiança da análise: {analysis.confidence.level}</span>
+                    <span className="opacity-70">
+                      vol {analysis.confidence.breakdown.volume.value} • {analysis.confidence.breakdown.regionalDiversity.value} regiões • {analysis.confidence.breakdown.temporalSpread.value} dias
+                    </span>
+                  </div>
+                )}
+                {analysis.thresholds && !analysis.thresholds.isRobust && analysis.thresholds.canShowRegionInsights && (
+                  <div className="text-xs px-3 py-1.5 rounded-md border border-amber-500/30 bg-amber-500/5 text-amber-200">
+                    Volume insuficiente para análise regional robusta (mín. {analysis.thresholds.robust} menções).
+                  </div>
+                )}
+                {analysis.thresholds && !analysis.thresholds.canShowRegionInsights && (
+                  <div className="text-xs px-3 py-1.5 rounded-md border border-red-500/30 bg-red-500/5 text-red-300">
+                    Dados insuficientes — mín. {analysis.thresholds.strong} menções associadas ao evento. Insights regionais desabilitados.
+                  </div>
+                )}
+              </div>
+
 
               <RepercussionInsightCards data={analysis} />
               <RegionalSentimentMap data={analysis} selected={selectedRegion} onSelect={setSelectedRegion} />
