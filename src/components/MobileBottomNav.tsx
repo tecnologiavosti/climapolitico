@@ -23,6 +23,9 @@ import {
   LogOut,
   Shield,
   Key,
+  MessagesSquare,
+  Network,
+  Brain,
 } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { useAuth } from "@/hooks/useAuth";
