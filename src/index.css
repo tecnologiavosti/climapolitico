@@ -159,7 +159,17 @@ All colors MUST be HSL.
     /* Ícones decorativos dos StatCards menores no mobile */
     .p-3.rounded-lg { padding: 0.5rem !important; }
     .p-3.rounded-lg svg { width: 1rem !important; height: 1rem !important; }
+    /* Recharts: força responsividade total dentro do container */
+    .recharts-responsive-container { width: 100% !important; max-width: 100% !important; }
+    .recharts-wrapper, .recharts-surface { max-width: 100% !important; }
+    /* SVGs (mapas, charts) nunca podem estourar a largura */
+    svg { max-width: 100%; }
+    /* Tabelas com scroll horizontal seguro */
+    table { display: block; max-width: 100%; overflow-x: auto; }
   }
+
+  /* Garantir que nenhum container ultrapasse a viewport no mobile/tablet */
+  main, [role="main"] { min-width: 0; }
 
   h1, h2, h3, h4, h5, h6 {
     text-wrap: balance;
