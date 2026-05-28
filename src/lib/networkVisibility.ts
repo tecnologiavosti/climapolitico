@@ -2,7 +2,7 @@
  * Redes coletadas internamente para enriquecimento mas que NÃO devem aparecer
  * em gráficos/painéis públicos (mantemos a coleta rodando no backend).
  */
-export const HIDDEN_FROM_CHARTS = ["mastodon", "lemmy", "pinterest", "gdelt"] as const;
+export const HIDDEN_FROM_CHARTS = ["mastodon", "lemmy", "pinterest", "gdelt", "4chan"] as const;
 
 export const isHiddenNetwork = (n: string | null | undefined): boolean => {
   if (!n) return false;
