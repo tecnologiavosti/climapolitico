@@ -23,6 +23,9 @@ import {
   LogOut,
   Shield,
   Key,
+  MessagesSquare,
+  Network,
+  Brain,
 } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { useAuth } from "@/hooks/useAuth";
@@ -46,7 +49,11 @@ const mainGrid: GridItem[] = [
   { label: "Comparação", icon: GitCompareArrows, to: "/dashboard/candidate-comparison" },
   { label: "Picos", icon: Calendar, to: "/dashboard/pico-mencao" },
   { label: "Tempo Real", icon: Radio, to: "/dashboard/realtime-monitor" },
+  { label: "Repercussão", icon: MessagesSquare, to: "/dashboard/event-repercussion" },
   { label: "Regional", icon: MapPinned, to: "/dashboard/regional-analysis" },
+  { label: "Redes Sociais", icon: Network, to: "/dashboard/network-view" },
+  { label: "Histórica IA", icon: GitCompareArrows, to: "/dashboard/historical-comparison" },
+  { label: "Insights IA", icon: Brain, to: "/dashboard/ai-insights" },
   { label: "Feeds", icon: Rss, to: "/dashboard/social-feeds" },
   { label: "Candidatos", icon: Users, to: "/dashboard/candidates" },
   { label: "Catálogo", icon: BookUser, to: "/dashboard/candidates-catalog" },

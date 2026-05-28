@@ -106,22 +106,22 @@ export default function EventRepercussion() {
   }, [analysis, selectedRegion]);
 
   return (
-    <div className="space-y-4 max-w-[1600px] mx-auto">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Radio className="h-6 w-6 text-primary" />
-            Repercussão por Região
+    <div className="space-y-4 max-w-[1600px] mx-auto w-full min-w-0">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
+            <Radio className="h-5 w-5 sm:h-6 sm:w-6 text-primary shrink-0" />
+            <span className="truncate">Repercussão por Região</span>
           </h1>
-          <p className="text-sm text-muted-foreground">Acompanhamento de repercussão externa (mídia, web, redes) de acontecimentos políticos.</p>
+          <p className="text-xs sm:text-sm text-muted-foreground">Acompanhamento de repercussão externa (mídia, web, redes) de acontecimentos políticos.</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="grid grid-cols-2 md:flex md:items-center gap-2 md:flex-wrap">
           <Select value={candidateId} onValueChange={(v) => { setCandidateId(v); setSelectedEvent(null); }}>
-            <SelectTrigger className="w-[240px] bg-card/40 border-border/60"><SelectValue placeholder="Selecionar candidato" /></SelectTrigger>
+            <SelectTrigger className="w-full md:w-[240px] bg-card/40 border-border/60"><SelectValue placeholder="Candidato" /></SelectTrigger>
             <SelectContent>{candidates?.map((c) => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)}</SelectContent>
           </Select>
           <Select value={String(rangeDays)} onValueChange={(v) => setRangeDays(Number(v))}>
-            <SelectTrigger className="w-[140px] bg-card/40 border-border/60"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-full md:w-[140px] bg-card/40 border-border/60"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="2">±2 dias</SelectItem>
               <SelectItem value="7">±7 dias</SelectItem>
@@ -129,7 +129,7 @@ export default function EventRepercussion() {
               <SelectItem value="30">±30 dias</SelectItem>
             </SelectContent>
           </Select>
-          <Button onClick={() => detectMutation.mutate()} disabled={!candidateId || detectMutation.isPending} variant="outline">
+          <Button onClick={() => detectMutation.mutate()} disabled={!candidateId || detectMutation.isPending} variant="outline" className="col-span-2 md:col-auto w-full md:w-auto">
             {detectMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
             Detectar eventos
           </Button>

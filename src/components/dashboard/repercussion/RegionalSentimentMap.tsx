@@ -39,14 +39,14 @@ export function RegionalSentimentMap({ data, selected, onSelect }: Props) {
     <div className="space-y-4">
       <Card className="bg-card/40 border-border/40 backdrop-blur-sm overflow-hidden">
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <CardTitle className="text-base">Distribuição regional da cobertura externa</CardTitle>
-            <div className="flex items-center gap-2 text-[11px] flex-wrap">
-              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: colorForPercent(30) }} />Muito alta</span>
-              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: colorForPercent(15) }} />Alta</span>
-              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: colorForPercent(7) }} />Média</span>
-              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: colorForPercent(2) }} />Baixa</span>
-              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: colorForPercent(0) }} />Sem dados</span>
+          <div className="flex items-start justify-between flex-wrap gap-2">
+            <CardTitle className="text-sm sm:text-base">Distribuição regional da cobertura externa</CardTitle>
+            <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] flex-wrap">
+              <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: colorForPercent(30) }} />Muito alta</span>
+              <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: colorForPercent(15) }} />Alta</span>
+              <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: colorForPercent(7) }} />Média</span>
+              <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: colorForPercent(2) }} />Baixa</span>
+              <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: colorForPercent(0) }} />Sem dados</span>
             </div>
           </div>
         </CardHeader>
