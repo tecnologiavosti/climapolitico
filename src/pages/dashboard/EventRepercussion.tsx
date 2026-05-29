@@ -97,7 +97,7 @@ export default function EventRepercussion() {
     if (!selectedEvent && events && events.length === 1) setSelectedEvent(events[0].id);
   }, [events, selectedEvent]);
 
-  const { data: analysis, isLoading: analysisLoading } = useEventRepercussion(selectedEvent, rangeDays);
+  const { data: analysis, isLoading: analysisLoading } = useEventRepercussion(selectedEvent);
 
   const filteredSources = useMemo(() => {
     if (!analysis) return [];
