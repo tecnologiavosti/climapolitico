@@ -99,6 +99,7 @@ REGRAS:
 - \`keywords\`: 4-8 termos curtos do evento.
 - \`topics\`: 2-5 temas amplos (ex.: "economia", "internacional", "BRICS").
 - \`entities\`: pessoas/instituições mencionadas além do candidato.
+- \`narratives\`: opcional. Objeto com 3 chaves opcionais — "apoio" (frases curtas de defesa/elogio), "criticas" (frases de crítica), "debates" (frases neutras de discussão). Cada lista com até 5 itens curtos extraídos das publicações.
 - \`sourceIndices\`: lista de índices [1..N] das publicações que cobrem ESTE evento.
 
 PUBLICAÇÕES:
@@ -116,6 +117,7 @@ Responda APENAS com JSON válido (sem markdown):
       "entities": ["William Bonner", "Globo"],
       "keywords": ["jornal nacional", "JN", "bonner"],
       "topics": ["economia", "midia"],
+      "narratives": { "apoio": ["..."], "criticas": ["..."], "debates": ["..."] },
       "importanceScore": 78,
       "sourceIndices": [1, 4, 9]
     }
