@@ -155,23 +155,11 @@ export function MobileBottomNav() {
             >
               <Menu className="h-4 w-4" />
               <span className="leading-[1.1]">Mais</span>
-                </NavLink>
-              </li>
-            );
-          })}
-          <li>
-            <button
-              type="button"
-              onClick={() => setOpen(true)}
-              className="w-full h-full flex flex-col items-center justify-center gap-0.5 py-2 px-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="Abrir menu completo"
-            >
-              <Menu className="h-5 w-5" />
-              <span>Mais</span>
             </button>
           </li>
         </ul>
       </nav>
+
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent
