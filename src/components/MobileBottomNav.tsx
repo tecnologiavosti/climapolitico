@@ -33,9 +33,9 @@ import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { cn } from "@/lib/utils";
 
 const bottomItems = [
-  { label: "Início", icon: Home, to: "/dashboard", end: true },
+  { label: "Visão Geral", icon: Home, to: "/dashboard", end: true },
   { label: "Candidatos", icon: Users, to: "/dashboard/candidates" },
-  { label: "Tempo Real", icon: Radio, to: "/dashboard/realtime-monitor" },
+  { label: "Monitor Tempo Real", icon: Radio, to: "/dashboard/realtime-monitor" },
   { label: "Ranking", icon: Trophy, to: "/dashboard/ranking" },
 ];
 
@@ -136,12 +136,12 @@ export function MobileBottomNav() {
                   to={it.to}
                   end={it.end}
                   className={cn(
-                    "flex flex-col items-center justify-center gap-0.5 py-2 px-1 text-[11px] font-medium transition-colors",
+                    "flex flex-col items-center justify-center gap-0.5 py-1.5 px-0.5 text-[10px] font-medium transition-colors min-h-[56px]",
                     active ? "text-primary" : "text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  <Icon className={cn("h-5 w-5", active && "stroke-[2.5]")} />
-                  <span className="truncate max-w-full">{it.label}</span>
+                  <Icon className={cn("h-4 w-4 shrink-0", active && "stroke-[2.5]")} />
+                  <span className="leading-[1.1] text-center whitespace-normal break-words line-clamp-2 max-w-full px-0.5">{it.label}</span>
                 </NavLink>
               </li>
             );
@@ -150,15 +150,16 @@ export function MobileBottomNav() {
             <button
               type="button"
               onClick={() => setOpen(true)}
-              className="w-full h-full flex flex-col items-center justify-center gap-0.5 py-2 px-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+              className="w-full h-full flex flex-col items-center justify-center gap-0.5 py-1.5 px-0.5 text-[10px] font-medium text-muted-foreground hover:text-foreground transition-colors min-h-[56px]"
               aria-label="Abrir menu completo"
             >
-              <Menu className="h-5 w-5" />
-              <span>Mais</span>
+              <Menu className="h-4 w-4" />
+              <span className="leading-[1.1]">Mais</span>
             </button>
           </li>
         </ul>
       </nav>
+
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent
