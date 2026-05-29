@@ -21,7 +21,6 @@ export default function EventRepercussion() {
   const [candidateId, setCandidateId] = useState<string>("");
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
-  const [rangeDays, setRangeDays] = useState(7);
   const [detectProgress, setDetectProgress] = useState(0);
   const [detectStep, setDetectStep] = useState<string>("");
 
@@ -44,8 +43,9 @@ export default function EventRepercussion() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("political_events")
-        .select("id, event_name, event_type, event_date, description, keywords, metadata")
+        .select("id, event_name, event_type, event_date, description, keywords, metadata, low_coverage, confidence_score, importance_score, distinct_outlets, publications_count, themes, narratives")
         .eq("candidate_id", candidateId)
+        .eq("low_coverage", false)
         .order("event_date", { ascending: false })
         .limit(50);
       if (error) throw error;
