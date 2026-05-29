@@ -120,15 +120,7 @@ export default function EventRepercussion() {
             <SelectTrigger className="w-full md:w-[240px] bg-card/40 border-border/60"><SelectValue placeholder="Candidato" /></SelectTrigger>
             <SelectContent>{candidates?.map((c) => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)}</SelectContent>
           </Select>
-          <Select value={String(rangeDays)} onValueChange={(v) => setRangeDays(Number(v))}>
-            <SelectTrigger className="w-full md:w-[140px] bg-card/40 border-border/60"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="2">±2 dias</SelectItem>
-              <SelectItem value="7">±7 dias</SelectItem>
-              <SelectItem value="14">±14 dias</SelectItem>
-              <SelectItem value="30">±30 dias</SelectItem>
-            </SelectContent>
-          </Select>
+          {/* Seletor de período removido: análise sempre considera os eventos mais recentes detectados */}
           <Button onClick={() => detectMutation.mutate()} disabled={!candidateId || detectMutation.isPending} variant="outline" className="col-span-2 md:col-auto w-full md:w-auto">
             {detectMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
             Detectar eventos
