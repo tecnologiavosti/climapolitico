@@ -69,7 +69,7 @@ export interface EventRepercussionData {
 
 export function useEventRepercussion(eventId: string | null, rangeDays = 7) {
   return useQuery({
-    queryKey: ["event-repercussion", eventId, rangeDays],
+    queryKey: ["event-repercussion", eventId],
     queryFn: async (): Promise<EventRepercussionData> => {
       const { data, error } = await supabase.functions.invoke("analyze-event-regional", {
         body: { eventId, rangeDays },

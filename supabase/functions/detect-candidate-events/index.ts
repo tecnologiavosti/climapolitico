@@ -99,6 +99,7 @@ REGRAS:
 - \`keywords\`: 4-8 termos curtos do evento.
 - \`topics\`: 2-5 temas amplos (ex.: "economia", "internacional", "BRICS").
 - \`entities\`: pessoas/instituições mencionadas além do candidato.
+- \`narratives\`: opcional. Objeto com 3 chaves opcionais — "apoio" (frases curtas de defesa/elogio), "criticas" (frases de crítica), "debates" (frases neutras de discussão). Cada lista com até 5 itens curtos extraídos das publicações.
 - \`sourceIndices\`: lista de índices [1..N] das publicações que cobrem ESTE evento.
 
 PUBLICAÇÕES:
@@ -116,6 +117,7 @@ Responda APENAS com JSON válido (sem markdown):
       "entities": ["William Bonner", "Globo"],
       "keywords": ["jornal nacional", "JN", "bonner"],
       "topics": ["economia", "midia"],
+      "narratives": { "apoio": ["..."], "criticas": ["..."], "debates": ["..."] },
       "importanceScore": 78,
       "sourceIndices": [1, 4, 9]
     }
@@ -140,14 +142,45 @@ Responda APENAS com JSON válido (sem markdown):
       console.error("[detect-events] AI failed:", (e as Error).message);
     }
 
-    // 3) Materialize each event with its real publications + regional distribution
-    const events: DetectedEvent[] = (aiResult.events || []).map((ev: any) => {
+    // 3) Materialize each event with its real publications + regional distribution + quality scoring
+    const events: (DetectedEvent & {
+      distinctOutlets: number;
+      publicationsCount: number;
+      confidenceScore: number;
+      themes: string[];
+      narratives: { apoio: string[]; criticas: string[]; debates: string[] };
+      lowCoverage: boolean;
+    })[] = (aiResult.events || []).map((ev: any) => {
       const indices: number[] = Array.isArray(ev.sourceIndices) ? ev.sourceIndices.map((n: any) => Number(n) - 1).filter((n: number) => n >= 0 && n < pubs.length) : [];
       const evPubs = indices.map((i) => pubs[i]).filter(Boolean);
       const sources = evPubs.map((p) => ({ name: p.outlet, url: p.url, region: p.outletRegion }));
       const dist = computeRegionalDistribution(evPubs.length ? evPubs : pubs.slice(0, 5));
       const reach = estimatedReachOf(evPubs);
       const type = String(ev.eventType || "noticia").toLowerCase();
+
+      // Coverage quality metrics
+      const distinctOutlets = new Set(evPubs.map((p) => (p.outlet || "").toLowerCase()).filter(Boolean)).size;
+      const publicationsCount = evPubs.length;
+      // Confidence = blend of distinct outlets (0..1 at 5+), publications (0..1 at 8+), regions covered (0..1 at 3+)
+      const regionsCovered = Object.values(dist).filter((v) => Number(v) > 0).length;
+      const cOutlets = Math.min(distinctOutlets / 5, 1);
+      const cPubs = Math.min(publicationsCount / 8, 1);
+      const cRegions = Math.min(regionsCovered / 3, 1);
+      const confidenceScore = Number((cOutlets * 0.45 + cPubs * 0.35 + cRegions * 0.2).toFixed(3));
+
+      // Themes (broad) and narratives (raw quotes split by tone)
+      const themes: string[] = Array.isArray(ev.topics) ? ev.topics.slice(0, 6) : [];
+      const narratives = (ev.narratives && typeof ev.narratives === "object")
+        ? {
+            apoio: Array.isArray(ev.narratives.apoio) ? ev.narratives.apoio.slice(0, 5) : [],
+            criticas: Array.isArray(ev.narratives.criticas) ? ev.narratives.criticas.slice(0, 5) : [],
+            debates: Array.isArray(ev.narratives.debates) ? ev.narratives.debates.slice(0, 5) : [],
+          }
+        : { apoio: [], criticas: [], debates: [] };
+
+      // Coverage thresholds: 3+ distinct outlets AND 5+ publications AND confidence >= 0.4
+      const lowCoverage = !(distinctOutlets >= 3 && publicationsCount >= 5 && confidenceScore >= 0.4);
+
       return {
         title: String(ev.title || "").trim().slice(0, 200),
         description: String(ev.description || "").trim().slice(0, 600),
@@ -156,11 +189,17 @@ Responda APENAS com JSON válido (sem markdown):
         location: ev.location || undefined,
         entities: Array.isArray(ev.entities) ? ev.entities.slice(0, 10) : [],
         keywords: Array.isArray(ev.keywords) ? ev.keywords.slice(0, 10) : [],
-        topics: Array.isArray(ev.topics) ? ev.topics.slice(0, 6) : [],
+        topics: themes,
         importanceScore: Math.max(0, Math.min(100, Number(ev.importanceScore) || 50)),
         sources,
         estimatedReach: reach,
         regionalDistribution: dist,
+        distinctOutlets,
+        publicationsCount,
+        confidenceScore,
+        themes,
+        narratives,
+        lowCoverage,
       };
     }).filter((e) => e.title && e.sources.length > 0)
       .sort((a, b) => b.importanceScore - a.importanceScore);
@@ -170,7 +209,7 @@ Responda APENAS com JSON válido (sem markdown):
       .from("political_events").select("id, event_name, event_date, event_type, metadata")
       .eq("candidate_id", candidateId).eq("user_id", user.id);
     const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
-    const findExisting = (ev: DetectedEvent) => {
+    const findExisting = (ev: { title: string; date: string }) => {
       const evN = norm(ev.title);
       const evT = new Date(`${ev.date}T12:00:00Z`).getTime();
       return (existing || []).find((r: any) => {
@@ -181,12 +220,21 @@ Responda APENAS com JSON válido (sem markdown):
 
     const saved: any[] = [];
     for (const ev of events) {
+      const qualityCols = {
+        low_coverage: ev.lowCoverage,
+        confidence_score: ev.confidenceScore,
+        importance_score: ev.importanceScore,
+        distinct_outlets: ev.distinctOutlets,
+        publications_count: ev.publicationsCount,
+        themes: ev.themes,
+        narratives: ev.narratives,
+      };
       const match = findExisting(ev);
       if (match) {
-        // refresh external metadata
         await admin.from("political_events").update({
           description: ev.description || null,
           keywords: ev.keywords,
+          ...qualityCols,
           metadata: {
             ...(match.metadata || {}),
             external_sources: ev.sources,
@@ -211,6 +259,7 @@ Responda APENAS com JSON válido (sem markdown):
           event_date: new Date(`${ev.date}T12:00:00Z`).toISOString(),
           description: ev.description || null,
           keywords: ev.keywords,
+          ...qualityCols,
           metadata: {
             external_sources: ev.sources,
             estimated_reach: ev.estimatedReach,

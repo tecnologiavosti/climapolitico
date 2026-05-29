@@ -1334,48 +1334,69 @@ export type Database = {
         Row: {
           candidate_id: string
           city: string | null
+          confidence_score: number
           created_at: string
           description: string | null
+          distinct_outlets: number
           event_date: string
           event_name: string
           event_type: string
           id: string
+          importance_score: number
           keywords: string[]
           location: string | null
+          low_coverage: boolean
           metadata: Json
+          narratives: Json
+          publications_count: number
           state: string | null
+          themes: string[]
           updated_at: string
           user_id: string
         }
         Insert: {
           candidate_id: string
           city?: string | null
+          confidence_score?: number
           created_at?: string
           description?: string | null
+          distinct_outlets?: number
           event_date: string
           event_name: string
           event_type?: string
           id?: string
+          importance_score?: number
           keywords?: string[]
           location?: string | null
+          low_coverage?: boolean
           metadata?: Json
+          narratives?: Json
+          publications_count?: number
           state?: string | null
+          themes?: string[]
           updated_at?: string
           user_id: string
         }
         Update: {
           candidate_id?: string
           city?: string | null
+          confidence_score?: number
           created_at?: string
           description?: string | null
+          distinct_outlets?: number
           event_date?: string
           event_name?: string
           event_type?: string
           id?: string
+          importance_score?: number
           keywords?: string[]
           location?: string | null
+          low_coverage?: boolean
           metadata?: Json
+          narratives?: Json
+          publications_count?: number
           state?: string | null
+          themes?: string[]
           updated_at?: string
           user_id?: string
         }
