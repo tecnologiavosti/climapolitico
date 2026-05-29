@@ -158,7 +158,7 @@ export function AppSidebar() {
                         <div className="p-1.5 bg-muted/60 rounded-md">
                           <item.icon className="h-4 w-4 shrink-0 text-primary" />
                         </div>
-                        {!isCollapsed && <span className="font-medium">{item.title}</span>}
+                        {!isCollapsed && <span className="font-medium text-sm leading-snug whitespace-normal break-words">{item.title}</span>}
                       </NavLink>
                     </HelpTooltip>
                   </SidebarMenuButton>
@@ -186,7 +186,7 @@ export function AppSidebar() {
                           <div className="p-1.5 bg-muted/60 rounded-md">
                             <item.icon className="h-4 w-4 shrink-0 text-primary" />
                           </div>
-                          {!isCollapsed && <span className="font-medium">{item.title}</span>}
+                          {!isCollapsed && <span className="font-medium text-sm leading-snug whitespace-normal break-words">{item.title}</span>}
                         </NavLink>
                       </HelpTooltip>
                     </SidebarMenuButton>
@@ -217,7 +217,7 @@ export function AppSidebar() {
                         <div className="p-1.5 bg-muted/60 rounded-md">
                           <DatabaseIcon className="h-4 w-4 shrink-0 text-primary" />
                         </div>
-                        {!isCollapsed && <span className="font-medium">Como Coletamos os Dados</span>}
+                        {!isCollapsed && <span className="font-medium text-sm leading-snug whitespace-normal break-words">Como Coletamos os Dados</span>}
                       </NavLink>
                     </HelpTooltip>
                   </SidebarMenuButton>
@@ -244,7 +244,7 @@ export function AppSidebar() {
                         <div className="p-1.5 bg-muted/60 rounded-md">
                           <item.icon className="h-4 w-4 shrink-0 text-primary" />
                         </div>
-                        {!isCollapsed && <span className="font-medium">{item.title}</span>}
+                        {!isCollapsed && <span className="font-medium text-sm leading-snug whitespace-normal break-words">{item.title}</span>}
                       </NavLink>
                     </HelpTooltip>
                   </SidebarMenuButton>
