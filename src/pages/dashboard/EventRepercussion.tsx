@@ -46,6 +46,7 @@ export default function EventRepercussion() {
         .select("id, event_name, event_type, event_date, description, keywords, metadata, low_coverage, confidence_score, importance_score, distinct_outlets, publications_count, themes, narratives")
         .eq("candidate_id", candidateId)
         .eq("low_coverage", false)
+        .gte("publications_count", 3)
         .order("event_date", { ascending: false })
         .limit(50);
       if (error) throw error;
@@ -349,37 +350,6 @@ export default function EventRepercussion() {
 
               {/* AI chat */}
               <RegionalChat eventId={analysis.event.id} region={selectedRegion} />
-
-              {/* Debug */}
-              <Card className="bg-card/40 border-dashed border-border/40">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Painel debug (temporário)</CardTitle>
-                </CardHeader>
-                <CardContent className="text-xs space-y-2 font-mono">
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    <div><p className="text-muted-foreground">Coletadas</p><p>{analysis.debug.publicationsCollected}</p></div>
-                    <div><p className="text-muted-foreground">Na janela</p><p>{analysis.debug.publicationsInWindow}</p></div>
-                    <div><p className="text-muted-foreground">Usadas na análise</p><p className="text-primary">{analysis.debug.usedForAnalysis}</p></div>
-                    <div><p className="text-muted-foreground">Confiança</p><p>{analysis.confidence.level} ({analysis.confidence.score}/100)</p></div>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground mb-1">Veículos ({Object.keys(analysis.debug.sourcesByOutlet).length})</p>
-                    <div className="flex flex-wrap gap-1">
-                      {Object.entries(analysis.debug.sourcesByOutlet).slice(0, 20).map(([o, n]) => (
-                        <span key={o} className="px-1.5 py-0.5 rounded bg-background/60 border border-border/40">{o} <span className="text-muted-foreground">×{n}</span></span>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-5 gap-2">
-                    {Object.entries(analysis.externalRepercussion.regionalDistribution).map(([r, p]) => (
-                      <div key={r}><p className="text-muted-foreground">{r}</p><p>{p}%</p></div>
-                    ))}
-                  </div>
-                  <p className="text-muted-foreground">
-                    Janela: {new Date(analysis.debug.eventWindow.start).toLocaleDateString("pt-BR")} → {new Date(analysis.debug.eventWindow.end).toLocaleDateString("pt-BR")}
-                  </p>
-                </CardContent>
-              </Card>
             </>
           )}
         </div>

@@ -42,12 +42,12 @@ export const InsightFilters = ({
         <div className="flex flex-wrap items-end gap-4">
           <div className="flex-1 min-w-[200px]">
             <Label>Tipo de Insight</Label>
-            <Select value={selectedType || ''} onValueChange={(value) => setSelectedType(value || null)}>
+            <Select value={selectedType || 'all'} onValueChange={(value) => setSelectedType(value === 'all' ? null : value)}>
               <SelectTrigger>
                 <SelectValue placeholder="Todos os tipos" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Todos os tipos</SelectItem>
+                <SelectItem value="all">Todos os tipos</SelectItem>
                 <SelectItem value="crisis">Crise</SelectItem>
                 <SelectItem value="opportunity">Oportunidade</SelectItem>
                 <SelectItem value="trend">Tendência</SelectItem>
@@ -58,12 +58,12 @@ export const InsightFilters = ({
 
           <div className="flex-1 min-w-[200px]">
             <Label>Prioridade</Label>
-            <Select value={selectedPriority || ''} onValueChange={(value) => setSelectedPriority(value || null)}>
+            <Select value={selectedPriority || 'all'} onValueChange={(value) => setSelectedPriority(value === 'all' ? null : value)}>
               <SelectTrigger>
                 <SelectValue placeholder="Todas as prioridades" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Todas as prioridades</SelectItem>
+                <SelectItem value="all">Todas as prioridades</SelectItem>
                 <SelectItem value="high">Alta</SelectItem>
                 <SelectItem value="medium">Média</SelectItem>
                 <SelectItem value="low">Baixa</SelectItem>
@@ -73,12 +73,12 @@ export const InsightFilters = ({
 
           <div className="flex-1 min-w-[200px]">
             <Label>Candidato</Label>
-            <Select value={selectedCandidate || ''} onValueChange={(value) => setSelectedCandidate(value || null)}>
+            <Select value={selectedCandidate || 'all'} onValueChange={(value) => setSelectedCandidate(value === 'all' ? null : value)}>
               <SelectTrigger>
                 <SelectValue placeholder="Todos os candidatos" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Todos os candidatos</SelectItem>
+                <SelectItem value="all">Todos os candidatos</SelectItem>
                 {candidates.map((candidate) => (
                   <SelectItem key={candidate.id} value={candidate.id}>
                     {candidate.full_name}
