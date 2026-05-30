@@ -29,23 +29,33 @@ Deno.serve(async (req) => {
     const { data: event } = await admin.from("political_events").select("*").eq("id", eventId).eq("user_id", user.id).maybeSingle();
     if (!event) return new Response(JSON.stringify({ error: "Evento não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    const cached = event.metadata?.external_cache?.payload;
-    const sources = cached?.externalRepercussion?.sources || [];
-    const narratives = cached?.externalRepercussion?.narratives || { apoio: [], criticas: [], debates: [] };
-    const dist = cached?.externalRepercussion?.regionalDistribution || {};
-    const internal = cached?.internalReaction || { mentions: 0 };
+    // Try external_cache first; if missing/stale, trigger analyze-event-regional to populate it.
+    let cached = event.metadata?.external_cache?.payload;
+    if (!cached || !cached.externalRepercussion) {
+      try {
+        const { data: fresh } = await userClient.functions.invoke("analyze-event-regional", { body: { eventId, rangeDays: 7 } });
+        if (fresh && fresh.externalRepercussion) cached = fresh;
+      } catch (_) { /* continue with whatever we have */ }
+    }
+
+    const sources = cached?.externalRepercussion?.sources || event.metadata?.external_sources || [];
+    const narratives = cached?.externalRepercussion?.narratives || event.narratives || { apoio: [], criticas: [], debates: [] };
+    const dist = cached?.externalRepercussion?.regionalDistribution || event.metadata?.regional_distribution || {};
+    const internal = cached?.internalReaction || { mentions: 0, positive: 0, negative: 0 };
+    const themes = cached?.externalRepercussion?.majorTopics || event.themes || [];
 
     const filteredSources = region
       ? sources.filter((s: any) => s.region === region)
       : sources;
     const sourceList = (filteredSources.length ? filteredSources : sources).slice(0, 30).map((s: any, i: number) =>
-      `[${i + 1}] (${s.outlet}, ${s.region}, ${s.publishedAt?.slice(0, 10) || "?"}) ${s.title} — ${s.snippet}`
+      `[${i + 1}] (${s.outlet || s.name || "?"}, ${s.region || "?"}, ${s.publishedAt?.slice(0, 10) || "?"}) ${s.title || ""}${s.snippet ? " — " + s.snippet : ""}`
     ).join("\n");
 
     const prompt = `Analise apenas dados relacionados ao evento abaixo usando as PUBLICAÇÕES EXTERNAS como fonte principal. Use os dados internos da plataforma apenas como complemento.
 
 Evento: "${event.event_name}" (${event.event_type}) em ${String(event.event_date).slice(0, 10)}.
 ${region ? `Foco regional: ${region}.` : "Análise nacional."}
+${themes.length ? `Temas dominantes: ${themes.slice(0, 6).join(", ")}.` : ""}
 
 DISTRIBUIÇÃO REGIONAL DA COBERTURA (externa):
 ${Object.entries(dist).map(([r, p]) => `- ${r}: ${p}%`).join("\n") || "(sem dados)"}
@@ -57,19 +67,19 @@ NARRATIVAS DETECTADAS:
 
 REAÇÃO DA PLATAFORMA (complemento): ${internal.mentions} menções internas (${internal.positive || 0} pos / ${internal.negative || 0} neg).
 
-PUBLICAÇÕES EXTERNAS:
-${sourceList || "(sem publicações coletadas)"}
+PUBLICAÇÕES EXTERNAS (${sources.length} no total${region ? `, ${filteredSources.length} de ${region}` : ""}):
+${sourceList || "(sem publicações coletadas — responda com base nos temas/narrativas acima)"}
 
-Pergunta: "${question}"
+Pergunta do usuário: "${question}"
 
-Responda em português, baseado SOMENTE nas evidências acima. Máximo 6 frases. Cite veículos quando relevante. Se a pergunta não puder ser respondida com os dados disponíveis, diga claramente.`;
+Responda em português do Brasil, em texto corrido formatado (não JSON, não markdown estruturado). Use 3-6 frases objetivas. Cite veículos quando relevante. Se houver pouca evidência, seja explícito sobre isso mas ainda forneça a melhor leitura possível.`;
 
     try {
       const ai = await callAICerebrasFirst({
-        systemMsg: "Você é um analista político brasileiro. Responde apenas com base nas publicações externas fornecidas, usando dados internos como complemento.",
+        systemMsg: "Você é um analista político brasileiro. Responde em texto corrido (não JSON), baseado nas publicações externas fornecidas, usando dados internos como complemento.",
         userPrompt: prompt,
         maxTokens: 700,
-        temperature: 0.35,
+        temperature: 0.4,
         tag: "chat-event-region-external",
       });
       return new Response(JSON.stringify({
