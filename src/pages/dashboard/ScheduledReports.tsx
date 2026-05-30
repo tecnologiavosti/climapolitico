@@ -279,14 +279,14 @@ export default function ScheduledReports() {
                 <div className="space-y-2">
                   <Label htmlFor="template">Template (Opcional)</Label>
                   <Select
-                    value={formData.templateId}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, templateId: value }))}
+                    value={formData.templateId || 'default'}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, templateId: value === 'default' ? '' : value }))}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Template padrão" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Template padrão</SelectItem>
+                      <SelectItem value="default">Template padrão</SelectItem>
                       {templates?.map(template => (
                         <SelectItem key={template.id} value={template.id}>
                           {template.name}
