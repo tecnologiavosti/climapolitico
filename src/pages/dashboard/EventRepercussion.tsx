@@ -98,6 +98,21 @@ export default function EventRepercussion() {
     if (!selectedEvent && events && events.length === 1) setSelectedEvent(events[0].id);
   }, [events, selectedEvent]);
 
+  // Auto-detect events on page open when none exist yet, or when the latest event is >24h old.
+  useEffect(() => {
+    if (!candidateId || eventsLoading || detectMutation.isPending) return;
+    const list = events || [];
+    if (list.length === 0) {
+      detectMutation.mutate();
+      return;
+    }
+    const newest = list[0]?.event_date ? new Date(list[0].event_date).getTime() : 0;
+    if (Date.now() - newest > 24 * 60 * 60 * 1000) {
+      detectMutation.mutate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidateId, eventsLoading]);
+
   const { data: analysis, isLoading: analysisLoading } = useEventRepercussion(selectedEvent);
 
   const filteredSources = useMemo(() => {
