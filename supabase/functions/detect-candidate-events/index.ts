@@ -178,8 +178,8 @@ Responda APENAS com JSON válido (sem markdown):
           }
         : { apoio: [], criticas: [], debates: [] };
 
-      // Coverage thresholds: 3+ distinct outlets AND 5+ publications AND confidence >= 0.4
-      const lowCoverage = !(distinctOutlets >= 3 && publicationsCount >= 5 && confidenceScore >= 0.4);
+      // Coverage thresholds: 3+ distinct outlets AND 3+ publications
+      const lowCoverage = !(distinctOutlets >= 3 && publicationsCount >= 3);
 
       return {
         title: String(ev.title || "").trim().slice(0, 200),
