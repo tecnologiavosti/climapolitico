@@ -29,17 +29,26 @@ Deno.serve(async (req) => {
     const { data: event } = await admin.from("political_events").select("*").eq("id", eventId).eq("user_id", user.id).maybeSingle();
     if (!event) return new Response(JSON.stringify({ error: "Evento não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    const cached = event.metadata?.external_cache?.payload;
-    const sources = cached?.externalRepercussion?.sources || [];
-    const narratives = cached?.externalRepercussion?.narratives || { apoio: [], criticas: [], debates: [] };
-    const dist = cached?.externalRepercussion?.regionalDistribution || {};
-    const internal = cached?.internalReaction || { mentions: 0 };
+    // Try external_cache first; if missing/stale, trigger analyze-event-regional to populate it.
+    let cached = event.metadata?.external_cache?.payload;
+    if (!cached || !cached.externalRepercussion) {
+      try {
+        const { data: fresh } = await userClient.functions.invoke("analyze-event-regional", { body: { eventId, rangeDays: 7 } });
+        if (fresh && fresh.externalRepercussion) cached = fresh;
+      } catch (_) { /* continue with whatever we have */ }
+    }
+
+    const sources = cached?.externalRepercussion?.sources || event.metadata?.external_sources || [];
+    const narratives = cached?.externalRepercussion?.narratives || event.narratives || { apoio: [], criticas: [], debates: [] };
+    const dist = cached?.externalRepercussion?.regionalDistribution || event.metadata?.regional_distribution || {};
+    const internal = cached?.internalReaction || { mentions: 0, positive: 0, negative: 0 };
+    const themes = cached?.externalRepercussion?.majorTopics || event.themes || [];
 
     const filteredSources = region
       ? sources.filter((s: any) => s.region === region)
       : sources;
     const sourceList = (filteredSources.length ? filteredSources : sources).slice(0, 30).map((s: any, i: number) =>
-      `[${i + 1}] (${s.outlet}, ${s.region}, ${s.publishedAt?.slice(0, 10) || "?"}) ${s.title} — ${s.snippet}`
+      `[${i + 1}] (${s.outlet || s.name || "?"}, ${s.region || "?"}, ${s.publishedAt?.slice(0, 10) || "?"}) ${s.title || ""}${s.snippet ? " — " + s.snippet : ""}`
     ).join("\n");
 
     const prompt = `Analise apenas dados relacionados ao evento abaixo usando as PUBLICAÇÕES EXTERNAS como fonte principal. Use os dados internos da plataforma apenas como complemento.
