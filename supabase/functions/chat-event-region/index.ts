@@ -55,6 +55,7 @@ Deno.serve(async (req) => {
 
 Evento: "${event.event_name}" (${event.event_type}) em ${String(event.event_date).slice(0, 10)}.
 ${region ? `Foco regional: ${region}.` : "Análise nacional."}
+${themes.length ? `Temas dominantes: ${themes.slice(0, 6).join(", ")}.` : ""}
 
 DISTRIBUIÇÃO REGIONAL DA COBERTURA (externa):
 ${Object.entries(dist).map(([r, p]) => `- ${r}: ${p}%`).join("\n") || "(sem dados)"}
@@ -66,19 +67,19 @@ NARRATIVAS DETECTADAS:
 
 REAÇÃO DA PLATAFORMA (complemento): ${internal.mentions} menções internas (${internal.positive || 0} pos / ${internal.negative || 0} neg).
 
-PUBLICAÇÕES EXTERNAS:
-${sourceList || "(sem publicações coletadas)"}
+PUBLICAÇÕES EXTERNAS (${sources.length} no total${region ? `, ${filteredSources.length} de ${region}` : ""}):
+${sourceList || "(sem publicações coletadas — responda com base nos temas/narrativas acima)"}
 
-Pergunta: "${question}"
+Pergunta do usuário: "${question}"
 
-Responda em português, baseado SOMENTE nas evidências acima. Máximo 6 frases. Cite veículos quando relevante. Se a pergunta não puder ser respondida com os dados disponíveis, diga claramente.`;
+Responda em português do Brasil, em texto corrido formatado (não JSON, não markdown estruturado). Use 3-6 frases objetivas. Cite veículos quando relevante. Se houver pouca evidência, seja explícito sobre isso mas ainda forneça a melhor leitura possível.`;
 
     try {
       const ai = await callAICerebrasFirst({
-        systemMsg: "Você é um analista político brasileiro. Responde apenas com base nas publicações externas fornecidas, usando dados internos como complemento.",
+        systemMsg: "Você é um analista político brasileiro. Responde em texto corrido (não JSON), baseado nas publicações externas fornecidas, usando dados internos como complemento.",
         userPrompt: prompt,
         maxTokens: 700,
-        temperature: 0.35,
+        temperature: 0.4,
         tag: "chat-event-region-external",
       });
       return new Response(JSON.stringify({
