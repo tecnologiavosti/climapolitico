@@ -327,11 +327,11 @@ export default function EventRepercussion() {
                     <p className="text-sm text-muted-foreground">Nenhum comentário interno relacionado a este evento foi encontrado na janela analisada.</p>
                   ) : (
                     <div className="space-y-3">
-                      <div className="grid grid-cols-4 gap-3 text-center">
-                        <div><p className="text-xl font-bold">{analysis.internalReaction.mentions.toLocaleString("pt-BR")}</p><p className="text-[11px] text-muted-foreground">Menções</p></div>
-                        <div><p className="text-xl font-bold text-green-400">{analysis.internalReaction.positive}</p><p className="text-[11px] text-muted-foreground">Positivos</p></div>
-                        <div><p className="text-xl font-bold text-red-400">{analysis.internalReaction.negative}</p><p className="text-[11px] text-muted-foreground">Negativos</p></div>
-                        <div><p className="text-xl font-bold">{analysis.internalReaction.engagement.toLocaleString("pt-BR")}</p><p className="text-[11px] text-muted-foreground">Engajamento</p></div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                        <div className="min-w-0"><p className="text-base sm:text-xl font-bold truncate">{analysis.internalReaction.mentions.toLocaleString("pt-BR")}</p><p className="text-[11px] text-muted-foreground">Menções</p></div>
+                        <div className="min-w-0"><p className="text-base sm:text-xl font-bold text-green-400 truncate">{analysis.internalReaction.positive}</p><p className="text-[11px] text-muted-foreground">Positivos</p></div>
+                        <div className="min-w-0"><p className="text-base sm:text-xl font-bold text-red-400 truncate">{analysis.internalReaction.negative}</p><p className="text-[11px] text-muted-foreground">Negativos</p></div>
+                        <div className="min-w-0"><p className="text-base sm:text-xl font-bold truncate">{analysis.internalReaction.engagement.toLocaleString("pt-BR")}</p><p className="text-[11px] text-muted-foreground">Engajamento</p></div>
                       </div>
                       {analysis.internalReaction.sample.length > 0 && (
                         <div className="space-y-1.5">
