@@ -16,6 +16,13 @@ const emailSchema = z.string().email("Email inválido");
 const passwordSchema = z.string().min(6, "Senha deve ter no mínimo 6 caracteres");
 const fullNameSchema = z.string().min(2, "Nome deve ter no mínimo 2 caracteres");
 const LOVABLE_PROJECT_ID = "a499df7b-ed03-4453-8bfa-ee4c0df3dd55";
+const PRODUCTION_ORIGIN = "https://climapolitico.com.br";
+const getAuthOrigin = () => {
+  if (typeof window === "undefined") return PRODUCTION_ORIGIN;
+  const host = window.location.hostname;
+  if (host === "localhost" || host === "127.0.0.1") return window.location.origin;
+  return PRODUCTION_ORIGIN;
+};
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -76,7 +83,7 @@ const Auth = () => {
       return;
     }
     setLoading(true);
-    const redirectUrl = `${window.location.origin}/`;
+    const redirectUrl = `${getAuthOrigin()}/`;
     const { error } = await supabase.auth.signUp({
       email: signupEmail,
       password: signupPassword,
@@ -100,7 +107,7 @@ const Auth = () => {
     try {
       const oauth = createLovableAuth({ oauthBrokerUrl: "https://oauth.lovable.app/initiate" });
       const result = await oauth.signInWithOAuth("google", {
-        redirect_uri: window.location.origin,
+        redirect_uri: getAuthOrigin(),
         extraParams: { project_id: LOVABLE_PROJECT_ID },
       });
       if (result.error) {
@@ -130,7 +137,7 @@ const Auth = () => {
     }
     setLoading(true);
     const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: `${getAuthOrigin()}/reset-password`,
     });
     setLoading(false);
     if (error) {
