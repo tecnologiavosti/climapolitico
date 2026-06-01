@@ -9,15 +9,17 @@ export interface ExternalPublication {
   title: string;
   snippet: string;
   publishedAt?: string; // ISO
-  outlet: string;       // friendly name
-  outletRegion: Region; // inferred
-  outletReach: number;  // weight 1..10
-  source: "firecrawl" | "gdelt";
+  outlet: string;
+  outletRegion: Region;
+  outletReach: number;
+  source: "firecrawl" | "gdelt" | "rss";
   raw?: any;
 }
 
+
 const FIRECRAWL_V2 = "https://api.firecrawl.dev/v2";
 const GDELT_DOC = "https://api.gdeltproject.org/api/v2/doc/doc";
+
 
 function getFirecrawlKey(): string | null {
   return Deno.env.get("FIRECRAWL_API_KEY") || null;
@@ -126,8 +128,109 @@ function parseGdeltDate(s: string): string | undefined {
   return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`;
 }
 
+// ---------- Free RSS collectors (no API key) ----------
+// Google News RSS + Bing News RSS scoped to pt-BR / BR. These are zero-auth,
+// extremely resilient public feeds. They form the primary fallback when
+// Firecrawl is missing or returns no results.
+
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&nbsp;/g, " ");
+}
+
+function stripTags(s: string): string {
+  return s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function parseRssItems(xml: string): Array<{ title: string; link: string; pubDate?: string; description?: string; source?: string }> {
+  const items: any[] = [];
+  const re = /<item[\s\S]*?<\/item>/gi;
+  const matches = xml.match(re) || [];
+  for (const block of matches) {
+    const title = decodeEntities(stripTags((block.match(/<title>([\s\S]*?)<\/title>/i)?.[1] || "")));
+    const link = decodeEntities(stripTags((block.match(/<link>([\s\S]*?)<\/link>/i)?.[1] || "")));
+    const pubDate = block.match(/<pubDate>([\s\S]*?)<\/pubDate>/i)?.[1]?.trim();
+    const description = decodeEntities(stripTags((block.match(/<description>([\s\S]*?)<\/description>/i)?.[1] || "")));
+    const source = decodeEntities(stripTags((block.match(/<source[^>]*>([\s\S]*?)<\/source>/i)?.[1] || "")));
+    if (title && link) items.push({ title, link, pubDate, description, source });
+  }
+  return items;
+}
+
+async function fetchRss(url: string, timeoutMs = 9000): Promise<string | null> {
+  try {
+    const r = await fetch(url, {
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; ClimaPoliticoBot/1.0)",
+        "Accept": "application/rss+xml, application/xml, text/xml, */*",
+        "Accept-Language": "pt-BR,pt;q=0.9",
+      },
+    });
+    if (!r.ok) return null;
+    return await r.text();
+  } catch (e) {
+    console.warn(`[rss] fetch failed ${url}: ${(e as Error).message}`);
+    return null;
+  }
+}
+
+export async function rssNewsSearch(query: string, opts: { limit?: number; daysBack?: number } = {}): Promise<ExternalPublication[]> {
+  const limit = opts.limit ?? 40;
+  const q = encodeURIComponent(`"${query}"`);
+  const feeds = [
+    // Google News (pt-BR / BR) — highly reliable
+    `https://news.google.com/rss/search?q=${q}+when:${opts.daysBack ?? 60}d&hl=pt-BR&gl=BR&ceid=BR:pt-419`,
+    // Bing News
+    `https://www.bing.com/news/search?q=${q}&format=RSS&setlang=pt-BR&cc=br`,
+  ];
+  const results = await Promise.all(feeds.map((u) => fetchRss(u)));
+  const collected: ExternalPublication[] = [];
+  for (const xml of results) {
+    if (!xml) continue;
+    for (const it of parseRssItems(xml)) {
+      const url = it.link;
+      if (!url || !/^https?:\/\//i.test(url)) continue;
+      const outlet = identifyOutlet(url);
+      const sourceName = it.source || outlet?.name || hostnameOf(url);
+      const publishedAt = it.pubDate ? new Date(it.pubDate).toISOString() : undefined;
+      collected.push({
+        url,
+        title: it.title.slice(0, 300),
+        snippet: (it.description || "").slice(0, 320),
+        publishedAt,
+        outlet: outlet?.name || sourceName,
+        outletRegion: outlet?.region || "Nacional",
+        outletReach: outlet?.reachWeight || 4,
+        source: "rss",
+        raw: it,
+      });
+      if (collected.length >= limit * 2) break;
+    }
+  }
+  // dedupe by url + title
+  const seen = new Set<string>();
+  const out: ExternalPublication[] = [];
+  for (const c of collected) {
+    const k = (c.url.split("?")[0] || "") + "|" + c.title.toLowerCase().slice(0, 80);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(c);
+    if (out.length >= limit) break;
+  }
+  console.log(`[rss] ${query} → ${out.length} publicações`);
+  return out;
+}
+
 export function dedupePublications(items: ExternalPublication[]): ExternalPublication[] {
   const seen = new Set<string>();
+
   const out: ExternalPublication[] = [];
   for (const it of items) {
     const key = it.url.split("?")[0];

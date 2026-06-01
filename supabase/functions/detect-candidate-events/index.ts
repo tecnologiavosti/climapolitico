@@ -3,7 +3,7 @@
 // AI then groups publications into discrete events with structured metadata.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
-import { firecrawlSearch, gdeltSearch, dedupePublications, computeRegionalDistribution, estimatedReachOf, type ExternalPublication } from "../_shared/external-collector.ts";
+import { firecrawlSearch, gdeltSearch, rssNewsSearch, dedupePublications, computeRegionalDistribution, estimatedReachOf, type ExternalPublication } from "../_shared/external-collector.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -67,12 +67,16 @@ Deno.serve(async (req) => {
       `"${name}" noticia OR crise OR repercussao`,
     ];
 
+    const daysBack = Math.max(7, monthsBack * 31);
     const allResults = await Promise.all([
       ...queries.map((q) => firecrawlSearch(q, { limit: 10, tbs })),
       gdeltSearch(name, { maxRecords: 40, timespan: monthsBack <= 1 ? "1month" : "3months" }),
+      rssNewsSearch(name, { limit: 60, daysBack }),
+      rssNewsSearch(`${name} ${candidate.party || "política"}`, { limit: 30, daysBack }),
     ]);
     const pubs: ExternalPublication[] = dedupePublications(allResults.flat());
     console.log(`[detect-events] collected ${pubs.length} external publications for ${name}`);
+
 
     if (pubs.length === 0) {
       return new Response(JSON.stringify({
@@ -178,8 +182,9 @@ Responda APENAS com JSON válido (sem markdown):
           }
         : { apoio: [], criticas: [], debates: [] };
 
-      // Coverage thresholds: 3+ distinct outlets AND 3+ publications
-      const lowCoverage = !(distinctOutlets >= 3 && publicationsCount >= 3);
+      // Coverage thresholds: at least 1 publication. Single-source events are still surfaced.
+      const lowCoverage = !(distinctOutlets >= 1 && publicationsCount >= 1);
+
 
       return {
         title: String(ev.title || "").trim().slice(0, 200),
@@ -291,7 +296,9 @@ Responda APENAS com JSON válido (sem markdown):
       sources_breakdown: {
         firecrawl: pubs.filter((p) => p.source === "firecrawl").length,
         gdelt: pubs.filter((p) => p.source === "gdelt").length,
+        rss: pubs.filter((p) => p.source === "rss").length,
       },
+
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     console.error("[detect-events] error:", e);
