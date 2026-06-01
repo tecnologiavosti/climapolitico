@@ -12,12 +12,21 @@ export interface ExternalPublication {
   outlet: string;       // friendly name
   outletRegion: Region; // inferred
   outletReach: number;  // weight 1..10
-  source: "firecrawl" | "gdelt";
+export interface ExternalPublication {
+  url: string;
+  title: string;
+  snippet: string;
+  publishedAt?: string;
+  outlet: string;
+  outletRegion: Region;
+  outletReach: number;
+  source: "firecrawl" | "gdelt" | "rss";
   raw?: any;
 }
 
 const FIRECRAWL_V2 = "https://api.firecrawl.dev/v2";
 const GDELT_DOC = "https://api.gdeltproject.org/api/v2/doc/doc";
+
 
 function getFirecrawlKey(): string | null {
   return Deno.env.get("FIRECRAWL_API_KEY") || null;
