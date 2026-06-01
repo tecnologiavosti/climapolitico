@@ -296,7 +296,9 @@ Responda APENAS com JSON válido (sem markdown):
       sources_breakdown: {
         firecrawl: pubs.filter((p) => p.source === "firecrawl").length,
         gdelt: pubs.filter((p) => p.source === "gdelt").length,
+        rss: pubs.filter((p) => p.source === "rss").length,
       },
+
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     console.error("[detect-events] error:", e);
