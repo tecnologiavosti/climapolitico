@@ -67,12 +67,16 @@ Deno.serve(async (req) => {
       `"${name}" noticia OR crise OR repercussao`,
     ];
 
+    const daysBack = Math.max(7, monthsBack * 31);
     const allResults = await Promise.all([
       ...queries.map((q) => firecrawlSearch(q, { limit: 10, tbs })),
       gdeltSearch(name, { maxRecords: 40, timespan: monthsBack <= 1 ? "1month" : "3months" }),
+      rssNewsSearch(name, { limit: 60, daysBack }),
+      rssNewsSearch(`${name} ${candidate.party || "política"}`, { limit: 30, daysBack }),
     ]);
     const pubs: ExternalPublication[] = dedupePublications(allResults.flat());
     console.log(`[detect-events] collected ${pubs.length} external publications for ${name}`);
+
 
     if (pubs.length === 0) {
       return new Response(JSON.stringify({
