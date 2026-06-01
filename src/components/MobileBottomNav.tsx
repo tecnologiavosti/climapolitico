@@ -53,7 +53,6 @@ const mainGrid: GridItem[] = [
   { label: "Regional", icon: MapPinned, to: "/dashboard/regional-analysis" },
   { label: "Redes Sociais", icon: Network, to: "/dashboard/network-view" },
   { label: "Histórica IA", icon: GitCompareArrows, to: "/dashboard/historical-comparison" },
-  { label: "Insights IA", icon: Brain, to: "/dashboard/ai-insights" },
   { label: "Feeds", icon: Rss, to: "/dashboard/social-feeds" },
   { label: "Candidatos", icon: Users, to: "/dashboard/candidates" },
   { label: "Catálogo", icon: BookUser, to: "/dashboard/candidates-catalog" },
