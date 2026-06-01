@@ -45,10 +45,10 @@ export default function EventRepercussion() {
         .from("political_events")
         .select("id, event_name, event_type, event_date, description, keywords, metadata, low_coverage, confidence_score, importance_score, distinct_outlets, publications_count, themes, narratives")
         .eq("candidate_id", candidateId)
-        .eq("low_coverage", false)
-        .gte("publications_count", 3)
+        .gte("publications_count", 1)
         .order("event_date", { ascending: false })
         .limit(50);
+
       if (error) throw error;
       return data || [];
     },
