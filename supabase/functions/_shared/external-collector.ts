@@ -9,20 +9,13 @@ export interface ExternalPublication {
   title: string;
   snippet: string;
   publishedAt?: string; // ISO
-  outlet: string;       // friendly name
-  outletRegion: Region; // inferred
-  outletReach: number;  // weight 1..10
-export interface ExternalPublication {
-  url: string;
-  title: string;
-  snippet: string;
-  publishedAt?: string;
   outlet: string;
   outletRegion: Region;
   outletReach: number;
   source: "firecrawl" | "gdelt" | "rss";
   raw?: any;
 }
+
 
 const FIRECRAWL_V2 = "https://api.firecrawl.dev/v2";
 const GDELT_DOC = "https://api.gdeltproject.org/api/v2/doc/doc";
