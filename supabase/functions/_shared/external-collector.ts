@@ -228,8 +228,9 @@ export async function rssNewsSearch(query: string, opts: { limit?: number; daysB
   return out;
 }
 
-
+export function dedupePublications(items: ExternalPublication[]): ExternalPublication[] {
   const seen = new Set<string>();
+
   const out: ExternalPublication[] = [];
   for (const it of items) {
     const key = it.url.split("?")[0];
