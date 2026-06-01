@@ -182,8 +182,9 @@ Responda APENAS com JSON válido (sem markdown):
           }
         : { apoio: [], criticas: [], debates: [] };
 
-      // Coverage thresholds: 3+ distinct outlets AND 3+ publications
-      const lowCoverage = !(distinctOutlets >= 3 && publicationsCount >= 3);
+      // Coverage thresholds: at least 1 publication. Single-source events are still surfaced.
+      const lowCoverage = !(distinctOutlets >= 1 && publicationsCount >= 1);
+
 
       return {
         title: String(ev.title || "").trim().slice(0, 200),
