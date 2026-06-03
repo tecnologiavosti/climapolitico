@@ -141,17 +141,32 @@ Deno.serve(async (req) => {
   const upserts = [];
   for (const role of ROLES) {
     const top = topByRole[role];
-    if (!top) continue;
-    upserts.push({
-      role,
-      candidate_id: top.cand.id,
-      full_name: top.cand.full_name,
-      party: top.cand.party,
-      region: top.cand.region,
-      photo_url: top.photo,
-      mentions_count: top.mentions,
-      updated_at: new Date().toISOString(),
-    });
+    if (top) {
+      upserts.push({
+        role,
+        candidate_id: top.cand.id,
+        full_name: top.cand.full_name,
+        party: top.cand.party,
+        region: top.cand.region,
+        photo_url: top.photo,
+        mentions_count: top.mentions,
+        updated_at: new Date().toISOString(),
+      });
+    } else {
+      const fb = await fallbackFromWikipedia(role);
+      if (fb) {
+        upserts.push({
+          role,
+          candidate_id: null,
+          full_name: fb.full_name,
+          party: fb.party,
+          region: fb.region,
+          photo_url: fb.photo_url,
+          mentions_count: 0,
+          updated_at: new Date().toISOString(),
+        });
+      }
+    }
   }
 
   if (upserts.length > 0) {
