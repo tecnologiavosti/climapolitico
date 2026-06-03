@@ -76,8 +76,10 @@ async function fallbackFromWikipedia(role: Role): Promise<{
   region: string | null;
   photo_url: string | null;
 } | null> {
+  console.log(`[fallback] trying role=${role}`);
   for (const seed of FALLBACK_SEEDS[role]) {
     const wiki = await fetchWikipedia(seed);
+    console.log(`[fallback] seed=${seed} photo=${wiki.photo ? "yes" : "no"}`);
     if (wiki.photo) {
       return { full_name: seed, party: null, region: null, photo_url: wiki.photo };
     }
