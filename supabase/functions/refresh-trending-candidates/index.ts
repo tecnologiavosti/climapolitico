@@ -95,6 +95,7 @@ async function fallbackFromWikipedia(role: Role): Promise<{
     if (wiki.photo) {
       return { full_name: seed, party: null, region: null, photo_url: wiki.photo };
     }
+    await sleep(200);
   }
   return null;
 }
