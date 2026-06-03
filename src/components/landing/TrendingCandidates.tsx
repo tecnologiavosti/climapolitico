@@ -39,37 +39,33 @@ function initials(name: string) {
 }
 
 const Card = ({ item, role }: { item: TrendingItem; role: string }) => (
-  <div className="relative rounded-2xl bg-gradient-primary p-[1.5px] shadow-lg hover-glow transition-all duration-500 hover:-translate-y-1 group h-full">
-    <div className="relative rounded-2xl bg-card/70 backdrop-blur-md border border-border/40 p-5 h-full flex flex-col items-center text-center overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-[radial-gradient(circle_at_50%_0%,hsl(var(--primary)/0.18),transparent_60%)]" />
-      <span className="absolute top-3 left-3 z-10 rounded-full bg-background/70 backdrop-blur px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground border border-border/60">
+  <div className="group relative h-full rounded-xl bg-card border border-border/50 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(0,0,0,0.12)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_2px_4px_rgba(0,0,0,0.06),0_16px_40px_-16px_rgba(0,0,0,0.18)]">
+    <div className="flex h-full flex-col items-center px-6 pt-8 pb-7 text-center">
+      <span className="absolute top-3 right-3 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground/70">
         #{item.rank}
       </span>
-      <div className="relative mt-4 mb-4">
-        <div className="absolute -inset-1 rounded-full bg-gradient-primary blur-md opacity-50 group-hover:opacity-80 transition-opacity duration-500" />
-        <div className="relative h-24 w-24 rounded-full bg-gradient-primary p-[2.5px] transition-transform duration-500 group-hover:scale-105">
-          <div className="h-full w-full rounded-full bg-card p-[3px] overflow-hidden">
-            {item.photo_url ? (
-              <img
-                src={item.photo_url}
-                alt={item.full_name}
-                loading="lazy"
-                referrerPolicy="no-referrer"
-                className="h-full w-full rounded-full object-cover object-center transition-transform duration-500 group-hover:scale-110"
-              />
-            ) : (
-              <div className="h-full w-full rounded-full bg-gradient-primary flex items-center justify-center text-primary-foreground text-xl font-bold">
-                {initials(item.full_name) || <User className="h-8 w-8" />}
-              </div>
-            )}
-          </div>
+      <div className="relative mb-5">
+        <div className="h-28 w-28 rounded-full bg-background ring-1 ring-border/60 shadow-[0_4px_14px_-4px_rgba(0,0,0,0.18)] overflow-hidden">
+          {item.photo_url ? (
+            <img
+              src={item.photo_url}
+              alt={item.full_name}
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              className="h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-[1.04]"
+            />
+          ) : (
+            <div className="h-full w-full flex items-center justify-center bg-muted text-muted-foreground text-2xl font-semibold">
+              {initials(item.full_name) || <User className="h-8 w-8" />}
+            </div>
+          )}
         </div>
       </div>
-      <h3 className="text-base font-bold leading-tight text-foreground line-clamp-2 min-h-[2.5rem]">
+      <h3 className="text-[15px] font-semibold leading-snug tracking-tight text-foreground line-clamp-2 min-h-[2.6rem]">
         {item.full_name}
       </h3>
-      <p className="mt-1 text-xs font-medium text-primary">{role}</p>
-      <div className="mt-2 flex flex-col items-center gap-1 text-[11px] text-muted-foreground">
+      <p className="mt-1.5 text-[12px] font-medium text-muted-foreground">{role}</p>
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground/80">
         {item.party ? (
           <span className="inline-flex items-center gap-1">
             <Building2 className="h-3 w-3" />
@@ -88,9 +84,9 @@ const Card = ({ item, role }: { item: TrendingItem; role: string }) => (
 );
 
 const CardSkeleton = () => (
-  <div className="rounded-2xl bg-gradient-primary p-[1.5px] h-full">
-    <div className="rounded-2xl bg-card/70 backdrop-blur-md border border-border/40 p-5 h-full flex flex-col items-center">
-      <Skeleton className="mt-4 mb-4 h-24 w-24 rounded-full" />
+  <div className="h-full rounded-xl bg-card border border-border/50 shadow-sm">
+    <div className="flex h-full flex-col items-center px-6 pt-8 pb-7">
+      <Skeleton className="mb-5 h-28 w-28 rounded-full" />
       <Skeleton className="h-4 w-32 mb-2" />
       <Skeleton className="h-3 w-20 mb-2" />
       <Skeleton className="h-3 w-16" />
