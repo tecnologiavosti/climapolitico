@@ -126,6 +126,7 @@ Deno.serve(async (req) => {
       .gte("created_at", since);
     const wiki = await fetchWikipedia(c.full_name);
     enriched.push({ cand: c, mentions: count ?? 0, role: wiki.role, photo: wiki.photo });
+    await sleep(150); // throttle Wikipedia REST API
   }
 
   const topByRole: Record<Role, typeof enriched[number] | null> = {
