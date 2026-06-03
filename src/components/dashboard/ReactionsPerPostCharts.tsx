@@ -60,7 +60,7 @@ function ReactionsPerPostChartsImpl({
       {/* Pizza */}
       <div className="rounded-lg border p-3 sm:p-4 bg-card min-w-0 overflow-hidden">
         <h4 className="text-sm font-semibold mb-2">Distribuição de sentimento</h4>
-        <div className="h-72 sm:h-80 lg:h-72 w-full min-w-0">
+        <div className="min-h-[250px] h-[300px] md:h-[400px] lg:h-[400px] w-full min-w-0">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
               <Pie
@@ -88,7 +88,7 @@ function ReactionsPerPostChartsImpl({
       {/* Bar — engajamento por rede */}
       <div className="rounded-lg border p-3 sm:p-4 bg-card min-w-0 overflow-hidden">
         <h4 className="text-sm font-semibold mb-2">Engajamento por rede</h4>
-        <div className="h-72 sm:h-80 lg:h-72 w-full min-w-0">
+        <div className="min-h-[250px] h-[300px] md:h-[400px] lg:h-[400px] w-full min-w-0">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={engagementByNetwork} margin={{ top: 8, right: 8, bottom: 4, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
@@ -108,7 +108,7 @@ function ReactionsPerPostChartsImpl({
       {/* Stacked — sentimento por rede */}
       <div className="rounded-lg border p-3 sm:p-4 bg-card min-w-0 overflow-hidden">
         <h4 className="text-sm font-semibold mb-2">Sentimento por rede</h4>
-        <div className="h-56 sm:h-64 w-full min-w-0">
+        <div className="min-h-[250px] h-[300px] md:h-[400px] lg:h-[400px] w-full min-w-0">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={sentimentByNetwork} margin={{ top: 8, right: 8, bottom: 4, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
