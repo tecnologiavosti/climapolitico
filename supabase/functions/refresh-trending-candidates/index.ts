@@ -43,12 +43,56 @@ async function fetchWikipedia(fullName: string): Promise<{ photo: string | null;
     );
     if (!r.ok) return { photo: null, role: null };
     const j = await r.json();
-    const photo = j?.thumbnail?.source ?? j?.originalimage?.source ?? null;
+    const photo = j?.originalimage?.source ?? j?.thumbnail?.source ?? null;
     const extract = `${j?.description ?? ""} ${j?.extract ?? ""}`;
     const role = inferRoleFromText(extract);
     return { photo, role };
   } catch {
     return { photo: null, role: null };
+  }
+}
+
+// Fallback: when our monitored candidates do not cover a role,
+// query the public Wikipedia search API to find a real current
+// office-holder of that role and use their public photo + name.
+const FALLBACK_QUERY: Record<Role, string> = {
+  Presidente: "Presidente do Brasil",
+  Senador: "Senador da República do Brasil",
+  "Deputado Federal": "Deputado federal do Brasil",
+  "Deputado Estadual": "Deputado estadual do Brasil",
+  Prefeito: "Prefeito de capital do Brasil",
+};
+
+async function fallbackFromWikipedia(role: Role): Promise<{
+  full_name: string;
+  party: string | null;
+  region: string | null;
+  photo_url: string | null;
+} | null> {
+  try {
+    const searchUrl =
+      `https://pt.wikipedia.org/w/api.php?action=query&list=search&format=json&origin=*&srlimit=8&srsearch=` +
+      encodeURIComponent(FALLBACK_QUERY[role]);
+    const sr = await fetch(searchUrl, { headers: { "User-Agent": "ClimaPoliticoBot/1.0" } });
+    if (!sr.ok) return null;
+    const sj = await sr.json();
+    const hits: Array<{ title: string }> = sj?.query?.search ?? [];
+    for (const h of hits) {
+      const wiki = await fetchWikipedia(h.title);
+      if (wiki.role === role && wiki.photo) {
+        return { full_name: h.title, party: null, region: null, photo_url: wiki.photo };
+      }
+    }
+    // No exact role match — accept first hit with a photo as last resort.
+    for (const h of hits) {
+      const wiki = await fetchWikipedia(h.title);
+      if (wiki.photo) {
+        return { full_name: h.title, party: null, region: null, photo_url: wiki.photo };
+      }
+    }
+    return null;
+  } catch {
+    return null;
   }
 }
 
