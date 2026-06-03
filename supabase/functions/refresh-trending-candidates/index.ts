@@ -24,13 +24,13 @@ interface CandidateRow {
 
 function inferRoleFromText(text: string): Role | null {
   const t = text.toLowerCase();
-  // Order matters: most specific first.
-  if (/\bpresident[ea]\b.*\b(rep[uú]blica|brasil)\b/.test(t) || /\bex-?presidente\b/.test(t)) return "Presidente";
+  // Order matters: most specific role labels first; ignore "ex-presidente"
+  // or "filho do presidente" so we capture the candidate's own current role.
   if (/\bsenador[a]?\b/.test(t)) return "Senador";
   if (/\bdeputad[oa] federal\b/.test(t)) return "Deputado Federal";
   if (/\bdeputad[oa] estadual\b|\bdeputad[oa] distrital\b/.test(t)) return "Deputado Estadual";
   if (/\bprefeit[oa]\b/.test(t)) return "Prefeito";
-  // Loose fallbacks
+  if (/\bpresident[ea] (da rep[uú]blica|do brasil)\b/.test(t)) return "Presidente";
   if (/\bdeputad[oa]\b/.test(t)) return "Deputado Federal";
   return null;
 }
