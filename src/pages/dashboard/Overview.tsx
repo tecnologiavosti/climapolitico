@@ -18,7 +18,7 @@ import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { NetworkLegendWithTooltips } from "@/components/dashboard/NetworkLegendWithTooltips";
 import { isHiddenNetwork } from "@/lib/networkVisibility";
 import { ReactionsPerPost } from "@/components/dashboard/ReactionsPerPost";
-import { CandidatesComparisonPanel } from "@/components/dashboard/CandidatesComparisonPanel";
+
 import { ChartDebugFrame } from "@/components/dashboard/ChartDebugFrame";
 
 // Componentes temporariamente ocultos da Visão Geral (mantidos para uso futuro)
@@ -799,11 +799,6 @@ export default function Overview() {
 
       {/* Fase 6 — Reações por post */}
       <ReactionsPerPost candidateId={selectedCandidateId || undefined} />
-
-      {/* Fase 8 — Comparativo consolidado */}
-      {candidates && candidates.length > 0 && (
-        <CandidatesComparisonPanel candidates={candidates as any} />
-      )}
     </div>
   );
 }
