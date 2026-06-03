@@ -35,21 +35,69 @@ function inferRoleFromText(text: string): Role | null {
   return null;
 }
 
+const WIKI_HEADERS = {
+  "User-Agent": "ClimaPolitico/1.0 (https://climapolitico.lovable.app; admin@climapolitico.app)",
+  "Api-User-Agent": "ClimaPolitico/1.0 (https://climapolitico.lovable.app; admin@climapolitico.app)",
+  Accept: "application/json",
+};
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 async function fetchWikipedia(fullName: string): Promise<{ photo: string | null; role: Role | null }> {
   try {
     const r = await fetch(
       `https://pt.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(fullName)}`,
-      { headers: { "User-Agent": "ClimaPoliticoBot/1.0 (contact: clima@politico)" } },
+      { headers: WIKI_HEADERS },
     );
-    if (!r.ok) return { photo: null, role: null };
+    if (!r.ok) {
+      console.log(`[wiki] ${fullName} -> HTTP ${r.status}`);
+      return { photo: null, role: null };
+    }
     const j = await r.json();
-    const photo = j?.thumbnail?.source ?? j?.originalimage?.source ?? null;
+    const photo = j?.originalimage?.source ?? j?.thumbnail?.source ?? null;
     const extract = `${j?.description ?? ""} ${j?.extract ?? ""}`;
     const role = inferRoleFromText(extract);
     return { photo, role };
-  } catch {
+  } catch (e) {
+    console.log(`[wiki] ${fullName} -> error ${(e as Error).message}`);
     return { photo: null, role: null };
   }
+}
+
+// Fallback: when our monitored candidates do not cover a role,
+// query the public Wikipedia API to find a real current office-holder.
+// Seeds are real, currently-in-office Brazilian politicians used only as
+// search seeds — actual photo/name/role come from Wikipedia at runtime.
+const FALLBACK_SEEDS: Record<Role, string[]> = {
+  Presidente: ["Luiz Inácio Lula da Silva", "Jair Bolsonaro"],
+  Senador: ["Davi Alcolumbre", "Renan Calheiros", "Humberto Costa"],
+  "Deputado Federal": ["Arthur Lira", "Hugo Motta", "Lindbergh Farias"],
+  "Deputado Estadual": [
+    "André do Prado",
+    "Damares Moura",
+    "Carlos Giannazi",
+    "Marina Helou",
+    "Erika Hilton",
+  ],
+  Prefeito: ["Ricardo Nunes", "Eduardo Paes", "Bruno Reis"],
+};
+
+async function fallbackFromWikipedia(role: Role): Promise<{
+  full_name: string;
+  party: string | null;
+  region: string | null;
+  photo_url: string | null;
+} | null> {
+  console.log(`[fallback] trying role=${role}`);
+  for (const seed of FALLBACK_SEEDS[role]) {
+    const wiki = await fetchWikipedia(seed);
+    console.log(`[fallback] seed=${seed} photo=${wiki.photo ? "yes" : "no"}`);
+    if (wiki.photo) {
+      return { full_name: seed, party: null, region: null, photo_url: wiki.photo };
+    }
+    await sleep(200);
+  }
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -79,6 +127,7 @@ Deno.serve(async (req) => {
       .gte("created_at", since);
     const wiki = await fetchWikipedia(c.full_name);
     enriched.push({ cand: c, mentions: count ?? 0, role: wiki.role, photo: wiki.photo });
+    await sleep(150); // throttle Wikipedia REST API
   }
 
   const topByRole: Record<Role, typeof enriched[number] | null> = {
@@ -97,17 +146,32 @@ Deno.serve(async (req) => {
   const upserts = [];
   for (const role of ROLES) {
     const top = topByRole[role];
-    if (!top) continue;
-    upserts.push({
-      role,
-      candidate_id: top.cand.id,
-      full_name: top.cand.full_name,
-      party: top.cand.party,
-      region: top.cand.region,
-      photo_url: top.photo,
-      mentions_count: top.mentions,
-      updated_at: new Date().toISOString(),
-    });
+    if (top) {
+      upserts.push({
+        role,
+        candidate_id: top.cand.id,
+        full_name: top.cand.full_name,
+        party: top.cand.party,
+        region: top.cand.region,
+        photo_url: top.photo,
+        mentions_count: top.mentions,
+        updated_at: new Date().toISOString(),
+      });
+    } else {
+      const fb = await fallbackFromWikipedia(role);
+      if (fb) {
+        upserts.push({
+          role,
+          candidate_id: null,
+          full_name: fb.full_name,
+          party: fb.party,
+          region: fb.region,
+          photo_url: fb.photo_url,
+          mentions_count: 0,
+          updated_at: new Date().toISOString(),
+        });
+      }
+    }
   }
 
   if (upserts.length > 0) {
