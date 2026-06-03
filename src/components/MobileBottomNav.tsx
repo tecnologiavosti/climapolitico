@@ -43,6 +43,7 @@ type GridItem = { label: string; icon: any; to: string };
 
 const mainGrid: GridItem[] = [
   { label: "Visão Geral", icon: BarChart3, to: "/dashboard" },
+  { label: "Candidatos", icon: Users, to: "/dashboard/candidates" },
   { label: "Resumo IA", icon: FileText, to: "/dashboard/candidate-summary" },
   { label: "Rejeição", icon: ThumbsDown, to: "/dashboard/rejection-analysis" },
   { label: "Narrativa", icon: Sparkles, to: "/dashboard/narrative-recommendations" },
@@ -54,7 +55,6 @@ const mainGrid: GridItem[] = [
   { label: "Redes Sociais", icon: Network, to: "/dashboard/network-view" },
   { label: "Histórica IA", icon: GitCompareArrows, to: "/dashboard/historical-comparison" },
   { label: "Feeds", icon: Rss, to: "/dashboard/social-feeds" },
-  { label: "Candidatos", icon: Users, to: "/dashboard/candidates" },
   { label: "Catálogo", icon: BookUser, to: "/dashboard/candidates-catalog" },
   { label: "Analytics", icon: LineChart, to: "/dashboard/analytics-advanced" },
   { label: "Ranking", icon: Trophy, to: "/dashboard/ranking" },
