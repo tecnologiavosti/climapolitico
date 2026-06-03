@@ -15,6 +15,9 @@ const Index = () => {
       {/* Hero Section */}
       <HeroSection />
 
+      {/* Trending Candidates (public, dynamic) */}
+      <TrendingCandidates />
+
       {/* Social Proof Stats */}
       <SocialProof />
 
