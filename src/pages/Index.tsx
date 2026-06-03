@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { HeroSection } from "@/components/landing/HeroSection";
 import { SocialProof } from "@/components/landing/SocialProof";
 import { BentoFeatures } from "@/components/landing/BentoFeatures";
+import { TrendingCandidates } from "@/components/landing/TrendingCandidates";
 import { useNavigate } from "react-router-dom";
 
 const Index = () => {
@@ -13,6 +14,9 @@ const Index = () => {
     <div className="min-h-screen bg-gradient-secondary">
       {/* Hero Section */}
       <HeroSection />
+
+      {/* Trending Candidates (public, dynamic) */}
+      <TrendingCandidates />
 
       {/* Social Proof Stats */}
       <SocialProof />

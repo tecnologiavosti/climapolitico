@@ -2095,6 +2095,47 @@ export type Database = {
         }
         Relationships: []
       }
+      trending_candidates_cache: {
+        Row: {
+          candidate_id: string | null
+          full_name: string
+          mentions_count: number
+          party: string | null
+          photo_url: string | null
+          region: string | null
+          role: string
+          updated_at: string
+        }
+        Insert: {
+          candidate_id?: string | null
+          full_name: string
+          mentions_count?: number
+          party?: string | null
+          photo_url?: string | null
+          region?: string | null
+          role: string
+          updated_at?: string
+        }
+        Update: {
+          candidate_id?: string | null
+          full_name?: string
+          mentions_count?: number
+          party?: string | null
+          photo_url?: string | null
+          region?: string | null
+          role?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trending_candidates_cache_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       undecided_analyses: {
         Row: {
           ai_model_used: string | null
