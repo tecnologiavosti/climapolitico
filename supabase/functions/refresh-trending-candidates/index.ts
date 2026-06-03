@@ -1,6 +1,7 @@
-// Refreshes `trending_candidates_cache` with the most-searched candidate per role,
-// computed from real social_interactions volume in the last 7 days.
-// Photos are fetched from Wikipedia (pt-br summary endpoint). No mocked data.
+// Refreshes `trending_candidates_cache` with the most-searched candidate per role.
+// Volume = real social_interactions in the last 7 days.
+// Role + photo are inferred from the candidate's public Wikipedia (pt) summary,
+// so no AI credits are required. No mock data.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
@@ -10,7 +11,6 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
 const ROLES = ["Presidente", "Senador", "Deputado Federal", "Deputado Estadual", "Prefeito"] as const;
 type Role = (typeof ROLES)[number];
@@ -22,67 +22,33 @@ interface CandidateRow {
   region: string | null;
 }
 
-async function classifyRoles(
-  candidates: CandidateRow[],
-): Promise<Record<string, Role | null>> {
-  // Ask the AI gateway to classify each candidate into one of the 5 fixed roles.
-  const list = candidates
-    .map((c, i) => `${i + 1}. ${c.full_name}${c.party ? ` (${c.party})` : ""}${c.region ? ` - ${c.region}` : ""}`)
-    .join("\n");
-
-  const prompt = `Classifique cada político brasileiro abaixo em exatamente UM dos cargos: Presidente, Senador, Deputado Federal, Deputado Estadual, Prefeito.
-Use o cargo atual ou mais recente conhecido publicamente. Se não tiver certeza, escolha o cargo mais provável.
-Responda APENAS um JSON no formato {"results":[{"i":1,"role":"Senador"}, ...]}.
-
-Lista:
-${list}`;
-
-  const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-    }),
-  });
-
-  const out: Record<string, Role | null> = {};
-  if (!resp.ok) {
-    console.error("[classifyRoles] AI error", resp.status, await resp.text());
-    return out;
-  }
-  try {
-    const data = await resp.json();
-    const content = data.choices?.[0]?.message?.content ?? "{}";
-    const parsed = JSON.parse(content);
-    for (const item of parsed.results ?? []) {
-      const idx = Number(item.i) - 1;
-      const role = item.role as string;
-      if (candidates[idx] && (ROLES as readonly string[]).includes(role)) {
-        out[candidates[idx].id] = role as Role;
-      }
-    }
-  } catch (e) {
-    console.error("[classifyRoles] parse error", e);
-  }
-  return out;
+function inferRoleFromText(text: string): Role | null {
+  const t = text.toLowerCase();
+  // Order matters: most specific first.
+  if (/\bpresident[ea]\b.*\b(rep[uú]blica|brasil)\b/.test(t) || /\bex-?presidente\b/.test(t)) return "Presidente";
+  if (/\bsenador[a]?\b/.test(t)) return "Senador";
+  if (/\bdeputad[oa] federal\b/.test(t)) return "Deputado Federal";
+  if (/\bdeputad[oa] estadual\b|\bdeputad[oa] distrital\b/.test(t)) return "Deputado Estadual";
+  if (/\bprefeit[oa]\b/.test(t)) return "Prefeito";
+  // Loose fallbacks
+  if (/\bdeputad[oa]\b/.test(t)) return "Deputado Federal";
+  return null;
 }
 
-async function fetchPhoto(fullName: string): Promise<string | null> {
+async function fetchWikipedia(fullName: string): Promise<{ photo: string | null; role: Role | null }> {
   try {
     const r = await fetch(
       `https://pt.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(fullName)}`,
-      { headers: { "User-Agent": "ClimaPoliticoBot/1.0" } },
+      { headers: { "User-Agent": "ClimaPoliticoBot/1.0 (contact: clima@politico)" } },
     );
-    if (!r.ok) return null;
+    if (!r.ok) return { photo: null, role: null };
     const j = await r.json();
-    return j?.thumbnail?.source ?? j?.originalimage?.source ?? null;
+    const photo = j?.thumbnail?.source ?? j?.originalimage?.source ?? null;
+    const extract = `${j?.description ?? ""} ${j?.extract ?? ""}`;
+    const role = inferRoleFromText(extract);
+    return { photo, role };
   } catch {
-    return null;
+    return { photo: null, role: null };
   }
 }
 
@@ -91,7 +57,6 @@ Deno.serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
-  // 1. Pull all candidates (cross-tenant — public ranking)
   const { data: candidates, error: candErr } = await sb
     .from("candidates")
     .select("id, full_name, party, region")
@@ -103,52 +68,43 @@ Deno.serve(async (req) => {
     });
   }
 
-  // 2. Aggregate interaction volume per candidate over the last 7 days
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const counts: Record<string, number> = {};
-  for (const c of candidates) {
+  const enriched: Array<{ cand: CandidateRow; mentions: number; role: Role | null; photo: string | null }> = [];
+
+  for (const c of candidates as CandidateRow[]) {
     const { count } = await sb
       .from("social_interactions")
       .select("id", { count: "exact", head: true })
       .eq("candidate_id", c.id)
       .gte("created_at", since);
-    counts[c.id] = count ?? 0;
+    const wiki = await fetchWikipedia(c.full_name);
+    enriched.push({ cand: c, mentions: count ?? 0, role: wiki.role, photo: wiki.photo });
   }
 
-  // 3. Classify each candidate's role via AI
-  const roleMap = await classifyRoles(candidates as CandidateRow[]);
-
-  // 4. Pick top 1 per role
-  const topByRole: Record<Role, { cand: CandidateRow; mentions: number } | null> = {
+  const topByRole: Record<Role, typeof enriched[number] | null> = {
     Presidente: null,
     Senador: null,
     "Deputado Federal": null,
     "Deputado Estadual": null,
     Prefeito: null,
   };
-  for (const c of candidates as CandidateRow[]) {
-    const role = roleMap[c.id];
-    if (!role) continue;
-    const mentions = counts[c.id] ?? 0;
-    const current = topByRole[role];
-    if (!current || mentions > current.mentions) {
-      topByRole[role] = { cand: c, mentions };
-    }
+  for (const e of enriched) {
+    if (!e.role) continue;
+    const cur = topByRole[e.role];
+    if (!cur || e.mentions > cur.mentions) topByRole[e.role] = e;
   }
 
-  // 5. Fetch photos + upsert cache
   const upserts = [];
   for (const role of ROLES) {
     const top = topByRole[role];
     if (!top) continue;
-    const photo_url = await fetchPhoto(top.cand.full_name);
     upserts.push({
       role,
       candidate_id: top.cand.id,
       full_name: top.cand.full_name,
       party: top.cand.party,
       region: top.cand.region,
-      photo_url,
+      photo_url: top.photo,
       mentions_count: top.mentions,
       updated_at: new Date().toISOString(),
     });
