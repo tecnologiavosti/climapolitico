@@ -156,9 +156,10 @@ All colors MUST be HSL.
     .p-4 { padding: 0.75rem !important; }
     /* Não quebra palavras no meio — só onde há espaço/hífen natural */
     * { word-break: normal !important; overflow-wrap: break-word !important; }
-    /* Ícones decorativos dos StatCards menores no mobile */
+    /* Ícones decorativos dos StatCards menores no mobile.
+       Importante: só afeta SVG direto do container para não comprimir SVGs internos do Recharts. */
     .p-3.rounded-lg { padding: 0.5rem !important; }
-    .p-3.rounded-lg svg { width: 1rem !important; height: 1rem !important; }
+    .p-3.rounded-lg > svg { width: 1rem !important; height: 1rem !important; }
     /* Recharts: força responsividade total dentro do container */
     .recharts-responsive-container { width: 100% !important; max-width: 100% !important; }
     .recharts-wrapper, .recharts-surface { max-width: 100% !important; }

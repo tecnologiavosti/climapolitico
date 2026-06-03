@@ -19,6 +19,7 @@ import { NetworkLegendWithTooltips } from "@/components/dashboard/NetworkLegendW
 import { isHiddenNetwork } from "@/lib/networkVisibility";
 import { ReactionsPerPost } from "@/components/dashboard/ReactionsPerPost";
 import { CandidatesComparisonPanel } from "@/components/dashboard/CandidatesComparisonPanel";
+import { ChartDebugFrame } from "@/components/dashboard/ChartDebugFrame";
 
 // Componentes temporariamente ocultos da Visão Geral (mantidos para uso futuro)
 // import { AIModelsPanel } from "@/components/dashboard/AIModelsPanel";
@@ -577,24 +578,26 @@ export default function Overview() {
               <p>Nenhuma análise nos últimos 7 dias</p>
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={sentimentData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="name" className="text-muted-foreground" />
-                <YAxis className="text-muted-foreground" />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'hsl(var(--card))', 
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px'
-                  }}
-                />
-                <Legend />
-                <Line type="monotone" dataKey="positive" stroke="hsl(var(--success))" strokeWidth={2} name="Positivo" />
-                <Line type="monotone" dataKey="negative" stroke="hsl(var(--destructive))" strokeWidth={2} name="Negativo" />
-                <Line type="monotone" dataKey="neutral" stroke="hsl(var(--warning))" strokeWidth={2} name="Neutro" />
-              </LineChart>
-            </ResponsiveContainer>
+            <ChartDebugFrame label="Visão geral · Sentimento ao longo do tempo">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={sentimentData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="name" className="text-muted-foreground" />
+                  <YAxis className="text-muted-foreground" />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--card))', 
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px'
+                    }}
+                  />
+                  <Legend />
+                  <Line type="monotone" dataKey="positive" stroke="hsl(var(--success))" strokeWidth={2} name="Positivo" />
+                  <Line type="monotone" dataKey="negative" stroke="hsl(var(--destructive))" strokeWidth={2} name="Negativo" />
+                  <Line type="monotone" dataKey="neutral" stroke="hsl(var(--warning))" strokeWidth={2} name="Neutro" />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartDebugFrame>
           )}
         </Card>
 
@@ -614,16 +617,17 @@ export default function Overview() {
             </div>
           ) : (
             <>
-              <ResponsiveContainer width="100%" height={280}>
-                <PieChart>
+              <ChartDebugFrame label="Visão geral · Distribuição por rede social">
+                <ResponsiveContainer width="100%" height="100%">
+                <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
                   <Pie
                     data={networkData}
                     cx="50%"
-                    cy="45%"
+                    cy="50%"
                     labelLine={false}
                     label={false}
-                    outerRadius={85}
-                    fill="#8884d8"
+                    outerRadius="80%"
+                    fill="hsl(var(--primary))"
                     dataKey="value"
                   >
                     {networkData.map((entry, index) => (
@@ -644,6 +648,7 @@ export default function Overview() {
                   />
                 </PieChart>
               </ResponsiveContainer>
+              </ChartDebugFrame>
               <NetworkLegendWithTooltips data={networkData} />
             </>
           )}
@@ -665,24 +670,26 @@ export default function Overview() {
             <p>Nenhum candidato cadastrado ainda</p>
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={candidateData}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-              <XAxis dataKey="name" className="text-muted-foreground" />
-              <YAxis yAxisId="left" orientation="left" className="text-muted-foreground" />
-              <YAxis yAxisId="right" orientation="right" className="text-muted-foreground" />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: 'hsl(var(--card))', 
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '8px'
-                }}
-              />
-              <Legend />
-              <Bar yAxisId="left" dataKey="mentions" fill="hsl(var(--primary))" name="Menções" />
-              <Bar yAxisId="right" dataKey="sentiment" fill="hsl(var(--success))" name="Sentimento %" />
-            </BarChart>
-          </ResponsiveContainer>
+          <ChartDebugFrame label="Visão geral · Performance dos candidatos">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={candidateData}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis dataKey="name" className="text-muted-foreground" />
+                <YAxis yAxisId="left" orientation="left" className="text-muted-foreground" />
+                <YAxis yAxisId="right" orientation="right" className="text-muted-foreground" />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: 'hsl(var(--card))', 
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px'
+                  }}
+                />
+                <Legend />
+                <Bar yAxisId="left" dataKey="mentions" fill="hsl(var(--primary))" name="Menções" />
+                <Bar yAxisId="right" dataKey="sentiment" fill="hsl(var(--success))" name="Sentimento %" />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartDebugFrame>
         )}
       </Card>
 
