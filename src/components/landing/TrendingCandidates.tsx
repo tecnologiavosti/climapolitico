@@ -125,8 +125,8 @@ const RoleCarousel = ({
             </CarouselItem>
           ))}
         </CarouselContent>
-        <CarouselPrevious className="hidden md:flex -left-3 bg-card/80 backdrop-blur border-border/60" />
-        <CarouselNext className="hidden md:flex -right-3 bg-card/80 backdrop-blur border-border/60" />
+        <CarouselPrevious className="hidden md:flex -left-4 h-9 w-9 bg-card border-border/60 text-muted-foreground hover:text-foreground shadow-sm" />
+        <CarouselNext className="hidden md:flex -right-4 h-9 w-9 bg-card border-border/60 text-muted-foreground hover:text-foreground shadow-sm" />
       </Carousel>
     </div>
   );
