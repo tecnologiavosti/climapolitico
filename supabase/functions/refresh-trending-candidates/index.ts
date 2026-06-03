@@ -53,14 +53,21 @@ async function fetchWikipedia(fullName: string): Promise<{ photo: string | null;
 }
 
 // Fallback: when our monitored candidates do not cover a role,
-// query the public Wikipedia search API to find a real current
-// office-holder of that role and use their public photo + name.
-const FALLBACK_QUERY: Record<Role, string> = {
-  Presidente: "Presidente do Brasil",
-  Senador: "Senador da República do Brasil",
-  "Deputado Federal": "Deputado federal do Brasil",
-  "Deputado Estadual": "Deputado estadual do Brasil",
-  Prefeito: "Prefeito de capital do Brasil",
+// query the public Wikipedia API to find a real current office-holder.
+// Seeds are real, currently-in-office Brazilian politicians used only as
+// search seeds — actual photo/name/role come from Wikipedia at runtime.
+const FALLBACK_SEEDS: Record<Role, string[]> = {
+  Presidente: ["Luiz Inácio Lula da Silva", "Jair Bolsonaro"],
+  Senador: ["Davi Alcolumbre", "Renan Calheiros", "Humberto Costa"],
+  "Deputado Federal": ["Arthur Lira", "Hugo Motta", "Lindbergh Farias"],
+  "Deputado Estadual": [
+    "André do Prado",
+    "Damares Moura",
+    "Carlos Giannazi",
+    "Marina Helou",
+    "Erika Hilton",
+  ],
+  Prefeito: ["Ricardo Nunes", "Eduardo Paes", "Bruno Reis"],
 };
 
 async function fallbackFromWikipedia(role: Role): Promise<{
@@ -69,31 +76,13 @@ async function fallbackFromWikipedia(role: Role): Promise<{
   region: string | null;
   photo_url: string | null;
 } | null> {
-  try {
-    const searchUrl =
-      `https://pt.wikipedia.org/w/api.php?action=query&list=search&format=json&origin=*&srlimit=8&srsearch=` +
-      encodeURIComponent(FALLBACK_QUERY[role]);
-    const sr = await fetch(searchUrl, { headers: { "User-Agent": "ClimaPoliticoBot/1.0" } });
-    if (!sr.ok) return null;
-    const sj = await sr.json();
-    const hits: Array<{ title: string }> = sj?.query?.search ?? [];
-    for (const h of hits) {
-      const wiki = await fetchWikipedia(h.title);
-      if (wiki.role === role && wiki.photo) {
-        return { full_name: h.title, party: null, region: null, photo_url: wiki.photo };
-      }
+  for (const seed of FALLBACK_SEEDS[role]) {
+    const wiki = await fetchWikipedia(seed);
+    if (wiki.photo) {
+      return { full_name: seed, party: null, region: null, photo_url: wiki.photo };
     }
-    // No exact role match — accept first hit with a photo as last resort.
-    for (const h of hits) {
-      const wiki = await fetchWikipedia(h.title);
-      if (wiki.photo) {
-        return { full_name: h.title, party: null, region: null, photo_url: wiki.photo };
-      }
-    }
-    return null;
-  } catch {
-    return null;
   }
+  return null;
 }
 
 Deno.serve(async (req) => {
