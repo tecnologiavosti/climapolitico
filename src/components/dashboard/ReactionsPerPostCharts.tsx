@@ -98,7 +98,7 @@ function ReactionsPerPostChartsImpl({
               <Legend iconSize={10} wrapperStyle={{ fontSize: 12, paddingTop: 4 }} />
               <Bar dataKey="curtidas" stackId="e" fill="hsl(var(--primary))" />
               <Bar dataKey="comentarios_respostas" stackId="e" name="comentários/respostas" fill="hsl(var(--accent))" />
-              <Bar dataKey="compartilhamentos" stackId="e" stackId="e" fill="hsl(var(--secondary-foreground))" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="compartilhamentos" stackId="e" fill="hsl(var(--secondary-foreground))" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
