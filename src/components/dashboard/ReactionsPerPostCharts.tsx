@@ -4,6 +4,7 @@ import {
   XAxis, YAxis, CartesianGrid,
   BarChart, Bar,
 } from "recharts";
+import { ChartDebugFrame } from "./ChartDebugFrame";
 import type { ActivityHourWeek, EngagementByNetwork, SentimentByNetwork } from "./ReactionsPerPost";
 
 interface Props {
@@ -60,7 +61,7 @@ function ReactionsPerPostChartsImpl({
       {/* Pizza */}
       <div className="rounded-lg border p-3 sm:p-4 bg-card min-w-0 overflow-hidden">
         <h4 className="text-sm font-semibold mb-2">Distribuição de sentimento</h4>
-        <div className="min-h-[250px] h-[300px] md:h-[400px] lg:h-[400px] w-full min-w-0">
+        <ChartDebugFrame label="Reações por post · Distribuição de sentimento">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
               <Pie
@@ -82,13 +83,13 @@ function ReactionsPerPostChartsImpl({
               />
             </PieChart>
           </ResponsiveContainer>
-        </div>
+        </ChartDebugFrame>
       </div>
 
       {/* Bar — engajamento por rede */}
       <div className="rounded-lg border p-3 sm:p-4 bg-card min-w-0 overflow-hidden">
         <h4 className="text-sm font-semibold mb-2">Engajamento por rede</h4>
-        <div className="min-h-[250px] h-[300px] md:h-[400px] lg:h-[400px] w-full min-w-0">
+        <ChartDebugFrame label="Reações por post · Engajamento por rede">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={engagementByNetwork} margin={{ top: 8, right: 8, bottom: 4, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
@@ -101,14 +102,14 @@ function ReactionsPerPostChartsImpl({
               <Bar dataKey="compartilhamentos" stackId="e" fill="hsl(var(--secondary-foreground))" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
-        </div>
+        </ChartDebugFrame>
       </div>
 
 
       {/* Stacked — sentimento por rede */}
       <div className="rounded-lg border p-3 sm:p-4 bg-card min-w-0 overflow-hidden">
         <h4 className="text-sm font-semibold mb-2">Sentimento por rede</h4>
-        <div className="min-h-[250px] h-[300px] md:h-[400px] lg:h-[400px] w-full min-w-0">
+        <ChartDebugFrame label="Reações por post · Sentimento por rede">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={sentimentByNetwork} margin={{ top: 8, right: 8, bottom: 4, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
@@ -122,7 +123,7 @@ function ReactionsPerPostChartsImpl({
               <Bar dataKey="sem_classificacao" stackId="s" name="sem classificação" fill={SENT_COLORS.pending} />
             </BarChart>
           </ResponsiveContainer>
-        </div>
+        </ChartDebugFrame>
       </div>
 
       {/* Heatmap — dia da semana × hora */}
