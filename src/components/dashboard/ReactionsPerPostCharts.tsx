@@ -60,21 +60,26 @@ function ReactionsPerPostChartsImpl({
       {/* Pizza */}
       <div className="rounded-lg border p-3 sm:p-4 bg-card min-w-0 overflow-hidden">
         <h4 className="text-sm font-semibold mb-2">Distribuição de sentimento</h4>
-        <div className="h-56 sm:h-64 w-full min-w-0">
+        <div className="h-72 sm:h-80 lg:h-72 w-full min-w-0">
           <ResponsiveContainer width="100%" height="100%">
-            <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+            <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
               <Pie
                 data={pieData}
                 dataKey="value"
                 nameKey="name"
-                outerRadius="75%"
+                outerRadius="80%"
                 label={(p: any) => `${Math.round((p.percent || 0) * 100)}%`}
                 labelLine={false}
               >
                 {pieData.map((d) => <Cell key={d.key} fill={SENT_COLORS[d.key as keyof typeof SENT_COLORS]} />)}
               </Pie>
               <Tooltip formatter={(v: number) => v.toLocaleString("pt-BR")} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Legend
+                verticalAlign="bottom"
+                height={36}
+                iconSize={10}
+                wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
+              />
             </PieChart>
           </ResponsiveContainer>
         </div>
@@ -83,21 +88,22 @@ function ReactionsPerPostChartsImpl({
       {/* Bar — engajamento por rede */}
       <div className="rounded-lg border p-3 sm:p-4 bg-card min-w-0 overflow-hidden">
         <h4 className="text-sm font-semibold mb-2">Engajamento por rede</h4>
-        <div className="h-56 sm:h-64 w-full min-w-0">
+        <div className="h-72 sm:h-80 lg:h-72 w-full min-w-0">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={engagementByNetwork} margin={{ top: 8, right: 8, bottom: 4, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-              <XAxis dataKey="rede" tick={{ fontSize: 10 }} interval={0} angle={-15} textAnchor="end" height={42} />
-              <YAxis tick={{ fontSize: 10 }} width={36} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v} />
+              <XAxis dataKey="rede" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={56} />
+              <YAxis tick={{ fontSize: 11 }} width={40} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v} />
               <Tooltip formatter={(v: number) => v.toLocaleString("pt-BR")} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Legend iconSize={10} wrapperStyle={{ fontSize: 12, paddingTop: 4 }} />
               <Bar dataKey="curtidas" stackId="e" fill="hsl(var(--primary))" />
               <Bar dataKey="comentarios_respostas" stackId="e" name="comentários/respostas" fill="hsl(var(--accent))" />
-              <Bar dataKey="compartilhamentos" stackId="e" fill="hsl(var(--secondary-foreground))" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="compartilhamentos" stackId="e" stackId="e" fill="hsl(var(--secondary-foreground))" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
+
 
       {/* Stacked — sentimento por rede */}
       <div className="rounded-lg border p-3 sm:p-4 bg-card min-w-0 overflow-hidden">
