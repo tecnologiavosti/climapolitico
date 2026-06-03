@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingUp, MapPin, User } from "lucide-react";
+import { TrendingUp, MapPin, User, Building2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 type TrendingItem = {
@@ -15,7 +13,13 @@ type TrendingItem = {
   mentions_count: number;
 };
 
-const ROLE_ORDER = ["Presidente", "Senador", "Deputado Federal", "Deputado Estadual", "Prefeito"];
+const ROLE_ORDER = [
+  "Presidente",
+  "Senador",
+  "Deputado Federal",
+  "Deputado Estadual",
+  "Prefeito",
+];
 
 function initials(name: string) {
   return name
@@ -26,25 +30,70 @@ function initials(name: string) {
     .join("");
 }
 
+const CardShell = ({
+  role,
+  delay,
+  children,
+}: {
+  role: string;
+  delay: number;
+  children: React.ReactNode;
+}) => (
+  <div
+    className="relative rounded-2xl bg-gradient-primary p-[1.5px] shadow-lg hover-glow transition-all duration-500 hover:-translate-y-1 group animate-fade-in-up"
+    style={{ animationDelay: `${delay}ms` }}
+  >
+    <div className="relative rounded-2xl bg-card/70 backdrop-blur-md border border-border/40 p-6 h-full flex flex-col items-center text-center overflow-hidden">
+      {/* subtle radial glow */}
+      <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-[radial-gradient(circle_at_50%_0%,hsl(var(--primary)/0.15),transparent_60%)]" />
+      <span className="absolute top-3 left-3 z-10 inline-flex items-center gap-1 rounded-full bg-background/70 backdrop-blur px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground border border-border/60">
+        {role}
+      </span>
+      {children}
+    </div>
+  </div>
+);
+
+const Avatar = ({ src, name }: { src: string | null; name: string }) => (
+  <div className="relative mt-4 mb-5">
+    <div className="absolute -inset-1 rounded-full bg-gradient-primary blur-md opacity-50 group-hover:opacity-80 transition-opacity duration-500" />
+    <div className="relative h-28 w-28 rounded-full bg-gradient-primary p-[2.5px] transition-transform duration-500 group-hover:scale-105">
+      <div className="h-full w-full rounded-full bg-card p-[3px] overflow-hidden">
+        {src ? (
+          <img
+            src={src}
+            alt={name}
+            loading="lazy"
+            className="h-full w-full rounded-full object-cover object-center transition-transform duration-500 group-hover:scale-110"
+          />
+        ) : (
+          <div className="h-full w-full rounded-full bg-gradient-primary flex items-center justify-center text-primary-foreground text-2xl font-bold">
+            {initials(name) || <User className="h-10 w-10" />}
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+);
+
 export const TrendingCandidates = () => {
   const [items, setItems] = useState<TrendingItem[] | null>(null);
 
   useEffect(() => {
     let active = true;
-
     const load = async () => {
       const { data } = await supabase
         .from("trending_candidates_cache")
         .select("role, full_name, party, region, photo_url, mentions_count");
       if (!active) return;
-      const sorted = (data ?? []).slice().sort(
-        (a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role),
+      const byRole = new Map<string, TrendingItem>(
+        (data ?? []).map((d) => [d.role, d as TrendingItem]),
       );
-      setItems(sorted as TrendingItem[]);
+      // Always render the 5 roles in fixed order; missing ones become skeletons.
+      const ordered = ROLE_ORDER.map((r) => byRole.get(r)).filter(Boolean) as TrendingItem[];
+      setItems(ordered);
     };
-
     load();
-    // Pull updates every 5 min while the page is open
     const id = setInterval(load, 5 * 60 * 1000);
     return () => {
       active = false;
@@ -52,9 +101,17 @@ export const TrendingCandidates = () => {
     };
   }, []);
 
+  const displayItems: (TrendingItem | { role: string; placeholder: true })[] =
+    items === null
+      ? ROLE_ORDER.map((role) => ({ role, placeholder: true as const }))
+      : ROLE_ORDER.map(
+          (role) =>
+            items.find((i) => i.role === role) ?? { role, placeholder: true as const },
+        );
+
   return (
     <section className="container mx-auto px-4 py-16 md:py-24">
-      <div className="text-center mb-10 md:mb-12 animate-fade-in-up">
+      <div className="text-center mb-10 md:mb-14 animate-fade-in-up">
         <Badge variant="secondary" className="mb-4">
           <TrendingUp className="mr-1 h-3 w-3" />
           Atualizado em tempo real
@@ -67,52 +124,42 @@ export const TrendingCandidates = () => {
         </p>
       </div>
 
-      <div className="max-w-md mx-auto flex flex-col gap-5">
-        {items === null
-          ? ROLE_ORDER.map((r) => (
-              <Card key={r} className="p-5 flex items-center gap-4">
-                <Skeleton className="h-20 w-20 rounded-full shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-5 w-40" />
-                  <Skeleton className="h-3 w-32" />
-                </div>
-              </Card>
-            ))
-          : items.length === 0
-            ? (
-              <Card className="p-8 text-center text-muted-foreground">
-                Coletando dados públicos. Volte em alguns minutos.
-              </Card>
-            )
-            : items.map((c, idx) => (
-                <Card
-                  key={c.role}
-                  className="p-5 flex items-center gap-4 hover-lift hover-glow transition-all duration-300 border-2 animate-fade-in-up"
-                  style={{ animationDelay: `${idx * 80}ms` }}
-                >
-                  <Avatar className="h-20 w-20 shrink-0 ring-2 ring-primary/30">
-                    {c.photo_url ? <AvatarImage src={c.photo_url} alt={c.full_name} /> : null}
-                    <AvatarFallback className="bg-gradient-primary text-primary-foreground text-lg font-semibold">
-                      {initials(c.full_name) || <User className="h-8 w-8" />}
-                    </AvatarFallback>
-                  </Avatar>
-
-                  <div className="flex-1 min-w-0">
-                    <Badge className="mb-1.5 bg-gradient-primary text-primary-foreground">{c.role}</Badge>
-                    <h3 className="text-lg font-bold leading-tight truncate">{c.full_name}</h3>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-sm text-muted-foreground">
-                      {c.party ? <span className="font-medium">{c.party}</span> : null}
-                      {c.region ? (
-                        <span className="flex items-center gap-1">
-                          <MapPin className="h-3 w-3" />
-                          {c.region}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                </Card>
-              ))}
+      <div className="grid gap-5 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 max-w-7xl mx-auto">
+        {displayItems.map((entry, idx) => {
+          if ("placeholder" in entry) {
+            return (
+              <CardShell key={entry.role} role={entry.role} delay={idx * 80}>
+                <Skeleton className="mt-4 mb-5 h-28 w-28 rounded-full" />
+                <Skeleton className="h-5 w-32 mb-2" />
+                <Skeleton className="h-3 w-20 mb-1" />
+                <Skeleton className="h-3 w-16" />
+              </CardShell>
+            );
+          }
+          return (
+            <CardShell key={entry.role} role={entry.role} delay={idx * 80}>
+              <Avatar src={entry.photo_url} name={entry.full_name} />
+              <h3 className="text-lg font-bold leading-tight text-foreground line-clamp-2">
+                {entry.full_name}
+              </h3>
+              <p className="mt-1 text-sm font-medium text-primary">{entry.role}</p>
+              <div className="mt-3 flex flex-col items-center gap-1.5 text-xs text-muted-foreground">
+                {entry.party ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Building2 className="h-3 w-3" />
+                    {entry.party}
+                  </span>
+                ) : null}
+                {entry.region ? (
+                  <span className="inline-flex items-center gap-1">
+                    <MapPin className="h-3 w-3" />
+                    {entry.region}
+                  </span>
+                ) : null}
+              </div>
+            </CardShell>
+          );
+        })}
       </div>
     </section>
   );
