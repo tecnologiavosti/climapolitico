@@ -59,7 +59,7 @@ function ReactionsPerPostChartsImpl({
   return (
     <div className="grid gap-4 sm:gap-6 lg:grid-cols-2 w-full min-w-0">
       {/* Pizza */}
-      <div className="rounded-lg border p-3 sm:p-4 bg-card min-w-0 overflow-hidden">
+      <div className="rounded-lg border p-3 sm:p-4 bg-card min-w-0">
         <h4 className="text-sm font-semibold mb-2">Distribuição de sentimento</h4>
         <ChartDebugFrame label="Reações por post · Distribuição de sentimento">
           <ResponsiveContainer width="100%" height="100%">
@@ -87,7 +87,7 @@ function ReactionsPerPostChartsImpl({
       </div>
 
       {/* Bar — engajamento por rede */}
-      <div className="rounded-lg border p-3 sm:p-4 bg-card min-w-0 overflow-hidden">
+      <div className="rounded-lg border p-3 sm:p-4 bg-card min-w-0">
         <h4 className="text-sm font-semibold mb-2">Engajamento por rede</h4>
         <ChartDebugFrame label="Reações por post · Engajamento por rede">
           <ResponsiveContainer width="100%" height="100%">
@@ -107,7 +107,7 @@ function ReactionsPerPostChartsImpl({
 
 
       {/* Stacked — sentimento por rede */}
-      <div className="rounded-lg border p-3 sm:p-4 bg-card min-w-0 overflow-hidden">
+      <div className="rounded-lg border p-3 sm:p-4 bg-card min-w-0">
         <h4 className="text-sm font-semibold mb-2">Sentimento por rede</h4>
         <ChartDebugFrame label="Reações por post · Sentimento por rede">
           <ResponsiveContainer width="100%" height="100%">
