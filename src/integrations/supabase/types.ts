@@ -2102,8 +2102,10 @@ export type Database = {
           mentions_count: number
           party: string | null
           photo_url: string | null
+          rank: number
           region: string | null
           role: string
+          search_score: number
           updated_at: string
         }
         Insert: {
@@ -2112,8 +2114,10 @@ export type Database = {
           mentions_count?: number
           party?: string | null
           photo_url?: string | null
+          rank?: number
           region?: string | null
           role: string
+          search_score?: number
           updated_at?: string
         }
         Update: {
@@ -2122,8 +2126,10 @@ export type Database = {
           mentions_count?: number
           party?: string | null
           photo_url?: string | null
+          rank?: number
           region?: string | null
           role?: string
+          search_score?: number
           updated_at?: string
         }
         Relationships: [
