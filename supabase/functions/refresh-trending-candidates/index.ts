@@ -35,19 +35,31 @@ function inferRoleFromText(text: string): Role | null {
   return null;
 }
 
+const WIKI_HEADERS = {
+  "User-Agent": "ClimaPolitico/1.0 (https://climapolitico.lovable.app; admin@climapolitico.app)",
+  "Api-User-Agent": "ClimaPolitico/1.0 (https://climapolitico.lovable.app; admin@climapolitico.app)",
+  Accept: "application/json",
+};
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 async function fetchWikipedia(fullName: string): Promise<{ photo: string | null; role: Role | null }> {
   try {
     const r = await fetch(
       `https://pt.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(fullName)}`,
-      { headers: { "User-Agent": "ClimaPoliticoBot/1.0 (contact: clima@politico)" } },
+      { headers: WIKI_HEADERS },
     );
-    if (!r.ok) return { photo: null, role: null };
+    if (!r.ok) {
+      console.log(`[wiki] ${fullName} -> HTTP ${r.status}`);
+      return { photo: null, role: null };
+    }
     const j = await r.json();
     const photo = j?.originalimage?.source ?? j?.thumbnail?.source ?? null;
     const extract = `${j?.description ?? ""} ${j?.extract ?? ""}`;
     const role = inferRoleFromText(extract);
     return { photo, role };
-  } catch {
+  } catch (e) {
+    console.log(`[wiki] ${fullName} -> error ${(e as Error).message}`);
     return { photo: null, role: null };
   }
 }
