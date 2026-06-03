@@ -52,6 +52,7 @@ import { HelpTooltip } from "@/components/ui/help-tooltip";
 // Módulos ativos no menu principal
 const mainItems = [
   { title: "Visão Geral", url: "/dashboard", icon: BarChart3, tip: "Tela inicial. Mostra um resumão de como seus candidatos estão indo nas redes." },
+  { title: "Candidatos", url: "/dashboard/candidates", icon: Users, tip: "Onde você adiciona, remove e cuida dos candidatos que está acompanhando." },
   { title: "Resumo Inteligente", url: "/dashboard/candidate-summary", icon: FileText, tip: "A IA lê tudo que falaram do seu candidato e te entrega um resumo pronto." },
   { title: "Análise de Rejeição", url: "/dashboard/rejection-analysis", icon: ThumbsDown, tip: "Mostra por que as pessoas estão criticando seu candidato." },
   { title: "Recomendações de Narrativa", url: "/dashboard/narrative-recommendations", icon: Sparkles, tip: "Dicas de fala e postura para o seu candidato, com base no que o povo comenta." },
@@ -65,7 +66,7 @@ const mainItems = [
   { title: "Comparação Histórica IA", url: "/dashboard/historical-comparison", icon: GitCompareArrows, tip: "Compare dois períodos do candidato — inclusive datas anteriores ao cadastro. A IA analisa a evolução de menções, sentimento, temas e regiões." },
   
   { title: "Feeds Redes Sociais", url: "/dashboard/social-feeds", icon: Rss, tip: "Feeds com posts e menções de todas as redes sociais (LinkedIn, YouTube, Twitter, Reddit, Telegram, Notícias e mais)." },
-  { title: "Candidatos", url: "/dashboard/candidates", icon: Users, tip: "Onde você adiciona, remove e cuida dos candidatos que está acompanhando." },
+
   { title: "Catálogo de Candidatos", url: "/dashboard/candidates-catalog", icon: BookUser, tip: "Lista de candidatos já prontos. Escolha um e adicione na sua conta com 1 clique." },
   { title: "Analytics Avançado", url: "/dashboard/analytics-advanced", icon: LineChart, tip: "Gráficos detalhados pra quem quer entender tudo a fundo." },
   { title: "Ranking", url: "/dashboard/ranking", icon: Trophy, tip: "Quem está ganhando e quem está perdendo nas redes nos últimos 30 dias." },
