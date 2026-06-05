@@ -367,6 +367,8 @@ async function repairExistingNewsMetadata(supabase: any, candidateId?: string) {
   return repaired;
 }
 
+declare const EdgeRuntime: { waitUntil: (promise: Promise<unknown>) => void };
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -378,7 +380,6 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // @ts-ignore - EdgeRuntime existe no Supabase Edge Functions
     const body = await req.json().catch(() => ({}));
     const job = (async () => {
       await repairExistingNewsMetadata(supabase, body?.candidateId);
