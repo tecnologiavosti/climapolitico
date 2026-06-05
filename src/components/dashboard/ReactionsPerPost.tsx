@@ -116,6 +116,60 @@ function buildPostUrl(p: PostRow): string | null {
   return null;
 }
 
+// Imagem institucional usada quando o post não traz thumbnail válida.
+const INSTITUTIONAL_FALLBACK = "/favicon.png";
+
+// Palavras-chave que indicam conteúdo político brasileiro.
+const POLITICAL_KEYWORDS = [
+  "presidente","presidência","governador","governadora","senador","senadora",
+  "deputado","deputada","prefeito","prefeita","vereador","vereadora","ministro","ministra",
+  "ministério","câmara","camara","senado","congresso","assembleia","assembléia","planalto",
+  "stf","tse","tcu","pgr","agu","governo","oposição","oposicao","eleição","eleicao","eleições","eleicoes",
+  "campanha","candidatura","candidato","candidata","partido","coligação","coligacao","federação","federacao",
+  "política","politica","político","politico","políticas","politicas","políticos","politicos",
+  "lei","projeto de lei","pl ","pec","mp ","medida provisória","medida provisoria","reforma",
+  "votação","votacao","plenário","plenario","sessão","sessao","comissão","comissao","cpi",
+  "discurso","entrevista","coletiva","debate","sabatina","pronunciamento","agenda","posse","mandato",
+  "pt","pl","pp","mdb","psdb","psd","união brasil","uniao brasil","podemos","novo","psol","pdt","psb","republicanos","cidadania","avante","solidariedade","pcdob","pv","rede",
+  "lula","bolsonaro","alckmin","haddad","tarcísio","tarcisio","caiado","zema","ratinho","leite","castro","cláudio","claudio","nunes","boulos","datena","marçal","marcal","pacheco","lira","alcolumbre","motta","moraes","fachin","barroso","mendonça","mendonca","gilmar","dino","janja","michelle",
+  "esquerda","direita","centro","conservador","progressista","liberal","bolsonarismo","lulismo",
+  "imposto","tributária","tributaria","orçamento","orcamento","fiscal","economia","emprego","salário mínimo","salario minimo","bolsa família","bolsa familia","pé-de-meia","pe de meia",
+  "segurança pública","seguranca publica","saúde","saude","educação","educacao","sus","previdência","previdencia",
+  "marco civil","stf","supremo","tribunal","ministério público","ministerio publico","prefeitura","governo federal","governo estadual",
+];
+
+const NON_POLITICAL_KEYWORDS = [
+  "novela","bbb","big brother","reality","fazenda","masterchef","carnaval","samba","funk","sertanejo",
+  "futebol","flamengo","corinthians","palmeiras","são paulo fc","sao paulo fc","santos fc","vasco","fluminense","grêmio","gremio","internacional","atlético","atletico","cruzeiro","botafogo","seleção brasileira","selecao brasileira","copa","champions","libertadores","neymar","vini jr","vinicius jr","endrick","cr7","cristiano ronaldo","messi","mbappé","mbappe",
+  "globo esporte","fantástico","fantastico","domingão","domingao","caldeirão","caldeirao","altas horas","programa do","faustão","faustao","ratinho","silvio santos",
+  "anitta","luan santana","gusttavo lima","marília mendonça","marilia mendonca","henrique e juliano","jorge e mateus",
+  "ufc","mma","fórmula 1","formula 1","f1","nba","tênis","tenis","vôlei","volei",
+  "trailer","teaser","filme","série","serie","temporada","episódio","episodio","netflix","disney+","prime video","hbo","spotify","apple music","clipe oficial","videoclipe","videoclip","music video","lyrics","letra",
+  "receita","culinária","culinaria","comida","restaurante","gastronomia","cerveja","whisky",
+  "tutorial","unboxing","gameplay","minecraft","fortnite","free fire","valorant","league of legends",
+];
+
+function isPoliticalContent(p: PostRow): boolean {
+  const haystack = [p.post_title, p.post_description, p.author_name, p.author_handle]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (!haystack.trim()) return false;
+  const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  let nonHits = 0;
+  for (const k of NON_POLITICAL_KEYWORDS) {
+    if (haystack.includes(norm(k))) nonHits += 1;
+    if (nonHits >= 2) return false;
+  }
+  for (const k of POLITICAL_KEYWORDS) {
+    if (haystack.includes(norm(k))) return nonHits === 0;
+  }
+  return false;
+}
+
+
 function periodRange(period: PeriodKey, customStart: string, customEnd: string) {
   const end = period === "custom" && customEnd ? new Date(`${customEnd}T23:59:59`).toISOString() : null;
   if (period === "total") return { start: null, end };
