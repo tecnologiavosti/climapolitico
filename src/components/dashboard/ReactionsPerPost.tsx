@@ -285,10 +285,11 @@ export function ReactionsPerPost({ candidateId }: Props) {
   const [autoCollectionKey, setAutoCollectionKey] = useState<string | null>(null);
 
   const fallbackLadder = useMemo<PeriodKey[]>(() => {
-    if (selectedPeriod === "custom" || selectedPeriod === "total") return [selectedPeriod];
-    const order: PeriodKey[] = ["7d", "30d", "90d", "6m", "1y", "total"];
-    const i = order.indexOf(selectedPeriod);
-    return i >= 0 ? order.slice(i) : [selectedPeriod];
+    if (selectedPeriod === "custom") return [selectedPeriod];
+    // Recência prioritária: 24h → 3d → 7d → 30d → original
+    const ladder: PeriodKey[] = ["7d", "30d", "90d", "6m", "1y", "total"];
+    const i = ladder.indexOf(selectedPeriod);
+    return i >= 0 ? ladder.slice(i) : ladder;
   }, [selectedPeriod]);
   const effectiveTopPeriod = fallbackLadder[Math.min(topFallbackIdx, fallbackLadder.length - 1)] ?? selectedPeriod;
   const topRange = useMemo(
