@@ -307,14 +307,17 @@ const EventReportPage = () => {
       // pois a amostra local é limitada a 800 registros.
       const refined = (await refineEventCounts(detected)).map((evt) => {
         const formatted = evt.start_date.split('-').reverse().join('/');
+        const v = evt.variation_pct ?? 0;
+        const sign = v >= 0 ? '+' : '';
+        const tag = evt.type === 'queda' ? 'Queda abrupta' : v > 200 ? 'Explosão de menções' : 'Pico de menções';
         return {
           ...evt,
-          description: `Pico de menções detectado em ${formatted} — ${evt.mentions_estimate} comentários nesse dia.`,
+          description: `${tag} em ${formatted} — ${evt.mentions_estimate} comentários (${sign}${v}% vs. média anterior).`,
         };
-      }).sort((a, b) => b.mentions_estimate - a.mentions_estimate);
+      }).sort((a, b) => Math.abs(b.variation_pct ?? 0) - Math.abs(a.variation_pct ?? 0));
       setDetectedEvents(refined);
-      if (refined.length === 0) toast.info("Nenhum dia com pico detectado nos últimos meses.");
-      else toast.success(`${refined.length} dia(s) com pico detectado(s)`);
+      if (refined.length === 0) toast.info("Nenhum pico detectado no período selecionado.");
+      else toast.success(`${refined.length} pico(s) detectado(s)`);
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || "Erro ao detectar picos");
