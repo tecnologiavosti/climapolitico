@@ -405,7 +405,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
       return { ...p, engagement, _relevance: relevance, _rank: rank };
     });
     const filtered = scored.filter((p) => (p.political_relevance_score ?? p._relevance) >= 3 && p._relevance >= 1);
-    return filtered.sort((a, b) => b._rank - a._rank).slice(0, 5);
+    return filtered.sort((a, b) => b.engagement - a.engagement || b._relevance - a._relevance).slice(0, 5);
   }, [topState.data, monitoredNames]);
 
   // Fallback automático de período: se nada relevante, expande a janela.
