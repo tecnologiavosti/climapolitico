@@ -638,7 +638,11 @@ export function ReactionsPerPost({ candidateId }: Props) {
                 );
               })}
               {top5.length === 0 && (
-                <p className="text-sm text-muted-foreground col-span-full">Nenhum post relevante encontrado no período.</p>
+               <p className="text-sm text-muted-foreground col-span-full">
+                  {topState.loading || topFallbackIdx < fallbackLadder.length - 1
+                    ? "Buscando conteúdos políticos relevantes em períodos maiores..."
+                    : "Nenhum post político relevante encontrado, mesmo expandindo até todo o histórico."}
+                </p>
               )}
             </div>
           </div>
