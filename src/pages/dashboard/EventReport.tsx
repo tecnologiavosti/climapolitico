@@ -411,19 +411,23 @@ const EventReportPage = () => {
           </div>
 
           {detectedEvents.length > 0 && (
-            <HelpTooltip text="Selecione um dia com pico de menções. Só os comentários desse dia serão analisados.">
+            <HelpTooltip text="Selecione um pico para analisar com a IA. A análise considera apenas os comentários daquele dia.">
               <Select value={selectedEventIdx} onValueChange={handleSelectEvent}>
-                <SelectTrigger className="w-full sm:w-[480px]">
-                  <SelectValue placeholder={`${detectedEvents.length} dia(s) com pico — escolha um`} />
+                <SelectTrigger className="w-full sm:w-[520px]">
+                  <SelectValue placeholder={`${detectedEvents.length} pico(s) detectado(s) — escolha um`} />
                 </SelectTrigger>
                 <SelectContent className="max-w-[calc(100vw-2rem)]">
-                  {detectedEvents.map((e, i) => (
-                    <SelectItem key={i} value={String(i)} className="whitespace-normal break-words pr-8">
-                      <span className="block text-sm leading-snug">
-                        {e.name} — {e.mentions_estimate} menções
-                      </span>
-                    </SelectItem>
-                  ))}
+                  {detectedEvents.map((e, i) => {
+                    const v = e.variation_pct ?? 0;
+                    const sign = v >= 0 ? '+' : '';
+                    return (
+                      <SelectItem key={i} value={String(i)} className="whitespace-normal break-words pr-8">
+                        <span className="block text-sm leading-snug">
+                          {e.name} — {e.mentions_estimate} menções <span className={v >= 0 ? 'text-green-600' : 'text-red-600'}>({sign}{v}%)</span>
+                        </span>
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </HelpTooltip>
