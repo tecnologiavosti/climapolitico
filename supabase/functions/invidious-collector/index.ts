@@ -1,6 +1,7 @@
 // Coletor Invidious (mirror público do YouTube) - usado quando keys oficiais YT estão exauridas
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { INVIDIOUS_MIRRORS, fetchFromMirrors } from "../_shared/scrape-utils.ts";
+import { isPoliticalCandidateContent } from "../_shared/political-content.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,6 +56,8 @@ Deno.serve(async (req) => {
       for (const v of videos.slice(0, 15)) {
         const vid = v.videoId;
         if (!vid) continue;
+        const videoText = `${v.title || ""} ${v.description || ""} ${v.author || ""}`;
+        if (!isPoliticalCandidateContent(videoText, c.full_name)) continue;
         // grava o vídeo
         const videoUrl = `https://www.youtube.com/watch?v=${vid}`;
         const { data: vexist } = await supabase
@@ -68,6 +71,10 @@ Deno.serve(async (req) => {
             comment_text: `${v.title}\n${(v.description || "").slice(0, 1000)}`,
             comment_author: v.author || "YouTube",
             author_profile_url: videoUrl,
+            post_url: videoUrl,
+            post_title: v.title || null,
+            post_description: (v.description || "").slice(0, 1000) || null,
+            thumbnail_url: v.videoThumbnails?.[0]?.url || null,
             sentiment_label: "Neutro", sentiment_score: 0.5,
             likes_count: v.viewCount || 0, replies_count: 0, shares_count: 0,
             collected_at: new Date().toISOString(),
@@ -81,6 +88,7 @@ Deno.serve(async (req) => {
           const url = `${videoUrl}&lc=${cm.commentId || crypto.randomUUID()}`;
           const text = (cm.content || "").slice(0, 4000);
           if (!text || text.length < 5) continue;
+          if (!isPoliticalCandidateContent(`${text} ${videoText}`, c.full_name)) continue;
           const { data: cexist } = await supabase
             .from("social_interactions").select("id")
             .eq("candidate_id", c.id).eq("social_network", "youtube")
@@ -90,6 +98,7 @@ Deno.serve(async (req) => {
             user_id: c.user_id, candidate_id: c.id, social_network: "youtube",
             interaction_type: "comment", comment_text: text,
             comment_author: cm.author || "anon", author_profile_url: url,
+            post_url: videoUrl, post_title: v.title || null,
             sentiment_label: "Neutro", sentiment_score: 0.5,
             likes_count: cm.likeCount || 0, replies_count: 0, shares_count: 0,
             collected_at: new Date().toISOString(),

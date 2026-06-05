@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { enrichRecordLocation } from "../_shared/infer-location.ts";
+import { isPoliticalCandidateContent } from "../_shared/political-content.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -670,19 +671,22 @@ Deno.serve(async (req) => {
     console.log(`Found ${existingCommentsSet.size} existing comments to skip duplicates`);
 
     // Search for videos - use 'date' to get newest videos first (with key rotation)
-    const searchResults = await callYoutube((k) => searchYouTubeVideos(candidateName, k, maxVideos, 'date'));
+    const politicalQuery = `"${candidateName}" (política OR eleições OR governo OR candidato OR campanha OR partido OR debate OR entrevista OR pronunciamento)`;
+    const searchResults = await callYoutube((k) => searchYouTubeVideos(politicalQuery, k, maxVideos, 'date'));
     
     // Also search by relevance to get popular videos
-    const relevanceResults = await callYoutube((k) => searchYouTubeVideos(candidateName, k, maxVideos, 'relevance'));
+    const relevanceResults = await callYoutube((k) => searchYouTubeVideos(politicalQuery, k, maxVideos, 'relevance'));
     
     // Also search by viewCount to get most viewed videos
-    const viewCountResults = await callYoutube((k) => searchYouTubeVideos(candidateName, k, maxVideos, 'viewCount'));
+    const viewCountResults = await callYoutube((k) => searchYouTubeVideos(politicalQuery, k, maxVideos, 'viewCount'));
     
     // Merge and deduplicate video results
     const allVideoIds = new Set<string>();
     const allVideos: YouTubeSearchResult['items'] = [];
     
     for (const video of [...(searchResults.items || []), ...(relevanceResults.items || []), ...(viewCountResults.items || [])]) {
+      const videoText = `${video.snippet?.title || ""} ${video.snippet?.description || ""} ${video.snippet?.channelTitle || ""}`;
+      if (!isPoliticalCandidateContent(videoText, candidateName)) continue;
       if (!allVideoIds.has(video.id.videoId)) {
         allVideoIds.add(video.id.videoId);
         allVideos.push(video);

@@ -100,6 +100,8 @@ export interface PostRow {
   author_handle?: string | null;
   author_profile_url?: string | null;
   post_id?: string | null;
+  political_relevance_score?: number | null;
+  political_validation_reason?: string | null;
 }
 
 function buildPostUrl(p: PostRow): string | null {
@@ -244,6 +246,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
 
   const [monitoredNames, setMonitoredNames] = useState<string[]>([]);
   const [topFallbackIdx, setTopFallbackIdx] = useState(0);
+  const [autoCollectionKey, setAutoCollectionKey] = useState<string | null>(null);
 
   const fallbackLadder = useMemo<PeriodKey[]>(() => {
     if (selectedPeriod === "custom" || selectedPeriod === "total") return [selectedPeriod];
@@ -401,10 +404,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
       const rank = (relevance + 1) * Math.log10(engagement + 10);
       return { ...p, engagement, _relevance: relevance, _rank: rank };
     });
-    // Primeira tentativa: apenas posts com sinal político (>=1).
-    let filtered = scored.filter((p) => p._relevance >= 1);
-    // Segunda tentativa: relaxa para qualquer post que não seja claramente não-político.
-    if (filtered.length === 0) filtered = scored.filter((p) => p._relevance >= 0);
+    const filtered = scored.filter((p) => (p.political_relevance_score ?? p._relevance) >= 3 && p._relevance >= 1);
     return filtered.sort((a, b) => b._rank - a._rank).slice(0, 5);
   }, [topState.data, monitoredNames]);
 
@@ -416,6 +416,21 @@ export function ReactionsPerPost({ candidateId }: Props) {
       setTopFallbackIdx((i) => i + 1);
     }
   }, [topState.loading, top5.length, topFallbackIdx, fallbackLadder.length]);
+
+  useEffect(() => {
+    if (!user || topState.loading || top5.length > 0 || topFallbackIdx < fallbackLadder.length - 1) return;
+    const key = `${user.id}:${candidateId || "all"}:${selectedPeriod}:${customStart}:${customEnd}`;
+    if (autoCollectionKey === key) return;
+    setAutoCollectionKey(key);
+    (async () => {
+      await supabase.rpc("reprocess_social_interactions_political_validation" as any, { _batch_size: 10000 });
+      await supabase.functions.invoke("google-news-collector");
+      setTimeout(() => {
+        setTopFallbackIdx(0);
+        void loadAll();
+      }, 8000);
+    })().catch((error) => console.warn("[ReactionsPerPost] coleta política automática falhou", error));
+  }, [autoCollectionKey, candidateId, customEnd, customStart, fallbackLadder.length, loadAll, selectedPeriod, top5.length, topFallbackIdx, topState.loading, user]);
 
 
   const topTopics = useMemo(() => {
