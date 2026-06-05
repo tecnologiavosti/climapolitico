@@ -352,7 +352,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
     setTopicsState({ data: topics.data ?? [], loading: false, error: topics.error, ms: topics.ms });
   }, [user, candidateId, range.start, range.end]);
 
-  useEffect(() => { void loadAll(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [reqKey]);
+  useEffect(() => { void loadAll(); }, [reqKey, loadAll]);
 
   // Top posts em fluxo próprio para suportar fallback automático de período.
   useEffect(() => {
@@ -387,7 +387,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
       let pendingRemaining = summary.pendingCount || 0;
       let totalEnqueued = 0;
       for (let batch = 0; batch < 20 && pendingRemaining > 0; batch += 1) {
-        const { data, error } = await supabase.rpc("enqueue_pending_sentiment_jobs" as any, {
+        const { data, error } = await rpcClient.rpc("enqueue_pending_sentiment_jobs", {
           _user_id: user.id,
           _candidate_id: candidateId ?? null,
           _period_start: range.start,
@@ -474,7 +474,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
     if (autoCollectionKey === key) return;
     setAutoCollectionKey(key);
     (async () => {
-      await supabase.rpc("reprocess_social_interactions_political_validation" as any, { _batch_size: 10000 });
+      await rpcClient.rpc("reprocess_social_interactions_political_validation", { _batch_size: 10000 });
       await supabase.functions.invoke("orchestrate-all-collectors", {
         body: candidateId ? { collector: "all", candidateId } : { collector: "all" },
       });
