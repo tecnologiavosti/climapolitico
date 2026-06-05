@@ -149,6 +149,7 @@ interface DetectedEvent {
   start_date: string;
   end_date: string;
   mentions_estimate: number;
+  variation_pct?: number;
   description: string;
 }
 
