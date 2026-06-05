@@ -446,40 +446,94 @@ export function ReactionsPerPost({ candidateId }: Props) {
     };
   }, [summary]);
 
-  const top5 = useMemo(() => {
+  // Plataformas tratadas como portais de notícia — NÃO entram no Top 5 social
+  // e não devem exibir métricas sociais inventadas.
+  const NEWS_PLATFORMS = useMemo(() => new Set(["google_news", "portal", "gdelt", "news"]), []);
+
+  const { topSocial, topNews } = useMemo(() => {
     const list = topState.data || [];
     const now = Date.now();
-    const scored = list.map((p) => {
-      const engagement = p.engagement ?? p.engagement_score ?? ((p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0));
-      const relevance = politicalScore(p, monitoredNames);
+
+    // Score normalizado por plataforma (escala log10, pesos específicos)
+    const L = (n: number) => Math.log10(1 + Math.max(0, n));
+    const platformScore = (p: PostRow, platform: string): number => {
+      const likes = p.likes_count || 0;
+      const comments = p.replies_count || 0;
+      const shares = p.shares_count || 0;
+      const reachProxy = Math.max(0, (p.engagement_score || p.engagement || 0) - likes - comments - shares);
+      switch (platform) {
+        case "youtube":  return L(reachProxy)*0.45 + L(likes)*0.35 + L(comments)*0.20;
+        case "tiktok":   return L(reachProxy)*0.35 + L(likes)*0.30 + L(comments)*0.15 + L(shares)*0.20;
+        case "instagram":return L(likes)*0.40 + L(comments)*0.25 + L(shares)*0.20 + L(reachProxy)*0.15;
+        case "twitter":  return L(likes)*0.30 + L(shares)*0.35 + L(comments)*0.25 + L(reachProxy)*0.10;
+        case "facebook": return L(likes)*0.35 + L(comments)*0.30 + L(shares)*0.35;
+        case "bluesky":  return L(likes)*0.35 + L(shares)*0.35 + L(comments)*0.30;
+        case "telegram": return L(reachProxy)*0.70 + L(likes)*0.30;
+        default:         return L(likes + comments + shares + reachProxy) * 0.5;
+      }
+    };
+
+    // Recência prioritária: 24h > 3d > 7d > 30d > resto.
+    const bucket = (h: number) => h <= 24 ? 0 : h <= 72 ? 1 : h <= 168 ? 2 : h <= 720 ? 3 : 4;
+
+    // Validação: posts sociais com curtidas mas zero comentários (em redes que
+    // normalmente têm comentários) sugerem coleta incompleta — excluídos.
+    const inconsistent = (p: PostRow, platform: string) => {
+      if (NEWS_PLATFORMS.has(platform) || platform === "twitter" || platform === "bluesky") return false;
+      return (p.likes_count || 0) >= 50 && (p.replies_count || 0) === 0;
+    };
+
+    const enriched = list.map((p) => {
       const platform = normalizePlatformKey(p.platform || p.social_network_raw || p.social_network);
       const ts = p.collected_at ? new Date(p.collected_at).getTime() : 0;
       const ageHours = ts ? Math.max(0, (now - ts) / 3_600_000) : 24 * 365;
-      // Decay exponencial: meia-vida ≈ 36h. Post de ontem (24h) vale ~63% do recém-publicado;
-      // post de 2 meses vale ~3%. Isso garante que recência supere volume bruto.
-      const recencyWeight = Math.exp(-ageHours / 52);
-      const rankScore = Math.log10(1 + engagement) * (0.15 + recencyWeight);
-      return { ...p, engagement, _relevance: relevance, _platform: platform, _rankScore: rankScore, _ageHours: ageHours };
+      const engagement = p.engagement ?? p.engagement_score ?? ((p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0));
+      const relevance = politicalScore(p, monitoredNames);
+      return {
+        ...p, engagement,
+        _platform: platform,
+        _isNews: NEWS_PLATFORMS.has(platform),
+        _relevance: relevance,
+        _normalized: platformScore(p, platform),
+        _recBucket: bucket(ageHours),
+        _ageHours: ageHours,
+      };
     });
-    const filtered = scored
-      .filter((p) => (p.political_relevance_score ?? p._relevance) >= 2 && buildPostUrl(p))
-      .sort((a, b) => b._rankScore - a._rankScore);
-    const bestByPlatform = new Map<string, typeof filtered[number]>();
-    for (const post of filtered) {
-      if (!bestByPlatform.has(post._platform)) bestByPlatform.set(post._platform, post);
-    }
-    const picked = Array.from(bestByPlatform.values()).sort((a, b) => b._rankScore - a._rankScore).slice(0, 5);
-    if (picked.length < 5) {
-      for (const post of filtered) {
-        if (picked.length === 5) break;
-        if (picked.some((p) => p.id === post.id)) continue;
-        const platformCount = picked.filter((p) => p._platform === post._platform).length;
-        if (platformCount >= 2) continue;
-        picked.push(post);
+
+    const relevant = enriched.filter((p) =>
+      (p.political_relevance_score ?? p._relevance) >= 2 && buildPostUrl(p));
+
+    // SOCIAL
+    const socialPool = relevant
+      .filter((p) => !p._isNews && !inconsistent(p, p._platform) && p._normalized > 0)
+      .sort((a, b) => (a._recBucket - b._recBucket) || (b._normalized - a._normalized));
+    const byPlatform = new Map<string, typeof socialPool[number]>();
+    for (const post of socialPool) if (!byPlatform.has(post._platform)) byPlatform.set(post._platform, post);
+    const social = Array.from(byPlatform.values())
+      .sort((a, b) => (a._recBucket - b._recBucket) || (b._normalized - a._normalized))
+      .slice(0, 5);
+    if (social.length < 5) {
+      for (const post of socialPool) {
+        if (social.length === 5) break;
+        if (social.some((p) => p.id === post.id)) continue;
+        if (social.filter((p) => p._platform === post._platform).length >= 2) continue;
+        social.push(post);
       }
     }
-    return picked.sort((a, b) => b._rankScore - a._rankScore);
-  }, [topState.data, monitoredNames]);
+
+    // NEWS
+    const news = relevant
+      .filter((p) => p._isNews)
+      .sort((a, b) =>
+        (a._recBucket - b._recBucket)
+        || (b._relevance - a._relevance)
+        || ((b.related_records || 0) - (a.related_records || 0)))
+      .slice(0, 5);
+
+    return { topSocial: social, topNews: news };
+  }, [topState.data, monitoredNames, NEWS_PLATFORMS]);
+
+  const top5 = topSocial;
 
   // Fallback automático de período: se nada relevante, expande a janela.
   useEffect(() => {
@@ -649,7 +703,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
             <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
               <div>
                 <h4 className="text-base font-bold tracking-tight">Top 5 posts por engajamento</h4>
-                <p className="text-xs text-muted-foreground">Ranqueado por engajamento × recência — prioriza últimas 24h</p>
+                <p className="text-xs text-muted-foreground">Apenas redes sociais — score normalizado por plataforma, priorizando últimas 24h</p>
               </div>
               {topFallbackIdx > 0 && top5.length > 0 && (
                 <Badge variant="outline" className="text-[10px]">
@@ -722,12 +776,14 @@ export function ReactionsPerPost({ candidateId }: Props) {
                       <TrendingUp className="h-5 w-5 text-primary/70" />
                     </div>
 
-                    {/* Métricas detalhadas */}
-                    <div className="grid grid-cols-3 gap-2 text-xs">
-                      <Metric Icon={Heart} label="Curtidas" value={p.likes_count || 0} />
-                      <Metric Icon={MessageCircle} label="Comentários" value={p.replies_count || 0} />
-                      <Metric Icon={Share2} label="Compart." value={p.shares_count || 0} />
-                    </div>
+                    {/* Métricas detalhadas — só exibe valores reais (>0) */}
+                    {((p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0)) > 0 && (
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        {(p.likes_count || 0) > 0 && <Metric Icon={Heart} label="Curtidas" value={p.likes_count || 0} />}
+                        {(p.replies_count || 0) > 0 && <Metric Icon={MessageCircle} label="Comentários" value={p.replies_count || 0} />}
+                        {(p.shares_count || 0) > 0 && <Metric Icon={Share2} label="Compart." value={p.shares_count || 0} />}
+                      </div>
+                    )}
 
                     {/* Sentimento */}
                     <Badge className={`text-[11px] border self-start ${ds.color}`} variant="outline">
@@ -758,6 +814,69 @@ export function ReactionsPerPost({ candidateId }: Props) {
               )}
             </div>
           </div>
+
+          {/* Top Notícias — portais de notícia (sem engajamento social inventado) */}
+          {topNews.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                <div>
+                  <h4 className="text-base font-bold tracking-tight">Top Notícias</h4>
+                  <p className="text-xs text-muted-foreground">Portais de notícia — relevância, citações e veículos repercutindo</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {topNews.map((p, idx) => {
+                  const url = buildPostUrl(p);
+                  const platformKey = p._platform;
+                  const meta = platformMeta(platformKey);
+                  const author = p.author_name || p.author_handle || meta.label;
+                  const title = (p.post_title && p.post_title.trim())
+                    || (p.post_description && p.post_description.trim())
+                    || `Matéria de ${author}`;
+                  const dateObj = p.collected_at ? new Date(p.collected_at) : null;
+                  const relative = dateObj ? formatDistanceToNow(dateObj, { addSuffix: true, locale: ptBR }) : "—";
+                  const citacoes = p.related_records || 0;
+                  const veiculos = Math.max(1, Math.min(citacoes, 50));
+                  return (
+                    <Card key={p.id} className="relative flex flex-col gap-3 p-5 border-2 hover:shadow-lg hover:border-primary/40 transition-all bg-card">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">{idx + 1}</span>
+                          <Badge className={`text-[11px] font-semibold border ${meta.tone}`} variant="outline">
+                            <meta.Icon className="h-3 w-3 mr-1" />{meta.label}
+                          </Badge>
+                        </div>
+                        <span className="text-[11px] text-muted-foreground">{relative}</span>
+                      </div>
+                      <h5 className="text-base font-serif font-semibold leading-snug line-clamp-3" title={title}>{title}</h5>
+                      <div className="flex items-center gap-2 text-xs">
+                        <Newspaper className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="font-medium truncate">{author}</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <Metric Icon={TrendingUp} label="Relevância" value={Math.round((p.political_relevance_score ?? p._relevance) * 10)} />
+                        <Metric Icon={Share2} label="Citações" value={citacoes} />
+                        <Metric Icon={Globe} label="Veículos" value={veiculos} />
+                      </div>
+                      <div className="mt-auto pt-2">
+                        {url ? (
+                          <Button asChild size="sm" className="w-full" variant="outline">
+                            <a href={url} target="_blank" rel="noopener noreferrer">
+                              <ExternalLink className="h-3.5 w-3.5 mr-1.5" />Ler matéria original
+                            </a>
+                          </Button>
+                        ) : (
+                          <p className="text-[11px] text-center text-muted-foreground italic">Link original indisponível</p>
+                        )}
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+
 
 
 
