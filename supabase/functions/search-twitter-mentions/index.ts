@@ -25,6 +25,7 @@ interface ScrapedTweet {
   text: string;
   author: string;
   authorUrl: string;
+  sourcePlatform?: 'twitter' | 'bluesky' | 'mastodon';
   postedAt: string;
   likes: number;
   replies: number;
@@ -182,6 +183,7 @@ async function fetchViaBluesky(query: string, maxResults: number): Promise<Scrap
           text: p?.record?.text || '',
           author: handle,
           authorUrl: `https://bsky.app/profile/${handle}`,
+          sourcePlatform: 'bluesky',
           postedAt: p?.record?.createdAt || p?.indexedAt || new Date().toISOString(),
           likes: p?.likeCount || 0,
           replies: p?.replyCount || 0,
@@ -236,6 +238,7 @@ async function fetchViaMastodon(query: string, maxResults: number): Promise<Scra
           text,
           author,
           authorUrl: s?.account?.url || `${instance}/@${author}`,
+          sourcePlatform: 'mastodon',
           postedAt: s?.created_at || new Date().toISOString(),
           likes: s?.favourites_count || 0,
           replies: s?.replies_count || 0,
@@ -291,6 +294,7 @@ async function fetchViaFirecrawl(query: string, maxResults: number): Promise<Scr
         text: decodeHtml(text),
         author,
         authorUrl: `https://x.com/${author}`,
+          sourcePlatform: 'twitter',
         postedAt: r?.publishedDate || new Date().toISOString(),
         likes: 0,
         replies: 0,
