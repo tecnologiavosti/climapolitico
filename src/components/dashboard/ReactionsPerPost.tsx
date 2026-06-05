@@ -149,24 +149,41 @@ const NON_POLITICAL_KEYWORDS = [
   "tutorial","unboxing","gameplay","minecraft","fortnite","free fire","valorant","league of legends",
 ];
 
-function isPoliticalContent(p: PostRow): boolean {
-  const haystack = [p.post_title, p.post_description, p.author_name, p.author_handle]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-  if (!haystack.trim()) return false;
-  const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+/**
+ * Classificação semântica leve combinando: nomes monitorados, palavras-chave políticas,
+ * pistas institucionais no autor e penalidade para conteúdo claramente não-político.
+ * Retorna um score 0..N — quanto maior, mais relevante politicamente.
+ */
+function politicalScore(p: PostRow, monitoredNames: string[] = []): number {
+  const haystack = norm(
+    [p.post_title, p.post_description, p.author_name, p.author_handle].filter(Boolean).join(" "),
+  );
+  if (!haystack.trim()) return 0;
+  let score = 0;
+  for (const name of monitoredNames) {
+    const n = norm(name);
+    if (!n || n.length < 3) continue;
+    if (haystack.includes(n)) { score += 4; break; }
+    const tokens = n.split(/\s+/).filter((t) => t.length >= 4);
+    if (tokens.length >= 2 && tokens.every((t) => haystack.includes(t))) { score += 3; break; }
+  }
+  let kwHits = 0;
+  for (const k of POLITICAL_KEYWORDS) {
+    if (haystack.includes(norm(k))) { kwHits += 1; if (kwHits >= 3) break; }
+  }
+  score += Math.min(kwHits * 2, 4);
+  const author = norm(`${p.author_name || ""} ${p.author_handle || ""}`);
+  if (/\b(g1|cnn|globo|uol|folha|estadao|veja|exame|metropoles|jovempan|band|sbt|record|congresso|senado|camara|tse|stf|gov|oficial|partido|pt|pl|psdb|psol|pdt|psb|mdb)\b/.test(author)) {
+    score += 2;
+  }
   let nonHits = 0;
   for (const k of NON_POLITICAL_KEYWORDS) {
-    if (haystack.includes(norm(k))) nonHits += 1;
-    if (nonHits >= 2) return false;
+    if (haystack.includes(norm(k))) { nonHits += 1; if (nonHits >= 2) break; }
   }
-  for (const k of POLITICAL_KEYWORDS) {
-    if (haystack.includes(norm(k))) return nonHits === 0;
-  }
-  return false;
+  score -= Math.min(nonHits * 2, 4);
+  return score;
 }
 
 
@@ -225,7 +242,40 @@ export function ReactionsPerPost({ candidateId }: Props) {
   const [topState, setTopState] = useState<SectionState<PostRow[]>>({ data: [], loading: true, error: null, ms: 0 });
   const [topicsState, setTopicsState] = useState<SectionState<{ topic: string; mentions: number }[]>>({ data: [], loading: true, error: null, ms: 0 });
 
+  const [monitoredNames, setMonitoredNames] = useState<string[]>([]);
+  const [topFallbackIdx, setTopFallbackIdx] = useState(0);
+
+  const fallbackLadder = useMemo<PeriodKey[]>(() => {
+    if (selectedPeriod === "custom" || selectedPeriod === "total") return [selectedPeriod];
+    const order: PeriodKey[] = ["7d", "30d", "90d", "6m", "1y", "total"];
+    const i = order.indexOf(selectedPeriod);
+    return i >= 0 ? order.slice(i) : [selectedPeriod];
+  }, [selectedPeriod]);
+  const effectiveTopPeriod = fallbackLadder[Math.min(topFallbackIdx, fallbackLadder.length - 1)] ?? selectedPeriod;
+  const topRange = useMemo(
+    () => periodRange(effectiveTopPeriod, customStart, customEnd),
+    [effectiveTopPeriod, customStart, customEnd],
+  );
+
+  useEffect(() => { setTopFallbackIdx(0); }, [selectedPeriod, candidateId, customStart, customEnd]);
+
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    (async () => {
+      const q = candidateId
+        ? supabase.from("candidates").select("full_name").eq("id", candidateId)
+        : supabase.from("candidates").select("full_name").eq("user_id", user.id).limit(200);
+      const { data } = await q;
+      if (!active) return;
+      setMonitoredNames((data || []).map((c) => c.full_name).filter(Boolean) as string[]);
+    })();
+    return () => { active = false; };
+  }, [user, candidateId]);
+
+
   const reqKey = `${user?.id}|${candidateId || "all"}|${range.start || "ALL"}|${range.end || "OPEN"}`;
+  const topReqKey = `${user?.id}|${candidateId || "all"}|${topRange.start || "ALL"}|${topRange.end || "OPEN"}`;
 
   const loadAll = useMemo(() => async () => {
     if (!user) return;
@@ -239,36 +289,49 @@ export function ReactionsPerPost({ candidateId }: Props) {
     setEngState((s) => ({ ...s, loading: true, error: null }));
     setSentNetState((s) => ({ ...s, loading: true, error: null }));
     setActState((s) => ({ ...s, loading: true, error: null }));
-    setTopState((s) => ({ ...s, loading: true, error: null }));
     setTopicsState((s) => ({ ...s, loading: true, error: null }));
 
     const tStart = performance.now();
-    const [totals, eng, sentNet, act, top, topics] = await Promise.all([
+    const [totals, eng, sentNet, act, topics] = await Promise.all([
       callRpc<TotalsT>("get_reactions_totals", args),
       callRpc<EngagementByNetwork[]>("get_reactions_engagement_by_network", args),
       callRpc<SentimentByNetwork[]>("get_reactions_sentiment_by_network", args),
       callRpc<ActivityHourWeek[]>("get_reactions_activity_hour_week", args),
-      callRpc<PostRow[]>("get_reactions_top_posts", args),
       callRpc<{ topic: string; mentions: number }[]>("get_reactions_dominant_topics", args),
     ]);
     console.log("[ReactionsPerPost] DEBUG carga total", {
       tempoTotalMs: Math.round(performance.now() - tStart),
-      totaisMs: totals.ms, totaisErro: totals.error, totaisKB: (totals.bytes / 1024).toFixed(1),
+      totaisMs: totals.ms, totaisErro: totals.error,
       engajamentoMs: eng.ms, engajamentoErro: eng.error,
       sentimentoMs: sentNet.ms, sentimentoErro: sentNet.error,
       atividadeMs: act.ms, atividadeErro: act.error,
-      topPostsMs: top.ms, topPostsErro: top.error,
       topicosMs: topics.ms, topicosErro: topics.error,
     });
     setTotalsState({ data: totals.data, loading: false, error: totals.error, ms: totals.ms });
     setEngState({ data: eng.data ?? [], loading: false, error: eng.error, ms: eng.ms });
     setSentNetState({ data: sentNet.data ?? [], loading: false, error: sentNet.error, ms: sentNet.ms });
     setActState({ data: act.data ?? [], loading: false, error: act.error, ms: act.ms });
-    setTopState({ data: top.data ?? [], loading: false, error: top.error, ms: top.ms });
     setTopicsState({ data: topics.data ?? [], loading: false, error: topics.error, ms: topics.ms });
   }, [user, candidateId, range.start, range.end]);
 
   useEffect(() => { void loadAll(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [reqKey]);
+
+  // Top posts em fluxo próprio para suportar fallback automático de período.
+  useEffect(() => {
+    if (!user) return;
+    setTopState((s) => ({ ...s, loading: true, error: null }));
+    (async () => {
+      const top = await callRpc<PostRow[]>("get_reactions_top_posts", {
+        _user_id: user.id,
+        _candidate_id: candidateId ?? null,
+        _period_start: topRange.start,
+        _period_end: topRange.end,
+      });
+      setTopState({ data: top.data ?? [], loading: false, error: top.error, ms: top.ms });
+    })();
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [topReqKey]);
+
 
   const summary = totalsState.data;
   const summaryLoading = totalsState.loading;
@@ -331,12 +394,29 @@ export function ReactionsPerPost({ candidateId }: Props) {
 
   const top5 = useMemo(() => {
     const list = topState.data || [];
-    return [...list]
-      .map((p) => ({ ...p, engagement: p.engagement ?? ((p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0)) }))
-      .filter((p) => isPoliticalContent(p))
-      .sort((a, b) => (b.engagement || 0) - (a.engagement || 0))
-      .slice(0, 5);
-  }, [topState.data]);
+    const scored = list.map((p) => {
+      const engagement = p.engagement ?? ((p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0));
+      const relevance = politicalScore(p, monitoredNames);
+      // Ranking combinado: relevância política * engajamento (log para suavizar).
+      const rank = (relevance + 1) * Math.log10(engagement + 10);
+      return { ...p, engagement, _relevance: relevance, _rank: rank };
+    });
+    // Primeira tentativa: apenas posts com sinal político (>=1).
+    let filtered = scored.filter((p) => p._relevance >= 1);
+    // Segunda tentativa: relaxa para qualquer post que não seja claramente não-político.
+    if (filtered.length === 0) filtered = scored.filter((p) => p._relevance >= 0);
+    return filtered.sort((a, b) => b._rank - a._rank).slice(0, 5);
+  }, [topState.data, monitoredNames]);
+
+  // Fallback automático de período: se nada relevante, expande a janela.
+  useEffect(() => {
+    if (topState.loading) return;
+    if (top5.length > 0) return;
+    if (topFallbackIdx < fallbackLadder.length - 1) {
+      setTopFallbackIdx((i) => i + 1);
+    }
+  }, [topState.loading, top5.length, topFallbackIdx, fallbackLadder.length]);
+
 
   const topTopics = useMemo(() => {
     return (topicsState.data || []).slice(0, 8)
@@ -461,7 +541,14 @@ export function ReactionsPerPost({ candidateId }: Props) {
 
           {/* Top 5 posts */}
           <div>
-            <h4 className="text-sm font-semibold mb-2">Top 5 posts por engajamento</h4>
+            <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+              <h4 className="text-sm font-semibold">Top 5 posts por engajamento</h4>
+              {topFallbackIdx > 0 && top5.length > 0 && (
+                <Badge variant="outline" className="text-[10px]">
+                  Janela expandida para {effectiveTopPeriod === "total" ? "todo o histórico" : effectiveTopPeriod}
+                </Badge>
+              )}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
               {top5.map((p) => {
                 const ds = dominantSentiment(p.sentiment_label);
@@ -551,7 +638,11 @@ export function ReactionsPerPost({ candidateId }: Props) {
                 );
               })}
               {top5.length === 0 && (
-                <p className="text-sm text-muted-foreground col-span-full">Nenhum post relevante encontrado no período.</p>
+               <p className="text-sm text-muted-foreground col-span-full">
+                  {topState.loading || topFallbackIdx < fallbackLadder.length - 1
+                    ? "Buscando conteúdos políticos relevantes em períodos maiores..."
+                    : "Nenhum post político relevante encontrado, mesmo expandindo até todo o histórico."}
+                </p>
               )}
             </div>
           </div>
