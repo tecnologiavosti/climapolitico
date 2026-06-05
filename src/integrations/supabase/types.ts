@@ -1721,6 +1721,8 @@ export type Database = {
         Row: {
           analysis_attempts: number
           analysis_id: string | null
+          author_handle: string | null
+          author_name: string | null
           author_profile_url: string | null
           candidate_id: string
           city: string | null
@@ -1737,7 +1739,10 @@ export type Database = {
           longitude: number | null
           original_posted_at: string | null
           parent_comment_id: string | null
+          post_description: string | null
           post_id: string | null
+          post_title: string | null
+          post_url: string | null
           region: string | null
           replies_count: number | null
           root_comment_id: string | null
@@ -1747,11 +1752,14 @@ export type Database = {
           shares_count: number | null
           social_network: string
           state: string | null
+          thumbnail_url: string | null
           user_id: string
         }
         Insert: {
           analysis_attempts?: number
           analysis_id?: string | null
+          author_handle?: string | null
+          author_name?: string | null
           author_profile_url?: string | null
           candidate_id: string
           city?: string | null
@@ -1768,7 +1776,10 @@ export type Database = {
           longitude?: number | null
           original_posted_at?: string | null
           parent_comment_id?: string | null
+          post_description?: string | null
           post_id?: string | null
+          post_title?: string | null
+          post_url?: string | null
           region?: string | null
           replies_count?: number | null
           root_comment_id?: string | null
@@ -1778,11 +1789,14 @@ export type Database = {
           shares_count?: number | null
           social_network: string
           state?: string | null
+          thumbnail_url?: string | null
           user_id: string
         }
         Update: {
           analysis_attempts?: number
           analysis_id?: string | null
+          author_handle?: string | null
+          author_name?: string | null
           author_profile_url?: string | null
           candidate_id?: string
           city?: string | null
@@ -1799,7 +1813,10 @@ export type Database = {
           longitude?: number | null
           original_posted_at?: string | null
           parent_comment_id?: string | null
+          post_description?: string | null
           post_id?: string | null
+          post_title?: string | null
+          post_url?: string | null
           region?: string | null
           replies_count?: number | null
           root_comment_id?: string | null
@@ -1809,6 +1826,7 @@ export type Database = {
           shares_count?: number | null
           social_network?: string
           state?: string | null
+          thumbnail_url?: string | null
           user_id?: string
         }
         Relationships: [

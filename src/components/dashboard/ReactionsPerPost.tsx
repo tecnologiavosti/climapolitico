@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { AlertCircle, Heart, MessageCircle, RefreshCw, Share2, ThumbsUp, ThumbsDown, Minus } from "lucide-react";
+import { AlertCircle, ExternalLink, Heart, ImageOff, MessageCircle, RefreshCw, Share2, ThumbsUp, ThumbsDown, Minus, User } from "lucide-react";
 import { subDays } from "date-fns";
 
 // Carrega Recharts apenas quando o usuário entra na aba — reduz JS inicial.
@@ -85,12 +85,35 @@ export interface ActivityHourWeek {
 export interface PostRow {
   id: string;
   social_network: string;
+  social_network_raw?: string | null;
   likes_count: number | null;
   replies_count: number | null;
   shares_count: number | null;
   sentiment_label: string | null;
   collected_at: string | null;
   engagement?: number;
+  post_url?: string | null;
+  post_title?: string | null;
+  post_description?: string | null;
+  thumbnail_url?: string | null;
+  author_name?: string | null;
+  author_handle?: string | null;
+  author_profile_url?: string | null;
+  post_id?: string | null;
+}
+
+function buildPostUrl(p: PostRow): string | null {
+  if (p.post_url && /^https?:\/\//i.test(p.post_url)) return p.post_url;
+  const net = (p.social_network_raw || p.social_network || "").toLowerCase();
+  const pid = p.post_id?.trim();
+  const handle = p.author_handle?.replace(/^@/, "").trim();
+  if (!pid) return null;
+  if (net.includes("youtube") || net === "yt") return `https://www.youtube.com/watch?v=${pid}`;
+  if (net.includes("twitter") || net === "x") return `https://twitter.com/${handle || "i"}/status/${pid}`;
+  if (net.includes("tiktok") && handle) return `https://www.tiktok.com/@${handle}/video/${pid}`;
+  if (net.includes("instagram")) return `https://www.instagram.com/p/${pid}/`;
+  if (net.includes("facebook") && handle) return `https://www.facebook.com/${handle}/posts/${pid}`;
+  return null;
 }
 
 function periodRange(period: PeriodKey, customStart: string, customEnd: string) {
@@ -384,26 +407,90 @@ export function ReactionsPerPost({ candidateId }: Props) {
           {/* Top 5 posts */}
           <div>
             <h4 className="text-sm font-semibold mb-2">Top 5 posts por engajamento</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
               {top5.map((p) => {
                 const ds = dominantSentiment(p.sentiment_label);
+                const url = buildPostUrl(p);
+                const author = p.author_name || p.author_handle || "Autor desconhecido";
+                const title = p.post_title || p.post_description || "(sem título disponível)";
                 return (
-                  <Card key={p.id} className="p-3 flex flex-col gap-2">
+                  <Card key={p.id} className="p-3 flex flex-col gap-2 overflow-hidden">
                     <div className="flex items-center justify-between gap-2">
                       <Badge variant="outline" className="text-[10px] capitalize">{p.social_network || "?"}</Badge>
                       <Badge className={`text-[10px] border ${ds.color}`}>
                         <ds.Icon className="h-3 w-3 mr-1" />{ds.label}
                       </Badge>
                     </div>
+
+                    {/* Thumbnail */}
+                    {p.thumbnail_url ? (
+                      <a
+                        href={url || undefined}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`relative block aspect-video w-full overflow-hidden rounded-md bg-muted ${url ? "cursor-pointer" : "cursor-default"}`}
+                      >
+                        <img
+                          src={p.thumbnail_url}
+                          alt={title}
+                          loading="lazy"
+                          className="h-full w-full object-cover transition-transform hover:scale-105"
+                          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                        />
+                      </a>
+                    ) : (
+                      <div className="flex aspect-video w-full items-center justify-center rounded-md bg-muted text-muted-foreground">
+                        <ImageOff className="h-6 w-6 opacity-60" />
+                      </div>
+                    )}
+
                     <div className="text-xs text-muted-foreground">
                       {p.collected_at ? new Date(p.collected_at).toLocaleDateString("pt-BR") : "—"}
                     </div>
-                    <div className="text-2xl font-bold">{p.engagement.toLocaleString("pt-BR")}</div>
+
+                    <div className="text-sm font-semibold leading-snug line-clamp-2" title={title}>
+                      {title}
+                    </div>
+
+                    {p.post_description && p.post_title && (
+                      <div className="text-xs text-muted-foreground line-clamp-2">{p.post_description}</div>
+                    )}
+
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground mt-1">Publicado por</div>
+                    {p.author_profile_url ? (
+                      <a
+                        href={p.author_profile_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs font-medium text-primary hover:underline truncate"
+                      >
+                        <User className="h-3 w-3" />{author}
+                      </a>
+                    ) : (
+                      <div className="flex items-center gap-1 text-xs font-medium truncate">
+                        <User className="h-3 w-3" />{author}
+                      </div>
+                    )}
+
+                    <div className="text-xl font-bold mt-1">{p.engagement.toLocaleString("pt-BR")}</div>
                     <div className="text-[10px] text-muted-foreground -mt-1">Engajamento total</div>
-                    <div className="flex justify-between gap-2 text-xs pt-2 border-t mt-auto">
-                      <span className="flex items-center gap-1"><Heart className="h-3 w-3" />{(p.likes_count || 0).toLocaleString("pt-BR")}</span>
-                      <span className="flex items-center gap-1"><MessageCircle className="h-3 w-3" />{(p.replies_count || 0).toLocaleString("pt-BR")}</span>
-                      <span className="flex items-center gap-1"><Share2 className="h-3 w-3" />{(p.shares_count || 0).toLocaleString("pt-BR")}</span>
+
+                    <div className="flex justify-between gap-2 text-xs pt-2 border-t">
+                      <span className="flex items-center gap-1" title="Curtidas"><Heart className="h-3 w-3" />{(p.likes_count || 0).toLocaleString("pt-BR")}</span>
+                      <span className="flex items-center gap-1" title="Comentários"><MessageCircle className="h-3 w-3" />{(p.replies_count || 0).toLocaleString("pt-BR")}</span>
+                      <span className="flex items-center gap-1" title="Compartilhamentos"><Share2 className="h-3 w-3" />{(p.shares_count || 0).toLocaleString("pt-BR")}</span>
+                    </div>
+
+                    <div className="mt-2">
+                      {url ? (
+                        <Button asChild size="sm" variant="outline" className="w-full">
+                          <a href={url} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="h-3 w-3 mr-1" />Ver publicação
+                          </a>
+                        </Button>
+                      ) : (
+                        <p className="text-[10px] text-center text-muted-foreground italic">Link original indisponível</p>
+                      )}
                     </div>
                   </Card>
                 );
@@ -413,6 +500,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
               )}
             </div>
           </div>
+
         </>
       )}
     </Card>
