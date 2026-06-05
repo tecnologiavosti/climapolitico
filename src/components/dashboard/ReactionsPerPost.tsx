@@ -644,112 +644,113 @@ export function ReactionsPerPost({ candidateId }: Props) {
             />
           </Suspense>
 
-          {/* Top 5 posts */}
+          {/* Top 5 posts — cards analíticos premium (sem thumbnails) */}
           <div>
-            <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-              <h4 className="text-sm font-semibold">Top 5 posts por engajamento</h4>
+            <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+              <div>
+                <h4 className="text-base font-bold tracking-tight">Top 5 posts por engajamento</h4>
+                <p className="text-xs text-muted-foreground">Ranqueado por engajamento × recência — prioriza últimas 24h</p>
+              </div>
               {topFallbackIdx > 0 && top5.length > 0 && (
                 <Badge variant="outline" className="text-[10px]">
-                  Janela expandida para {effectiveTopPeriod === "total" ? "todo o histórico" : effectiveTopPeriod}
+                  Janela expandida: {effectiveTopPeriod === "total" ? "todo o histórico" : effectiveTopPeriod}
                 </Badge>
               )}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
-              {top5.map((p) => {
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {top5.map((p, idx) => {
                 const ds = dominantSentiment(p.sentiment_label);
                 const url = buildPostUrl(p);
-                const author = p.author_name || p.author_handle || "Autor desconhecido";
-                const title = p.post_title || p.post_description || "(sem título disponível)";
+                const author = p.author_name || p.author_handle || "Autor não identificado";
+                const platformKey = normalizePlatformKey(p.platform || p.social_network_raw || p.social_network);
+                const meta = platformMeta(platformKey);
+                const title = (p.post_title && p.post_title.trim())
+                  || (p.post_description && p.post_description.trim())
+                  || `Publicação de ${author} no ${meta.label}`;
+                const dateObj = p.collected_at ? new Date(p.collected_at) : null;
+                const relative = dateObj ? formatDistanceToNow(dateObj, { addSuffix: true, locale: ptBR }) : "—";
+                const dateLong = dateObj ? dateObj.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+
                 return (
-                  <Card key={p.id} className="p-3 flex flex-col gap-2 overflow-hidden">
+                  <Card
+                    key={p.id}
+                    className="relative flex flex-col gap-3 p-5 border-2 hover:shadow-lg hover:border-primary/40 transition-all bg-card"
+                  >
+                    {/* Rank + Plataforma */}
                     <div className="flex items-center justify-between gap-2">
-                      <Badge variant="outline" className="text-[10px] capitalize">{p.social_network || "?"}</Badge>
-                      <Badge className={`text-[10px] border ${ds.color}`}>
-                        <ds.Icon className="h-3 w-3 mr-1" />{ds.label}
-                      </Badge>
-                    </div>
-
-                    {/* Thumbnail real do post; fallback institucional somente se não houver imagem válida */}
-                    {(() => {
-                      const thumb = buildThumbnail(p);
-                      const imgSrc = thumb || INSTITUTIONAL_FALLBACK;
-                      const wrapperClass = `relative block aspect-video w-full overflow-hidden rounded-md bg-muted ${url ? "cursor-pointer" : "cursor-default"}`;
-                      const ImgEl = (
-                        <img
-                          src={imgSrc}
-                          alt={title}
-                          loading="lazy"
-                          className={`h-full w-full ${thumb ? "object-cover" : "object-contain p-6 opacity-80"} transition-transform hover:scale-105`}
-                          onError={(e) => {
-                            const img = e.currentTarget as HTMLImageElement;
-                            if (img.src.endsWith(INSTITUTIONAL_FALLBACK)) return;
-                            img.src = INSTITUTIONAL_FALLBACK;
-                            img.classList.remove("object-cover");
-                            img.classList.add("object-contain", "p-6", "opacity-80");
-                          }}
-                        />
-                      );
-                      return url ? (
-                        <a href={url} target="_blank" rel="noopener noreferrer" className={wrapperClass}>{ImgEl}</a>
-                      ) : (
-                        <div className={wrapperClass}>{ImgEl}</div>
-                      );
-                    })()}
-
-
-                    <div className="text-xs text-muted-foreground">
-                      {p.collected_at ? new Date(p.collected_at).toLocaleDateString("pt-BR") : "—"}
-                    </div>
-
-                    <div className="text-sm font-semibold leading-snug line-clamp-2" title={title}>
-                      {title}
-                    </div>
-
-                    {p.post_description && p.post_title && (
-                      <div className="text-xs text-muted-foreground line-clamp-2">{p.post_description}</div>
-                    )}
-
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground mt-1">Publicado por</div>
-                    {p.author_profile_url ? (
-                      <a
-                        href={p.author_profile_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-xs font-medium text-primary hover:underline truncate"
-                      >
-                        <User className="h-3 w-3" />{author}
-                      </a>
-                    ) : (
-                      <div className="flex items-center gap-1 text-xs font-medium truncate">
-                        <User className="h-3 w-3" />{author}
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
+                          {idx + 1}
+                        </span>
+                        <Badge className={`text-[11px] font-semibold border ${meta.tone}`} variant="outline">
+                          <meta.Icon className="h-3 w-3 mr-1" />{meta.label}
+                        </Badge>
                       </div>
-                    )}
-
-                    <div className="text-xl font-bold mt-1">{p.engagement.toLocaleString("pt-BR")}</div>
-                    <div className="text-[10px] text-muted-foreground -mt-1">Engajamento total</div>
-
-                    <div className="flex justify-between gap-2 text-xs pt-2 border-t">
-                      <span className="flex items-center gap-1" title="Curtidas"><Heart className="h-3 w-3" />{(p.likes_count || 0).toLocaleString("pt-BR")}</span>
-                      <span className="flex items-center gap-1" title="Comentários"><MessageCircle className="h-3 w-3" />{(p.replies_count || 0).toLocaleString("pt-BR")}</span>
-                      <span className="flex items-center gap-1" title="Compartilhamentos"><Share2 className="h-3 w-3" />{(p.shares_count || 0).toLocaleString("pt-BR")}</span>
+                      <span className="text-[11px] text-muted-foreground" title={dateLong}>{relative}</span>
                     </div>
 
-                    <div className="mt-2">
+                    {/* Título */}
+                    <h5 className="text-base font-serif font-semibold leading-snug line-clamp-3" title={title}>
+                      {title}
+                    </h5>
+
+                    {/* Autor */}
+                    <div className="flex items-center gap-2 text-xs">
+                      <User className="h-3.5 w-3.5 text-muted-foreground" />
+                      {p.author_profile_url ? (
+                        <a
+                          href={p.author_profile_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-primary hover:underline truncate"
+                        >
+                          {author}
+                        </a>
+                      ) : (
+                        <span className="font-medium truncate">{author}</span>
+                      )}
+                    </div>
+
+                    {/* Engajamento destacado */}
+                    <div className="rounded-lg border bg-gradient-to-br from-primary/10 to-primary/5 p-3 flex items-end justify-between">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Engajamento total</div>
+                        <div className="text-2xl font-bold tabular-nums leading-tight">
+                          {p.engagement.toLocaleString("pt-BR")}
+                        </div>
+                      </div>
+                      <TrendingUp className="h-5 w-5 text-primary/70" />
+                    </div>
+
+                    {/* Métricas detalhadas */}
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <Metric Icon={Heart} label="Curtidas" value={p.likes_count || 0} />
+                      <Metric Icon={MessageCircle} label="Comentários" value={p.replies_count || 0} />
+                      <Metric Icon={Share2} label="Compart." value={p.shares_count || 0} />
+                    </div>
+
+                    {/* Sentimento */}
+                    <Badge className={`text-[11px] border self-start ${ds.color}`} variant="outline">
+                      <ds.Icon className="h-3 w-3 mr-1" />Sentimento: {ds.label}
+                    </Badge>
+
+                    {/* Link original */}
+                    <div className="mt-auto pt-2">
                       {url ? (
-                        <Button asChild size="sm" variant="outline" className="w-full">
+                        <Button asChild size="sm" className="w-full">
                           <a href={url} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink className="h-3 w-3 mr-1" />Ver publicação
+                            <ExternalLink className="h-3.5 w-3.5 mr-1.5" />Abrir publicação original
                           </a>
                         </Button>
                       ) : (
-                        <p className="text-[10px] text-center text-muted-foreground italic">Link original indisponível</p>
+                        <p className="text-[11px] text-center text-muted-foreground italic">Link original indisponível — recoletando…</p>
                       )}
                     </div>
                   </Card>
                 );
               })}
               {top5.length === 0 && (
-               <p className="text-sm text-muted-foreground col-span-full">
+                <p className="text-sm text-muted-foreground col-span-full">
                   {topState.loading || topFallbackIdx < fallbackLadder.length - 1
                     ? "Buscando conteúdos políticos relevantes em períodos maiores..."
                     : "Nenhum post político relevante encontrado, mesmo expandindo até todo o histórico."}
@@ -757,6 +758,8 @@ export function ReactionsPerPost({ candidateId }: Props) {
               )}
             </div>
           </div>
+
+
 
         </>
       )}
