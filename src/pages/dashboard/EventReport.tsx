@@ -106,23 +106,38 @@ function detectEventsFromInteractions(comments: LocalInteraction[], _candidateNa
     byDay.set(day, [...(byDay.get(day) || []), comment]);
   });
 
-  const days = [...byDay.entries()].sort((a, b) => b[0].localeCompare(a[0]));
-  const avg = days.reduce((sum, [, rows]) => sum + rows.length, 0) / Math.max(days.length, 1);
-  const peakDays = days
-    .filter(([, rows]) => rows.length >= Math.max(4, avg * 1.25))
-    .sort((a, b) => b[1].length - a[1].length)
-    .slice(0, 15);
+  const daysAsc = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const counts = daysAsc.map(([, rows]) => rows.length);
+  const avg = counts.reduce((s, n) => s + n, 0) / Math.max(counts.length, 1);
 
-  return peakDays.map(([day, rows]) => {
+  // Detecta picos (acima de 1.5x média e >= 4) e quedas abruptas (abaixo de 0.4x média do período anterior)
+  const peakDays = daysAsc
+    .map(([day, rows], i) => {
+      // baseline: média dos 7 dias anteriores
+      const prev = counts.slice(Math.max(0, i - 7), i);
+      const baseline = prev.length > 0 ? prev.reduce((s, n) => s + n, 0) / prev.length : avg;
+      const variation = baseline > 0 ? ((rows.length - baseline) / baseline) * 100 : 0;
+      const isPeak = rows.length >= Math.max(4, avg * 1.5) && variation > 50;
+      const isDrop = baseline >= 4 && variation < -60;
+      return { day, rows, variation, baseline, isPeak, isDrop };
+    })
+    .filter(d => d.isPeak || d.isDrop)
+    .sort((a, b) => Math.abs(b.variation) - Math.abs(a.variation))
+    .slice(0, 20);
+
+  return peakDays.map(({ day, rows, variation, isDrop }) => {
     const formatted = day.split('-').reverse().join('/');
+    const sign = variation >= 0 ? '+' : '';
+    const tag = isDrop ? 'Queda abrupta' : variation > 200 ? 'Explosão de menções' : 'Pico de menções';
     return {
-      name: `Dia ${formatted}`,
-      type: 'pico',
+      name: `${formatted} — ${tag}`,
+      type: isDrop ? 'queda' : 'pico',
       keywords: [],
       start_date: day,
       end_date: day,
       mentions_estimate: rows.length,
-      description: `Pico de menções detectado em ${formatted} — ${rows.length} comentários nesse dia.`,
+      variation_pct: Math.round(variation),
+      description: `${tag} em ${formatted} — ${rows.length} comentários (${sign}${Math.round(variation)}% vs. média anterior).`,
     };
   });
 }
