@@ -149,24 +149,41 @@ const NON_POLITICAL_KEYWORDS = [
   "tutorial","unboxing","gameplay","minecraft","fortnite","free fire","valorant","league of legends",
 ];
 
-function isPoliticalContent(p: PostRow): boolean {
-  const haystack = [p.post_title, p.post_description, p.author_name, p.author_handle]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-  if (!haystack.trim()) return false;
-  const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+/**
+ * Classificação semântica leve combinando: nomes monitorados, palavras-chave políticas,
+ * pistas institucionais no autor e penalidade para conteúdo claramente não-político.
+ * Retorna um score 0..N — quanto maior, mais relevante politicamente.
+ */
+function politicalScore(p: PostRow, monitoredNames: string[] = []): number {
+  const haystack = norm(
+    [p.post_title, p.post_description, p.author_name, p.author_handle].filter(Boolean).join(" "),
+  );
+  if (!haystack.trim()) return 0;
+  let score = 0;
+  for (const name of monitoredNames) {
+    const n = norm(name);
+    if (!n || n.length < 3) continue;
+    if (haystack.includes(n)) { score += 4; break; }
+    const tokens = n.split(/\s+/).filter((t) => t.length >= 4);
+    if (tokens.length >= 2 && tokens.every((t) => haystack.includes(t))) { score += 3; break; }
+  }
+  let kwHits = 0;
+  for (const k of POLITICAL_KEYWORDS) {
+    if (haystack.includes(norm(k))) { kwHits += 1; if (kwHits >= 3) break; }
+  }
+  score += Math.min(kwHits * 2, 4);
+  const author = norm(`${p.author_name || ""} ${p.author_handle || ""}`);
+  if (/\b(g1|cnn|globo|uol|folha|estadao|veja|exame|metropoles|jovempan|band|sbt|record|congresso|senado|camara|tse|stf|gov|oficial|partido|pt|pl|psdb|psol|pdt|psb|mdb)\b/.test(author)) {
+    score += 2;
+  }
   let nonHits = 0;
   for (const k of NON_POLITICAL_KEYWORDS) {
-    if (haystack.includes(norm(k))) nonHits += 1;
-    if (nonHits >= 2) return false;
+    if (haystack.includes(norm(k))) { nonHits += 1; if (nonHits >= 2) break; }
   }
-  for (const k of POLITICAL_KEYWORDS) {
-    if (haystack.includes(norm(k))) return nonHits === 0;
-  }
-  return false;
+  score -= Math.min(nonHits * 2, 4);
+  return score;
 }
 
 
