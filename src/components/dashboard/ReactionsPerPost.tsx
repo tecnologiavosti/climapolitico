@@ -477,27 +477,27 @@ export function ReactionsPerPost({ candidateId }: Props) {
                       </Badge>
                     </div>
 
-                    {/* Thumbnail */}
-                    {p.thumbnail_url ? (
-                      <a
-                        href={url || undefined}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`relative block aspect-video w-full overflow-hidden rounded-md bg-muted ${url ? "cursor-pointer" : "cursor-default"}`}
-                      >
-                        <img
-                          src={p.thumbnail_url}
-                          alt={title}
-                          loading="lazy"
-                          className="h-full w-full object-cover transition-transform hover:scale-105"
-                          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                        />
-                      </a>
-                    ) : (
-                      <div className="flex aspect-video w-full items-center justify-center rounded-md bg-muted text-muted-foreground">
-                        <ImageOff className="h-6 w-6 opacity-60" />
-                      </div>
-                    )}
+                    {/* Thumbnail (com fallback institucional) */}
+                    <a
+                      href={url || undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`relative block aspect-video w-full overflow-hidden rounded-md bg-muted ${url ? "cursor-pointer" : "cursor-default pointer-events-none"}`}
+                    >
+                      <img
+                        src={p.thumbnail_url || INSTITUTIONAL_FALLBACK}
+                        alt={title}
+                        loading="lazy"
+                        className="h-full w-full object-cover transition-transform hover:scale-105"
+                        onError={(e) => {
+                          const img = e.currentTarget as HTMLImageElement;
+                          if (img.src.endsWith(INSTITUTIONAL_FALLBACK)) return;
+                          img.src = INSTITUTIONAL_FALLBACK;
+                          img.classList.add("object-contain","p-6","opacity-80");
+                        }}
+                      />
+                    </a>
+
 
                     <div className="text-xs text-muted-foreground">
                       {p.collected_at ? new Date(p.collected_at).toLocaleDateString("pt-BR") : "—"}
