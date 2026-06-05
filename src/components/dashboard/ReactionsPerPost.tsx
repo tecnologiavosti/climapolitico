@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { AlertCircle, ExternalLink, Heart, ImageOff, MessageCircle, RefreshCw, Share2, ThumbsUp, ThumbsDown, Minus, User } from "lucide-react";
+import { AlertCircle, ExternalLink, Heart, MessageCircle, RefreshCw, Share2, ThumbsUp, ThumbsDown, Minus, User } from "lucide-react";
 import { subDays } from "date-fns";
 
 // Carrega Recharts apenas quando o usuário entra na aba — reduz JS inicial.
@@ -115,6 +115,60 @@ function buildPostUrl(p: PostRow): string | null {
   if (net.includes("facebook") && handle) return `https://www.facebook.com/${handle}/posts/${pid}`;
   return null;
 }
+
+// Imagem institucional usada quando o post não traz thumbnail válida.
+const INSTITUTIONAL_FALLBACK = "/favicon.png";
+
+// Palavras-chave que indicam conteúdo político brasileiro.
+const POLITICAL_KEYWORDS = [
+  "presidente","presidência","governador","governadora","senador","senadora",
+  "deputado","deputada","prefeito","prefeita","vereador","vereadora","ministro","ministra",
+  "ministério","câmara","camara","senado","congresso","assembleia","assembléia","planalto",
+  "stf","tse","tcu","pgr","agu","governo","oposição","oposicao","eleição","eleicao","eleições","eleicoes",
+  "campanha","candidatura","candidato","candidata","partido","coligação","coligacao","federação","federacao",
+  "política","politica","político","politico","políticas","politicas","políticos","politicos",
+  "lei","projeto de lei","pl ","pec","mp ","medida provisória","medida provisoria","reforma",
+  "votação","votacao","plenário","plenario","sessão","sessao","comissão","comissao","cpi",
+  "discurso","entrevista","coletiva","debate","sabatina","pronunciamento","agenda","posse","mandato",
+  "pt","pl","pp","mdb","psdb","psd","união brasil","uniao brasil","podemos","novo","psol","pdt","psb","republicanos","cidadania","avante","solidariedade","pcdob","pv","rede",
+  "lula","bolsonaro","alckmin","haddad","tarcísio","tarcisio","caiado","zema","ratinho","leite","castro","cláudio","claudio","nunes","boulos","datena","marçal","marcal","pacheco","lira","alcolumbre","motta","moraes","fachin","barroso","mendonça","mendonca","gilmar","dino","janja","michelle",
+  "esquerda","direita","centro","conservador","progressista","liberal","bolsonarismo","lulismo",
+  "imposto","tributária","tributaria","orçamento","orcamento","fiscal","economia","emprego","salário mínimo","salario minimo","bolsa família","bolsa familia","pé-de-meia","pe de meia",
+  "segurança pública","seguranca publica","saúde","saude","educação","educacao","sus","previdência","previdencia",
+  "marco civil","stf","supremo","tribunal","ministério público","ministerio publico","prefeitura","governo federal","governo estadual",
+];
+
+const NON_POLITICAL_KEYWORDS = [
+  "novela","bbb","big brother","reality","fazenda","masterchef","carnaval","samba","funk","sertanejo",
+  "futebol","flamengo","corinthians","palmeiras","são paulo fc","sao paulo fc","santos fc","vasco","fluminense","grêmio","gremio","internacional","atlético","atletico","cruzeiro","botafogo","seleção brasileira","selecao brasileira","copa","champions","libertadores","neymar","vini jr","vinicius jr","endrick","cr7","cristiano ronaldo","messi","mbappé","mbappe",
+  "globo esporte","fantástico","fantastico","domingão","domingao","caldeirão","caldeirao","altas horas","programa do","faustão","faustao","ratinho","silvio santos",
+  "anitta","luan santana","gusttavo lima","marília mendonça","marilia mendonca","henrique e juliano","jorge e mateus",
+  "ufc","mma","fórmula 1","formula 1","f1","nba","tênis","tenis","vôlei","volei",
+  "trailer","teaser","filme","série","serie","temporada","episódio","episodio","netflix","disney+","prime video","hbo","spotify","apple music","clipe oficial","videoclipe","videoclip","music video","lyrics","letra",
+  "receita","culinária","culinaria","comida","restaurante","gastronomia","cerveja","whisky",
+  "tutorial","unboxing","gameplay","minecraft","fortnite","free fire","valorant","league of legends",
+];
+
+function isPoliticalContent(p: PostRow): boolean {
+  const haystack = [p.post_title, p.post_description, p.author_name, p.author_handle]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (!haystack.trim()) return false;
+  const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  let nonHits = 0;
+  for (const k of NON_POLITICAL_KEYWORDS) {
+    if (haystack.includes(norm(k))) nonHits += 1;
+    if (nonHits >= 2) return false;
+  }
+  for (const k of POLITICAL_KEYWORDS) {
+    if (haystack.includes(norm(k))) return nonHits === 0;
+  }
+  return false;
+}
+
 
 function periodRange(period: PeriodKey, customStart: string, customEnd: string) {
   const end = period === "custom" && customEnd ? new Date(`${customEnd}T23:59:59`).toISOString() : null;
@@ -279,6 +333,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
     const list = topState.data || [];
     return [...list]
       .map((p) => ({ ...p, engagement: p.engagement ?? ((p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0)) }))
+      .filter((p) => isPoliticalContent(p))
       .sort((a, b) => (b.engagement || 0) - (a.engagement || 0))
       .slice(0, 5);
   }, [topState.data]);
@@ -422,27 +477,27 @@ export function ReactionsPerPost({ candidateId }: Props) {
                       </Badge>
                     </div>
 
-                    {/* Thumbnail */}
-                    {p.thumbnail_url ? (
-                      <a
-                        href={url || undefined}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`relative block aspect-video w-full overflow-hidden rounded-md bg-muted ${url ? "cursor-pointer" : "cursor-default"}`}
-                      >
-                        <img
-                          src={p.thumbnail_url}
-                          alt={title}
-                          loading="lazy"
-                          className="h-full w-full object-cover transition-transform hover:scale-105"
-                          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                        />
-                      </a>
-                    ) : (
-                      <div className="flex aspect-video w-full items-center justify-center rounded-md bg-muted text-muted-foreground">
-                        <ImageOff className="h-6 w-6 opacity-60" />
-                      </div>
-                    )}
+                    {/* Thumbnail (com fallback institucional) */}
+                    <a
+                      href={url || undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`relative block aspect-video w-full overflow-hidden rounded-md bg-muted ${url ? "cursor-pointer" : "cursor-default pointer-events-none"}`}
+                    >
+                      <img
+                        src={p.thumbnail_url || INSTITUTIONAL_FALLBACK}
+                        alt={title}
+                        loading="lazy"
+                        className="h-full w-full object-cover transition-transform hover:scale-105"
+                        onError={(e) => {
+                          const img = e.currentTarget as HTMLImageElement;
+                          if (img.src.endsWith(INSTITUTIONAL_FALLBACK)) return;
+                          img.src = INSTITUTIONAL_FALLBACK;
+                          img.classList.add("object-contain","p-6","opacity-80");
+                        }}
+                      />
+                    </a>
+
 
                     <div className="text-xs text-muted-foreground">
                       {p.collected_at ? new Date(p.collected_at).toLocaleDateString("pt-BR") : "—"}
