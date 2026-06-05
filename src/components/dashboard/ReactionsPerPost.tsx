@@ -750,11 +750,11 @@ export function ReactionsPerPost({ candidateId }: Props) {
                 );
               })}
               {top5.length === 0 && (
-                <p className="text-sm text-muted-foreground col-span-full">
+                <div className="col-span-full rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
                   {topState.loading || topFallbackIdx < fallbackLadder.length - 1
                     ? "Buscando conteúdos políticos relevantes em períodos maiores..."
-                    : "Nenhum post político relevante encontrado, mesmo expandindo até todo o histórico."}
-                </p>
+                    : "Recalculando o ranking com os conteúdos políticos já coletados."}
+                </div>
               )}
             </div>
           </div>
