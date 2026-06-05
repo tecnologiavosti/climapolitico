@@ -541,7 +541,14 @@ export function ReactionsPerPost({ candidateId }: Props) {
 
           {/* Top 5 posts */}
           <div>
-            <h4 className="text-sm font-semibold mb-2">Top 5 posts por engajamento</h4>
+            <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+              <h4 className="text-sm font-semibold">Top 5 posts por engajamento</h4>
+              {topFallbackIdx > 0 && top5.length > 0 && (
+                <Badge variant="outline" className="text-[10px]">
+                  Janela expandida para {effectiveTopPeriod === "total" ? "todo o histórico" : effectiveTopPeriod}
+                </Badge>
+              )}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
               {top5.map((p) => {
                 const ds = dominantSentiment(p.sentiment_label);
