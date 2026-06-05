@@ -473,13 +473,9 @@ export function ReactionsPerPost({ candidateId }: Props) {
     setAutoCollectionKey(key);
     (async () => {
       await supabase.rpc("reprocess_social_interactions_political_validation" as any, { _batch_size: 10000 });
-      await Promise.allSettled([
-        supabase.functions.invoke("google-news-collector"),
-        supabase.functions.invoke("gdelt-collector", { body: candidateId ? { candidateId } : {} }),
-        supabase.functions.invoke("search-twitter-mentions", { body: candidateId ? { candidateId } : {} }),
-        supabase.functions.invoke("tiktok-collector", { body: candidateId ? { candidateId } : {} }),
-        supabase.functions.invoke("facebook-rss-collector", { body: candidateId ? { candidateId } : {} }),
-      ]);
+      await supabase.functions.invoke("orchestrate-all-collectors", {
+        body: candidateId ? { collector: "all", candidateId } : { collector: "all" },
+      });
       setTimeout(() => {
         setTopFallbackIdx(0);
         void loadAll();
