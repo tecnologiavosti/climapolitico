@@ -1730,6 +1730,7 @@ export type Database = {
           comment_author: string | null
           comment_text: string | null
           created_at: string | null
+          engagement_score: number | null
           event_id: string | null
           external_id: string | null
           id: string
@@ -1742,6 +1743,7 @@ export type Database = {
           longitude: number | null
           original_posted_at: string | null
           parent_comment_id: string | null
+          platform: string | null
           political_relevance_score: number
           political_validation_reason: string | null
           post_description: string | null
@@ -1772,6 +1774,7 @@ export type Database = {
           comment_author?: string | null
           comment_text?: string | null
           created_at?: string | null
+          engagement_score?: number | null
           event_id?: string | null
           external_id?: string | null
           id?: string
@@ -1784,6 +1787,7 @@ export type Database = {
           longitude?: number | null
           original_posted_at?: string | null
           parent_comment_id?: string | null
+          platform?: string | null
           political_relevance_score?: number
           political_validation_reason?: string | null
           post_description?: string | null
@@ -1814,6 +1818,7 @@ export type Database = {
           comment_author?: string | null
           comment_text?: string | null
           created_at?: string | null
+          engagement_score?: number | null
           event_id?: string | null
           external_id?: string | null
           id?: string
@@ -1826,6 +1831,7 @@ export type Database = {
           longitude?: number | null
           original_posted_at?: string | null
           parent_comment_id?: string | null
+          platform?: string | null
           political_relevance_score?: number
           political_validation_reason?: string | null
           post_description?: string | null
@@ -2916,6 +2922,7 @@ export type Database = {
         Returns: Json
       }
       norm_text: { Args: { _value: string }; Returns: string }
+      normalize_social_platform: { Args: { _network: string }; Returns: string }
       prune_edge_function_logs: { Args: never; Returns: undefined }
       reactivate_youtube_keys: { Args: never; Returns: undefined }
       record_collector_call: {
