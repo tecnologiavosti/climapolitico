@@ -433,22 +433,28 @@ export function ReactionsPerPost({ candidateId }: Props) {
     const scored = list.map((p) => {
       const engagement = p.engagement ?? p.engagement_score ?? ((p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0));
       const relevance = politicalScore(p, monitoredNames);
-      const platform = (p.platform || p.social_network_raw || p.social_network || "unknown").toLowerCase();
+      const platform = normalizePlatformKey(p.platform || p.social_network_raw || p.social_network);
       return { ...p, engagement, _relevance: relevance, _platform: platform };
     });
     const filtered = scored
-      .filter((p) => (p.political_relevance_score ?? p._relevance) >= 3 && p._relevance >= 1 && buildPostUrl(p))
-      .sort((a, b) => b.engagement - a.engagement || b._relevance - a._relevance);
-    const picked: typeof filtered = [];
-    const counts = new Map<string, number>();
+      .filter((p) => (p.political_relevance_score ?? p._relevance) >= 2 && buildPostUrl(p))
+      .sort((a, b) => b.engagement - a.engagement || (b.political_relevance_score ?? b._relevance) - (a.political_relevance_score ?? a._relevance));
+    const bestByPlatform = new Map<string, typeof filtered[number]>();
     for (const post of filtered) {
-      const count = counts.get(post._platform) || 0;
-      if (count >= 2 && filtered.some((p) => !picked.includes(p) && (counts.get(p._platform) || 0) < 2)) continue;
-      picked.push(post);
-      counts.set(post._platform, count + 1);
-      if (picked.length === 5) break;
+      if (!bestByPlatform.has(post._platform)) bestByPlatform.set(post._platform, post);
     }
-    return picked;
+    const primary = Array.from(bestByPlatform.values()).sort((a, b) => b.engagement - a.engagement);
+    const picked = primary.slice(0, 5);
+    if (picked.length < 5) {
+      for (const post of filtered) {
+        if (picked.some((p) => p.id === post.id)) continue;
+        const platformCount = picked.filter((p) => p._platform === post._platform).length;
+        if (platformCount >= 2 && filtered.some((p) => !picked.some((x) => x.id === p.id) && picked.filter((x) => x._platform === p._platform).length === 0)) continue;
+        picked.push(post);
+        if (picked.length === 5) break;
+      }
+    }
+    return picked.sort((a, b) => b.engagement - a.engagement || (b.political_relevance_score ?? b._relevance) - (a.political_relevance_score ?? a._relevance));
   }, [topState.data, monitoredNames]);
 
   // Fallback automático de período: se nada relevante, expande a janela.
@@ -467,7 +473,13 @@ export function ReactionsPerPost({ candidateId }: Props) {
     setAutoCollectionKey(key);
     (async () => {
       await supabase.rpc("reprocess_social_interactions_political_validation" as any, { _batch_size: 10000 });
-      await supabase.functions.invoke("google-news-collector");
+      await Promise.allSettled([
+        supabase.functions.invoke("google-news-collector"),
+        supabase.functions.invoke("gdelt-collector", { body: candidateId ? { candidateId } : {} }),
+        supabase.functions.invoke("search-twitter-mentions", { body: candidateId ? { candidateId } : {} }),
+        supabase.functions.invoke("tiktok-collector", { body: candidateId ? { candidateId } : {} }),
+        supabase.functions.invoke("facebook-rss-collector", { body: candidateId ? { candidateId } : {} }),
+      ]);
       setTimeout(() => {
         setTopFallbackIdx(0);
         void loadAll();
