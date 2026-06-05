@@ -25,6 +25,7 @@ interface ScrapedTweet {
   text: string;
   author: string;
   authorUrl: string;
+  sourcePlatform?: 'twitter' | 'bluesky' | 'mastodon';
   postedAt: string;
   likes: number;
   replies: number;
@@ -182,6 +183,7 @@ async function fetchViaBluesky(query: string, maxResults: number): Promise<Scrap
           text: p?.record?.text || '',
           author: handle,
           authorUrl: `https://bsky.app/profile/${handle}`,
+          sourcePlatform: 'bluesky',
           postedAt: p?.record?.createdAt || p?.indexedAt || new Date().toISOString(),
           likes: p?.likeCount || 0,
           replies: p?.replyCount || 0,
@@ -236,6 +238,7 @@ async function fetchViaMastodon(query: string, maxResults: number): Promise<Scra
           text,
           author,
           authorUrl: s?.account?.url || `${instance}/@${author}`,
+          sourcePlatform: 'mastodon',
           postedAt: s?.created_at || new Date().toISOString(),
           likes: s?.favourites_count || 0,
           replies: s?.replies_count || 0,
@@ -291,6 +294,7 @@ async function fetchViaFirecrawl(query: string, maxResults: number): Promise<Scr
         text: decodeHtml(text),
         author,
         authorUrl: `https://x.com/${author}`,
+          sourcePlatform: 'twitter',
         postedAt: r?.publishedDate || new Date().toISOString(),
         likes: 0,
         replies: 0,
@@ -359,6 +363,7 @@ function parseRss(xml: string): ScrapedTweet[] {
       text,
       author,
       authorUrl: `https://x.com/${author}`,
+      sourcePlatform: 'twitter',
       postedAt,
       likes: 0,
       replies: 0,
@@ -1005,6 +1010,8 @@ Deno.serve(async (req) => {
       const sentiments = await analyzeSentimentBatch(batch.map(t => t.text));
       const records = batch.map((t, idx) => {
         const s = sentiments?.[idx];
+        const platform = t.sourcePlatform || (t.tweetUrl?.includes('bsky.app') ? 'bluesky' : t.tweetUrl?.includes('mastodon') ? 'mastodon' : 'twitter');
+        const networkLabel = platform === 'bluesky' ? 'Bluesky' : platform === 'mastodon' ? 'Mastodon' : 'Twitter/X';
         return {
           user_id: ownerUserId,
           candidate_id: candidateId,
@@ -1018,9 +1025,9 @@ Deno.serve(async (req) => {
           author_handle: t.author?.replace(/^@/, '') || null,
           author_name: t.author,
           post_id: t.tweetId,
-          platform: 'twitter',
+          platform,
           engagement_score: Math.max(1, (t.likes || 0) + (t.replies || 0) + (t.retweets || 0)),
-          social_network: 'Twitter/X',
+          social_network: networkLabel,
           sentiment_label: s?.label ?? null,
           sentiment_score: s?.score ?? null,
           likes_count: t.likes,

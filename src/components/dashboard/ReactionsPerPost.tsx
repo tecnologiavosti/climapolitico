@@ -104,6 +104,17 @@ export interface PostRow {
   post_id?: string | null;
   political_relevance_score?: number | null;
   political_validation_reason?: string | null;
+  related_records?: number | null;
+}
+
+function normalizePlatformKey(value?: string | null): string {
+  const v = (value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  if (["youtube", "yt", "invidious"].includes(v)) return "youtube";
+  if (["twitter", "twitter/x", "x", "x/twitter"].includes(v)) return "twitter";
+  if (["google news", "google_news", "googlenews"].includes(v)) return "google_news";
+  if (["gdelt", "portal", "portais", "noticias", "news", "portal de noticia", "portal de noticias"].includes(v)) return "portal";
+  if (["tik tok", "tiktok"].includes(v)) return "tiktok";
+  return v || "unknown";
 }
 
 function isValidHttpsUrl(u?: string | null): u is string {
@@ -112,16 +123,16 @@ function isValidHttpsUrl(u?: string | null): u is string {
 
 function buildPostUrl(p: PostRow): string | null {
   if (isValidHttpsUrl(p.post_url)) return (p.post_url as string).trim();
-  const net = (p.platform || p.social_network_raw || p.social_network || "").toLowerCase();
+  const net = normalizePlatformKey(p.platform || p.social_network_raw || p.social_network);
   const pid = p.post_id?.trim();
   const handle = p.author_handle?.replace(/^@/, "").trim();
   if (!pid) return null;
   let candidate: string | null = null;
-  if (net.includes("youtube") || net === "yt") candidate = `https://www.youtube.com/watch?v=${pid}`;
-  else if (net.includes("twitter") || net === "x") candidate = `https://twitter.com/${handle || "i"}/status/${pid}`;
-  else if (net.includes("tiktok") && handle) candidate = `https://www.tiktok.com/@${handle}/video/${pid}`;
-  else if (net.includes("instagram")) candidate = `https://www.instagram.com/p/${pid}/`;
-  else if (net.includes("facebook") && handle) candidate = `https://www.facebook.com/${handle}/posts/${pid}`;
+  if (net === "youtube") candidate = `https://www.youtube.com/watch?v=${pid}`;
+  else if (net === "twitter") candidate = `https://x.com/${handle || "i"}/status/${pid}`;
+  else if (net === "tiktok" && handle) candidate = `https://www.tiktok.com/@${handle}/video/${pid}`;
+  else if (net === "instagram") candidate = `https://www.instagram.com/p/${pid}/`;
+  else if (net === "facebook" && handle) candidate = `https://www.facebook.com/${handle}/posts/${pid}`;
   return isValidHttpsUrl(candidate) ? candidate : null;
 }
 
@@ -129,10 +140,13 @@ function buildPostUrl(p: PostRow): string | null {
 // determinística por video_id. Demais redes dependem do que o coletor salvou.
 function buildThumbnail(p: PostRow): string | null {
   if (isValidHttpsUrl(p.thumbnail_url)) return (p.thumbnail_url as string).trim();
-  const net = (p.platform || p.social_network_raw || p.social_network || "").toLowerCase();
+  const net = normalizePlatformKey(p.platform || p.social_network_raw || p.social_network);
   const pid = p.post_id?.trim();
-  if (pid && (net.includes("youtube") || net === "yt")) {
-    return `https://img.youtube.com/vi/${pid}/hqdefault.jpg`;
+  const url = buildPostUrl(p);
+  const urlVideoId = url?.match(/[?&]v=([A-Za-z0-9_-]{6,})/)?.[1] || url?.match(/youtu\.be\/([A-Za-z0-9_-]{6,})/)?.[1];
+  if (net === "youtube" && (pid || urlVideoId)) {
+    const videoId = pid || urlVideoId;
+    return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
   }
   return null;
 }
@@ -225,11 +239,13 @@ function normalizeSentiment(label: string | null): "positive" | "negative" | "ne
 }
 
 type SectionState<T> = { data: T | null; loading: boolean; error: string | null; ms: number };
+type RpcClient = { rpc: (name: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: { message?: string } | null }> };
+const rpcClient = supabase as unknown as RpcClient;
 
 async function callRpc<T>(name: string, args: Record<string, unknown>): Promise<{ data: T | null; ms: number; error: string | null; bytes: number }> {
   const t0 = performance.now();
   try {
-    const { data, error } = await supabase.rpc(name as any, args);
+    const { data, error } = await rpcClient.rpc(name, args);
     const ms = Math.round(performance.now() - t0);
     if (error) {
       console.warn(`[ReactionsPerPost] RPC ${name} falhou em ${ms}ms`, error);
@@ -238,10 +254,10 @@ async function callRpc<T>(name: string, args: Record<string, unknown>): Promise<
     const bytes = JSON.stringify(data ?? null).length;
     console.log(`[ReactionsPerPost] RPC ${name} OK em ${ms}ms — payload ${(bytes / 1024).toFixed(1)} KB`);
     return { data: data as T, ms, error: null, bytes };
-  } catch (e: any) {
+  } catch (e: unknown) {
     const ms = Math.round(performance.now() - t0);
     console.warn(`[ReactionsPerPost] RPC ${name} exception em ${ms}ms`, e);
-    return { data: null, ms, error: e?.message || "Erro de rede", bytes: 0 };
+    return { data: null, ms, error: e instanceof Error ? e.message : "Erro de rede", bytes: 0 };
   }
 }
 
@@ -336,7 +352,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
     setTopicsState({ data: topics.data ?? [], loading: false, error: topics.error, ms: topics.ms });
   }, [user, candidateId, range.start, range.end]);
 
-  useEffect(() => { void loadAll(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [reqKey]);
+  useEffect(() => { void loadAll(); }, [reqKey, loadAll]);
 
   // Top posts em fluxo próprio para suportar fallback automático de período.
   useEffect(() => {
@@ -371,7 +387,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
       let pendingRemaining = summary.pendingCount || 0;
       let totalEnqueued = 0;
       for (let batch = 0; batch < 20 && pendingRemaining > 0; batch += 1) {
-        const { data, error } = await supabase.rpc("enqueue_pending_sentiment_jobs" as any, {
+        const { data, error } = await rpcClient.rpc("enqueue_pending_sentiment_jobs", {
           _user_id: user.id,
           _candidate_id: candidateId ?? null,
           _period_start: range.start,
@@ -419,22 +435,28 @@ export function ReactionsPerPost({ candidateId }: Props) {
     const scored = list.map((p) => {
       const engagement = p.engagement ?? p.engagement_score ?? ((p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0));
       const relevance = politicalScore(p, monitoredNames);
-      const platform = (p.platform || p.social_network_raw || p.social_network || "unknown").toLowerCase();
+      const platform = normalizePlatformKey(p.platform || p.social_network_raw || p.social_network);
       return { ...p, engagement, _relevance: relevance, _platform: platform };
     });
     const filtered = scored
-      .filter((p) => (p.political_relevance_score ?? p._relevance) >= 3 && p._relevance >= 1 && buildPostUrl(p))
-      .sort((a, b) => b.engagement - a.engagement || b._relevance - a._relevance);
-    const picked: typeof filtered = [];
-    const counts = new Map<string, number>();
+      .filter((p) => (p.political_relevance_score ?? p._relevance) >= 2 && buildPostUrl(p))
+      .sort((a, b) => b.engagement - a.engagement || (b.political_relevance_score ?? b._relevance) - (a.political_relevance_score ?? a._relevance));
+    const bestByPlatform = new Map<string, typeof filtered[number]>();
     for (const post of filtered) {
-      const count = counts.get(post._platform) || 0;
-      if (count >= 2 && filtered.some((p) => !picked.includes(p) && (counts.get(p._platform) || 0) < 2)) continue;
-      picked.push(post);
-      counts.set(post._platform, count + 1);
-      if (picked.length === 5) break;
+      if (!bestByPlatform.has(post._platform)) bestByPlatform.set(post._platform, post);
     }
-    return picked;
+    const primary = Array.from(bestByPlatform.values()).sort((a, b) => b.engagement - a.engagement);
+    const picked = primary.slice(0, 5);
+    if (picked.length < 5) {
+      for (const post of filtered) {
+        if (picked.some((p) => p.id === post.id)) continue;
+        const platformCount = picked.filter((p) => p._platform === post._platform).length;
+        if (platformCount >= 2 && filtered.some((p) => !picked.some((x) => x.id === p.id) && picked.filter((x) => x._platform === p._platform).length === 0)) continue;
+        picked.push(post);
+        if (picked.length === 5) break;
+      }
+    }
+    return picked.sort((a, b) => b.engagement - a.engagement || (b.political_relevance_score ?? b._relevance) - (a.political_relevance_score ?? a._relevance));
   }, [topState.data, monitoredNames]);
 
   // Fallback automático de período: se nada relevante, expande a janela.
@@ -452,8 +474,10 @@ export function ReactionsPerPost({ candidateId }: Props) {
     if (autoCollectionKey === key) return;
     setAutoCollectionKey(key);
     (async () => {
-      await supabase.rpc("reprocess_social_interactions_political_validation" as any, { _batch_size: 10000 });
-      await supabase.functions.invoke("google-news-collector");
+      await rpcClient.rpc("reprocess_social_interactions_political_validation", { _batch_size: 10000 });
+      await supabase.functions.invoke("orchestrate-all-collectors", {
+        body: candidateId ? { collector: "all", candidateId } : { collector: "all" },
+      });
       setTimeout(() => {
         setTopFallbackIdx(0);
         void loadAll();
