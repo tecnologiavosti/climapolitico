@@ -781,3 +781,13 @@ function KpiBox({ label, value, highlight = false, tone, suffix }: { label: stri
     </div>
   );
 }
+
+function Metric({ Icon, label, value }: { Icon: typeof Heart; label: string; value: number }) {
+  return (
+    <div className="flex flex-col items-center gap-0.5 rounded-md border bg-muted/30 py-1.5">
+      <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+      <span className="text-sm font-semibold tabular-nums leading-none">{value.toLocaleString("pt-BR")}</span>
+      <span className="text-[9px] uppercase tracking-wide text-muted-foreground">{label}</span>
+    </div>
+  );
+}
