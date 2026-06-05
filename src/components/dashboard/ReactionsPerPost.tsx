@@ -239,11 +239,13 @@ function normalizeSentiment(label: string | null): "positive" | "negative" | "ne
 }
 
 type SectionState<T> = { data: T | null; loading: boolean; error: string | null; ms: number };
+type RpcClient = { rpc: (name: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: { message?: string } | null }> };
+const rpcClient = supabase as unknown as RpcClient;
 
 async function callRpc<T>(name: string, args: Record<string, unknown>): Promise<{ data: T | null; ms: number; error: string | null; bytes: number }> {
   const t0 = performance.now();
   try {
-    const { data, error } = await supabase.rpc(name as any, args);
+    const { data, error } = await rpcClient.rpc(name, args);
     const ms = Math.round(performance.now() - t0);
     if (error) {
       console.warn(`[ReactionsPerPost] RPC ${name} falhou em ${ms}ms`, error);
@@ -252,10 +254,10 @@ async function callRpc<T>(name: string, args: Record<string, unknown>): Promise<
     const bytes = JSON.stringify(data ?? null).length;
     console.log(`[ReactionsPerPost] RPC ${name} OK em ${ms}ms — payload ${(bytes / 1024).toFixed(1)} KB`);
     return { data: data as T, ms, error: null, bytes };
-  } catch (e: any) {
+  } catch (e: unknown) {
     const ms = Math.round(performance.now() - t0);
     console.warn(`[ReactionsPerPost] RPC ${name} exception em ${ms}ms`, e);
-    return { data: null, ms, error: e?.message || "Erro de rede", bytes: 0 };
+    return { data: null, ms, error: e instanceof Error ? e.message : "Erro de rede", bytes: 0 };
   }
 }
 
