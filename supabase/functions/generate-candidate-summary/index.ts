@@ -276,6 +276,7 @@ serve(async (req) => {
         .order('created_at', { ascending: false })
         .range(offset, offset + pageSize - 1);
       if (startDate) q = q.gte('created_at', startDate.toISOString());
+      if (endDate) q = q.lte('created_at', endDate.toISOString());
 
       const { data: page, error: pageError } = await q;
       if (pageError) { console.error('Error fetching comments:', pageError); break; }
