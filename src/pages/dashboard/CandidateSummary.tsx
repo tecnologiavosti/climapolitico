@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, FileText, ThumbsUp, ThumbsDown, Lightbulb, AlertTriangle, TrendingUp, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { DateRangePicker } from "@/components/DateRangePicker";
+import type { DateRange } from "react-day-picker";
 
 interface SummaryData {
   overall_sentiment: string;
@@ -37,7 +39,8 @@ const sentimentConfig: Record<string, { label: string; color: string; variant: "
 
 const CandidateSummary = () => {
   const [selectedCandidate, setSelectedCandidate] = useState<string>("");
-  const [daysBack, setDaysBack] = useState<string>("7"); // "all" = Período Total
+  const [daysBack, setDaysBack] = useState<string>("7"); // "all" | "custom" | number
+  const [customRange, setCustomRange] = useState<DateRange | undefined>();
 
   const { data: candidates } = useQuery({
     queryKey: ['candidates-for-summary'],
@@ -55,10 +58,11 @@ const CandidateSummary = () => {
   });
 
   const summaryMutation = useMutation({
-    mutationFn: async ({ candidateId, days }: { candidateId: string; days: number | null }) => {
-      const { data, error } = await supabase.functions.invoke('generate-candidate-summary', {
-        body: { candidateId, daysBack: days }
-      });
+    mutationFn: async (params: { candidateId: string; days: number | null; startDate?: string; endDate?: string }) => {
+      const body: any = { candidateId: params.candidateId, daysBack: params.days };
+      if (params.startDate) body.startDate = params.startDate;
+      if (params.endDate) body.endDate = params.endDate;
+      const { data, error } = await supabase.functions.invoke('generate-candidate-summary', { body });
       if (error) throw error;
       return data as SummaryResponse;
     },
@@ -71,6 +75,24 @@ const CandidateSummary = () => {
   const handleGenerate = () => {
     if (!selectedCandidate) {
       toast.error('Selecione um candidato');
+      return;
+    }
+    if (daysBack === 'custom') {
+      if (!customRange?.from) {
+        toast.error('Selecione a data inicial');
+        return;
+      }
+      const end = customRange.to ?? new Date();
+      const start = new Date(customRange.from);
+      start.setHours(0, 0, 0, 0);
+      const endAdj = new Date(end);
+      endAdj.setHours(23, 59, 59, 999);
+      summaryMutation.mutate({
+        candidateId: selectedCandidate,
+        days: null,
+        startDate: start.toISOString(),
+        endDate: endAdj.toISOString(),
+      });
       return;
     }
     const days = daysBack === 'all' ? null : parseInt(daysBack);
@@ -115,25 +137,32 @@ const CandidateSummary = () => {
                 </Select>
               </HelpTooltip>
             </div>
-            <div className="w-32 sm:w-40 space-y-2">
+            <div className="w-full sm:w-56 space-y-2">
               <label className="text-sm font-medium">Período</label>
-              <HelpTooltip text="Quantos dias atrás a IA vai olhar pra montar o resumo.">
+              <HelpTooltip text="Escolha o intervalo que a IA vai analisar. Use 'Personalizado' para qualquer data.">
                 <Select value={daysBack} onValueChange={setDaysBack}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="0.5">Hoje</SelectItem>
                     <SelectItem value="1">Últimas 24h</SelectItem>
-                    <SelectItem value="3">Últimos 3 dias</SelectItem>
                     <SelectItem value="7">Últimos 7 dias</SelectItem>
-                    <SelectItem value="14">Últimos 14 dias</SelectItem>
                     <SelectItem value="30">Últimos 30 dias</SelectItem>
                     <SelectItem value="90">Últimos 90 dias</SelectItem>
-                    <SelectItem value="all">Período Total (todos os comentários)</SelectItem>
+                    <SelectItem value="365">Último ano</SelectItem>
+                    <SelectItem value="all">Período Total</SelectItem>
+                    <SelectItem value="custom">Personalizado…</SelectItem>
                   </SelectContent>
                 </Select>
               </HelpTooltip>
             </div>
+            {daysBack === 'custom' && (
+              <div className="w-full sm:w-[320px] space-y-2">
+                <label className="text-sm font-medium">Intervalo personalizado</label>
+                <DateRangePicker dateRange={customRange} onDateRangeChange={setCustomRange} />
+              </div>
+            )}
             <HelpTooltip text="Clica aqui e a IA monta um resumo pronto pra você ler.">
               <Button onClick={handleGenerate} disabled={summaryMutation.isPending || !selectedCandidate}>
                 {summaryMutation.isPending ? (

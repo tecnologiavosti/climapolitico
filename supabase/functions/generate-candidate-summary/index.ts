@@ -210,11 +210,14 @@ serve(async (req) => {
     }
 
     // daysBack: number | null. null = todos os tempos
+    // Also supports custom startDate/endDate (ISO strings)
     const body = await req.json();
     const candidateId = body.candidateId;
     const daysBack: number | null = body.daysBack === null || body.daysBack === 'all' || body.daysBack === 0
       ? null
       : Number(body.daysBack ?? 7);
+    const customStart: string | null = body.startDate ?? null;
+    const customEnd: string | null = body.endDate ?? null;
 
     if (!candidateId) {
       return new Response(JSON.stringify({ error: 'candidateId é obrigatório' }), {
@@ -248,8 +251,14 @@ serve(async (req) => {
     }
 
     let startDate: Date | null = null;
+    let endDate: Date | null = null;
     let periodLabel = 'período total (todos os tempos)';
-    if (daysBack !== null && daysBack > 0) {
+    if (customStart || customEnd) {
+      startDate = customStart ? new Date(customStart) : null;
+      endDate = customEnd ? new Date(customEnd) : null;
+      const fmt = (d: Date) => d.toLocaleDateString('pt-BR');
+      periodLabel = `período personalizado (${startDate ? fmt(startDate) : '...'} a ${endDate ? fmt(endDate) : 'hoje'})`;
+    } else if (daysBack !== null && daysBack > 0) {
       startDate = new Date();
       startDate.setDate(startDate.getDate() - daysBack);
       periodLabel = `últimos ${daysBack} dias`;
@@ -267,6 +276,7 @@ serve(async (req) => {
         .order('created_at', { ascending: false })
         .range(offset, offset + pageSize - 1);
       if (startDate) q = q.gte('created_at', startDate.toISOString());
+      if (endDate) q = q.lte('created_at', endDate.toISOString());
 
       const { data: page, error: pageError } = await q;
       if (pageError) { console.error('Error fetching comments:', pageError); break; }
@@ -369,7 +379,7 @@ Gere um resumo executivo completo para a equipe de campanha.`;
       summary,
       stats,
       candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region },
-      period: { daysBack, startDate: startDate?.toISOString() ?? null, endDate: new Date().toISOString(), label: periodLabel },
+      period: { daysBack, startDate: startDate?.toISOString() ?? null, endDate: (endDate ?? new Date()).toISOString(), label: periodLabel },
       model_used: modelUsed,
       fallback_used: fallbackUsed,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
