@@ -84,6 +84,7 @@ export interface ActivityHourWeek {
 
 export interface PostRow {
   id: string;
+  platform?: string | null;
   social_network: string;
   social_network_raw?: string | null;
   likes_count: number | null;
@@ -92,6 +93,7 @@ export interface PostRow {
   sentiment_label: string | null;
   collected_at: string | null;
   engagement?: number;
+  engagement_score?: number;
   post_url?: string | null;
   post_title?: string | null;
   post_description?: string | null;
@@ -110,7 +112,7 @@ function isValidHttpsUrl(u?: string | null): u is string {
 
 function buildPostUrl(p: PostRow): string | null {
   if (isValidHttpsUrl(p.post_url)) return (p.post_url as string).trim();
-  const net = (p.social_network_raw || p.social_network || "").toLowerCase();
+  const net = (p.platform || p.social_network_raw || p.social_network || "").toLowerCase();
   const pid = p.post_id?.trim();
   const handle = p.author_handle?.replace(/^@/, "").trim();
   if (!pid) return null;
@@ -127,7 +129,7 @@ function buildPostUrl(p: PostRow): string | null {
 // determinística por video_id. Demais redes dependem do que o coletor salvou.
 function buildThumbnail(p: PostRow): string | null {
   if (isValidHttpsUrl(p.thumbnail_url)) return (p.thumbnail_url as string).trim();
-  const net = (p.social_network_raw || p.social_network || "").toLowerCase();
+  const net = (p.platform || p.social_network_raw || p.social_network || "").toLowerCase();
   const pid = p.post_id?.trim();
   if (pid && (net.includes("youtube") || net === "yt")) {
     return `https://img.youtube.com/vi/${pid}/hqdefault.jpg`;
@@ -415,14 +417,24 @@ export function ReactionsPerPost({ candidateId }: Props) {
   const top5 = useMemo(() => {
     const list = topState.data || [];
     const scored = list.map((p) => {
-      const engagement = p.engagement ?? ((p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0));
+      const engagement = p.engagement ?? p.engagement_score ?? ((p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0));
       const relevance = politicalScore(p, monitoredNames);
-      // Ranking combinado: relevância política * engajamento (log para suavizar).
-      const rank = (relevance + 1) * Math.log10(engagement + 10);
-      return { ...p, engagement, _relevance: relevance, _rank: rank };
+      const platform = (p.platform || p.social_network_raw || p.social_network || "unknown").toLowerCase();
+      return { ...p, engagement, _relevance: relevance, _platform: platform };
     });
-    const filtered = scored.filter((p) => (p.political_relevance_score ?? p._relevance) >= 3 && p._relevance >= 1);
-    return filtered.sort((a, b) => b.engagement - a.engagement || b._relevance - a._relevance).slice(0, 5);
+    const filtered = scored
+      .filter((p) => (p.political_relevance_score ?? p._relevance) >= 3 && p._relevance >= 1 && buildPostUrl(p))
+      .sort((a, b) => b.engagement - a.engagement || b._relevance - a._relevance);
+    const picked: typeof filtered = [];
+    const counts = new Map<string, number>();
+    for (const post of filtered) {
+      const count = counts.get(post._platform) || 0;
+      if (count >= 2 && filtered.some((p) => !picked.includes(p) && (counts.get(p._platform) || 0) < 2)) continue;
+      picked.push(post);
+      counts.set(post._platform, count + 1);
+      if (picked.length === 5) break;
+    }
+    return picked;
   }, [topState.data, monitoredNames]);
 
   // Fallback automático de período: se nada relevante, expande a janela.
@@ -448,6 +460,20 @@ export function ReactionsPerPost({ candidateId }: Props) {
       }, 8000);
     })().catch((error) => console.warn("[ReactionsPerPost] coleta política automática falhou", error));
   }, [autoCollectionKey, candidateId, customEnd, customStart, fallbackLadder.length, loadAll, selectedPeriod, top5.length, topFallbackIdx, topState.loading, user]);
+
+  useEffect(() => {
+    if (!user || topState.loading || top5.length === 0) return;
+    const needsMediaRepair = top5.some((p) => !buildThumbnail(p) || !buildPostUrl(p));
+    if (!needsMediaRepair) return;
+    const key = `${user.id}:${candidateId || "all"}:${effectiveTopPeriod}:media-repair`;
+    if (autoCollectionKey === key) return;
+    setAutoCollectionKey(key);
+    void supabase.functions.invoke("orchestrate-all-collectors", {
+      body: candidateId ? { collector: "all", candidateId } : { collector: "all" },
+    }).then(() => {
+      setTimeout(() => setTopFallbackIdx(0), 10000);
+    }).catch((error) => console.warn("[ReactionsPerPost] recoleta de mídia do Top 5 falhou", error));
+  }, [autoCollectionKey, candidateId, effectiveTopPeriod, top5, topState.loading, user]);
 
 
   const topTopics = useMemo(() => {
