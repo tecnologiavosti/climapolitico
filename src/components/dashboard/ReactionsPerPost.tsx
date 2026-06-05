@@ -104,6 +104,17 @@ export interface PostRow {
   post_id?: string | null;
   political_relevance_score?: number | null;
   political_validation_reason?: string | null;
+  related_records?: number | null;
+}
+
+function normalizePlatformKey(value?: string | null): string {
+  const v = (value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  if (["youtube", "yt", "invidious"].includes(v)) return "youtube";
+  if (["twitter", "twitter/x", "x", "x/twitter"].includes(v)) return "twitter";
+  if (["google news", "google_news", "googlenews"].includes(v)) return "google_news";
+  if (["gdelt", "portal", "portais", "noticias", "news", "portal de noticia", "portal de noticias"].includes(v)) return "portal";
+  if (["tik tok", "tiktok"].includes(v)) return "tiktok";
+  return v || "unknown";
 }
 
 function isValidHttpsUrl(u?: string | null): u is string {
@@ -112,16 +123,16 @@ function isValidHttpsUrl(u?: string | null): u is string {
 
 function buildPostUrl(p: PostRow): string | null {
   if (isValidHttpsUrl(p.post_url)) return (p.post_url as string).trim();
-  const net = (p.platform || p.social_network_raw || p.social_network || "").toLowerCase();
+  const net = normalizePlatformKey(p.platform || p.social_network_raw || p.social_network);
   const pid = p.post_id?.trim();
   const handle = p.author_handle?.replace(/^@/, "").trim();
   if (!pid) return null;
   let candidate: string | null = null;
-  if (net.includes("youtube") || net === "yt") candidate = `https://www.youtube.com/watch?v=${pid}`;
-  else if (net.includes("twitter") || net === "x") candidate = `https://twitter.com/${handle || "i"}/status/${pid}`;
-  else if (net.includes("tiktok") && handle) candidate = `https://www.tiktok.com/@${handle}/video/${pid}`;
-  else if (net.includes("instagram")) candidate = `https://www.instagram.com/p/${pid}/`;
-  else if (net.includes("facebook") && handle) candidate = `https://www.facebook.com/${handle}/posts/${pid}`;
+  if (net === "youtube") candidate = `https://www.youtube.com/watch?v=${pid}`;
+  else if (net === "twitter") candidate = `https://x.com/${handle || "i"}/status/${pid}`;
+  else if (net === "tiktok" && handle) candidate = `https://www.tiktok.com/@${handle}/video/${pid}`;
+  else if (net === "instagram") candidate = `https://www.instagram.com/p/${pid}/`;
+  else if (net === "facebook" && handle) candidate = `https://www.facebook.com/${handle}/posts/${pid}`;
   return isValidHttpsUrl(candidate) ? candidate : null;
 }
 
@@ -129,10 +140,13 @@ function buildPostUrl(p: PostRow): string | null {
 // determinística por video_id. Demais redes dependem do que o coletor salvou.
 function buildThumbnail(p: PostRow): string | null {
   if (isValidHttpsUrl(p.thumbnail_url)) return (p.thumbnail_url as string).trim();
-  const net = (p.platform || p.social_network_raw || p.social_network || "").toLowerCase();
+  const net = normalizePlatformKey(p.platform || p.social_network_raw || p.social_network);
   const pid = p.post_id?.trim();
-  if (pid && (net.includes("youtube") || net === "yt")) {
-    return `https://img.youtube.com/vi/${pid}/hqdefault.jpg`;
+  const url = buildPostUrl(p);
+  const urlVideoId = url?.match(/[?&]v=([A-Za-z0-9_-]{6,})/)?.[1] || url?.match(/youtu\.be\/([A-Za-z0-9_-]{6,})/)?.[1];
+  if (net === "youtube" && (pid || urlVideoId)) {
+    const videoId = pid || urlVideoId;
+    return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
   }
   return null;
 }
