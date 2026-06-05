@@ -27,6 +27,7 @@ async function getRunItems(runId: string, token: string) {
 }
 
 function normalizeIG(item: any) {
+  const thumbnail = item.displayUrl || item.imageUrl || item.thumbnailUrl || item.videoUrl || item.images?.[0]?.url || item.video?.thumbnailUrl || null;
   return {
     post_id: item.id || item.shortCode || item.url,
     author: item.ownerUsername ?? "",
@@ -35,6 +36,7 @@ function normalizeIG(item: any) {
     comments_count: Number(item.commentsCount ?? 0) || 0,
     shares_count: 0,
     url: item.url ?? (item.shortCode ? `https://www.instagram.com/p/${item.shortCode}/` : null),
+    thumbnail,
     posted_at: item.timestamp ?? null,
     type: "post" as const,
     latestComments: Array.isArray(item.latestComments) ? item.latestComments : [],
@@ -53,6 +55,7 @@ function normalizeFB(item: any) {
     comments_count: Number(item.comments ?? item.commentsCount ?? 0) || 0,
     shares_count: Number(item.shares ?? item.sharesCount ?? 0) || 0,
     url: item.topLevelUrl ?? item.url ?? item.postUrl ?? null,
+    thumbnail: item.media?.[0]?.thumbnail || item.media?.[0]?.url || item.image || item.imageUrl || item.picture || item.attachments?.[0]?.media?.image?.src || null,
     posted_at: item.time ?? item.timestamp ?? item.publishedTime ?? null,
     type: "post" as const,
   };

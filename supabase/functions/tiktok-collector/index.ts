@@ -20,6 +20,9 @@ interface TikwmPost {
   video_id: string;
   title: string;
   create_time: number;
+  cover?: string;
+  origin_cover?: string;
+  dynamic_cover?: string;
   digg_count?: number;
   comment_count?: number;
   share_count?: number;
@@ -198,6 +201,7 @@ async function collectForCandidate(
       const author = p.author?.unique_id || handle || "tiktok";
       return `https://www.tiktok.com/@${author}/video/${p.video_id}`;
     };
+    const buildThumbnail = (p: TikwmPost) => p.cover || p.origin_cover || p.dynamic_cover || null;
 
     // Dedup posts por URL
     const videoUrls = posts.map(buildUrl);
@@ -222,8 +226,13 @@ async function collectForCandidate(
         author_profile_url: buildUrl(p),
         post_url: buildUrl(p),
         post_title: p.title || null,
+        post_description: p.title || null,
+        thumbnail_url: buildThumbnail(p),
         author_handle: p.author?.unique_id || handle || null,
         author_name: p.author?.nickname || p.author?.unique_id || handle || null,
+        post_id: p.video_id,
+        platform: "tiktok",
+        engagement_score: (p.digg_count || 0) + (p.comment_count || 0) + (p.share_count || 0),
         likes_count: p.digg_count || 0,
         replies_count: p.comment_count || 0,
         shares_count: p.share_count || 0,

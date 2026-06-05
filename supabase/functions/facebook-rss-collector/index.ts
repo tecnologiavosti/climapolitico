@@ -26,7 +26,7 @@ async function safeFetch(url: string, timeoutMs = 12000): Promise<Response | nul
   } catch { clearTimeout(id); return null; }
 }
 
-interface Item { title: string; link: string; description: string; pubDate: string; author?: string; }
+interface Item { title: string; link: string; description: string; pubDate: string; author?: string; image?: string | null; }
 
 function parseRssXml(xml: string): Item[] {
   const items: Item[] = [];
@@ -37,7 +37,11 @@ function parseRssXml(xml: string): Item[] {
     const description = (x.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/s)?.[1] ?? "").replace(/<[^>]+>/g, "");
     const pubDate = x.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] ?? "";
     const author = x.match(/<author>(.*?)<\/author>/)?.[1] ?? x.match(/<dc:creator><!\[CDATA\[(.*?)\]\]><\/dc:creator>/)?.[1];
-    if (title && link) items.push({ title, link, description, pubDate, author });
+    const image = x.match(/<media:content[^>]+url=["']([^"']+)["']/)?.[1]
+      || x.match(/<enclosure[^>]+url=["']([^"']+)["']/)?.[1]
+      || x.match(/<img[^>]+src=["']([^"']+)["']/)?.[1]
+      || null;
+    if (title && link) items.push({ title, link, description, pubDate, author, image });
   }
   return items;
 }

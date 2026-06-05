@@ -15,6 +15,7 @@ interface NewsItem {
   pubDate: string;
   source: string;
   description: string;
+  image?: string | null;
 }
 
 interface CandidateRow {
@@ -75,6 +76,10 @@ function parseRSSFeed(xmlText: string): NewsItem[] {
     const pubDate = itemXml.match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1] || "";
     const source = itemXml.match(/<source[^>]*>([\s\S]*?)<\/source>/)?.[1] || "Google News";
     const description = itemXml.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/)?.[1] || "";
+    const image = itemXml.match(/<media:content[^>]+url=["']([^"']+)["']/)?.[1]
+      || itemXml.match(/<enclosure[^>]+url=["']([^"']+)["']/)?.[1]
+      || description.match(/<img[^>]+src=["']([^"']+)["']/)?.[1]
+      || null;
 
     if (title && link) {
       items.push({
@@ -83,6 +88,7 @@ function parseRSSFeed(xmlText: string): NewsItem[] {
         pubDate,
         source: source.replace(/<[^>]*>/g, "").trim(),
         description: description.replace(/<[^>]*>/g, "").substring(0, 500).trim(),
+        image,
       });
     }
   }
