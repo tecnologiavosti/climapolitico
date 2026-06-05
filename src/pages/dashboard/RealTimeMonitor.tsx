@@ -37,6 +37,7 @@ const RealTimeMonitor = () => {
   const [loadingCandidates, setLoadingCandidates] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingStart, setLoadingStart] = useState<number | null>(null);
   const progressTimer = useRef<NodeJS.Timeout | null>(null);
 
   const { metrics, comments, isLoading, error, refreshMetrics } = useRealTimeAnalytics(
