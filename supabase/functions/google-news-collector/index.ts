@@ -64,6 +64,75 @@ interface ExistingInteractionRow {
   author_profile_url: string | null;
 }
 
+function decodeHtml(value: string): string {
+  return (value || "")
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .trim();
+}
+
+function validHttps(value?: string | null): value is string {
+  return !!value && /^https:\/\/[^\s]+$/i.test(value.trim());
+}
+
+function hostNameOf(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "Portal de notícia"; }
+}
+
+function metaTag(html: string, key: string): string | null {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const byProperty = new RegExp(`<meta[^>]+property=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>`, "i").exec(html)?.[1];
+  const byName = new RegExp(`<meta[^>]+name=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>`, "i").exec(html)?.[1];
+  return decodeHtml(byProperty || byName || "") || null;
+}
+
+async function enrichArticleMeta(item: NewsItem): Promise<NewsItem> {
+  if (!validHttps(item.link)) return item;
+  try {
+    const resp = await fetch(item.link, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(7000),
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; ClimaPolitico/1.0; +https://climapolitico.com.br)",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "pt-BR,pt;q=0.9",
+      },
+    });
+    const contentType = resp.headers.get("content-type") || "";
+    const finalUrl = validHttps(resp.url) ? resp.url : item.link;
+    if (!resp.ok || !contentType.includes("text/html")) return { ...item, link: finalUrl };
+    const html = await resp.text();
+    const image = item.image || metaTag(html, "og:image") || metaTag(html, "twitter:image");
+    const title = metaTag(html, "og:title") || metaTag(html, "twitter:title") || item.title;
+    const description = item.description || metaTag(html, "og:description") || metaTag(html, "description") || "";
+    const source = metaTag(html, "og:site_name") || item.source || hostNameOf(finalUrl);
+    return {
+      ...item,
+      link: finalUrl,
+      image: validHttps(image) ? image : item.image,
+      title: title || item.title,
+      description: description.slice(0, 500),
+      source,
+    };
+  } catch {
+    return item;
+  }
+}
+
+async function enrichInChunks(items: NewsItem[], size = 8): Promise<NewsItem[]> {
+  const out: NewsItem[] = [];
+  for (let i = 0; i < items.length; i += size) {
+    out.push(...await Promise.all(items.slice(i, i + size).map(enrichArticleMeta)));
+  }
+  return out;
+}
+
 function parseRSSFeed(xmlText: string): NewsItem[] {
   const items: NewsItem[] = [];
   const itemRegex = /<item>([\s\S]*?)<\/item>/g;
@@ -83,11 +152,11 @@ function parseRSSFeed(xmlText: string): NewsItem[] {
 
     if (title && link) {
       items.push({
-        title: title.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'"),
+        title: decodeHtml(title),
         link: link.trim(),
         pubDate,
-        source: source.replace(/<[^>]*>/g, "").trim(),
-        description: description.replace(/<[^>]*>/g, "").substring(0, 500).trim(),
+        source: decodeHtml(source.replace(/<[^>]*>/g, "")) || "Google News",
+        description: decodeHtml(description.replace(/<[^>]*>/g, "")).substring(0, 500),
         image,
       });
     }
