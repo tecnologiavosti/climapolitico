@@ -114,19 +114,19 @@ const RoleCarousel = ({
           Top 5 mais pesquisados
         </span>
       </div>
-      <Carousel opts={{ align: "start", loop: false }} className="relative">
+      <Carousel opts={{ align: "start", loop: false, dragFree: true, containScroll: "trimSnaps" }} className="relative">
         <CarouselContent className="-ml-3">
           {(items === null ? Array.from({ length: 5 }) : list).map((entry, idx) => (
             <CarouselItem
               key={idx}
-              className="pl-3 basis-[80%] sm:basis-1/2 md:basis-1/3 lg:basis-1/4 xl:basis-1/5"
+              className="pl-3 basis-[75%] xs:basis-[60%] sm:basis-1/2 md:basis-1/3 lg:basis-1/4 xl:basis-1/5"
             >
               {entry ? <Card item={entry as TrendingItem} role={role} /> : <CardSkeleton />}
             </CarouselItem>
           ))}
         </CarouselContent>
-        <CarouselPrevious className="hidden md:flex -left-4 h-9 w-9 bg-card border-border/60 text-muted-foreground hover:text-foreground shadow-sm" />
-        <CarouselNext className="hidden md:flex -right-4 h-9 w-9 bg-card border-border/60 text-muted-foreground hover:text-foreground shadow-sm" />
+        <CarouselPrevious className="flex left-1 md:-left-4 h-8 w-8 md:h-9 md:w-9 bg-card/90 backdrop-blur border-border/60 text-muted-foreground hover:text-foreground shadow-md z-10" />
+        <CarouselNext className="flex right-1 md:-right-4 h-8 w-8 md:h-9 md:w-9 bg-card/90 backdrop-blur border-border/60 text-muted-foreground hover:text-foreground shadow-md z-10" />
       </Carousel>
     </div>
   );
