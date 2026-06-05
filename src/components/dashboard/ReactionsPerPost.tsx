@@ -10,8 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { AlertCircle, ExternalLink, Heart, MessageCircle, RefreshCw, Share2, ThumbsUp, ThumbsDown, Minus, User } from "lucide-react";
-import { subDays } from "date-fns";
+import { AlertCircle, ExternalLink, Heart, MessageCircle, RefreshCw, Share2, ThumbsUp, ThumbsDown, Minus, User, Youtube, Instagram, Facebook, Music2, Newspaper, Globe, Twitter, TrendingUp } from "lucide-react";
+import { subDays, formatDistanceToNow } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 // Carrega Recharts apenas quando o usuário entra na aba — reduz JS inicial.
 const ChartsBlock = lazy(() => import("./ReactionsPerPostCharts"));
@@ -151,7 +152,21 @@ function buildThumbnail(p: PostRow): string | null {
   return null;
 }
 
-// Imagem institucional usada quando o post não traz thumbnail válida.
+const PLATFORM_META: Record<string, { label: string; Icon: typeof Youtube; tone: string }> = {
+  youtube:    { label: "YouTube",          Icon: Youtube,   tone: "bg-red-500/10 text-red-600 border-red-500/30" },
+  instagram:  { label: "Instagram",        Icon: Instagram, tone: "bg-pink-500/10 text-pink-600 border-pink-500/30" },
+  tiktok:     { label: "TikTok",           Icon: Music2,    tone: "bg-fuchsia-500/10 text-fuchsia-600 border-fuchsia-500/30" },
+  facebook:   { label: "Facebook",         Icon: Facebook,  tone: "bg-blue-600/10 text-blue-700 border-blue-600/30" },
+  twitter:    { label: "X",                Icon: Twitter,   tone: "bg-foreground/10 text-foreground border-foreground/30" },
+  google_news:{ label: "Portal de Notícias", Icon: Newspaper, tone: "bg-amber-500/10 text-amber-700 border-amber-500/30" },
+  portal:     { label: "Portal de Notícias", Icon: Newspaper, tone: "bg-amber-500/10 text-amber-700 border-amber-500/30" },
+};
+
+function platformMeta(key: string) {
+  return PLATFORM_META[key] || { label: key ? key.charAt(0).toUpperCase() + key.slice(1) : "Outros", Icon: Globe, tone: "bg-muted text-foreground border-border" };
+}
+
+// Imagem institucional removida: cards analíticos sem thumbnails.
 const INSTITUTIONAL_FALLBACK = "/favicon.png";
 
 // Palavras-chave que indicam conteúdo político brasileiro.
@@ -284,10 +299,11 @@ export function ReactionsPerPost({ candidateId }: Props) {
   const [autoCollectionKey, setAutoCollectionKey] = useState<string | null>(null);
 
   const fallbackLadder = useMemo<PeriodKey[]>(() => {
-    if (selectedPeriod === "custom" || selectedPeriod === "total") return [selectedPeriod];
-    const order: PeriodKey[] = ["7d", "30d", "90d", "6m", "1y", "total"];
-    const i = order.indexOf(selectedPeriod);
-    return i >= 0 ? order.slice(i) : [selectedPeriod];
+    if (selectedPeriod === "custom") return [selectedPeriod];
+    // Recência prioritária: 24h → 3d → 7d → 30d → original
+    const ladder: PeriodKey[] = ["7d", "30d", "90d", "6m", "1y", "total"];
+    const i = ladder.indexOf(selectedPeriod);
+    return i >= 0 ? ladder.slice(i) : ladder;
   }, [selectedPeriod]);
   const effectiveTopPeriod = fallbackLadder[Math.min(topFallbackIdx, fallbackLadder.length - 1)] ?? selectedPeriod;
   const topRange = useMemo(
@@ -432,31 +448,37 @@ export function ReactionsPerPost({ candidateId }: Props) {
 
   const top5 = useMemo(() => {
     const list = topState.data || [];
+    const now = Date.now();
     const scored = list.map((p) => {
       const engagement = p.engagement ?? p.engagement_score ?? ((p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0));
       const relevance = politicalScore(p, monitoredNames);
       const platform = normalizePlatformKey(p.platform || p.social_network_raw || p.social_network);
-      return { ...p, engagement, _relevance: relevance, _platform: platform };
+      const ts = p.collected_at ? new Date(p.collected_at).getTime() : 0;
+      const ageHours = ts ? Math.max(0, (now - ts) / 3_600_000) : 24 * 365;
+      // Decay exponencial: meia-vida ≈ 36h. Post de ontem (24h) vale ~63% do recém-publicado;
+      // post de 2 meses vale ~3%. Isso garante que recência supere volume bruto.
+      const recencyWeight = Math.exp(-ageHours / 52);
+      const rankScore = Math.log10(1 + engagement) * (0.15 + recencyWeight);
+      return { ...p, engagement, _relevance: relevance, _platform: platform, _rankScore: rankScore, _ageHours: ageHours };
     });
     const filtered = scored
       .filter((p) => (p.political_relevance_score ?? p._relevance) >= 2 && buildPostUrl(p))
-      .sort((a, b) => b.engagement - a.engagement || (b.political_relevance_score ?? b._relevance) - (a.political_relevance_score ?? a._relevance));
+      .sort((a, b) => b._rankScore - a._rankScore);
     const bestByPlatform = new Map<string, typeof filtered[number]>();
     for (const post of filtered) {
       if (!bestByPlatform.has(post._platform)) bestByPlatform.set(post._platform, post);
     }
-    const primary = Array.from(bestByPlatform.values()).sort((a, b) => b.engagement - a.engagement);
-    const picked = primary.slice(0, 5);
+    const picked = Array.from(bestByPlatform.values()).sort((a, b) => b._rankScore - a._rankScore).slice(0, 5);
     if (picked.length < 5) {
       for (const post of filtered) {
+        if (picked.length === 5) break;
         if (picked.some((p) => p.id === post.id)) continue;
         const platformCount = picked.filter((p) => p._platform === post._platform).length;
-        if (platformCount >= 2 && filtered.some((p) => !picked.some((x) => x.id === p.id) && picked.filter((x) => x._platform === p._platform).length === 0)) continue;
+        if (platformCount >= 2) continue;
         picked.push(post);
-        if (picked.length === 5) break;
       }
     }
-    return picked.sort((a, b) => b.engagement - a.engagement || (b.political_relevance_score ?? b._relevance) - (a.political_relevance_score ?? a._relevance));
+    return picked.sort((a, b) => b._rankScore - a._rankScore);
   }, [topState.data, monitoredNames]);
 
   // Fallback automático de período: se nada relevante, expande a janela.
@@ -485,18 +507,19 @@ export function ReactionsPerPost({ candidateId }: Props) {
     })().catch((error) => console.warn("[ReactionsPerPost] coleta política automática falhou", error));
   }, [autoCollectionKey, candidateId, customEnd, customStart, fallbackLadder.length, loadAll, selectedPeriod, top5.length, topFallbackIdx, topState.loading, user]);
 
+  // Re-coleta automática quando algum link original estiver ausente.
   useEffect(() => {
     if (!user || topState.loading || top5.length === 0) return;
-    const needsMediaRepair = top5.some((p) => !buildThumbnail(p) || !buildPostUrl(p));
-    if (!needsMediaRepair) return;
-    const key = `${user.id}:${candidateId || "all"}:${effectiveTopPeriod}:media-repair`;
+    const needsLinkRepair = top5.some((p) => !buildPostUrl(p));
+    if (!needsLinkRepair) return;
+    const key = `${user.id}:${candidateId || "all"}:${effectiveTopPeriod}:link-repair`;
     if (autoCollectionKey === key) return;
     setAutoCollectionKey(key);
     void supabase.functions.invoke("orchestrate-all-collectors", {
       body: candidateId ? { collector: "all", candidateId } : { collector: "all" },
     }).then(() => {
       setTimeout(() => setTopFallbackIdx(0), 10000);
-    }).catch((error) => console.warn("[ReactionsPerPost] recoleta de mídia do Top 5 falhou", error));
+    }).catch((error) => console.warn("[ReactionsPerPost] recoleta de links do Top 5 falhou", error));
   }, [autoCollectionKey, candidateId, effectiveTopPeriod, top5, topState.loading, user]);
 
 
@@ -621,112 +644,113 @@ export function ReactionsPerPost({ candidateId }: Props) {
             />
           </Suspense>
 
-          {/* Top 5 posts */}
+          {/* Top 5 posts — cards analíticos premium (sem thumbnails) */}
           <div>
-            <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-              <h4 className="text-sm font-semibold">Top 5 posts por engajamento</h4>
+            <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+              <div>
+                <h4 className="text-base font-bold tracking-tight">Top 5 posts por engajamento</h4>
+                <p className="text-xs text-muted-foreground">Ranqueado por engajamento × recência — prioriza últimas 24h</p>
+              </div>
               {topFallbackIdx > 0 && top5.length > 0 && (
                 <Badge variant="outline" className="text-[10px]">
-                  Janela expandida para {effectiveTopPeriod === "total" ? "todo o histórico" : effectiveTopPeriod}
+                  Janela expandida: {effectiveTopPeriod === "total" ? "todo o histórico" : effectiveTopPeriod}
                 </Badge>
               )}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
-              {top5.map((p) => {
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {top5.map((p, idx) => {
                 const ds = dominantSentiment(p.sentiment_label);
                 const url = buildPostUrl(p);
-                const author = p.author_name || p.author_handle || "Autor desconhecido";
-                const title = p.post_title || p.post_description || "(sem título disponível)";
+                const author = p.author_name || p.author_handle || "Autor não identificado";
+                const platformKey = normalizePlatformKey(p.platform || p.social_network_raw || p.social_network);
+                const meta = platformMeta(platformKey);
+                const title = (p.post_title && p.post_title.trim())
+                  || (p.post_description && p.post_description.trim())
+                  || `Publicação de ${author} no ${meta.label}`;
+                const dateObj = p.collected_at ? new Date(p.collected_at) : null;
+                const relative = dateObj ? formatDistanceToNow(dateObj, { addSuffix: true, locale: ptBR }) : "—";
+                const dateLong = dateObj ? dateObj.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+
                 return (
-                  <Card key={p.id} className="p-3 flex flex-col gap-2 overflow-hidden">
+                  <Card
+                    key={p.id}
+                    className="relative flex flex-col gap-3 p-5 border-2 hover:shadow-lg hover:border-primary/40 transition-all bg-card"
+                  >
+                    {/* Rank + Plataforma */}
                     <div className="flex items-center justify-between gap-2">
-                      <Badge variant="outline" className="text-[10px] capitalize">{p.social_network || "?"}</Badge>
-                      <Badge className={`text-[10px] border ${ds.color}`}>
-                        <ds.Icon className="h-3 w-3 mr-1" />{ds.label}
-                      </Badge>
-                    </div>
-
-                    {/* Thumbnail real do post; fallback institucional somente se não houver imagem válida */}
-                    {(() => {
-                      const thumb = buildThumbnail(p);
-                      const imgSrc = thumb || INSTITUTIONAL_FALLBACK;
-                      const wrapperClass = `relative block aspect-video w-full overflow-hidden rounded-md bg-muted ${url ? "cursor-pointer" : "cursor-default"}`;
-                      const ImgEl = (
-                        <img
-                          src={imgSrc}
-                          alt={title}
-                          loading="lazy"
-                          className={`h-full w-full ${thumb ? "object-cover" : "object-contain p-6 opacity-80"} transition-transform hover:scale-105`}
-                          onError={(e) => {
-                            const img = e.currentTarget as HTMLImageElement;
-                            if (img.src.endsWith(INSTITUTIONAL_FALLBACK)) return;
-                            img.src = INSTITUTIONAL_FALLBACK;
-                            img.classList.remove("object-cover");
-                            img.classList.add("object-contain", "p-6", "opacity-80");
-                          }}
-                        />
-                      );
-                      return url ? (
-                        <a href={url} target="_blank" rel="noopener noreferrer" className={wrapperClass}>{ImgEl}</a>
-                      ) : (
-                        <div className={wrapperClass}>{ImgEl}</div>
-                      );
-                    })()}
-
-
-                    <div className="text-xs text-muted-foreground">
-                      {p.collected_at ? new Date(p.collected_at).toLocaleDateString("pt-BR") : "—"}
-                    </div>
-
-                    <div className="text-sm font-semibold leading-snug line-clamp-2" title={title}>
-                      {title}
-                    </div>
-
-                    {p.post_description && p.post_title && (
-                      <div className="text-xs text-muted-foreground line-clamp-2">{p.post_description}</div>
-                    )}
-
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground mt-1">Publicado por</div>
-                    {p.author_profile_url ? (
-                      <a
-                        href={p.author_profile_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-xs font-medium text-primary hover:underline truncate"
-                      >
-                        <User className="h-3 w-3" />{author}
-                      </a>
-                    ) : (
-                      <div className="flex items-center gap-1 text-xs font-medium truncate">
-                        <User className="h-3 w-3" />{author}
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
+                          {idx + 1}
+                        </span>
+                        <Badge className={`text-[11px] font-semibold border ${meta.tone}`} variant="outline">
+                          <meta.Icon className="h-3 w-3 mr-1" />{meta.label}
+                        </Badge>
                       </div>
-                    )}
-
-                    <div className="text-xl font-bold mt-1">{p.engagement.toLocaleString("pt-BR")}</div>
-                    <div className="text-[10px] text-muted-foreground -mt-1">Engajamento total</div>
-
-                    <div className="flex justify-between gap-2 text-xs pt-2 border-t">
-                      <span className="flex items-center gap-1" title="Curtidas"><Heart className="h-3 w-3" />{(p.likes_count || 0).toLocaleString("pt-BR")}</span>
-                      <span className="flex items-center gap-1" title="Comentários"><MessageCircle className="h-3 w-3" />{(p.replies_count || 0).toLocaleString("pt-BR")}</span>
-                      <span className="flex items-center gap-1" title="Compartilhamentos"><Share2 className="h-3 w-3" />{(p.shares_count || 0).toLocaleString("pt-BR")}</span>
+                      <span className="text-[11px] text-muted-foreground" title={dateLong}>{relative}</span>
                     </div>
 
-                    <div className="mt-2">
+                    {/* Título */}
+                    <h5 className="text-base font-serif font-semibold leading-snug line-clamp-3" title={title}>
+                      {title}
+                    </h5>
+
+                    {/* Autor */}
+                    <div className="flex items-center gap-2 text-xs">
+                      <User className="h-3.5 w-3.5 text-muted-foreground" />
+                      {p.author_profile_url ? (
+                        <a
+                          href={p.author_profile_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-primary hover:underline truncate"
+                        >
+                          {author}
+                        </a>
+                      ) : (
+                        <span className="font-medium truncate">{author}</span>
+                      )}
+                    </div>
+
+                    {/* Engajamento destacado */}
+                    <div className="rounded-lg border bg-gradient-to-br from-primary/10 to-primary/5 p-3 flex items-end justify-between">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Engajamento total</div>
+                        <div className="text-2xl font-bold tabular-nums leading-tight">
+                          {p.engagement.toLocaleString("pt-BR")}
+                        </div>
+                      </div>
+                      <TrendingUp className="h-5 w-5 text-primary/70" />
+                    </div>
+
+                    {/* Métricas detalhadas */}
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <Metric Icon={Heart} label="Curtidas" value={p.likes_count || 0} />
+                      <Metric Icon={MessageCircle} label="Comentários" value={p.replies_count || 0} />
+                      <Metric Icon={Share2} label="Compart." value={p.shares_count || 0} />
+                    </div>
+
+                    {/* Sentimento */}
+                    <Badge className={`text-[11px] border self-start ${ds.color}`} variant="outline">
+                      <ds.Icon className="h-3 w-3 mr-1" />Sentimento: {ds.label}
+                    </Badge>
+
+                    {/* Link original */}
+                    <div className="mt-auto pt-2">
                       {url ? (
-                        <Button asChild size="sm" variant="outline" className="w-full">
+                        <Button asChild size="sm" className="w-full">
                           <a href={url} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink className="h-3 w-3 mr-1" />Ver publicação
+                            <ExternalLink className="h-3.5 w-3.5 mr-1.5" />Abrir publicação original
                           </a>
                         </Button>
                       ) : (
-                        <p className="text-[10px] text-center text-muted-foreground italic">Link original indisponível</p>
+                        <p className="text-[11px] text-center text-muted-foreground italic">Link original indisponível — recoletando…</p>
                       )}
                     </div>
                   </Card>
                 );
               })}
               {top5.length === 0 && (
-               <p className="text-sm text-muted-foreground col-span-full">
+                <p className="text-sm text-muted-foreground col-span-full">
                   {topState.loading || topFallbackIdx < fallbackLadder.length - 1
                     ? "Buscando conteúdos políticos relevantes em períodos maiores..."
                     : "Nenhum post político relevante encontrado, mesmo expandindo até todo o histórico."}
@@ -734,6 +758,8 @@ export function ReactionsPerPost({ candidateId }: Props) {
               )}
             </div>
           </div>
+
+
 
         </>
       )}
@@ -752,6 +778,16 @@ function KpiBox({ label, value, highlight = false, tone, suffix }: { label: stri
     <div className={`p-3 rounded-lg border ${toneClass}`}>
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="text-xl font-bold mt-0.5">{value.toLocaleString("pt-BR")}{suffix || ""}</div>
+    </div>
+  );
+}
+
+function Metric({ Icon, label, value }: { Icon: typeof Heart; label: string; value: number }) {
+  return (
+    <div className="flex flex-col items-center gap-0.5 rounded-md border bg-muted/30 py-1.5">
+      <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+      <span className="text-sm font-semibold tabular-nums leading-none">{value.toLocaleString("pt-BR")}</span>
+      <span className="text-[9px] uppercase tracking-wide text-muted-foreground">{label}</span>
     </div>
   );
 }
