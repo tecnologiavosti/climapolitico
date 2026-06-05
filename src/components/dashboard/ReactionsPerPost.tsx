@@ -242,7 +242,37 @@ export function ReactionsPerPost({ candidateId }: Props) {
   const [topState, setTopState] = useState<SectionState<PostRow[]>>({ data: [], loading: true, error: null, ms: 0 });
   const [topicsState, setTopicsState] = useState<SectionState<{ topic: string; mentions: number }[]>>({ data: [], loading: true, error: null, ms: 0 });
 
-  const reqKey = `${user?.id}|${candidateId || "all"}|${range.start || "ALL"}|${range.end || "OPEN"}`;
+  const [monitoredNames, setMonitoredNames] = useState<string[]>([]);
+  const [topFallbackIdx, setTopFallbackIdx] = useState(0);
+
+  const fallbackLadder = useMemo<PeriodKey[]>(() => {
+    if (selectedPeriod === "custom" || selectedPeriod === "total") return [selectedPeriod];
+    const order: PeriodKey[] = ["7d", "30d", "90d", "6m", "1y", "total"];
+    const i = order.indexOf(selectedPeriod);
+    return i >= 0 ? order.slice(i) : [selectedPeriod];
+  }, [selectedPeriod]);
+  const effectiveTopPeriod = fallbackLadder[Math.min(topFallbackIdx, fallbackLadder.length - 1)] ?? selectedPeriod;
+  const topRange = useMemo(
+    () => periodRange(effectiveTopPeriod, customStart, customEnd),
+    [effectiveTopPeriod, customStart, customEnd],
+  );
+
+  useEffect(() => { setTopFallbackIdx(0); }, [selectedPeriod, candidateId, customStart, customEnd]);
+
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    (async () => {
+      const q = candidateId
+        ? supabase.from("candidates").select("full_name").eq("id", candidateId)
+        : supabase.from("candidates").select("full_name").eq("user_id", user.id).limit(200);
+      const { data } = await q;
+      if (!active) return;
+      setMonitoredNames((data || []).map((c) => c.full_name).filter(Boolean) as string[]);
+    })();
+    return () => { active = false; };
+  }, [user, candidateId]);
+
 
   const loadAll = useMemo(() => async () => {
     if (!user) return;
