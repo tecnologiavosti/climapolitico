@@ -85,12 +85,35 @@ export interface ActivityHourWeek {
 export interface PostRow {
   id: string;
   social_network: string;
+  social_network_raw?: string | null;
   likes_count: number | null;
   replies_count: number | null;
   shares_count: number | null;
   sentiment_label: string | null;
   collected_at: string | null;
   engagement?: number;
+  post_url?: string | null;
+  post_title?: string | null;
+  post_description?: string | null;
+  thumbnail_url?: string | null;
+  author_name?: string | null;
+  author_handle?: string | null;
+  author_profile_url?: string | null;
+  post_id?: string | null;
+}
+
+function buildPostUrl(p: PostRow): string | null {
+  if (p.post_url && /^https?:\/\//i.test(p.post_url)) return p.post_url;
+  const net = (p.social_network_raw || p.social_network || "").toLowerCase();
+  const pid = p.post_id?.trim();
+  const handle = p.author_handle?.replace(/^@/, "").trim();
+  if (!pid) return null;
+  if (net.includes("youtube") || net === "yt") return `https://www.youtube.com/watch?v=${pid}`;
+  if (net.includes("twitter") || net === "x") return `https://twitter.com/${handle || "i"}/status/${pid}`;
+  if (net.includes("tiktok") && handle) return `https://www.tiktok.com/@${handle}/video/${pid}`;
+  if (net.includes("instagram")) return `https://www.instagram.com/p/${pid}/`;
+  if (net.includes("facebook") && handle) return `https://www.facebook.com/${handle}/posts/${pid}`;
+  return null;
 }
 
 function periodRange(period: PeriodKey, customStart: string, customEnd: string) {
