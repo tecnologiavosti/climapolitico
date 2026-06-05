@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, FileText, ThumbsUp, ThumbsDown, Lightbulb, AlertTriangle, TrendingUp, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { DateRangePicker } from "@/components/DateRangePicker";
+import type { DateRange } from "react-day-picker";
 
 interface SummaryData {
   overall_sentiment: string;
