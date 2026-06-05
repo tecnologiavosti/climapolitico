@@ -141,9 +141,16 @@ Deno.serve(async (req) => {
         candidate_id: r.candidate_id, user_id: r.user_id,
         social_network: networkLabel, interaction_type: "post",
         comment_text: n.content, comment_author: n.author,
-        author_profile_url: r.platform === "instagram"
-          ? (n.author ? `https://www.instagram.com/${n.author}/` : null)
-          : (n.author ? `https://www.facebook.com/${n.author}/` : null),
+        author_profile_url: n.url,
+        post_url: n.url,
+        post_title: n.content ? String(n.content).slice(0, 180) : `${networkLabel} post`,
+        post_description: n.content,
+        thumbnail_url: n.thumbnail,
+        author_name: n.author,
+        author_handle: n.author,
+        post_id: String(n.post_id),
+        platform: r.platform,
+        engagement_score: n.likes + n.comments_count + n.shares_count,
         likes_count: n.likes, replies_count: n.comments_count, shares_count: n.shares_count,
         original_posted_at: n.posted_at, collected_at: new Date().toISOString(),
       });

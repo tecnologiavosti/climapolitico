@@ -115,8 +115,15 @@ Deno.serve(async (req) => {
         if (!text || text.length < 20 || !it.link) continue;
         const { error } = await supabase.from("social_interactions").insert({
           user_id: c.user_id, candidate_id: c.id, social_network: "facebook",
+          platform: "facebook",
           interaction_type: "post", comment_text: text,
           comment_author: it.author ?? "Facebook", author_profile_url: it.link,
+          post_url: it.link,
+          post_title: it.title,
+          post_description: it.description || text,
+          thumbnail_url: it.image,
+          author_name: it.author ?? "Facebook",
+          engagement_score: 1,
           sentiment_label: "Neutro", sentiment_score: 0.5,
           likes_count: 0, replies_count: 0, shares_count: 0,
           collected_at: new Date().toISOString(),

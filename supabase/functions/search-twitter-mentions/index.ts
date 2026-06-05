@@ -1014,6 +1014,8 @@ Deno.serve(async (req) => {
           author_handle: t.author?.replace(/^@/, '') || null,
           author_name: t.author,
           post_id: t.tweetId,
+          platform: 'twitter',
+          engagement_score: (t.likes || 0) + (t.replies || 0) + (t.retweets || 0),
           social_network: 'Twitter/X',
           sentiment_label: s?.label ?? null,
           sentiment_score: s?.score ?? null,
