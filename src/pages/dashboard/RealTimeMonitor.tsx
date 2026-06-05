@@ -6,7 +6,8 @@ import { useRealTimeAnalytics } from "@/hooks/useRealTimeAnalytics";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { RefreshCw, Radio, Clock } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { RefreshCw, Radio, Clock, Check, Loader2 } from "lucide-react";
 import { CandidateSelector } from "@/components/dashboard/realtime/CandidateSelector";
 import { RealTimeKPIs } from "@/components/dashboard/realtime/RealTimeKPIs";
 import { RealTimeSentimentChart } from "@/components/dashboard/realtime/RealTimeSentimentChart";
@@ -14,6 +15,15 @@ import { RealTimeSentimentGauge } from "@/components/dashboard/realtime/RealTime
 import { RealTimeCommentsFeed } from "@/components/dashboard/realtime/RealTimeCommentsFeed";
 import { ProcessingStatusCard } from "@/components/dashboard/realtime/ProcessingStatusCard";
 import { cn } from "@/lib/utils";
+
+const LOADING_STEPS = [
+  { label: "Coleta de notícias", threshold: 15 },
+  { label: "Coleta de redes sociais", threshold: 35 },
+  { label: "Análise de sentimento", threshold: 55 },
+  { label: "Processamento de entidades", threshold: 72 },
+  { label: "Cálculo de métricas", threshold: 88 },
+  { label: "Finalização", threshold: 98 },
+];
 
 interface Candidate {
   id: string;
