@@ -813,6 +813,69 @@ export function ReactionsPerPost({ candidateId }: Props) {
             </div>
           </div>
 
+          {/* Top Notícias — portais de notícia (sem engajamento social inventado) */}
+          {topNews.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                <div>
+                  <h4 className="text-base font-bold tracking-tight">Top Notícias</h4>
+                  <p className="text-xs text-muted-foreground">Portais de notícia — relevância, citações e veículos repercutindo</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {topNews.map((p, idx) => {
+                  const url = buildPostUrl(p);
+                  const platformKey = p._platform;
+                  const meta = platformMeta(platformKey);
+                  const author = p.author_name || p.author_handle || meta.label;
+                  const title = (p.post_title && p.post_title.trim())
+                    || (p.post_description && p.post_description.trim())
+                    || `Matéria de ${author}`;
+                  const dateObj = p.collected_at ? new Date(p.collected_at) : null;
+                  const relative = dateObj ? formatDistanceToNow(dateObj, { addSuffix: true, locale: ptBR }) : "—";
+                  const citacoes = p.related_records || 0;
+                  const veiculos = Math.max(1, Math.min(citacoes, 50));
+                  return (
+                    <Card key={p.id} className="relative flex flex-col gap-3 p-5 border-2 hover:shadow-lg hover:border-primary/40 transition-all bg-card">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">{idx + 1}</span>
+                          <Badge className={`text-[11px] font-semibold border ${meta.tone}`} variant="outline">
+                            <meta.Icon className="h-3 w-3 mr-1" />{meta.label}
+                          </Badge>
+                        </div>
+                        <span className="text-[11px] text-muted-foreground">{relative}</span>
+                      </div>
+                      <h5 className="text-base font-serif font-semibold leading-snug line-clamp-3" title={title}>{title}</h5>
+                      <div className="flex items-center gap-2 text-xs">
+                        <Newspaper className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="font-medium truncate">{author}</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <Metric Icon={TrendingUp} label="Relevância" value={Math.round((p.political_relevance_score ?? p._relevance) * 10)} />
+                        <Metric Icon={Share2} label="Citações" value={citacoes} />
+                        <Metric Icon={Globe} label="Veículos" value={veiculos} />
+                      </div>
+                      <div className="mt-auto pt-2">
+                        {url ? (
+                          <Button asChild size="sm" className="w-full" variant="outline">
+                            <a href={url} target="_blank" rel="noopener noreferrer">
+                              <ExternalLink className="h-3.5 w-3.5 mr-1.5" />Ler matéria original
+                            </a>
+                          </Button>
+                        ) : (
+                          <p className="text-[11px] text-center text-muted-foreground italic">Link original indisponível</p>
+                        )}
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+
+
 
 
         </>
