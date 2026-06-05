@@ -10,8 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { AlertCircle, ExternalLink, Heart, MessageCircle, RefreshCw, Share2, ThumbsUp, ThumbsDown, Minus, User } from "lucide-react";
-import { subDays } from "date-fns";
+import { AlertCircle, ExternalLink, Heart, MessageCircle, RefreshCw, Share2, ThumbsUp, ThumbsDown, Minus, User, Youtube, Instagram, Facebook, Music2, Newspaper, Globe, Twitter, TrendingUp } from "lucide-react";
+import { subDays, formatDistanceToNow } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 // Carrega Recharts apenas quando o usuário entra na aba — reduz JS inicial.
 const ChartsBlock = lazy(() => import("./ReactionsPerPostCharts"));
