@@ -200,7 +200,7 @@ async function collectForAllCandidates(supabase: any) {
       }
 
       const xml = await resp.text();
-      const items = parseRSSFeed(xml).slice(0, 30);
+      const items = await enrichInChunks(parseRSSFeed(xml).slice(0, 30));
       if (items.length === 0) continue;
 
       // Deduplicação: buscar URLs já coletadas para esse candidato
@@ -259,7 +259,7 @@ async function collectForAllCandidates(supabase: any) {
       const resp = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; ClimaPolitico/1.0)" } });
       if (!resp.ok) continue;
       const xml = await resp.text();
-      const items = parseRSSFeed(xml).slice(0, 50);
+      const items = await enrichInChunks(parseRSSFeed(xml).slice(0, 50));
       if (items.length === 0) continue;
 
       // Para cada item, descobre quais candidatos têm o nome citado
