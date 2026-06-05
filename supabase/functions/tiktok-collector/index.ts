@@ -232,7 +232,7 @@ async function collectForCandidate(
         author_name: p.author?.nickname || p.author?.unique_id || handle || null,
         post_id: p.video_id,
         platform: "tiktok",
-        engagement_score: (p.digg_count || 0) + (p.comment_count || 0) + (p.share_count || 0),
+        engagement_score: Math.max(1, (p.digg_count || 0) + (p.comment_count || 0) + (p.share_count || 0)),
         likes_count: p.digg_count || 0,
         replies_count: p.comment_count || 0,
         shares_count: p.share_count || 0,

@@ -150,7 +150,7 @@ Deno.serve(async (req) => {
         author_handle: n.author,
         post_id: String(n.post_id),
         platform: r.platform,
-        engagement_score: n.likes + n.comments_count + n.shares_count,
+        engagement_score: Math.max(1, n.likes + n.comments_count + n.shares_count),
         likes_count: n.likes, replies_count: n.comments_count, shares_count: n.shares_count,
         original_posted_at: n.posted_at, collected_at: new Date().toISOString(),
       });

@@ -828,6 +828,7 @@ Deno.serve(async (req) => {
                 author_handle: video.snippet?.channelTitle || null,
                 post_id: videoId,
                 platform: 'youtube',
+                engagement_score: Math.max(1, c.likeCount || 0),
                 social_network: 'YouTube',
                 interaction_type: 'comment',
                 sentiment_label: finalLabel,
