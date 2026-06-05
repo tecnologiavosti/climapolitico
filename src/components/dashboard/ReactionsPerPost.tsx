@@ -507,18 +507,19 @@ export function ReactionsPerPost({ candidateId }: Props) {
     })().catch((error) => console.warn("[ReactionsPerPost] coleta política automática falhou", error));
   }, [autoCollectionKey, candidateId, customEnd, customStart, fallbackLadder.length, loadAll, selectedPeriod, top5.length, topFallbackIdx, topState.loading, user]);
 
+  // Re-coleta automática quando algum link original estiver ausente.
   useEffect(() => {
     if (!user || topState.loading || top5.length === 0) return;
-    const needsMediaRepair = top5.some((p) => !buildThumbnail(p) || !buildPostUrl(p));
-    if (!needsMediaRepair) return;
-    const key = `${user.id}:${candidateId || "all"}:${effectiveTopPeriod}:media-repair`;
+    const needsLinkRepair = top5.some((p) => !buildPostUrl(p));
+    if (!needsLinkRepair) return;
+    const key = `${user.id}:${candidateId || "all"}:${effectiveTopPeriod}:link-repair`;
     if (autoCollectionKey === key) return;
     setAutoCollectionKey(key);
     void supabase.functions.invoke("orchestrate-all-collectors", {
       body: candidateId ? { collector: "all", candidateId } : { collector: "all" },
     }).then(() => {
       setTimeout(() => setTopFallbackIdx(0), 10000);
-    }).catch((error) => console.warn("[ReactionsPerPost] recoleta de mídia do Top 5 falhou", error));
+    }).catch((error) => console.warn("[ReactionsPerPost] recoleta de links do Top 5 falhou", error));
   }, [autoCollectionKey, candidateId, effectiveTopPeriod, top5, topState.loading, user]);
 
 
