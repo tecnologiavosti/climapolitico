@@ -279,6 +279,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
     const list = topState.data || [];
     return [...list]
       .map((p) => ({ ...p, engagement: p.engagement ?? ((p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0)) }))
+      .filter((p) => isPoliticalContent(p))
       .sort((a, b) => (b.engagement || 0) - (a.engagement || 0))
       .slice(0, 5);
   }, [topState.data]);
