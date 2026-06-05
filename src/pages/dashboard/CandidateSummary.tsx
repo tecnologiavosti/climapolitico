@@ -58,10 +58,11 @@ const CandidateSummary = () => {
   });
 
   const summaryMutation = useMutation({
-    mutationFn: async ({ candidateId, days }: { candidateId: string; days: number | null }) => {
-      const { data, error } = await supabase.functions.invoke('generate-candidate-summary', {
-        body: { candidateId, daysBack: days }
-      });
+    mutationFn: async (params: { candidateId: string; days: number | null; startDate?: string; endDate?: string }) => {
+      const body: any = { candidateId: params.candidateId, daysBack: params.days };
+      if (params.startDate) body.startDate = params.startDate;
+      if (params.endDate) body.endDate = params.endDate;
+      const { data, error } = await supabase.functions.invoke('generate-candidate-summary', { body });
       if (error) throw error;
       return data as SummaryResponse;
     },
@@ -74,6 +75,24 @@ const CandidateSummary = () => {
   const handleGenerate = () => {
     if (!selectedCandidate) {
       toast.error('Selecione um candidato');
+      return;
+    }
+    if (daysBack === 'custom') {
+      if (!customRange?.from) {
+        toast.error('Selecione a data inicial');
+        return;
+      }
+      const end = customRange.to ?? new Date();
+      const start = new Date(customRange.from);
+      start.setHours(0, 0, 0, 0);
+      const endAdj = new Date(end);
+      endAdj.setHours(23, 59, 59, 999);
+      summaryMutation.mutate({
+        candidateId: selectedCandidate,
+        days: null,
+        startDate: start.toISOString(),
+        endDate: endAdj.toISOString(),
+      });
       return;
     }
     const days = daysBack === 'all' ? null : parseInt(daysBack);
