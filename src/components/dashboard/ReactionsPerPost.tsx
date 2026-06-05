@@ -448,31 +448,37 @@ export function ReactionsPerPost({ candidateId }: Props) {
 
   const top5 = useMemo(() => {
     const list = topState.data || [];
+    const now = Date.now();
     const scored = list.map((p) => {
       const engagement = p.engagement ?? p.engagement_score ?? ((p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0));
       const relevance = politicalScore(p, monitoredNames);
       const platform = normalizePlatformKey(p.platform || p.social_network_raw || p.social_network);
-      return { ...p, engagement, _relevance: relevance, _platform: platform };
+      const ts = p.collected_at ? new Date(p.collected_at).getTime() : 0;
+      const ageHours = ts ? Math.max(0, (now - ts) / 3_600_000) : 24 * 365;
+      // Decay exponencial: meia-vida ≈ 36h. Post de ontem (24h) vale ~63% do recém-publicado;
+      // post de 2 meses vale ~3%. Isso garante que recência supere volume bruto.
+      const recencyWeight = Math.exp(-ageHours / 52);
+      const rankScore = Math.log10(1 + engagement) * (0.15 + recencyWeight);
+      return { ...p, engagement, _relevance: relevance, _platform: platform, _rankScore: rankScore, _ageHours: ageHours };
     });
     const filtered = scored
       .filter((p) => (p.political_relevance_score ?? p._relevance) >= 2 && buildPostUrl(p))
-      .sort((a, b) => b.engagement - a.engagement || (b.political_relevance_score ?? b._relevance) - (a.political_relevance_score ?? a._relevance));
+      .sort((a, b) => b._rankScore - a._rankScore);
     const bestByPlatform = new Map<string, typeof filtered[number]>();
     for (const post of filtered) {
       if (!bestByPlatform.has(post._platform)) bestByPlatform.set(post._platform, post);
     }
-    const primary = Array.from(bestByPlatform.values()).sort((a, b) => b.engagement - a.engagement);
-    const picked = primary.slice(0, 5);
+    const picked = Array.from(bestByPlatform.values()).sort((a, b) => b._rankScore - a._rankScore).slice(0, 5);
     if (picked.length < 5) {
       for (const post of filtered) {
+        if (picked.length === 5) break;
         if (picked.some((p) => p.id === post.id)) continue;
         const platformCount = picked.filter((p) => p._platform === post._platform).length;
-        if (platformCount >= 2 && filtered.some((p) => !picked.some((x) => x.id === p.id) && picked.filter((x) => x._platform === p._platform).length === 0)) continue;
+        if (platformCount >= 2) continue;
         picked.push(post);
-        if (picked.length === 5) break;
       }
     }
-    return picked.sort((a, b) => b.engagement - a.engagement || (b.political_relevance_score ?? b._relevance) - (a.political_relevance_score ?? a._relevance));
+    return picked.sort((a, b) => b._rankScore - a._rankScore);
   }, [topState.data, monitoredNames]);
 
   // Fallback automático de período: se nada relevante, expande a janela.
