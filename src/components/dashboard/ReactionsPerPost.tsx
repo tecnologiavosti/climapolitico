@@ -152,7 +152,21 @@ function buildThumbnail(p: PostRow): string | null {
   return null;
 }
 
-// Imagem institucional usada quando o post não traz thumbnail válida.
+const PLATFORM_META: Record<string, { label: string; Icon: typeof Youtube; tone: string }> = {
+  youtube:    { label: "YouTube",          Icon: Youtube,   tone: "bg-red-500/10 text-red-600 border-red-500/30" },
+  instagram:  { label: "Instagram",        Icon: Instagram, tone: "bg-pink-500/10 text-pink-600 border-pink-500/30" },
+  tiktok:     { label: "TikTok",           Icon: Music2,    tone: "bg-fuchsia-500/10 text-fuchsia-600 border-fuchsia-500/30" },
+  facebook:   { label: "Facebook",         Icon: Facebook,  tone: "bg-blue-600/10 text-blue-700 border-blue-600/30" },
+  twitter:    { label: "X",                Icon: Twitter,   tone: "bg-foreground/10 text-foreground border-foreground/30" },
+  google_news:{ label: "Portal de Notícias", Icon: Newspaper, tone: "bg-amber-500/10 text-amber-700 border-amber-500/30" },
+  portal:     { label: "Portal de Notícias", Icon: Newspaper, tone: "bg-amber-500/10 text-amber-700 border-amber-500/30" },
+};
+
+function platformMeta(key: string) {
+  return PLATFORM_META[key] || { label: key ? key.charAt(0).toUpperCase() + key.slice(1) : "Outros", Icon: Globe, tone: "bg-muted text-foreground border-border" };
+}
+
+// Imagem institucional removida: cards analíticos sem thumbnails.
 const INSTITUTIONAL_FALLBACK = "/favicon.png";
 
 // Palavras-chave que indicam conteúdo político brasileiro.
