@@ -64,6 +64,17 @@ interface ExistingInteractionRow {
   author_profile_url: string | null;
 }
 
+interface ExistingNewsRow {
+  id: string;
+  post_url: string | null;
+  post_title: string | null;
+  post_description: string | null;
+  thumbnail_url: string | null;
+  author_name: string | null;
+  comment_author: string | null;
+  original_posted_at: string | null;
+}
+
 function decodeHtml(value: string): string {
   return (value || "")
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
@@ -315,6 +326,47 @@ async function collectForAllCandidates(supabase: any) {
   console.log(`[google-news-collector] concluído: ${totalInserted} (por candidato) + ${keywordInserted} (keywords) em ${Date.now() - startedAt}ms`);
 }
 
+async function repairExistingNewsMetadata(supabase: any, candidateId?: string) {
+  let query = supabase
+    .from("social_interactions")
+    .select("id, post_url, post_title, post_description, thumbnail_url, author_name, comment_author, original_posted_at")
+    .eq("platform", "google_news")
+    .or("thumbnail_url.is.null,post_url.ilike.%news.google.com/rss/articles%,post_url.ilike.%news.google.com/articles%")
+    .order("collected_at", { ascending: false })
+    .limit(200);
+  if (candidateId) query = query.eq("candidate_id", candidateId);
+  const { data, error } = await query;
+  if (error) {
+    console.warn("[google-news-collector] repair select erro:", error.message);
+    return 0;
+  }
+  let repaired = 0;
+  for (const row of (data || []) as ExistingNewsRow[]) {
+    if (!validHttps(row.post_url)) continue;
+    const enriched = await enrichArticleMeta({
+      title: row.post_title || "Notícia política",
+      link: row.post_url,
+      pubDate: row.original_posted_at || "",
+      source: row.author_name || row.comment_author || "Portal de notícia",
+      description: row.post_description || "",
+      image: row.thumbnail_url,
+    });
+    const patch: Record<string, string | null> = {
+      post_url: enriched.link,
+      author_profile_url: enriched.link,
+      post_title: enriched.title || row.post_title,
+      post_description: enriched.description || row.post_description,
+      author_name: enriched.source || row.author_name,
+      comment_author: enriched.source || row.comment_author,
+      thumbnail_url: validHttps(enriched.image) ? enriched.image : row.thumbnail_url,
+    };
+    const { error: updErr } = await supabase.from("social_interactions").update(patch).eq("id", row.id);
+    if (!updErr) repaired++;
+  }
+  console.log(`[google-news-collector] metadados reparados: ${repaired}`);
+  return repaired;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -327,7 +379,12 @@ serve(async (req) => {
     );
 
     // @ts-ignore - EdgeRuntime existe no Supabase Edge Functions
-    EdgeRuntime.waitUntil(collectForAllCandidates(supabase));
+    const body = await req.json().catch(() => ({}));
+    const job = (async () => {
+      await repairExistingNewsMetadata(supabase, body?.candidateId);
+      await collectForAllCandidates(supabase);
+    })();
+    EdgeRuntime.waitUntil(job);
 
     return new Response(
       JSON.stringify({ message: "Coleta iniciada em background", status: "processing" }),
