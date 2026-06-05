@@ -137,25 +137,32 @@ const CandidateSummary = () => {
                 </Select>
               </HelpTooltip>
             </div>
-            <div className="w-32 sm:w-40 space-y-2">
+            <div className="w-full sm:w-56 space-y-2">
               <label className="text-sm font-medium">Período</label>
-              <HelpTooltip text="Quantos dias atrás a IA vai olhar pra montar o resumo.">
+              <HelpTooltip text="Escolha o intervalo que a IA vai analisar. Use 'Personalizado' para qualquer data.">
                 <Select value={daysBack} onValueChange={setDaysBack}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="0.5">Hoje</SelectItem>
                     <SelectItem value="1">Últimas 24h</SelectItem>
-                    <SelectItem value="3">Últimos 3 dias</SelectItem>
                     <SelectItem value="7">Últimos 7 dias</SelectItem>
-                    <SelectItem value="14">Últimos 14 dias</SelectItem>
                     <SelectItem value="30">Últimos 30 dias</SelectItem>
                     <SelectItem value="90">Últimos 90 dias</SelectItem>
-                    <SelectItem value="all">Período Total (todos os comentários)</SelectItem>
+                    <SelectItem value="365">Último ano</SelectItem>
+                    <SelectItem value="all">Período Total</SelectItem>
+                    <SelectItem value="custom">Personalizado…</SelectItem>
                   </SelectContent>
                 </Select>
               </HelpTooltip>
             </div>
+            {daysBack === 'custom' && (
+              <div className="w-full sm:w-[320px] space-y-2">
+                <label className="text-sm font-medium">Intervalo personalizado</label>
+                <DateRangePicker dateRange={customRange} onDateRangeChange={setCustomRange} />
+              </div>
+            )}
             <HelpTooltip text="Clica aqui e a IA monta um resumo pronto pra você ler.">
               <Button onClick={handleGenerate} disabled={summaryMutation.isPending || !selectedCandidate}>
                 {summaryMutation.isPending ? (
