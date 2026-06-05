@@ -1734,11 +1734,16 @@ export type Database = {
           external_id: string | null
           id: string
           interaction_type: string
+          invalidated_at: string | null
+          invalidation_reason: string | null
+          is_political_content: boolean
           latitude: number | null
           likes_count: number | null
           longitude: number | null
           original_posted_at: string | null
           parent_comment_id: string | null
+          political_relevance_score: number
+          political_validation_reason: string | null
           post_description: string | null
           post_id: string | null
           post_title: string | null
@@ -1771,11 +1776,16 @@ export type Database = {
           external_id?: string | null
           id?: string
           interaction_type?: string
+          invalidated_at?: string | null
+          invalidation_reason?: string | null
+          is_political_content?: boolean
           latitude?: number | null
           likes_count?: number | null
           longitude?: number | null
           original_posted_at?: string | null
           parent_comment_id?: string | null
+          political_relevance_score?: number
+          political_validation_reason?: string | null
           post_description?: string | null
           post_id?: string | null
           post_title?: string | null
@@ -1808,11 +1818,16 @@ export type Database = {
           external_id?: string | null
           id?: string
           interaction_type?: string
+          invalidated_at?: string | null
+          invalidation_reason?: string | null
+          is_political_content?: boolean
           latitude?: number | null
           likes_count?: number | null
           longitude?: number | null
           original_posted_at?: string | null
           parent_comment_id?: string | null
+          political_relevance_score?: number
+          political_validation_reason?: string | null
           post_description?: string | null
           post_id?: string | null
           post_title?: string | null
@@ -2900,6 +2915,7 @@ export type Database = {
         Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
         Returns: Json
       }
+      norm_text: { Args: { _value: string }; Returns: string }
       prune_edge_function_logs: { Args: never; Returns: undefined }
       reactivate_youtube_keys: { Args: never; Returns: undefined }
       record_collector_call: {
@@ -2934,12 +2950,25 @@ export type Database = {
       recover_stuck_jobs: { Args: never; Returns: number }
       refresh_network_profiles_deduplicated: { Args: never; Returns: undefined }
       refresh_pipeline_metrics_hourly: { Args: never; Returns: undefined }
+      reprocess_social_interactions_political_validation: {
+        Args: { _batch_size?: number }
+        Returns: Json
+      }
       requeue_dead_jobs: {
         Args: { _job_type?: string; _limit?: number }
         Returns: number
       }
       reset_provider_circuits: { Args: never; Returns: undefined }
       should_skip_collector: { Args: { _name: string }; Returns: boolean }
+      social_interaction_political_score: {
+        Args: {
+          _author?: string
+          _candidate_id: string
+          _network?: string
+          _text: string
+        }
+        Returns: Json
+      }
       unaccent: { Args: { "": string }; Returns: string }
       verify_api_key: {
         Args: { _required_scope: string; _token: string }

@@ -2,6 +2,7 @@
 // Coleta posts (legendas) e comentários reais sem precisar de API key oficial do TikTok.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isPoliticalCandidateContent } from "../_shared/political-content.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -208,7 +209,8 @@ async function collectForCandidate(
       .in("author_profile_url", videoUrls);
     const existingSet = new Set(((existing || []) as ExistingInteractionRow[]).map((e) => e.author_profile_url));
 
-    const newPosts = posts.filter((p) => !existingSet.has(buildUrl(p)));
+    const politicalPosts = posts.filter((p) => isPoliticalCandidateContent(`${p.title || ""} ${p.author?.unique_id || ""} ${p.author?.nickname || ""}`, candidate.full_name));
+    const newPosts = politicalPosts.filter((p) => !existingSet.has(buildUrl(p)));
     if (newPosts.length > 0) {
       const rows = newPosts.map((p) => ({
         user_id: candidate.user_id,
@@ -218,6 +220,10 @@ async function collectForCandidate(
         comment_text: p.title || "Vídeo do TikTok",
         comment_author: p.author?.unique_id || p.author?.nickname || handle || "tiktok",
         author_profile_url: buildUrl(p),
+        post_url: buildUrl(p),
+        post_title: p.title || null,
+        author_handle: p.author?.unique_id || handle || null,
+        author_name: p.author?.nickname || p.author?.unique_id || handle || null,
         likes_count: p.digg_count || 0,
         replies_count: p.comment_count || 0,
         shares_count: p.share_count || 0,
@@ -230,7 +236,7 @@ async function collectForCandidate(
     }
 
     // Coleta comentários dos primeiros 5 posts
-    for (const p of posts.slice(0, 5)) {
+    for (const p of politicalPosts.slice(0, 5)) {
       try {
         const comments = await fetchTikwmComments(p.video_id);
         if (comments.length === 0) continue;
@@ -248,10 +254,11 @@ async function collectForCandidate(
         const newComs = comments
           .map((c) => ({ c, fp: `tt-c-${p.video_id}-${c.id || c.cid || c.text.substring(0, 40)}` }))
           .filter((x) => !existSet.has(x.fp));
+        const politicalComs = newComs.filter(({ c }) => isPoliticalCandidateContent(`${c.text || ""} ${p.title || ""}`, candidate.full_name));
 
-        if (newComs.length === 0) continue;
+        if (politicalComs.length === 0) continue;
 
-        const crows = newComs.map(({ c, fp }) => ({
+        const crows = politicalComs.map(({ c, fp }) => ({
           user_id: candidate.user_id,
           candidate_id: candidate.id,
           social_network: "tiktok",
@@ -259,6 +266,10 @@ async function collectForCandidate(
           comment_text: (c.text || "").substring(0, 1000),
           comment_author: c.user?.unique_id || c.user?.nickname || "anonymous",
           author_profile_url: fp,
+          post_url: buildUrl(p),
+          post_title: p.title || null,
+          author_handle: c.user?.unique_id || null,
+          author_name: c.user?.nickname || c.user?.unique_id || null,
           likes_count: c.digg_count || 0,
           original_posted_at: c.create_time ? new Date(c.create_time * 1000).toISOString() : null,
           collected_at: new Date().toISOString(),

@@ -73,6 +73,20 @@ Deno.serve(async (req) => {
 
     const job = (async () => {
       const summary: Record<string, { ok: number; fail: number }> = {};
+      try {
+        for (let i = 0; i < 20; i += 1) {
+          const { data, error: reprocessError } = await supabase.rpc("reprocess_social_interactions_political_validation", { _batch_size: 10000 });
+          if (reprocessError) {
+            console.warn("[ORCHESTRATOR] reprocessamento político falhou:", reprocessError.message);
+            break;
+          }
+          console.log("[ORCHESTRATOR] reprocessamento político:", JSON.stringify(data));
+          if (!data || Number((data as any).updated || 0) === 0 || Number((data as any).remaining || 0) === 0) break;
+        }
+      } catch (e) {
+        console.warn("[ORCHESTRATOR] reprocessamento político exception:", (e as Error).message);
+      }
+
       for (const c of list) {
         for (const col of selectedCollectors) {
           summary[col.name] = summary[col.name] || { ok: 0, fail: 0 };

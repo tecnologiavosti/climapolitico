@@ -9,6 +9,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { enrichRecordLocation } from "../_shared/infer-location.ts";
+import { isPoliticalCandidateContent } from "../_shared/political-content.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -976,7 +977,7 @@ Deno.serve(async (req) => {
     }
 
     // Pós-filtro de RELEVÂNCIA: descarta posts que não citam claramente o candidato
-    const relevant = collected.filter((t: ScrapedTweet) => matchesCandidate(t.text));
+    const relevant = collected.filter((t: ScrapedTweet) => matchesCandidate(t.text) && isPoliticalCandidateContent(`${t.text} ${t.author}`, candidateName));
     const dropped = collected.length - relevant.length;
     if (dropped > 0) console.log(`[TWITTER] Filtro de relevância removeu ${dropped}/${collected.length} posts irrelevantes`);
 
@@ -1007,6 +1008,12 @@ Deno.serve(async (req) => {
           comment_text: t.text,
           comment_author: t.author,
           author_profile_url: t.tweetUrl ?? t.authorUrl,
+          post_url: t.tweetUrl,
+          post_title: t.text.slice(0, 180),
+          post_description: t.text,
+          author_handle: t.author?.replace(/^@/, '') || null,
+          author_name: t.author,
+          post_id: t.tweetId,
           social_network: 'Twitter/X',
           sentiment_label: s?.label ?? null,
           sentiment_score: s?.score ?? null,
@@ -1074,7 +1081,7 @@ Deno.serve(async (req) => {
           .eq('interaction_type', 'reply')
           .in('author_profile_url', replyUrls);
         const exSet = new Set((existingReplies ?? []).map((e: any) => e.author_profile_url));
-        const freshReplies = allReplies.filter(r => !exSet.has(r.author_profile_url));
+        const freshReplies = allReplies.filter(r => !exSet.has(r.author_profile_url) && isPoliticalCandidateContent(r.comment_text || '', candidateName));
         // Analisa sentimento em batches
         for (let i = 0; i < freshReplies.length; i += 20) {
           const batch = freshReplies.slice(i, i + 20);

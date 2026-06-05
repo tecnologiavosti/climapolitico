@@ -2,6 +2,7 @@
 // Usa o RSS oficial do Google News (gratuito, sem API key).
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isPoliticalCandidateContent } from "../_shared/political-content.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -137,7 +138,7 @@ async function collectForAllCandidates(supabase: any) {
         .in("author_profile_url", links);
 
       const existingSet = new Set(((existing || []) as ExistingInteractionRow[]).map((e) => e.author_profile_url));
-      const newItems = items.filter((i) => !existingSet.has(i.link));
+      const newItems = items.filter((i) => !existingSet.has(i.link) && isPoliticalCandidateContent(`${i.title} ${i.description} ${i.source}`, candidate.full_name));
       if (newItems.length === 0) continue;
 
       const rows = newItems.map((item) => ({
@@ -148,6 +149,10 @@ async function collectForAllCandidates(supabase: any) {
         comment_text: `${item.title}\n\n${item.description}`,
         comment_author: item.source,
         author_profile_url: item.link,
+        post_url: item.link,
+        post_title: item.title,
+        post_description: item.description,
+        author_name: item.source,
         original_posted_at: item.pubDate ? new Date(item.pubDate).toISOString() : null,
         collected_at: new Date().toISOString(),
       }));
@@ -184,7 +189,7 @@ async function collectForAllCandidates(supabase: any) {
       for (const item of items) {
         const haystack = `${item.title} ${item.description}`;
         for (const cand of candList) {
-          if (!nameMatches(haystack, cand.full_name)) continue;
+          if (!nameMatches(haystack, cand.full_name) || !isPoliticalCandidateContent(`${haystack} ${item.source}`, cand.full_name)) continue;
           const row = {
             user_id: cand.user_id,
             candidate_id: cand.id,
@@ -193,6 +198,10 @@ async function collectForAllCandidates(supabase: any) {
             comment_text: `${item.title}\n\n${item.description}`,
             comment_author: item.source,
             author_profile_url: item.link,
+            post_url: item.link,
+            post_title: item.title,
+            post_description: item.description,
+            author_name: item.source,
             original_posted_at: item.pubDate ? new Date(item.pubDate).toISOString() : null,
             collected_at: new Date().toISOString(),
           };
