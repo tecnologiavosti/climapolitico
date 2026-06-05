@@ -703,7 +703,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
             <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
               <div>
                 <h4 className="text-base font-bold tracking-tight">Top 5 posts por engajamento</h4>
-                <p className="text-xs text-muted-foreground">Ranqueado por engajamento × recência — prioriza últimas 24h</p>
+                <p className="text-xs text-muted-foreground">Apenas redes sociais — score normalizado por plataforma, priorizando últimas 24h</p>
               </div>
               {topFallbackIdx > 0 && top5.length > 0 && (
                 <Badge variant="outline" className="text-[10px]">
