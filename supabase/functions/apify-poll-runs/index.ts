@@ -27,6 +27,7 @@ async function getRunItems(runId: string, token: string) {
 }
 
 function normalizeIG(item: any) {
+  const thumbnail = item.displayUrl || item.imageUrl || item.thumbnailUrl || item.videoUrl || item.images?.[0]?.url || item.video?.thumbnailUrl || null;
   return {
     post_id: item.id || item.shortCode || item.url,
     author: item.ownerUsername ?? "",
@@ -35,6 +36,7 @@ function normalizeIG(item: any) {
     comments_count: Number(item.commentsCount ?? 0) || 0,
     shares_count: 0,
     url: item.url ?? (item.shortCode ? `https://www.instagram.com/p/${item.shortCode}/` : null),
+    thumbnail,
     posted_at: item.timestamp ?? null,
     type: "post" as const,
     latestComments: Array.isArray(item.latestComments) ? item.latestComments : [],
@@ -53,6 +55,7 @@ function normalizeFB(item: any) {
     comments_count: Number(item.comments ?? item.commentsCount ?? 0) || 0,
     shares_count: Number(item.shares ?? item.sharesCount ?? 0) || 0,
     url: item.topLevelUrl ?? item.url ?? item.postUrl ?? null,
+    thumbnail: item.media?.[0]?.thumbnail || item.media?.[0]?.url || item.image || item.imageUrl || item.picture || item.attachments?.[0]?.media?.image?.src || null,
     posted_at: item.time ?? item.timestamp ?? item.publishedTime ?? null,
     type: "post" as const,
   };
@@ -138,9 +141,16 @@ Deno.serve(async (req) => {
         candidate_id: r.candidate_id, user_id: r.user_id,
         social_network: networkLabel, interaction_type: "post",
         comment_text: n.content, comment_author: n.author,
-        author_profile_url: r.platform === "instagram"
-          ? (n.author ? `https://www.instagram.com/${n.author}/` : null)
-          : (n.author ? `https://www.facebook.com/${n.author}/` : null),
+        author_profile_url: n.url,
+        post_url: n.url,
+        post_title: n.content ? String(n.content).slice(0, 180) : `${networkLabel} post`,
+        post_description: n.content,
+        thumbnail_url: n.thumbnail,
+        author_name: n.author,
+        author_handle: n.author,
+        post_id: String(n.post_id),
+        platform: r.platform,
+        engagement_score: Math.max(1, n.likes + n.comments_count + n.shares_count),
         likes_count: n.likes, replies_count: n.comments_count, shares_count: n.shares_count,
         original_posted_at: n.posted_at, collected_at: new Date().toISOString(),
       });

@@ -15,6 +15,7 @@ interface NewsItem {
   pubDate: string;
   source: string;
   description: string;
+  image?: string | null;
 }
 
 interface CandidateRow {
@@ -75,6 +76,10 @@ function parseRSSFeed(xmlText: string): NewsItem[] {
     const pubDate = itemXml.match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1] || "";
     const source = itemXml.match(/<source[^>]*>([\s\S]*?)<\/source>/)?.[1] || "Google News";
     const description = itemXml.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/)?.[1] || "";
+    const image = itemXml.match(/<media:content[^>]+url=["']([^"']+)["']/)?.[1]
+      || itemXml.match(/<enclosure[^>]+url=["']([^"']+)["']/)?.[1]
+      || description.match(/<img[^>]+src=["']([^"']+)["']/)?.[1]
+      || null;
 
     if (title && link) {
       items.push({
@@ -83,6 +88,7 @@ function parseRSSFeed(xmlText: string): NewsItem[] {
         pubDate,
         source: source.replace(/<[^>]*>/g, "").trim(),
         description: description.replace(/<[^>]*>/g, "").substring(0, 500).trim(),
+        image,
       });
     }
   }
@@ -145,6 +151,7 @@ async function collectForAllCandidates(supabase: any) {
         user_id: candidate.user_id,
         candidate_id: candidate.id,
         social_network: "google_news",
+        platform: "google_news",
         interaction_type: "news",
         comment_text: `${item.title}\n\n${item.description}`,
         comment_author: item.source,
@@ -152,7 +159,9 @@ async function collectForAllCandidates(supabase: any) {
         post_url: item.link,
         post_title: item.title,
         post_description: item.description,
+        thumbnail_url: item.image,
         author_name: item.source,
+        engagement_score: 1,
         original_posted_at: item.pubDate ? new Date(item.pubDate).toISOString() : null,
         collected_at: new Date().toISOString(),
       }));
@@ -194,6 +203,7 @@ async function collectForAllCandidates(supabase: any) {
             user_id: cand.user_id,
             candidate_id: cand.id,
             social_network: "google_news",
+            platform: "google_news",
             interaction_type: "news",
             comment_text: `${item.title}\n\n${item.description}`,
             comment_author: item.source,
@@ -201,7 +211,9 @@ async function collectForAllCandidates(supabase: any) {
             post_url: item.link,
             post_title: item.title,
             post_description: item.description,
+            thumbnail_url: item.image,
             author_name: item.source,
+            engagement_score: 1,
             original_posted_at: item.pubDate ? new Date(item.pubDate).toISOString() : null,
             collected_at: new Date().toISOString(),
           };

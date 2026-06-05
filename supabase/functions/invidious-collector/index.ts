@@ -67,6 +67,7 @@ Deno.serve(async (req) => {
         if (!vexist) {
           const { error } = await supabase.from("social_interactions").insert({
             user_id: c.user_id, candidate_id: c.id, social_network: "youtube",
+            platform: "youtube",
             interaction_type: "video",
             comment_text: `${v.title}\n${(v.description || "").slice(0, 1000)}`,
             comment_author: v.author || "YouTube",
@@ -75,6 +76,10 @@ Deno.serve(async (req) => {
             post_title: v.title || null,
             post_description: (v.description || "").slice(0, 1000) || null,
             thumbnail_url: v.videoThumbnails?.[0]?.url || null,
+            author_name: v.author || "YouTube",
+            author_handle: v.authorId || null,
+            post_id: vid,
+            engagement_score: Number(v.viewCount || 0) || 0,
             sentiment_label: "Neutro", sentiment_score: 0.5,
             likes_count: v.viewCount || 0, replies_count: 0, shares_count: 0,
             collected_at: new Date().toISOString(),
@@ -96,9 +101,16 @@ Deno.serve(async (req) => {
           if (cexist) continue;
           const { error } = await supabase.from("social_interactions").insert({
             user_id: c.user_id, candidate_id: c.id, social_network: "youtube",
+            platform: "youtube",
             interaction_type: "comment", comment_text: text,
             comment_author: cm.author || "anon", author_profile_url: url,
             post_url: videoUrl, post_title: v.title || null,
+            post_description: (v.description || "").slice(0, 1000) || null,
+            thumbnail_url: v.videoThumbnails?.[0]?.url || `https://img.youtube.com/vi/${vid}/hqdefault.jpg`,
+            author_name: v.author || "YouTube",
+            author_handle: v.authorId || null,
+            post_id: vid,
+            engagement_score: Number(cm.likeCount || 0) || 0,
             sentiment_label: "Neutro", sentiment_score: 0.5,
             likes_count: cm.likeCount || 0, replies_count: 0, shares_count: 0,
             collected_at: new Date().toISOString(),

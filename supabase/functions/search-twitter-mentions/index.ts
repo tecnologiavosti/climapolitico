@@ -31,6 +31,7 @@ interface ScrapedTweet {
   retweets: number;
   tweetUrl: string | null;
   tweetId: string | null;
+  thumbnailUrl?: string | null;
 }
 
 // Hosts fallback estáticos (lista expandida e atualizada — usados se o banco/discovery falharem)
@@ -284,6 +285,7 @@ async function fetchViaFirecrawl(query: string, maxResults: number): Promise<Scr
       const author = m[1];
       const tweetId = m[2];
       const text = (r?.description || r?.snippet || r?.title || '').trim();
+      const thumbnailUrl = r?.image || r?.imageUrl || r?.metadata?.image || r?.openGraph?.image || null;
       if (!text || text.length < 10) continue;
       out.push({
         text: decodeHtml(text),
@@ -295,6 +297,7 @@ async function fetchViaFirecrawl(query: string, maxResults: number): Promise<Scr
         retweets: 0,
         tweetUrl: `https://x.com/${author}/status/${tweetId}`,
         tweetId,
+        thumbnailUrl,
       });
     }
     return out;
@@ -1011,9 +1014,12 @@ Deno.serve(async (req) => {
           post_url: t.tweetUrl,
           post_title: t.text.slice(0, 180),
           post_description: t.text,
+          thumbnail_url: t.thumbnailUrl || null,
           author_handle: t.author?.replace(/^@/, '') || null,
           author_name: t.author,
           post_id: t.tweetId,
+          platform: 'twitter',
+          engagement_score: Math.max(1, (t.likes || 0) + (t.replies || 0) + (t.retweets || 0)),
           social_network: 'Twitter/X',
           sentiment_label: s?.label ?? null,
           sentiment_score: s?.score ?? null,

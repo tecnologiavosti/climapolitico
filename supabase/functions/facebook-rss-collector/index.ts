@@ -26,7 +26,7 @@ async function safeFetch(url: string, timeoutMs = 12000): Promise<Response | nul
   } catch { clearTimeout(id); return null; }
 }
 
-interface Item { title: string; link: string; description: string; pubDate: string; author?: string; }
+interface Item { title: string; link: string; description: string; pubDate: string; author?: string; image?: string | null; }
 
 function parseRssXml(xml: string): Item[] {
   const items: Item[] = [];
@@ -37,7 +37,11 @@ function parseRssXml(xml: string): Item[] {
     const description = (x.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/s)?.[1] ?? "").replace(/<[^>]+>/g, "");
     const pubDate = x.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] ?? "";
     const author = x.match(/<author>(.*?)<\/author>/)?.[1] ?? x.match(/<dc:creator><!\[CDATA\[(.*?)\]\]><\/dc:creator>/)?.[1];
-    if (title && link) items.push({ title, link, description, pubDate, author });
+    const image = x.match(/<media:content[^>]+url=["']([^"']+)["']/)?.[1]
+      || x.match(/<enclosure[^>]+url=["']([^"']+)["']/)?.[1]
+      || x.match(/<img[^>]+src=["']([^"']+)["']/)?.[1]
+      || null;
+    if (title && link) items.push({ title, link, description, pubDate, author, image });
   }
   return items;
 }
@@ -111,8 +115,15 @@ Deno.serve(async (req) => {
         if (!text || text.length < 20 || !it.link) continue;
         const { error } = await supabase.from("social_interactions").insert({
           user_id: c.user_id, candidate_id: c.id, social_network: "facebook",
+          platform: "facebook",
           interaction_type: "post", comment_text: text,
           comment_author: it.author ?? "Facebook", author_profile_url: it.link,
+          post_url: it.link,
+          post_title: it.title,
+          post_description: it.description || text,
+          thumbnail_url: it.image,
+          author_name: it.author ?? "Facebook",
+          engagement_score: 1,
           sentiment_label: "Neutro", sentiment_score: 0.5,
           likes_count: 0, replies_count: 0, shares_count: 0,
           collected_at: new Date().toISOString(),
