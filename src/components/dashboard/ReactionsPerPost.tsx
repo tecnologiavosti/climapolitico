@@ -274,6 +274,9 @@ export function ReactionsPerPost({ candidateId }: Props) {
   }, [user, candidateId]);
 
 
+  const reqKey = `${user?.id}|${candidateId || "all"}|${range.start || "ALL"}|${range.end || "OPEN"}`;
+  const topReqKey = `${user?.id}|${candidateId || "all"}|${topRange.start || "ALL"}|${topRange.end || "OPEN"}`;
+
   const loadAll = useMemo(() => async () => {
     if (!user) return;
     const args = {
@@ -286,36 +289,49 @@ export function ReactionsPerPost({ candidateId }: Props) {
     setEngState((s) => ({ ...s, loading: true, error: null }));
     setSentNetState((s) => ({ ...s, loading: true, error: null }));
     setActState((s) => ({ ...s, loading: true, error: null }));
-    setTopState((s) => ({ ...s, loading: true, error: null }));
     setTopicsState((s) => ({ ...s, loading: true, error: null }));
 
     const tStart = performance.now();
-    const [totals, eng, sentNet, act, top, topics] = await Promise.all([
+    const [totals, eng, sentNet, act, topics] = await Promise.all([
       callRpc<TotalsT>("get_reactions_totals", args),
       callRpc<EngagementByNetwork[]>("get_reactions_engagement_by_network", args),
       callRpc<SentimentByNetwork[]>("get_reactions_sentiment_by_network", args),
       callRpc<ActivityHourWeek[]>("get_reactions_activity_hour_week", args),
-      callRpc<PostRow[]>("get_reactions_top_posts", args),
       callRpc<{ topic: string; mentions: number }[]>("get_reactions_dominant_topics", args),
     ]);
     console.log("[ReactionsPerPost] DEBUG carga total", {
       tempoTotalMs: Math.round(performance.now() - tStart),
-      totaisMs: totals.ms, totaisErro: totals.error, totaisKB: (totals.bytes / 1024).toFixed(1),
+      totaisMs: totals.ms, totaisErro: totals.error,
       engajamentoMs: eng.ms, engajamentoErro: eng.error,
       sentimentoMs: sentNet.ms, sentimentoErro: sentNet.error,
       atividadeMs: act.ms, atividadeErro: act.error,
-      topPostsMs: top.ms, topPostsErro: top.error,
       topicosMs: topics.ms, topicosErro: topics.error,
     });
     setTotalsState({ data: totals.data, loading: false, error: totals.error, ms: totals.ms });
     setEngState({ data: eng.data ?? [], loading: false, error: eng.error, ms: eng.ms });
     setSentNetState({ data: sentNet.data ?? [], loading: false, error: sentNet.error, ms: sentNet.ms });
     setActState({ data: act.data ?? [], loading: false, error: act.error, ms: act.ms });
-    setTopState({ data: top.data ?? [], loading: false, error: top.error, ms: top.ms });
     setTopicsState({ data: topics.data ?? [], loading: false, error: topics.error, ms: topics.ms });
   }, [user, candidateId, range.start, range.end]);
 
   useEffect(() => { void loadAll(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [reqKey]);
+
+  // Top posts em fluxo próprio para suportar fallback automático de período.
+  useEffect(() => {
+    if (!user) return;
+    setTopState((s) => ({ ...s, loading: true, error: null }));
+    (async () => {
+      const top = await callRpc<PostRow[]>("get_reactions_top_posts", {
+        _user_id: user.id,
+        _candidate_id: candidateId ?? null,
+        _period_start: topRange.start,
+        _period_end: topRange.end,
+      });
+      setTopState({ data: top.data ?? [], loading: false, error: top.error, ms: top.ms });
+    })();
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [topReqKey]);
+
 
   const summary = totalsState.data;
   const summaryLoading = totalsState.loading;
