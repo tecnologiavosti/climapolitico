@@ -67,6 +67,7 @@ const RealTimeMonitor = () => {
   useEffect(() => {
     if (isLoading) {
       setLoadingProgress(8);
+      setLoadingStart(Date.now());
       progressTimer.current && clearInterval(progressTimer.current);
       progressTimer.current = setInterval(() => {
         setLoadingProgress(prev => {
@@ -79,12 +80,24 @@ const RealTimeMonitor = () => {
       progressTimer.current && clearInterval(progressTimer.current);
       if (loadingProgress > 0) {
         setLoadingProgress(100);
-        setTimeout(() => setLoadingProgress(0), 600);
+        setTimeout(() => { setLoadingProgress(0); setLoadingStart(null); }, 600);
       }
       if (metrics) setLastUpdate(new Date());
     }
     return () => { progressTimer.current && clearInterval(progressTimer.current); };
   }, [isLoading, metrics]);
+
+  // Etapa atual + ETA
+  const currentStepIdx = LOADING_STEPS.findIndex(s => loadingProgress < s.threshold);
+  const currentStep = currentStepIdx >= 0 ? LOADING_STEPS[currentStepIdx] : LOADING_STEPS[LOADING_STEPS.length - 1];
+  const etaSeconds = (() => {
+    if (!loadingStart || loadingProgress <= 5 || loadingProgress >= 100) return null;
+    const elapsed = (Date.now() - loadingStart) / 1000;
+    const rate = loadingProgress / elapsed; // % per sec
+    if (rate <= 0) return null;
+    return Math.max(1, Math.round((100 - loadingProgress) / rate));
+  })();
+
 
   const handleRefresh = async () => {
     await refreshMetrics();
