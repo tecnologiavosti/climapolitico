@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { AlertCircle, Heart, MessageCircle, RefreshCw, Share2, ThumbsUp, ThumbsDown, Minus } from "lucide-react";
+import { AlertCircle, ExternalLink, Heart, ImageOff, MessageCircle, RefreshCw, Share2, ThumbsUp, ThumbsDown, Minus, User } from "lucide-react";
 import { subDays } from "date-fns";
 
 // Carrega Recharts apenas quando o usuário entra na aba — reduz JS inicial.
