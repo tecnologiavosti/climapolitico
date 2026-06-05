@@ -394,12 +394,29 @@ export function ReactionsPerPost({ candidateId }: Props) {
 
   const top5 = useMemo(() => {
     const list = topState.data || [];
-    return [...list]
-      .map((p) => ({ ...p, engagement: p.engagement ?? ((p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0)) }))
-      .filter((p) => isPoliticalContent(p))
-      .sort((a, b) => (b.engagement || 0) - (a.engagement || 0))
-      .slice(0, 5);
-  }, [topState.data]);
+    const scored = list.map((p) => {
+      const engagement = p.engagement ?? ((p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0));
+      const relevance = politicalScore(p, monitoredNames);
+      // Ranking combinado: relevância política * engajamento (log para suavizar).
+      const rank = (relevance + 1) * Math.log10(engagement + 10);
+      return { ...p, engagement, _relevance: relevance, _rank: rank };
+    });
+    // Primeira tentativa: apenas posts com sinal político (>=1).
+    let filtered = scored.filter((p) => p._relevance >= 1);
+    // Segunda tentativa: relaxa para qualquer post que não seja claramente não-político.
+    if (filtered.length === 0) filtered = scored.filter((p) => p._relevance >= 0);
+    return filtered.sort((a, b) => b._rank - a._rank).slice(0, 5);
+  }, [topState.data, monitoredNames]);
+
+  // Fallback automático de período: se nada relevante, expande a janela.
+  useEffect(() => {
+    if (topState.loading) return;
+    if (top5.length > 0) return;
+    if (topFallbackIdx < fallbackLadder.length - 1) {
+      setTopFallbackIdx((i) => i + 1);
+    }
+  }, [topState.loading, top5.length, topFallbackIdx, fallbackLadder.length]);
+
 
   const topTopics = useMemo(() => {
     return (topicsState.data || []).slice(0, 8)
