@@ -39,7 +39,8 @@ const sentimentConfig: Record<string, { label: string; color: string; variant: "
 
 const CandidateSummary = () => {
   const [selectedCandidate, setSelectedCandidate] = useState<string>("");
-  const [daysBack, setDaysBack] = useState<string>("7"); // "all" = Período Total
+  const [daysBack, setDaysBack] = useState<string>("7"); // "all" | "custom" | number
+  const [customRange, setCustomRange] = useState<DateRange | undefined>();
 
   const { data: candidates } = useQuery({
     queryKey: ['candidates-for-summary'],
