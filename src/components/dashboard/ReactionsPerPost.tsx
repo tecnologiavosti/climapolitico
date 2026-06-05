@@ -596,26 +596,32 @@ export function ReactionsPerPost({ candidateId }: Props) {
                       </Badge>
                     </div>
 
-                    {/* Thumbnail (com fallback institucional) */}
-                    <a
-                      href={url || undefined}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`relative block aspect-video w-full overflow-hidden rounded-md bg-muted ${url ? "cursor-pointer" : "cursor-default pointer-events-none"}`}
-                    >
-                      <img
-                        src={p.thumbnail_url || INSTITUTIONAL_FALLBACK}
-                        alt={title}
-                        loading="lazy"
-                        className="h-full w-full object-cover transition-transform hover:scale-105"
-                        onError={(e) => {
-                          const img = e.currentTarget as HTMLImageElement;
-                          if (img.src.endsWith(INSTITUTIONAL_FALLBACK)) return;
-                          img.src = INSTITUTIONAL_FALLBACK;
-                          img.classList.add("object-contain","p-6","opacity-80");
-                        }}
-                      />
-                    </a>
+                    {/* Thumbnail real do post; fallback institucional somente se não houver imagem válida */}
+                    {(() => {
+                      const thumb = buildThumbnail(p);
+                      const imgSrc = thumb || INSTITUTIONAL_FALLBACK;
+                      const wrapperClass = `relative block aspect-video w-full overflow-hidden rounded-md bg-muted ${url ? "cursor-pointer" : "cursor-default"}`;
+                      const ImgEl = (
+                        <img
+                          src={imgSrc}
+                          alt={title}
+                          loading="lazy"
+                          className={`h-full w-full ${thumb ? "object-cover" : "object-contain p-6 opacity-80"} transition-transform hover:scale-105`}
+                          onError={(e) => {
+                            const img = e.currentTarget as HTMLImageElement;
+                            if (img.src.endsWith(INSTITUTIONAL_FALLBACK)) return;
+                            img.src = INSTITUTIONAL_FALLBACK;
+                            img.classList.remove("object-cover");
+                            img.classList.add("object-contain", "p-6", "opacity-80");
+                          }}
+                        />
+                      );
+                      return url ? (
+                        <a href={url} target="_blank" rel="noopener noreferrer" className={wrapperClass}>{ImgEl}</a>
+                      ) : (
+                        <div className={wrapperClass}>{ImgEl}</div>
+                      );
+                    })()}
 
 
                     <div className="text-xs text-muted-foreground">
