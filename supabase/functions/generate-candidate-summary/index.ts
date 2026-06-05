@@ -379,7 +379,7 @@ Gere um resumo executivo completo para a equipe de campanha.`;
       summary,
       stats,
       candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region },
-      period: { daysBack, startDate: startDate?.toISOString() ?? null, endDate: new Date().toISOString(), label: periodLabel },
+      period: { daysBack, startDate: startDate?.toISOString() ?? null, endDate: (endDate ?? new Date()).toISOString(), label: periodLabel },
       model_used: modelUsed,
       fallback_used: fallbackUsed,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
