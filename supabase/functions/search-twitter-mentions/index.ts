@@ -363,6 +363,7 @@ function parseRss(xml: string): ScrapedTweet[] {
       text,
       author,
       authorUrl: `https://x.com/${author}`,
+      sourcePlatform: 'twitter',
       postedAt,
       likes: 0,
       replies: 0,
@@ -1009,6 +1010,8 @@ Deno.serve(async (req) => {
       const sentiments = await analyzeSentimentBatch(batch.map(t => t.text));
       const records = batch.map((t, idx) => {
         const s = sentiments?.[idx];
+        const platform = t.sourcePlatform || (t.tweetUrl?.includes('bsky.app') ? 'bluesky' : t.tweetUrl?.includes('mastodon') ? 'mastodon' : 'twitter');
+        const networkLabel = platform === 'bluesky' ? 'Bluesky' : platform === 'mastodon' ? 'Mastodon' : 'Twitter/X';
         return {
           user_id: ownerUserId,
           candidate_id: candidateId,
@@ -1022,9 +1025,9 @@ Deno.serve(async (req) => {
           author_handle: t.author?.replace(/^@/, '') || null,
           author_name: t.author,
           post_id: t.tweetId,
-          platform: 'twitter',
+          platform,
           engagement_score: Math.max(1, (t.likes || 0) + (t.replies || 0) + (t.retweets || 0)),
-          social_network: 'Twitter/X',
+          social_network: networkLabel,
           sentiment_label: s?.label ?? null,
           sentiment_score: s?.score ?? null,
           likes_count: t.likes,
