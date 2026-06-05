@@ -60,12 +60,23 @@ Deno.serve(async (req) => {
       console.warn("[ORCHESTRATOR] tiktok-resolve-batch falhou:", (e as Error).message);
     }
 
+    // 1.1) Dispara coleta Meta pública/Apify uma vez para abastecer Instagram e Facebook.
+    try {
+      await supabase.functions.invoke("meta-mass-collector", { body: {} });
+      console.log("[ORCHESTRATOR] meta-mass-collector disparado");
+    } catch (e) {
+      console.warn("[ORCHESTRATOR] meta-mass-collector falhou:", (e as Error).message);
+    }
+
     // 2) Lista candidatos ativos
-    const { data: candidates, error } = await supabase
+    const candidatesQuery = supabase
       .from("candidates")
       .select("id, full_name, user_id")
       .eq("status", "active")
       .limit(500);
+    const { data: candidates, error } = reqBody.candidateId
+      ? await candidatesQuery.eq("id", reqBody.candidateId)
+      : await candidatesQuery;
     if (error) throw error;
 
     const list = candidates || [];
@@ -141,6 +152,13 @@ Deno.serve(async (req) => {
         }
       } catch (e) {
         console.warn("[ORCHESTRATOR] classify-region falhou:", (e as Error).message);
+      }
+
+      try {
+        const { data: poll } = await supabase.functions.invoke("apify-poll-runs", { body: {} });
+        console.log("[ORCHESTRATOR] apify-poll-runs:", JSON.stringify(poll));
+      } catch (e) {
+        console.warn("[ORCHESTRATOR] apify-poll-runs falhou:", (e as Error).message);
       }
     })();
 
