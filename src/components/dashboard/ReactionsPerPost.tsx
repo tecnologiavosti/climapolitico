@@ -104,17 +104,34 @@ export interface PostRow {
   political_validation_reason?: string | null;
 }
 
+function isValidHttpsUrl(u?: string | null): u is string {
+  return !!u && /^https:\/\/[^\s]+$/i.test(u.trim());
+}
+
 function buildPostUrl(p: PostRow): string | null {
-  if (p.post_url && /^https?:\/\//i.test(p.post_url)) return p.post_url;
+  if (isValidHttpsUrl(p.post_url)) return (p.post_url as string).trim();
   const net = (p.social_network_raw || p.social_network || "").toLowerCase();
   const pid = p.post_id?.trim();
   const handle = p.author_handle?.replace(/^@/, "").trim();
   if (!pid) return null;
-  if (net.includes("youtube") || net === "yt") return `https://www.youtube.com/watch?v=${pid}`;
-  if (net.includes("twitter") || net === "x") return `https://twitter.com/${handle || "i"}/status/${pid}`;
-  if (net.includes("tiktok") && handle) return `https://www.tiktok.com/@${handle}/video/${pid}`;
-  if (net.includes("instagram")) return `https://www.instagram.com/p/${pid}/`;
-  if (net.includes("facebook") && handle) return `https://www.facebook.com/${handle}/posts/${pid}`;
+  let candidate: string | null = null;
+  if (net.includes("youtube") || net === "yt") candidate = `https://www.youtube.com/watch?v=${pid}`;
+  else if (net.includes("twitter") || net === "x") candidate = `https://twitter.com/${handle || "i"}/status/${pid}`;
+  else if (net.includes("tiktok") && handle) candidate = `https://www.tiktok.com/@${handle}/video/${pid}`;
+  else if (net.includes("instagram")) candidate = `https://www.instagram.com/p/${pid}/`;
+  else if (net.includes("facebook") && handle) candidate = `https://www.facebook.com/${handle}/posts/${pid}`;
+  return isValidHttpsUrl(candidate) ? candidate : null;
+}
+
+// Deriva thumbnail oficial quando o registro não trouxer uma — YouTube tem URL
+// determinística por video_id. Demais redes dependem do que o coletor salvou.
+function buildThumbnail(p: PostRow): string | null {
+  if (isValidHttpsUrl(p.thumbnail_url)) return (p.thumbnail_url as string).trim();
+  const net = (p.social_network_raw || p.social_network || "").toLowerCase();
+  const pid = p.post_id?.trim();
+  if (pid && (net.includes("youtube") || net === "yt")) {
+    return `https://img.youtube.com/vi/${pid}/hqdefault.jpg`;
+  }
   return null;
 }
 
