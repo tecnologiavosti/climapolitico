@@ -776,12 +776,14 @@ export function ReactionsPerPost({ candidateId }: Props) {
                       <TrendingUp className="h-5 w-5 text-primary/70" />
                     </div>
 
-                    {/* Métricas detalhadas */}
-                    <div className="grid grid-cols-3 gap-2 text-xs">
-                      <Metric Icon={Heart} label="Curtidas" value={p.likes_count || 0} />
-                      <Metric Icon={MessageCircle} label="Comentários" value={p.replies_count || 0} />
-                      <Metric Icon={Share2} label="Compart." value={p.shares_count || 0} />
-                    </div>
+                    {/* Métricas detalhadas — só exibe valores reais (>0) */}
+                    {((p.likes_count || 0) + (p.replies_count || 0) + (p.shares_count || 0)) > 0 && (
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        {(p.likes_count || 0) > 0 && <Metric Icon={Heart} label="Curtidas" value={p.likes_count || 0} />}
+                        {(p.replies_count || 0) > 0 && <Metric Icon={MessageCircle} label="Comentários" value={p.replies_count || 0} />}
+                        {(p.shares_count || 0) > 0 && <Metric Icon={Share2} label="Compart." value={p.shares_count || 0} />}
+                      </div>
+                    )}
 
                     {/* Sentimento */}
                     <Badge className={`text-[11px] border self-start ${ds.color}`} variant="outline">
