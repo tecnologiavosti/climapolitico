@@ -236,18 +236,29 @@ const EventReportPage = () => {
   });
 
   const fetchLocalEvents = async (): Promise<DetectedEvent[]> => {
-    const since = new Date();
-    since.setMonth(since.getMonth() - 3);
+    let fromISO: string;
+    let toISO: string;
+    if (startDate && endDate) {
+      const s = new Date(startDate); s.setHours(0, 0, 0, 0);
+      const e = new Date(endDate); e.setHours(23, 59, 59, 999);
+      fromISO = s.toISOString();
+      toISO = e.toISOString();
+    } else {
+      const since = new Date();
+      since.setMonth(since.getMonth() - 6);
+      fromISO = since.toISOString();
+      toISO = new Date().toISOString();
+    }
     const selectedCandidateData = candidates.find(candidate => candidate.id === selectedCandidate);
 
     const { data, error } = await supabase
       .from('social_interactions')
       .select('comment_text, original_posted_at, created_at, likes_count, replies_count')
       .eq('candidate_id', selectedCandidate)
-      .or(`original_posted_at.gte.${since.toISOString()},and(original_posted_at.is.null,created_at.gte.${since.toISOString()})`)
+      .or(`and(original_posted_at.gte.${fromISO},original_posted_at.lte.${toISO}),and(original_posted_at.is.null,created_at.gte.${fromISO},created_at.lte.${toISO})`)
       .not('comment_text', 'is', null)
-      .order('likes_count', { ascending: false, nullsFirst: false })
-      .limit(800);
+      .order('original_posted_at', { ascending: false, nullsFirst: false })
+      .limit(2000);
 
     if (error) throw error;
     return detectEventsFromInteractions((data || []) as LocalInteraction[], selectedCandidateData?.full_name || '');
