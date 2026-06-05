@@ -6,7 +6,8 @@ import { useRealTimeAnalytics } from "@/hooks/useRealTimeAnalytics";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { RefreshCw, Radio, Clock } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { RefreshCw, Radio, Clock, Check, Loader2 } from "lucide-react";
 import { CandidateSelector } from "@/components/dashboard/realtime/CandidateSelector";
 import { RealTimeKPIs } from "@/components/dashboard/realtime/RealTimeKPIs";
 import { RealTimeSentimentChart } from "@/components/dashboard/realtime/RealTimeSentimentChart";
@@ -14,6 +15,15 @@ import { RealTimeSentimentGauge } from "@/components/dashboard/realtime/RealTime
 import { RealTimeCommentsFeed } from "@/components/dashboard/realtime/RealTimeCommentsFeed";
 import { ProcessingStatusCard } from "@/components/dashboard/realtime/ProcessingStatusCard";
 import { cn } from "@/lib/utils";
+
+const LOADING_STEPS = [
+  { label: "Coleta de notícias", threshold: 15 },
+  { label: "Coleta de redes sociais", threshold: 35 },
+  { label: "Análise de sentimento", threshold: 55 },
+  { label: "Processamento de entidades", threshold: 72 },
+  { label: "Cálculo de métricas", threshold: 88 },
+  { label: "Finalização", threshold: 98 },
+];
 
 interface Candidate {
   id: string;
@@ -27,6 +37,7 @@ const RealTimeMonitor = () => {
   const [loadingCandidates, setLoadingCandidates] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingStart, setLoadingStart] = useState<number | null>(null);
   const progressTimer = useRef<NodeJS.Timeout | null>(null);
 
   const { metrics, comments, isLoading, error, refreshMetrics } = useRealTimeAnalytics(
@@ -56,6 +67,7 @@ const RealTimeMonitor = () => {
   useEffect(() => {
     if (isLoading) {
       setLoadingProgress(8);
+      setLoadingStart(Date.now());
       progressTimer.current && clearInterval(progressTimer.current);
       progressTimer.current = setInterval(() => {
         setLoadingProgress(prev => {
@@ -68,12 +80,24 @@ const RealTimeMonitor = () => {
       progressTimer.current && clearInterval(progressTimer.current);
       if (loadingProgress > 0) {
         setLoadingProgress(100);
-        setTimeout(() => setLoadingProgress(0), 600);
+        setTimeout(() => { setLoadingProgress(0); setLoadingStart(null); }, 600);
       }
       if (metrics) setLastUpdate(new Date());
     }
     return () => { progressTimer.current && clearInterval(progressTimer.current); };
   }, [isLoading, metrics]);
+
+  // Etapa atual + ETA
+  const currentStepIdx = LOADING_STEPS.findIndex(s => loadingProgress < s.threshold);
+  const currentStep = currentStepIdx >= 0 ? LOADING_STEPS[currentStepIdx] : LOADING_STEPS[LOADING_STEPS.length - 1];
+  const etaSeconds = (() => {
+    if (!loadingStart || loadingProgress <= 5 || loadingProgress >= 100) return null;
+    const elapsed = (Date.now() - loadingStart) / 1000;
+    const rate = loadingProgress / elapsed; // % per sec
+    if (rate <= 0) return null;
+    return Math.max(1, Math.round((100 - loadingProgress) / rate));
+  })();
+
 
   const handleRefresh = async () => {
     await refreshMetrics();
@@ -183,21 +207,61 @@ const RealTimeMonitor = () => {
             </Card>
           )}
 
-          {/* Loading status banner */}
-          {showLoading && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          {/* Loading status banner com etapas + ETA */}
+          {(showLoading || loadingProgress > 0) && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <Card className="border-border/60 bg-card/60">
-                <CardContent className="py-3">
-                  <div className="flex items-center justify-between gap-3 mb-2">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      Carregando dados em tempo real...
-                    </span>
-                    <span className="text-xs tabular-nums text-muted-foreground">{loadingProgress}%</span>
+                <CardContent className="py-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                      <span className="font-medium">{currentStep.label}…</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground tabular-nums">
+                      <span>{loadingProgress}%</span>
+                      {etaSeconds !== null && (
+                        <span>Tempo restante estimado: {etaSeconds}s</span>
+                      )}
+                    </div>
                   </div>
                   <Progress value={loadingProgress} className="h-1.5" />
+                  <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[11px]">
+                    {LOADING_STEPS.map((s, i) => {
+                      const done = loadingProgress >= s.threshold;
+                      const active = !done && i === currentStepIdx;
+                      return (
+                        <div
+                          key={s.label}
+                          className={cn(
+                            "flex items-center gap-1.5",
+                            done ? "text-emerald-500" : active ? "text-primary font-medium" : "text-muted-foreground/60"
+                          )}
+                        >
+                          {done ? <Check className="h-3 w-3" /> : active ? <Loader2 className="h-3 w-3 animate-spin" /> : <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />}
+                          {s.label}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </CardContent>
               </Card>
             </motion.div>
+          )}
+
+          {/* Skeletons profissionais durante o primeiro carregamento */}
+          {showLoading && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} className="h-24 rounded-lg" />
+                ))}
+              </div>
+              <Skeleton className="h-40 rounded-lg" />
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <Skeleton className="lg:col-span-2 h-72 rounded-lg" />
+                <Skeleton className="h-72 rounded-lg" />
+              </div>
+            </div>
           )}
 
           {/* KPIs */}
