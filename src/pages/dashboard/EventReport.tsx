@@ -468,7 +468,8 @@ const EventReportPage = () => {
           query = query.or(orExpr);
         }
         const { count } = await query;
-        return { ...evt, mentions_estimate: count ?? evt.mentions_estimate };
+        const measured = count ?? evt.mentions_estimate;
+        return { ...evt, mentions_estimate: evt.confirmed_event ? Math.max(measured, evt.mentions_estimate) : measured };
       } catch {
         return evt;
       }
