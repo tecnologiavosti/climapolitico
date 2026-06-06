@@ -417,17 +417,21 @@ const EventReportPage = () => {
     }
     const localDetection = detectEventsFromInteractions(all as LocalInteraction[], selectedCandidateData?.full_name || '');
 
-    const { data: aiDetected, error: aiError } = await supabase.functions.invoke('detect-historical-peaks', {
-      body: {
-        candidateId: selectedCandidate,
-        startDate: fromISO,
-        endDate: toISO,
-        localTimeline: localDetection.timeline,
-      },
-    });
-    if (aiError) throw aiError;
-
-    const aiEvents = Array.isArray(aiDetected?.events) ? aiDetected.events as DetectedEvent[] : [];
+    let aiEvents: DetectedEvent[] = [];
+    try {
+      const { data: aiDetected, error: aiError } = await supabase.functions.invoke('detect-historical-peaks', {
+        body: {
+          candidateId: selectedCandidate,
+          startDate: fromISO,
+          endDate: toISO,
+          localTimeline: localDetection.timeline,
+        },
+      });
+      if (aiError) throw aiError;
+      aiEvents = Array.isArray(aiDetected?.events) ? aiDetected.events as DetectedEvent[] : [];
+    } catch (error) {
+      console.warn('Detecção histórica por IA indisponível, mantendo sinais internos qualificados.', error);
+    }
     const merged = [...aiEvents, ...localDetection.events]
       .filter((evt) => {
         const hasExternalEvidence = (evt.publications_count || 0) > 0 || (evt.sources?.length || 0) > 0 || evt.confirmed_event;
