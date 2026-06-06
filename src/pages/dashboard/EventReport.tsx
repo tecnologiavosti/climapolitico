@@ -536,8 +536,118 @@ const EventReportPage = () => {
               </Button>
             </HelpTooltip>
           </div>
+
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-xs text-muted-foreground">Períodos rápidos:</span>
+            <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("2018")}>2018</Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("2022")}>2022</Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("2024")}>2024</Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("2026")}>2026</Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("all")}>2018 → hoje</Button>
+            <span className="text-xs text-muted-foreground ml-2">Sem limite de tempo — pesquise qualquer intervalo histórico.</span>
+          </div>
         </CardContent>
       </Card>
+
+      {/* Histórico contínuo */}
+      {timeline.length > 0 && (
+        <Card>
+          <CardHeader>
+            <HelpTooltip text="Gráfico contínuo do volume diário de menções em todo o período selecionado. Pontos vermelhos = picos detectados.">
+              <CardTitle className="flex items-center gap-2"><LineChartIcon className="h-5 w-5" />Gráfico Histórico ({startDate} → {endDate})</CardTitle>
+            </HelpTooltip>
+            <CardDescription>
+              {timeline.reduce((s, p) => s + p.count, 0).toLocaleString("pt-BR")} menções totais • {timeline.length} dias analisados • {detectedEvents.length} picos detectados
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-72 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={timeline} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} minTickGap={40} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <RTooltip
+                    contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 8 }}
+                    formatter={(v: number, name: string) => [v, name === 'count' ? 'Menções' : name]}
+                  />
+                  <Line type="monotone" dataKey="count" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                  {timeline.filter(p => p.isPeak).map(p => (
+                    <ReferenceDot key={p.date} x={p.date} y={p.count} r={5} fill="hsl(var(--destructive))" stroke="white" />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Lista detalhada de picos */}
+      {detectedEvents.length > 0 && (
+        <Card>
+          <CardHeader>
+            <HelpTooltip text="Cada pico detectado com data, volume, motivo provável, sentimento e fontes predominantes. Clique em 'Analisar com IA' para o contexto histórico completo.">
+              <CardTitle className="flex items-center gap-2"><Zap className="h-5 w-5" />Picos Detectados no Período</CardTitle>
+            </HelpTooltip>
+            <CardDescription>{detectedEvents.length} eventos relevantes — ordenados cronologicamente</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {detectedEvents.map((e, i) => {
+                const v = e.variation_pct ?? 0;
+                const sign = v >= 0 ? '+' : '';
+                const formatted = e.start_date.split('-').reverse().join('/');
+                const sent = e.sentiment;
+                return (
+                  <div key={i} className="border rounded-lg p-4 space-y-2 bg-card hover:bg-muted/30 transition-colors">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold text-sm">{formatted}</p>
+                        <p className="text-xs text-muted-foreground">{e.motivo || 'Pico detectado'}</p>
+                      </div>
+                      <Badge variant={v > 0 ? 'default' : 'destructive'} className="text-xs">
+                        {sign}{v}%
+                      </Badge>
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-2xl font-bold">{e.mentions_estimate.toLocaleString("pt-BR")}</span>
+                      <span className="text-xs text-muted-foreground">menções</span>
+                    </div>
+                    {sent && (sent.positivePct + sent.negativePct + sent.neutralPct) > 0 && (
+                      <div className="space-y-1">
+                        <div className="flex h-1.5 w-full rounded overflow-hidden bg-muted">
+                          <div className="bg-green-500" style={{ width: `${sent.positivePct}%` }} />
+                          <div className="bg-yellow-400" style={{ width: `${sent.neutralPct}%` }} />
+                          <div className="bg-red-500" style={{ width: `${sent.negativePct}%` }} />
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          {sent.positivePct}% positivo • {sent.neutralPct}% neutro • {sent.negativePct}% negativo
+                        </p>
+                      </div>
+                    )}
+                    {e.topNetworks && e.topNetworks.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {e.topNetworks.map(n => (
+                          <Badge key={n} variant="outline" className="text-[10px] capitalize">{n}</Badge>
+                        ))}
+                      </div>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full mt-1"
+                      onClick={() => { handleSelectEvent(String(i)); setTimeout(() => handleGenerate(), 50); }}
+                    >
+                      <Lightbulb className="h-3 w-3 mr-1" />Analisar com IA
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
 
       {/* No data */}
       {result && !report && (
