@@ -655,11 +655,11 @@ const EventReportPage = () => {
       {timeline.length > 0 && (
         <Card>
           <CardHeader>
-            <HelpTooltip text="Gráfico contínuo do volume diário de menções em todo o período selecionado. Pontos vermelhos = picos detectados.">
+            <HelpTooltip text="Gráfico contínuo do volume diário de menções em todo o período selecionado. Pontos marcados = eventos reais detectados.">
               <CardTitle className="flex items-center gap-2"><LineChartIcon className="h-5 w-5" />Gráfico Histórico ({startDate} → {endDate})</CardTitle>
             </HelpTooltip>
             <CardDescription>
-              {timeline.reduce((s, p) => s + p.count, 0).toLocaleString("pt-BR")} menções totais • {timeline.length} dias analisados • {detectedEvents.length} picos detectados
+              {timeline.reduce((s, p) => s + p.count, 0).toLocaleString("pt-BR")} registros totais • {timeline.length} dias analisados • {detectedEvents.length} eventos detectados
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -684,14 +684,14 @@ const EventReportPage = () => {
         </Card>
       )}
 
-      {/* Lista detalhada de picos */}
+      {/* Lista detalhada de eventos */}
       {detectedEvents.length > 0 && (
         <Card>
           <CardHeader>
-            <HelpTooltip text="Cada pico detectado com data, volume, motivo provável, sentimento e fontes predominantes. Clique em 'Analisar com IA' para o contexto histórico completo.">
-              <CardTitle className="flex items-center gap-2"><Zap className="h-5 w-5" />Picos Detectados no Período</CardTitle>
+            <HelpTooltip text="Eventos documentados por fontes externas e sinais internos, ordenados por relevância histórica.">
+              <CardTitle className="flex items-center gap-2"><Zap className="h-5 w-5" />Eventos Históricos Detectados</CardTitle>
             </HelpTooltip>
-            <CardDescription>{detectedEvents.length} eventos relevantes — ordenados cronologicamente</CardDescription>
+            <CardDescription>{detectedEvents.length} eventos relevantes — ordenados por relevância histórica</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -705,16 +705,19 @@ const EventReportPage = () => {
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="font-semibold text-sm">{formatted}</p>
-                        <p className="text-xs text-muted-foreground">{e.motivo || 'Pico detectado'}</p>
+                        <p className="text-xs text-muted-foreground">{e.motivo || e.description || 'Evento político documentado'}</p>
                       </div>
-                      <Badge variant={v > 0 ? 'default' : 'destructive'} className="text-xs">
-                        {sign}{v}%
+                      <Badge variant={e.confirmed_event ? 'default' : 'secondary'} className="text-xs">
+                        {e.confirmed_event ? 'documentado' : `relevância ${e.relevance_score || 0}`}
                       </Badge>
                     </div>
                     <div className="flex items-baseline gap-2">
                       <span className="text-2xl font-bold">{e.mentions_estimate.toLocaleString("pt-BR")}</span>
-                      <span className="text-xs text-muted-foreground">menções</span>
+                      <span className="text-xs text-muted-foreground">registros internos</span>
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      {e.publications_count || 0} fonte(s) externa(s) • {e.distinct_outlets || 0} veículo(s) • {sign}{v}% vs. base interna
+                    </p>
                     {sent && (sent.positivePct + sent.negativePct + sent.neutralPct) > 0 && (
                       <div className="space-y-1">
                         <div className="flex h-1.5 w-full rounded overflow-hidden bg-muted">
