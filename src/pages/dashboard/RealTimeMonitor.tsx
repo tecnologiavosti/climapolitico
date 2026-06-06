@@ -1,28 +1,34 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealTimeAnalytics } from "@/hooks/useRealTimeAnalytics";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RefreshCw, Radio, Clock, Check, Loader2 } from "lucide-react";
+import { RefreshCw, Radio, Clock, Loader2 } from "lucide-react";
 import { CandidateSelector } from "@/components/dashboard/realtime/CandidateSelector";
 import { RealTimeKPIs } from "@/components/dashboard/realtime/RealTimeKPIs";
-import { RealTimeSentimentChart } from "@/components/dashboard/realtime/RealTimeSentimentChart";
-import { RealTimeSentimentGauge } from "@/components/dashboard/realtime/RealTimeSentimentGauge";
-import { RealTimeCommentsFeed } from "@/components/dashboard/realtime/RealTimeCommentsFeed";
 import { ProcessingStatusCard } from "@/components/dashboard/realtime/ProcessingStatusCard";
 import { cn } from "@/lib/utils";
 
-const LOADING_STEPS = [
-  { label: "Coleta de notícias", threshold: 15 },
-  { label: "Coleta de redes sociais", threshold: 35 },
-  { label: "Análise de sentimento", threshold: 55 },
-  { label: "Processamento de entidades", threshold: 72 },
-  { label: "Cálculo de métricas", threshold: 88 },
-  { label: "Finalização", threshold: 98 },
+// Carregamento progressivo: componentes pesados são lazy-loaded
+const RealTimeSentimentChart = lazy(() =>
+  import("@/components/dashboard/realtime/RealTimeSentimentChart").then(m => ({ default: m.RealTimeSentimentChart }))
+);
+const RealTimeSentimentGauge = lazy(() =>
+  import("@/components/dashboard/realtime/RealTimeSentimentGauge").then(m => ({ default: m.RealTimeSentimentGauge }))
+);
+const RealTimeCommentsFeed = lazy(() =>
+  import("@/components/dashboard/realtime/RealTimeCommentsFeed").then(m => ({ default: m.RealTimeCommentsFeed }))
+);
+
+// Frases estáticas — nenhum número falso de ETA / porcentagem
+const PHASES = [
+  "Coletando dados...",
+  "Processando análise...",
+  "Calculando métricas...",
+  "Finalizando...",
 ];
 
 interface Candidate {
@@ -36,9 +42,8 @@ const RealTimeMonitor = () => {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
   const [loadingCandidates, setLoadingCandidates] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
-  const [loadingProgress, setLoadingProgress] = useState(0);
-  const [loadingStart, setLoadingStart] = useState<number | null>(null);
-  const progressTimer = useRef<NodeJS.Timeout | null>(null);
+  const [phaseIdx, setPhaseIdx] = useState(0);
+  const phaseTimer = useRef<NodeJS.Timeout | null>(null);
 
   const { metrics, comments, isLoading, error, refreshMetrics } = useRealTimeAnalytics(
     selectedCandidateId ? [selectedCandidateId] : [],
@@ -63,65 +68,29 @@ const RealTimeMonitor = () => {
     fetchCandidates();
   }, [user]);
 
-  // Realistic progress while loading
+  // Rotaciona frases de status enquanto carrega — sem porcentagem, sem ETA falsa
   useEffect(() => {
+    if (phaseTimer.current) clearInterval(phaseTimer.current);
     if (isLoading) {
-      setLoadingProgress(8);
-      setLoadingStart(Date.now());
-      progressTimer.current && clearInterval(progressTimer.current);
-      progressTimer.current = setInterval(() => {
-        setLoadingProgress(prev => {
-          if (prev >= 92) return prev;
-          const step = prev < 40 ? 6 : prev < 70 ? 3 : 1;
-          return Math.min(92, prev + step);
-        });
-      }, 350);
-    } else {
-      progressTimer.current && clearInterval(progressTimer.current);
-      if (loadingProgress > 0) {
-        setLoadingProgress(100);
-        setTimeout(() => { setLoadingProgress(0); setLoadingStart(null); }, 600);
-      }
-      if (metrics) setLastUpdate(new Date());
+      setPhaseIdx(0);
+      phaseTimer.current = setInterval(() => {
+        setPhaseIdx(prev => Math.min(prev + 1, PHASES.length - 1));
+      }, 1800);
+    } else if (metrics) {
+      setLastUpdate(new Date());
     }
-    return () => { progressTimer.current && clearInterval(progressTimer.current); };
+    return () => { if (phaseTimer.current) clearInterval(phaseTimer.current); };
   }, [isLoading, metrics]);
-
-  // Etapa atual + ETA
-  const currentStepIdx = LOADING_STEPS.findIndex(s => loadingProgress < s.threshold);
-  const currentStep = currentStepIdx >= 0 ? LOADING_STEPS[currentStepIdx] : LOADING_STEPS[LOADING_STEPS.length - 1];
-  const etaSeconds = (() => {
-    if (!loadingStart || loadingProgress <= 5 || loadingProgress >= 100) return null;
-    const elapsed = (Date.now() - loadingStart) / 1000;
-    const rate = loadingProgress / elapsed; // % per sec
-    if (rate <= 0) return null;
-    return Math.max(1, Math.round((100 - loadingProgress) / rate));
-  })();
-
 
   const handleRefresh = async () => {
     await refreshMetrics();
   };
 
   const selectedCandidate = candidates.find(c => c.id === selectedCandidateId);
-  const showLoading = isLoading && !metrics;
+  const showFullSkeleton = isLoading && !metrics;
 
   return (
     <div className="space-y-5 pb-8">
-      {/* Top progress bar */}
-      <AnimatePresence>
-        {loadingProgress > 0 && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed top-0 left-0 right-0 z-50"
-          >
-            <Progress value={loadingProgress} className="h-0.5 rounded-none bg-transparent" />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div className="flex items-start gap-3">
@@ -207,49 +176,29 @@ const RealTimeMonitor = () => {
             </Card>
           )}
 
-          {/* Loading status banner com etapas + ETA */}
-          {(showLoading || loadingProgress > 0) && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <Card className="border-border/60 bg-card/60">
-                <CardContent className="py-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                      <span className="font-medium">{currentStep.label}…</span>
-                    </div>
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground tabular-nums">
-                      <span>{loadingProgress}%</span>
-                      {etaSeconds !== null && (
-                        <span>Tempo restante estimado: {etaSeconds}s</span>
-                      )}
-                    </div>
-                  </div>
-                  <Progress value={loadingProgress} className="h-1.5" />
-                  <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[11px]">
-                    {LOADING_STEPS.map((s, i) => {
-                      const done = loadingProgress >= s.threshold;
-                      const active = !done && i === currentStepIdx;
-                      return (
-                        <div
-                          key={s.label}
-                          className={cn(
-                            "flex items-center gap-1.5",
-                            done ? "text-emerald-500" : active ? "text-primary font-medium" : "text-muted-foreground/60"
-                          )}
-                        >
-                          {done ? <Check className="h-3 w-3" /> : active ? <Loader2 className="h-3 w-3 animate-spin" /> : <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />}
-                          {s.label}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          )}
+          {/* Status simples — só frase, sem porcentagem nem ETA falsa */}
+          <AnimatePresence>
+            {isLoading && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                <Card className="border-border/60 bg-card/60">
+                  <CardContent className="py-3 flex items-center gap-2 text-sm">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                    <motion.span
+                      key={phaseIdx}
+                      initial={{ opacity: 0, y: -3 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="font-medium"
+                    >
+                      {PHASES[phaseIdx]}
+                    </motion.span>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          {/* Skeletons profissionais durante o primeiro carregamento */}
-          {showLoading && (
+          {/* Skeleton inicial só enquanto não há nenhum dado */}
+          {showFullSkeleton ? (
             <div className="space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {Array.from({ length: 4 }).map((_, i) => (
@@ -262,54 +211,61 @@ const RealTimeMonitor = () => {
                 <Skeleton className="h-72 rounded-lg" />
               </div>
             </div>
+          ) : (
+            <>
+              {/* KPIs renderizam imediatamente quando há métricas */}
+              <motion.div
+                key={selectedCandidateId + "-kpi"}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <RealTimeKPIs metrics={metrics} />
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.03 }}
+              >
+                <ProcessingStatusCard metrics={metrics} />
+              </motion.div>
+
+              {/* Gráficos lazy — só carregam quando a seção entra em cena */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <Suspense fallback={<Skeleton className="lg:col-span-2 h-72 rounded-lg" />}>
+                  <motion.div
+                    className="lg:col-span-2"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: 0.05 }}
+                  >
+                    <RealTimeSentimentChart metrics={metrics} />
+                  </motion.div>
+                </Suspense>
+                <Suspense fallback={<Skeleton className="h-72 rounded-lg" />}>
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: 0.1 }}
+                  >
+                    <RealTimeSentimentGauge metrics={metrics} />
+                  </motion.div>
+                </Suspense>
+              </div>
+
+              {/* Feed por último */}
+              <Suspense fallback={<Skeleton className="h-96 rounded-lg" />}>
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.15 }}
+                >
+                  <RealTimeCommentsFeed comments={comments} isLoading={false} />
+                </motion.div>
+              </Suspense>
+            </>
           )}
-
-          {/* KPIs */}
-          <motion.div
-            key={selectedCandidateId + "-kpi"}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
-          >
-            <RealTimeKPIs metrics={metrics} />
-          </motion.div>
-
-          {/* Status do processamento */}
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.03 }}
-          >
-            <ProcessingStatusCard metrics={metrics} />
-          </motion.div>
-
-          {/* Chart + Gauge */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <motion.div
-              className="lg:col-span-2"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.05 }}
-            >
-              <RealTimeSentimentChart metrics={metrics} />
-            </motion.div>
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.1 }}
-            >
-              <RealTimeSentimentGauge metrics={metrics} />
-            </motion.div>
-          </div>
-
-          {/* Feed full width */}
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.15 }}
-          >
-            <RealTimeCommentsFeed comments={comments} isLoading={showLoading} />
-          </motion.div>
         </>
       )}
     </div>
