@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { CandidateSelector } from "@/components/dashboard/realtime/CandidateSelector";
 import { cn } from "@/lib/utils";
-import { isHiddenNetwork } from "@/lib/networkVisibility";
+
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
 } from "recharts";
