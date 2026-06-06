@@ -172,9 +172,9 @@ serve(async (req) => {
 
     const stats = {
       total: comments.length,
-      positive: comments.filter(c => c.sentiment_label === 'Positivo').length,
-      negative: comments.filter(c => c.sentiment_label === 'Negativo').length,
-      neutral: comments.filter(c => c.sentiment_label === 'Neutro').length,
+      positive: comments.filter(c => ['positivo', 'positive'].includes(String(c.sentiment_label || '').toLowerCase())).length,
+      negative: comments.filter(c => ['negativo', 'negative'].includes(String(c.sentiment_label || '').toLowerCase())).length,
+      neutral: comments.filter(c => ['neutro', 'neutral'].includes(String(c.sentiment_label || '').toLowerCase())).length,
       byNetwork: {} as Record<string, number>,
     };
     comments.forEach(c => { stats.byNetwork[c.social_network] = (stats.byNetwork[c.social_network] || 0) + 1; });
@@ -194,7 +194,7 @@ serve(async (req) => {
     // Top comments by engagement
     const topComments = [...comments]
       .filter(c => c.comment_text)
-      .sort((a, b) => ((b.likes_count || 0) + (b.replies_count || 0)) - ((a.likes_count || 0) + (a.replies_count || 0)))
+      .sort((a, b) => ((b.likes_count || 0) + (b.replies_count || 0) + (b.shares_count || 0)) - ((a.likes_count || 0) + (a.replies_count || 0) + (a.shares_count || 0)))
       .slice(0, 15)
       .map(c => ({
         text: sanitizeForAI(c.comment_text).substring(0, 300),
@@ -253,13 +253,30 @@ serve(async (req) => {
       };
     };
 
+    const denominator = Math.max(stats.total, 1);
+    const sourceBrief = externalSources.map((s: any, i: number) => `[${i + 1}] ${sanitizeForAI(s.name || 'Fonte')} — ${sanitizeForAI(s.url || '')}`).join('\n');
+    const titleBrief = externalTitles.map((t: any, i: number) => `${i + 1}. ${sanitizeForAI(t).slice(0, 180)}`).join('\n');
+
     const prompt = `Você é um analista político estratégico brasileiro. Analise a repercussão do evento/período "${eventLabel}" para o candidato ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}.
+
+CONTEXTO DOCUMENTADO DO EVENTO:
+- Tipo: ${sanitizeForAI(eventType || 'evento político')}
+- Descrição: ${sanitizeForAI(eventDescription || '') || 'não informada'}
+- Evento confirmado por fonte externa: ${hasExternalEvidence ? 'sim' : 'não'}
+- Veículos/fontes: ${sourceBrief || 'sem fontes externas informadas'}
+- Títulos/documentos: ${titleBrief || 'sem títulos externos informados'}
+
+REGRAS:
+- Explique o que aconteceu, por que aconteceu, quem repercutiu, quais veículos participaram e quais redes impulsionaram.
+- Se o volume interno for baixo, NÃO exagere impacto: trate como evento documentado com baixa amostra social.
+- Não crie conclusões estratégicas grandiosas baseadas em 3, 4, 5 ou 10 menções sem evidência externa.
+- Use apenas comentários limpos e fontes listadas; ignore tags HTML, links quebrados e RSS bruto.
 
 ESTATÍSTICAS DO PERÍODO:
 - Total de comentários: ${stats.total}
-- Positivos: ${stats.positive} (${((stats.positive / stats.total) * 100).toFixed(1)}%)
-- Negativos: ${stats.negative} (${((stats.negative / stats.total) * 100).toFixed(1)}%)
-- Neutros: ${stats.neutral} (${((stats.neutral / stats.total) * 100).toFixed(1)}%)
+- Positivos: ${stats.positive} (${((stats.positive / denominator) * 100).toFixed(1)}%)
+- Negativos: ${stats.negative} (${((stats.negative / denominator) * 100).toFixed(1)}%)
+- Neutros: ${stats.neutral} (${((stats.neutral / denominator) * 100).toFixed(1)}%)
 
 VOLUME DIÁRIO:
 ${Object.entries(dailyVolume).sort().map(([d, v]) => `${d}: ${v.total} (pos:${v.positive} neg:${v.negative} neu:${v.neutral})`).join('\n')}
@@ -273,7 +290,7 @@ ${samplePos.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 COMENTÁRIOS NEUTROS (${sampleNeu.length}):
 ${sampleNeu.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
-Gere um relatório completo de repercussão deste evento/período.`;
+Gere um relatório completo e proporcional de repercussão deste acontecimento político documentado.`;
 
     const systemMsg = 'Você é um analista político estratégico brasileiro. Gere relatórios de repercussão de eventos baseados em dados reais. Responda em português do Brasil.';
     const jsonInstruction = `\n\nResponda APENAS com um JSON válido (sem markdown, sem comentários) no seguinte formato exato:\n{\n  "overall_assessment": "muito_positiva|positiva|mista|negativa|muito_negativa",\n  "executive_summary": "resumo executivo em 3-5 frases",\n  "key_reactions": [{"reaction": "texto", "type": "positiva|negativa|neutra", "intensity": "alta|media|baixa"}],\n  "main_topics": ["tema1","tema2"],\n  "impact_analysis": "análise de impacto",\n  "immediate_actions": ["ação1","ação2"],\n  "lessons_learned": ["lição1","lição2"]\n}`;
