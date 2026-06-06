@@ -478,11 +478,11 @@ const KpiCard = ({ icon, label, value, tone = "text-foreground", accent }: { ico
 );
 
 const alertStyles: Record<Alert["kind"], { icon: React.ReactNode; ring: string; bg: string; text: string }> = {
-  growth: { icon: <TrendingUp className="h-4 w-4" />, ring: "border-emerald-500/30", bg: "bg-emerald-500/5", text: "text-emerald-500" },
-  negative: { icon: <TrendingDown className="h-4 w-4" />, ring: "border-red-500/30", bg: "bg-red-500/5", text: "text-red-500" },
-  crisis: { icon: <AlertTriangle className="h-4 w-4" />, ring: "border-red-500/40", bg: "bg-red-500/10", text: "text-red-500" },
-  viral: { icon: <Zap className="h-4 w-4" />, ring: "border-amber-500/30", bg: "bg-amber-500/5", text: "text-amber-500" },
-  news: { icon: <Newspaper className="h-4 w-4" />, ring: "border-violet-500/30", bg: "bg-violet-500/5", text: "text-violet-500" },
+  growth: { icon: <TrendingUp className="h-4 w-4" />, ring: "border-success/30", bg: "bg-success/5", text: "text-success" },
+  negative: { icon: <TrendingDown className="h-4 w-4" />, ring: "border-destructive/30", bg: "bg-destructive/5", text: "text-destructive" },
+  crisis: { icon: <AlertTriangle className="h-4 w-4" />, ring: "border-destructive/40", bg: "bg-destructive/10", text: "text-destructive" },
+  viral: { icon: <Zap className="h-4 w-4" />, ring: "border-warning/30", bg: "bg-warning/5", text: "text-warning" },
+  news: { icon: <Newspaper className="h-4 w-4" />, ring: "border-accent/30", bg: "bg-accent/5", text: "text-accent" },
 };
 
 const EvolutionChart = ({ data }: { data: EvolutionPoint[] }) => (
@@ -491,10 +491,10 @@ const EvolutionChart = ({ data }: { data: EvolutionPoint[] }) => (
       <AreaChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
         <defs>
           <linearGradient id="gPos" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#22c55e" stopOpacity={0.5} /><stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
+            <stop offset="0%" stopColor="hsl(var(--success))" stopOpacity={0.5} /><stop offset="100%" stopColor="hsl(var(--success))" stopOpacity={0} />
           </linearGradient>
           <linearGradient id="gNeg" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#ef4444" stopOpacity={0.5} /><stop offset="100%" stopColor="#ef4444" stopOpacity={0} />
+            <stop offset="0%" stopColor="hsl(var(--destructive))" stopOpacity={0.5} /><stop offset="100%" stopColor="hsl(var(--destructive))" stopOpacity={0} />
           </linearGradient>
           <linearGradient id="gTotal" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.45} /><stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
@@ -505,8 +505,8 @@ const EvolutionChart = ({ data }: { data: EvolutionPoint[] }) => (
         <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} width={36} />
         <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
         <Area type="monotone" dataKey="total" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#gTotal)" />
-        <Area type="monotone" dataKey="positive" stroke="#22c55e" strokeWidth={1.5} fill="url(#gPos)" />
-        <Area type="monotone" dataKey="negative" stroke="#ef4444" strokeWidth={1.5} fill="url(#gNeg)" />
+        <Area type="monotone" dataKey="positive" stroke="hsl(var(--success))" strokeWidth={1.5} fill="url(#gPos)" />
+        <Area type="monotone" dataKey="negative" stroke="hsl(var(--destructive))" strokeWidth={1.5} fill="url(#gNeg)" />
       </AreaChart>
     </ResponsiveContainer>
   </div>
