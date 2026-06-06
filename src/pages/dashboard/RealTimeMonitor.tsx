@@ -926,6 +926,12 @@ const RealTimeMonitor = () => {
                             <div className="min-w-0">
                               <div className="text-sm font-semibold truncate">{a.title}</div>
                               <div className="text-xs text-muted-foreground">{a.detail}</div>
+                              <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+                                {a.source && <span>Fonte: {a.source}</span>}
+                                {typeof a.engagement === "number" && <span>Engajamento: {a.engagement.toLocaleString("pt-BR")}</span>}
+                                {a.publishedAt && <span>Publicado: {formatRelative(new Date(a.publishedAt))}</span>}
+                                {a.evidence && <span>Base: {a.evidence.news} notícias · {a.evidence.posts} posts · {a.evidence.videos} vídeos</span>}
+                              </div>
                             </div>
                           </motion.li>
                         );
@@ -943,15 +949,15 @@ const RealTimeMonitor = () => {
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
                   <BrainCircuit className="h-4 w-4 text-primary" />Resumo executivo
-                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5">IA</Badge>
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5">Evidências</Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {[
                     { k: "O que aconteceu", v: snapshot.executiveSummary.what, icon: <Activity className="h-3.5 w-3.5" /> },
-                    { k: "Por que aconteceu", v: snapshot.executiveSummary.why, icon: <Sparkles className="h-3.5 w-3.5" /> },
-                    { k: "Quem impulsionou", v: snapshot.executiveSummary.who, icon: <Megaphone className="h-3.5 w-3.5" /> },
+                    { k: "Evidência associada", v: snapshot.executiveSummary.why, icon: <Sparkles className="h-3.5 w-3.5" /> },
+                    { k: "Fontes observadas", v: snapshot.executiveSummary.who, icon: <Megaphone className="h-3.5 w-3.5" /> },
                     { k: "Qual foi o impacto", v: snapshot.executiveSummary.impact, icon: <TrendingUp className="h-3.5 w-3.5" /> },
                   ].map(item => (
                     <div key={item.k} className="rounded-lg border border-border/60 bg-background/40 p-3">
