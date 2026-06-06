@@ -601,14 +601,14 @@ async function fetchSnapshot(
     : negativeToday > positiveToday * 1.2 ? "predomínio negativo nos registros classificados" : "sentimento equilibrado nos registros classificados";
   const nowNarrative =
     mentionsToday === 0
-      ? `Nenhum dado relevante foi coletado para ${candidateName} nas últimas ${windowHours}h. O monitor não gerou inferências sem evidência.`
-      : `${candidateName} teve ${mentionsToday.toLocaleString("pt-BR")} registros relevantes nas últimas ${windowHours}h. ` +
+      ? `Pouca atividade pública relevante detectada para ${candidateName} nas últimas ${windowHours}h.`
+      : `${candidateName} teve ${mentionsToday.toLocaleString("pt-BR")} sinais de atividade política atual nas últimas ${windowHours}h. ` +
         (topTheme ? `Tema com maior evidência: ${topTheme.name}, sustentado por ${topTheme.evidence.news} notícias, ${topTheme.evidence.posts} posts e ${topTheme.evidence.videos} vídeos. ` : `Nenhum tema atingiu evidência mínima (3 fontes ou 5 conteúdos). `) +
         (classifiedToday > 0 ? `Leitura de sentimento: ${tone}.` : "Ainda sem volume classificado suficiente.");
 
   // BLOCO 8 — Resumo executivo (mesmíssima base dos demais blocos)
   const executiveSummary = {
-    what: mentionsToday > 0 ? `${mentionsToday.toLocaleString("pt-BR")} registros relevantes na janela: ${evidence.news.toLocaleString("pt-BR")} notícias, ${evidence.posts.toLocaleString("pt-BR")} posts e ${evidence.videos.toLocaleString("pt-BR")} vídeos; ${windowCounts.h1.toLocaleString("pt-BR")} na última hora.` : "Sem registros relevantes na janela.",
+    what: mentionsToday > 0 ? `${candidateName} apresentou ${mentionsToday.toLocaleString("pt-BR")} sinais de atividade política atual: ${evidence.news.toLocaleString("pt-BR")} notícias, ${evidence.posts.toLocaleString("pt-BR")} posts e ${evidence.videos.toLocaleString("pt-BR")} vídeos; ${windowCounts.h1.toLocaleString("pt-BR")} na última hora.` : "Pouca atividade pública relevante detectada nas últimas 24 horas.",
     why: events[0]
       ? `Evento recente detectado: "${events[0].name}" (${events[0].publications} publicações, ${events[0].outlets} veículos).`
       : viral ? `Evidência de viralização: ${viral.social_network}, ${((viral.likes_count || 0) + (viral.shares_count || 0) + (viral.replies_count || 0)).toLocaleString("pt-BR")} interações.`
