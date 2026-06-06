@@ -186,8 +186,9 @@ serve(async (req) => {
       const day = ts?.substring(0, 10) || 'unknown';
       if (!dailyVolume[day]) dailyVolume[day] = { total: 0, positive: 0, negative: 0, neutral: 0 };
       dailyVolume[day].total++;
-      if (c.sentiment_label === 'Positivo') dailyVolume[day].positive++;
-      else if (c.sentiment_label === 'Negativo') dailyVolume[day].negative++;
+      const sentiment = String(c.sentiment_label || '').toLowerCase();
+      if (['positivo', 'positive'].includes(sentiment)) dailyVolume[day].positive++;
+      else if (['negativo', 'negative'].includes(sentiment)) dailyVolume[day].negative++;
       else dailyVolume[day].neutral++;
     });
 
@@ -207,9 +208,9 @@ serve(async (req) => {
       }));
 
     // AI analysis
-    const sampleNeg = comments.filter(c => c.sentiment_label === 'Negativo' && c.comment_text).slice(0, 80).map(c => sanitizeForAI(c.comment_text).substring(0, 250)).filter(Boolean);
-    const samplePos = comments.filter(c => c.sentiment_label === 'Positivo' && c.comment_text).slice(0, 80).map(c => sanitizeForAI(c.comment_text).substring(0, 250)).filter(Boolean);
-    const sampleNeu = comments.filter(c => c.sentiment_label === 'Neutro' && c.comment_text).slice(0, 40).map(c => sanitizeForAI(c.comment_text).substring(0, 200)).filter(Boolean);
+    const sampleNeg = comments.filter(c => ['negativo', 'negative'].includes(String(c.sentiment_label || '').toLowerCase()) && c.comment_text).slice(0, 80).map(c => sanitizeForAI(c.comment_text).substring(0, 250)).filter(Boolean);
+    const samplePos = comments.filter(c => ['positivo', 'positive'].includes(String(c.sentiment_label || '').toLowerCase()) && c.comment_text).slice(0, 80).map(c => sanitizeForAI(c.comment_text).substring(0, 250)).filter(Boolean);
+    const sampleNeu = comments.filter(c => ['neutro', 'neutral'].includes(String(c.sentiment_label || '').toLowerCase()) && c.comment_text).slice(0, 40).map(c => sanitizeForAI(c.comment_text).substring(0, 200)).filter(Boolean);
 
     const eventLabel = eventName || `período de ${startDate.substring(0, 10)} a ${endDate.substring(0, 10)}`;
 
