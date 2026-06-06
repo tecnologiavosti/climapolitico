@@ -292,14 +292,16 @@ async function fetchSnapshot(
   candidateId: string,
   candidateName: string,
   onProgress?: (p: Partial<LiveProgress>) => void,
+  windowHours: 1 | 6 | 12 | 24 = 24,
   timeoutMs = 8000,
 ): Promise<Snapshot> {
   const now = new Date();
+  const windowMs = windowHours * 3600000;
   const start12h = new Date(now.getTime() - 12 * 3600000);
   const start6h = new Date(now.getTime() - 6 * 3600000);
   const start1h = new Date(now.getTime() - 3600000);
-  const start24h = new Date(now.getTime() - 24 * 3600000);
-  const startPrev24h = new Date(now.getTime() - 48 * 3600000);
+  const start24h = new Date(now.getTime() - windowMs); // janela selecionada
+  const startPrev24h = new Date(now.getTime() - 2 * windowMs);
 
   const base = () => supabase
     .from("social_interactions")
