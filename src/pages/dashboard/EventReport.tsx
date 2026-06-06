@@ -88,6 +88,8 @@ type LocalInteraction = {
   created_at: string | null;
   likes_count: number | null;
   replies_count: number | null;
+  sentiment_label: string | null;
+  social_network: string | null;
 };
 
 const normalizeEventText = (text: string) =>
@@ -97,13 +99,31 @@ const tokenizeEventText = (text: string) => normalizeEventText(text).match(/[a-z
 
 const titleFromPhrase = (phrase: string) => phrase.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
-function detectEventsFromInteractions(comments: LocalInteraction[], _candidateName: string): DetectedEvent[] {
-  if (comments.length < 5) return [];
+function classifyMotivo(variation: number, count: number, topNetwork: string | null): string {
+  if (variation > 400) return 'Viralização / explosão de menções';
+  if (variation > 200) return 'Crise ou repercussão massiva';
+  if (variation > 100) return 'Evento de alta repercussão (debate, entrevista, decisão)';
+  if (variation > 50) return 'Pico de atenção (declaração, ato político)';
+  if (variation < -60) return 'Queda abrupta de menções';
+  return topNetwork ? `Aumento de atividade em ${topNetwork}` : 'Aumento de atividade';
+}
+
+interface DailyPoint {
+  date: string;
+  count: number;
+  positive: number;
+  negative: number;
+  neutral: number;
+  isPeak?: boolean;
+}
+
+function detectEventsFromInteractions(comments: LocalInteraction[], _candidateName: string): { events: DetectedEvent[]; timeline: DailyPoint[] } {
+  if (comments.length < 5) return { events: [], timeline: [] };
 
   const byDay = new Map<string, LocalInteraction[]>();
   comments.forEach((comment) => {
     const day = (comment.original_posted_at || comment.created_at || '').substring(0, 10);
-    if (!day || !comment.comment_text) return;
+    if (!day) return;
     byDay.set(day, [...(byDay.get(day) || []), comment]);
   });
 
@@ -111,10 +131,19 @@ function detectEventsFromInteractions(comments: LocalInteraction[], _candidateNa
   const counts = daysAsc.map(([, rows]) => rows.length);
   const avg = counts.reduce((s, n) => s + n, 0) / Math.max(counts.length, 1);
 
-  // Detecta picos (acima de 1.5x média e >= 4) e quedas abruptas (abaixo de 0.4x média do período anterior)
+  const timeline: DailyPoint[] = daysAsc.map(([day, rows]) => {
+    let pos = 0, neg = 0, neu = 0;
+    rows.forEach(r => {
+      const s = (r.sentiment_label || '').toLowerCase();
+      if (s === 'positive' || s === 'positivo') pos++;
+      else if (s === 'negative' || s === 'negativo') neg++;
+      else if (s === 'neutral' || s === 'neutro') neu++;
+    });
+    return { date: day, count: rows.length, positive: pos, negative: neg, neutral: neu };
+  });
+
   const peakDays = daysAsc
     .map(([day, rows], i) => {
-      // baseline: média dos 7 dias anteriores
       const prev = counts.slice(Math.max(0, i - 7), i);
       const baseline = prev.length > 0 ? prev.reduce((s, n) => s + n, 0) / prev.length : avg;
       const variation = baseline > 0 ? ((rows.length - baseline) / baseline) * 100 : 0;
@@ -124,12 +153,29 @@ function detectEventsFromInteractions(comments: LocalInteraction[], _candidateNa
     })
     .filter(d => d.isPeak || d.isDrop)
     .sort((a, b) => Math.abs(b.variation) - Math.abs(a.variation))
-    .slice(0, 20);
+    .slice(0, 50);
 
-  return peakDays.map(({ day, rows, variation, isDrop }) => {
+  // mark timeline points
+  const peakSet = new Set(peakDays.map(p => p.day));
+  timeline.forEach(p => { if (peakSet.has(p.date)) p.isPeak = true; });
+
+  const events: DetectedEvent[] = peakDays.map(({ day, rows, variation, isDrop }) => {
     const formatted = day.split('-').reverse().join('/');
     const sign = variation >= 0 ? '+' : '';
     const tag = isDrop ? 'Queda abrupta' : variation > 200 ? 'Explosão de menções' : 'Pico de menções';
+
+    let pos = 0, neg = 0, neu = 0;
+    const netCounts = new Map<string, number>();
+    rows.forEach(r => {
+      const s = (r.sentiment_label || '').toLowerCase();
+      if (s === 'positive' || s === 'positivo') pos++;
+      else if (s === 'negative' || s === 'negativo') neg++;
+      else if (s === 'neutral' || s === 'neutro') neu++;
+      if (r.social_network) netCounts.set(r.social_network, (netCounts.get(r.social_network) || 0) + 1);
+    });
+    const topNetworks = [...netCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([n]) => n);
+    const labeled = pos + neg + neu;
+
     return {
       name: `${formatted} — ${tag}`,
       type: isDrop ? 'queda' : 'pico',
@@ -138,9 +184,18 @@ function detectEventsFromInteractions(comments: LocalInteraction[], _candidateNa
       end_date: day,
       mentions_estimate: rows.length,
       variation_pct: Math.round(variation),
-      description: `${tag} em ${formatted} — ${rows.length} comentários (${sign}${Math.round(variation)}% vs. média anterior).`,
+      description: `${tag} em ${formatted} — ${rows.length} menções (${sign}${Math.round(variation)}% vs. média anterior).`,
+      motivo: classifyMotivo(variation, rows.length, topNetworks[0] || null),
+      sentiment: {
+        positivePct: labeled ? Math.round((pos / labeled) * 100) : 0,
+        negativePct: labeled ? Math.round((neg / labeled) * 100) : 0,
+        neutralPct: labeled ? Math.round((neu / labeled) * 100) : 0,
+      },
+      topNetworks,
     };
   });
+
+  return { events, timeline };
 }
 
 interface DetectedEvent {
@@ -152,6 +207,9 @@ interface DetectedEvent {
   mentions_estimate: number;
   variation_pct?: number;
   description: string;
+  motivo?: string;
+  sentiment?: { positivePct: number; negativePct: number; neutralPct: number };
+  topNetworks?: string[];
 }
 
 const EventReportPage = () => {
