@@ -23,15 +23,24 @@ import {
 interface Candidate { id: string; full_name: string; party?: string | null; }
 
 // ============ Tipos ============
+interface EvidenceCounts { news: number; posts: number; videos: number; total: number; }
 interface EvolutionPoint { label: string; total: number; positive: number; negative: number; neutral: number; }
-interface Theme { name: string; count: number; }
-interface EventItem { id: string; name: string; date: string; type: string; impact: number; }
+interface Theme { name: string; count: number; evidence: EvidenceCounts; examples: string[]; }
+interface EventItem { id: string; name: string; date: string; type: string; impact: number; publications: number; outlets: number; }
 interface Outlet { name: string; count: number; }
 interface Publication {
   id: string; title: string; author: string; network: string;
-  engagement: number; url: string | null; sentiment: string | null;
+  engagement: number; url: string | null; sentiment: string | null; createdAt: string;
 }
-interface Alert { kind: "growth" | "negative" | "viral" | "news" | "crisis"; title: string; detail: string; }
+interface Alert {
+  kind: "growth" | "negative" | "viral" | "news" | "crisis";
+  title: string;
+  detail: string;
+  source?: string;
+  engagement?: number;
+  publishedAt?: string;
+  evidence?: EvidenceCounts;
+}
 
 interface Snapshot {
   // BLOCO 1 — narrativa
@@ -41,6 +50,8 @@ interface Snapshot {
   positiveToday: number;
   negativeToday: number;
   newsCollected: number;
+  evidence: EvidenceCounts;
+  windowCounts: { h1: number; h6: number; h12: number; h24: number; previous24h: number; };
   // BLOCO 2 — temas dominantes
   themes: Theme[];
   // BLOCO 3 — eventos
@@ -57,15 +68,16 @@ interface Snapshot {
   executiveSummary: { what: string; why: string; who: string; impact: string; };
   // Gráficos
   evolution24h: EvolutionPoint[];
-  evolution7d: EvolutionPoint[];
-  evolution30d: EvolutionPoint[];
+  evolution12h: EvolutionPoint[];
+  evolution6h: EvolutionPoint[];
+  evolution1h: EvolutionPoint[];
   // Meta
   savedAt: number;
   candidateName: string;
 }
 
 // ============ Cache 5 min ============
-const cacheKey = (uid: string, cid: string) => `rt-intel:${uid}:${cid}`;
+const cacheKey = (uid: string, cid: string) => `rt-evidence-v2:${uid}:${cid}`;
 const readCache = (k: string): Snapshot | null => {
   try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch { return null; }
 };
