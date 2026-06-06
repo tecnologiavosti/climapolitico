@@ -144,6 +144,39 @@ const THEME_RULES: Array<{ name: string; keywords: RegExp }> = [
   { name: "Combate à Corrupção", keywords: /\b(corrupção|corrupcao|lava jato|propina|desvio|fraude|operação|operacao|pf|polícia federal|policia federal)\w*/i },
 ];
 
+// ============ Filtros de Relevância Política ============
+// Conteúdo descartado automaticamente (memes, humor, nostalgia, fan pages, etc.)
+const IRRELEVANT_REGEX = /\b(meme|memes|fan\s?page|fanpage|humor|humorist|engraçad|engracad|piada|paródia|parodia|edição engraçad|edicao engracad|nostalg|throwback|tbt|relembr|curiosidad|aleatóri|aleatori|montagem|montagens|zoaç|zoac|zueir|gracinha|tributo|homenagem póstuma|playlist|compilaç|compilac|melhores momentos|cortes engraçad|cortes engracad|edit\b|reels engraçad|reels engracad|stitch|duet)\b/i;
+
+// Sinais políticos fortes (entrevistas, discursos, decisões, etc.)
+const POLITICAL_HARD_REGEX = /\b(entrevist|sabatin|discurso|pronunciamento|debate|coletiva|agenda pública|agenda publica|projeto de lei|pec\b|medida provisória|medida provisoria|decis|liminar|julgamento|operação|operacao|reforma|votaç|votac|eleiç|eleic|cpi|stf|tse|congresso|senado|câmara|camara|governo|prefeit|ministro|presidente|polícia federal|policia federal|tributári|tributari|inflaç|inflac|crise|declaraç|declarac|movimentaç eleitoral|movimentac eleitoral|brics|otan|onu|exterior|posse|nomeaç|nomeac|sanção|sancao|vetou|sancionou)\b/i;
+
+// Veículos confiáveis (boost de pontuação)
+const TRUSTED_OUTLET_REGEX = /(g1\.globo|globo\.com|globonews|cnnbrasil|uol\.com|folha\.uol|folha\.com|estadao|poder360|metropoles|metrópoles|valor\.globo|valor\.com|r7\.com|veja\.abril|cartacapital|jovempan|band\.uol|sbt\.com|record\.com|antagonista|infomoney|reuters|bbc|gazetadopovo|correiobraziliense|nexojornal|brasildefato|agenciabrasil|congressoemfoco|jota\.info)/i;
+
+const scoreRelevance = (row: any, windowStart: number, now: number): number => {
+  const t = effectiveDateOf(row).getTime();
+  if (t < windowStart || t > now + 60_000) return 0; // fora da janela
+  const rawText = `${row.post_title || ""} ${row.post_description || ""} ${row.comment_text || ""}`;
+  if (!rawText.trim()) return 0;
+  if (IRRELEVANT_REGEX.test(rawText)) return 0;
+  const cleaned = cleanText(rawText);
+  if (!cleaned || cleaned.length < 8) return 0;
+  const isNews = isNewsNetwork(row.social_network, row.platform, row.interaction_type);
+  const matchesTheme = THEME_RULES.some(r => r.keywords.test(cleaned));
+  const matchesHard = POLITICAL_HARD_REGEX.test(cleaned);
+  if (!isNews && !matchesTheme && !matchesHard) return 0;
+  const ageH = Math.max(0.1, (now - t) / 3600000);
+  const recency = Math.max(0.25, 1 - ageH / 24);
+  const engagement = isNews
+    ? Math.max(1, Number(row.engagement_score) || 1)
+    : (Number(row.likes_count) || 0) + (Number(row.shares_count) || 0) + (Number(row.replies_count) || 0) + 1;
+  const trust = isNews ? 1.6 : 1.0;
+  const trustedBoost = TRUSTED_OUTLET_REGEX.test(`${row.post_url || ""} ${row.author_name || ""} ${row.author_handle || ""}`) ? 1.5 : 1.0;
+  const themeBoost = matchesTheme ? 1.35 : matchesHard ? 1.15 : 1.0;
+  return Math.log10(engagement + 1) * recency * trust * trustedBoost * themeBoost;
+};
+
 const emptyEvidence = (): EvidenceCounts => ({ news: 0, posts: 0, videos: 0, total: 0 });
 const isNewsNetwork = (network?: string | null, platform?: string | null, type?: string | null): boolean => {
   const value = `${network || ""} ${platform || ""} ${type || ""}`.toLowerCase();
