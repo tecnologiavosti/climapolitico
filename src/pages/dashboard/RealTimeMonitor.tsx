@@ -603,7 +603,7 @@ async function fetchSnapshot(
     mentionsToday === 0
       ? `Pouca atividade pública relevante detectada para ${candidateName} nas últimas ${windowHours}h.`
       : `${candidateName} teve ${mentionsToday.toLocaleString("pt-BR")} sinais de atividade política atual nas últimas ${windowHours}h. ` +
-        (topTheme ? `Tema com maior evidência: ${topTheme.name}, sustentado por ${topTheme.evidence.news} notícias, ${topTheme.evidence.posts} posts e ${topTheme.evidence.videos} vídeos. ` : `Nenhum tema atingiu evidência mínima (3 fontes ou 5 conteúdos). `) +
+        (topTheme ? `Tema com maior evidência: ${topTheme.name}, sustentado por ${topTheme.evidence.news} notícias, ${topTheme.evidence.posts} posts e ${topTheme.evidence.videos} vídeos. ` : `Nenhum tema atingiu evidência mínima (3 evidências, 2 veículos ou evento oficial). `) +
         (classifiedToday > 0 ? `Leitura de sentimento: ${tone}.` : "Ainda sem volume classificado suficiente.");
 
   // BLOCO 8 — Resumo executivo (mesmíssima base dos demais blocos)
