@@ -88,8 +88,14 @@ type LocalInteraction = {
   created_at: string | null;
   likes_count: number | null;
   replies_count: number | null;
+  shares_count?: number | null;
   sentiment_label: string | null;
   social_network: string | null;
+  post_url?: string | null;
+  author_profile_url?: string | null;
+  post_title?: string | null;
+  post_description?: string | null;
+  author_name?: string | null;
 };
 
 const normalizeEventText = (text: string) =>
@@ -98,6 +104,86 @@ const normalizeEventText = (text: string) =>
 const tokenizeEventText = (text: string) => normalizeEventText(text).match(/[a-z0-9]{4,}/g) || [];
 
 const titleFromPhrase = (phrase: string) => phrase.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+const MIN_SOCIAL_ONLY_PEAK_VOLUME = 25;
+const MIN_EVIDENCED_GROWTH_VOLUME = 15;
+
+const CONFIRMED_EVENT_TERMS = [
+  'eleição', 'eleicoes', 'eleições', 'segundo turno', 'primeiro turno', 'posse', 'diplomacao', 'diplomação',
+  'debate', 'sabatina', 'entrevista', 'jornal nacional', 'roda viva', 'podcast', 'live', 'discurso',
+  'pronunciamento', 'coletiva', 'comício', 'comicio', 'cpi', 'senado', 'câmara', 'camara', 'congresso',
+  'stf', 'tse', 'tribunal', 'julgamento', 'decisão', 'decisao', 'operação', 'operacao', 'polícia federal',
+  'votação', 'votacao', 'projeto de lei', 'pec', 'medida provisória', 'agenda', 'reunião', 'reuniao',
+  'viagem', 'brics', 'banco dos brics', 'ndb', 'plenario', 'plenário', 'ministerio', 'ministério'
+];
+
+function decodeHtmlText(value: string): string {
+  if (!value) return '';
+  const textarea = typeof document !== 'undefined' ? document.createElement('textarea') : null;
+  let decoded = value
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&#x27;/gi, "'");
+  if (textarea) {
+    textarea.innerHTML = decoded;
+    decoded = textarea.value;
+  }
+  return decoded;
+}
+
+function cleanDisplayText(value: string | null | undefined): string {
+  return decodeHtmlText(value || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<video[\s\S]*?<\/video>/gi, ' ')
+    .replace(/<source[^>]*>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/https?:\/\/\S+/gi, ' ')
+    .replace(/\b(src|href|class|target|rel|nofollow|width|height|type)=\S+/gi, ' ')
+    .replace(/[{}<>]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function interactionDate(row: LocalInteraction): string {
+  return (row.original_posted_at || row.created_at || '').substring(0, 10);
+}
+
+function hostFromUrl(url?: string | null): string | null {
+  if (!url) return null;
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return null; }
+}
+
+function hasConfirmedEventEvidence(rows: LocalInteraction[]): boolean {
+  const joined = normalizeEventText(rows.map(r => `${r.post_title || ''} ${r.post_description || ''} ${r.comment_text || ''}`).join(' '));
+  return CONFIRMED_EVENT_TERMS.some(term => joined.includes(normalizeEventText(term)));
+}
+
+function summarizeRows(rows: LocalInteraction[]) {
+  let pos = 0, neg = 0, neu = 0;
+  const netCounts = new Map<string, number>();
+  rows.forEach(r => {
+    const s = (r.sentiment_label || '').toLowerCase();
+    if (s === 'positive' || s === 'positivo') pos++;
+    else if (s === 'negative' || s === 'negativo') neg++;
+    else neu++;
+    if (r.social_network) netCounts.set(r.social_network, (netCounts.get(r.social_network) || 0) + 1);
+  });
+  const labeled = pos + neg + neu;
+  return {
+    sentiment: {
+      positivePct: labeled ? Math.round((pos / labeled) * 100) : 0,
+      negativePct: labeled ? Math.round((neg / labeled) * 100) : 0,
+      neutralPct: labeled ? Math.round((neu / labeled) * 100) : 0,
+    },
+    topNetworks: [...netCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([n]) => n),
+    distinctNetworks: netCounts.size,
+  };
+}
 
 function classifyMotivo(variation: number, count: number, topNetwork: string | null): string {
   if (variation > 400) return 'Viralização / explosão de menções';
@@ -118,11 +204,11 @@ interface DailyPoint {
 }
 
 function detectEventsFromInteractions(comments: LocalInteraction[], _candidateName: string): { events: DetectedEvent[]; timeline: DailyPoint[] } {
-  if (comments.length < 5) return { events: [], timeline: [] };
+  if (comments.length === 0) return { events: [], timeline: [] };
 
   const byDay = new Map<string, LocalInteraction[]>();
   comments.forEach((comment) => {
-    const day = (comment.original_posted_at || comment.created_at || '').substring(0, 10);
+    const day = interactionDate(comment);
     if (!day) return;
     byDay.set(day, [...(byDay.get(day) || []), comment]);
   });
@@ -147,51 +233,45 @@ function detectEventsFromInteractions(comments: LocalInteraction[], _candidateNa
       const prev = counts.slice(Math.max(0, i - 7), i);
       const baseline = prev.length > 0 ? prev.reduce((s, n) => s + n, 0) / prev.length : avg;
       const variation = baseline > 0 ? ((rows.length - baseline) / baseline) * 100 : 0;
-      const isPeak = rows.length >= Math.max(4, avg * 1.5) && variation > 50;
-      const isDrop = baseline >= 4 && variation < -60;
-      return { day, rows, variation, baseline, isPeak, isDrop };
+      const { distinctNetworks } = summarizeRows(rows);
+      const confirmedTerms = hasConfirmedEventEvidence(rows);
+      const relevantVolume = rows.length >= Math.max(MIN_SOCIAL_ONLY_PEAK_VOLUME, Math.ceil(avg * 2)) && variation >= 100;
+      const strongGrowthWithEvidence = rows.length >= MIN_EVIDENCED_GROWTH_VOLUME && variation >= 300 && confirmedTerms && distinctNetworks >= 2;
+      const exceptionalVolume = rows.length >= 100 && variation >= 35;
+      const isPeak = relevantVolume || strongGrowthWithEvidence || exceptionalVolume;
+      return { day, rows, variation, baseline, isPeak, confirmedTerms };
     })
-    .filter(d => d.isPeak || d.isDrop)
-    .sort((a, b) => Math.abs(b.variation) - Math.abs(a.variation))
+    .filter(d => d.isPeak)
+    .sort((a, b) => (b.rows.length * Math.max(1, b.variation / 100)) - (a.rows.length * Math.max(1, a.variation / 100)))
     .slice(0, 50);
 
   // mark timeline points
   const peakSet = new Set(peakDays.map(p => p.day));
   timeline.forEach(p => { if (peakSet.has(p.date)) p.isPeak = true; });
 
-  const events: DetectedEvent[] = peakDays.map(({ day, rows, variation, isDrop }) => {
+  const events: DetectedEvent[] = peakDays.map(({ day, rows, variation, confirmedTerms }) => {
     const formatted = day.split('-').reverse().join('/');
     const sign = variation >= 0 ? '+' : '';
-    const tag = isDrop ? 'Queda abrupta' : variation > 200 ? 'Explosão de menções' : 'Pico de menções';
-
-    let pos = 0, neg = 0, neu = 0;
-    const netCounts = new Map<string, number>();
-    rows.forEach(r => {
-      const s = (r.sentiment_label || '').toLowerCase();
-      if (s === 'positive' || s === 'positivo') pos++;
-      else if (s === 'negative' || s === 'negativo') neg++;
-      else if (s === 'neutral' || s === 'neutro') neu++;
-      if (r.social_network) netCounts.set(r.social_network, (netCounts.get(r.social_network) || 0) + 1);
-    });
-    const topNetworks = [...netCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([n]) => n);
-    const labeled = pos + neg + neu;
+    const tag = confirmedTerms ? 'Forte repercussão com indícios de evento' : 'Forte crescimento de repercussão';
+    const summary = summarizeRows(rows);
+    const sampleText = rows.map(r => cleanDisplayText(r.post_title || r.comment_text)).filter(Boolean).slice(0, 8).join(' ');
+    const keywords = [...new Set(tokenizeEventText(sampleText).filter(w => !EVENT_STOP_WORDS.has(w)).slice(0, 8))];
 
     return {
       name: `${formatted} — ${tag}`,
-      type: isDrop ? 'queda' : 'pico',
-      keywords: [],
+      type: 'repercussao_social_evidenciada',
+      keywords,
       start_date: day,
       end_date: day,
       mentions_estimate: rows.length,
       variation_pct: Math.round(variation),
-      description: `${tag} em ${formatted} — ${rows.length} menções (${sign}${Math.round(variation)}% vs. média anterior).`,
-      motivo: classifyMotivo(variation, rows.length, topNetworks[0] || null),
-      sentiment: {
-        positivePct: labeled ? Math.round((pos / labeled) * 100) : 0,
-        negativePct: labeled ? Math.round((neg / labeled) * 100) : 0,
-        neutralPct: labeled ? Math.round((neu / labeled) * 100) : 0,
-      },
-      topNetworks,
+      description: `${tag} em ${formatted}: ${rows.length} menções (${sign}${Math.round(variation)}% vs. média anterior), com evidência textual/rede suficiente para investigação histórica.`,
+      motivo: classifyMotivo(variation, rows.length, summary.topNetworks[0] || null),
+      sentiment: summary.sentiment,
+      topNetworks: summary.topNetworks,
+      confirmed_event: false,
+      evidence_level: confirmedTerms ? 'crescimento_com_indicios' : 'volume_relevante',
+      relevance_score: Math.round(Math.min(70, rows.length * 1.2 + Math.max(0, variation) / 10 + (confirmedTerms ? 15 : 0))),
     };
   });
 
