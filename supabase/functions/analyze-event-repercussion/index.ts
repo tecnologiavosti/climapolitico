@@ -234,9 +234,12 @@ serve(async (req) => {
       const topNetworks = Object.entries(stats.byNetwork).sort((a, b) => b[1] - a[1]).slice(0, 3);
       const topics = extractFrequentTerms([...sampleNeg, ...samplePos, ...sampleNeu]);
 
+      const sourceNames = externalSources.map((s: any) => sanitizeForAI(s.name || '')).filter(Boolean).slice(0, 4).join(', ');
       return {
         overall_assessment,
-        executive_summary: `Foram analisados ${stats.total} comentários sobre ${eventLabel}. A repercussão teve ${stats.positive} comentários positivos, ${stats.negative} negativos e ${stats.neutral} neutros, com maior volume em ${topNetworks.map(([network]) => network).join(', ') || 'redes sociais monitoradas'}. Como a IA principal ficou indisponível no momento, este relatório foi gerado por leitura estatística direta dos dados coletados.`,
+        executive_summary: hasExternalEvidence
+          ? `O acontecimento "${eventLabel}" foi tratado como evento político documentado${sourceNames ? ` por ${sourceNames}` : ''}. A amostra interna contém ${stats.total} comentários, portanto a leitura de redes deve ser proporcional ao volume disponível e não como grande onda social automática. Como a IA principal ficou indisponível no momento, este relatório foi gerado por evidências externas e estatística direta.`
+          : `Foram analisados ${stats.total} comentários sobre ${eventLabel}. A repercussão teve ${stats.positive} comentários positivos, ${stats.negative} negativos e ${stats.neutral} neutros, com maior volume em ${topNetworks.map(([network]) => network).join(', ') || 'redes sociais monitoradas'}. Como a IA principal ficou indisponível no momento, este relatório foi gerado por leitura estatística direta dos dados coletados.`,
         key_reactions: [
           { reaction: `Apoio identificado em ${Math.round(positivePct * 100)}% das interações classificadas.`, type: 'positiva', intensity: positivePct >= 0.5 ? 'alta' : 'media' },
           { reaction: `Rejeição ou crítica apareceu em ${Math.round(negativePct * 100)}% das interações.`, type: 'negativa', intensity: negativePct >= 0.35 ? 'alta' : 'media' },
