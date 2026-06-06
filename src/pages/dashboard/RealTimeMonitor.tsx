@@ -397,21 +397,28 @@ async function fetchSnapshot(
   const videosCollected = qVideos.count ?? 0;
   const last24h = qToday.count ?? 0;
   const prev24h = qPrev24h.count ?? 0;
-  const sample: any[] = qSample.data ?? [];
+  const rawSample: any[] = qSample.data ?? [];
+  // Pontuação + filtro de relevância política dentro da janela selecionada
+  const scoredSample = rawSample
+    .map((r) => ({ row: r, score: scoreRelevance(r, start24h.getTime(), now.getTime()) }))
+    .filter((x) => x.score > 0);
+  const sample: any[] = scoredSample.map((x) => x.row);
+  const scoreById = new Map<string, number>(scoredSample.map((x) => [x.row.id, x.score]));
   const newsRows = sample.filter(r => isNewsNetwork(r.social_network, r.platform, r.interaction_type) && effectiveDateOf(r).getTime() >= start24h.getTime());
   const evidence = emptyEvidence();
-  evidence.news = Math.max(newsCollected, newsRows.length);
-  evidence.videos = videosCollected;
-  evidence.posts = Math.max(0, last24h - evidence.news - videosCollected);
+  evidence.news = newsRows.length;
+  evidence.videos = sample.filter(r => classifyNetwork(r.social_network) === "videos").length;
+  evidence.posts = Math.max(0, sample.length - evidence.news - evidence.videos);
   const effectiveWindowCount = (ms: number) => sample.filter(r => effectiveDateOf(r).getTime() >= now.getTime() - ms).length;
+  const cap = (n: number) => Math.min(n, sample.length || n);
   const windowCounts = {
-    h1: Math.max(qH1.count ?? 0, effectiveWindowCount(3600000)),
-    h6: Math.max(qH6.count ?? 0, effectiveWindowCount(6 * 3600000)),
-    h12: Math.max(qH12.count ?? 0, effectiveWindowCount(12 * 3600000)),
-    h24: Math.max(last24h, effectiveWindowCount(24 * 3600000)),
+    h1: Math.min(effectiveWindowCount(3600000), cap(qH1.count ?? 0)),
+    h6: Math.min(effectiveWindowCount(6 * 3600000), cap(qH6.count ?? 0)),
+    h12: Math.min(effectiveWindowCount(12 * 3600000), cap(qH12.count ?? 0)),
+    h24: sample.length,
     previous24h: prev24h,
   };
-  evidence.posts = Math.max(0, windowCounts.h24 - evidence.news - evidence.videos);
+  evidence.total = evidence.news + evidence.posts + evidence.videos;
   evidence.total = evidence.news + evidence.posts + evidence.videos;
 
   // Movimentação de sentimento (delta % vs 24h anteriores)
