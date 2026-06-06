@@ -250,10 +250,12 @@ async function fetchSnapshot(
   const pNeu = run<{ count: number | null }>(base().gte("created_at", start24h.toISOString()).eq("sentiment_label", "Neutro"), "neu");
   const pPrev = run<{ count: number | null }>(base().gte("created_at", startPrev24h.toISOString()).lt("created_at", start24h.toISOString()), "prev24");
 
-  // Sentimento de ontem para movimentação
-  const pYestPos = run<{ count: number | null }>(base().gte("created_at", startYesterday.toISOString()).lt("created_at", startToday.toISOString()).eq("sentiment_label", "Positivo"), "yPos");
-  const pYestNeg = run<{ count: number | null }>(base().gte("created_at", startYesterday.toISOString()).lt("created_at", startToday.toISOString()).eq("sentiment_label", "Negativo"), "yNeg");
-  const pYestNeu = run<{ count: number | null }>(base().gte("created_at", startYesterday.toISOString()).lt("created_at", startToday.toISOString()).eq("sentiment_label", "Neutro"), "yNeu");
+  // Sentimento da janela anterior equivalente (24h anteriores)
+  const pYestPos = run<{ count: number | null }>(base().gte("created_at", startPrev24h.toISOString()).lt("created_at", start24h.toISOString()).eq("sentiment_label", "Positivo"), "yPos");
+  const pYestNeg = run<{ count: number | null }>(base().gte("created_at", startPrev24h.toISOString()).lt("created_at", start24h.toISOString()).eq("sentiment_label", "Negativo"), "yNeg");
+  const pYestNeu = run<{ count: number | null }>(base().gte("created_at", startPrev24h.toISOString()).lt("created_at", start24h.toISOString()).eq("sentiment_label", "Neutro"), "yNeu");
+  const pVideos = run<{ count: number | null }>(base().gte("created_at", start24h.toISOString()).or("social_network.ilike.%youtube%,social_network.ilike.%tiktok%,social_network.ilike.%video%"), "videos")
+    .then(r => { emit({ videos: r.count ?? 0 }); return r; });
 
   Promise.all([pPos, pNeg, pNeu]).then(([rp, rn, ru]) => {
     const p = rp.count ?? 0, n = rn.count ?? 0, u = ru.count ?? 0;
@@ -293,8 +295,8 @@ async function fetchSnapshot(
     "events"
   );
 
-  const [qToday, qH12, qH6, qH1, qPos, qNeg, qNeu, qNews, qPrev24h, qSample, qEvents, qYPos, qYNeg, qYNeu] = await Promise.all([
-    pToday, pH12, pH6, pH1, pPos, pNeg, pNeu, pNews, pPrev, pSample, pEvents, pYestPos, pYestNeg, pYestNeu,
+  const [qToday, qH12, qH6, qH1, qPos, qNeg, qNeu, qNews, qVideos, qPrev24h, qSample, qEvents, qYPos, qYNeg, qYNeu] = await Promise.all([
+    pToday, pH12, pH6, pH1, pPos, pNeg, pNeu, pNews, pVideos, pPrev, pSample, pEvents, pYestPos, pYestNeg, pYestNeu,
   ]);
 
   const mentionsToday = qToday.count ?? 0;
@@ -302,11 +304,14 @@ async function fetchSnapshot(
   const negativeToday = qNeg.count ?? 0;
   const neutralToday = qNeu.count ?? 0;
   const newsCollected = qNews.count ?? 0;
+  const videosCollected = qVideos.count ?? 0;
   const last24h = qToday.count ?? 0;
   const prev24h = qPrev24h.count ?? 0;
   const sample: any[] = qSample.data ?? [];
-  const evidence = sample.reduce((acc, r) => { addEvidence(acc, r.social_network); return acc; }, emptyEvidence());
+  const evidence = emptyEvidence();
   evidence.news = newsCollected;
+  evidence.videos = videosCollected;
+  evidence.posts = Math.max(0, last24h - newsCollected - videosCollected);
   evidence.total = evidence.news + evidence.posts + evidence.videos;
   const windowCounts = { h1: qH1.count ?? 0, h6: qH6.count ?? 0, h12: qH12.count ?? 0, h24: last24h, previous24h: prev24h };
 
