@@ -287,6 +287,7 @@ async function fetchSnapshot(
       .select("id, event_name, event_date, event_type, importance_score, publications_count, distinct_outlets")
       .eq("user_id", userId).eq("candidate_id", candidateId)
       .gte("event_date", start24h.toISOString())
+      .lte("event_date", now.toISOString())
       .order("importance_score", { ascending: false })
       .limit(6),
     "events"
@@ -320,18 +321,22 @@ async function fetchSnapshot(
     neutralDeltaPct: pctDelta(neutralToday, yNeu),
   };
 
-  // Buckets evolução
+  // Buckets evolução — somente janelas de tempo real
   const buckets24h: EvolutionPoint[] = Array.from({ length: 24 }, (_, i) => {
     const bs = new Date(now.getTime() - (23 - i) * 3600000);
     return { label: bs.getHours().toString().padStart(2, "0") + "h", total: 0, positive: 0, negative: 0, neutral: 0 };
   });
-  const buckets7d: EvolutionPoint[] = Array.from({ length: 7 }, (_, i) => {
-    const bs = new Date(now); bs.setDate(now.getDate() - (6 - i));
-    return { label: bs.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), total: 0, positive: 0, negative: 0, neutral: 0 };
+  const buckets12h: EvolutionPoint[] = Array.from({ length: 12 }, (_, i) => {
+    const bs = new Date(now.getTime() - (11 - i) * 3600000);
+    return { label: bs.getHours().toString().padStart(2, "0") + "h", total: 0, positive: 0, negative: 0, neutral: 0 };
   });
-  const buckets30d: EvolutionPoint[] = Array.from({ length: 30 }, (_, i) => {
-    const bs = new Date(now); bs.setDate(now.getDate() - (29 - i));
-    return { label: bs.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), total: 0, positive: 0, negative: 0, neutral: 0 };
+  const buckets6h: EvolutionPoint[] = Array.from({ length: 6 }, (_, i) => {
+    const bs = new Date(now.getTime() - (5 - i) * 3600000);
+    return { label: bs.getHours().toString().padStart(2, "0") + "h", total: 0, positive: 0, negative: 0, neutral: 0 };
+  });
+  const buckets1h: EvolutionPoint[] = Array.from({ length: 12 }, (_, i) => {
+    const bs = new Date(now.getTime() - (11 - i) * 5 * 60000);
+    return { label: bs.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }), total: 0, positive: 0, negative: 0, neutral: 0 };
   });
   for (const r of sample) {
     const t = new Date(r.created_at).getTime();
@@ -343,9 +348,10 @@ async function fetchSnapshot(
     };
     const h = Math.floor((now.getTime() - t) / 3600000);
     if (h >= 0 && h < 24) inc(buckets24h[23 - h]);
-    const d7 = Math.floor((now.getTime() - t) / 86400000);
-    if (d7 >= 0 && d7 < 7) inc(buckets7d[6 - d7]);
-    if (d7 >= 0 && d7 < 30) inc(buckets30d[29 - d7]);
+    if (h >= 0 && h < 12) inc(buckets12h[11 - h]);
+    if (h >= 0 && h < 6) inc(buckets6h[5 - h]);
+    const m5 = Math.floor((now.getTime() - t) / (5 * 60000));
+    if (m5 >= 0 && m5 < 12) inc(buckets1h[11 - m5]);
   }
   emit({ steps: { ...live.steps, buildCharts: true } });
 
