@@ -405,7 +405,7 @@ const EventReportPage = () => {
       const to = from + PAGE - 1;
       const { data, error } = await supabase
         .from('social_interactions')
-        .select('comment_text, original_posted_at, created_at, likes_count, replies_count, sentiment_label, social_network')
+        .select('comment_text, original_posted_at, created_at, likes_count, replies_count, shares_count, sentiment_label, social_network, post_url, author_profile_url, post_title, post_description, author_name')
         .eq('candidate_id', selectedCandidate)
         .or(`and(original_posted_at.gte.${fromISO},original_posted_at.lte.${toISO}),and(original_posted_at.is.null,created_at.gte.${fromISO},created_at.lte.${toISO})`)
         .order('original_posted_at', { ascending: false, nullsFirst: false })
@@ -465,12 +465,12 @@ const EventReportPage = () => {
         const formatted = evt.start_date.split('-').reverse().join('/');
         const v = evt.variation_pct ?? 0;
         const sign = v >= 0 ? '+' : '';
-        const tag = evt.type === 'queda' ? 'Queda abrupta' : v > 200 ? 'Explosão de menções' : 'Pico de menções';
+        const tag = evt.confirmed_event ? 'Evento político documentado' : evt.evidence_level === 'crescimento_com_indicios' ? 'Crescimento com evidências' : 'Volume historicamente relevante';
         return {
           ...evt,
-          description: `${tag} em ${formatted} — ${evt.mentions_estimate} menções (${sign}${v}% vs. média anterior).`,
+          description: `${tag} em ${formatted} — ${evt.mentions_estimate} registros analisados (${sign}${v}% vs. média anterior).`,
         };
-      }).sort((a, b) => a.start_date.localeCompare(b.start_date));
+      }).sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0));
       setDetectedEvents(refined);
       setTimeline(tl);
       if (refined.length === 0) toast.info("Nenhum pico detectado no período selecionado.");
