@@ -239,46 +239,54 @@ const eventRules: Array<{ type: string; regex: RegExp }> = [
 ];
 
 const detectEventsFromNews = (newsRows: any[]): EventItem[] => {
-  const groups = new Map<string, { rows: any[]; outlets: Set<string>; title: string }>();
+  const groups = new Map<string, { rows: any[]; outlets: Set<string>; title: string; official: boolean }>();
   for (const row of newsRows) {
     const text = `${row.post_title || ""} ${row.post_description || ""} ${row.comment_text || ""}`;
+    if (!hasCurrentPoliticalActivity(text)) continue;
     const rule = eventRules.find((r) => r.regex.test(text));
     if (!rule) continue;
     const title = (row.post_title || row.comment_text || rule.type).replace(/\s+/g, " ").trim().slice(0, 120);
     const outlet = normalizeOutlet(row.author_name || row.comment_author || row.author_handle || "Portal de notícia") || "Portal de notícia";
-    const current = groups.get(rule.type) || { rows: [], outlets: new Set<string>(), title };
+    const current = groups.get(rule.type) || { rows: [], outlets: new Set<string>(), title, official: false };
     current.rows.push(row);
     current.outlets.add(outlet);
+    current.official = current.official || hasOfficialActivity(text);
     if (effectiveDateOf(row).getTime() > effectiveDateOf(current.rows[0] || row).getTime()) current.title = title;
     groups.set(rule.type, current);
   }
   return Array.from(groups.entries())
-    // Evento exige data, fonte e evidência mínima (>=2 publicações)
-    .filter(([, g]) => g.rows.length >= 2 && g.outlets.size >= 1)
+    // Evento exige 3 evidências, 2 veículos ou sinal oficial confirmado.
+    .filter(([, g]) => g.official || g.outlets.size >= 2 || g.rows.length >= 3)
     .map(([type, g]) => ({
       id: `news-${type}`,
       name: g.title,
       date: effectiveDateOf(g.rows[0]).toISOString(),
       type,
-      impact: g.rows.length + g.outlets.size,
+      impact: g.rows.length + g.outlets.size + (g.official ? 3 : 0),
       publications: g.rows.length,
       outlets: g.outlets.size,
     }))
     .sort((a, b) => b.impact - a.impact).slice(0, 6);
 };
 
-const extractThemes = (rows: Array<{ comment_text: string | null; post_title?: string | null; social_network?: string | null; author_name?: string | null; author_handle?: string | null }>): Theme[] => {
-  const counts = new Map<string, { count: number; evidence: EvidenceCounts; examples: string[]; sources: Set<string> }>();
+const extractThemes = (rows: Array<{ comment_text: string | null; post_title?: string | null; post_description?: string | null; social_network?: string | null; platform?: string | null; interaction_type?: string | null; author_name?: string | null; author_handle?: string | null; comment_author?: string | null }>): Theme[] => {
+  const counts = new Map<string, { count: number; evidence: EvidenceCounts; examples: string[]; sources: Set<string>; outlets: Set<string>; official: boolean }>();
   for (const r of rows) {
-    const txt = cleanText(`${r.post_title || ""} ${r.comment_text || ""}`);
-    if (!txt || txt.length < 8) continue;
+    const raw = `${r.post_title || ""} ${r.post_description || ""} ${r.comment_text || ""}`;
+    const txt = cleanText(raw);
+    if (!txt || txt.length < 8 || !hasCurrentPoliticalActivity(raw)) continue;
     for (const rule of THEME_RULES) {
       if (rule.keywords.test(txt)) {
-        const current = counts.get(rule.name) || { count: 0, evidence: emptyEvidence(), examples: [], sources: new Set<string>() };
+        const current = counts.get(rule.name) || { count: 0, evidence: emptyEvidence(), examples: [], sources: new Set<string>(), outlets: new Set<string>(), official: false };
         current.count++;
         addEvidence(current.evidence, r.social_network);
         const src = (r.author_name || r.author_handle || r.social_network || "").toString().toLowerCase().trim();
         if (src) current.sources.add(src);
+        if (isNewsNetwork(r.social_network, r.platform, r.interaction_type)) {
+          const outlet = normalizeOutlet(r.author_name || r.comment_author || r.author_handle || null);
+          if (outlet) current.outlets.add(outlet.toLowerCase());
+        }
+        current.official = current.official || hasOfficialActivity(raw);
         const example = (r.post_title || r.comment_text || "").replace(/\s+/g, " ").trim();
         if (example && current.examples.length < 2) current.examples.push(example.slice(0, 110));
         counts.set(rule.name, current);
@@ -286,12 +294,12 @@ const extractThemes = (rows: Array<{ comment_text: string | null; post_title?: s
     }
   }
   return Array.from(counts.entries())
-    .map(([name, item]) => ({ name, count: item.count, evidence: item.evidence, examples: item.examples, _sources: item.sources.size }))
-    // Tema só existe com evidência mínima: 3 fontes distintas OU 5 conteúdos relacionados
-    .filter((t: any) => t._sources >= 3 || t.count >= 5)
+    .map(([name, item]) => ({ name, count: item.count, evidence: item.evidence, examples: item.examples, _sources: item.sources.size, _outlets: item.outlets.size, _official: item.official }))
+    // Tema só existe com 3 evidências independentes, 2 veículos ou evento oficial confirmado.
+    .filter((t: any) => t._official || t._outlets >= 2 || t._sources >= 3 || t.count >= 3)
     .sort((a, b) => b.count - a.count)
     .slice(0, 7)
-    .map(({ _sources, ...rest }: any) => rest);
+    .map(({ _sources, _outlets, _official, ...rest }: any) => rest);
 };
 
 // ============ Domínios conhecidos para veículos ============
