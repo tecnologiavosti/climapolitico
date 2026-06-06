@@ -12,6 +12,7 @@ import {
   Smile, Frown, Newspaper, Flame, Sparkles, AlertTriangle, Zap, Activity,
 } from "lucide-react";
 import { CandidateSelector } from "@/components/dashboard/realtime/CandidateSelector";
+import { LiveCollectionCenter, type LiveProgress } from "@/components/dashboard/realtime/LiveCollectionCenter";
 import { cn } from "@/lib/utils";
 
 import {
@@ -96,11 +97,15 @@ const extractTopics = (rows: { comment_text: string | null }[]): Topic[] => {
     .sort((a, b) => b.count - a.count).slice(0, 5);
 };
 
-// ============ Fetch otimizado (paralelo + timeout) ============
-async function fetchSnapshot(userId: string, candidateId: string, timeoutMs = 8000): Promise<Snapshot> {
+// ============ Fetch otimizado (paralelo + timeout + progress) ============
+async function fetchSnapshot(
+  userId: string,
+  candidateId: string,
+  onProgress?: (p: Partial<LiveProgress>) => void,
+  timeoutMs = 8000,
+): Promise<Snapshot> {
   const now = new Date();
   const startToday = new Date(now); startToday.setHours(0, 0, 0, 0);
-  const start7d = new Date(now.getTime() - 7 * 86400000);
   const start30d = new Date(now.getTime() - 30 * 86400000);
   const start24h = new Date(now.getTime() - 24 * 3600000);
   const startPrev24h = new Date(now.getTime() - 48 * 3600000);
@@ -115,35 +120,96 @@ async function fetchSnapshot(userId: string, candidateId: string, timeoutMs = 80
   const run = <T,>(b: any, label: string): Promise<T> =>
     withTimeout<T>(Promise.resolve(b) as Promise<T>, timeoutMs, label);
 
-  // 6 consultas em paralelo
+  // Estado de progresso interno (acumula chamadas de onProgress)
+  const live: LiveProgress = {
+    news: 0, posts: 0, videos: 0, comments: 0,
+    mentionsProcessed: 0, sentimentClassified: 0,
+    positivePct: 0, neutralPct: 0, negativePct: 0,
+    emergingTopics: [],
+    steps: { collectNews: false, collectSocial: false, processAI: false, classifySentiment: false, buildCharts: false },
+  };
+  const emit = (patch: Partial<LiveProgress>) => {
+    Object.assign(live, patch);
+    if (patch.steps) live.steps = { ...live.steps, ...patch.steps };
+    onProgress?.({ ...live, steps: { ...live.steps } });
+  };
+
+  // Promessas com side-effect progressivo
+  const pNews = run<{ count: number | null }>(base().eq("social_network", "Google News"), "news")
+    .then(r => { emit({ news: r.count ?? 0, steps: { ...live.steps, collectNews: true } }); return r; });
+
+  const pPosts = run<{ count: number | null }>(
+    base().in("social_network", ["Instagram", "Twitter", "Twitter/X", "X", "Facebook", "LinkedIn", "Threads", "Bluesky"]),
+    "posts"
+  ).then(r => { emit({ posts: r.count ?? 0 }); return r; });
+
+  const pVideos = run<{ count: number | null }>(
+    base().in("social_network", ["YouTube", "TikTok"]),
+    "videos"
+  ).then(r => {
+    emit({ videos: r.count ?? 0, steps: { ...live.steps, collectSocial: true } });
+    return r;
+  });
+
+  const pComments = run<{ count: number | null }>(
+    base().in("interaction_type", ["comment", "reply", "subcomment"]),
+    "comments"
+  ).then(r => { emit({ comments: r.count ?? 0 }); return r; });
+
+  const pToday = run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()), "today")
+    .then(r => { emit({ mentionsProcessed: r.count ?? 0, steps: { ...live.steps, processAI: true } }); return r; });
+
+  const pPos = run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()).eq("sentiment_label", "Positivo"), "pos");
+  const pNeg = run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()).eq("sentiment_label", "Negativo"), "neg");
+  const pNeu = run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()).eq("sentiment_label", "Neutro"), "neu");
+  const pPrev = run<{ count: number | null }>(base().gte("created_at", startPrev24h.toISOString()).lt("created_at", start24h.toISOString()), "prev24");
+
+  // Sentimento parcial assim que p/n/neu retornarem
+  Promise.all([pPos, pNeg, pNeu]).then(([rp, rn, ru]) => {
+    const p = rp.count ?? 0, n = rn.count ?? 0, u = ru.count ?? 0;
+    const total = p + n + u;
+    if (total > 0) {
+      emit({
+        sentimentClassified: total,
+        positivePct: Math.round((p / total) * 100),
+        neutralPct: Math.round((u / total) * 100),
+        negativePct: Math.round((n / total) * 100),
+        steps: { ...live.steps, classifySentiment: true },
+      });
+    } else {
+      emit({ steps: { ...live.steps, classifySentiment: true } });
+    }
+  }).catch(() => {});
+
+  const pSample = run<{ data: any[] | null }>(
+    supabase.from("social_interactions")
+      .select("created_at, sentiment_label, comment_text, social_network, likes_count, shares_count")
+      .eq("user_id", userId).eq("candidate_id", candidateId)
+      .not("social_network", "in", "(mastodon,lemmy,pinterest)")
+      .gte("created_at", start30d.toISOString())
+      .order("created_at", { ascending: false })
+      .limit(5000),
+    "sample"
+  ).then(r => {
+    const topics = extractTopics((r.data ?? []).slice(0, 1500));
+    emit({ emergingTopics: topics.slice(0, 6).map(t => t.name) });
+    return r;
+  });
+
   const [qToday, qPos, qNeg, qNews, qPrev24h, qSample] = await Promise.all([
-    run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()), "today"),
-    run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()).eq("sentiment_label", "Positivo"), "pos"),
-    run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()).eq("sentiment_label", "Negativo"), "neg"),
-    run<{ count: number | null }>(base().eq("social_network", "Google News"), "news"),
-    run<{ count: number | null }>(base().gte("created_at", startPrev24h.toISOString()).lt("created_at", start24h.toISOString()), "prev24"),
-    run<{ data: any[] | null }>(
-      supabase.from("social_interactions")
-        .select("created_at, sentiment_label, comment_text, social_network, likes_count, shares_count")
-        .eq("user_id", userId).eq("candidate_id", candidateId)
-        .not("social_network", "in", "(mastodon,lemmy,pinterest)")
-        .gte("created_at", start30d.toISOString())
-        .order("created_at", { ascending: false })
-        .limit(5000),
-      "sample"
-    ),
+    pToday, pPos, pNeg, pNews, pPrev, pSample,
   ]);
+  // Garante posts/vídeos/comentários terminados antes de marcar gráficos
+  await Promise.all([pPosts, pVideos, pComments]);
 
   const mentionsToday = qToday.count ?? 0;
   const positiveToday = qPos.count ?? 0;
   const negativeToday = qNeg.count ?? 0;
   const newsCollected = qNews.count ?? 0;
-  const last24h = qToday.count ?? 0; // proxy
+  const last24h = qToday.count ?? 0;
   const prev24h = qPrev24h.count ?? 0;
-
   const sample: any[] = qSample.data ?? [];
 
-  // Evolução 24h (hora)
   const buckets24h: EvolutionPoint[] = Array.from({ length: 24 }, (_, i) => {
     const bs = new Date(now.getTime() - (23 - i) * 3600000);
     return { label: bs.getHours().toString().padStart(2, "0") + "h", total: 0, positive: 0, negative: 0, neutral: 0 };
@@ -165,21 +231,18 @@ async function fetchSnapshot(userId: string, candidateId: string, timeoutMs = 80
       else if (r.sentiment_label === "Negativo") b.negative++;
       else if (r.sentiment_label === "Neutro") b.neutral++;
     };
-    // 24h
     const h = Math.floor((now.getTime() - t) / 3600000);
     if (h >= 0 && h < 24) inc(buckets24h[23 - h]);
-    // 7d
     const d7 = Math.floor((now.getTime() - t) / 86400000);
     if (d7 >= 0 && d7 < 7) inc(buckets7d[6 - d7]);
-    // 30d
     if (d7 >= 0 && d7 < 30) inc(buckets30d[29 - d7]);
   }
 
-  // Top topic = palavra mais frequente
+  emit({ steps: { ...live.steps, buildCharts: true } });
+
   const topics = extractTopics(sample.slice(0, 1500));
   const topTopic = topics[0]?.name ?? "—";
 
-  // Alertas heurísticos
   const alerts: Alert[] = [];
   if (prev24h > 0) {
     const growth = ((last24h - prev24h) / prev24h) * 100;
@@ -200,7 +263,6 @@ async function fetchSnapshot(userId: string, candidateId: string, timeoutMs = 80
     if (recentNews >= 5) alerts.push({ kind: "news", title: `${recentNews} notícias publicadas hoje`, detail: "Cobertura jornalística intensificada nas últimas 24h." });
   }
 
-  // Resumo IA determinístico (rápido, sem latência de gateway)
   const growthPct = prev24h > 0 ? Math.round(((last24h - prev24h) / prev24h) * 100) : 0;
   const tone = positiveToday > negativeToday ? "predominantemente positivo" : negativeToday > positiveToday ? "predominantemente negativo" : "equilibrado";
   const aiSummary =
@@ -211,18 +273,9 @@ async function fetchSnapshot(userId: string, candidateId: string, timeoutMs = 80
     `Cobertura jornalística: ${newsCollected.toLocaleString("pt-BR")} notícias coletadas.`;
 
   return {
-    topic: topTopic,
-    mentionsToday,
-    positiveToday,
-    negativeToday,
-    newsCollected,
-    evolution24h: buckets24h,
-    evolution7d: buckets7d,
-    evolution30d: buckets30d,
-    topTopics: topics,
-    alerts,
-    aiSummary,
-    savedAt: Date.now(),
+    topic: topTopic, mentionsToday, positiveToday, negativeToday, newsCollected,
+    evolution24h: buckets24h, evolution7d: buckets7d, evolution30d: buckets30d,
+    topTopics: topics, alerts, aiSummary, savedAt: Date.now(),
   };
 }
 
@@ -281,6 +334,7 @@ const RealTimeMonitor = () => {
   const [loadingCandidates, setLoadingCandidates] = useState(true);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [liveProgress, setLiveProgress] = useState<LiveProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [, force] = useState(0);
   const tickRef = useRef<NodeJS.Timeout | null>(null);
@@ -303,13 +357,18 @@ const RealTimeMonitor = () => {
 
   const runSync = useCallback(async (cid: string, uid: string) => {
     setIsSyncing(true); setError(null);
+    setLiveProgress({
+      news: 0, posts: 0, videos: 0, comments: 0, mentionsProcessed: 0, sentimentClassified: 0,
+      positivePct: 0, neutralPct: 0, negativePct: 0, emergingTopics: [],
+      steps: { collectNews: false, collectSocial: false, processAI: false, classifySentiment: false, buildCharts: false },
+    });
     try {
-      const snap = await fetchSnapshot(uid, cid);
+      const snap = await fetchSnapshot(uid, cid, (p) => setLiveProgress(prev => ({ ...(prev as LiveProgress), ...p })));
       writeCache(cacheKey(uid, cid), snap);
       setSnapshot(snap);
     } catch (e: any) {
       setError(e?.message?.includes("Timeout") ? "Consulta excedeu 8s — exibindo último snapshot." : "Falha ao atualizar dados.");
-    } finally { setIsSyncing(false); }
+    } finally { setIsSyncing(false); setLiveProgress(null); }
   }, []);
 
   // Snapshot do cache + background refresh
@@ -401,6 +460,11 @@ const RealTimeMonitor = () => {
             </Card>
           )}
 
+          {/* Central de coleta ao vivo — antes do primeiro snapshot */}
+          {!snapshot && liveProgress && (
+            <LiveCollectionCenter progress={liveProgress} />
+          )}
+
           {/* LINHA 1: Cards executivos */}
           {snapshot ? (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
@@ -411,11 +475,11 @@ const RealTimeMonitor = () => {
               <KpiCard icon={<Newspaper className="h-3.5 w-3.5 text-violet-500" />} label="Notícias" value={snapshot.newsCollected.toLocaleString("pt-BR")} accent="bg-violet-500/70" />
               <KpiCard icon={<Clock className="h-3.5 w-3.5 text-muted-foreground" />} label="Última Atualização" value={lastUpdate ? formatRelative(lastUpdate) : "—"} />
             </div>
-          ) : (
+          ) : !liveProgress ? (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
               {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[72px] rounded-lg" />)}
             </div>
-          )}
+          ) : null}
 
           {/* LINHA 2: Evolução */}
           <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
