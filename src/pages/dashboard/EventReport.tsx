@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CalendarDays, MessageSquare, TrendingUp, AlertTriangle, Lightbulb, BookOpen, Zap, Users, Radio, Layers } from "lucide-react";
+import { Loader2, CalendarDays, MessageSquare, TrendingUp, AlertTriangle, Lightbulb, BookOpen, Zap, Users, Radio, Layers, LineChart as LineChartIcon } from "lucide-react";
 import { toast } from "sonner";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, ReferenceDot } from "recharts";
 
 interface Reaction {
   reaction: string;
@@ -87,6 +88,8 @@ type LocalInteraction = {
   created_at: string | null;
   likes_count: number | null;
   replies_count: number | null;
+  sentiment_label: string | null;
+  social_network: string | null;
 };
 
 const normalizeEventText = (text: string) =>
@@ -96,13 +99,31 @@ const tokenizeEventText = (text: string) => normalizeEventText(text).match(/[a-z
 
 const titleFromPhrase = (phrase: string) => phrase.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
-function detectEventsFromInteractions(comments: LocalInteraction[], _candidateName: string): DetectedEvent[] {
-  if (comments.length < 5) return [];
+function classifyMotivo(variation: number, count: number, topNetwork: string | null): string {
+  if (variation > 400) return 'Viralização / explosão de menções';
+  if (variation > 200) return 'Crise ou repercussão massiva';
+  if (variation > 100) return 'Evento de alta repercussão (debate, entrevista, decisão)';
+  if (variation > 50) return 'Pico de atenção (declaração, ato político)';
+  if (variation < -60) return 'Queda abrupta de menções';
+  return topNetwork ? `Aumento de atividade em ${topNetwork}` : 'Aumento de atividade';
+}
+
+interface DailyPoint {
+  date: string;
+  count: number;
+  positive: number;
+  negative: number;
+  neutral: number;
+  isPeak?: boolean;
+}
+
+function detectEventsFromInteractions(comments: LocalInteraction[], _candidateName: string): { events: DetectedEvent[]; timeline: DailyPoint[] } {
+  if (comments.length < 5) return { events: [], timeline: [] };
 
   const byDay = new Map<string, LocalInteraction[]>();
   comments.forEach((comment) => {
     const day = (comment.original_posted_at || comment.created_at || '').substring(0, 10);
-    if (!day || !comment.comment_text) return;
+    if (!day) return;
     byDay.set(day, [...(byDay.get(day) || []), comment]);
   });
 
@@ -110,10 +131,19 @@ function detectEventsFromInteractions(comments: LocalInteraction[], _candidateNa
   const counts = daysAsc.map(([, rows]) => rows.length);
   const avg = counts.reduce((s, n) => s + n, 0) / Math.max(counts.length, 1);
 
-  // Detecta picos (acima de 1.5x média e >= 4) e quedas abruptas (abaixo de 0.4x média do período anterior)
+  const timeline: DailyPoint[] = daysAsc.map(([day, rows]) => {
+    let pos = 0, neg = 0, neu = 0;
+    rows.forEach(r => {
+      const s = (r.sentiment_label || '').toLowerCase();
+      if (s === 'positive' || s === 'positivo') pos++;
+      else if (s === 'negative' || s === 'negativo') neg++;
+      else if (s === 'neutral' || s === 'neutro') neu++;
+    });
+    return { date: day, count: rows.length, positive: pos, negative: neg, neutral: neu };
+  });
+
   const peakDays = daysAsc
     .map(([day, rows], i) => {
-      // baseline: média dos 7 dias anteriores
       const prev = counts.slice(Math.max(0, i - 7), i);
       const baseline = prev.length > 0 ? prev.reduce((s, n) => s + n, 0) / prev.length : avg;
       const variation = baseline > 0 ? ((rows.length - baseline) / baseline) * 100 : 0;
@@ -123,12 +153,29 @@ function detectEventsFromInteractions(comments: LocalInteraction[], _candidateNa
     })
     .filter(d => d.isPeak || d.isDrop)
     .sort((a, b) => Math.abs(b.variation) - Math.abs(a.variation))
-    .slice(0, 20);
+    .slice(0, 50);
 
-  return peakDays.map(({ day, rows, variation, isDrop }) => {
+  // mark timeline points
+  const peakSet = new Set(peakDays.map(p => p.day));
+  timeline.forEach(p => { if (peakSet.has(p.date)) p.isPeak = true; });
+
+  const events: DetectedEvent[] = peakDays.map(({ day, rows, variation, isDrop }) => {
     const formatted = day.split('-').reverse().join('/');
     const sign = variation >= 0 ? '+' : '';
     const tag = isDrop ? 'Queda abrupta' : variation > 200 ? 'Explosão de menções' : 'Pico de menções';
+
+    let pos = 0, neg = 0, neu = 0;
+    const netCounts = new Map<string, number>();
+    rows.forEach(r => {
+      const s = (r.sentiment_label || '').toLowerCase();
+      if (s === 'positive' || s === 'positivo') pos++;
+      else if (s === 'negative' || s === 'negativo') neg++;
+      else if (s === 'neutral' || s === 'neutro') neu++;
+      if (r.social_network) netCounts.set(r.social_network, (netCounts.get(r.social_network) || 0) + 1);
+    });
+    const topNetworks = [...netCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([n]) => n);
+    const labeled = pos + neg + neu;
+
     return {
       name: `${formatted} — ${tag}`,
       type: isDrop ? 'queda' : 'pico',
@@ -137,9 +184,18 @@ function detectEventsFromInteractions(comments: LocalInteraction[], _candidateNa
       end_date: day,
       mentions_estimate: rows.length,
       variation_pct: Math.round(variation),
-      description: `${tag} em ${formatted} — ${rows.length} comentários (${sign}${Math.round(variation)}% vs. média anterior).`,
+      description: `${tag} em ${formatted} — ${rows.length} menções (${sign}${Math.round(variation)}% vs. média anterior).`,
+      motivo: classifyMotivo(variation, rows.length, topNetworks[0] || null),
+      sentiment: {
+        positivePct: labeled ? Math.round((pos / labeled) * 100) : 0,
+        negativePct: labeled ? Math.round((neg / labeled) * 100) : 0,
+        neutralPct: labeled ? Math.round((neu / labeled) * 100) : 0,
+      },
+      topNetworks,
     };
   });
+
+  return { events, timeline };
 }
 
 interface DetectedEvent {
@@ -151,18 +207,29 @@ interface DetectedEvent {
   mentions_estimate: number;
   variation_pct?: number;
   description: string;
+  motivo?: string;
+  sentiment?: { positivePct: number; negativePct: number; neutralPct: number };
+  topNetworks?: string[];
 }
 
 const EventReportPage = () => {
   const { user } = useAuth();
   const [selectedCandidate, setSelectedCandidate] = useState("");
   const [detectedEvents, setDetectedEvents] = useState<DetectedEvent[]>([]);
+  const [timeline, setTimeline] = useState<DailyPoint[]>([]);
   const [selectedEventIdx, setSelectedEventIdx] = useState<string>("");
   const [isDetecting, setIsDetecting] = useState(false);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [result, setResult] = useState<ReportResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  const applyPreset = (preset: "2018" | "2022" | "2024" | "2026" | "all") => {
+    if (preset === "all") { setStartDate("2018-01-01"); setEndDate(new Date().toISOString().slice(0, 10)); return; }
+    if (preset === "2026") { setStartDate("2026-01-01"); setEndDate(new Date().toISOString().slice(0, 10)); return; }
+    setStartDate(`${preset}-01-01`);
+    setEndDate(`${preset}-12-31`);
+  };
 
   // Enriquecimento: bolhas, temas dominantes (com sentimento) e origem do pico
   const enrichQueryKey = result?.period ? `${selectedCandidate}|${result.period.startDate}|${result.period.endDate}` : "";
@@ -235,7 +302,7 @@ const EventReportPage = () => {
     },
   });
 
-  const fetchLocalEvents = async (): Promise<DetectedEvent[]> => {
+  const fetchLocalEvents = async (): Promise<{ events: DetectedEvent[]; timeline: DailyPoint[] }> => {
     let fromISO: string;
     let toISO: string;
     if (startDate && endDate) {
@@ -244,29 +311,38 @@ const EventReportPage = () => {
       fromISO = s.toISOString();
       toISO = e.toISOString();
     } else {
-      const since = new Date();
-      since.setMonth(since.getMonth() - 6);
-      fromISO = since.toISOString();
-      toISO = new Date().toISOString();
+      toast.error("Selecione um período inicial e final");
+      return { events: [], timeline: [] };
     }
     const selectedCandidateData = candidates.find(candidate => candidate.id === selectedCandidate);
 
-    const { data, error } = await supabase
-      .from('social_interactions')
-      .select('comment_text, original_posted_at, created_at, likes_count, replies_count')
-      .eq('candidate_id', selectedCandidate)
-      .or(`and(original_posted_at.gte.${fromISO},original_posted_at.lte.${toISO}),and(original_posted_at.is.null,created_at.gte.${fromISO},created_at.lte.${toISO})`)
-      .not('comment_text', 'is', null)
-      .order('original_posted_at', { ascending: false, nullsFirst: false })
-      .limit(2000);
-
-    if (error) throw error;
-    return detectEventsFromInteractions((data || []) as LocalInteraction[], selectedCandidateData?.full_name || '');
+    // Paginação para suportar análise histórica longa (anos)
+    const PAGE = 1000;
+    const MAX_PAGES = 30; // até 30k registros
+    const all: any[] = [];
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const from = page * PAGE;
+      const to = from + PAGE - 1;
+      const { data, error } = await supabase
+        .from('social_interactions')
+        .select('comment_text, original_posted_at, created_at, likes_count, replies_count, sentiment_label, social_network')
+        .eq('candidate_id', selectedCandidate)
+        .or(`and(original_posted_at.gte.${fromISO},original_posted_at.lte.${toISO}),and(original_posted_at.is.null,created_at.gte.${fromISO},created_at.lte.${toISO})`)
+        .order('original_posted_at', { ascending: false, nullsFirst: false })
+        .range(from, to);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      all.push(...data);
+      if (data.length < PAGE) break;
+    }
+    return detectEventsFromInteractions(all as LocalInteraction[], selectedCandidateData?.full_name || '');
   };
+
 
   const handleCandidateChange = (id: string) => {
     setSelectedCandidate(id);
     setDetectedEvents([]);
+    setTimeline([]);
     setSelectedEventIdx("");
     setResult(null);
   };
@@ -298,13 +374,13 @@ const EventReportPage = () => {
 
   const handleDetectEvents = async () => {
     if (!selectedCandidate) { toast.error("Selecione um candidato"); return; }
+    if (!startDate || !endDate) { toast.error("Defina o período histórico (início e fim)"); return; }
     setIsDetecting(true);
     setDetectedEvents([]);
+    setTimeline([]);
     setSelectedEventIdx("");
     try {
-      const detected = await fetchLocalEvents();
-      // Atualiza contagens com o total real do dia (mesma query usada no relatório),
-      // pois a amostra local é limitada a 800 registros.
+      const { events: detected, timeline: tl } = await fetchLocalEvents();
       const refined = (await refineEventCounts(detected)).map((evt) => {
         const formatted = evt.start_date.split('-').reverse().join('/');
         const v = evt.variation_pct ?? 0;
@@ -312,12 +388,13 @@ const EventReportPage = () => {
         const tag = evt.type === 'queda' ? 'Queda abrupta' : v > 200 ? 'Explosão de menções' : 'Pico de menções';
         return {
           ...evt,
-          description: `${tag} em ${formatted} — ${evt.mentions_estimate} comentários (${sign}${v}% vs. média anterior).`,
+          description: `${tag} em ${formatted} — ${evt.mentions_estimate} menções (${sign}${v}% vs. média anterior).`,
         };
-      }).sort((a, b) => Math.abs(b.variation_pct ?? 0) - Math.abs(a.variation_pct ?? 0));
+      }).sort((a, b) => a.start_date.localeCompare(b.start_date));
       setDetectedEvents(refined);
+      setTimeline(tl);
       if (refined.length === 0) toast.info("Nenhum pico detectado no período selecionado.");
-      else toast.success(`${refined.length} pico(s) detectado(s)`);
+      else toast.success(`${refined.length} pico(s) detectado(s) em ${tl.length} dias analisados`);
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || "Erro ao detectar picos");
@@ -380,7 +457,7 @@ const EventReportPage = () => {
         <HelpTooltip text="Descubra os picos de menções do candidato: debates, entrevistas, viralizações e momentos que mais repercutiram nas redes.">
         <h1 className="text-3xl font-bold">Picos de Menções</h1>
       </HelpTooltip>
-        <p className="text-muted-foreground mt-1">Identifique os momentos de maior repercussão do candidato nas redes sociais.</p>
+        <p className="text-muted-foreground mt-1">Ferramenta de análise histórica e eleitoral. Selecione qualquer período (2018, 2022, 2024, 2026 ou intervalo personalizado) para identificar viralizações, crises, debates e eventos de alta repercussão.</p>
       </div>
 
       {/* Controls */}
@@ -459,8 +536,118 @@ const EventReportPage = () => {
               </Button>
             </HelpTooltip>
           </div>
+
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-xs text-muted-foreground">Períodos rápidos:</span>
+            <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("2018")}>2018</Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("2022")}>2022</Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("2024")}>2024</Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("2026")}>2026</Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("all")}>2018 → hoje</Button>
+            <span className="text-xs text-muted-foreground ml-2">Sem limite de tempo — pesquise qualquer intervalo histórico.</span>
+          </div>
         </CardContent>
       </Card>
+
+      {/* Histórico contínuo */}
+      {timeline.length > 0 && (
+        <Card>
+          <CardHeader>
+            <HelpTooltip text="Gráfico contínuo do volume diário de menções em todo o período selecionado. Pontos vermelhos = picos detectados.">
+              <CardTitle className="flex items-center gap-2"><LineChartIcon className="h-5 w-5" />Gráfico Histórico ({startDate} → {endDate})</CardTitle>
+            </HelpTooltip>
+            <CardDescription>
+              {timeline.reduce((s, p) => s + p.count, 0).toLocaleString("pt-BR")} menções totais • {timeline.length} dias analisados • {detectedEvents.length} picos detectados
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-72 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={timeline} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} minTickGap={40} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <RTooltip
+                    contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 8 }}
+                    formatter={(v: number, name: string) => [v, name === 'count' ? 'Menções' : name]}
+                  />
+                  <Line type="monotone" dataKey="count" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                  {timeline.filter(p => p.isPeak).map(p => (
+                    <ReferenceDot key={p.date} x={p.date} y={p.count} r={5} fill="hsl(var(--destructive))" stroke="white" />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Lista detalhada de picos */}
+      {detectedEvents.length > 0 && (
+        <Card>
+          <CardHeader>
+            <HelpTooltip text="Cada pico detectado com data, volume, motivo provável, sentimento e fontes predominantes. Clique em 'Analisar com IA' para o contexto histórico completo.">
+              <CardTitle className="flex items-center gap-2"><Zap className="h-5 w-5" />Picos Detectados no Período</CardTitle>
+            </HelpTooltip>
+            <CardDescription>{detectedEvents.length} eventos relevantes — ordenados cronologicamente</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {detectedEvents.map((e, i) => {
+                const v = e.variation_pct ?? 0;
+                const sign = v >= 0 ? '+' : '';
+                const formatted = e.start_date.split('-').reverse().join('/');
+                const sent = e.sentiment;
+                return (
+                  <div key={i} className="border rounded-lg p-4 space-y-2 bg-card hover:bg-muted/30 transition-colors">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold text-sm">{formatted}</p>
+                        <p className="text-xs text-muted-foreground">{e.motivo || 'Pico detectado'}</p>
+                      </div>
+                      <Badge variant={v > 0 ? 'default' : 'destructive'} className="text-xs">
+                        {sign}{v}%
+                      </Badge>
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-2xl font-bold">{e.mentions_estimate.toLocaleString("pt-BR")}</span>
+                      <span className="text-xs text-muted-foreground">menções</span>
+                    </div>
+                    {sent && (sent.positivePct + sent.negativePct + sent.neutralPct) > 0 && (
+                      <div className="space-y-1">
+                        <div className="flex h-1.5 w-full rounded overflow-hidden bg-muted">
+                          <div className="bg-green-500" style={{ width: `${sent.positivePct}%` }} />
+                          <div className="bg-yellow-400" style={{ width: `${sent.neutralPct}%` }} />
+                          <div className="bg-red-500" style={{ width: `${sent.negativePct}%` }} />
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          {sent.positivePct}% positivo • {sent.neutralPct}% neutro • {sent.negativePct}% negativo
+                        </p>
+                      </div>
+                    )}
+                    {e.topNetworks && e.topNetworks.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {e.topNetworks.map(n => (
+                          <Badge key={n} variant="outline" className="text-[10px] capitalize">{n}</Badge>
+                        ))}
+                      </div>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full mt-1"
+                      onClick={() => { handleSelectEvent(String(i)); setTimeout(() => handleGenerate(), 50); }}
+                    >
+                      <Lightbulb className="h-3 w-3 mr-1" />Analisar com IA
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
 
       {/* No data */}
       {result && !report && (
