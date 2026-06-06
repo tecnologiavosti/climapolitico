@@ -360,13 +360,20 @@ async function fetchSnapshot(
   emit({ emergingTopics: themes.slice(0, 6).map(t => t.name) });
 
   // BLOCO 3 — Eventos
-  const events: EventItem[] = (qEvents.data ?? []).map((e: any) => ({
-    id: e.id,
-    name: e.event_name,
-    date: e.event_date,
-    type: e.event_type || "evento",
-    impact: Number(e.importance_score || e.publications_count || 0),
-  }));
+  const events: EventItem[] = (qEvents.data ?? [])
+    .filter((e: any) => {
+      const age = now.getTime() - new Date(e.event_date).getTime();
+      return age >= 0 && age <= 7 * 86400000;
+    })
+    .map((e: any) => ({
+      id: e.id,
+      name: e.event_name,
+      date: e.event_date,
+      type: e.event_type || "evento",
+      impact: Number(e.importance_score || e.publications_count || 0),
+      publications: Number(e.publications_count || 0),
+      outlets: Number(e.distinct_outlets || 0),
+    }));
 
   // BLOCO 5 — Veículos mais ativos (Google News + autores)
   const outletCounts = new Map<string, number>();
@@ -391,6 +398,7 @@ async function fetchSnapshot(
       engagement: (r.likes_count || 0) + (r.shares_count || 0) + (r.replies_count || 0),
       url: r.post_url || null,
       sentiment: r.sentiment_label || null,
+      createdAt: r.created_at,
     }))
     .filter(p => p.title && p.title !== "(sem título)" && p.engagement > 0)
     .sort((a, b) => b.engagement - a.engagement)
