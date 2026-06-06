@@ -681,13 +681,27 @@ const RealTimeMonitor = () => {
             </Card>
           ) : !liveProgress ? <Skeleton className="h-32 w-full rounded-lg" /> : null}
 
+          {snapshot && (
+            <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
+              <CardContent className="p-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">Baseado em:</span>
+                <span>{snapshot.evidence.news.toLocaleString("pt-BR")} notícias</span>
+                <span className="hidden sm:inline">·</span>
+                <span>{snapshot.evidence.posts.toLocaleString("pt-BR")} posts</span>
+                <span className="hidden sm:inline">·</span>
+                <span>{snapshot.evidence.videos.toLocaleString("pt-BR")} vídeos</span>
+                <Badge variant="outline" className="w-fit sm:ml-auto text-[10px]">Últimas 24h</Badge>
+              </CardContent>
+            </Card>
+          )}
+
           {/* KPIs */}
           {snapshot && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
-              <KpiCard icon={<Activity className="h-3.5 w-3.5 text-primary" />} label="Menções Hoje" value={snapshot.mentionsToday.toLocaleString("pt-BR")} accent="bg-primary/70" />
-              <KpiCard icon={<TrendingUp className="h-3.5 w-3.5 text-emerald-500" />} label="Positivas" value={snapshot.positiveToday.toLocaleString("pt-BR")} tone="text-emerald-500" accent="bg-emerald-500/70" />
-              <KpiCard icon={<TrendingDown className="h-3.5 w-3.5 text-red-500" />} label="Negativas" value={snapshot.negativeToday.toLocaleString("pt-BR")} tone="text-red-500" accent="bg-red-500/70" />
-              <KpiCard icon={<Newspaper className="h-3.5 w-3.5 text-violet-500" />} label="Notícias" value={snapshot.newsCollected.toLocaleString("pt-BR")} accent="bg-violet-500/70" />
+              <KpiCard icon={<Activity className="h-3.5 w-3.5 text-primary" />} label="Última hora" value={snapshot.windowCounts.h1.toLocaleString("pt-BR")} accent="bg-primary/70" />
+              <KpiCard icon={<Clock className="h-3.5 w-3.5 text-primary" />} label="Últimas 6h" value={snapshot.windowCounts.h6.toLocaleString("pt-BR")} accent="bg-primary/50" />
+              <KpiCard icon={<Activity className="h-3.5 w-3.5 text-primary" />} label="Últimas 12h" value={snapshot.windowCounts.h12.toLocaleString("pt-BR")} accent="bg-primary/40" />
+              <KpiCard icon={<Newspaper className="h-3.5 w-3.5 text-primary" />} label="Notícias 24h" value={snapshot.newsCollected.toLocaleString("pt-BR")} accent="bg-primary/30" />
             </div>
           )}
 
