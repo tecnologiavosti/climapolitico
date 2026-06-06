@@ -23,15 +23,24 @@ import {
 interface Candidate { id: string; full_name: string; party?: string | null; }
 
 // ============ Tipos ============
+interface EvidenceCounts { news: number; posts: number; videos: number; total: number; }
 interface EvolutionPoint { label: string; total: number; positive: number; negative: number; neutral: number; }
-interface Theme { name: string; count: number; }
-interface EventItem { id: string; name: string; date: string; type: string; impact: number; }
+interface Theme { name: string; count: number; evidence: EvidenceCounts; examples: string[]; }
+interface EventItem { id: string; name: string; date: string; type: string; impact: number; publications: number; outlets: number; }
 interface Outlet { name: string; count: number; }
 interface Publication {
   id: string; title: string; author: string; network: string;
-  engagement: number; url: string | null; sentiment: string | null;
+  engagement: number; url: string | null; sentiment: string | null; createdAt: string;
 }
-interface Alert { kind: "growth" | "negative" | "viral" | "news" | "crisis"; title: string; detail: string; }
+interface Alert {
+  kind: "growth" | "negative" | "viral" | "news" | "crisis";
+  title: string;
+  detail: string;
+  source?: string;
+  engagement?: number;
+  publishedAt?: string;
+  evidence?: EvidenceCounts;
+}
 
 interface Snapshot {
   // BLOCO 1 — narrativa
@@ -41,6 +50,8 @@ interface Snapshot {
   positiveToday: number;
   negativeToday: number;
   newsCollected: number;
+  evidence: EvidenceCounts;
+  windowCounts: { h1: number; h6: number; h12: number; h24: number; previous24h: number; };
   // BLOCO 2 — temas dominantes
   themes: Theme[];
   // BLOCO 3 — eventos
@@ -57,15 +68,16 @@ interface Snapshot {
   executiveSummary: { what: string; why: string; who: string; impact: string; };
   // Gráficos
   evolution24h: EvolutionPoint[];
-  evolution7d: EvolutionPoint[];
-  evolution30d: EvolutionPoint[];
+  evolution12h: EvolutionPoint[];
+  evolution6h: EvolutionPoint[];
+  evolution1h: EvolutionPoint[];
   // Meta
   savedAt: number;
   candidateName: string;
 }
 
 // ============ Cache 5 min ============
-const cacheKey = (uid: string, cid: string) => `rt-intel:${uid}:${cid}`;
+const cacheKey = (uid: string, cid: string) => `rt-evidence-v2:${uid}:${cid}`;
 const readCache = (k: string): Snapshot | null => {
   try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch { return null; }
 };
@@ -115,37 +127,51 @@ const cleanText = (raw: string): string =>
     .replace(/[a-z]+=["'][^"']*["']/g, " ")
     .replace(/\b(?:href|src|class|id|style|font|div|span|html|css|javascript|script|target|rel|alt)\b/gi, " ");
 
-// ============ Mapeamento Palavras → Temas Políticos ============
+// ============ Mapeamento evidencial → Temas Políticos ============
 const THEME_RULES: Array<{ name: string; keywords: RegExp }> = [
-  { name: "Economia", keywords: /\b(econom|inflação|inflacao|juros|selic|pib|dólar|dolar|real|imposto|tribut|fiscal|orçament|orcament|salário|salario|desemprego|emprego|mercado|bolsa|investiment|ipca)\w*/i },
-  { name: "Eleições", keywords: /\b(eleição|eleicao|eleições|eleicoes|candidat|votação|votacao|urna|tse|campanha|coligação|coligacao|partido|presidência|presidencia|reeleição|reeleicao|pesquisa|datafolha|quaest|ipec)\w*/i },
+  { name: "Reforma Tributária", keywords: /\b(reforma tributária|reforma tributaria|imposto seletivo|cbs|ibs|iva|tributaç|tributac|alíquota|aliquota|arcabouço|arcabouco fiscal)\w*/i },
+  { name: "Banco dos BRICS", keywords: /\b(banco dos brics|novo banco de desenvolvimento|ndb|brics|dilma|china|rússia|russia|índia|india|áfrica do sul|africa do sul)\b/i },
+  { name: "Eleições 2026", keywords: /\b(eleição 2026|eleições 2026|eleicao 2026|eleicoes 2026|presidência 2026|presidencia 2026|pré-candidat|pre-candidat|candidato 2026|campanha 2026|pesquisa eleitoral|datafolha|quaest|ipec)\w*/i },
   { name: "Segurança Pública", keywords: /\b(segurança|seguranca|polícia|policia|crime|violência|violencia|homicíd|homicid|facção|faccao|tráfico|trafico|pcc|cv|milíci|milici|operação|operacao)\w*/i },
-  { name: "Educação", keywords: /\b(educação|educacao|escola|universidade|professor|aluno|enem|sisu|fies|prouni|creche|ensino|fundeb)\w*/i },
-  { name: "Saúde", keywords: /\b(saúde|saude|sus|hospital|médico|medico|vacina|pandemia|covid|enfermag|remédio|remedio|farmac)\w*/i },
-  { name: "Justiça e STF", keywords: /\b(stf|supremo|justiça|justica|ministro|moraes|fachin|barroso|toffoli|inquérito|inquerito|processo|julgamento|condenação|condenacao|prisão|prisao)\w*/i },
+  { name: "STF e Poder Judiciário", keywords: /\b(stf|supremo tribunal|supremo|judiciário|judiciario|justiça|justica|ministro do stf|moraes|fachin|barroso|toffoli|inquérito|inquerito|julgamento|condenação|condenacao|prisão|prisao)\w*/i },
   { name: "Congresso e Câmara", keywords: /\b(câmara|camara|senado|congresso|deputad|senador|relator|cpi|plenário|plenario|projeto de lei|pl\s|pec)\w*/i },
-  { name: "Lula e Governo Federal", keywords: /\b(lula|presidente|planalto|ministro|gleisi|haddad|alckmin|esplanada)\w*/i },
-  { name: "Bolsonaro e Oposição", keywords: /\b(bolsonaro|tarcísio|tarcisio|zema|caiado|oposição|oposicao|direita|conservador)\w*/i },
+  { name: "Governo Federal", keywords: /\b(lula|planalto|haddad|alckmin|esplanada|ministério|ministerio|palácio do planalto|palacio do planalto)\w*/i },
+  { name: "Bolsonarismo", keywords: /\b(bolsonaro|jair bolsonaro|michelle bolsonaro|tarcísio|tarcisio|zema|caiado|pl\b|inelegibilidade)\w*/i },
   { name: "Relações Internacionais", keywords: /\b(brics|otan|onu|eua|china|rússia|russia|ucrânia|ucrania|israel|palestina|argentina|milei|trump|biden|putin|xi jinping|mercosul|exterior|diplomac)\w*/i },
   { name: "Meio Ambiente", keywords: /\b(amazônia|amazonia|desmatamento|queimada|clima|cop\d|ibama|funai|indígena|indigena|garimpo|sustentab)\w*/i },
-  { name: "Cultura e Sociedade", keywords: /\b(cultura|música|musica|cinema|teatro|carnaval|futebol|copa|olimpíada|olimpiada|religião|religiao|igreja|evangélic|evangelic)\w*/i },
+  { name: "Religião e Sociedade", keywords: /\b(religião|religiao|igreja|evangélic|evangelic|católic|catolic|pastor|padre|culto|fé|fe)\w*/i },
   { name: "Infraestrutura", keywords: /\b(infraestrutura|obra|rodovia|ferrovia|aeroporto|porto|saneamento|habitação|habitacao|minha casa|pac)\w*/i },
   { name: "Combate à Corrupção", keywords: /\b(corrupção|corrupcao|lava jato|propina|desvio|fraude|operação|operacao|pf|polícia federal|policia federal)\w*/i },
 ];
 
-const extractThemes = (rows: Array<{ comment_text: string | null; post_title?: string | null }>): Theme[] => {
-  const counts = new Map<string, number>();
+const emptyEvidence = (): EvidenceCounts => ({ news: 0, posts: 0, videos: 0, total: 0 });
+const classifyNetwork = (network?: string | null): keyof Omit<EvidenceCounts, "total"> => {
+  const n = (network || "").toLowerCase();
+  if (n.includes("news") || n.includes("notícia") || n.includes("noticia")) return "news";
+  if (n.includes("youtube") || n.includes("video") || n.includes("tiktok")) return "videos";
+  return "posts";
+};
+const addEvidence = (ev: EvidenceCounts, network?: string | null) => { ev[classifyNetwork(network)]++; ev.total++; };
+
+const extractThemes = (rows: Array<{ comment_text: string | null; post_title?: string | null; social_network?: string | null }>): Theme[] => {
+  const counts = new Map<string, { count: number; evidence: EvidenceCounts; examples: string[] }>();
   for (const r of rows) {
     const txt = cleanText(`${r.post_title || ""} ${r.comment_text || ""}`);
     if (!txt || txt.length < 8) continue;
     for (const rule of THEME_RULES) {
       if (rule.keywords.test(txt)) {
-        counts.set(rule.name, (counts.get(rule.name) || 0) + 1);
+        const current = counts.get(rule.name) || { count: 0, evidence: emptyEvidence(), examples: [] };
+        current.count++;
+        addEvidence(current.evidence, r.social_network);
+        const example = (r.post_title || r.comment_text || "").replace(/\s+/g, " ").trim();
+        if (example && current.examples.length < 2) current.examples.push(example.slice(0, 110));
+        counts.set(rule.name, current);
       }
     }
   }
   return Array.from(counts.entries())
-    .map(([name, count]) => ({ name, count }))
+    .map(([name, item]) => ({ name, count: item.count, evidence: item.evidence, examples: item.examples }))
+    .filter(t => t.count >= 2 || t.evidence.news > 0 || t.evidence.videos > 0)
     .sort((a, b) => b.count - a.count)
     .slice(0, 7);
 };
@@ -181,9 +207,9 @@ async function fetchSnapshot(
   timeoutMs = 8000,
 ): Promise<Snapshot> {
   const now = new Date();
-  const startToday = new Date(now); startToday.setHours(0, 0, 0, 0);
-  const startYesterday = new Date(startToday.getTime() - 86400000);
-  const start30d = new Date(now.getTime() - 30 * 86400000);
+  const start12h = new Date(now.getTime() - 12 * 3600000);
+  const start6h = new Date(now.getTime() - 6 * 3600000);
+  const start1h = new Date(now.getTime() - 3600000);
   const start24h = new Date(now.getTime() - 24 * 3600000);
   const startPrev24h = new Date(now.getTime() - 48 * 3600000);
 
@@ -210,19 +236,24 @@ async function fetchSnapshot(
     onProgress?.({ ...live, steps: { ...live.steps } });
   };
 
-  const pNews = run<{ count: number | null }>(base().eq("social_network", "Google News"), "news")
+  const pNews = run<{ count: number | null }>(base().gte("created_at", start24h.toISOString()).eq("social_network", "Google News"), "news")
     .then(r => { emit({ news: r.count ?? 0, steps: { ...live.steps, collectNews: true } }); return r; });
-  const pToday = run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()), "today")
+  const pToday = run<{ count: number | null }>(base().gte("created_at", start24h.toISOString()), "today")
     .then(r => { emit({ mentionsProcessed: r.count ?? 0, steps: { ...live.steps, processAI: true, collectSocial: true } }); return r; });
-  const pPos = run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()).eq("sentiment_label", "Positivo"), "pos");
-  const pNeg = run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()).eq("sentiment_label", "Negativo"), "neg");
-  const pNeu = run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()).eq("sentiment_label", "Neutro"), "neu");
+  const pH12 = run<{ count: number | null }>(base().gte("created_at", start12h.toISOString()), "h12");
+  const pH6 = run<{ count: number | null }>(base().gte("created_at", start6h.toISOString()), "h6");
+  const pH1 = run<{ count: number | null }>(base().gte("created_at", start1h.toISOString()), "h1");
+  const pPos = run<{ count: number | null }>(base().gte("created_at", start24h.toISOString()).eq("sentiment_label", "Positivo"), "pos");
+  const pNeg = run<{ count: number | null }>(base().gte("created_at", start24h.toISOString()).eq("sentiment_label", "Negativo"), "neg");
+  const pNeu = run<{ count: number | null }>(base().gte("created_at", start24h.toISOString()).eq("sentiment_label", "Neutro"), "neu");
   const pPrev = run<{ count: number | null }>(base().gte("created_at", startPrev24h.toISOString()).lt("created_at", start24h.toISOString()), "prev24");
 
-  // Sentimento de ontem para movimentação
-  const pYestPos = run<{ count: number | null }>(base().gte("created_at", startYesterday.toISOString()).lt("created_at", startToday.toISOString()).eq("sentiment_label", "Positivo"), "yPos");
-  const pYestNeg = run<{ count: number | null }>(base().gte("created_at", startYesterday.toISOString()).lt("created_at", startToday.toISOString()).eq("sentiment_label", "Negativo"), "yNeg");
-  const pYestNeu = run<{ count: number | null }>(base().gte("created_at", startYesterday.toISOString()).lt("created_at", startToday.toISOString()).eq("sentiment_label", "Neutro"), "yNeu");
+  // Sentimento da janela anterior equivalente (24h anteriores)
+  const pYestPos = run<{ count: number | null }>(base().gte("created_at", startPrev24h.toISOString()).lt("created_at", start24h.toISOString()).eq("sentiment_label", "Positivo"), "yPos");
+  const pYestNeg = run<{ count: number | null }>(base().gte("created_at", startPrev24h.toISOString()).lt("created_at", start24h.toISOString()).eq("sentiment_label", "Negativo"), "yNeg");
+  const pYestNeu = run<{ count: number | null }>(base().gte("created_at", startPrev24h.toISOString()).lt("created_at", start24h.toISOString()).eq("sentiment_label", "Neutro"), "yNeu");
+  const pVideos = run<{ count: number | null }>(base().gte("created_at", start24h.toISOString()).or("social_network.ilike.%youtube%,social_network.ilike.%tiktok%,social_network.ilike.%video%"), "videos")
+    .then(r => { emit({ videos: r.count ?? 0 }); return r; });
 
   Promise.all([pPos, pNeg, pNeu]).then(([rp, rn, ru]) => {
     const p = rp.count ?? 0, n = rn.count ?? 0, u = ru.count ?? 0;
@@ -244,7 +275,7 @@ async function fetchSnapshot(
       .select("id, created_at, sentiment_label, comment_text, social_network, likes_count, shares_count, replies_count, post_url, post_title, author_name, author_handle")
       .eq("user_id", userId).eq("candidate_id", candidateId)
       .not("social_network", "in", "(mastodon,lemmy,pinterest)")
-      .gte("created_at", start30d.toISOString())
+      .gte("created_at", start24h.toISOString())
       .order("created_at", { ascending: false })
       .limit(3000),
     "sample"
@@ -253,16 +284,17 @@ async function fetchSnapshot(
   // Eventos políticos
   const pEvents = run<{ data: any[] | null }>(
     supabase.from("political_events")
-      .select("id, event_name, event_date, event_type, importance_score, publications_count")
+      .select("id, event_name, event_date, event_type, importance_score, publications_count, distinct_outlets")
       .eq("user_id", userId).eq("candidate_id", candidateId)
-      .gte("event_date", start30d.toISOString())
+      .gte("event_date", start24h.toISOString())
+      .lte("event_date", now.toISOString())
       .order("importance_score", { ascending: false })
       .limit(6),
     "events"
   );
 
-  const [qToday, qPos, qNeg, qNeu, qNews, qPrev24h, qSample, qEvents, qYPos, qYNeg, qYNeu] = await Promise.all([
-    pToday, pPos, pNeg, pNeu, pNews, pPrev, pSample, pEvents, pYestPos, pYestNeg, pYestNeu,
+  const [qToday, qH12, qH6, qH1, qPos, qNeg, qNeu, qNews, qVideos, qPrev24h, qSample, qEvents, qYPos, qYNeg, qYNeu] = await Promise.all([
+    pToday, pH12, pH6, pH1, pPos, pNeg, pNeu, pNews, pVideos, pPrev, pSample, pEvents, pYestPos, pYestNeg, pYestNeu,
   ]);
 
   const mentionsToday = qToday.count ?? 0;
@@ -270,33 +302,44 @@ async function fetchSnapshot(
   const negativeToday = qNeg.count ?? 0;
   const neutralToday = qNeu.count ?? 0;
   const newsCollected = qNews.count ?? 0;
+  const videosCollected = qVideos.count ?? 0;
   const last24h = qToday.count ?? 0;
   const prev24h = qPrev24h.count ?? 0;
   const sample: any[] = qSample.data ?? [];
+  const evidence = emptyEvidence();
+  evidence.news = newsCollected;
+  evidence.videos = videosCollected;
+  evidence.posts = Math.max(0, last24h - newsCollected - videosCollected);
+  evidence.total = evidence.news + evidence.posts + evidence.videos;
+  const windowCounts = { h1: qH1.count ?? 0, h6: qH6.count ?? 0, h12: qH12.count ?? 0, h24: last24h, previous24h: prev24h };
 
-  // Movimentação de sentimento (delta % vs ontem)
+  // Movimentação de sentimento (delta % vs 24h anteriores)
   const yPos = qYPos.count ?? 0;
   const yNeg = qYNeg.count ?? 0;
   const yNeu = qYNeu.count ?? 0;
-  const pctDelta = (cur: number, prev: number) => prev > 0 ? Math.round(((cur - prev) / prev) * 100) : (cur > 0 ? 100 : 0);
+  const pctDelta = (cur: number, prev: number) => prev > 0 ? Math.round(((cur - prev) / prev) * 100) : 0;
   const sentimentDelta = {
     positiveDeltaPct: pctDelta(positiveToday, yPos),
     negativeDeltaPct: pctDelta(negativeToday, yNeg),
     neutralDeltaPct: pctDelta(neutralToday, yNeu),
   };
 
-  // Buckets evolução
+  // Buckets evolução — somente janelas de tempo real
   const buckets24h: EvolutionPoint[] = Array.from({ length: 24 }, (_, i) => {
     const bs = new Date(now.getTime() - (23 - i) * 3600000);
     return { label: bs.getHours().toString().padStart(2, "0") + "h", total: 0, positive: 0, negative: 0, neutral: 0 };
   });
-  const buckets7d: EvolutionPoint[] = Array.from({ length: 7 }, (_, i) => {
-    const bs = new Date(now); bs.setDate(now.getDate() - (6 - i));
-    return { label: bs.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), total: 0, positive: 0, negative: 0, neutral: 0 };
+  const buckets12h: EvolutionPoint[] = Array.from({ length: 12 }, (_, i) => {
+    const bs = new Date(now.getTime() - (11 - i) * 3600000);
+    return { label: bs.getHours().toString().padStart(2, "0") + "h", total: 0, positive: 0, negative: 0, neutral: 0 };
   });
-  const buckets30d: EvolutionPoint[] = Array.from({ length: 30 }, (_, i) => {
-    const bs = new Date(now); bs.setDate(now.getDate() - (29 - i));
-    return { label: bs.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), total: 0, positive: 0, negative: 0, neutral: 0 };
+  const buckets6h: EvolutionPoint[] = Array.from({ length: 6 }, (_, i) => {
+    const bs = new Date(now.getTime() - (5 - i) * 3600000);
+    return { label: bs.getHours().toString().padStart(2, "0") + "h", total: 0, positive: 0, negative: 0, neutral: 0 };
+  });
+  const buckets1h: EvolutionPoint[] = Array.from({ length: 12 }, (_, i) => {
+    const bs = new Date(now.getTime() - (11 - i) * 5 * 60000);
+    return { label: bs.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }), total: 0, positive: 0, negative: 0, neutral: 0 };
   });
   for (const r of sample) {
     const t = new Date(r.created_at).getTime();
@@ -308,9 +351,10 @@ async function fetchSnapshot(
     };
     const h = Math.floor((now.getTime() - t) / 3600000);
     if (h >= 0 && h < 24) inc(buckets24h[23 - h]);
-    const d7 = Math.floor((now.getTime() - t) / 86400000);
-    if (d7 >= 0 && d7 < 7) inc(buckets7d[6 - d7]);
-    if (d7 >= 0 && d7 < 30) inc(buckets30d[29 - d7]);
+    if (h >= 0 && h < 12) inc(buckets12h[11 - h]);
+    if (h >= 0 && h < 6) inc(buckets6h[5 - h]);
+    const m5 = Math.floor((now.getTime() - t) / (5 * 60000));
+    if (m5 >= 0 && m5 < 12) inc(buckets1h[11 - m5]);
   }
   emit({ steps: { ...live.steps, buildCharts: true } });
 
@@ -319,13 +363,20 @@ async function fetchSnapshot(
   emit({ emergingTopics: themes.slice(0, 6).map(t => t.name) });
 
   // BLOCO 3 — Eventos
-  const events: EventItem[] = (qEvents.data ?? []).map((e: any) => ({
-    id: e.id,
-    name: e.event_name,
-    date: e.event_date,
-    type: e.event_type || "evento",
-    impact: Number(e.importance_score || e.publications_count || 0),
-  }));
+  const events: EventItem[] = (qEvents.data ?? [])
+    .filter((e: any) => {
+      const age = now.getTime() - new Date(e.event_date).getTime();
+      return age >= 0 && age <= 7 * 86400000;
+    })
+    .map((e: any) => ({
+      id: e.id,
+      name: e.event_name,
+      date: e.event_date,
+      type: e.event_type || "evento",
+      impact: Number(e.importance_score || e.publications_count || 0),
+      publications: Number(e.publications_count || 0),
+      outlets: Number(e.distinct_outlets || 0),
+    }));
 
   // BLOCO 5 — Veículos mais ativos (Google News + autores)
   const outletCounts = new Map<string, number>();
@@ -350,6 +401,7 @@ async function fetchSnapshot(
       engagement: (r.likes_count || 0) + (r.shares_count || 0) + (r.replies_count || 0),
       url: r.post_url || null,
       sentiment: r.sentiment_label || null,
+      createdAt: r.created_at,
     }))
     .filter(p => p.title && p.title !== "(sem título)" && p.engagement > 0)
     .sort((a, b) => b.engagement - a.engagement)
@@ -358,50 +410,56 @@ async function fetchSnapshot(
   // BLOCO 7 — Alertas
   const alerts: Alert[] = [];
   const growth = prev24h > 0 ? ((last24h - prev24h) / prev24h) * 100 : 0;
-  if (prev24h > 0 && growth >= 50) alerts.push({ kind: "growth", title: `Crescimento de ${Math.round(growth)}% nas menções`, detail: "Volume disparou nas últimas 24h." });
-  else if (prev24h > 0 && growth <= -40) alerts.push({ kind: "growth", title: `Queda de ${Math.round(Math.abs(growth))}% nas menções`, detail: "Volume caiu significativamente." });
+  if (prev24h >= 10 && growth >= 50) alerts.push({ kind: "growth", title: `Crescimento de ${Math.round(growth)}% nas menções`, detail: `${last24h.toLocaleString("pt-BR")} registros nas últimas 24h contra ${prev24h.toLocaleString("pt-BR")} na janela anterior.`, evidence });
+  else if (prev24h >= 10 && growth <= -40) alerts.push({ kind: "growth", title: `Queda de ${Math.round(Math.abs(growth))}% nas menções`, detail: `${last24h.toLocaleString("pt-BR")} registros nas últimas 24h contra ${prev24h.toLocaleString("pt-BR")} na janela anterior.`, evidence });
   if (mentionsToday > 50 && (negativeToday / Math.max(1, mentionsToday)) >= 0.5) {
-    alerts.push({ kind: "crisis", title: "Possível crise reputacional", detail: `${Math.round(negativeToday / mentionsToday * 100)}% das menções de hoje são negativas.` });
+    alerts.push({ kind: "crisis", title: "Volume negativo elevado", detail: `${negativeToday.toLocaleString("pt-BR")} de ${mentionsToday.toLocaleString("pt-BR")} registros das últimas 24h foram classificados como negativos.`, evidence });
   } else if (mentionsToday > 0 && (negativeToday / Math.max(1, mentionsToday)) >= 0.35) {
-    alerts.push({ kind: "negative", title: "Pico de sentimento negativo", detail: `${negativeToday} menções negativas hoje.` });
+    alerts.push({ kind: "negative", title: "Atenção ao sentimento negativo", detail: `${negativeToday.toLocaleString("pt-BR")} registros negativos nas últimas 24h.`, evidence });
   }
-  const viral = sample.filter(r => (r.likes_count || 0) + (r.shares_count || 0) > 500)
+  const viral = sample.filter(r => (r.likes_count || 0) + (r.shares_count || 0) + (r.replies_count || 0) > 500)
     .sort((a, b) => (b.likes_count + b.shares_count) - (a.likes_count + a.shares_count))[0];
-  if (viral) alerts.push({ kind: "viral", title: "Conteúdo viral identificado", detail: `Post em ${viral.social_network} com ${((viral.likes_count || 0) + (viral.shares_count || 0)).toLocaleString("pt-BR")} interações.` });
+  if (viral) {
+    const viralEngagement = (viral.likes_count || 0) + (viral.shares_count || 0) + (viral.replies_count || 0);
+    alerts.push({ kind: "viral", title: "Conteúdo viral identificado", detail: (viral.post_title || viral.comment_text || "Publicação recente").slice(0, 120), source: viral.social_network, engagement: viralEngagement, publishedAt: viral.created_at, evidence: { news: viral.social_network === "Google News" ? 1 : 0, posts: classifyNetwork(viral.social_network) === "posts" ? 1 : 0, videos: classifyNetwork(viral.social_network) === "videos" ? 1 : 0, total: 1 } });
+  }
   const recentNews = sample.filter(r => r.social_network === "Google News" && new Date(r.created_at).getTime() > Date.now() - 86400000).length;
-  if (recentNews >= 5) alerts.push({ kind: "news", title: `${recentNews} notícias publicadas hoje`, detail: "Cobertura jornalística intensificada." });
-  if (Math.abs(sentimentDelta.positiveDeltaPct - sentimentDelta.negativeDeltaPct) >= 40) {
-    alerts.push({ kind: "growth", title: "Mudança brusca de sentimento", detail: `Positivo ${sentimentDelta.positiveDeltaPct >= 0 ? "+" : ""}${sentimentDelta.positiveDeltaPct}% / Negativo ${sentimentDelta.negativeDeltaPct >= 0 ? "+" : ""}${sentimentDelta.negativeDeltaPct}% vs ontem.` });
+  if (recentNews >= 5) alerts.push({ kind: "news", title: `${recentNews} notícias nas últimas 24h`, detail: "Alerta baseado apenas nas notícias coletadas na janela monitorada.", evidence: { ...evidence, news: recentNews } });
+  if (prev24h >= 10 && Math.abs(sentimentDelta.positiveDeltaPct - sentimentDelta.negativeDeltaPct) >= 40) {
+    alerts.push({ kind: "growth", title: "Mudança mensurável de sentimento", detail: `Comparação contra 24h anteriores: positivo ${sentimentDelta.positiveDeltaPct >= 0 ? "+" : ""}${sentimentDelta.positiveDeltaPct}% / negativo ${sentimentDelta.negativeDeltaPct >= 0 ? "+" : ""}${sentimentDelta.negativeDeltaPct}%.`, evidence });
   }
 
-  // BLOCO 1 — narrativa
-  const topTheme = themes[0]?.name || "diversos assuntos";
-  const tone = positiveToday > negativeToday * 1.2 ? "tom predominantemente positivo"
-    : negativeToday > positiveToday * 1.2 ? "tom predominantemente negativo" : "tom equilibrado";
-  const trendVerb = growth >= 20 ? "ganham força" : growth <= -20 ? "perdem tração" : "se mantêm estáveis";
-  const topOutlet = outlets[0]?.name;
+  // BLOCO 1 — leitura factual, sem preencher lacunas
+  const topTheme = themes[0];
+  const tone = positiveToday + negativeToday + neutralToday === 0 ? "sem sentimento classificado suficiente"
+    : positiveToday > negativeToday * 1.2 ? "predomínio positivo nos registros classificados"
+    : negativeToday > positiveToday * 1.2 ? "predomínio negativo nos registros classificados" : "sentimento equilibrado nos registros classificados";
   const nowNarrative =
-    `As conversas sobre ${candidateName} ${trendVerb} nas últimas horas, com destaque para ${topTheme.toLowerCase()}. ` +
-    `${mentionsToday.toLocaleString("pt-BR")} menções foram registradas hoje, em ${tone}.` +
-    (topOutlet ? ` ${topOutlet} lidera a cobertura jornalística do tema.` : "");
+    mentionsToday === 0
+      ? `Nenhum dado foi coletado para ${candidateName} nas últimas 24 horas. O monitor não gerou inferências sem evidência.`
+      : `${candidateName} teve ${mentionsToday.toLocaleString("pt-BR")} registros nas últimas 24 horas. ` +
+        (topTheme ? `O tema evidenciado com maior frequência é ${topTheme.name}, sustentado por ${topTheme.evidence.news} notícias, ${topTheme.evidence.posts} posts e ${topTheme.evidence.videos} vídeos. ` : `Nenhum tema político específico atingiu evidência mínima para ser exibido. `) +
+        `A leitura de sentimento indica ${tone}.`;
 
   // BLOCO 8 — Resumo executivo
   const executiveSummary = {
-    what: `${mentionsToday.toLocaleString("pt-BR")} menções hoje (${growth >= 0 ? "+" : ""}${Math.round(growth)}% vs ontem), com foco em ${topTheme}.`,
+    what: mentionsToday > 0 ? `${mentionsToday.toLocaleString("pt-BR")} registros nas últimas 24h; ${windowCounts.h1.toLocaleString("pt-BR")} na última hora.` : "Sem registros nas últimas 24h.",
     why: events[0]
-      ? `Impulsionado por ${events[0].type} "${events[0].name}" em ${new Date(events[0].date).toLocaleDateString("pt-BR")}.`
-      : viral ? `Tracionado por conteúdo viral em ${viral.social_network}.`
-      : `Movimentação orgânica em ${themes.slice(0, 2).map(t => t.name).join(" e ") || "múltiplos temas"}.`,
-    who: topOutlet
-      ? `${topOutlet} e demais veículos (${outlets.slice(1, 3).map(o => o.name).join(", ") || "redes sociais"}) ampliaram o alcance.`
-      : `Disseminação principalmente orgânica nas redes sociais.`,
-    impact: `Sentimento positivo ${sentimentDelta.positiveDeltaPct >= 0 ? "+" : ""}${sentimentDelta.positiveDeltaPct}% e negativo ${sentimentDelta.negativeDeltaPct >= 0 ? "+" : ""}${sentimentDelta.negativeDeltaPct}% comparado a ontem.`,
+      ? `Evento recente detectado: "${events[0].name}" (${events[0].publications} publicações, ${events[0].outlets} veículos).`
+      : viral ? `Evidência de viralização: ${viral.social_network}, ${((viral.likes_count || 0) + (viral.shares_count || 0) + (viral.replies_count || 0)).toLocaleString("pt-BR")} interações.`
+      : "Sem evidência suficiente para atribuir causa.",
+    who: outlets.length > 0
+      ? `Veículos identificados na janela: ${outlets.slice(0, 3).map(o => `${o.name} (${o.count})`).join(", ")}.`
+      : "Nenhum veículo jornalístico identificado na janela monitorada.",
+    impact: positiveToday + negativeToday + neutralToday > 0
+      ? `Classificação nas últimas 24h: ${positiveToday.toLocaleString("pt-BR")} positivas, ${negativeToday.toLocaleString("pt-BR")} negativas e ${neutralToday.toLocaleString("pt-BR")} neutras.`
+      : "Sem classificação de sentimento suficiente na janela monitorada.",
   };
 
   return {
-    nowNarrative, mentionsToday, positiveToday, negativeToday, newsCollected,
+    nowNarrative, mentionsToday, positiveToday, negativeToday, newsCollected, evidence, windowCounts,
     themes, events, sentimentDelta, outlets, publications, alerts, executiveSummary,
-    evolution24h: buckets24h, evolution7d: buckets7d, evolution30d: buckets30d,
+    evolution24h: buckets24h, evolution12h: buckets12h, evolution6h: buckets6h, evolution1h: buckets1h,
     savedAt: Date.now(), candidateName,
   };
 }
@@ -420,11 +478,11 @@ const KpiCard = ({ icon, label, value, tone = "text-foreground", accent }: { ico
 );
 
 const alertStyles: Record<Alert["kind"], { icon: React.ReactNode; ring: string; bg: string; text: string }> = {
-  growth: { icon: <TrendingUp className="h-4 w-4" />, ring: "border-emerald-500/30", bg: "bg-emerald-500/5", text: "text-emerald-500" },
-  negative: { icon: <TrendingDown className="h-4 w-4" />, ring: "border-red-500/30", bg: "bg-red-500/5", text: "text-red-500" },
-  crisis: { icon: <AlertTriangle className="h-4 w-4" />, ring: "border-red-500/40", bg: "bg-red-500/10", text: "text-red-500" },
-  viral: { icon: <Zap className="h-4 w-4" />, ring: "border-amber-500/30", bg: "bg-amber-500/5", text: "text-amber-500" },
-  news: { icon: <Newspaper className="h-4 w-4" />, ring: "border-violet-500/30", bg: "bg-violet-500/5", text: "text-violet-500" },
+  growth: { icon: <TrendingUp className="h-4 w-4" />, ring: "border-success/30", bg: "bg-success/5", text: "text-success" },
+  negative: { icon: <TrendingDown className="h-4 w-4" />, ring: "border-destructive/30", bg: "bg-destructive/5", text: "text-destructive" },
+  crisis: { icon: <AlertTriangle className="h-4 w-4" />, ring: "border-destructive/40", bg: "bg-destructive/10", text: "text-destructive" },
+  viral: { icon: <Zap className="h-4 w-4" />, ring: "border-warning/30", bg: "bg-warning/5", text: "text-warning" },
+  news: { icon: <Newspaper className="h-4 w-4" />, ring: "border-accent/30", bg: "bg-accent/5", text: "text-accent" },
 };
 
 const EvolutionChart = ({ data }: { data: EvolutionPoint[] }) => (
@@ -433,10 +491,10 @@ const EvolutionChart = ({ data }: { data: EvolutionPoint[] }) => (
       <AreaChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
         <defs>
           <linearGradient id="gPos" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#22c55e" stopOpacity={0.5} /><stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
+            <stop offset="0%" stopColor="hsl(var(--success))" stopOpacity={0.5} /><stop offset="100%" stopColor="hsl(var(--success))" stopOpacity={0} />
           </linearGradient>
           <linearGradient id="gNeg" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#ef4444" stopOpacity={0.5} /><stop offset="100%" stopColor="#ef4444" stopOpacity={0} />
+            <stop offset="0%" stopColor="hsl(var(--destructive))" stopOpacity={0.5} /><stop offset="100%" stopColor="hsl(var(--destructive))" stopOpacity={0} />
           </linearGradient>
           <linearGradient id="gTotal" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.45} /><stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
@@ -447,8 +505,8 @@ const EvolutionChart = ({ data }: { data: EvolutionPoint[] }) => (
         <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} width={36} />
         <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
         <Area type="monotone" dataKey="total" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#gTotal)" />
-        <Area type="monotone" dataKey="positive" stroke="#22c55e" strokeWidth={1.5} fill="url(#gPos)" />
-        <Area type="monotone" dataKey="negative" stroke="#ef4444" strokeWidth={1.5} fill="url(#gNeg)" />
+        <Area type="monotone" dataKey="positive" stroke="hsl(var(--success))" strokeWidth={1.5} fill="url(#gPos)" />
+        <Area type="monotone" dataKey="negative" stroke="hsl(var(--destructive))" strokeWidth={1.5} fill="url(#gNeg)" />
       </AreaChart>
     </ResponsiveContainer>
   </div>
@@ -460,11 +518,11 @@ const SentimentDeltaPill = ({ label, delta, positive }: { label: string; delta: 
   return (
     <div className="flex flex-col gap-1 rounded-lg border border-border/60 bg-card/40 p-3">
       <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{label}</span>
-      <div className={cn("flex items-center gap-1.5 text-lg font-bold tabular-nums", good ? "text-emerald-500" : "text-red-500")}>
+      <div className={cn("flex items-center gap-1.5 text-lg font-bold tabular-nums", good ? "text-success" : "text-destructive")}>
         {up ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
         {up ? "+" : ""}{delta}%
       </div>
-      <span className="text-[11px] text-muted-foreground">vs ontem</span>
+      <span className="text-[11px] text-muted-foreground">vs 24h anteriores</span>
     </div>
   );
 };
@@ -552,7 +610,7 @@ const RealTimeMonitor = () => {
         <div className="flex items-center gap-2 flex-wrap">
           <div className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card/60 px-2.5 py-1 text-xs">
             {isSyncing ? (<><RefreshCw className="h-3 w-3 animate-spin text-primary" /><span className="text-muted-foreground">Atualizando…</span></>)
-              : snapshot ? (<><CheckCircle2 className="h-3 w-3 text-emerald-500" /><span className="text-muted-foreground">{lastUpdate ? formatRelative(lastUpdate) : "Sincronizado"}</span></>)
+              : snapshot ? (<><CheckCircle2 className="h-3 w-3 text-success" /><span className="text-muted-foreground">{lastUpdate ? formatRelative(lastUpdate) : "Sincronizado"}</span></>)
               : (<><Clock className="h-3 w-3" /><span className="text-muted-foreground">Aguardando</span></>)}
           </div>
           <Button variant="outline" size="sm" disabled={isSyncing || !selectedCandidateId || !selectedCandidate}
@@ -566,10 +624,10 @@ const RealTimeMonitor = () => {
       {/* Selector */}
       <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
         <CardContent className="p-3 flex flex-col sm:flex-row sm:items-center gap-3">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/10 px-2.5 py-1 text-[11px] font-semibold text-red-500 shrink-0">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] font-semibold text-destructive shrink-0">
             <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-destructive" />
             </span>AO VIVO
           </span>
           {loadingCandidates ? <Skeleton className="h-11 w-full sm:w-[280px]" /> : (
@@ -592,8 +650,8 @@ const RealTimeMonitor = () => {
       ) : (
         <>
           {error && (
-            <Card className="border-amber-500/40 bg-amber-500/5">
-              <CardContent className="py-2.5 text-xs text-amber-600 flex items-center gap-2">
+            <Card className="border-warning/40 bg-warning/5">
+              <CardContent className="py-2.5 text-xs text-warning flex items-center gap-2">
                 <AlertTriangle className="h-3.5 w-3.5" />{error}
               </CardContent>
             </Card>
@@ -621,13 +679,27 @@ const RealTimeMonitor = () => {
             </Card>
           ) : !liveProgress ? <Skeleton className="h-32 w-full rounded-lg" /> : null}
 
+          {snapshot && (
+            <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
+              <CardContent className="p-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">Baseado em:</span>
+                <span>{snapshot.evidence.news.toLocaleString("pt-BR")} notícias</span>
+                <span className="hidden sm:inline">·</span>
+                <span>{snapshot.evidence.posts.toLocaleString("pt-BR")} posts</span>
+                <span className="hidden sm:inline">·</span>
+                <span>{snapshot.evidence.videos.toLocaleString("pt-BR")} vídeos</span>
+                <Badge variant="outline" className="w-fit sm:ml-auto text-[10px]">Últimas 24h</Badge>
+              </CardContent>
+            </Card>
+          )}
+
           {/* KPIs */}
           {snapshot && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
-              <KpiCard icon={<Activity className="h-3.5 w-3.5 text-primary" />} label="Menções Hoje" value={snapshot.mentionsToday.toLocaleString("pt-BR")} accent="bg-primary/70" />
-              <KpiCard icon={<TrendingUp className="h-3.5 w-3.5 text-emerald-500" />} label="Positivas" value={snapshot.positiveToday.toLocaleString("pt-BR")} tone="text-emerald-500" accent="bg-emerald-500/70" />
-              <KpiCard icon={<TrendingDown className="h-3.5 w-3.5 text-red-500" />} label="Negativas" value={snapshot.negativeToday.toLocaleString("pt-BR")} tone="text-red-500" accent="bg-red-500/70" />
-              <KpiCard icon={<Newspaper className="h-3.5 w-3.5 text-violet-500" />} label="Notícias" value={snapshot.newsCollected.toLocaleString("pt-BR")} accent="bg-violet-500/70" />
+              <KpiCard icon={<Activity className="h-3.5 w-3.5 text-primary" />} label="Última hora" value={snapshot.windowCounts.h1.toLocaleString("pt-BR")} accent="bg-primary/70" />
+              <KpiCard icon={<Clock className="h-3.5 w-3.5 text-primary" />} label="Últimas 6h" value={snapshot.windowCounts.h6.toLocaleString("pt-BR")} accent="bg-primary/50" />
+              <KpiCard icon={<Activity className="h-3.5 w-3.5 text-primary" />} label="Últimas 12h" value={snapshot.windowCounts.h12.toLocaleString("pt-BR")} accent="bg-primary/40" />
+              <KpiCard icon={<Newspaper className="h-3.5 w-3.5 text-primary" />} label="Notícias 24h" value={snapshot.newsCollected.toLocaleString("pt-BR")} accent="bg-primary/30" />
             </div>
           )}
 
@@ -637,24 +709,30 @@ const RealTimeMonitor = () => {
               <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <Flame className="h-4 w-4 text-amber-500" />Assuntos dominantes
+                    <Flame className="h-4 w-4 text-warning" />Assuntos dominantes
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   {snapshot.themes.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-4">Sem dados suficientes para identificar temas políticos.</p>
+                    <p className="text-xs text-muted-foreground py-4">Sem evidência recente suficiente para identificar temas políticos nas últimas 24h.</p>
                   ) : (
-                    <div className="flex flex-wrap gap-2">
+                    <div className="space-y-2">
                       {snapshot.themes.map((t, i) => (
                         <motion.div key={t.name} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.04 }}
                           className={cn(
-                            "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium",
-                            i === 0 ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400" :
-                            i === 1 ? "border-primary/30 bg-primary/10 text-primary" :
-                            "border-border/60 bg-muted/30 text-foreground/80"
+                            "rounded-lg border px-3 py-2",
+                            i === 0 ? "border-warning/40 bg-warning/10" :
+                            i === 1 ? "border-primary/30 bg-primary/10" :
+                            "border-border/60 bg-muted/30"
                           )}>
-                          <span>{t.name}</span>
-                          <span className="text-[11px] tabular-nums opacity-70">{t.count}</span>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-semibold text-foreground">{t.name}</span>
+                            <span className="text-[11px] tabular-nums text-muted-foreground">{t.count} registros</span>
+                          </div>
+                          <div className="mt-1 text-[11px] text-muted-foreground">
+                            Base: {t.evidence.news} notícias · {t.evidence.posts} posts · {t.evidence.videos} vídeos
+                          </div>
+                          {t.examples[0] && <div className="mt-1 text-xs text-foreground/75 line-clamp-1">{t.examples[0]}</div>}
                         </motion.div>
                       ))}
                     </div>
@@ -688,13 +766,15 @@ const RealTimeMonitor = () => {
               <CardContent>
                 <Tabs defaultValue="24h">
                   <TabsList className="h-8">
+                    <TabsTrigger value="1h" className="text-xs">1h</TabsTrigger>
+                    <TabsTrigger value="6h" className="text-xs">6h</TabsTrigger>
+                    <TabsTrigger value="12h" className="text-xs">12h</TabsTrigger>
                     <TabsTrigger value="24h" className="text-xs">24h</TabsTrigger>
-                    <TabsTrigger value="7d" className="text-xs">7 dias</TabsTrigger>
-                    <TabsTrigger value="30d" className="text-xs">30 dias</TabsTrigger>
                   </TabsList>
+                  <TabsContent value="1h" className="mt-3"><EvolutionChart data={snapshot.evolution1h} /></TabsContent>
+                  <TabsContent value="6h" className="mt-3"><EvolutionChart data={snapshot.evolution6h} /></TabsContent>
+                  <TabsContent value="12h" className="mt-3"><EvolutionChart data={snapshot.evolution12h} /></TabsContent>
                   <TabsContent value="24h" className="mt-3"><EvolutionChart data={snapshot.evolution24h} /></TabsContent>
-                  <TabsContent value="7d" className="mt-3"><EvolutionChart data={snapshot.evolution7d} /></TabsContent>
-                  <TabsContent value="30d" className="mt-3"><EvolutionChart data={snapshot.evolution30d} /></TabsContent>
                 </Tabs>
               </CardContent>
             </Card>
@@ -711,7 +791,7 @@ const RealTimeMonitor = () => {
                 </CardHeader>
                 <CardContent>
                   {snapshot.events.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-4">Nenhum evento detectado nos últimos 30 dias.</p>
+                    <p className="text-xs text-muted-foreground py-4">Nenhum evento detectado nas últimas 24h.</p>
                   ) : (
                     <ul className="space-y-2">
                       {snapshot.events.map(e => (
@@ -722,10 +802,12 @@ const RealTimeMonitor = () => {
                             <div className="text-[11px] text-muted-foreground flex items-center gap-2 mt-0.5">
                               <span className="capitalize">{e.type}</span>
                               <span>·</span>
-                              <span>{new Date(e.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</span>
+                              <span>{formatRelative(new Date(e.date))}</span>
+                              <span>·</span>
+                              <span>{e.publications} publicações / {e.outlets} veículos</span>
                             </div>
                           </div>
-                          <Badge variant="secondary" className="text-[10px] h-5 shrink-0">Impacto {Math.round(e.impact)}</Badge>
+                          <Badge variant="secondary" className="text-[10px] h-5 shrink-0">Evidência recente</Badge>
                         </li>
                       ))}
                     </ul>
@@ -736,12 +818,12 @@ const RealTimeMonitor = () => {
               <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <Building2 className="h-4 w-4 text-violet-500" />Veículos mais ativos
+                    <Building2 className="h-4 w-4 text-accent" />Veículos mais ativos
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   {snapshot.outlets.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-4">Nenhum veículo jornalístico identificado ainda.</p>
+                    <p className="text-xs text-muted-foreground py-4">Nenhum veículo jornalístico identificado nas últimas 24h.</p>
                   ) : (
                     <ul className="space-y-2">
                       {snapshot.outlets.map((o, i) => {
@@ -749,14 +831,14 @@ const RealTimeMonitor = () => {
                         const pct = Math.round((o.count / max) * 100);
                         return (
                           <li key={o.name} className="flex items-center gap-3">
-                            <span className="w-5 h-5 rounded-md bg-violet-500/10 text-violet-500 text-[11px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                            <span className="w-5 h-5 rounded-md bg-accent/10 text-accent text-[11px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between gap-2">
                                 <span className="text-sm font-medium truncate">{o.name}</span>
                                 <span className="text-[11px] text-muted-foreground tabular-nums">{o.count.toLocaleString("pt-BR")}</span>
                               </div>
                               <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden mt-1">
-                                <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6 }} className="h-full bg-violet-500" />
+                                <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6 }} className="h-full bg-accent" />
                               </div>
                             </div>
                           </li>
@@ -774,12 +856,12 @@ const RealTimeMonitor = () => {
             <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-primary" />Publicações mais relevantes
+                  <Sparkles className="h-4 w-4 text-primary" />Publicações relevantes nas últimas 24h
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {snapshot.publications.length === 0 ? (
-                  <p className="text-xs text-muted-foreground py-4">Sem publicações com engajamento relevante.</p>
+                    <p className="text-xs text-muted-foreground py-4">Sem publicações recentes com engajamento relevante.</p>
                 ) : (
                   <ul className="space-y-2">
                     {snapshot.publications.map(p => (
@@ -790,17 +872,18 @@ const RealTimeMonitor = () => {
                             <div className="flex items-center gap-2 mt-1.5 flex-wrap text-[11px] text-muted-foreground">
                               <span className="font-medium text-foreground/80 truncate max-w-[160px]">{p.author}</span>
                               <Badge variant="outline" className="h-4 text-[10px] px-1.5">{p.network}</Badge>
+                              <span>{formatRelative(new Date(p.createdAt))}</span>
                               {p.sentiment && (
                                 <Badge variant="secondary" className={cn("h-4 text-[10px] px-1.5",
-                                  p.sentiment === "Positivo" && "bg-emerald-500/10 text-emerald-500",
-                                  p.sentiment === "Negativo" && "bg-red-500/10 text-red-500",
+                                  p.sentiment === "Positivo" && "bg-success/10 text-success",
+                                  p.sentiment === "Negativo" && "bg-destructive/10 text-destructive",
                                 )}>{p.sentiment}</Badge>
                               )}
                             </div>
                           </div>
                           <div className="flex flex-col items-end gap-1 shrink-0">
                             <div className="flex items-center gap-1 text-xs font-semibold tabular-nums">
-                              <Heart className="h-3 w-3 text-red-500" />{p.engagement.toLocaleString("pt-BR")}
+                              <Heart className="h-3 w-3 text-destructive" />{p.engagement.toLocaleString("pt-BR")}
                             </div>
                             {p.url && (
                               <a href={p.url} target="_blank" rel="noopener noreferrer"
@@ -823,12 +906,12 @@ const RealTimeMonitor = () => {
             <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-500" />Alertas IA
+                  <AlertTriangle className="h-4 w-4 text-warning" />Alertas IA
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {snapshot.alerts.length === 0 ? (
-                  <p className="text-xs text-muted-foreground py-4">Tudo dentro da normalidade. Nenhum alerta no momento.</p>
+                  <p className="text-xs text-muted-foreground py-4">Nenhum alerta com evidência suficiente nas últimas 24h.</p>
                 ) : (
                   <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <AnimatePresence>
@@ -841,6 +924,12 @@ const RealTimeMonitor = () => {
                             <div className="min-w-0">
                               <div className="text-sm font-semibold truncate">{a.title}</div>
                               <div className="text-xs text-muted-foreground">{a.detail}</div>
+                              <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+                                {a.source && <span>Fonte: {a.source}</span>}
+                                {typeof a.engagement === "number" && <span>Engajamento: {a.engagement.toLocaleString("pt-BR")}</span>}
+                                {a.publishedAt && <span>Publicado: {formatRelative(new Date(a.publishedAt))}</span>}
+                                {a.evidence && <span>Base: {a.evidence.news} notícias · {a.evidence.posts} posts · {a.evidence.videos} vídeos</span>}
+                              </div>
                             </div>
                           </motion.li>
                         );
@@ -858,15 +947,15 @@ const RealTimeMonitor = () => {
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
                   <BrainCircuit className="h-4 w-4 text-primary" />Resumo executivo
-                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5">IA</Badge>
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5">Evidências</Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {[
                     { k: "O que aconteceu", v: snapshot.executiveSummary.what, icon: <Activity className="h-3.5 w-3.5" /> },
-                    { k: "Por que aconteceu", v: snapshot.executiveSummary.why, icon: <Sparkles className="h-3.5 w-3.5" /> },
-                    { k: "Quem impulsionou", v: snapshot.executiveSummary.who, icon: <Megaphone className="h-3.5 w-3.5" /> },
+                    { k: "Evidência associada", v: snapshot.executiveSummary.why, icon: <Sparkles className="h-3.5 w-3.5" /> },
+                    { k: "Fontes observadas", v: snapshot.executiveSummary.who, icon: <Megaphone className="h-3.5 w-3.5" /> },
                     { k: "Qual foi o impacto", v: snapshot.executiveSummary.impact, icon: <TrendingUp className="h-3.5 w-3.5" /> },
                   ].map(item => (
                     <div key={item.k} className="rounded-lg border border-border/60 bg-background/40 p-3">
