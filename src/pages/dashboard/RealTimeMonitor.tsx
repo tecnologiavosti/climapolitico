@@ -524,7 +524,7 @@ const SentimentDeltaPill = ({ label, delta, positive }: { label: string; delta: 
         {up ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
         {up ? "+" : ""}{delta}%
       </div>
-      <span className="text-[11px] text-muted-foreground">vs ontem</span>
+      <span className="text-[11px] text-muted-foreground">vs 24h anteriores</span>
     </div>
   );
 };
