@@ -567,7 +567,7 @@ const EventReportPage = () => {
         <HelpTooltip text="Descubra os picos de menções do candidato: debates, entrevistas, viralizações e momentos que mais repercutiram nas redes.">
         <h1 className="text-3xl font-bold">Picos de Menções</h1>
       </HelpTooltip>
-        <p className="text-muted-foreground mt-1">Ferramenta de análise histórica e eleitoral. Selecione qualquer período (2018, 2022, 2024, 2026 ou intervalo personalizado) para identificar viralizações, crises, debates e eventos de alta repercussão.</p>
+        <p className="text-muted-foreground mt-1">Ferramenta de inteligência histórica para identificar acontecimentos políticos reais e documentados dentro do intervalo selecionado.</p>
       </div>
 
       {/* Controls */}
@@ -588,20 +588,20 @@ const EventReportPage = () => {
                 </SelectContent>
               </Select>
             </HelpTooltip>
-            <HelpTooltip text="A IA varre comentários dos últimos 3 meses e identifica picos de menções (entrevistas, debates, viralizações) que tiveram repercussão.">
+            <HelpTooltip text="A IA cruza fontes externas e sinais internos para identificar eventos políticos reais no período selecionado.">
               <Button variant="outline" size="sm" className="sm:size-default" onClick={handleDetectEvents} disabled={isDetecting || !selectedCandidate}>
                 {isDetecting
                   ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Detectando...</>
-                  : <><Zap className="mr-2 h-4 w-4" />Picos</>}
+                  : <><Zap className="mr-2 h-4 w-4" />Detectar eventos</>}
               </Button>
             </HelpTooltip>
           </div>
 
           {detectedEvents.length > 0 && (
-            <HelpTooltip text="Selecione um pico para analisar com a IA. A análise considera apenas os comentários daquele dia.">
+            <HelpTooltip text="Selecione um evento documentado para gerar o relatório contextual com IA.">
               <Select value={selectedEventIdx} onValueChange={handleSelectEvent}>
                 <SelectTrigger className="w-full sm:w-[520px]">
-                  <SelectValue placeholder={`${detectedEvents.length} pico(s) detectado(s) — escolha um`} />
+                  <SelectValue placeholder={`${detectedEvents.length} evento(s) detectado(s) — escolha um`} />
                 </SelectTrigger>
                 <SelectContent className="max-w-[calc(100vw-2rem)]">
                   {detectedEvents.map((e, i) => {
@@ -610,7 +610,7 @@ const EventReportPage = () => {
                     return (
                       <SelectItem key={i} value={String(i)} className="whitespace-normal break-words pr-8">
                         <span className="block text-sm leading-snug">
-                          {e.name} — {e.mentions_estimate} menções <span className={v >= 0 ? 'text-green-600' : 'text-red-600'}>({sign}{v}%)</span>
+                          {e.name} — relevância {e.relevance_score || 0} • {e.mentions_estimate} registros <span className={v >= 0 ? 'text-green-600' : 'text-red-600'}>({sign}{v}%)</span>
                         </span>
                       </SelectItem>
                     );
@@ -620,7 +620,7 @@ const EventReportPage = () => {
             </HelpTooltip>
           )}
 
-          {selectedEventIdx && detectedEvents[Number(selectedEventIdx)] && (
+          {selectedEventIdx !== "" && detectedEvents[Number(selectedEventIdx)] && (
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
               <p className="font-medium">{detectedEvents[Number(selectedEventIdx)].name}</p>
               <p className="text-muted-foreground mt-1">{detectedEvents[Number(selectedEventIdx)].description}</p>
@@ -629,13 +629,13 @@ const EventReportPage = () => {
 
           <div className="flex flex-row flex-wrap gap-3 items-end">
             <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">Data Início</label>
+              <label className="text-sm text-muted-foreground">Data Inicial</label>
               <HelpTooltip text="Dia em que o evento começou.">
                 <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-[130px] sm:w-[180px]" />
               </HelpTooltip>
             </div>
             <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">Data Fim</label>
+              <label className="text-sm text-muted-foreground">Data Final</label>
               <HelpTooltip text="Até quando você quer analisar a repercussão.">
                 <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-[130px] sm:w-[180px]" />
               </HelpTooltip>
