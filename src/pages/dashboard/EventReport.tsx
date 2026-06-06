@@ -516,11 +516,11 @@ const EventReportPage = () => {
     }
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (forcedEvent?: DetectedEvent) => {
     if (!selectedCandidate) { toast.error("Selecione um candidato"); return; }
     if (!startDate || !endDate) { toast.error("Defina o período do evento"); return; }
 
-    const evt = selectedEventIdx ? detectedEvents[Number(selectedEventIdx)] : null;
+    const evt = forcedEvent || (selectedEventIdx ? detectedEvents[Number(selectedEventIdx)] : null);
 
     setIsLoading(true);
     setResult(null);
@@ -640,7 +640,7 @@ const EventReportPage = () => {
               </HelpTooltip>
             </div>
             <HelpTooltip text="Clica aqui pra IA olhar tudo que falaram nesse período e te dizer se foi bom ou ruim.">
-              <Button onClick={handleGenerate} disabled={isLoading || !selectedCandidate || !startDate || !endDate}>
+              <Button onClick={() => handleGenerate()} disabled={isLoading || !selectedCandidate || !startDate || !endDate}>
                 {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analisando...</> : <><CalendarDays className="mr-2 h-4 w-4" />Gerar Relatório</>}
               </Button>
             </HelpTooltip>
@@ -736,7 +736,7 @@ const EventReportPage = () => {
                       size="sm"
                       variant="outline"
                       className="w-full mt-1"
-                      onClick={() => { handleSelectEvent(String(i)); setTimeout(() => handleGenerate(), 50); }}
+                       onClick={() => { setSelectedEventIdx(String(i)); setStartDate(e.start_date); setEndDate(e.end_date); handleGenerate(e); }}
                     >
                       <Lightbulb className="h-3 w-3 mr-1" />Analisar com IA
                     </Button>
