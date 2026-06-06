@@ -144,6 +144,39 @@ const THEME_RULES: Array<{ name: string; keywords: RegExp }> = [
   { name: "Combate à Corrupção", keywords: /\b(corrupção|corrupcao|lava jato|propina|desvio|fraude|operação|operacao|pf|polícia federal|policia federal)\w*/i },
 ];
 
+// ============ Filtros de Relevância Política ============
+// Conteúdo descartado automaticamente (memes, humor, nostalgia, fan pages, etc.)
+const IRRELEVANT_REGEX = /\b(meme|memes|fan\s?page|fanpage|humor|humorist|engraçad|engracad|piada|paródia|parodia|edição engraçad|edicao engracad|nostalg|throwback|tbt|relembr|curiosidad|aleatóri|aleatori|montagem|montagens|zoaç|zoac|zueir|gracinha|tributo|homenagem póstuma|playlist|compilaç|compilac|melhores momentos|cortes engraçad|cortes engracad|edit\b|reels engraçad|reels engracad|stitch|duet)\b/i;
+
+// Sinais políticos fortes (entrevistas, discursos, decisões, etc.)
+const POLITICAL_HARD_REGEX = /\b(entrevist|sabatin|discurso|pronunciamento|debate|coletiva|agenda pública|agenda publica|projeto de lei|pec\b|medida provisória|medida provisoria|decis|liminar|julgamento|operação|operacao|reforma|votaç|votac|eleiç|eleic|cpi|stf|tse|congresso|senado|câmara|camara|governo|prefeit|ministro|presidente|polícia federal|policia federal|tributári|tributari|inflaç|inflac|crise|declaraç|declarac|movimentaç eleitoral|movimentac eleitoral|brics|otan|onu|exterior|posse|nomeaç|nomeac|sanção|sancao|vetou|sancionou)\b/i;
+
+// Veículos confiáveis (boost de pontuação)
+const TRUSTED_OUTLET_REGEX = /(g1\.globo|globo\.com|globonews|cnnbrasil|uol\.com|folha\.uol|folha\.com|estadao|poder360|metropoles|metrópoles|valor\.globo|valor\.com|r7\.com|veja\.abril|cartacapital|jovempan|band\.uol|sbt\.com|record\.com|antagonista|infomoney|reuters|bbc|gazetadopovo|correiobraziliense|nexojornal|brasildefato|agenciabrasil|congressoemfoco|jota\.info)/i;
+
+const scoreRelevance = (row: any, windowStart: number, now: number): number => {
+  const t = effectiveDateOf(row).getTime();
+  if (t < windowStart || t > now + 60_000) return 0; // fora da janela
+  const rawText = `${row.post_title || ""} ${row.post_description || ""} ${row.comment_text || ""}`;
+  if (!rawText.trim()) return 0;
+  if (IRRELEVANT_REGEX.test(rawText)) return 0;
+  const cleaned = cleanText(rawText);
+  if (!cleaned || cleaned.length < 8) return 0;
+  const isNews = isNewsNetwork(row.social_network, row.platform, row.interaction_type);
+  const matchesTheme = THEME_RULES.some(r => r.keywords.test(cleaned));
+  const matchesHard = POLITICAL_HARD_REGEX.test(cleaned);
+  if (!isNews && !matchesTheme && !matchesHard) return 0;
+  const ageH = Math.max(0.1, (now - t) / 3600000);
+  const recency = Math.max(0.25, 1 - ageH / 24);
+  const engagement = isNews
+    ? Math.max(1, Number(row.engagement_score) || 1)
+    : (Number(row.likes_count) || 0) + (Number(row.shares_count) || 0) + (Number(row.replies_count) || 0) + 1;
+  const trust = isNews ? 1.6 : 1.0;
+  const trustedBoost = TRUSTED_OUTLET_REGEX.test(`${row.post_url || ""} ${row.author_name || ""} ${row.author_handle || ""}`) ? 1.5 : 1.0;
+  const themeBoost = matchesTheme ? 1.35 : matchesHard ? 1.15 : 1.0;
+  return Math.log10(engagement + 1) * recency * trust * trustedBoost * themeBoost;
+};
+
 const emptyEvidence = (): EvidenceCounts => ({ news: 0, posts: 0, videos: 0, total: 0 });
 const isNewsNetwork = (network?: string | null, platform?: string | null, type?: string | null): boolean => {
   const value = `${network || ""} ${platform || ""} ${type || ""}`.toLowerCase();
@@ -259,14 +292,16 @@ async function fetchSnapshot(
   candidateId: string,
   candidateName: string,
   onProgress?: (p: Partial<LiveProgress>) => void,
+  windowHours: 1 | 6 | 12 | 24 = 24,
   timeoutMs = 8000,
 ): Promise<Snapshot> {
   const now = new Date();
+  const windowMs = windowHours * 3600000;
   const start12h = new Date(now.getTime() - 12 * 3600000);
   const start6h = new Date(now.getTime() - 6 * 3600000);
   const start1h = new Date(now.getTime() - 3600000);
-  const start24h = new Date(now.getTime() - 24 * 3600000);
-  const startPrev24h = new Date(now.getTime() - 48 * 3600000);
+  const start24h = new Date(now.getTime() - windowMs); // janela selecionada
+  const startPrev24h = new Date(now.getTime() - 2 * windowMs);
 
   const base = () => supabase
     .from("social_interactions")
@@ -362,21 +397,28 @@ async function fetchSnapshot(
   const videosCollected = qVideos.count ?? 0;
   const last24h = qToday.count ?? 0;
   const prev24h = qPrev24h.count ?? 0;
-  const sample: any[] = qSample.data ?? [];
+  const rawSample: any[] = qSample.data ?? [];
+  // Pontuação + filtro de relevância política dentro da janela selecionada
+  const scoredSample = rawSample
+    .map((r) => ({ row: r, score: scoreRelevance(r, start24h.getTime(), now.getTime()) }))
+    .filter((x) => x.score > 0);
+  const sample: any[] = scoredSample.map((x) => x.row);
+  const scoreById = new Map<string, number>(scoredSample.map((x) => [x.row.id, x.score]));
   const newsRows = sample.filter(r => isNewsNetwork(r.social_network, r.platform, r.interaction_type) && effectiveDateOf(r).getTime() >= start24h.getTime());
   const evidence = emptyEvidence();
-  evidence.news = Math.max(newsCollected, newsRows.length);
-  evidence.videos = videosCollected;
-  evidence.posts = Math.max(0, last24h - evidence.news - videosCollected);
+  evidence.news = newsRows.length;
+  evidence.videos = sample.filter(r => classifyNetwork(r.social_network) === "videos").length;
+  evidence.posts = Math.max(0, sample.length - evidence.news - evidence.videos);
   const effectiveWindowCount = (ms: number) => sample.filter(r => effectiveDateOf(r).getTime() >= now.getTime() - ms).length;
+  const cap = (n: number) => Math.min(n, sample.length || n);
   const windowCounts = {
-    h1: Math.max(qH1.count ?? 0, effectiveWindowCount(3600000)),
-    h6: Math.max(qH6.count ?? 0, effectiveWindowCount(6 * 3600000)),
-    h12: Math.max(qH12.count ?? 0, effectiveWindowCount(12 * 3600000)),
-    h24: Math.max(last24h, effectiveWindowCount(24 * 3600000)),
+    h1: Math.min(effectiveWindowCount(3600000), cap(qH1.count ?? 0)),
+    h6: Math.min(effectiveWindowCount(6 * 3600000), cap(qH6.count ?? 0)),
+    h12: Math.min(effectiveWindowCount(12 * 3600000), cap(qH12.count ?? 0)),
+    h24: sample.length,
     previous24h: prev24h,
   };
-  evidence.posts = Math.max(0, windowCounts.h24 - evidence.news - evidence.videos);
+  evidence.total = evidence.news + evidence.posts + evidence.videos;
   evidence.total = evidence.news + evidence.posts + evidence.videos;
 
   // Movimentação de sentimento (delta % vs 24h anteriores)
@@ -431,8 +473,8 @@ async function fetchSnapshot(
   // BLOCO 3 — Eventos
   const storedEvents: EventItem[] = (qEvents.data ?? [])
     .filter((e: any) => {
-      const age = now.getTime() - new Date(e.event_date).getTime();
-      return age >= 0 && age <= 7 * 86400000;
+      const ts = new Date(e.event_date).getTime();
+      return ts >= start24h.getTime() && ts <= now.getTime();
     })
     .map((e: any) => ({
       id: e.id,
@@ -457,10 +499,10 @@ async function fetchSnapshot(
   const totalOutletNews = Array.from(outletCounts.values()).reduce((sum, count) => sum + count, 0) || 1;
   const outlets: Outlet[] = Array.from(outletCounts.entries())
     .map(([name, count]) => ({ name, count, percentage: Math.round((count / totalOutletNews) * 100) }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 8);
+    .sort((a, b) => b.count - a.count);
+  // exibe todos os veículos identificados (sem limite artificial)
 
-  // BLOCO 6 — Publicações mais relevantes
+  // BLOCO 6 — Publicações mais relevantes (Relevância × Atualidade × Engajamento × Fonte)
   const publications: Publication[] = sample
     .map((r: any) => ({
       id: r.id,
@@ -471,10 +513,12 @@ async function fetchSnapshot(
       url: r.post_url || null,
       sentiment: r.sentiment_label || null,
       createdAt: effectiveDateOf(r).toISOString(),
+      _score: scoreById.get(r.id) || 0,
     }))
-    .filter(p => p.title && p.title !== "(sem título)" && p.engagement > 0)
-    .sort((a, b) => b.engagement - a.engagement)
-    .slice(0, 6);
+    .filter((p: any) => p.title && p.title !== "(sem título)")
+    .sort((a: any, b: any) => b._score - a._score)
+    .slice(0, 8)
+    .map(({ _score, ...rest }: any) => rest);
 
   // BLOCO 7 — Alertas
   const alerts: Alert[] = [];
@@ -606,6 +650,7 @@ const RealTimeMonitor = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [liveProgress, setLiveProgress] = useState<LiveProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [windowHours, setWindowHours] = useState<1 | 6 | 12 | 24>(24);
   const [, force] = useState(0);
   const tickRef = useRef<NodeJS.Timeout | null>(null);
   const bgTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -624,7 +669,7 @@ const RealTimeMonitor = () => {
     })();
   }, [user]);
 
-  const runSync = useCallback(async (cid: string, uid: string, name: string) => {
+  const runSync = useCallback(async (cid: string, uid: string, name: string, hours: 1 | 6 | 12 | 24) => {
     setIsSyncing(true); setError(null);
     setLiveProgress({
       news: 0, posts: 0, videos: 0, comments: 0, mentionsProcessed: 0, sentimentClassified: 0,
@@ -632,8 +677,8 @@ const RealTimeMonitor = () => {
       steps: { collectNews: false, collectSocial: false, processAI: false, classifySentiment: false, buildCharts: false },
     });
     try {
-      const snap = await fetchSnapshot(uid, cid, name, (p) => setLiveProgress(prev => ({ ...(prev as LiveProgress), ...p })));
-      writeCache(cacheKey(uid, cid), snap);
+      const snap = await fetchSnapshot(uid, cid, name, (p) => setLiveProgress(prev => ({ ...(prev as LiveProgress), ...p })), hours);
+      writeCache(cacheKey(uid, cid) + `:${hours}h`, snap);
       setSnapshot(snap);
     } catch (e: any) {
       setError(e?.message?.includes("Timeout") ? "Consulta excedeu 8s — exibindo último snapshot." : "Falha ao atualizar dados.");
@@ -644,17 +689,17 @@ const RealTimeMonitor = () => {
 
   useEffect(() => {
     if (!user || !selectedCandidateId || !selectedCandidate) { setSnapshot(null); return; }
-    const cached = readCache(cacheKey(user.id, selectedCandidateId));
-    if (cached) setSnapshot(cached);
+    const cached = readCache(cacheKey(user.id, selectedCandidateId) + `:${windowHours}h`);
+    if (cached) setSnapshot(cached); else setSnapshot(null);
     const stale = !cached || (Date.now() - cached.savedAt) > 2 * 60 * 1000;
-    if (stale) runSync(selectedCandidateId, user.id, selectedCandidate.full_name);
-  }, [user, selectedCandidateId, selectedCandidate, runSync]);
+    if (stale) runSync(selectedCandidateId, user.id, selectedCandidate.full_name, windowHours);
+  }, [user, selectedCandidateId, selectedCandidate, windowHours, runSync]);
 
   useEffect(() => {
     if (!user || !selectedCandidateId || !selectedCandidate) return;
-    bgTimerRef.current = setInterval(() => runSync(selectedCandidateId, user.id, selectedCandidate.full_name), 60000);
+    bgTimerRef.current = setInterval(() => runSync(selectedCandidateId, user.id, selectedCandidate.full_name, windowHours), 60000);
     return () => { if (bgTimerRef.current) clearInterval(bgTimerRef.current); };
-  }, [user, selectedCandidateId, selectedCandidate, runSync]);
+  }, [user, selectedCandidateId, selectedCandidate, windowHours, runSync]);
 
   useEffect(() => {
     tickRef.current = setInterval(() => force(n => n + 1), 30000);
@@ -683,7 +728,7 @@ const RealTimeMonitor = () => {
               : (<><Clock className="h-3 w-3" /><span className="text-muted-foreground">Aguardando</span></>)}
           </div>
           <Button variant="outline" size="sm" disabled={isSyncing || !selectedCandidateId || !selectedCandidate}
-            onClick={() => user && selectedCandidateId && selectedCandidate && runSync(selectedCandidateId, user.id, selectedCandidate.full_name)}
+            onClick={() => user && selectedCandidateId && selectedCandidate && runSync(selectedCandidateId, user.id, selectedCandidate.full_name, windowHours)}
             className="h-8 gap-1.5">
             <RefreshCw className={cn("h-3.5 w-3.5", isSyncing && "animate-spin")} />Atualizar
           </Button>
@@ -702,8 +747,24 @@ const RealTimeMonitor = () => {
           {loadingCandidates ? <Skeleton className="h-11 w-full sm:w-[280px]" /> : (
             <CandidateSelector candidates={candidates} value={selectedCandidateId} onChange={setSelectedCandidateId} disabled={false} />
           )}
+          <div className="flex items-center gap-1 ml-auto">
+            {([1, 6, 12, 24] as const).map((h) => (
+              <button
+                key={h}
+                onClick={() => setWindowHours(h)}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors border",
+                  windowHours === h
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-card/60 text-muted-foreground border-border/60 hover:text-foreground"
+                )}
+              >
+                {h}h
+              </button>
+            ))}
+          </div>
           {selectedCandidate && (
-            <span className="text-xs text-muted-foreground ml-auto truncate">Monitorando: <span className="font-semibold text-foreground">{selectedCandidate.full_name}</span></span>
+            <span className="text-xs text-muted-foreground truncate">Monitorando: <span className="font-semibold text-foreground">{selectedCandidate.full_name}</span></span>
           )}
         </CardContent>
       </Card>
@@ -757,7 +818,7 @@ const RealTimeMonitor = () => {
                 <span>{snapshot.evidence.posts.toLocaleString("pt-BR")} posts</span>
                 <span className="hidden sm:inline">·</span>
                 <span>{snapshot.evidence.videos.toLocaleString("pt-BR")} vídeos</span>
-                <Badge variant="outline" className="w-fit sm:ml-auto text-[10px]">Últimas 24h</Badge>
+                <Badge variant="outline" className="w-fit sm:ml-auto text-[10px]">Últimas {windowHours}h</Badge>
               </CardContent>
             </Card>
           )}
