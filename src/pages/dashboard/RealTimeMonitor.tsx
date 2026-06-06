@@ -400,12 +400,8 @@ async function fetchSnapshot(
     pToday, pH12, pH6, pH1, pPos, pNeg, pNeu, pNews, pVideos, pPrev, pSample, pEvents, pYestPos, pYestNeg, pYestNeu,
   ]);
 
-  const mentionsToday = qToday.count ?? 0;
-  const positiveToday = qPos.count ?? 0;
-  const negativeToday = qNeg.count ?? 0;
-  const neutralToday = qNeu.count ?? 0;
+  void qToday; void qH12; void qH6; void qH1; void qPos; void qNeg; void qNeu; void qVideos; // contagens brutas substituídas pelo sample (fonte única)
   const newsCollected = qNews.count ?? 0;
-  const videosCollected = qVideos.count ?? 0;
   const prev24h = qPrev24h.count ?? 0;
   const rawSample: any[] = qSample.data ?? [];
   // Pontuação + filtro de relevância política dentro da janela selecionada
