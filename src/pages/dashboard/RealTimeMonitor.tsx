@@ -27,7 +27,7 @@ interface EvidenceCounts { news: number; posts: number; videos: number; total: n
 interface EvolutionPoint { label: string; total: number; positive: number; negative: number; neutral: number; }
 interface Theme { name: string; count: number; evidence: EvidenceCounts; examples: string[]; }
 interface EventItem { id: string; name: string; date: string; type: string; impact: number; publications: number; outlets: number; }
-interface Outlet { name: string; count: number; }
+interface Outlet { name: string; count: number; percentage: number; }
 interface Publication {
   id: string; title: string; author: string; network: string;
   engagement: number; url: string | null; sentiment: string | null; createdAt: string;
@@ -145,13 +145,68 @@ const THEME_RULES: Array<{ name: string; keywords: RegExp }> = [
 ];
 
 const emptyEvidence = (): EvidenceCounts => ({ news: 0, posts: 0, videos: 0, total: 0 });
+const isNewsNetwork = (network?: string | null, platform?: string | null, type?: string | null): boolean => {
+  const value = `${network || ""} ${platform || ""} ${type || ""}`.toLowerCase();
+  return /\b(news|not[ií]cia|noticias|gdelt|jornal|portal|imprensa)\b/.test(value) || value.includes("google_news");
+};
+
 const classifyNetwork = (network?: string | null): keyof Omit<EvidenceCounts, "total"> => {
   const n = (network || "").toLowerCase();
-  if (n.includes("news") || n.includes("notícia") || n.includes("noticia")) return "news";
+  if (isNewsNetwork(n)) return "news";
   if (n.includes("youtube") || n.includes("video") || n.includes("tiktok")) return "videos";
   return "posts";
 };
 const addEvidence = (ev: EvidenceCounts, network?: string | null) => { ev[classifyNetwork(network)]++; ev.total++; };
+
+const effectiveDateOf = (row: any): Date => new Date(row.original_posted_at || row.created_at || row.collected_at || Date.now());
+
+const newsFilter = "interaction_type.eq.news,social_network.ilike.%news%,social_network.ilike.%gdelt%,platform.ilike.%portal%,platform.ilike.%news%";
+
+const triggerNewsCollection = async (candidateId: string, candidateName: string) => {
+  try {
+    await withTimeout(
+      supabase.functions.invoke("search-google-news", { body: { candidateId, candidateName, realtime: true } }),
+      2200,
+      "coleta de notícias",
+    );
+  } catch {
+    // A coleta continua em background; o snapshot nunca fica bloqueado por notícias.
+  }
+};
+
+const eventRules: Array<{ type: string; regex: RegExp }> = [
+  { type: "entrevista", regex: /\b(entrevist|sabatin|podcast|programa de tv|jornal nacional|roda viva)\w*/i },
+  { type: "discurso", regex: /\b(discurso|pronunciamento|declaraç|declarac|fala sobre|defende|critica)\w*/i },
+  { type: "debate", regex: /\b(debate|confronto|discussão|discussao|embate)\w*/i },
+  { type: "reunião", regex: /\b(reunião|reuniao|encontro|agenda|comitiva|cúpula|cupula)\w*/i },
+  { type: "operação", regex: /\b(operação|operacao|pf|polícia federal|policia federal|busca e apreensão|busca e apreensao)\w*/i },
+  { type: "decisão judicial", regex: /\b(stf|tse|decisão|decisao|julgamento|liminar|condenaç|condenac|recurso)\w*/i },
+];
+
+const detectEventsFromNews = (newsRows: any[]): EventItem[] => {
+  const groups = new Map<string, { rows: any[]; outlets: Set<string>; title: string }>();
+  for (const row of newsRows) {
+    const text = `${row.post_title || ""} ${row.post_description || ""} ${row.comment_text || ""}`;
+    const rule = eventRules.find((r) => r.regex.test(text));
+    if (!rule) continue;
+    const title = (row.post_title || row.comment_text || rule.type).replace(/\s+/g, " ").trim().slice(0, 120);
+    const outlet = normalizeOutlet(row.author_name || row.comment_author || row.author_handle || "Portal de notícia") || "Portal de notícia";
+    const current = groups.get(rule.type) || { rows: [], outlets: new Set<string>(), title };
+    current.rows.push(row);
+    current.outlets.add(outlet);
+    if (effectiveDateOf(row).getTime() > effectiveDateOf(current.rows[0] || row).getTime()) current.title = title;
+    groups.set(rule.type, current);
+  }
+  return Array.from(groups.entries()).map(([type, g]) => ({
+    id: `news-${type}`,
+    name: g.title,
+    date: effectiveDateOf(g.rows[0]).toISOString(),
+    type,
+    impact: g.rows.length + g.outlets.size,
+    publications: g.rows.length,
+    outlets: g.outlets.size,
+  })).sort((a, b) => b.impact - a.impact).slice(0, 6);
+};
 
 const extractThemes = (rows: Array<{ comment_text: string | null; post_title?: string | null; social_network?: string | null }>): Theme[] => {
   const counts = new Map<string, { count: number; evidence: EvidenceCounts; examples: string[] }>();
@@ -236,23 +291,25 @@ async function fetchSnapshot(
     onProgress?.({ ...live, steps: { ...live.steps } });
   };
 
-  const pNews = run<{ count: number | null }>(base().gte("created_at", start24h.toISOString()).eq("social_network", "Google News"), "news")
+  await triggerNewsCollection(candidateId, candidateName);
+
+  const pNews = run<{ count: number | null }>(base().or(newsFilter).or(`created_at.gte.${start24h.toISOString()},original_posted_at.gte.${start24h.toISOString()}`), "news")
     .then(r => { emit({ news: r.count ?? 0, steps: { ...live.steps, collectNews: true } }); return r; });
-  const pToday = run<{ count: number | null }>(base().gte("created_at", start24h.toISOString()), "today")
+  const pToday = run<{ count: number | null }>(base().or(`created_at.gte.${start24h.toISOString()},original_posted_at.gte.${start24h.toISOString()}`), "today")
     .then(r => { emit({ mentionsProcessed: r.count ?? 0, steps: { ...live.steps, processAI: true, collectSocial: true } }); return r; });
-  const pH12 = run<{ count: number | null }>(base().gte("created_at", start12h.toISOString()), "h12");
-  const pH6 = run<{ count: number | null }>(base().gte("created_at", start6h.toISOString()), "h6");
-  const pH1 = run<{ count: number | null }>(base().gte("created_at", start1h.toISOString()), "h1");
-  const pPos = run<{ count: number | null }>(base().gte("created_at", start24h.toISOString()).eq("sentiment_label", "Positivo"), "pos");
-  const pNeg = run<{ count: number | null }>(base().gte("created_at", start24h.toISOString()).eq("sentiment_label", "Negativo"), "neg");
-  const pNeu = run<{ count: number | null }>(base().gte("created_at", start24h.toISOString()).eq("sentiment_label", "Neutro"), "neu");
-  const pPrev = run<{ count: number | null }>(base().gte("created_at", startPrev24h.toISOString()).lt("created_at", start24h.toISOString()), "prev24");
+  const pH12 = run<{ count: number | null }>(base().or(`created_at.gte.${start12h.toISOString()},original_posted_at.gte.${start12h.toISOString()}`), "h12");
+  const pH6 = run<{ count: number | null }>(base().or(`created_at.gte.${start6h.toISOString()},original_posted_at.gte.${start6h.toISOString()}`), "h6");
+  const pH1 = run<{ count: number | null }>(base().or(`created_at.gte.${start1h.toISOString()},original_posted_at.gte.${start1h.toISOString()}`), "h1");
+  const pPos = run<{ count: number | null }>(base().or(`created_at.gte.${start24h.toISOString()},original_posted_at.gte.${start24h.toISOString()}`).eq("sentiment_label", "Positivo"), "pos");
+  const pNeg = run<{ count: number | null }>(base().or(`created_at.gte.${start24h.toISOString()},original_posted_at.gte.${start24h.toISOString()}`).eq("sentiment_label", "Negativo"), "neg");
+  const pNeu = run<{ count: number | null }>(base().or(`created_at.gte.${start24h.toISOString()},original_posted_at.gte.${start24h.toISOString()}`).eq("sentiment_label", "Neutro"), "neu");
+  const pPrev = run<{ count: number | null }>(base().or(`and(created_at.gte.${startPrev24h.toISOString()},created_at.lt.${start24h.toISOString()}),and(original_posted_at.gte.${startPrev24h.toISOString()},original_posted_at.lt.${start24h.toISOString()})`), "prev24");
 
   // Sentimento da janela anterior equivalente (24h anteriores)
-  const pYestPos = run<{ count: number | null }>(base().gte("created_at", startPrev24h.toISOString()).lt("created_at", start24h.toISOString()).eq("sentiment_label", "Positivo"), "yPos");
-  const pYestNeg = run<{ count: number | null }>(base().gte("created_at", startPrev24h.toISOString()).lt("created_at", start24h.toISOString()).eq("sentiment_label", "Negativo"), "yNeg");
-  const pYestNeu = run<{ count: number | null }>(base().gte("created_at", startPrev24h.toISOString()).lt("created_at", start24h.toISOString()).eq("sentiment_label", "Neutro"), "yNeu");
-  const pVideos = run<{ count: number | null }>(base().gte("created_at", start24h.toISOString()).or("social_network.ilike.%youtube%,social_network.ilike.%tiktok%,social_network.ilike.%video%"), "videos")
+  const pYestPos = run<{ count: number | null }>(base().or(`and(created_at.gte.${startPrev24h.toISOString()},created_at.lt.${start24h.toISOString()}),and(original_posted_at.gte.${startPrev24h.toISOString()},original_posted_at.lt.${start24h.toISOString()})`).eq("sentiment_label", "Positivo"), "yPos");
+  const pYestNeg = run<{ count: number | null }>(base().or(`and(created_at.gte.${startPrev24h.toISOString()},created_at.lt.${start24h.toISOString()}),and(original_posted_at.gte.${startPrev24h.toISOString()},original_posted_at.lt.${start24h.toISOString()})`).eq("sentiment_label", "Negativo"), "yNeg");
+  const pYestNeu = run<{ count: number | null }>(base().or(`and(created_at.gte.${startPrev24h.toISOString()},created_at.lt.${start24h.toISOString()}),and(original_posted_at.gte.${startPrev24h.toISOString()},original_posted_at.lt.${start24h.toISOString()})`).eq("sentiment_label", "Neutro"), "yNeu");
+  const pVideos = run<{ count: number | null }>(base().or(`created_at.gte.${start24h.toISOString()},original_posted_at.gte.${start24h.toISOString()}`).or("social_network.ilike.%youtube%,social_network.ilike.%tiktok%,social_network.ilike.%video%"), "videos")
     .then(r => { emit({ videos: r.count ?? 0 }); return r; });
 
   Promise.all([pPos, pNeg, pNeu]).then(([rp, rn, ru]) => {
@@ -272,10 +329,10 @@ async function fetchSnapshot(
   // Amostra com campos ricos para temas, veículos e publicações
   const pSample = run<{ data: any[] | null }>(
     supabase.from("social_interactions")
-      .select("id, created_at, sentiment_label, comment_text, social_network, likes_count, shares_count, replies_count, post_url, post_title, author_name, author_handle")
+      .select("id, created_at, collected_at, original_posted_at, sentiment_label, comment_text, social_network, platform, interaction_type, likes_count, shares_count, replies_count, engagement_score, post_url, post_title, post_description, author_name, author_handle, comment_author")
       .eq("user_id", userId).eq("candidate_id", candidateId)
       .not("social_network", "in", "(mastodon,lemmy,pinterest)")
-      .gte("created_at", start24h.toISOString())
+      .or(`created_at.gte.${start24h.toISOString()},original_posted_at.gte.${start24h.toISOString()}`)
       .order("created_at", { ascending: false })
       .limit(3000),
     "sample"
@@ -306,12 +363,21 @@ async function fetchSnapshot(
   const last24h = qToday.count ?? 0;
   const prev24h = qPrev24h.count ?? 0;
   const sample: any[] = qSample.data ?? [];
+  const newsRows = sample.filter(r => isNewsNetwork(r.social_network, r.platform, r.interaction_type) && effectiveDateOf(r).getTime() >= start24h.getTime());
   const evidence = emptyEvidence();
-  evidence.news = newsCollected;
+  evidence.news = Math.max(newsCollected, newsRows.length);
   evidence.videos = videosCollected;
-  evidence.posts = Math.max(0, last24h - newsCollected - videosCollected);
+  evidence.posts = Math.max(0, last24h - evidence.news - videosCollected);
+  const effectiveWindowCount = (ms: number) => sample.filter(r => effectiveDateOf(r).getTime() >= now.getTime() - ms).length;
+  const windowCounts = {
+    h1: Math.max(qH1.count ?? 0, effectiveWindowCount(3600000)),
+    h6: Math.max(qH6.count ?? 0, effectiveWindowCount(6 * 3600000)),
+    h12: Math.max(qH12.count ?? 0, effectiveWindowCount(12 * 3600000)),
+    h24: Math.max(last24h, effectiveWindowCount(24 * 3600000)),
+    previous24h: prev24h,
+  };
+  evidence.posts = Math.max(0, windowCounts.h24 - evidence.news - evidence.videos);
   evidence.total = evidence.news + evidence.posts + evidence.videos;
-  const windowCounts = { h1: qH1.count ?? 0, h6: qH6.count ?? 0, h12: qH12.count ?? 0, h24: last24h, previous24h: prev24h };
 
   // Movimentação de sentimento (delta % vs 24h anteriores)
   const yPos = qYPos.count ?? 0;
@@ -342,7 +408,7 @@ async function fetchSnapshot(
     return { label: bs.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }), total: 0, positive: 0, negative: 0, neutral: 0 };
   });
   for (const r of sample) {
-    const t = new Date(r.created_at).getTime();
+    const t = effectiveDateOf(r).getTime();
     const inc = (b: EvolutionPoint) => {
       b.total++;
       if (r.sentiment_label === "Positivo") b.positive++;
@@ -363,7 +429,7 @@ async function fetchSnapshot(
   emit({ emergingTopics: themes.slice(0, 6).map(t => t.name) });
 
   // BLOCO 3 — Eventos
-  const events: EventItem[] = (qEvents.data ?? [])
+  const storedEvents: EventItem[] = (qEvents.data ?? [])
     .filter((e: any) => {
       const age = now.getTime() - new Date(e.event_date).getTime();
       return age >= 0 && age <= 7 * 86400000;
@@ -377,17 +443,20 @@ async function fetchSnapshot(
       publications: Number(e.publications_count || 0),
       outlets: Number(e.distinct_outlets || 0),
     }));
+  const events: EventItem[] = [...detectEventsFromNews(newsRows), ...storedEvents]
+    .sort((a, b) => b.impact - a.impact)
+    .slice(0, 6);
 
-  // BLOCO 5 — Veículos mais ativos (Google News + autores)
+  // BLOCO 5 — Veículos mais ativos (Google News, GDELT e portais)
   const outletCounts = new Map<string, number>();
-  for (const r of sample) {
-    if (r.social_network !== "Google News") continue;
-    const outlet = normalizeOutlet(r.author_name || r.post_title?.split(" - ").pop() || null);
+  for (const r of newsRows) {
+    const outlet = normalizeOutlet(r.author_name || r.comment_author || r.author_handle || r.post_title?.split(" - ").pop() || null);
     if (!outlet) continue;
     outletCounts.set(outlet, (outletCounts.get(outlet) || 0) + 1);
   }
+  const totalOutletNews = Array.from(outletCounts.values()).reduce((sum, count) => sum + count, 0) || 1;
   const outlets: Outlet[] = Array.from(outletCounts.entries())
-    .map(([name, count]) => ({ name, count }))
+    .map(([name, count]) => ({ name, count, percentage: Math.round((count / totalOutletNews) * 100) }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 8);
 
@@ -396,12 +465,12 @@ async function fetchSnapshot(
     .map((r: any) => ({
       id: r.id,
       title: (r.post_title || r.comment_text || "").slice(0, 140) || "(sem título)",
-      author: r.author_name || r.author_handle || "Autor desconhecido",
+      author: r.author_name || r.comment_author || r.author_handle || "Autor desconhecido",
       network: r.social_network,
-      engagement: (r.likes_count || 0) + (r.shares_count || 0) + (r.replies_count || 0),
+      engagement: isNewsNetwork(r.social_network, r.platform, r.interaction_type) ? Math.max(1, r.engagement_score || 1) : (r.likes_count || 0) + (r.shares_count || 0) + (r.replies_count || 0),
       url: r.post_url || null,
       sentiment: r.sentiment_label || null,
-      createdAt: r.created_at,
+      createdAt: effectiveDateOf(r).toISOString(),
     }))
     .filter(p => p.title && p.title !== "(sem título)" && p.engagement > 0)
     .sort((a, b) => b.engagement - a.engagement)
@@ -409,9 +478,9 @@ async function fetchSnapshot(
 
   // BLOCO 7 — Alertas
   const alerts: Alert[] = [];
-  const growth = prev24h > 0 ? ((last24h - prev24h) / prev24h) * 100 : 0;
-  if (prev24h >= 10 && growth >= 50) alerts.push({ kind: "growth", title: `Crescimento de ${Math.round(growth)}% nas menções`, detail: `${last24h.toLocaleString("pt-BR")} registros nas últimas 24h contra ${prev24h.toLocaleString("pt-BR")} na janela anterior.`, evidence });
-  else if (prev24h >= 10 && growth <= -40) alerts.push({ kind: "growth", title: `Queda de ${Math.round(Math.abs(growth))}% nas menções`, detail: `${last24h.toLocaleString("pt-BR")} registros nas últimas 24h contra ${prev24h.toLocaleString("pt-BR")} na janela anterior.`, evidence });
+  const growth = prev24h > 0 ? ((windowCounts.h24 - prev24h) / prev24h) * 100 : 0;
+  if (prev24h >= 10 && growth >= 50) alerts.push({ kind: "growth", title: `Crescimento de ${Math.round(growth)}% nas menções`, detail: `${windowCounts.h24.toLocaleString("pt-BR")} registros nas últimas 24h contra ${prev24h.toLocaleString("pt-BR")} na janela anterior.`, evidence });
+  else if (prev24h >= 10 && growth <= -40) alerts.push({ kind: "growth", title: `Queda de ${Math.round(Math.abs(growth))}% nas menções`, detail: `${windowCounts.h24.toLocaleString("pt-BR")} registros nas últimas 24h contra ${prev24h.toLocaleString("pt-BR")} na janela anterior.`, evidence });
   if (mentionsToday > 50 && (negativeToday / Math.max(1, mentionsToday)) >= 0.5) {
     alerts.push({ kind: "crisis", title: "Volume negativo elevado", detail: `${negativeToday.toLocaleString("pt-BR")} de ${mentionsToday.toLocaleString("pt-BR")} registros das últimas 24h foram classificados como negativos.`, evidence });
   } else if (mentionsToday > 0 && (negativeToday / Math.max(1, mentionsToday)) >= 0.35) {
@@ -421,9 +490,9 @@ async function fetchSnapshot(
     .sort((a, b) => (b.likes_count + b.shares_count) - (a.likes_count + a.shares_count))[0];
   if (viral) {
     const viralEngagement = (viral.likes_count || 0) + (viral.shares_count || 0) + (viral.replies_count || 0);
-    alerts.push({ kind: "viral", title: "Conteúdo viral identificado", detail: (viral.post_title || viral.comment_text || "Publicação recente").slice(0, 120), source: viral.social_network, engagement: viralEngagement, publishedAt: viral.created_at, evidence: { news: viral.social_network === "Google News" ? 1 : 0, posts: classifyNetwork(viral.social_network) === "posts" ? 1 : 0, videos: classifyNetwork(viral.social_network) === "videos" ? 1 : 0, total: 1 } });
+    alerts.push({ kind: "viral", title: "Conteúdo viral identificado", detail: (viral.post_title || viral.comment_text || "Publicação recente").slice(0, 120), source: viral.social_network, engagement: viralEngagement, publishedAt: effectiveDateOf(viral).toISOString(), evidence: { news: isNewsNetwork(viral.social_network, viral.platform, viral.interaction_type) ? 1 : 0, posts: classifyNetwork(viral.social_network) === "posts" ? 1 : 0, videos: classifyNetwork(viral.social_network) === "videos" ? 1 : 0, total: 1 } });
   }
-  const recentNews = sample.filter(r => r.social_network === "Google News" && new Date(r.created_at).getTime() > Date.now() - 86400000).length;
+  const recentNews = newsRows.length;
   if (recentNews >= 5) alerts.push({ kind: "news", title: `${recentNews} notícias nas últimas 24h`, detail: "Alerta baseado apenas nas notícias coletadas na janela monitorada.", evidence: { ...evidence, news: recentNews } });
   if (prev24h >= 10 && Math.abs(sentimentDelta.positiveDeltaPct - sentimentDelta.negativeDeltaPct) >= 40) {
     alerts.push({ kind: "growth", title: "Mudança mensurável de sentimento", detail: `Comparação contra 24h anteriores: positivo ${sentimentDelta.positiveDeltaPct >= 0 ? "+" : ""}${sentimentDelta.positiveDeltaPct}% / negativo ${sentimentDelta.negativeDeltaPct >= 0 ? "+" : ""}${sentimentDelta.negativeDeltaPct}%.`, evidence });
@@ -437,13 +506,13 @@ async function fetchSnapshot(
   const nowNarrative =
     mentionsToday === 0
       ? `Nenhum dado foi coletado para ${candidateName} nas últimas 24 horas. O monitor não gerou inferências sem evidência.`
-      : `${candidateName} teve ${mentionsToday.toLocaleString("pt-BR")} registros nas últimas 24 horas. ` +
+      : `${candidateName} teve ${windowCounts.h24.toLocaleString("pt-BR")} registros nas últimas 24 horas. ` +
         (topTheme ? `O tema evidenciado com maior frequência é ${topTheme.name}, sustentado por ${topTheme.evidence.news} notícias, ${topTheme.evidence.posts} posts e ${topTheme.evidence.videos} vídeos. ` : `Nenhum tema político específico atingiu evidência mínima para ser exibido. `) +
         `A leitura de sentimento indica ${tone}.`;
 
   // BLOCO 8 — Resumo executivo
   const executiveSummary = {
-    what: mentionsToday > 0 ? `${mentionsToday.toLocaleString("pt-BR")} registros nas últimas 24h; ${windowCounts.h1.toLocaleString("pt-BR")} na última hora.` : "Sem registros nas últimas 24h.",
+    what: windowCounts.h24 > 0 ? `${windowCounts.h24.toLocaleString("pt-BR")} registros nas últimas 24h: ${evidence.news.toLocaleString("pt-BR")} notícias, ${evidence.posts.toLocaleString("pt-BR")} posts e ${evidence.videos.toLocaleString("pt-BR")} vídeos; ${windowCounts.h1.toLocaleString("pt-BR")} na última hora.` : "Sem registros nas últimas 24h.",
     why: events[0]
       ? `Evento recente detectado: "${events[0].name}" (${events[0].publications} publicações, ${events[0].outlets} veículos).`
       : viral ? `Evidência de viralização: ${viral.social_network}, ${((viral.likes_count || 0) + (viral.shares_count || 0) + (viral.replies_count || 0)).toLocaleString("pt-BR")} interações.`
@@ -835,7 +904,7 @@ const RealTimeMonitor = () => {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between gap-2">
                                 <span className="text-sm font-medium truncate">{o.name}</span>
-                                <span className="text-[11px] text-muted-foreground tabular-nums">{o.count.toLocaleString("pt-BR")}</span>
+                                <span className="text-[11px] text-muted-foreground tabular-nums">{o.count.toLocaleString("pt-BR")} · {o.percentage}%</span>
                               </div>
                               <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden mt-1">
                                 <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6 }} className="h-full bg-accent" />
