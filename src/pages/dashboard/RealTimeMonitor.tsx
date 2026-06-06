@@ -818,7 +818,7 @@ const RealTimeMonitor = () => {
                 <span>{snapshot.evidence.posts.toLocaleString("pt-BR")} posts</span>
                 <span className="hidden sm:inline">·</span>
                 <span>{snapshot.evidence.videos.toLocaleString("pt-BR")} vídeos</span>
-                <Badge variant="outline" className="w-fit sm:ml-auto text-[10px]">Últimas 24h</Badge>
+                <Badge variant="outline" className="w-fit sm:ml-auto text-[10px]">Últimas {windowHours}h</Badge>
               </CardContent>
             </Card>
           )}
