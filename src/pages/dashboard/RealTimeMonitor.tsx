@@ -127,37 +127,51 @@ const cleanText = (raw: string): string =>
     .replace(/[a-z]+=["'][^"']*["']/g, " ")
     .replace(/\b(?:href|src|class|id|style|font|div|span|html|css|javascript|script|target|rel|alt)\b/gi, " ");
 
-// ============ Mapeamento Palavras → Temas Políticos ============
+// ============ Mapeamento evidencial → Temas Políticos ============
 const THEME_RULES: Array<{ name: string; keywords: RegExp }> = [
-  { name: "Economia", keywords: /\b(econom|inflação|inflacao|juros|selic|pib|dólar|dolar|real|imposto|tribut|fiscal|orçament|orcament|salário|salario|desemprego|emprego|mercado|bolsa|investiment|ipca)\w*/i },
-  { name: "Eleições", keywords: /\b(eleição|eleicao|eleições|eleicoes|candidat|votação|votacao|urna|tse|campanha|coligação|coligacao|partido|presidência|presidencia|reeleição|reeleicao|pesquisa|datafolha|quaest|ipec)\w*/i },
+  { name: "Reforma Tributária", keywords: /\b(reforma tributária|reforma tributaria|imposto seletivo|cbs|ibs|iva|tributaç|tributac|alíquota|aliquota|arcabouço|arcabouco fiscal)\w*/i },
+  { name: "Banco dos BRICS", keywords: /\b(banco dos brics|novo banco de desenvolvimento|ndb|brics|dilma|china|rússia|russia|índia|india|áfrica do sul|africa do sul)\b/i },
+  { name: "Eleições 2026", keywords: /\b(eleição 2026|eleições 2026|eleicao 2026|eleicoes 2026|presidência 2026|presidencia 2026|pré-candidat|pre-candidat|candidato 2026|campanha 2026|pesquisa eleitoral|datafolha|quaest|ipec)\w*/i },
   { name: "Segurança Pública", keywords: /\b(segurança|seguranca|polícia|policia|crime|violência|violencia|homicíd|homicid|facção|faccao|tráfico|trafico|pcc|cv|milíci|milici|operação|operacao)\w*/i },
-  { name: "Educação", keywords: /\b(educação|educacao|escola|universidade|professor|aluno|enem|sisu|fies|prouni|creche|ensino|fundeb)\w*/i },
-  { name: "Saúde", keywords: /\b(saúde|saude|sus|hospital|médico|medico|vacina|pandemia|covid|enfermag|remédio|remedio|farmac)\w*/i },
-  { name: "Justiça e STF", keywords: /\b(stf|supremo|justiça|justica|ministro|moraes|fachin|barroso|toffoli|inquérito|inquerito|processo|julgamento|condenação|condenacao|prisão|prisao)\w*/i },
+  { name: "STF e Poder Judiciário", keywords: /\b(stf|supremo tribunal|supremo|judiciário|judiciario|justiça|justica|ministro do stf|moraes|fachin|barroso|toffoli|inquérito|inquerito|julgamento|condenação|condenacao|prisão|prisao)\w*/i },
   { name: "Congresso e Câmara", keywords: /\b(câmara|camara|senado|congresso|deputad|senador|relator|cpi|plenário|plenario|projeto de lei|pl\s|pec)\w*/i },
-  { name: "Lula e Governo Federal", keywords: /\b(lula|presidente|planalto|ministro|gleisi|haddad|alckmin|esplanada)\w*/i },
-  { name: "Bolsonaro e Oposição", keywords: /\b(bolsonaro|tarcísio|tarcisio|zema|caiado|oposição|oposicao|direita|conservador)\w*/i },
+  { name: "Governo Federal", keywords: /\b(lula|planalto|haddad|alckmin|esplanada|ministério|ministerio|palácio do planalto|palacio do planalto)\w*/i },
+  { name: "Bolsonarismo", keywords: /\b(bolsonaro|jair bolsonaro|michelle bolsonaro|tarcísio|tarcisio|zema|caiado|pl\b|inelegibilidade)\w*/i },
   { name: "Relações Internacionais", keywords: /\b(brics|otan|onu|eua|china|rússia|russia|ucrânia|ucrania|israel|palestina|argentina|milei|trump|biden|putin|xi jinping|mercosul|exterior|diplomac)\w*/i },
   { name: "Meio Ambiente", keywords: /\b(amazônia|amazonia|desmatamento|queimada|clima|cop\d|ibama|funai|indígena|indigena|garimpo|sustentab)\w*/i },
-  { name: "Cultura e Sociedade", keywords: /\b(cultura|música|musica|cinema|teatro|carnaval|futebol|copa|olimpíada|olimpiada|religião|religiao|igreja|evangélic|evangelic)\w*/i },
+  { name: "Religião e Sociedade", keywords: /\b(religião|religiao|igreja|evangélic|evangelic|católic|catolic|pastor|padre|culto|fé|fe)\w*/i },
   { name: "Infraestrutura", keywords: /\b(infraestrutura|obra|rodovia|ferrovia|aeroporto|porto|saneamento|habitação|habitacao|minha casa|pac)\w*/i },
   { name: "Combate à Corrupção", keywords: /\b(corrupção|corrupcao|lava jato|propina|desvio|fraude|operação|operacao|pf|polícia federal|policia federal)\w*/i },
 ];
 
-const extractThemes = (rows: Array<{ comment_text: string | null; post_title?: string | null }>): Theme[] => {
-  const counts = new Map<string, number>();
+const emptyEvidence = (): EvidenceCounts => ({ news: 0, posts: 0, videos: 0, total: 0 });
+const classifyNetwork = (network?: string | null): keyof Omit<EvidenceCounts, "total"> => {
+  const n = (network || "").toLowerCase();
+  if (n.includes("news") || n.includes("notícia") || n.includes("noticia")) return "news";
+  if (n.includes("youtube") || n.includes("video") || n.includes("tiktok")) return "videos";
+  return "posts";
+};
+const addEvidence = (ev: EvidenceCounts, network?: string | null) => { ev[classifyNetwork(network)]++; ev.total++; };
+
+const extractThemes = (rows: Array<{ comment_text: string | null; post_title?: string | null; social_network?: string | null }>): Theme[] => {
+  const counts = new Map<string, { count: number; evidence: EvidenceCounts; examples: string[] }>();
   for (const r of rows) {
     const txt = cleanText(`${r.post_title || ""} ${r.comment_text || ""}`);
     if (!txt || txt.length < 8) continue;
     for (const rule of THEME_RULES) {
       if (rule.keywords.test(txt)) {
-        counts.set(rule.name, (counts.get(rule.name) || 0) + 1);
+        const current = counts.get(rule.name) || { count: 0, evidence: emptyEvidence(), examples: [] };
+        current.count++;
+        addEvidence(current.evidence, r.social_network);
+        const example = (r.post_title || r.comment_text || "").replace(/\s+/g, " ").trim();
+        if (example && current.examples.length < 2) current.examples.push(example.slice(0, 110));
+        counts.set(rule.name, current);
       }
     }
   }
   return Array.from(counts.entries())
-    .map(([name, count]) => ({ name, count }))
+    .map(([name, item]) => ({ name, count: item.count, evidence: item.evidence, examples: item.examples }))
+    .filter(t => t.count >= 2 || t.evidence.news > 0 || t.evidence.videos > 0)
     .sort((a, b) => b.count - a.count)
     .slice(0, 7);
 };
