@@ -499,10 +499,10 @@ async function fetchSnapshot(
   const totalOutletNews = Array.from(outletCounts.values()).reduce((sum, count) => sum + count, 0) || 1;
   const outlets: Outlet[] = Array.from(outletCounts.entries())
     .map(([name, count]) => ({ name, count, percentage: Math.round((count / totalOutletNews) * 100) }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 8);
+    .sort((a, b) => b.count - a.count);
+  // exibe todos os veículos identificados (sem limite artificial)
 
-  // BLOCO 6 — Publicações mais relevantes
+  // BLOCO 6 — Publicações mais relevantes (Relevância × Atualidade × Engajamento × Fonte)
   const publications: Publication[] = sample
     .map((r: any) => ({
       id: r.id,
@@ -513,10 +513,12 @@ async function fetchSnapshot(
       url: r.post_url || null,
       sentiment: r.sentiment_label || null,
       createdAt: effectiveDateOf(r).toISOString(),
+      _score: scoreById.get(r.id) || 0,
     }))
-    .filter(p => p.title && p.title !== "(sem título)" && p.engagement > 0)
-    .sort((a, b) => b.engagement - a.engagement)
-    .slice(0, 6);
+    .filter((p: any) => p.title && p.title !== "(sem título)")
+    .sort((a: any, b: any) => b._score - a._score)
+    .slice(0, 8)
+    .map(({ _score, ...rest }: any) => rest);
 
   // BLOCO 7 — Alertas
   const alerts: Alert[] = [];
