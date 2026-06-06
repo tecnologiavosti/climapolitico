@@ -716,19 +716,25 @@ const RealTimeMonitor = () => {
                 </CardHeader>
                 <CardContent>
                   {snapshot.themes.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-4">Sem dados suficientes para identificar temas políticos.</p>
+                    <p className="text-xs text-muted-foreground py-4">Sem evidência recente suficiente para identificar temas políticos nas últimas 24h.</p>
                   ) : (
-                    <div className="flex flex-wrap gap-2">
+                    <div className="space-y-2">
                       {snapshot.themes.map((t, i) => (
                         <motion.div key={t.name} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.04 }}
                           className={cn(
-                            "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium",
-                            i === 0 ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400" :
-                            i === 1 ? "border-primary/30 bg-primary/10 text-primary" :
-                            "border-border/60 bg-muted/30 text-foreground/80"
+                            "rounded-lg border px-3 py-2",
+                            i === 0 ? "border-amber-500/40 bg-amber-500/10" :
+                            i === 1 ? "border-primary/30 bg-primary/10" :
+                            "border-border/60 bg-muted/30"
                           )}>
-                          <span>{t.name}</span>
-                          <span className="text-[11px] tabular-nums opacity-70">{t.count}</span>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-semibold text-foreground">{t.name}</span>
+                            <span className="text-[11px] tabular-nums text-muted-foreground">{t.count} registros</span>
+                          </div>
+                          <div className="mt-1 text-[11px] text-muted-foreground">
+                            Base: {t.evidence.news} notícias · {t.evidence.posts} posts · {t.evidence.videos} vídeos
+                          </div>
+                          {t.examples[0] && <div className="mt-1 text-xs text-foreground/75 line-clamp-1">{t.examples[0]}</div>}
                         </motion.div>
                       ))}
                     </div>
