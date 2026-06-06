@@ -415,7 +415,31 @@ const EventReportPage = () => {
       all.push(...data);
       if (data.length < PAGE) break;
     }
-    return detectEventsFromInteractions(all as LocalInteraction[], selectedCandidateData?.full_name || '');
+    const localDetection = detectEventsFromInteractions(all as LocalInteraction[], selectedCandidateData?.full_name || '');
+
+    const { data: aiDetected, error: aiError } = await supabase.functions.invoke('detect-historical-peaks', {
+      body: {
+        candidateId: selectedCandidate,
+        startDate: fromISO,
+        endDate: toISO,
+        localTimeline: localDetection.timeline,
+      },
+    });
+    if (aiError) throw aiError;
+
+    const aiEvents = Array.isArray(aiDetected?.events) ? aiDetected.events as DetectedEvent[] : [];
+    const merged = [...aiEvents, ...localDetection.events]
+      .filter((evt) => {
+        const hasExternalEvidence = (evt.publications_count || 0) > 0 || (evt.sources?.length || 0) > 0 || evt.confirmed_event;
+        if ((evt.mentions_estimate || 0) <= 10 && !hasExternalEvidence) return false;
+        return hasExternalEvidence || (evt.mentions_estimate || 0) >= MIN_SOCIAL_ONLY_PEAK_VOLUME;
+      })
+      .sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0))
+      .slice(0, 30);
+
+    const peakDates = new Set(merged.map((e) => e.start_date));
+    localDetection.timeline.forEach((point) => { point.isPeak = peakDates.has(point.date); });
+    return { events: merged, timeline: localDetection.timeline };
   };
 
 
@@ -473,8 +497,8 @@ const EventReportPage = () => {
       }).sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0));
       setDetectedEvents(refined);
       setTimeline(tl);
-      if (refined.length === 0) toast.info("Nenhum pico detectado no período selecionado.");
-      else toast.success(`${refined.length} pico(s) detectado(s) em ${tl.length} dias analisados`);
+      if (refined.length === 0) toast.info("Nenhum evento político documentado foi detectado no período selecionado.");
+      else toast.success(`${refined.length} evento(s) relevante(s) detectado(s) em ${tl.length} dias analisados`);
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || "Erro ao detectar picos");
