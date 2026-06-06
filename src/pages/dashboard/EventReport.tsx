@@ -518,16 +518,17 @@ const EventReportPage = () => {
 
   const handleGenerate = async (forcedEvent?: DetectedEvent) => {
     if (!selectedCandidate) { toast.error("Selecione um candidato"); return; }
-    if (!startDate || !endDate) { toast.error("Defina o período do evento"); return; }
-
     const evt = forcedEvent || (selectedEventIdx ? detectedEvents[Number(selectedEventIdx)] : null);
+    const reportStartDate = evt?.start_date || startDate;
+    const reportEndDate = evt?.end_date || endDate;
+    if (!reportStartDate || !reportEndDate) { toast.error("Defina o período do evento"); return; }
 
     setIsLoading(true);
     setResult(null);
     try {
-      const sDate = new Date(startDate);
+      const sDate = new Date(reportStartDate);
       sDate.setHours(0, 0, 0, 0);
-      const eDate = new Date(endDate);
+      const eDate = new Date(reportEndDate);
       eDate.setHours(23, 59, 59, 999);
 
       const { data, error } = await supabase.functions.invoke('analyze-event-repercussion', {
