@@ -170,11 +170,14 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    const positiveCount = comments.filter(c => ['positivo', 'positive'].includes(String(c.sentiment_label || '').toLowerCase())).length;
+    const negativeCount = comments.filter(c => ['negativo', 'negative'].includes(String(c.sentiment_label || '').toLowerCase())).length;
+    const explicitNeutralCount = comments.filter(c => ['neutro', 'neutral'].includes(String(c.sentiment_label || '').toLowerCase())).length;
     const stats = {
       total: comments.length,
-      positive: comments.filter(c => ['positivo', 'positive'].includes(String(c.sentiment_label || '').toLowerCase())).length,
-      negative: comments.filter(c => ['negativo', 'negative'].includes(String(c.sentiment_label || '').toLowerCase())).length,
-      neutral: comments.filter(c => ['neutro', 'neutral'].includes(String(c.sentiment_label || '').toLowerCase())).length,
+      positive: positiveCount,
+      negative: negativeCount,
+      neutral: Math.max(explicitNeutralCount, comments.length - positiveCount - negativeCount),
       byNetwork: {} as Record<string, number>,
     };
     comments.forEach(c => { stats.byNetwork[c.social_network] = (stats.byNetwork[c.social_network] || 0) + 1; });
