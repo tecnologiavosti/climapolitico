@@ -903,11 +903,17 @@ const RealTimeMonitor = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-3 gap-2">
-                    <SentimentDeltaPill label="Positivo" delta={snapshot.sentimentDelta.positiveDeltaPct} positive />
-                    <SentimentDeltaPill label="Negativo" delta={snapshot.sentimentDelta.negativeDeltaPct} positive={false} />
-                    <SentimentDeltaPill label="Neutro" delta={snapshot.sentimentDelta.neutralDeltaPct} positive />
-                  </div>
+                  {snapshot.sentimentDelta.available ? (
+                    <div className="grid grid-cols-3 gap-2">
+                      <SentimentDeltaPill label="Positivo" delta={snapshot.sentimentDelta.positiveDeltaPct} positive />
+                      <SentimentDeltaPill label="Negativo" delta={snapshot.sentimentDelta.negativeDeltaPct} positive={false} />
+                      <SentimentDeltaPill label="Neutro" delta={snapshot.sentimentDelta.neutralDeltaPct} positive />
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground py-4">
+                      Dados insuficientes para tendência estatística (mínimo de 50 registros relevantes na janela).
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             </div>
