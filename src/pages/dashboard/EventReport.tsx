@@ -216,12 +216,20 @@ const EventReportPage = () => {
   const { user } = useAuth();
   const [selectedCandidate, setSelectedCandidate] = useState("");
   const [detectedEvents, setDetectedEvents] = useState<DetectedEvent[]>([]);
+  const [timeline, setTimeline] = useState<DailyPoint[]>([]);
   const [selectedEventIdx, setSelectedEventIdx] = useState<string>("");
   const [isDetecting, setIsDetecting] = useState(false);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [result, setResult] = useState<ReportResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  const applyPreset = (preset: "2018" | "2022" | "2024" | "2026" | "all") => {
+    if (preset === "all") { setStartDate("2018-01-01"); setEndDate(new Date().toISOString().slice(0, 10)); return; }
+    if (preset === "2026") { setStartDate("2026-01-01"); setEndDate(new Date().toISOString().slice(0, 10)); return; }
+    setStartDate(`${preset}-01-01`);
+    setEndDate(`${preset}-12-31`);
+  };
 
   // Enriquecimento: bolhas, temas dominantes (com sentimento) e origem do pico
   const enrichQueryKey = result?.period ? `${selectedCandidate}|${result.period.startDate}|${result.period.endDate}` : "";
