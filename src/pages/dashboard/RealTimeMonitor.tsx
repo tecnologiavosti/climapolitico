@@ -768,13 +768,15 @@ const RealTimeMonitor = () => {
               <CardContent>
                 <Tabs defaultValue="24h">
                   <TabsList className="h-8">
+                    <TabsTrigger value="1h" className="text-xs">1h</TabsTrigger>
+                    <TabsTrigger value="6h" className="text-xs">6h</TabsTrigger>
+                    <TabsTrigger value="12h" className="text-xs">12h</TabsTrigger>
                     <TabsTrigger value="24h" className="text-xs">24h</TabsTrigger>
-                    <TabsTrigger value="7d" className="text-xs">7 dias</TabsTrigger>
-                    <TabsTrigger value="30d" className="text-xs">30 dias</TabsTrigger>
                   </TabsList>
+                  <TabsContent value="1h" className="mt-3"><EvolutionChart data={snapshot.evolution1h} /></TabsContent>
+                  <TabsContent value="6h" className="mt-3"><EvolutionChart data={snapshot.evolution6h} /></TabsContent>
+                  <TabsContent value="12h" className="mt-3"><EvolutionChart data={snapshot.evolution12h} /></TabsContent>
                   <TabsContent value="24h" className="mt-3"><EvolutionChart data={snapshot.evolution24h} /></TabsContent>
-                  <TabsContent value="7d" className="mt-3"><EvolutionChart data={snapshot.evolution7d} /></TabsContent>
-                  <TabsContent value="30d" className="mt-3"><EvolutionChart data={snapshot.evolution30d} /></TabsContent>
                 </Tabs>
               </CardContent>
             </Card>
