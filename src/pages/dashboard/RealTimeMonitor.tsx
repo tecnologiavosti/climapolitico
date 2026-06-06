@@ -190,6 +190,12 @@ const scoreRelevance = (row: any, windowStart: number, now: number): number => {
   return Math.log10(engagement + 1) * recency * trust * trustedBoost * activityBoost * themeBoost * historyPenalty;
 };
 
+const hasOfficialActivity = (text: string): boolean => OFFICIAL_ACTIVITY_REGEX.test(cleanText(text));
+const hasCurrentPoliticalActivity = (text: string): boolean => {
+  const cleaned = cleanText(text);
+  return (OFFICIAL_ACTIVITY_REGEX.test(cleaned) || CURRENT_ACTIVITY_REGEX.test(cleaned) || POLITICAL_HARD_REGEX.test(cleaned)) && !IRRELEVANT_REGEX.test(cleaned);
+};
+
 const emptyEvidence = (): EvidenceCounts => ({ news: 0, posts: 0, videos: 0, total: 0 });
 const isNewsNetwork = (network?: string | null, platform?: string | null, type?: string | null): boolean => {
   const value = `${network || ""} ${platform || ""} ${type || ""}`.toLowerCase();
@@ -225,6 +231,9 @@ const eventRules: Array<{ type: string; regex: RegExp }> = [
   { type: "discurso", regex: /\b(discurso|pronunciamento|declaraç|declarac|fala sobre|defende|critica)\w*/i },
   { type: "debate", regex: /\b(debate|confronto|discussão|discussao|embate)\w*/i },
   { type: "reunião", regex: /\b(reunião|reuniao|encontro|agenda|comitiva|cúpula|cupula)\w*/i },
+  { type: "viagem institucional", regex: /\b(viagem|viaja|viajou|visita oficial|missão oficial|missao oficial|comitiva|agenda internacional)\w*/i },
+  { type: "coletiva", regex: /\b(coletiva|entrevista coletiva|fala à imprensa|fala a imprensa|declaração à imprensa|declaracao a imprensa)\w*/i },
+  { type: "participação em evento", regex: /\b(participa|participou|participará|participara|fórum|forum|conferência|conferencia|seminário|seminario|evento do brics|brics|ndb|novo banco de desenvolvimento)\w*/i },
   { type: "operação", regex: /\b(operação|operacao|pf|polícia federal|policia federal|busca e apreensão|busca e apreensao)\w*/i },
   { type: "decisão judicial", regex: /\b(stf|tse|decisão|decisao|julgamento|liminar|condenaç|condenac|recurso)\w*/i },
 ];
