@@ -765,7 +765,7 @@ const EventReportPage = () => {
         <Card>
           <CardContent className="py-12 text-center">
             <CalendarDays className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Nenhum comentário no período</h3>
+            <h3 className="text-lg font-semibold mb-2">Relatório não gerado</h3>
             <p className="text-muted-foreground">{result.message}</p>
           </CardContent>
         </Card>
