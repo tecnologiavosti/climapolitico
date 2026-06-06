@@ -19,7 +19,7 @@ import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
 } from "recharts";
 
-interface Candidate { id: string; full_name: string; }
+interface Candidate { id: string; full_name: string; party?: string | null; }
 
 // ============ Tipos ============
 interface EvolutionPoint { label: string; total: number; positive: number; negative: number; neutral: number; }
@@ -345,7 +345,7 @@ const RealTimeMonitor = () => {
     if (!user) return;
     (async () => {
       const { data } = await supabase
-        .from("candidates").select("id, full_name")
+        .from("candidates").select("id, full_name, party")
         .eq("user_id", user.id).eq("status", "active").order("full_name");
       if (data) {
         setCandidates(data);
@@ -462,7 +462,7 @@ const RealTimeMonitor = () => {
 
           {/* Central de coleta ao vivo — antes do primeiro snapshot */}
           {!snapshot && liveProgress && (
-            <LiveCollectionCenter progress={liveProgress} />
+            <LiveCollectionCenter progress={liveProgress} candidate={selectedCandidate} />
           )}
 
           {/* LINHA 1: Cards executivos */}
