@@ -473,8 +473,8 @@ async function fetchSnapshot(
   // BLOCO 3 — Eventos
   const storedEvents: EventItem[] = (qEvents.data ?? [])
     .filter((e: any) => {
-      const age = now.getTime() - new Date(e.event_date).getTime();
-      return age >= 0 && age <= 7 * 86400000;
+      const ts = new Date(e.event_date).getTime();
+      return ts >= start24h.getTime() && ts <= now.getTime();
     })
     .map((e: any) => ({
       id: e.id,
