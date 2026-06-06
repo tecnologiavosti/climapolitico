@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { isPoliticalCandidateContent } from "../_shared/political-content.ts";
+import { isPoliticalCandidateContent, politicalContentVerdict } from "../_shared/political-content.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -57,6 +57,13 @@ function primaryNewsQuery(candidateName: string): string {
   return alias || candidateName;
 }
 
+function activityNewsQueries(candidateName: string): string[] {
+  const primary = primaryNewsQuery(candidateName);
+  const full = `"${candidateName}"`;
+  const activity = `(agenda OR reunião OR reuniao OR discurso OR entrevista OR coletiva OR viagem OR visita OR declaração OR declaracao OR evento OR fórum OR forum OR conferência OR conferencia OR BRICS OR NDB OR "Novo Banco de Desenvolvimento")`;
+  return Array.from(new Set([`${primary} ${activity}`, `${full} ${activity}`])).slice(0, 4);
+}
+
 function matchesCandidateNews(item: NewsItem, candidateName: string): boolean {
   const text = normalize(`${item.title} ${item.description} ${item.source}`);
   const full = normalize(candidateName);
@@ -67,6 +74,13 @@ function matchesCandidateNews(item: NewsItem, candidateName: string): boolean {
   if (aliases.some((alias) => new RegExp(`(^|[^a-z0-9])${alias}([^a-z0-9]|$)`, "i").test(text))) return true;
   const hits = tokens.filter((token) => new RegExp(`(^|[^a-z0-9])${token}([^a-z0-9]|$)`, "i").test(text)).length;
   return tokens.length >= 2 ? hits >= 2 : hits >= 1;
+}
+
+function isCurrentPoliticalNews(item: NewsItem, candidateName: string): boolean {
+  const text = `${item.title} ${item.description} ${item.source}`;
+  const verdict = politicalContentVerdict(text, candidateName);
+  if (verdict.isPolitical) return true;
+  return matchesCandidateNews(item, candidateName) && verdict.officialHits > 0 && verdict.invalidHits === 0;
 }
 
 function hostNameOf(url: string): string {
@@ -207,17 +221,18 @@ serve(async (req) => {
 
     console.log(`Searching Google News for: ${candidateName}`);
 
-    const queries = [primaryNewsQuery(candidateName)];
+    const queries = activityNewsQueries(candidateName);
     const batches = await Promise.allSettled(
       queries.flatMap((q) => NEWS_WINDOWS.map((w) => fetchGoogleNews(q, w))),
     );
-    const bingItems = await fetchBingNews(primaryNewsQuery(candidateName));
+    const bingItems = (await Promise.allSettled(queries.map((q) => fetchBingNews(q))))
+      .flatMap((result) => result.status === "fulfilled" ? result.value : []);
     const gdeltItems = await fetchGdeltNews(candidateName);
     console.log(`[search-google-news] fontes: google=${batches.flatMap((result) => result.status === "fulfilled" ? result.value : []).length}, bing=${bingItems.length}, gdelt=${gdeltItems.length}`);
     const seen = new Set<string>();
     const newsItems = [...batches.flatMap((result) => result.status === "fulfilled" ? result.value : []), ...bingItems, ...gdeltItems]
       .filter((item) => item.title && item.link)
-      .filter((item) => matchesCandidateNews(item, candidateName) || isPoliticalCandidateContent(`${item.title} ${item.description} ${item.source}`, candidateName))
+      .filter((item) => isCurrentPoliticalNews(item, candidateName) || isPoliticalCandidateContent(`${item.title} ${item.description} ${item.source}`, candidateName))
       .filter((item) => {
         const key = `${item.link.split("?")[0]}|${normalize(item.title).slice(0, 90)}`;
         if (seen.has(key)) return false;

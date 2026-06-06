@@ -80,7 +80,7 @@ interface Snapshot {
 }
 
 // ============ Cache 5 min ============
-const cacheKey = (uid: string, cid: string) => `rt-evidence-v2:${uid}:${cid}`;
+const cacheKey = (uid: string, cid: string) => `rt-activity-v1:${uid}:${cid}`;
 const readCache = (k: string): Snapshot | null => {
   try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch { return null; }
 };
@@ -133,7 +133,7 @@ const cleanText = (raw: string): string =>
 // ============ Mapeamento evidencial → Temas Políticos ============
 const THEME_RULES: Array<{ name: string; keywords: RegExp }> = [
   { name: "Reforma Tributária", keywords: /\b(reforma tributária|reforma tributaria|imposto seletivo|cbs|ibs|iva|tributaç|tributac|alíquota|aliquota|arcabouço|arcabouco fiscal)\w*/i },
-  { name: "Banco dos BRICS", keywords: /\b(banco dos brics|novo banco de desenvolvimento|ndb|brics|dilma|china|rússia|russia|índia|india|áfrica do sul|africa do sul)\b/i },
+  { name: "Banco dos BRICS", keywords: /\b(banco dos brics|novo banco de desenvolvimento|new development bank|\bndb\b|brics|cúpula dos brics|cupula dos brics|banco do brics|china|rússia|russia|índia|india|áfrica do sul|africa do sul)\b/i },
   { name: "Eleições 2026", keywords: /\b(eleição 2026|eleições 2026|eleicao 2026|eleicoes 2026|presidência 2026|presidencia 2026|pré-candidat|pre-candidat|candidato 2026|campanha 2026|pesquisa eleitoral|datafolha|quaest|ipec)\w*/i },
   { name: "Segurança Pública", keywords: /\b(segurança|seguranca|polícia|policia|crime|violência|violencia|homicíd|homicid|facção|faccao|tráfico|trafico|pcc|cv|milíci|milici|operação|operacao)\w*/i },
   { name: "STF e Poder Judiciário", keywords: /\b(stf|supremo tribunal|supremo|judiciário|judiciario|justiça|justica|ministro do stf|moraes|fachin|barroso|toffoli|inquérito|inquerito|julgamento|condenação|condenacao|prisão|prisao)\w*/i },
@@ -149,7 +149,10 @@ const THEME_RULES: Array<{ name: string; keywords: RegExp }> = [
 
 // ============ Filtros de Relevância Política ============
 // Conteúdo descartado automaticamente (memes, humor, nostalgia, fan pages, etc.)
-const IRRELEVANT_REGEX = /\b(meme|memes|fan\s?page|fanpage|humor|humorist|engraçad|engracad|piada|paródia|parodia|edição engraçad|edicao engracad|nostalg|throwback|tbt|relembr|curiosidad|aleatóri|aleatori|montagem|montagens|zoaç|zoac|zueir|gracinha|tributo|homenagem póstuma|playlist|compilaç|compilac|melhores momentos|cortes engraçad|cortes engracad|edit\b|reels engraçad|reels engracad|stitch|duet)\b/i;
+const IRRELEVANT_REGEX = /\b(meme|memes|fan\s?page|fanpage|humor|humorist|engraçad|engracad|piada|paródia|parodia|edição engraçad|edicao engracad|nostalg|throwback|tbt|relembr|curiosidad|aleatóri|aleatori|montagem|montagens|zoaç|zoac|zueir|gracinha|tributo|homenagem póstuma|playlist|compilaç|compilac|melhores momentos|cortes engraçad|cortes engracad|edit\b|reels engraçad|reels engracad|stitch|duet|macarrão|macarrao|pix|primeira mulher presidente)\b/i;
+const HISTORICAL_CONTEXT_REGEX = /\b(impeachment|2010|2011|2012|2013|2014|2015|2016|2017|golpe de 64|ditadura|ex-presidente|ex presidenta|primeiro mandato|segundo mandato|lava jato|pedaladas fiscais|biografia|história de|historia de|há \d+ anos|ha \d+ anos|na época|na epoca|arquivo|relembra|relembre|retrospectiva)\b/i;
+const OFFICIAL_ACTIVITY_REGEX = /\b(agenda oficial|reunião|reuniao|encontro bilateral|comitiva|missão oficial|missao oficial|viagem institucional|visita oficial|cúpula|cupula|fórum|forum|conferência|conferencia|evento do brics|brics|novo banco de desenvolvimento|new development bank|\bndb\b|banco dos brics|presidente do banco|preside o banco|banco multilateral|declaração oficial|declaracao oficial)\b/i;
+const CURRENT_ACTIVITY_REGEX = /\b(hoje|agora|nesta\s+(segunda|terça|terca|quarta|quinta|sexta|semana)|neste\s+(sábado|sabado|domingo|mês|mes)|participa|participou|participará|participara|discursa|discursou|fará discurso|entrevista|concede entrevista|declara|declarou|afirma|afirmou|defende|defendeu|critica|criticou|anuncia|anunciou|lança|lanca|lançou|lancou|recebe|recebeu|se reúne|se reune|reuniu-se|visita|viaja|viajou|cumpre agenda|agenda em|evento em|coletiva)\b/i;
 
 // Sinais políticos fortes (entrevistas, discursos, decisões, etc.)
 const POLITICAL_HARD_REGEX = /\b(entrevist|sabatin|discurso|pronunciamento|debate|coletiva|agenda pública|agenda publica|projeto de lei|pec\b|medida provisória|medida provisoria|decis|liminar|julgamento|operação|operacao|reforma|votaç|votac|eleiç|eleic|cpi|stf|tse|congresso|senado|câmara|camara|governo|prefeit|ministro|presidente|polícia federal|policia federal|tributári|tributari|inflaç|inflac|crise|declaraç|declarac|movimentaç eleitoral|movimentac eleitoral|brics|otan|onu|exterior|posse|nomeaç|nomeac|sanção|sancao|vetou|sancionou)\b/i;
@@ -168,7 +171,12 @@ const scoreRelevance = (row: any, windowStart: number, now: number): number => {
   const isNews = isNewsNetwork(row.social_network, row.platform, row.interaction_type);
   const matchesTheme = THEME_RULES.some(r => r.keywords.test(cleaned));
   const matchesHard = POLITICAL_HARD_REGEX.test(cleaned);
-  if (!isNews && !matchesTheme && !matchesHard) return 0;
+  const officialActivity = OFFICIAL_ACTIVITY_REGEX.test(cleaned);
+  const currentActivity = officialActivity || CURRENT_ACTIVITY_REGEX.test(cleaned) || matchesHard;
+  const historicalOnly = HISTORICAL_CONTEXT_REGEX.test(cleaned) && !currentActivity;
+  if (historicalOnly) return 0;
+  if (!currentActivity) return 0;
+  if (!isNews && !matchesTheme && !matchesHard && !officialActivity) return 0;
   const ageH = Math.max(0.1, (now - t) / 3600000);
   const recency = Math.max(0.25, 1 - ageH / 24);
   const engagement = isNews
@@ -176,8 +184,16 @@ const scoreRelevance = (row: any, windowStart: number, now: number): number => {
     : (Number(row.likes_count) || 0) + (Number(row.shares_count) || 0) + (Number(row.replies_count) || 0) + 1;
   const trust = isNews ? 1.6 : 1.0;
   const trustedBoost = TRUSTED_OUTLET_REGEX.test(`${row.post_url || ""} ${row.author_name || ""} ${row.author_handle || ""}`) ? 1.5 : 1.0;
-  const themeBoost = matchesTheme ? 1.35 : matchesHard ? 1.15 : 1.0;
-  return Math.log10(engagement + 1) * recency * trust * trustedBoost * themeBoost;
+  const activityBoost = officialActivity ? 2.2 : isNews ? 1.7 : matchesHard ? 1.35 : 1.0;
+  const historyPenalty = HISTORICAL_CONTEXT_REGEX.test(cleaned) ? 0.25 : 1;
+  const themeBoost = matchesTheme ? 1.2 : 1.0;
+  return Math.log10(engagement + 1) * recency * trust * trustedBoost * activityBoost * themeBoost * historyPenalty;
+};
+
+const hasOfficialActivity = (text: string): boolean => OFFICIAL_ACTIVITY_REGEX.test(cleanText(text));
+const hasCurrentPoliticalActivity = (text: string): boolean => {
+  const cleaned = cleanText(text);
+  return (OFFICIAL_ACTIVITY_REGEX.test(cleaned) || CURRENT_ACTIVITY_REGEX.test(cleaned) || POLITICAL_HARD_REGEX.test(cleaned)) && !IRRELEVANT_REGEX.test(cleaned);
 };
 
 const emptyEvidence = (): EvidenceCounts => ({ news: 0, posts: 0, videos: 0, total: 0 });
@@ -215,51 +231,62 @@ const eventRules: Array<{ type: string; regex: RegExp }> = [
   { type: "discurso", regex: /\b(discurso|pronunciamento|declaraç|declarac|fala sobre|defende|critica)\w*/i },
   { type: "debate", regex: /\b(debate|confronto|discussão|discussao|embate)\w*/i },
   { type: "reunião", regex: /\b(reunião|reuniao|encontro|agenda|comitiva|cúpula|cupula)\w*/i },
+  { type: "viagem institucional", regex: /\b(viagem|viaja|viajou|visita oficial|missão oficial|missao oficial|comitiva|agenda internacional)\w*/i },
+  { type: "coletiva", regex: /\b(coletiva|entrevista coletiva|fala à imprensa|fala a imprensa|declaração à imprensa|declaracao a imprensa)\w*/i },
+  { type: "participação em evento", regex: /\b(participa|participou|participará|participara|fórum|forum|conferência|conferencia|seminário|seminario|evento do brics|brics|ndb|novo banco de desenvolvimento)\w*/i },
   { type: "operação", regex: /\b(operação|operacao|pf|polícia federal|policia federal|busca e apreensão|busca e apreensao)\w*/i },
   { type: "decisão judicial", regex: /\b(stf|tse|decisão|decisao|julgamento|liminar|condenaç|condenac|recurso)\w*/i },
 ];
 
 const detectEventsFromNews = (newsRows: any[]): EventItem[] => {
-  const groups = new Map<string, { rows: any[]; outlets: Set<string>; title: string }>();
+  const groups = new Map<string, { rows: any[]; outlets: Set<string>; title: string; official: boolean }>();
   for (const row of newsRows) {
     const text = `${row.post_title || ""} ${row.post_description || ""} ${row.comment_text || ""}`;
+    if (!hasCurrentPoliticalActivity(text)) continue;
     const rule = eventRules.find((r) => r.regex.test(text));
     if (!rule) continue;
     const title = (row.post_title || row.comment_text || rule.type).replace(/\s+/g, " ").trim().slice(0, 120);
     const outlet = normalizeOutlet(row.author_name || row.comment_author || row.author_handle || "Portal de notícia") || "Portal de notícia";
-    const current = groups.get(rule.type) || { rows: [], outlets: new Set<string>(), title };
+    const current = groups.get(rule.type) || { rows: [], outlets: new Set<string>(), title, official: false };
     current.rows.push(row);
     current.outlets.add(outlet);
+    current.official = current.official || hasOfficialActivity(text);
     if (effectiveDateOf(row).getTime() > effectiveDateOf(current.rows[0] || row).getTime()) current.title = title;
     groups.set(rule.type, current);
   }
   return Array.from(groups.entries())
-    // Evento exige data, fonte e evidência mínima (>=2 publicações)
-    .filter(([, g]) => g.rows.length >= 2 && g.outlets.size >= 1)
+    // Evento exige 3 evidências, 2 veículos ou sinal oficial confirmado.
+    .filter(([, g]) => g.official || g.outlets.size >= 2 || g.rows.length >= 3)
     .map(([type, g]) => ({
       id: `news-${type}`,
       name: g.title,
       date: effectiveDateOf(g.rows[0]).toISOString(),
       type,
-      impact: g.rows.length + g.outlets.size,
+      impact: g.rows.length + g.outlets.size + (g.official ? 3 : 0),
       publications: g.rows.length,
       outlets: g.outlets.size,
     }))
     .sort((a, b) => b.impact - a.impact).slice(0, 6);
 };
 
-const extractThemes = (rows: Array<{ comment_text: string | null; post_title?: string | null; social_network?: string | null; author_name?: string | null; author_handle?: string | null }>): Theme[] => {
-  const counts = new Map<string, { count: number; evidence: EvidenceCounts; examples: string[]; sources: Set<string> }>();
+const extractThemes = (rows: Array<{ comment_text: string | null; post_title?: string | null; post_description?: string | null; social_network?: string | null; platform?: string | null; interaction_type?: string | null; author_name?: string | null; author_handle?: string | null; comment_author?: string | null }>): Theme[] => {
+  const counts = new Map<string, { count: number; evidence: EvidenceCounts; examples: string[]; sources: Set<string>; outlets: Set<string>; official: boolean }>();
   for (const r of rows) {
-    const txt = cleanText(`${r.post_title || ""} ${r.comment_text || ""}`);
-    if (!txt || txt.length < 8) continue;
+    const raw = `${r.post_title || ""} ${r.post_description || ""} ${r.comment_text || ""}`;
+    const txt = cleanText(raw);
+    if (!txt || txt.length < 8 || !hasCurrentPoliticalActivity(raw)) continue;
     for (const rule of THEME_RULES) {
       if (rule.keywords.test(txt)) {
-        const current = counts.get(rule.name) || { count: 0, evidence: emptyEvidence(), examples: [], sources: new Set<string>() };
+        const current = counts.get(rule.name) || { count: 0, evidence: emptyEvidence(), examples: [], sources: new Set<string>(), outlets: new Set<string>(), official: false };
         current.count++;
         addEvidence(current.evidence, r.social_network);
         const src = (r.author_name || r.author_handle || r.social_network || "").toString().toLowerCase().trim();
         if (src) current.sources.add(src);
+        if (isNewsNetwork(r.social_network, r.platform, r.interaction_type)) {
+          const outlet = normalizeOutlet(r.author_name || r.comment_author || r.author_handle || null);
+          if (outlet) current.outlets.add(outlet.toLowerCase());
+        }
+        current.official = current.official || hasOfficialActivity(raw);
         const example = (r.post_title || r.comment_text || "").replace(/\s+/g, " ").trim();
         if (example && current.examples.length < 2) current.examples.push(example.slice(0, 110));
         counts.set(rule.name, current);
@@ -267,12 +294,12 @@ const extractThemes = (rows: Array<{ comment_text: string | null; post_title?: s
     }
   }
   return Array.from(counts.entries())
-    .map(([name, item]) => ({ name, count: item.count, evidence: item.evidence, examples: item.examples, _sources: item.sources.size }))
-    // Tema só existe com evidência mínima: 3 fontes distintas OU 5 conteúdos relacionados
-    .filter((t: any) => t._sources >= 3 || t.count >= 5)
+    .map(([name, item]) => ({ name, count: item.count, evidence: item.evidence, examples: item.examples, _sources: item.sources.size, _outlets: item.outlets.size, _official: item.official }))
+    // Tema só existe com 3 evidências independentes, 2 veículos ou evento oficial confirmado.
+    .filter((t: any) => t._official || t._outlets >= 2 || t._sources >= 3 || t.count >= 3)
     .sort((a, b) => b.count - a.count)
     .slice(0, 7)
-    .map(({ _sources, ...rest }: any) => rest);
+    .map(({ _sources, _outlets, _official, ...rest }: any) => rest);
 };
 
 // ============ Domínios conhecidos para veículos ============
@@ -574,14 +601,14 @@ async function fetchSnapshot(
     : negativeToday > positiveToday * 1.2 ? "predomínio negativo nos registros classificados" : "sentimento equilibrado nos registros classificados";
   const nowNarrative =
     mentionsToday === 0
-      ? `Nenhum dado relevante foi coletado para ${candidateName} nas últimas ${windowHours}h. O monitor não gerou inferências sem evidência.`
-      : `${candidateName} teve ${mentionsToday.toLocaleString("pt-BR")} registros relevantes nas últimas ${windowHours}h. ` +
-        (topTheme ? `Tema com maior evidência: ${topTheme.name}, sustentado por ${topTheme.evidence.news} notícias, ${topTheme.evidence.posts} posts e ${topTheme.evidence.videos} vídeos. ` : `Nenhum tema atingiu evidência mínima (3 fontes ou 5 conteúdos). `) +
+      ? `Pouca atividade pública relevante detectada para ${candidateName} nas últimas ${windowHours}h.`
+      : `${candidateName} teve ${mentionsToday.toLocaleString("pt-BR")} sinais de atividade política atual nas últimas ${windowHours}h. ` +
+        (topTheme ? `Tema com maior evidência: ${topTheme.name}, sustentado por ${topTheme.evidence.news} notícias, ${topTheme.evidence.posts} posts e ${topTheme.evidence.videos} vídeos. ` : `Nenhum tema atingiu evidência mínima (3 evidências, 2 veículos ou evento oficial). `) +
         (classifiedToday > 0 ? `Leitura de sentimento: ${tone}.` : "Ainda sem volume classificado suficiente.");
 
   // BLOCO 8 — Resumo executivo (mesmíssima base dos demais blocos)
   const executiveSummary = {
-    what: mentionsToday > 0 ? `${mentionsToday.toLocaleString("pt-BR")} registros relevantes na janela: ${evidence.news.toLocaleString("pt-BR")} notícias, ${evidence.posts.toLocaleString("pt-BR")} posts e ${evidence.videos.toLocaleString("pt-BR")} vídeos; ${windowCounts.h1.toLocaleString("pt-BR")} na última hora.` : "Sem registros relevantes na janela.",
+    what: mentionsToday > 0 ? `${candidateName} apresentou ${mentionsToday.toLocaleString("pt-BR")} sinais de atividade política atual: ${evidence.news.toLocaleString("pt-BR")} notícias, ${evidence.posts.toLocaleString("pt-BR")} posts e ${evidence.videos.toLocaleString("pt-BR")} vídeos; ${windowCounts.h1.toLocaleString("pt-BR")} na última hora.` : "Pouca atividade pública relevante detectada nas últimas 24 horas.",
     why: events[0]
       ? `Evento recente detectado: "${events[0].name}" (${events[0].publications} publicações, ${events[0].outlets} veículos).`
       : viral ? `Evidência de viralização: ${viral.social_network}, ${((viral.likes_count || 0) + (viral.shares_count || 0) + (viral.replies_count || 0)).toLocaleString("pt-BR")} interações.`
