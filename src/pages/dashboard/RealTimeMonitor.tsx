@@ -855,7 +855,7 @@ const RealTimeMonitor = () => {
               <KpiCard icon={<Activity className="h-3.5 w-3.5 text-primary" />} label="Última hora" value={snapshot.windowCounts.h1.toLocaleString("pt-BR")} accent="bg-primary/70" />
               <KpiCard icon={<Clock className="h-3.5 w-3.5 text-primary" />} label="Últimas 6h" value={snapshot.windowCounts.h6.toLocaleString("pt-BR")} accent="bg-primary/50" />
               <KpiCard icon={<Activity className="h-3.5 w-3.5 text-primary" />} label="Últimas 12h" value={snapshot.windowCounts.h12.toLocaleString("pt-BR")} accent="bg-primary/40" />
-              <KpiCard icon={<Newspaper className="h-3.5 w-3.5 text-primary" />} label="Notícias 24h" value={snapshot.newsCollected.toLocaleString("pt-BR")} accent="bg-primary/30" />
+              <KpiCard icon={<Newspaper className="h-3.5 w-3.5 text-primary" />} label="Notícias relevantes" value={snapshot.evidence.news.toLocaleString("pt-BR")} accent="bg-primary/30" />
             </div>
           )}
 
