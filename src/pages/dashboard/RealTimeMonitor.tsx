@@ -80,7 +80,7 @@ interface Snapshot {
 }
 
 // ============ Cache 5 min ============
-const cacheKey = (uid: string, cid: string) => `rt-evidence-v2:${uid}:${cid}`;
+const cacheKey = (uid: string, cid: string) => `rt-activity-v1:${uid}:${cid}`;
 const readCache = (k: string): Snapshot | null => {
   try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch { return null; }
 };
