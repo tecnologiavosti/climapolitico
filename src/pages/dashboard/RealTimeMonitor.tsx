@@ -112,17 +112,17 @@ async function fetchSnapshot(userId: string, candidateId: string, timeoutMs = 80
     .eq("candidate_id", candidateId)
     .not("social_network", "in", "(mastodon,lemmy,pinterest)");
 
+  const run = <T,>(b: any, label: string): Promise<T> =>
+    withTimeout<T>(Promise.resolve(b) as Promise<T>, timeoutMs, label);
+
   // 6 consultas em paralelo
-  const [
-    qToday, qPos, qNeg, qNews, qPrev24h, qSample,
-  ] = await Promise.all([
-    withTimeout(base().gte("created_at", startToday.toISOString()), timeoutMs, "today") as any,
-    withTimeout(base().gte("created_at", startToday.toISOString()).eq("sentiment_label", "Positivo"), timeoutMs, "pos") as any,
-    withTimeout(base().gte("created_at", startToday.toISOString()).eq("sentiment_label", "Negativo"), timeoutMs, "neg") as any,
-    withTimeout(base().eq("social_network", "Google News"), timeoutMs, "news") as any,
-    withTimeout(base().gte("created_at", startPrev24h.toISOString()).lt("created_at", start24h.toISOString()), timeoutMs, "prev24") as any,
-    // Amostra leve dos últimos 30 dias para evolução + topics + viral
-    withTimeout(
+  const [qToday, qPos, qNeg, qNews, qPrev24h, qSample] = await Promise.all([
+    run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()), "today"),
+    run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()).eq("sentiment_label", "Positivo"), "pos"),
+    run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()).eq("sentiment_label", "Negativo"), "neg"),
+    run<{ count: number | null }>(base().eq("social_network", "Google News"), "news"),
+    run<{ count: number | null }>(base().gte("created_at", startPrev24h.toISOString()).lt("created_at", start24h.toISOString()), "prev24"),
+    run<{ data: any[] | null }>(
       supabase.from("social_interactions")
         .select("created_at, sentiment_label, comment_text, social_network, likes_count, shares_count")
         .eq("user_id", userId).eq("candidate_id", candidateId)
@@ -130,8 +130,8 @@ async function fetchSnapshot(userId: string, candidateId: string, timeoutMs = 80
         .gte("created_at", start30d.toISOString())
         .order("created_at", { ascending: false })
         .limit(5000),
-      timeoutMs, "sample"
-    ) as any,
+      "sample"
+    ),
   ]);
 
   const mentionsToday = qToday.count ?? 0;
