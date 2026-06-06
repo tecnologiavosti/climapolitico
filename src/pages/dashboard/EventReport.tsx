@@ -88,8 +88,14 @@ type LocalInteraction = {
   created_at: string | null;
   likes_count: number | null;
   replies_count: number | null;
+  shares_count?: number | null;
   sentiment_label: string | null;
   social_network: string | null;
+  post_url?: string | null;
+  author_profile_url?: string | null;
+  post_title?: string | null;
+  post_description?: string | null;
+  author_name?: string | null;
 };
 
 const normalizeEventText = (text: string) =>
@@ -98,6 +104,86 @@ const normalizeEventText = (text: string) =>
 const tokenizeEventText = (text: string) => normalizeEventText(text).match(/[a-z0-9]{4,}/g) || [];
 
 const titleFromPhrase = (phrase: string) => phrase.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+const MIN_SOCIAL_ONLY_PEAK_VOLUME = 25;
+const MIN_EVIDENCED_GROWTH_VOLUME = 15;
+
+const CONFIRMED_EVENT_TERMS = [
+  'eleição', 'eleicoes', 'eleições', 'segundo turno', 'primeiro turno', 'posse', 'diplomacao', 'diplomação',
+  'debate', 'sabatina', 'entrevista', 'jornal nacional', 'roda viva', 'podcast', 'live', 'discurso',
+  'pronunciamento', 'coletiva', 'comício', 'comicio', 'cpi', 'senado', 'câmara', 'camara', 'congresso',
+  'stf', 'tse', 'tribunal', 'julgamento', 'decisão', 'decisao', 'operação', 'operacao', 'polícia federal',
+  'votação', 'votacao', 'projeto de lei', 'pec', 'medida provisória', 'agenda', 'reunião', 'reuniao',
+  'viagem', 'brics', 'banco dos brics', 'ndb', 'plenario', 'plenário', 'ministerio', 'ministério'
+];
+
+function decodeHtmlText(value: string): string {
+  if (!value) return '';
+  const textarea = typeof document !== 'undefined' ? document.createElement('textarea') : null;
+  let decoded = value
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&#x27;/gi, "'");
+  if (textarea) {
+    textarea.innerHTML = decoded;
+    decoded = textarea.value;
+  }
+  return decoded;
+}
+
+function cleanDisplayText(value: string | null | undefined): string {
+  return decodeHtmlText(value || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<video[\s\S]*?<\/video>/gi, ' ')
+    .replace(/<source[^>]*>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/https?:\/\/\S+/gi, ' ')
+    .replace(/\b(src|href|class|target|rel|nofollow|width|height|type)=\S+/gi, ' ')
+    .replace(/[{}<>]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function interactionDate(row: LocalInteraction): string {
+  return (row.original_posted_at || row.created_at || '').substring(0, 10);
+}
+
+function hostFromUrl(url?: string | null): string | null {
+  if (!url) return null;
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return null; }
+}
+
+function hasConfirmedEventEvidence(rows: LocalInteraction[]): boolean {
+  const joined = normalizeEventText(rows.map(r => `${r.post_title || ''} ${r.post_description || ''} ${r.comment_text || ''}`).join(' '));
+  return CONFIRMED_EVENT_TERMS.some(term => joined.includes(normalizeEventText(term)));
+}
+
+function summarizeRows(rows: LocalInteraction[]) {
+  let pos = 0, neg = 0, neu = 0;
+  const netCounts = new Map<string, number>();
+  rows.forEach(r => {
+    const s = (r.sentiment_label || '').toLowerCase();
+    if (s === 'positive' || s === 'positivo') pos++;
+    else if (s === 'negative' || s === 'negativo') neg++;
+    else neu++;
+    if (r.social_network) netCounts.set(r.social_network, (netCounts.get(r.social_network) || 0) + 1);
+  });
+  const labeled = pos + neg + neu;
+  return {
+    sentiment: {
+      positivePct: labeled ? Math.round((pos / labeled) * 100) : 0,
+      negativePct: labeled ? Math.round((neg / labeled) * 100) : 0,
+      neutralPct: labeled ? Math.round((neu / labeled) * 100) : 0,
+    },
+    topNetworks: [...netCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([n]) => n),
+    distinctNetworks: netCounts.size,
+  };
+}
 
 function classifyMotivo(variation: number, count: number, topNetwork: string | null): string {
   if (variation > 400) return 'Viralização / explosão de menções';
@@ -118,11 +204,11 @@ interface DailyPoint {
 }
 
 function detectEventsFromInteractions(comments: LocalInteraction[], _candidateName: string): { events: DetectedEvent[]; timeline: DailyPoint[] } {
-  if (comments.length < 5) return { events: [], timeline: [] };
+  if (comments.length === 0) return { events: [], timeline: [] };
 
   const byDay = new Map<string, LocalInteraction[]>();
   comments.forEach((comment) => {
-    const day = (comment.original_posted_at || comment.created_at || '').substring(0, 10);
+    const day = interactionDate(comment);
     if (!day) return;
     byDay.set(day, [...(byDay.get(day) || []), comment]);
   });
@@ -147,51 +233,45 @@ function detectEventsFromInteractions(comments: LocalInteraction[], _candidateNa
       const prev = counts.slice(Math.max(0, i - 7), i);
       const baseline = prev.length > 0 ? prev.reduce((s, n) => s + n, 0) / prev.length : avg;
       const variation = baseline > 0 ? ((rows.length - baseline) / baseline) * 100 : 0;
-      const isPeak = rows.length >= Math.max(4, avg * 1.5) && variation > 50;
-      const isDrop = baseline >= 4 && variation < -60;
-      return { day, rows, variation, baseline, isPeak, isDrop };
+      const { distinctNetworks } = summarizeRows(rows);
+      const confirmedTerms = hasConfirmedEventEvidence(rows);
+      const relevantVolume = rows.length >= Math.max(MIN_SOCIAL_ONLY_PEAK_VOLUME, Math.ceil(avg * 2)) && variation >= 100;
+      const strongGrowthWithEvidence = rows.length >= MIN_EVIDENCED_GROWTH_VOLUME && variation >= 300 && confirmedTerms && distinctNetworks >= 2;
+      const exceptionalVolume = rows.length >= 100 && variation >= 35;
+      const isPeak = relevantVolume || strongGrowthWithEvidence || exceptionalVolume;
+      return { day, rows, variation, baseline, isPeak, confirmedTerms };
     })
-    .filter(d => d.isPeak || d.isDrop)
-    .sort((a, b) => Math.abs(b.variation) - Math.abs(a.variation))
+    .filter(d => d.isPeak)
+    .sort((a, b) => (b.rows.length * Math.max(1, b.variation / 100)) - (a.rows.length * Math.max(1, a.variation / 100)))
     .slice(0, 50);
 
   // mark timeline points
   const peakSet = new Set(peakDays.map(p => p.day));
   timeline.forEach(p => { if (peakSet.has(p.date)) p.isPeak = true; });
 
-  const events: DetectedEvent[] = peakDays.map(({ day, rows, variation, isDrop }) => {
+  const events: DetectedEvent[] = peakDays.map(({ day, rows, variation, confirmedTerms }) => {
     const formatted = day.split('-').reverse().join('/');
     const sign = variation >= 0 ? '+' : '';
-    const tag = isDrop ? 'Queda abrupta' : variation > 200 ? 'Explosão de menções' : 'Pico de menções';
-
-    let pos = 0, neg = 0, neu = 0;
-    const netCounts = new Map<string, number>();
-    rows.forEach(r => {
-      const s = (r.sentiment_label || '').toLowerCase();
-      if (s === 'positive' || s === 'positivo') pos++;
-      else if (s === 'negative' || s === 'negativo') neg++;
-      else if (s === 'neutral' || s === 'neutro') neu++;
-      if (r.social_network) netCounts.set(r.social_network, (netCounts.get(r.social_network) || 0) + 1);
-    });
-    const topNetworks = [...netCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([n]) => n);
-    const labeled = pos + neg + neu;
+    const tag = confirmedTerms ? 'Forte repercussão com indícios de evento' : 'Forte crescimento de repercussão';
+    const summary = summarizeRows(rows);
+    const sampleText = rows.map(r => cleanDisplayText(r.post_title || r.comment_text)).filter(Boolean).slice(0, 8).join(' ');
+    const keywords = [...new Set(tokenizeEventText(sampleText).filter(w => !EVENT_STOP_WORDS.has(w)).slice(0, 8))];
 
     return {
       name: `${formatted} — ${tag}`,
-      type: isDrop ? 'queda' : 'pico',
-      keywords: [],
+      type: 'repercussao_social_evidenciada',
+      keywords,
       start_date: day,
       end_date: day,
       mentions_estimate: rows.length,
       variation_pct: Math.round(variation),
-      description: `${tag} em ${formatted} — ${rows.length} menções (${sign}${Math.round(variation)}% vs. média anterior).`,
-      motivo: classifyMotivo(variation, rows.length, topNetworks[0] || null),
-      sentiment: {
-        positivePct: labeled ? Math.round((pos / labeled) * 100) : 0,
-        negativePct: labeled ? Math.round((neg / labeled) * 100) : 0,
-        neutralPct: labeled ? Math.round((neu / labeled) * 100) : 0,
-      },
-      topNetworks,
+      description: `${tag} em ${formatted}: ${rows.length} menções (${sign}${Math.round(variation)}% vs. média anterior), com evidência textual/rede suficiente para investigação histórica.`,
+      motivo: classifyMotivo(variation, rows.length, summary.topNetworks[0] || null),
+      sentiment: summary.sentiment,
+      topNetworks: summary.topNetworks,
+      confirmed_event: false,
+      evidence_level: confirmedTerms ? 'crescimento_com_indicios' : 'volume_relevante',
+      relevance_score: Math.round(Math.min(70, rows.length * 1.2 + Math.max(0, variation) / 10 + (confirmedTerms ? 15 : 0))),
     };
   });
 
@@ -210,6 +290,13 @@ interface DetectedEvent {
   motivo?: string;
   sentiment?: { positivePct: number; negativePct: number; neutralPct: number };
   topNetworks?: string[];
+  confirmed_event?: boolean;
+  evidence_level?: 'evento_documentado' | 'crescimento_com_indicios' | 'volume_relevante';
+  relevance_score?: number;
+  publications_count?: number;
+  distinct_outlets?: number;
+  sources?: Array<{ name: string; url: string; region?: string }>;
+  source_titles?: string[];
 }
 
 const EventReportPage = () => {
@@ -223,13 +310,6 @@ const EventReportPage = () => {
   const [endDate, setEndDate] = useState("");
   const [result, setResult] = useState<ReportResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-
-  const applyPreset = (preset: "2018" | "2022" | "2024" | "2026" | "all") => {
-    if (preset === "all") { setStartDate("2018-01-01"); setEndDate(new Date().toISOString().slice(0, 10)); return; }
-    if (preset === "2026") { setStartDate("2026-01-01"); setEndDate(new Date().toISOString().slice(0, 10)); return; }
-    setStartDate(`${preset}-01-01`);
-    setEndDate(`${preset}-12-31`);
-  };
 
   // Enriquecimento: bolhas, temas dominantes (com sentimento) e origem do pico
   const enrichQueryKey = result?.period ? `${selectedCandidate}|${result.period.startDate}|${result.period.endDate}` : "";
@@ -325,7 +405,7 @@ const EventReportPage = () => {
       const to = from + PAGE - 1;
       const { data, error } = await supabase
         .from('social_interactions')
-        .select('comment_text, original_posted_at, created_at, likes_count, replies_count, sentiment_label, social_network')
+        .select('comment_text, original_posted_at, created_at, likes_count, replies_count, shares_count, sentiment_label, social_network, post_url, author_profile_url, post_title, post_description, author_name')
         .eq('candidate_id', selectedCandidate)
         .or(`and(original_posted_at.gte.${fromISO},original_posted_at.lte.${toISO}),and(original_posted_at.is.null,created_at.gte.${fromISO},created_at.lte.${toISO})`)
         .order('original_posted_at', { ascending: false, nullsFirst: false })
@@ -335,7 +415,35 @@ const EventReportPage = () => {
       all.push(...data);
       if (data.length < PAGE) break;
     }
-    return detectEventsFromInteractions(all as LocalInteraction[], selectedCandidateData?.full_name || '');
+    const localDetection = detectEventsFromInteractions(all as LocalInteraction[], selectedCandidateData?.full_name || '');
+
+    let aiEvents: DetectedEvent[] = [];
+    try {
+      const { data: aiDetected, error: aiError } = await supabase.functions.invoke('detect-historical-peaks', {
+        body: {
+          candidateId: selectedCandidate,
+          startDate: fromISO,
+          endDate: toISO,
+          localTimeline: localDetection.timeline,
+        },
+      });
+      if (aiError) throw aiError;
+      aiEvents = Array.isArray(aiDetected?.events) ? aiDetected.events as DetectedEvent[] : [];
+    } catch (error) {
+      console.warn('Detecção histórica por IA indisponível, mantendo sinais internos qualificados.', error);
+    }
+    const merged = [...aiEvents, ...localDetection.events]
+      .filter((evt) => {
+        const hasExternalEvidence = (evt.publications_count || 0) > 0 || (evt.sources?.length || 0) > 0 || evt.confirmed_event;
+        if ((evt.mentions_estimate || 0) <= 10 && !hasExternalEvidence) return false;
+        return hasExternalEvidence || (evt.mentions_estimate || 0) >= MIN_SOCIAL_ONLY_PEAK_VOLUME;
+      })
+      .sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0))
+      .slice(0, 30);
+
+    const peakDates = new Set(merged.map((e) => e.start_date));
+    localDetection.timeline.forEach((point) => { point.isPeak = peakDates.has(point.date); });
+    return { events: merged, timeline: localDetection.timeline };
   };
 
 
@@ -364,7 +472,8 @@ const EventReportPage = () => {
           query = query.or(orExpr);
         }
         const { count } = await query;
-        return { ...evt, mentions_estimate: count ?? evt.mentions_estimate };
+        const measured = count ?? evt.mentions_estimate;
+        return { ...evt, mentions_estimate: evt.confirmed_event ? Math.max(measured, evt.mentions_estimate) : measured };
       } catch {
         return evt;
       }
@@ -385,16 +494,18 @@ const EventReportPage = () => {
         const formatted = evt.start_date.split('-').reverse().join('/');
         const v = evt.variation_pct ?? 0;
         const sign = v >= 0 ? '+' : '';
-        const tag = evt.type === 'queda' ? 'Queda abrupta' : v > 200 ? 'Explosão de menções' : 'Pico de menções';
+        const tag = evt.confirmed_event ? 'Evento político documentado' : evt.evidence_level === 'crescimento_com_indicios' ? 'Crescimento com evidências' : 'Volume historicamente relevante';
         return {
           ...evt,
-          description: `${tag} em ${formatted} — ${evt.mentions_estimate} menções (${sign}${v}% vs. média anterior).`,
+          description: evt.confirmed_event && evt.description
+            ? evt.description
+            : `${tag} em ${formatted} — ${evt.mentions_estimate} registros analisados (${sign}${v}% vs. média anterior).`,
         };
-      }).sort((a, b) => a.start_date.localeCompare(b.start_date));
+      }).sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0));
       setDetectedEvents(refined);
       setTimeline(tl);
-      if (refined.length === 0) toast.info("Nenhum pico detectado no período selecionado.");
-      else toast.success(`${refined.length} pico(s) detectado(s) em ${tl.length} dias analisados`);
+      if (refined.length === 0) toast.info("Nenhum evento político documentado foi detectado no período selecionado.");
+      else toast.success(`${refined.length} evento(s) relevante(s) detectado(s) em ${tl.length} dias analisados`);
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || "Erro ao detectar picos");
@@ -412,18 +523,19 @@ const EventReportPage = () => {
     }
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (forcedEvent?: DetectedEvent) => {
     if (!selectedCandidate) { toast.error("Selecione um candidato"); return; }
-    if (!startDate || !endDate) { toast.error("Defina o período do evento"); return; }
-
-    const evt = selectedEventIdx ? detectedEvents[Number(selectedEventIdx)] : null;
+    const evt = forcedEvent || (selectedEventIdx ? detectedEvents[Number(selectedEventIdx)] : null);
+    const reportStartDate = evt?.start_date || startDate;
+    const reportEndDate = evt?.end_date || endDate;
+    if (!reportStartDate || !reportEndDate) { toast.error("Defina o período do evento"); return; }
 
     setIsLoading(true);
     setResult(null);
     try {
-      const sDate = new Date(startDate);
+      const sDate = new Date(reportStartDate);
       sDate.setHours(0, 0, 0, 0);
-      const eDate = new Date(endDate);
+      const eDate = new Date(reportEndDate);
       eDate.setHours(23, 59, 59, 999);
 
       const { data, error } = await supabase.functions.invoke('analyze-event-repercussion', {
@@ -433,6 +545,11 @@ const EventReportPage = () => {
           endDate: eDate.toISOString(),
           eventName: evt?.name || undefined,
           eventKeywords: evt?.keywords || undefined,
+          eventDescription: evt?.description || undefined,
+          eventType: evt?.type || undefined,
+          eventSources: evt?.sources || undefined,
+          eventSourceTitles: evt?.source_titles || undefined,
+          confirmedEvent: evt?.confirmed_event || false,
         },
       });
       if (error) throw error;
@@ -457,7 +574,7 @@ const EventReportPage = () => {
         <HelpTooltip text="Descubra os picos de menções do candidato: debates, entrevistas, viralizações e momentos que mais repercutiram nas redes.">
         <h1 className="text-3xl font-bold">Picos de Menções</h1>
       </HelpTooltip>
-        <p className="text-muted-foreground mt-1">Ferramenta de análise histórica e eleitoral. Selecione qualquer período (2018, 2022, 2024, 2026 ou intervalo personalizado) para identificar viralizações, crises, debates e eventos de alta repercussão.</p>
+        <p className="text-muted-foreground mt-1">Ferramenta de inteligência histórica para identificar acontecimentos políticos reais e documentados dentro do intervalo selecionado.</p>
       </div>
 
       {/* Controls */}
@@ -478,20 +595,20 @@ const EventReportPage = () => {
                 </SelectContent>
               </Select>
             </HelpTooltip>
-            <HelpTooltip text="A IA varre comentários dos últimos 3 meses e identifica picos de menções (entrevistas, debates, viralizações) que tiveram repercussão.">
+            <HelpTooltip text="A IA cruza fontes externas e sinais internos para identificar eventos políticos reais no período selecionado.">
               <Button variant="outline" size="sm" className="sm:size-default" onClick={handleDetectEvents} disabled={isDetecting || !selectedCandidate}>
                 {isDetecting
                   ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Detectando...</>
-                  : <><Zap className="mr-2 h-4 w-4" />Picos</>}
+                  : <><Zap className="mr-2 h-4 w-4" />Detectar eventos</>}
               </Button>
             </HelpTooltip>
           </div>
 
           {detectedEvents.length > 0 && (
-            <HelpTooltip text="Selecione um pico para analisar com a IA. A análise considera apenas os comentários daquele dia.">
+            <HelpTooltip text="Selecione um evento documentado para gerar o relatório contextual com IA.">
               <Select value={selectedEventIdx} onValueChange={handleSelectEvent}>
                 <SelectTrigger className="w-full sm:w-[520px]">
-                  <SelectValue placeholder={`${detectedEvents.length} pico(s) detectado(s) — escolha um`} />
+                  <SelectValue placeholder={`${detectedEvents.length} evento(s) detectado(s) — escolha um`} />
                 </SelectTrigger>
                 <SelectContent className="max-w-[calc(100vw-2rem)]">
                   {detectedEvents.map((e, i) => {
@@ -500,7 +617,7 @@ const EventReportPage = () => {
                     return (
                       <SelectItem key={i} value={String(i)} className="whitespace-normal break-words pr-8">
                         <span className="block text-sm leading-snug">
-                          {e.name} — {e.mentions_estimate} menções <span className={v >= 0 ? 'text-green-600' : 'text-red-600'}>({sign}{v}%)</span>
+                          {e.name} — relevância {e.relevance_score || 0} • {e.mentions_estimate} registros <span className={v >= 0 ? 'text-green-600' : 'text-red-600'}>({sign}{v}%)</span>
                         </span>
                       </SelectItem>
                     );
@@ -510,7 +627,7 @@ const EventReportPage = () => {
             </HelpTooltip>
           )}
 
-          {selectedEventIdx && detectedEvents[Number(selectedEventIdx)] && (
+          {selectedEventIdx !== "" && detectedEvents[Number(selectedEventIdx)] && (
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
               <p className="font-medium">{detectedEvents[Number(selectedEventIdx)].name}</p>
               <p className="text-muted-foreground mt-1">{detectedEvents[Number(selectedEventIdx)].description}</p>
@@ -519,33 +636,24 @@ const EventReportPage = () => {
 
           <div className="flex flex-row flex-wrap gap-3 items-end">
             <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">Data Início</label>
+              <label className="text-sm text-muted-foreground">Data Inicial</label>
               <HelpTooltip text="Dia em que o evento começou.">
                 <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-[130px] sm:w-[180px]" />
               </HelpTooltip>
             </div>
             <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">Data Fim</label>
+              <label className="text-sm text-muted-foreground">Data Final</label>
               <HelpTooltip text="Até quando você quer analisar a repercussão.">
                 <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-[130px] sm:w-[180px]" />
               </HelpTooltip>
             </div>
             <HelpTooltip text="Clica aqui pra IA olhar tudo que falaram nesse período e te dizer se foi bom ou ruim.">
-              <Button onClick={handleGenerate} disabled={isLoading || !selectedCandidate || !startDate || !endDate}>
+              <Button onClick={() => handleGenerate()} disabled={isLoading || !selectedCandidate || !startDate || !endDate}>
                 {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analisando...</> : <><CalendarDays className="mr-2 h-4 w-4" />Gerar Relatório</>}
               </Button>
             </HelpTooltip>
           </div>
 
-          <div className="flex flex-wrap gap-2 items-center">
-            <span className="text-xs text-muted-foreground">Períodos rápidos:</span>
-            <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("2018")}>2018</Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("2022")}>2022</Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("2024")}>2024</Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("2026")}>2026</Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("all")}>2018 → hoje</Button>
-            <span className="text-xs text-muted-foreground ml-2">Sem limite de tempo — pesquise qualquer intervalo histórico.</span>
-          </div>
         </CardContent>
       </Card>
 
@@ -553,11 +661,11 @@ const EventReportPage = () => {
       {timeline.length > 0 && (
         <Card>
           <CardHeader>
-            <HelpTooltip text="Gráfico contínuo do volume diário de menções em todo o período selecionado. Pontos vermelhos = picos detectados.">
+            <HelpTooltip text="Gráfico contínuo do volume diário de menções em todo o período selecionado. Pontos marcados = eventos reais detectados.">
               <CardTitle className="flex items-center gap-2"><LineChartIcon className="h-5 w-5" />Gráfico Histórico ({startDate} → {endDate})</CardTitle>
             </HelpTooltip>
             <CardDescription>
-              {timeline.reduce((s, p) => s + p.count, 0).toLocaleString("pt-BR")} menções totais • {timeline.length} dias analisados • {detectedEvents.length} picos detectados
+              {timeline.reduce((s, p) => s + p.count, 0).toLocaleString("pt-BR")} registros totais • {timeline.length} dias analisados • {detectedEvents.length} eventos detectados
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -582,14 +690,14 @@ const EventReportPage = () => {
         </Card>
       )}
 
-      {/* Lista detalhada de picos */}
+      {/* Lista detalhada de eventos */}
       {detectedEvents.length > 0 && (
         <Card>
           <CardHeader>
-            <HelpTooltip text="Cada pico detectado com data, volume, motivo provável, sentimento e fontes predominantes. Clique em 'Analisar com IA' para o contexto histórico completo.">
-              <CardTitle className="flex items-center gap-2"><Zap className="h-5 w-5" />Picos Detectados no Período</CardTitle>
+            <HelpTooltip text="Eventos documentados por fontes externas e sinais internos, ordenados por relevância histórica.">
+              <CardTitle className="flex items-center gap-2"><Zap className="h-5 w-5" />Eventos Históricos Detectados</CardTitle>
             </HelpTooltip>
-            <CardDescription>{detectedEvents.length} eventos relevantes — ordenados cronologicamente</CardDescription>
+            <CardDescription>{detectedEvents.length} eventos relevantes — ordenados por relevância histórica</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -603,16 +711,19 @@ const EventReportPage = () => {
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="font-semibold text-sm">{formatted}</p>
-                        <p className="text-xs text-muted-foreground">{e.motivo || 'Pico detectado'}</p>
+                        <p className="text-xs text-muted-foreground">{e.motivo || e.description || 'Evento político documentado'}</p>
                       </div>
-                      <Badge variant={v > 0 ? 'default' : 'destructive'} className="text-xs">
-                        {sign}{v}%
+                      <Badge variant={e.confirmed_event ? 'default' : 'secondary'} className="text-xs">
+                        {e.confirmed_event ? 'documentado' : `relevância ${e.relevance_score || 0}`}
                       </Badge>
                     </div>
                     <div className="flex items-baseline gap-2">
                       <span className="text-2xl font-bold">{e.mentions_estimate.toLocaleString("pt-BR")}</span>
-                      <span className="text-xs text-muted-foreground">menções</span>
+                      <span className="text-xs text-muted-foreground">registros internos</span>
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      {e.publications_count || 0} fonte(s) externa(s) • {e.distinct_outlets || 0} veículo(s) • {sign}{v}% vs. base interna
+                    </p>
                     {sent && (sent.positivePct + sent.negativePct + sent.neutralPct) > 0 && (
                       <div className="space-y-1">
                         <div className="flex h-1.5 w-full rounded overflow-hidden bg-muted">
@@ -636,7 +747,7 @@ const EventReportPage = () => {
                       size="sm"
                       variant="outline"
                       className="w-full mt-1"
-                      onClick={() => { handleSelectEvent(String(i)); setTimeout(() => handleGenerate(), 50); }}
+                       onClick={() => { setSelectedEventIdx(String(i)); setStartDate(e.start_date); setEndDate(e.end_date); handleGenerate(e); }}
                     >
                       <Lightbulb className="h-3 w-3 mr-1" />Analisar com IA
                     </Button>
@@ -654,7 +765,7 @@ const EventReportPage = () => {
         <Card>
           <CardContent className="py-12 text-center">
             <CalendarDays className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Nenhum comentário no período</h3>
+            <h3 className="text-lg font-semibold mb-2">Relatório não gerado</h3>
             <p className="text-muted-foreground">{result.message}</p>
           </CardContent>
         </Card>

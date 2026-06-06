@@ -15,8 +15,23 @@ const corsHeaders = {
 function sanitizeForAI(s: unknown): string {
   if (s == null) return "";
   let str = String(s);
-  // Remove HTML/URLs que aparecem em alguns coletores e poluem a análise estatística.
-  str = str.replace(/<[^>]*>/g, " ").replace(/https?:\/\/\S+/gi, " ");
+  // Remove HTML, RSS bruto, entidades e URLs que aparecem em alguns coletores.
+  str = str
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<video[\s\S]*?<\/video>/gi, " ")
+    .replace(/<source[^>]*>/gi, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&#x27;/gi, "'")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/\b(src|href|class|target|rel|nofollow|width|height|type)=\S+/gi, " ")
+    .replace(/[{}<>]/g, " ");
   // Remove caracteres de controle (exceto \n, \r, \t)
   str = str.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ");
   // Remove lone high/low surrogates (emojis quebrados)
@@ -66,7 +81,7 @@ serve(async (req) => {
       });
     }
 
-    const { candidateId, startDate, endDate, eventName, eventKeywords } = await req.json();
+    const { candidateId, startDate, endDate, eventName, eventKeywords, eventDescription, eventType, eventSources, eventSourceTitles, confirmedEvent } = await req.json();
     if (!candidateId || !startDate || !endDate) {
       return new Response(JSON.stringify({ error: 'candidateId, startDate e endDate são obrigatórios' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -133,7 +148,11 @@ serve(async (req) => {
       console.log(`[event-repercussion] keyword filter: ${before} -> ${comments.length} (removidos: ${filteredOut})`);
     }
 
-    if (comments.length === 0) {
+    const externalSources = Array.isArray(eventSources) ? eventSources.slice(0, 12) : [];
+    const externalTitles = Array.isArray(eventSourceTitles) ? eventSourceTitles.slice(0, 10) : [];
+    const hasExternalEvidence = Boolean(confirmedEvent) || externalSources.length > 0 || externalTitles.length > 0;
+
+    if (comments.length === 0 && !hasExternalEvidence) {
       return new Response(JSON.stringify({
         report: null,
         message: keywords.length > 0
@@ -143,11 +162,22 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    if (comments.length <= 10 && !hasExternalEvidence) {
+      return new Response(JSON.stringify({
+        report: null,
+        message: 'Volume insuficiente para relatório estratégico: eventos com até 10 menções exigem evidência externa documentada.',
+        stats: { total: comments.length, positive: 0, negative: 0, neutral: comments.length, byNetwork: {} }
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    const positiveCount = comments.filter(c => ['positivo', 'positive'].includes(String(c.sentiment_label || '').toLowerCase())).length;
+    const negativeCount = comments.filter(c => ['negativo', 'negative'].includes(String(c.sentiment_label || '').toLowerCase())).length;
+    const explicitNeutralCount = comments.filter(c => ['neutro', 'neutral'].includes(String(c.sentiment_label || '').toLowerCase())).length;
     const stats = {
       total: comments.length,
-      positive: comments.filter(c => c.sentiment_label === 'Positivo').length,
-      negative: comments.filter(c => c.sentiment_label === 'Negativo').length,
-      neutral: comments.filter(c => c.sentiment_label === 'Neutro').length,
+      positive: positiveCount,
+      negative: negativeCount,
+      neutral: Math.max(explicitNeutralCount, comments.length - positiveCount - negativeCount),
       byNetwork: {} as Record<string, number>,
     };
     comments.forEach(c => { stats.byNetwork[c.social_network] = (stats.byNetwork[c.social_network] || 0) + 1; });
@@ -159,18 +189,19 @@ serve(async (req) => {
       const day = ts?.substring(0, 10) || 'unknown';
       if (!dailyVolume[day]) dailyVolume[day] = { total: 0, positive: 0, negative: 0, neutral: 0 };
       dailyVolume[day].total++;
-      if (c.sentiment_label === 'Positivo') dailyVolume[day].positive++;
-      else if (c.sentiment_label === 'Negativo') dailyVolume[day].negative++;
+      const sentiment = String(c.sentiment_label || '').toLowerCase();
+      if (['positivo', 'positive'].includes(sentiment)) dailyVolume[day].positive++;
+      else if (['negativo', 'negative'].includes(sentiment)) dailyVolume[day].negative++;
       else dailyVolume[day].neutral++;
     });
 
     // Top comments by engagement
     const topComments = [...comments]
       .filter(c => c.comment_text)
-      .sort((a, b) => ((b.likes_count || 0) + (b.replies_count || 0)) - ((a.likes_count || 0) + (a.replies_count || 0)))
+      .sort((a, b) => ((b.likes_count || 0) + (b.replies_count || 0) + (b.shares_count || 0)) - ((a.likes_count || 0) + (a.replies_count || 0) + (a.shares_count || 0)))
       .slice(0, 15)
       .map(c => ({
-        text: c.comment_text?.substring(0, 300),
+        text: sanitizeForAI(c.comment_text).substring(0, 300),
         author: c.comment_author,
         network: c.social_network,
         sentiment: c.sentiment_label,
@@ -180,15 +211,16 @@ serve(async (req) => {
       }));
 
     // AI analysis
-    const sampleNeg = comments.filter(c => c.sentiment_label === 'Negativo' && c.comment_text).slice(0, 80).map(c => sanitizeForAI(c.comment_text).substring(0, 250)).filter(Boolean);
-    const samplePos = comments.filter(c => c.sentiment_label === 'Positivo' && c.comment_text).slice(0, 80).map(c => sanitizeForAI(c.comment_text).substring(0, 250)).filter(Boolean);
-    const sampleNeu = comments.filter(c => c.sentiment_label === 'Neutro' && c.comment_text).slice(0, 40).map(c => sanitizeForAI(c.comment_text).substring(0, 200)).filter(Boolean);
+    const sampleNeg = comments.filter(c => ['negativo', 'negative'].includes(String(c.sentiment_label || '').toLowerCase()) && c.comment_text).slice(0, 80).map(c => sanitizeForAI(c.comment_text).substring(0, 250)).filter(Boolean);
+    const samplePos = comments.filter(c => ['positivo', 'positive'].includes(String(c.sentiment_label || '').toLowerCase()) && c.comment_text).slice(0, 80).map(c => sanitizeForAI(c.comment_text).substring(0, 250)).filter(Boolean);
+    const sampleNeu = comments.filter(c => ['neutro', 'neutral'].includes(String(c.sentiment_label || '').toLowerCase()) && c.comment_text).slice(0, 40).map(c => sanitizeForAI(c.comment_text).substring(0, 200)).filter(Boolean);
 
     const eventLabel = eventName || `período de ${startDate.substring(0, 10)} a ${endDate.substring(0, 10)}`;
 
     const buildDeterministicReport = (reason: 'ai_unavailable' | 'no_ai_key') => {
-      const negativePct = stats.negative / stats.total;
-      const positivePct = stats.positive / stats.total;
+      const denominator = Math.max(stats.total, 1);
+      const negativePct = stats.negative / denominator;
+      const positivePct = stats.positive / denominator;
       const neutralPct = Math.max(0, 1 - negativePct - positivePct);
       const overall_assessment = negativePct >= 0.45
         ? 'muito_negativa'
@@ -202,9 +234,12 @@ serve(async (req) => {
       const topNetworks = Object.entries(stats.byNetwork).sort((a, b) => b[1] - a[1]).slice(0, 3);
       const topics = extractFrequentTerms([...sampleNeg, ...samplePos, ...sampleNeu]);
 
+      const sourceNames = externalSources.map((s: any) => sanitizeForAI(s.name || '')).filter(Boolean).slice(0, 4).join(', ');
       return {
         overall_assessment,
-        executive_summary: `Foram analisados ${stats.total} comentários sobre ${eventLabel}. A repercussão teve ${stats.positive} comentários positivos, ${stats.negative} negativos e ${stats.neutral} neutros, com maior volume em ${topNetworks.map(([network]) => network).join(', ') || 'redes sociais monitoradas'}. Como a IA principal ficou indisponível no momento, este relatório foi gerado por leitura estatística direta dos dados coletados.`,
+        executive_summary: hasExternalEvidence
+          ? `O acontecimento "${eventLabel}" foi tratado como evento político documentado${sourceNames ? ` por ${sourceNames}` : ''}. A amostra interna contém ${stats.total} comentários, portanto a leitura de redes deve ser proporcional ao volume disponível e não como grande onda social automática. Como a IA principal ficou indisponível no momento, este relatório foi gerado por evidências externas e estatística direta.`
+          : `Foram analisados ${stats.total} comentários sobre ${eventLabel}. A repercussão teve ${stats.positive} comentários positivos, ${stats.negative} negativos e ${stats.neutral} neutros, com maior volume em ${topNetworks.map(([network]) => network).join(', ') || 'redes sociais monitoradas'}. Como a IA principal ficou indisponível no momento, este relatório foi gerado por leitura estatística direta dos dados coletados.`,
         key_reactions: [
           { reaction: `Apoio identificado em ${Math.round(positivePct * 100)}% das interações classificadas.`, type: 'positiva', intensity: positivePct >= 0.5 ? 'alta' : 'media' },
           { reaction: `Rejeição ou crítica apareceu em ${Math.round(negativePct * 100)}% das interações.`, type: 'negativa', intensity: negativePct >= 0.35 ? 'alta' : 'media' },
@@ -225,13 +260,30 @@ serve(async (req) => {
       };
     };
 
+    const denominator = Math.max(stats.total, 1);
+    const sourceBrief = externalSources.map((s: any, i: number) => `[${i + 1}] ${sanitizeForAI(s.name || 'Fonte')} — ${sanitizeForAI(s.url || '')}`).join('\n');
+    const titleBrief = externalTitles.map((t: any, i: number) => `${i + 1}. ${sanitizeForAI(t).slice(0, 180)}`).join('\n');
+
     const prompt = `Você é um analista político estratégico brasileiro. Analise a repercussão do evento/período "${eventLabel}" para o candidato ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}.
+
+CONTEXTO DOCUMENTADO DO EVENTO:
+- Tipo: ${sanitizeForAI(eventType || 'evento político')}
+- Descrição: ${sanitizeForAI(eventDescription || '') || 'não informada'}
+- Evento confirmado por fonte externa: ${hasExternalEvidence ? 'sim' : 'não'}
+- Veículos/fontes: ${sourceBrief || 'sem fontes externas informadas'}
+- Títulos/documentos: ${titleBrief || 'sem títulos externos informados'}
+
+REGRAS:
+- Explique o que aconteceu, por que aconteceu, quem repercutiu, quais veículos participaram e quais redes impulsionaram.
+- Se o volume interno for baixo, NÃO exagere impacto: trate como evento documentado com baixa amostra social.
+- Não crie conclusões estratégicas grandiosas baseadas em 3, 4, 5 ou 10 menções sem evidência externa.
+- Use apenas comentários limpos e fontes listadas; ignore tags HTML, links quebrados e RSS bruto.
 
 ESTATÍSTICAS DO PERÍODO:
 - Total de comentários: ${stats.total}
-- Positivos: ${stats.positive} (${((stats.positive / stats.total) * 100).toFixed(1)}%)
-- Negativos: ${stats.negative} (${((stats.negative / stats.total) * 100).toFixed(1)}%)
-- Neutros: ${stats.neutral} (${((stats.neutral / stats.total) * 100).toFixed(1)}%)
+- Positivos: ${stats.positive} (${((stats.positive / denominator) * 100).toFixed(1)}%)
+- Negativos: ${stats.negative} (${((stats.negative / denominator) * 100).toFixed(1)}%)
+- Neutros: ${stats.neutral} (${((stats.neutral / denominator) * 100).toFixed(1)}%)
 
 VOLUME DIÁRIO:
 ${Object.entries(dailyVolume).sort().map(([d, v]) => `${d}: ${v.total} (pos:${v.positive} neg:${v.negative} neu:${v.neutral})`).join('\n')}
@@ -245,7 +297,7 @@ ${samplePos.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 COMENTÁRIOS NEUTROS (${sampleNeu.length}):
 ${sampleNeu.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
-Gere um relatório completo de repercussão deste evento/período.`;
+Gere um relatório completo e proporcional de repercussão deste acontecimento político documentado.`;
 
     const systemMsg = 'Você é um analista político estratégico brasileiro. Gere relatórios de repercussão de eventos baseados em dados reais. Responda em português do Brasil.';
     const jsonInstruction = `\n\nResponda APENAS com um JSON válido (sem markdown, sem comentários) no seguinte formato exato:\n{\n  "overall_assessment": "muito_positiva|positiva|mista|negativa|muito_negativa",\n  "executive_summary": "resumo executivo em 3-5 frases",\n  "key_reactions": [{"reaction": "texto", "type": "positiva|negativa|neutra", "intensity": "alta|media|baixa"}],\n  "main_topics": ["tema1","tema2"],\n  "impact_analysis": "análise de impacto",\n  "immediate_actions": ["ação1","ação2"],\n  "lessons_learned": ["lição1","lição2"]\n}`;
