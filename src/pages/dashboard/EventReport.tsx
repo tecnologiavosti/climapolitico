@@ -342,6 +342,7 @@ const EventReportPage = () => {
   const handleCandidateChange = (id: string) => {
     setSelectedCandidate(id);
     setDetectedEvents([]);
+    setTimeline([]);
     setSelectedEventIdx("");
     setResult(null);
   };
