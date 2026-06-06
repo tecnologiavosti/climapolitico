@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isPoliticalCandidateContent, politicalContentVerdict } from "../_shared/political-content.ts";
+import { buildContextualQueries, getTrustedOutlets, getPoliticianContext } from "../_shared/politician-context.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -58,10 +59,23 @@ function primaryNewsQuery(candidateName: string): string {
 }
 
 function activityNewsQueries(candidateName: string): string[] {
+  // Contextual per-politician queries (e.g. Dilma => BRICS/NDB, Lula => Planalto, etc.)
+  const contextual = buildContextualQueries(candidateName, 8);
   const primary = primaryNewsQuery(candidateName);
   const full = `"${candidateName}"`;
-  const activity = `(agenda OR reunião OR reuniao OR discurso OR entrevista OR coletiva OR viagem OR visita OR declaração OR declaracao OR evento OR fórum OR forum OR conferência OR conferencia OR BRICS OR NDB OR "Novo Banco de Desenvolvimento")`;
-  return Array.from(new Set([`${primary} ${activity}`, `${full} ${activity}`])).slice(0, 4);
+  const genericActivity = `(agenda OR reunião OR discurso OR entrevista OR coletiva OR viagem OR visita OR declaração OR evento OR fórum OR conferência)`;
+  return Array.from(new Set([
+    ...contextual,
+    `${primary} ${genericActivity}`,
+    `${full} ${genericActivity}`,
+  ])).slice(0, 10);
+}
+
+function trustedOutletBoost(item: NewsItem, candidateName: string): number {
+  const outlets = getTrustedOutlets(candidateName);
+  const host = hostNameOf(item.link);
+  const src = normalize(item.source || "");
+  return outlets.some((o) => host.includes(o) || src.includes(normalize(o))) ? 1 : 0;
 }
 
 function matchesCandidateNews(item: NewsItem, candidateName: string): boolean {
