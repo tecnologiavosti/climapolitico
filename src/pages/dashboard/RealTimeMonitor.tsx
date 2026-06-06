@@ -334,6 +334,7 @@ const RealTimeMonitor = () => {
   const [loadingCandidates, setLoadingCandidates] = useState(true);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [liveProgress, setLiveProgress] = useState<LiveProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [, force] = useState(0);
   const tickRef = useRef<NodeJS.Timeout | null>(null);
@@ -356,13 +357,18 @@ const RealTimeMonitor = () => {
 
   const runSync = useCallback(async (cid: string, uid: string) => {
     setIsSyncing(true); setError(null);
+    setLiveProgress({
+      news: 0, posts: 0, videos: 0, comments: 0, mentionsProcessed: 0, sentimentClassified: 0,
+      positivePct: 0, neutralPct: 0, negativePct: 0, emergingTopics: [],
+      steps: { collectNews: false, collectSocial: false, processAI: false, classifySentiment: false, buildCharts: false },
+    });
     try {
-      const snap = await fetchSnapshot(uid, cid);
+      const snap = await fetchSnapshot(uid, cid, (p) => setLiveProgress(prev => ({ ...(prev as LiveProgress), ...p })));
       writeCache(cacheKey(uid, cid), snap);
       setSnapshot(snap);
     } catch (e: any) {
       setError(e?.message?.includes("Timeout") ? "Consulta excedeu 8s — exibindo último snapshot." : "Falha ao atualizar dados.");
-    } finally { setIsSyncing(false); }
+    } finally { setIsSyncing(false); setLiveProgress(null); }
   }, []);
 
   // Snapshot do cache + background refresh
