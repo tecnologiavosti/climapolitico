@@ -457,7 +457,7 @@ const EventReportPage = () => {
         <HelpTooltip text="Descubra os picos de menções do candidato: debates, entrevistas, viralizações e momentos que mais repercutiram nas redes.">
         <h1 className="text-3xl font-bold">Picos de Menções</h1>
       </HelpTooltip>
-        <p className="text-muted-foreground mt-1">Identifique os momentos de maior repercussão do candidato nas redes sociais.</p>
+        <p className="text-muted-foreground mt-1">Ferramenta de análise histórica e eleitoral. Selecione qualquer período (2018, 2022, 2024, 2026 ou intervalo personalizado) para identificar viralizações, crises, debates e eventos de alta repercussão.</p>
       </div>
 
       {/* Controls */}
