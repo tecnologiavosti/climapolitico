@@ -209,7 +209,9 @@ async function fetchSnapshot(
   const now = new Date();
   const startToday = new Date(now); startToday.setHours(0, 0, 0, 0);
   const startYesterday = new Date(startToday.getTime() - 86400000);
-  const start30d = new Date(now.getTime() - 30 * 86400000);
+  const start12h = new Date(now.getTime() - 12 * 3600000);
+  const start6h = new Date(now.getTime() - 6 * 3600000);
+  const start1h = new Date(now.getTime() - 3600000);
   const start24h = new Date(now.getTime() - 24 * 3600000);
   const startPrev24h = new Date(now.getTime() - 48 * 3600000);
 
@@ -236,13 +238,16 @@ async function fetchSnapshot(
     onProgress?.({ ...live, steps: { ...live.steps } });
   };
 
-  const pNews = run<{ count: number | null }>(base().eq("social_network", "Google News"), "news")
+  const pNews = run<{ count: number | null }>(base().gte("created_at", start24h.toISOString()).eq("social_network", "Google News"), "news")
     .then(r => { emit({ news: r.count ?? 0, steps: { ...live.steps, collectNews: true } }); return r; });
-  const pToday = run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()), "today")
+  const pToday = run<{ count: number | null }>(base().gte("created_at", start24h.toISOString()), "today")
     .then(r => { emit({ mentionsProcessed: r.count ?? 0, steps: { ...live.steps, processAI: true, collectSocial: true } }); return r; });
-  const pPos = run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()).eq("sentiment_label", "Positivo"), "pos");
-  const pNeg = run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()).eq("sentiment_label", "Negativo"), "neg");
-  const pNeu = run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()).eq("sentiment_label", "Neutro"), "neu");
+  const pH12 = run<{ count: number | null }>(base().gte("created_at", start12h.toISOString()), "h12");
+  const pH6 = run<{ count: number | null }>(base().gte("created_at", start6h.toISOString()), "h6");
+  const pH1 = run<{ count: number | null }>(base().gte("created_at", start1h.toISOString()), "h1");
+  const pPos = run<{ count: number | null }>(base().gte("created_at", start24h.toISOString()).eq("sentiment_label", "Positivo"), "pos");
+  const pNeg = run<{ count: number | null }>(base().gte("created_at", start24h.toISOString()).eq("sentiment_label", "Negativo"), "neg");
+  const pNeu = run<{ count: number | null }>(base().gte("created_at", start24h.toISOString()).eq("sentiment_label", "Neutro"), "neu");
   const pPrev = run<{ count: number | null }>(base().gte("created_at", startPrev24h.toISOString()).lt("created_at", start24h.toISOString()), "prev24");
 
   // Sentimento de ontem para movimentação
@@ -270,7 +275,7 @@ async function fetchSnapshot(
       .select("id, created_at, sentiment_label, comment_text, social_network, likes_count, shares_count, replies_count, post_url, post_title, author_name, author_handle")
       .eq("user_id", userId).eq("candidate_id", candidateId)
       .not("social_network", "in", "(mastodon,lemmy,pinterest)")
-      .gte("created_at", start30d.toISOString())
+      .gte("created_at", start24h.toISOString())
       .order("created_at", { ascending: false })
       .limit(3000),
     "sample"
@@ -279,16 +284,16 @@ async function fetchSnapshot(
   // Eventos políticos
   const pEvents = run<{ data: any[] | null }>(
     supabase.from("political_events")
-      .select("id, event_name, event_date, event_type, importance_score, publications_count")
+      .select("id, event_name, event_date, event_type, importance_score, publications_count, distinct_outlets")
       .eq("user_id", userId).eq("candidate_id", candidateId)
-      .gte("event_date", start30d.toISOString())
+      .gte("event_date", start24h.toISOString())
       .order("importance_score", { ascending: false })
       .limit(6),
     "events"
   );
 
-  const [qToday, qPos, qNeg, qNeu, qNews, qPrev24h, qSample, qEvents, qYPos, qYNeg, qYNeu] = await Promise.all([
-    pToday, pPos, pNeg, pNeu, pNews, pPrev, pSample, pEvents, pYestPos, pYestNeg, pYestNeu,
+  const [qToday, qH12, qH6, qH1, qPos, qNeg, qNeu, qNews, qPrev24h, qSample, qEvents, qYPos, qYNeg, qYNeu] = await Promise.all([
+    pToday, pH12, pH6, pH1, pPos, pNeg, pNeu, pNews, pPrev, pSample, pEvents, pYestPos, pYestNeg, pYestNeu,
   ]);
 
   const mentionsToday = qToday.count ?? 0;
@@ -299,6 +304,10 @@ async function fetchSnapshot(
   const last24h = qToday.count ?? 0;
   const prev24h = qPrev24h.count ?? 0;
   const sample: any[] = qSample.data ?? [];
+  const evidence = sample.reduce((acc, r) => { addEvidence(acc, r.social_network); return acc; }, emptyEvidence());
+  evidence.news = newsCollected;
+  evidence.total = evidence.news + evidence.posts + evidence.videos;
+  const windowCounts = { h1: qH1.count ?? 0, h6: qH6.count ?? 0, h12: qH12.count ?? 0, h24: last24h, previous24h: prev24h };
 
   // Movimentação de sentimento (delta % vs ontem)
   const yPos = qYPos.count ?? 0;
