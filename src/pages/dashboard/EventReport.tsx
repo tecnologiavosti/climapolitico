@@ -373,13 +373,13 @@ const EventReportPage = () => {
 
   const handleDetectEvents = async () => {
     if (!selectedCandidate) { toast.error("Selecione um candidato"); return; }
+    if (!startDate || !endDate) { toast.error("Defina o período histórico (início e fim)"); return; }
     setIsDetecting(true);
     setDetectedEvents([]);
+    setTimeline([]);
     setSelectedEventIdx("");
     try {
-      const detected = await fetchLocalEvents();
-      // Atualiza contagens com o total real do dia (mesma query usada no relatório),
-      // pois a amostra local é limitada a 800 registros.
+      const { events: detected, timeline: tl } = await fetchLocalEvents();
       const refined = (await refineEventCounts(detected)).map((evt) => {
         const formatted = evt.start_date.split('-').reverse().join('/');
         const v = evt.variation_pct ?? 0;
@@ -387,12 +387,13 @@ const EventReportPage = () => {
         const tag = evt.type === 'queda' ? 'Queda abrupta' : v > 200 ? 'Explosão de menções' : 'Pico de menções';
         return {
           ...evt,
-          description: `${tag} em ${formatted} — ${evt.mentions_estimate} comentários (${sign}${v}% vs. média anterior).`,
+          description: `${tag} em ${formatted} — ${evt.mentions_estimate} menções (${sign}${v}% vs. média anterior).`,
         };
-      }).sort((a, b) => Math.abs(b.variation_pct ?? 0) - Math.abs(a.variation_pct ?? 0));
+      }).sort((a, b) => a.start_date.localeCompare(b.start_date));
       setDetectedEvents(refined);
+      setTimeline(tl);
       if (refined.length === 0) toast.info("Nenhum pico detectado no período selecionado.");
-      else toast.success(`${refined.length} pico(s) detectado(s)`);
+      else toast.success(`${refined.length} pico(s) detectado(s) em ${tl.length} dias analisados`);
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || "Erro ao detectar picos");
