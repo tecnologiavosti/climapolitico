@@ -650,6 +650,7 @@ const RealTimeMonitor = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [liveProgress, setLiveProgress] = useState<LiveProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [windowHours, setWindowHours] = useState<1 | 6 | 12 | 24>(24);
   const [, force] = useState(0);
   const tickRef = useRef<NodeJS.Timeout | null>(null);
   const bgTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -668,7 +669,7 @@ const RealTimeMonitor = () => {
     })();
   }, [user]);
 
-  const runSync = useCallback(async (cid: string, uid: string, name: string) => {
+  const runSync = useCallback(async (cid: string, uid: string, name: string, hours: 1 | 6 | 12 | 24) => {
     setIsSyncing(true); setError(null);
     setLiveProgress({
       news: 0, posts: 0, videos: 0, comments: 0, mentionsProcessed: 0, sentimentClassified: 0,
@@ -676,8 +677,8 @@ const RealTimeMonitor = () => {
       steps: { collectNews: false, collectSocial: false, processAI: false, classifySentiment: false, buildCharts: false },
     });
     try {
-      const snap = await fetchSnapshot(uid, cid, name, (p) => setLiveProgress(prev => ({ ...(prev as LiveProgress), ...p })));
-      writeCache(cacheKey(uid, cid), snap);
+      const snap = await fetchSnapshot(uid, cid, name, (p) => setLiveProgress(prev => ({ ...(prev as LiveProgress), ...p })), hours);
+      writeCache(cacheKey(uid, cid) + `:${hours}h`, snap);
       setSnapshot(snap);
     } catch (e: any) {
       setError(e?.message?.includes("Timeout") ? "Consulta excedeu 8s — exibindo último snapshot." : "Falha ao atualizar dados.");
@@ -688,17 +689,17 @@ const RealTimeMonitor = () => {
 
   useEffect(() => {
     if (!user || !selectedCandidateId || !selectedCandidate) { setSnapshot(null); return; }
-    const cached = readCache(cacheKey(user.id, selectedCandidateId));
-    if (cached) setSnapshot(cached);
+    const cached = readCache(cacheKey(user.id, selectedCandidateId) + `:${windowHours}h`);
+    if (cached) setSnapshot(cached); else setSnapshot(null);
     const stale = !cached || (Date.now() - cached.savedAt) > 2 * 60 * 1000;
-    if (stale) runSync(selectedCandidateId, user.id, selectedCandidate.full_name);
-  }, [user, selectedCandidateId, selectedCandidate, runSync]);
+    if (stale) runSync(selectedCandidateId, user.id, selectedCandidate.full_name, windowHours);
+  }, [user, selectedCandidateId, selectedCandidate, windowHours, runSync]);
 
   useEffect(() => {
     if (!user || !selectedCandidateId || !selectedCandidate) return;
-    bgTimerRef.current = setInterval(() => runSync(selectedCandidateId, user.id, selectedCandidate.full_name), 60000);
+    bgTimerRef.current = setInterval(() => runSync(selectedCandidateId, user.id, selectedCandidate.full_name, windowHours), 60000);
     return () => { if (bgTimerRef.current) clearInterval(bgTimerRef.current); };
-  }, [user, selectedCandidateId, selectedCandidate, runSync]);
+  }, [user, selectedCandidateId, selectedCandidate, windowHours, runSync]);
 
   useEffect(() => {
     tickRef.current = setInterval(() => force(n => n + 1), 30000);
