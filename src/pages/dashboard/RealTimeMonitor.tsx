@@ -19,7 +19,7 @@ import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
 } from "recharts";
 
-interface Candidate { id: string; full_name: string; }
+interface Candidate { id: string; full_name: string; party?: string | null; }
 
 // ============ Tipos ============
 interface EvolutionPoint { label: string; total: number; positive: number; negative: number; neutral: number; }
