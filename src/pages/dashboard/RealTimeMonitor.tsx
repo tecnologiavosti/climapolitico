@@ -412,50 +412,56 @@ async function fetchSnapshot(
   // BLOCO 7 — Alertas
   const alerts: Alert[] = [];
   const growth = prev24h > 0 ? ((last24h - prev24h) / prev24h) * 100 : 0;
-  if (prev24h > 0 && growth >= 50) alerts.push({ kind: "growth", title: `Crescimento de ${Math.round(growth)}% nas menções`, detail: "Volume disparou nas últimas 24h." });
-  else if (prev24h > 0 && growth <= -40) alerts.push({ kind: "growth", title: `Queda de ${Math.round(Math.abs(growth))}% nas menções`, detail: "Volume caiu significativamente." });
+  if (prev24h >= 10 && growth >= 50) alerts.push({ kind: "growth", title: `Crescimento de ${Math.round(growth)}% nas menções`, detail: `${last24h.toLocaleString("pt-BR")} registros nas últimas 24h contra ${prev24h.toLocaleString("pt-BR")} na janela anterior.`, evidence });
+  else if (prev24h >= 10 && growth <= -40) alerts.push({ kind: "growth", title: `Queda de ${Math.round(Math.abs(growth))}% nas menções`, detail: `${last24h.toLocaleString("pt-BR")} registros nas últimas 24h contra ${prev24h.toLocaleString("pt-BR")} na janela anterior.`, evidence });
   if (mentionsToday > 50 && (negativeToday / Math.max(1, mentionsToday)) >= 0.5) {
-    alerts.push({ kind: "crisis", title: "Possível crise reputacional", detail: `${Math.round(negativeToday / mentionsToday * 100)}% das menções de hoje são negativas.` });
+    alerts.push({ kind: "crisis", title: "Volume negativo elevado", detail: `${negativeToday.toLocaleString("pt-BR")} de ${mentionsToday.toLocaleString("pt-BR")} registros das últimas 24h foram classificados como negativos.`, evidence });
   } else if (mentionsToday > 0 && (negativeToday / Math.max(1, mentionsToday)) >= 0.35) {
-    alerts.push({ kind: "negative", title: "Pico de sentimento negativo", detail: `${negativeToday} menções negativas hoje.` });
+    alerts.push({ kind: "negative", title: "Atenção ao sentimento negativo", detail: `${negativeToday.toLocaleString("pt-BR")} registros negativos nas últimas 24h.`, evidence });
   }
-  const viral = sample.filter(r => (r.likes_count || 0) + (r.shares_count || 0) > 500)
+  const viral = sample.filter(r => (r.likes_count || 0) + (r.shares_count || 0) + (r.replies_count || 0) > 500)
     .sort((a, b) => (b.likes_count + b.shares_count) - (a.likes_count + a.shares_count))[0];
-  if (viral) alerts.push({ kind: "viral", title: "Conteúdo viral identificado", detail: `Post em ${viral.social_network} com ${((viral.likes_count || 0) + (viral.shares_count || 0)).toLocaleString("pt-BR")} interações.` });
+  if (viral) {
+    const viralEngagement = (viral.likes_count || 0) + (viral.shares_count || 0) + (viral.replies_count || 0);
+    alerts.push({ kind: "viral", title: "Conteúdo viral identificado", detail: (viral.post_title || viral.comment_text || "Publicação recente").slice(0, 120), source: viral.social_network, engagement: viralEngagement, publishedAt: viral.created_at, evidence: { news: viral.social_network === "Google News" ? 1 : 0, posts: classifyNetwork(viral.social_network) === "posts" ? 1 : 0, videos: classifyNetwork(viral.social_network) === "videos" ? 1 : 0, total: 1 } });
+  }
   const recentNews = sample.filter(r => r.social_network === "Google News" && new Date(r.created_at).getTime() > Date.now() - 86400000).length;
-  if (recentNews >= 5) alerts.push({ kind: "news", title: `${recentNews} notícias publicadas hoje`, detail: "Cobertura jornalística intensificada." });
-  if (Math.abs(sentimentDelta.positiveDeltaPct - sentimentDelta.negativeDeltaPct) >= 40) {
-    alerts.push({ kind: "growth", title: "Mudança brusca de sentimento", detail: `Positivo ${sentimentDelta.positiveDeltaPct >= 0 ? "+" : ""}${sentimentDelta.positiveDeltaPct}% / Negativo ${sentimentDelta.negativeDeltaPct >= 0 ? "+" : ""}${sentimentDelta.negativeDeltaPct}% vs ontem.` });
+  if (recentNews >= 5) alerts.push({ kind: "news", title: `${recentNews} notícias nas últimas 24h`, detail: "Alerta baseado apenas nas notícias coletadas na janela monitorada.", evidence: { ...evidence, news: recentNews } });
+  if (prev24h >= 10 && Math.abs(sentimentDelta.positiveDeltaPct - sentimentDelta.negativeDeltaPct) >= 40) {
+    alerts.push({ kind: "growth", title: "Mudança mensurável de sentimento", detail: `Comparação contra 24h anteriores: positivo ${sentimentDelta.positiveDeltaPct >= 0 ? "+" : ""}${sentimentDelta.positiveDeltaPct}% / negativo ${sentimentDelta.negativeDeltaPct >= 0 ? "+" : ""}${sentimentDelta.negativeDeltaPct}%.`, evidence });
   }
 
-  // BLOCO 1 — narrativa
-  const topTheme = themes[0]?.name || "diversos assuntos";
-  const tone = positiveToday > negativeToday * 1.2 ? "tom predominantemente positivo"
-    : negativeToday > positiveToday * 1.2 ? "tom predominantemente negativo" : "tom equilibrado";
-  const trendVerb = growth >= 20 ? "ganham força" : growth <= -20 ? "perdem tração" : "se mantêm estáveis";
-  const topOutlet = outlets[0]?.name;
+  // BLOCO 1 — leitura factual, sem preencher lacunas
+  const topTheme = themes[0];
+  const tone = positiveToday + negativeToday + neutralToday === 0 ? "sem sentimento classificado suficiente"
+    : positiveToday > negativeToday * 1.2 ? "predomínio positivo nos registros classificados"
+    : negativeToday > positiveToday * 1.2 ? "predomínio negativo nos registros classificados" : "sentimento equilibrado nos registros classificados";
   const nowNarrative =
-    `As conversas sobre ${candidateName} ${trendVerb} nas últimas horas, com destaque para ${topTheme.toLowerCase()}. ` +
-    `${mentionsToday.toLocaleString("pt-BR")} menções foram registradas hoje, em ${tone}.` +
-    (topOutlet ? ` ${topOutlet} lidera a cobertura jornalística do tema.` : "");
+    mentionsToday === 0
+      ? `Nenhum dado foi coletado para ${candidateName} nas últimas 24 horas. O monitor não gerou inferências sem evidência.`
+      : `${candidateName} teve ${mentionsToday.toLocaleString("pt-BR")} registros nas últimas 24 horas. ` +
+        (topTheme ? `O tema evidenciado com maior frequência é ${topTheme.name}, sustentado por ${topTheme.evidence.news} notícias, ${topTheme.evidence.posts} posts e ${topTheme.evidence.videos} vídeos. ` : `Nenhum tema político específico atingiu evidência mínima para ser exibido. `) +
+        `A leitura de sentimento indica ${tone}.`;
 
   // BLOCO 8 — Resumo executivo
   const executiveSummary = {
-    what: `${mentionsToday.toLocaleString("pt-BR")} menções hoje (${growth >= 0 ? "+" : ""}${Math.round(growth)}% vs ontem), com foco em ${topTheme}.`,
+    what: mentionsToday > 0 ? `${mentionsToday.toLocaleString("pt-BR")} registros nas últimas 24h; ${windowCounts.h1.toLocaleString("pt-BR")} na última hora.` : "Sem registros nas últimas 24h.",
     why: events[0]
-      ? `Impulsionado por ${events[0].type} "${events[0].name}" em ${new Date(events[0].date).toLocaleDateString("pt-BR")}.`
-      : viral ? `Tracionado por conteúdo viral em ${viral.social_network}.`
-      : `Movimentação orgânica em ${themes.slice(0, 2).map(t => t.name).join(" e ") || "múltiplos temas"}.`,
-    who: topOutlet
-      ? `${topOutlet} e demais veículos (${outlets.slice(1, 3).map(o => o.name).join(", ") || "redes sociais"}) ampliaram o alcance.`
-      : `Disseminação principalmente orgânica nas redes sociais.`,
-    impact: `Sentimento positivo ${sentimentDelta.positiveDeltaPct >= 0 ? "+" : ""}${sentimentDelta.positiveDeltaPct}% e negativo ${sentimentDelta.negativeDeltaPct >= 0 ? "+" : ""}${sentimentDelta.negativeDeltaPct}% comparado a ontem.`,
+      ? `Evento recente detectado: "${events[0].name}" (${events[0].publications} publicações, ${events[0].outlets} veículos).`
+      : viral ? `Evidência de viralização: ${viral.social_network}, ${((viral.likes_count || 0) + (viral.shares_count || 0) + (viral.replies_count || 0)).toLocaleString("pt-BR")} interações.`
+      : "Sem evidência suficiente para atribuir causa.",
+    who: outlets.length > 0
+      ? `Veículos identificados na janela: ${outlets.slice(0, 3).map(o => `${o.name} (${o.count})`).join(", ")}.`
+      : "Nenhum veículo jornalístico identificado na janela monitorada.",
+    impact: positiveToday + negativeToday + neutralToday > 0
+      ? `Classificação nas últimas 24h: ${positiveToday.toLocaleString("pt-BR")} positivas, ${negativeToday.toLocaleString("pt-BR")} negativas e ${neutralToday.toLocaleString("pt-BR")} neutras.`
+      : "Sem classificação de sentimento suficiente na janela monitorada.",
   };
 
   return {
-    nowNarrative, mentionsToday, positiveToday, negativeToday, newsCollected,
+    nowNarrative, mentionsToday, positiveToday, negativeToday, newsCollected, evidence, windowCounts,
     themes, events, sentimentDelta, outlets, publications, alerts, executiveSummary,
-    evolution24h: buckets24h, evolution7d: buckets7d, evolution30d: buckets30d,
+    evolution24h: buckets24h, evolution12h: buckets12h, evolution6h: buckets6h, evolution1h: buckets1h,
     savedAt: Date.now(), candidateName,
   };
 }
