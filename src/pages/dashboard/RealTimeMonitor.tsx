@@ -317,7 +317,7 @@ async function fetchSnapshot(
   const yPos = qYPos.count ?? 0;
   const yNeg = qYNeg.count ?? 0;
   const yNeu = qYNeu.count ?? 0;
-  const pctDelta = (cur: number, prev: number) => prev > 0 ? Math.round(((cur - prev) / prev) * 100) : (cur > 0 ? 100 : 0);
+  const pctDelta = (cur: number, prev: number) => prev > 0 ? Math.round(((cur - prev) / prev) * 100) : 0;
   const sentimentDelta = {
     positiveDeltaPct: pctDelta(positiveToday, yPos),
     negativeDeltaPct: pctDelta(negativeToday, yNeg),
@@ -911,7 +911,7 @@ const RealTimeMonitor = () => {
               </CardHeader>
               <CardContent>
                 {snapshot.alerts.length === 0 ? (
-                  <p className="text-xs text-muted-foreground py-4">Tudo dentro da normalidade. Nenhum alerta no momento.</p>
+                  <p className="text-xs text-muted-foreground py-4">Nenhum alerta com evidência suficiente nas últimas 24h.</p>
                 ) : (
                   <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <AnimatePresence>
