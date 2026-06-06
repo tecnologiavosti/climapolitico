@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   RefreshCw, Radio, Clock, CheckCircle2, TrendingUp, TrendingDown,
-  Smile, Frown, Newspaper, Flame, Sparkles, AlertTriangle, Zap, Activity,
+  Newspaper, Flame, Sparkles, AlertTriangle, Zap, Activity, Calendar,
+  Megaphone, Building2, ExternalLink, Heart, BrainCircuit,
 } from "lucide-react";
 import { CandidateSelector } from "@/components/dashboard/realtime/CandidateSelector";
 import { LiveCollectionCenter, type LiveProgress } from "@/components/dashboard/realtime/LiveCollectionCenter";
@@ -23,33 +24,48 @@ interface Candidate { id: string; full_name: string; party?: string | null; }
 
 // ============ Tipos ============
 interface EvolutionPoint { label: string; total: number; positive: number; negative: number; neutral: number; }
-interface Topic { name: string; count: number; }
-interface Alert { kind: "growth" | "negative" | "viral" | "news"; title: string; detail: string; }
+interface Theme { name: string; count: number; }
+interface EventItem { id: string; name: string; date: string; type: string; impact: number; }
+interface Outlet { name: string; count: number; }
+interface Publication {
+  id: string; title: string; author: string; network: string;
+  engagement: number; url: string | null; sentiment: string | null;
+}
+interface Alert { kind: "growth" | "negative" | "viral" | "news" | "crisis"; title: string; detail: string; }
 
 interface Snapshot {
-  // Linha 1
-  topic: string;
+  // BLOCO 1 — narrativa
+  nowNarrative: string;
+  // KPIs principais
   mentionsToday: number;
   positiveToday: number;
   negativeToday: number;
   newsCollected: number;
-  // Linha 2
+  // BLOCO 2 — temas dominantes
+  themes: Theme[];
+  // BLOCO 3 — eventos
+  events: EventItem[];
+  // BLOCO 4 — movimentação sentimento
+  sentimentDelta: { positiveDeltaPct: number; negativeDeltaPct: number; neutralDeltaPct: number; };
+  // BLOCO 5 — veículos
+  outlets: Outlet[];
+  // BLOCO 6 — publicações
+  publications: Publication[];
+  // BLOCO 7 — alertas
+  alerts: Alert[];
+  // BLOCO 8 — resumo executivo
+  executiveSummary: { what: string; why: string; who: string; impact: string; };
+  // Gráficos
   evolution24h: EvolutionPoint[];
   evolution7d: EvolutionPoint[];
   evolution30d: EvolutionPoint[];
-  // Linha 3
-  topTopics: Topic[];
-  // Linha 4
-  alerts: Alert[];
-  // Linha 5
-  aiSummary: string;
   // Meta
   savedAt: number;
+  candidateName: string;
 }
 
 // ============ Cache 5 min ============
-const CACHE_TTL_MS = 5 * 60 * 1000;
-const cacheKey = (uid: string, cid: string) => `rt-exec:${uid}:${cid}`;
+const cacheKey = (uid: string, cid: string) => `rt-intel:${uid}:${cid}`;
 const readCache = (k: string): Snapshot | null => {
   try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch { return null; }
 };
@@ -71,41 +87,102 @@ const withTimeout = <T,>(p: Promise<T>, ms: number, label = "query"): Promise<T>
     p.then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
   });
 
-// Stopwords PT-BR para topics
+// ============ Limpeza de ruído (HTML/CSS/JS/URLs) ============
+const NOISE_TOKENS = new Set([
+  "href","font","div","span","html","css","javascript","script","style","class","classname",
+  "http","https","www","com","br","org","net","url","link","target","rel","src","alt","img",
+  "button","input","form","table","header","footer","section","article","nav","aside",
+  "ul","ol","li","tr","td","th","label","option","select","textarea","iframe","svg","path",
+  "true","false","null","undefined","null","none","auto","data","attr","aria",
+]);
+
 const STOPWORDS = new Set([
   "a","o","e","de","da","do","das","dos","em","no","na","nos","nas","um","uma","uns","umas",
   "para","por","com","sem","que","se","é","são","foi","ser","ter","como","mas","mais","menos",
   "muito","muita","muitos","muitas","já","ainda","sobre","entre","ou","não","sim","aos","ao",
-  "este","esta","isso","isto","esse","essa","aquele","aquela","seu","sua","seus","suas","meu","minha",
+  "este","esta","isso","isto","esse","essa","aquele","aquela","seu","sua","seus","suas",
   "ele","ela","eles","elas","nós","você","vocês","eu","te","lhe","lhes","pelo","pela","pelos","pelas",
-  "rt","via","https","http","www","com.br","br",
+  "rt","via","apenas","sendo","tem","tenho","tinha","onde","quando","quem","qual","quais",
+  "hoje","ontem","amanhã","agora","então","também","porque","porém","contudo","entanto",
+  "brasil","brasileiro","brasileira","país","governo","político","política","políticos","políticas",
 ]);
 
-const extractTopics = (rows: { comment_text: string | null }[]): Topic[] => {
-  const freq = new Map<string, number>();
+const cleanText = (raw: string): string =>
+  (raw || "")
+    .toLowerCase()
+    .replace(/<[^>]+>/g, " ")
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[a-z]+=["'][^"']*["']/g, " ")
+    .replace(/\b(?:href|src|class|id|style|font|div|span|html|css|javascript|script|target|rel|alt)\b/gi, " ");
+
+// ============ Mapeamento Palavras → Temas Políticos ============
+const THEME_RULES: Array<{ name: string; keywords: RegExp }> = [
+  { name: "Economia", keywords: /\b(econom|inflação|inflacao|juros|selic|pib|dólar|dolar|real|imposto|tribut|fiscal|orçament|orcament|salário|salario|desemprego|emprego|mercado|bolsa|investiment|ipca)\w*/i },
+  { name: "Eleições", keywords: /\b(eleição|eleicao|eleições|eleicoes|candidat|votação|votacao|urna|tse|campanha|coligação|coligacao|partido|presidência|presidencia|reeleição|reeleicao|pesquisa|datafolha|quaest|ipec)\w*/i },
+  { name: "Segurança Pública", keywords: /\b(segurança|seguranca|polícia|policia|crime|violência|violencia|homicíd|homicid|facção|faccao|tráfico|trafico|pcc|cv|milíci|milici|operação|operacao)\w*/i },
+  { name: "Educação", keywords: /\b(educação|educacao|escola|universidade|professor|aluno|enem|sisu|fies|prouni|creche|ensino|fundeb)\w*/i },
+  { name: "Saúde", keywords: /\b(saúde|saude|sus|hospital|médico|medico|vacina|pandemia|covid|enfermag|remédio|remedio|farmac)\w*/i },
+  { name: "Justiça e STF", keywords: /\b(stf|supremo|justiça|justica|ministro|moraes|fachin|barroso|toffoli|inquérito|inquerito|processo|julgamento|condenação|condenacao|prisão|prisao)\w*/i },
+  { name: "Congresso e Câmara", keywords: /\b(câmara|camara|senado|congresso|deputad|senador|relator|cpi|plenário|plenario|projeto de lei|pl\s|pec)\w*/i },
+  { name: "Lula e Governo Federal", keywords: /\b(lula|presidente|planalto|ministro|gleisi|haddad|alckmin|esplanada)\w*/i },
+  { name: "Bolsonaro e Oposição", keywords: /\b(bolsonaro|tarcísio|tarcisio|zema|caiado|oposição|oposicao|direita|conservador)\w*/i },
+  { name: "Relações Internacionais", keywords: /\b(brics|otan|onu|eua|china|rússia|russia|ucrânia|ucrania|israel|palestina|argentina|milei|trump|biden|putin|xi jinping|mercosul|exterior|diplomac)\w*/i },
+  { name: "Meio Ambiente", keywords: /\b(amazônia|amazonia|desmatamento|queimada|clima|cop\d|ibama|funai|indígena|indigena|garimpo|sustentab)\w*/i },
+  { name: "Cultura e Sociedade", keywords: /\b(cultura|música|musica|cinema|teatro|carnaval|futebol|copa|olimpíada|olimpiada|religião|religiao|igreja|evangélic|evangelic)\w*/i },
+  { name: "Infraestrutura", keywords: /\b(infraestrutura|obra|rodovia|ferrovia|aeroporto|porto|saneamento|habitação|habitacao|minha casa|pac)\w*/i },
+  { name: "Combate à Corrupção", keywords: /\b(corrupção|corrupcao|lava jato|propina|desvio|fraude|operação|operacao|pf|polícia federal|policia federal)\w*/i },
+];
+
+const extractThemes = (rows: Array<{ comment_text: string | null; post_title?: string | null }>): Theme[] => {
+  const counts = new Map<string, number>();
   for (const r of rows) {
-    const txt = (r.comment_text || "").toLowerCase().replace(/https?:\/\/\S+/g, " ");
-    const words = txt.match(/[a-záàâãéêíóôõúç]{4,}/gi) || [];
-    for (const w of words) {
-      const lw = w.toLowerCase();
-      if (STOPWORDS.has(lw)) continue;
-      freq.set(lw, (freq.get(lw) || 0) + 1);
+    const txt = cleanText(`${r.post_title || ""} ${r.comment_text || ""}`);
+    if (!txt || txt.length < 8) continue;
+    for (const rule of THEME_RULES) {
+      if (rule.keywords.test(txt)) {
+        counts.set(rule.name, (counts.get(rule.name) || 0) + 1);
+      }
     }
   }
-  return Array.from(freq.entries())
-    .map(([name, count]) => ({ name: name[0].toUpperCase() + name.slice(1), count }))
-    .sort((a, b) => b.count - a.count).slice(0, 5);
+  return Array.from(counts.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 7);
 };
 
-// ============ Fetch otimizado (paralelo + timeout + progress) ============
+// ============ Domínios conhecidos para veículos ============
+const KNOWN_OUTLETS = [
+  "G1","Globo","GloboNews","CNN Brasil","UOL","Folha","Estadão","Estadao","Poder360",
+  "Metrópoles","Metropoles","Valor","Valor Econômico","R7","BBC","Veja","Carta Capital",
+  "Jovem Pan","Band","SBT","Record","O Antagonista","InfoMoney","Reuters","AP","AFP",
+  "Correio Braziliense","Gazeta do Povo","Diário","Tribuna",
+];
+
+const normalizeOutlet = (raw: string | null): string | null => {
+  if (!raw) return null;
+  const s = raw.trim();
+  if (!s) return null;
+  const lower = s.toLowerCase();
+  for (const k of KNOWN_OUTLETS) {
+    if (lower.includes(k.toLowerCase())) return k;
+  }
+  // remove trailing junk and limit
+  const clean = s.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0].split(" - ")[0];
+  if (clean.length > 32) return clean.slice(0, 32) + "…";
+  return clean;
+};
+
+// ============ Fetch ============
 async function fetchSnapshot(
   userId: string,
   candidateId: string,
+  candidateName: string,
   onProgress?: (p: Partial<LiveProgress>) => void,
   timeoutMs = 8000,
 ): Promise<Snapshot> {
   const now = new Date();
   const startToday = new Date(now); startToday.setHours(0, 0, 0, 0);
+  const startYesterday = new Date(startToday.getTime() - 86400000);
   const start30d = new Date(now.getTime() - 30 * 86400000);
   const start24h = new Date(now.getTime() - 24 * 3600000);
   const startPrev24h = new Date(now.getTime() - 48 * 3600000);
@@ -120,7 +197,6 @@ async function fetchSnapshot(
   const run = <T,>(b: any, label: string): Promise<T> =>
     withTimeout<T>(Promise.resolve(b) as Promise<T>, timeoutMs, label);
 
-  // Estado de progresso interno (acumula chamadas de onProgress)
   const live: LiveProgress = {
     news: 0, posts: 0, videos: 0, comments: 0,
     mentionsProcessed: 0, sentimentClassified: 0,
@@ -134,37 +210,20 @@ async function fetchSnapshot(
     onProgress?.({ ...live, steps: { ...live.steps } });
   };
 
-  // Promessas com side-effect progressivo
   const pNews = run<{ count: number | null }>(base().eq("social_network", "Google News"), "news")
     .then(r => { emit({ news: r.count ?? 0, steps: { ...live.steps, collectNews: true } }); return r; });
-
-  const pPosts = run<{ count: number | null }>(
-    base().in("social_network", ["Instagram", "Twitter", "Twitter/X", "X", "Facebook", "LinkedIn", "Threads", "Bluesky"]),
-    "posts"
-  ).then(r => { emit({ posts: r.count ?? 0 }); return r; });
-
-  const pVideos = run<{ count: number | null }>(
-    base().in("social_network", ["YouTube", "TikTok"]),
-    "videos"
-  ).then(r => {
-    emit({ videos: r.count ?? 0, steps: { ...live.steps, collectSocial: true } });
-    return r;
-  });
-
-  const pComments = run<{ count: number | null }>(
-    base().in("interaction_type", ["comment", "reply", "subcomment"]),
-    "comments"
-  ).then(r => { emit({ comments: r.count ?? 0 }); return r; });
-
   const pToday = run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()), "today")
-    .then(r => { emit({ mentionsProcessed: r.count ?? 0, steps: { ...live.steps, processAI: true } }); return r; });
-
+    .then(r => { emit({ mentionsProcessed: r.count ?? 0, steps: { ...live.steps, processAI: true, collectSocial: true } }); return r; });
   const pPos = run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()).eq("sentiment_label", "Positivo"), "pos");
   const pNeg = run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()).eq("sentiment_label", "Negativo"), "neg");
   const pNeu = run<{ count: number | null }>(base().gte("created_at", startToday.toISOString()).eq("sentiment_label", "Neutro"), "neu");
   const pPrev = run<{ count: number | null }>(base().gte("created_at", startPrev24h.toISOString()).lt("created_at", start24h.toISOString()), "prev24");
 
-  // Sentimento parcial assim que p/n/neu retornarem
+  // Sentimento de ontem para movimentação
+  const pYestPos = run<{ count: number | null }>(base().gte("created_at", startYesterday.toISOString()).lt("created_at", startToday.toISOString()).eq("sentiment_label", "Positivo"), "yPos");
+  const pYestNeg = run<{ count: number | null }>(base().gte("created_at", startYesterday.toISOString()).lt("created_at", startToday.toISOString()).eq("sentiment_label", "Negativo"), "yNeg");
+  const pYestNeu = run<{ count: number | null }>(base().gte("created_at", startYesterday.toISOString()).lt("created_at", startToday.toISOString()).eq("sentiment_label", "Neutro"), "yNeu");
+
   Promise.all([pPos, pNeg, pNeu]).then(([rp, rn, ru]) => {
     const p = rp.count ?? 0, n = rn.count ?? 0, u = ru.count ?? 0;
     const total = p + n + u;
@@ -176,40 +235,57 @@ async function fetchSnapshot(
         negativePct: Math.round((n / total) * 100),
         steps: { ...live.steps, classifySentiment: true },
       });
-    } else {
-      emit({ steps: { ...live.steps, classifySentiment: true } });
-    }
+    } else emit({ steps: { ...live.steps, classifySentiment: true } });
   }).catch(() => {});
 
+  // Amostra com campos ricos para temas, veículos e publicações
   const pSample = run<{ data: any[] | null }>(
     supabase.from("social_interactions")
-      .select("created_at, sentiment_label, comment_text, social_network, likes_count, shares_count")
+      .select("id, created_at, sentiment_label, comment_text, social_network, likes_count, shares_count, replies_count, post_url, post_title, author_name, author_handle")
       .eq("user_id", userId).eq("candidate_id", candidateId)
       .not("social_network", "in", "(mastodon,lemmy,pinterest)")
       .gte("created_at", start30d.toISOString())
       .order("created_at", { ascending: false })
-      .limit(5000),
+      .limit(3000),
     "sample"
-  ).then(r => {
-    const topics = extractTopics((r.data ?? []).slice(0, 1500));
-    emit({ emergingTopics: topics.slice(0, 6).map(t => t.name) });
-    return r;
-  });
+  );
 
-  const [qToday, qPos, qNeg, qNews, qPrev24h, qSample] = await Promise.all([
-    pToday, pPos, pNeg, pNews, pPrev, pSample,
+  // Eventos políticos
+  const pEvents = run<{ data: any[] | null }>(
+    supabase.from("political_events")
+      .select("id, event_name, event_date, event_type, importance_score, publications_count")
+      .eq("user_id", userId).eq("candidate_id", candidateId)
+      .gte("event_date", start30d.toISOString())
+      .order("importance_score", { ascending: false })
+      .limit(6),
+    "events"
+  );
+
+  const [qToday, qPos, qNeg, qNeu, qNews, qPrev24h, qSample, qEvents, qYPos, qYNeg, qYNeu] = await Promise.all([
+    pToday, pPos, pNeg, pNeu, pNews, pPrev, pSample, pEvents, pYestPos, pYestNeg, pYestNeu,
   ]);
-  // Garante posts/vídeos/comentários terminados antes de marcar gráficos
-  await Promise.all([pPosts, pVideos, pComments]);
 
   const mentionsToday = qToday.count ?? 0;
   const positiveToday = qPos.count ?? 0;
   const negativeToday = qNeg.count ?? 0;
+  const neutralToday = qNeu.count ?? 0;
   const newsCollected = qNews.count ?? 0;
   const last24h = qToday.count ?? 0;
   const prev24h = qPrev24h.count ?? 0;
   const sample: any[] = qSample.data ?? [];
 
+  // Movimentação de sentimento (delta % vs ontem)
+  const yPos = qYPos.count ?? 0;
+  const yNeg = qYNeg.count ?? 0;
+  const yNeu = qYNeu.count ?? 0;
+  const pctDelta = (cur: number, prev: number) => prev > 0 ? Math.round(((cur - prev) / prev) * 100) : (cur > 0 ? 100 : 0);
+  const sentimentDelta = {
+    positiveDeltaPct: pctDelta(positiveToday, yPos),
+    negativeDeltaPct: pctDelta(negativeToday, yNeg),
+    neutralDeltaPct: pctDelta(neutralToday, yNeu),
+  };
+
+  // Buckets evolução
   const buckets24h: EvolutionPoint[] = Array.from({ length: 24 }, (_, i) => {
     const bs = new Date(now.getTime() - (23 - i) * 3600000);
     return { label: bs.getHours().toString().padStart(2, "0") + "h", total: 0, positive: 0, negative: 0, neutral: 0 };
@@ -222,7 +298,6 @@ async function fetchSnapshot(
     const bs = new Date(now); bs.setDate(now.getDate() - (29 - i));
     return { label: bs.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), total: 0, positive: 0, negative: 0, neutral: 0 };
   });
-
   for (const r of sample) {
     const t = new Date(r.created_at).getTime();
     const inc = (b: EvolutionPoint) => {
@@ -237,51 +312,103 @@ async function fetchSnapshot(
     if (d7 >= 0 && d7 < 7) inc(buckets7d[6 - d7]);
     if (d7 >= 0 && d7 < 30) inc(buckets30d[29 - d7]);
   }
-
   emit({ steps: { ...live.steps, buildCharts: true } });
 
-  const topics = extractTopics(sample.slice(0, 1500));
-  const topTopic = topics[0]?.name ?? "—";
+  // BLOCO 2 — Temas dominantes
+  const themes = extractThemes(sample);
+  emit({ emergingTopics: themes.slice(0, 6).map(t => t.name) });
 
+  // BLOCO 3 — Eventos
+  const events: EventItem[] = (qEvents.data ?? []).map((e: any) => ({
+    id: e.id,
+    name: e.event_name,
+    date: e.event_date,
+    type: e.event_type || "evento",
+    impact: Number(e.importance_score || e.publications_count || 0),
+  }));
+
+  // BLOCO 5 — Veículos mais ativos (Google News + autores)
+  const outletCounts = new Map<string, number>();
+  for (const r of sample) {
+    if (r.social_network !== "Google News") continue;
+    const outlet = normalizeOutlet(r.author_name || r.post_title?.split(" - ").pop() || null);
+    if (!outlet) continue;
+    outletCounts.set(outlet, (outletCounts.get(outlet) || 0) + 1);
+  }
+  const outlets: Outlet[] = Array.from(outletCounts.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+
+  // BLOCO 6 — Publicações mais relevantes
+  const publications: Publication[] = sample
+    .map((r: any) => ({
+      id: r.id,
+      title: (r.post_title || r.comment_text || "").slice(0, 140) || "(sem título)",
+      author: r.author_name || r.author_handle || "Autor desconhecido",
+      network: r.social_network,
+      engagement: (r.likes_count || 0) + (r.shares_count || 0) + (r.replies_count || 0),
+      url: r.post_url || null,
+      sentiment: r.sentiment_label || null,
+    }))
+    .filter(p => p.title && p.title !== "(sem título)" && p.engagement > 0)
+    .sort((a, b) => b.engagement - a.engagement)
+    .slice(0, 6);
+
+  // BLOCO 7 — Alertas
   const alerts: Alert[] = [];
-  if (prev24h > 0) {
-    const growth = ((last24h - prev24h) / prev24h) * 100;
-    if (growth >= 50) alerts.push({ kind: "growth", title: `Crescimento de ${Math.round(growth)}% nas menções`, detail: "Volume disparou nas últimas 24h em relação ao período anterior." });
-    else if (growth <= -40) alerts.push({ kind: "growth", title: `Queda de ${Math.round(Math.abs(growth))}% nas menções`, detail: "Volume de menções caiu significativamente." });
+  const growth = prev24h > 0 ? ((last24h - prev24h) / prev24h) * 100 : 0;
+  if (prev24h > 0 && growth >= 50) alerts.push({ kind: "growth", title: `Crescimento de ${Math.round(growth)}% nas menções`, detail: "Volume disparou nas últimas 24h." });
+  else if (prev24h > 0 && growth <= -40) alerts.push({ kind: "growth", title: `Queda de ${Math.round(Math.abs(growth))}% nas menções`, detail: "Volume caiu significativamente." });
+  if (mentionsToday > 50 && (negativeToday / Math.max(1, mentionsToday)) >= 0.5) {
+    alerts.push({ kind: "crisis", title: "Possível crise reputacional", detail: `${Math.round(negativeToday / mentionsToday * 100)}% das menções de hoje são negativas.` });
+  } else if (mentionsToday > 0 && (negativeToday / Math.max(1, mentionsToday)) >= 0.35) {
+    alerts.push({ kind: "negative", title: "Pico de sentimento negativo", detail: `${negativeToday} menções negativas hoje.` });
   }
-  if (mentionsToday > 0 && (negativeToday / Math.max(1, mentionsToday)) >= 0.45) {
-    alerts.push({ kind: "negative", title: "Pico de sentimento negativo", detail: `${negativeToday} menções negativas hoje (${Math.round(negativeToday / mentionsToday * 100)}% do total).` });
-  }
-  const viral = sample
-    .filter(r => (r.likes_count || 0) + (r.shares_count || 0) > 500)
+  const viral = sample.filter(r => (r.likes_count || 0) + (r.shares_count || 0) > 500)
     .sort((a, b) => (b.likes_count + b.shares_count) - (a.likes_count + a.shares_count))[0];
-  if (viral) {
-    alerts.push({ kind: "viral", title: "Conteúdo viral identificado", detail: `Post em ${viral.social_network} com ${(viral.likes_count || 0) + (viral.shares_count || 0)} interações.` });
-  }
-  if (newsCollected > 0) {
-    const recentNews = sample.filter(r => r.social_network === "Google News" && new Date(r.created_at).getTime() > Date.now() - 86400000).length;
-    if (recentNews >= 5) alerts.push({ kind: "news", title: `${recentNews} notícias publicadas hoje`, detail: "Cobertura jornalística intensificada nas últimas 24h." });
+  if (viral) alerts.push({ kind: "viral", title: "Conteúdo viral identificado", detail: `Post em ${viral.social_network} com ${((viral.likes_count || 0) + (viral.shares_count || 0)).toLocaleString("pt-BR")} interações.` });
+  const recentNews = sample.filter(r => r.social_network === "Google News" && new Date(r.created_at).getTime() > Date.now() - 86400000).length;
+  if (recentNews >= 5) alerts.push({ kind: "news", title: `${recentNews} notícias publicadas hoje`, detail: "Cobertura jornalística intensificada." });
+  if (Math.abs(sentimentDelta.positiveDeltaPct - sentimentDelta.negativeDeltaPct) >= 40) {
+    alerts.push({ kind: "growth", title: "Mudança brusca de sentimento", detail: `Positivo ${sentimentDelta.positiveDeltaPct >= 0 ? "+" : ""}${sentimentDelta.positiveDeltaPct}% / Negativo ${sentimentDelta.negativeDeltaPct >= 0 ? "+" : ""}${sentimentDelta.negativeDeltaPct}% vs ontem.` });
   }
 
-  const growthPct = prev24h > 0 ? Math.round(((last24h - prev24h) / prev24h) * 100) : 0;
-  const tone = positiveToday > negativeToday ? "predominantemente positivo" : negativeToday > positiveToday ? "predominantemente negativo" : "equilibrado";
-  const aiSummary =
-    `Foram registradas ${mentionsToday.toLocaleString("pt-BR")} menções hoje, ` +
-    `${growthPct >= 0 ? "alta" : "queda"} de ${Math.abs(growthPct)}% vs ontem. ` +
-    `Sentimento ${tone} (${positiveToday} positivas / ${negativeToday} negativas). ` +
-    `Assunto dominante: ${topTopic}. ` +
-    `Cobertura jornalística: ${newsCollected.toLocaleString("pt-BR")} notícias coletadas.`;
+  // BLOCO 1 — narrativa
+  const topTheme = themes[0]?.name || "diversos assuntos";
+  const tone = positiveToday > negativeToday * 1.2 ? "tom predominantemente positivo"
+    : negativeToday > positiveToday * 1.2 ? "tom predominantemente negativo" : "tom equilibrado";
+  const trendVerb = growth >= 20 ? "ganham força" : growth <= -20 ? "perdem tração" : "se mantêm estáveis";
+  const topOutlet = outlets[0]?.name;
+  const nowNarrative =
+    `As conversas sobre ${candidateName} ${trendVerb} nas últimas horas, com destaque para ${topTheme.toLowerCase()}. ` +
+    `${mentionsToday.toLocaleString("pt-BR")} menções foram registradas hoje, em ${tone}.` +
+    (topOutlet ? ` ${topOutlet} lidera a cobertura jornalística do tema.` : "");
+
+  // BLOCO 8 — Resumo executivo
+  const executiveSummary = {
+    what: `${mentionsToday.toLocaleString("pt-BR")} menções hoje (${growth >= 0 ? "+" : ""}${Math.round(growth)}% vs ontem), com foco em ${topTheme}.`,
+    why: events[0]
+      ? `Impulsionado por ${events[0].type} "${events[0].name}" em ${new Date(events[0].date).toLocaleDateString("pt-BR")}.`
+      : viral ? `Tracionado por conteúdo viral em ${viral.social_network}.`
+      : `Movimentação orgânica em ${themes.slice(0, 2).map(t => t.name).join(" e ") || "múltiplos temas"}.`,
+    who: topOutlet
+      ? `${topOutlet} e demais veículos (${outlets.slice(1, 3).map(o => o.name).join(", ") || "redes sociais"}) ampliaram o alcance.`
+      : `Disseminação principalmente orgânica nas redes sociais.`,
+    impact: `Sentimento positivo ${sentimentDelta.positiveDeltaPct >= 0 ? "+" : ""}${sentimentDelta.positiveDeltaPct}% e negativo ${sentimentDelta.negativeDeltaPct >= 0 ? "+" : ""}${sentimentDelta.negativeDeltaPct}% comparado a ontem.`,
+  };
 
   return {
-    topic: topTopic, mentionsToday, positiveToday, negativeToday, newsCollected,
+    nowNarrative, mentionsToday, positiveToday, negativeToday, newsCollected,
+    themes, events, sentimentDelta, outlets, publications, alerts, executiveSummary,
     evolution24h: buckets24h, evolution7d: buckets7d, evolution30d: buckets30d,
-    topTopics: topics, alerts, aiSummary, savedAt: Date.now(),
+    savedAt: Date.now(), candidateName,
   };
 }
 
 // ============ Componentes UI ============
 const KpiCard = ({ icon, label, value, tone = "text-foreground", accent }: { icon: React.ReactNode; label: string; value: string; tone?: string; accent?: string; }) => (
-  <Card className={cn("border-border/60 bg-card/60 backdrop-blur-sm overflow-hidden relative")}>
+  <Card className="border-border/60 bg-card/60 backdrop-blur-sm overflow-hidden relative">
     {accent && <div className={cn("absolute inset-x-0 top-0 h-0.5", accent)} />}
     <CardContent className="p-3 sm:p-4">
       <div className="flex items-center gap-2 text-[10px] sm:text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
@@ -295,6 +422,7 @@ const KpiCard = ({ icon, label, value, tone = "text-foreground", accent }: { ico
 const alertStyles: Record<Alert["kind"], { icon: React.ReactNode; ring: string; bg: string; text: string }> = {
   growth: { icon: <TrendingUp className="h-4 w-4" />, ring: "border-emerald-500/30", bg: "bg-emerald-500/5", text: "text-emerald-500" },
   negative: { icon: <TrendingDown className="h-4 w-4" />, ring: "border-red-500/30", bg: "bg-red-500/5", text: "text-red-500" },
+  crisis: { icon: <AlertTriangle className="h-4 w-4" />, ring: "border-red-500/40", bg: "bg-red-500/10", text: "text-red-500" },
   viral: { icon: <Zap className="h-4 w-4" />, ring: "border-amber-500/30", bg: "bg-amber-500/5", text: "text-amber-500" },
   news: { icon: <Newspaper className="h-4 w-4" />, ring: "border-violet-500/30", bg: "bg-violet-500/5", text: "text-violet-500" },
 };
@@ -326,6 +454,21 @@ const EvolutionChart = ({ data }: { data: EvolutionPoint[] }) => (
   </div>
 );
 
+const SentimentDeltaPill = ({ label, delta, positive }: { label: string; delta: number; positive: boolean }) => {
+  const up = delta >= 0;
+  const good = positive ? up : !up;
+  return (
+    <div className="flex flex-col gap-1 rounded-lg border border-border/60 bg-card/40 p-3">
+      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{label}</span>
+      <div className={cn("flex items-center gap-1.5 text-lg font-bold tabular-nums", good ? "text-emerald-500" : "text-red-500")}>
+        {up ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+        {up ? "+" : ""}{delta}%
+      </div>
+      <span className="text-[11px] text-muted-foreground">vs ontem</span>
+    </div>
+  );
+};
+
 // ============ Página ============
 const RealTimeMonitor = () => {
   const { user } = useAuth();
@@ -340,7 +483,6 @@ const RealTimeMonitor = () => {
   const tickRef = useRef<NodeJS.Timeout | null>(null);
   const bgTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Candidatos
   useEffect(() => {
     if (!user) return;
     (async () => {
@@ -355,7 +497,7 @@ const RealTimeMonitor = () => {
     })();
   }, [user]);
 
-  const runSync = useCallback(async (cid: string, uid: string) => {
+  const runSync = useCallback(async (cid: string, uid: string, name: string) => {
     setIsSyncing(true); setError(null);
     setLiveProgress({
       news: 0, posts: 0, videos: 0, comments: 0, mentionsProcessed: 0, sentimentClassified: 0,
@@ -363,7 +505,7 @@ const RealTimeMonitor = () => {
       steps: { collectNews: false, collectSocial: false, processAI: false, classifySentiment: false, buildCharts: false },
     });
     try {
-      const snap = await fetchSnapshot(uid, cid, (p) => setLiveProgress(prev => ({ ...(prev as LiveProgress), ...p })));
+      const snap = await fetchSnapshot(uid, cid, name, (p) => setLiveProgress(prev => ({ ...(prev as LiveProgress), ...p })));
       writeCache(cacheKey(uid, cid), snap);
       setSnapshot(snap);
     } catch (e: any) {
@@ -371,31 +513,28 @@ const RealTimeMonitor = () => {
     } finally { setIsSyncing(false); setLiveProgress(null); }
   }, []);
 
-  // Snapshot do cache + background refresh
+  const selectedCandidate = candidates.find(c => c.id === selectedCandidateId);
+
   useEffect(() => {
-    if (!user || !selectedCandidateId) { setSnapshot(null); return; }
+    if (!user || !selectedCandidateId || !selectedCandidate) { setSnapshot(null); return; }
     const cached = readCache(cacheKey(user.id, selectedCandidateId));
     if (cached) setSnapshot(cached);
-    // Se cache fresco, não bloqueia; mesmo assim atualiza em background se >2 min
     const stale = !cached || (Date.now() - cached.savedAt) > 2 * 60 * 1000;
-    if (stale) runSync(selectedCandidateId, user.id);
-  }, [user, selectedCandidateId, runSync]);
+    if (stale) runSync(selectedCandidateId, user.id, selectedCandidate.full_name);
+  }, [user, selectedCandidateId, selectedCandidate, runSync]);
 
-  // Refresh background a cada 60s
   useEffect(() => {
-    if (!user || !selectedCandidateId) return;
-    bgTimerRef.current = setInterval(() => runSync(selectedCandidateId, user.id), 60000);
+    if (!user || !selectedCandidateId || !selectedCandidate) return;
+    bgTimerRef.current = setInterval(() => runSync(selectedCandidateId, user.id, selectedCandidate.full_name), 60000);
     return () => { if (bgTimerRef.current) clearInterval(bgTimerRef.current); };
-  }, [user, selectedCandidateId, runSync]);
+  }, [user, selectedCandidateId, selectedCandidate, runSync]);
 
-  // Tick relativo
   useEffect(() => {
     tickRef.current = setInterval(() => force(n => n + 1), 30000);
     return () => { if (tickRef.current) clearInterval(tickRef.current); };
   }, []);
 
   const lastUpdate = snapshot ? new Date(snapshot.savedAt) : null;
-  const selectedCandidate = candidates.find(c => c.id === selectedCandidateId);
 
   return (
     <div className="space-y-4 sm:space-y-5 pb-8">
@@ -403,11 +542,11 @@ const RealTimeMonitor = () => {
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
         <div className="flex items-start gap-3">
           <div className="rounded-lg bg-primary/10 p-2.5 mt-0.5">
-            <Radio className="h-5 w-5 text-primary" />
+            <BrainCircuit className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Monitor em Tempo Real</h1>
-            <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">Inteligência política instantânea</p>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Centro de Inteligência Política</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">O que está acontecendo agora, em tempo real</p>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -416,22 +555,22 @@ const RealTimeMonitor = () => {
               : snapshot ? (<><CheckCircle2 className="h-3 w-3 text-emerald-500" /><span className="text-muted-foreground">{lastUpdate ? formatRelative(lastUpdate) : "Sincronizado"}</span></>)
               : (<><Clock className="h-3 w-3" /><span className="text-muted-foreground">Aguardando</span></>)}
           </div>
-          <Button variant="outline" size="sm" disabled={isSyncing || !selectedCandidateId}
-            onClick={() => user && selectedCandidateId && runSync(selectedCandidateId, user.id)}
+          <Button variant="outline" size="sm" disabled={isSyncing || !selectedCandidateId || !selectedCandidate}
+            onClick={() => user && selectedCandidateId && selectedCandidate && runSync(selectedCandidateId, user.id, selectedCandidate.full_name)}
             className="h-8 gap-1.5">
             <RefreshCw className={cn("h-3.5 w-3.5", isSyncing && "animate-spin")} />Atualizar
           </Button>
         </div>
       </div>
 
-      {/* Candidate selector */}
+      {/* Selector */}
       <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
         <CardContent className="p-3 flex flex-col sm:flex-row sm:items-center gap-3">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/10 px-2.5 py-1 text-[11px] font-semibold text-red-500 shrink-0">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
-            </span>EM TEMPO REAL
+            </span>AO VIVO
           </span>
           {loadingCandidates ? <Skeleton className="h-11 w-full sm:w-[280px]" /> : (
             <CandidateSelector candidates={candidates} value={selectedCandidateId} onChange={setSelectedCandidateId} disabled={false} />
@@ -460,34 +599,93 @@ const RealTimeMonitor = () => {
             </Card>
           )}
 
-          {/* Central de coleta ao vivo — antes do primeiro snapshot */}
           {!snapshot && liveProgress && (
             <LiveCollectionCenter progress={liveProgress} candidate={selectedCandidate} />
           )}
 
-          {/* LINHA 1: Cards executivos */}
+          {/* BLOCO 1 — O que está acontecendo agora */}
           {snapshot ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
-              <KpiCard icon={<Flame className="h-3.5 w-3.5 text-amber-500" />} label="Assunto do Momento" value={snapshot.topic} accent="bg-amber-500/70" />
-              <KpiCard icon={<TrendingUp className="h-3.5 w-3.5 text-primary" />} label="Menções Hoje" value={snapshot.mentionsToday.toLocaleString("pt-BR")} accent="bg-primary/70" />
-              <KpiCard icon={<Smile className="h-3.5 w-3.5 text-emerald-500" />} label="Sentimento +" value={snapshot.positiveToday.toLocaleString("pt-BR")} tone="text-emerald-500" accent="bg-emerald-500/70" />
-              <KpiCard icon={<Frown className="h-3.5 w-3.5 text-red-500" />} label="Sentimento −" value={snapshot.negativeToday.toLocaleString("pt-BR")} tone="text-red-500" accent="bg-red-500/70" />
-              <KpiCard icon={<Newspaper className="h-3.5 w-3.5 text-violet-500" />} label="Notícias" value={snapshot.newsCollected.toLocaleString("pt-BR")} accent="bg-violet-500/70" />
-              <KpiCard icon={<Clock className="h-3.5 w-3.5 text-muted-foreground" />} label="Última Atualização" value={lastUpdate ? formatRelative(lastUpdate) : "—"} />
-            </div>
-          ) : !liveProgress ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
-              {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[72px] rounded-lg" />)}
-            </div>
-          ) : null}
+            <Card className="border-primary/30 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent overflow-hidden relative">
+              <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-primary/0 via-primary to-primary/0" />
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />O que está acontecendo agora
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5 ml-auto">Tempo real</Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-base sm:text-lg leading-relaxed font-medium text-foreground/95">
+                  {snapshot.nowNarrative}
+                </p>
+              </CardContent>
+            </Card>
+          ) : !liveProgress ? <Skeleton className="h-32 w-full rounded-lg" /> : null}
 
-          {/* LINHA 2: Evolução */}
-          <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
-            <CardHeader className="pb-2 flex flex-row items-center justify-between">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2"><Activity className="h-4 w-4 text-primary" />Evolução das menções</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {snapshot ? (
+          {/* KPIs */}
+          {snapshot && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
+              <KpiCard icon={<Activity className="h-3.5 w-3.5 text-primary" />} label="Menções Hoje" value={snapshot.mentionsToday.toLocaleString("pt-BR")} accent="bg-primary/70" />
+              <KpiCard icon={<TrendingUp className="h-3.5 w-3.5 text-emerald-500" />} label="Positivas" value={snapshot.positiveToday.toLocaleString("pt-BR")} tone="text-emerald-500" accent="bg-emerald-500/70" />
+              <KpiCard icon={<TrendingDown className="h-3.5 w-3.5 text-red-500" />} label="Negativas" value={snapshot.negativeToday.toLocaleString("pt-BR")} tone="text-red-500" accent="bg-red-500/70" />
+              <KpiCard icon={<Newspaper className="h-3.5 w-3.5 text-violet-500" />} label="Notícias" value={snapshot.newsCollected.toLocaleString("pt-BR")} accent="bg-violet-500/70" />
+            </div>
+          )}
+
+          {/* BLOCO 2 + BLOCO 4 */}
+          {snapshot && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <Flame className="h-4 w-4 text-amber-500" />Assuntos dominantes
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {snapshot.themes.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-4">Sem dados suficientes para identificar temas políticos.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {snapshot.themes.map((t, i) => (
+                        <motion.div key={t.name} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.04 }}
+                          className={cn(
+                            "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium",
+                            i === 0 ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400" :
+                            i === 1 ? "border-primary/30 bg-primary/10 text-primary" :
+                            "border-border/60 bg-muted/30 text-foreground/80"
+                          )}>
+                          <span>{t.name}</span>
+                          <span className="text-[11px] tabular-nums opacity-70">{t.count}</span>
+                        </motion.div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <Activity className="h-4 w-4 text-primary" />Movimentação de sentimento
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-3 gap-2">
+                    <SentimentDeltaPill label="Positivo" delta={snapshot.sentimentDelta.positiveDeltaPct} positive />
+                    <SentimentDeltaPill label="Negativo" delta={snapshot.sentimentDelta.negativeDeltaPct} positive={false} />
+                    <SentimentDeltaPill label="Neutro" delta={snapshot.sentimentDelta.neutralDeltaPct} positive />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Evolução */}
+          {snapshot && (
+            <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2"><Activity className="h-4 w-4 text-primary" />Evolução das menções</CardTitle>
+              </CardHeader>
+              <CardContent>
                 <Tabs defaultValue="24h">
                   <TabsList className="h-8">
                     <TabsTrigger value="24h" className="text-xs">24h</TabsTrigger>
@@ -498,86 +696,190 @@ const RealTimeMonitor = () => {
                   <TabsContent value="7d" className="mt-3"><EvolutionChart data={snapshot.evolution7d} /></TabsContent>
                   <TabsContent value="30d" className="mt-3"><EvolutionChart data={snapshot.evolution30d} /></TabsContent>
                 </Tabs>
-              ) : <Skeleton className="h-64 w-full rounded-lg" />}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
-          {/* LINHA 3 + 4: Topics + Alerts */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
-              <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" />Top assuntos emergentes</CardTitle></CardHeader>
-              <CardContent>
-                {snapshot ? (
-                  snapshot.topTopics.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-4">Sem dados suficientes para identificar assuntos.</p>
+          {/* BLOCO 3 — Eventos + BLOCO 5 — Veículos */}
+          {snapshot && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-primary" />Eventos em alta
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {snapshot.events.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-4">Nenhum evento detectado nos últimos 30 dias.</p>
                   ) : (
-                    <ol className="space-y-2">
-                      {snapshot.topTopics.map((t, i) => {
-                        const max = snapshot.topTopics[0].count || 1;
-                        const pct = Math.round((t.count / max) * 100);
+                    <ul className="space-y-2">
+                      {snapshot.events.map(e => (
+                        <li key={e.id} className="flex items-start gap-3 rounded-lg border border-border/60 bg-background/40 p-2.5">
+                          <div className="rounded-md bg-primary/10 p-1.5 text-primary"><Megaphone className="h-3.5 w-3.5" /></div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate">{e.name}</div>
+                            <div className="text-[11px] text-muted-foreground flex items-center gap-2 mt-0.5">
+                              <span className="capitalize">{e.type}</span>
+                              <span>·</span>
+                              <span>{new Date(e.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</span>
+                            </div>
+                          </div>
+                          <Badge variant="secondary" className="text-[10px] h-5 shrink-0">Impacto {Math.round(e.impact)}</Badge>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-violet-500" />Veículos mais ativos
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {snapshot.outlets.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-4">Nenhum veículo jornalístico identificado ainda.</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {snapshot.outlets.map((o, i) => {
+                        const max = snapshot.outlets[0].count || 1;
+                        const pct = Math.round((o.count / max) * 100);
                         return (
-                          <li key={t.name} className="flex items-center gap-3">
-                            <span className="w-5 h-5 rounded-md bg-primary/10 text-primary text-[11px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                          <li key={o.name} className="flex items-center gap-3">
+                            <span className="w-5 h-5 rounded-md bg-violet-500/10 text-violet-500 text-[11px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between gap-2">
-                                <span className="text-sm font-medium truncate">{t.name}</span>
-                                <span className="text-[11px] text-muted-foreground tabular-nums">{t.count.toLocaleString("pt-BR")}</span>
+                                <span className="text-sm font-medium truncate">{o.name}</span>
+                                <span className="text-[11px] text-muted-foreground tabular-nums">{o.count.toLocaleString("pt-BR")}</span>
                               </div>
                               <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden mt-1">
-                                <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6 }} className="h-full bg-primary" />
+                                <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6 }} className="h-full bg-violet-500" />
                               </div>
                             </div>
                           </li>
                         );
                       })}
-                    </ol>
-                  )
-                ) : <Skeleton className="h-40 w-full" />}
-              </CardContent>
-            </Card>
-
-            <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
-              <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-500" />Alertas automáticos</CardTitle></CardHeader>
-              <CardContent>
-                {snapshot ? (
-                  snapshot.alerts.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-4">Nenhum alerta no momento. Tudo dentro da normalidade.</p>
-                  ) : (
-                    <ul className="space-y-2">
-                      <AnimatePresence>
-                        {snapshot.alerts.map((a, i) => {
-                          const s = alertStyles[a.kind];
-                          return (
-                            <motion.li key={a.title + i} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}
-                              className={cn("rounded-lg border p-2.5 flex items-start gap-2.5", s.ring, s.bg)}>
-                              <div className={cn("rounded-md p-1.5 bg-background/60", s.text)}>{s.icon}</div>
-                              <div className="min-w-0">
-                                <div className="text-sm font-semibold truncate">{a.title}</div>
-                                <div className="text-xs text-muted-foreground">{a.detail}</div>
-                              </div>
-                            </motion.li>
-                          );
-                        })}
-                      </AnimatePresence>
                     </ul>
-                  )
-                ) : <Skeleton className="h-40 w-full" />}
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* BLOCO 6 — Publicações mais relevantes */}
+          {snapshot && (
+            <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />Publicações mais relevantes
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {snapshot.publications.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-4">Sem publicações com engajamento relevante.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {snapshot.publications.map(p => (
+                      <li key={p.id} className="rounded-lg border border-border/60 bg-background/40 p-3 hover:bg-background/60 transition-colors">
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium leading-snug line-clamp-2">{p.title}</div>
+                            <div className="flex items-center gap-2 mt-1.5 flex-wrap text-[11px] text-muted-foreground">
+                              <span className="font-medium text-foreground/80 truncate max-w-[160px]">{p.author}</span>
+                              <Badge variant="outline" className="h-4 text-[10px] px-1.5">{p.network}</Badge>
+                              {p.sentiment && (
+                                <Badge variant="secondary" className={cn("h-4 text-[10px] px-1.5",
+                                  p.sentiment === "Positivo" && "bg-emerald-500/10 text-emerald-500",
+                                  p.sentiment === "Negativo" && "bg-red-500/10 text-red-500",
+                                )}>{p.sentiment}</Badge>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            <div className="flex items-center gap-1 text-xs font-semibold tabular-nums">
+                              <Heart className="h-3 w-3 text-red-500" />{p.engagement.toLocaleString("pt-BR")}
+                            </div>
+                            {p.url && (
+                              <a href={p.url} target="_blank" rel="noopener noreferrer"
+                                className="text-[11px] text-primary hover:underline inline-flex items-center gap-0.5">
+                                Abrir <ExternalLink className="h-3 w-3" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </CardContent>
             </Card>
-          </div>
+          )}
 
-          {/* LINHA 5: Resumo IA */}
-          <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-transparent">
-            <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" />Resumo IA
-              <Badge variant="secondary" className="text-[10px] h-4 px-1.5">Inteligência</Badge>
-            </CardTitle></CardHeader>
-            <CardContent>
-              {snapshot ? (
-                <p className="text-sm leading-relaxed text-foreground/90">{snapshot.aiSummary}</p>
-              ) : <Skeleton className="h-16 w-full" />}
-            </CardContent>
-          </Card>
+          {/* BLOCO 7 — Alertas IA */}
+          {snapshot && (
+            <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-500" />Alertas IA
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {snapshot.alerts.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-4">Tudo dentro da normalidade. Nenhum alerta no momento.</p>
+                ) : (
+                  <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <AnimatePresence>
+                      {snapshot.alerts.map((a, i) => {
+                        const s = alertStyles[a.kind];
+                        return (
+                          <motion.li key={a.title + i} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}
+                            className={cn("rounded-lg border p-2.5 flex items-start gap-2.5", s.ring, s.bg)}>
+                            <div className={cn("rounded-md p-1.5 bg-background/60", s.text)}>{s.icon}</div>
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold truncate">{a.title}</div>
+                              <div className="text-xs text-muted-foreground">{a.detail}</div>
+                            </div>
+                          </motion.li>
+                        );
+                      })}
+                    </AnimatePresence>
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* BLOCO 8 — Resumo Executivo */}
+          {snapshot && (
+            <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-transparent">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <BrainCircuit className="h-4 w-4 text-primary" />Resumo executivo
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5">IA</Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {[
+                    { k: "O que aconteceu", v: snapshot.executiveSummary.what, icon: <Activity className="h-3.5 w-3.5" /> },
+                    { k: "Por que aconteceu", v: snapshot.executiveSummary.why, icon: <Sparkles className="h-3.5 w-3.5" /> },
+                    { k: "Quem impulsionou", v: snapshot.executiveSummary.who, icon: <Megaphone className="h-3.5 w-3.5" /> },
+                    { k: "Qual foi o impacto", v: snapshot.executiveSummary.impact, icon: <TrendingUp className="h-3.5 w-3.5" /> },
+                  ].map(item => (
+                    <div key={item.k} className="rounded-lg border border-border/60 bg-background/40 p-3">
+                      <dt className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium flex items-center gap-1.5">
+                        <span className="text-primary">{item.icon}</span>{item.k}
+                      </dt>
+                      <dd className="text-sm text-foreground/90 mt-1.5 leading-relaxed">{item.v}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
     </div>
