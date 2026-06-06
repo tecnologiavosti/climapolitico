@@ -15,8 +15,23 @@ const corsHeaders = {
 function sanitizeForAI(s: unknown): string {
   if (s == null) return "";
   let str = String(s);
-  // Remove HTML/URLs que aparecem em alguns coletores e poluem a análise estatística.
-  str = str.replace(/<[^>]*>/g, " ").replace(/https?:\/\/\S+/gi, " ");
+  // Remove HTML, RSS bruto, entidades e URLs que aparecem em alguns coletores.
+  str = str
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<video[\s\S]*?<\/video>/gi, " ")
+    .replace(/<source[^>]*>/gi, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&#x27;/gi, "'")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/\b(src|href|class|target|rel|nofollow|width|height|type)=\S+/gi, " ")
+    .replace(/[{}<>]/g, " ");
   // Remove caracteres de controle (exceto \n, \r, \t)
   str = str.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ");
   // Remove lone high/low surrogates (emojis quebrados)
@@ -66,7 +81,7 @@ serve(async (req) => {
       });
     }
 
-    const { candidateId, startDate, endDate, eventName, eventKeywords } = await req.json();
+    const { candidateId, startDate, endDate, eventName, eventKeywords, eventDescription, eventType, eventSources, eventSourceTitles, confirmedEvent } = await req.json();
     if (!candidateId || !startDate || !endDate) {
       return new Response(JSON.stringify({ error: 'candidateId, startDate e endDate são obrigatórios' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -133,13 +148,25 @@ serve(async (req) => {
       console.log(`[event-repercussion] keyword filter: ${before} -> ${comments.length} (removidos: ${filteredOut})`);
     }
 
-    if (comments.length === 0) {
+    const externalSources = Array.isArray(eventSources) ? eventSources.slice(0, 12) : [];
+    const externalTitles = Array.isArray(eventSourceTitles) ? eventSourceTitles.slice(0, 10) : [];
+    const hasExternalEvidence = Boolean(confirmedEvent) || externalSources.length > 0 || externalTitles.length > 0;
+
+    if (comments.length === 0 && !hasExternalEvidence) {
       return new Response(JSON.stringify({
         report: null,
         message: keywords.length > 0
           ? `Nenhum comentário sobre "${eventName}" encontrado no período. Tente ampliar o intervalo de datas.`
           : 'Nenhum comentário encontrado no período selecionado.',
         stats: { total: 0 }
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    if (comments.length <= 10 && !hasExternalEvidence) {
+      return new Response(JSON.stringify({
+        report: null,
+        message: 'Volume insuficiente para relatório estratégico: eventos com até 10 menções exigem evidência externa documentada.',
+        stats: { total: comments.length, positive: 0, negative: 0, neutral: comments.length, byNetwork: {} }
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
@@ -170,7 +197,7 @@ serve(async (req) => {
       .sort((a, b) => ((b.likes_count || 0) + (b.replies_count || 0)) - ((a.likes_count || 0) + (a.replies_count || 0)))
       .slice(0, 15)
       .map(c => ({
-        text: c.comment_text?.substring(0, 300),
+        text: sanitizeForAI(c.comment_text).substring(0, 300),
         author: c.comment_author,
         network: c.social_network,
         sentiment: c.sentiment_label,
@@ -187,8 +214,9 @@ serve(async (req) => {
     const eventLabel = eventName || `período de ${startDate.substring(0, 10)} a ${endDate.substring(0, 10)}`;
 
     const buildDeterministicReport = (reason: 'ai_unavailable' | 'no_ai_key') => {
-      const negativePct = stats.negative / stats.total;
-      const positivePct = stats.positive / stats.total;
+      const denominator = Math.max(stats.total, 1);
+      const negativePct = stats.negative / denominator;
+      const positivePct = stats.positive / denominator;
       const neutralPct = Math.max(0, 1 - negativePct - positivePct);
       const overall_assessment = negativePct >= 0.45
         ? 'muito_negativa'
