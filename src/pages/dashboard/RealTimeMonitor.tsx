@@ -728,7 +728,7 @@ const RealTimeMonitor = () => {
               : (<><Clock className="h-3 w-3" /><span className="text-muted-foreground">Aguardando</span></>)}
           </div>
           <Button variant="outline" size="sm" disabled={isSyncing || !selectedCandidateId || !selectedCandidate}
-            onClick={() => user && selectedCandidateId && selectedCandidate && runSync(selectedCandidateId, user.id, selectedCandidate.full_name)}
+            onClick={() => user && selectedCandidateId && selectedCandidate && runSync(selectedCandidateId, user.id, selectedCandidate.full_name, windowHours)}
             className="h-8 gap-1.5">
             <RefreshCw className={cn("h-3.5 w-3.5", isSyncing && "animate-spin")} />Atualizar
           </Button>
