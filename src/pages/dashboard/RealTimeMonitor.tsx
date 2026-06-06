@@ -518,7 +518,7 @@ const SentimentDeltaPill = ({ label, delta, positive }: { label: string; delta: 
   return (
     <div className="flex flex-col gap-1 rounded-lg border border-border/60 bg-card/40 p-3">
       <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{label}</span>
-      <div className={cn("flex items-center gap-1.5 text-lg font-bold tabular-nums", good ? "text-emerald-500" : "text-red-500")}>
+      <div className={cn("flex items-center gap-1.5 text-lg font-bold tabular-nums", good ? "text-success" : "text-destructive")}>
         {up ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
         {up ? "+" : ""}{delta}%
       </div>
@@ -610,7 +610,7 @@ const RealTimeMonitor = () => {
         <div className="flex items-center gap-2 flex-wrap">
           <div className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card/60 px-2.5 py-1 text-xs">
             {isSyncing ? (<><RefreshCw className="h-3 w-3 animate-spin text-primary" /><span className="text-muted-foreground">Atualizando…</span></>)
-              : snapshot ? (<><CheckCircle2 className="h-3 w-3 text-emerald-500" /><span className="text-muted-foreground">{lastUpdate ? formatRelative(lastUpdate) : "Sincronizado"}</span></>)
+              : snapshot ? (<><CheckCircle2 className="h-3 w-3 text-success" /><span className="text-muted-foreground">{lastUpdate ? formatRelative(lastUpdate) : "Sincronizado"}</span></>)
               : (<><Clock className="h-3 w-3" /><span className="text-muted-foreground">Aguardando</span></>)}
           </div>
           <Button variant="outline" size="sm" disabled={isSyncing || !selectedCandidateId || !selectedCandidate}
@@ -624,10 +624,10 @@ const RealTimeMonitor = () => {
       {/* Selector */}
       <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
         <CardContent className="p-3 flex flex-col sm:flex-row sm:items-center gap-3">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/10 px-2.5 py-1 text-[11px] font-semibold text-red-500 shrink-0">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] font-semibold text-destructive shrink-0">
             <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-destructive" />
             </span>AO VIVO
           </span>
           {loadingCandidates ? <Skeleton className="h-11 w-full sm:w-[280px]" /> : (
@@ -650,8 +650,8 @@ const RealTimeMonitor = () => {
       ) : (
         <>
           {error && (
-            <Card className="border-amber-500/40 bg-amber-500/5">
-              <CardContent className="py-2.5 text-xs text-amber-600 flex items-center gap-2">
+            <Card className="border-warning/40 bg-warning/5">
+              <CardContent className="py-2.5 text-xs text-warning flex items-center gap-2">
                 <AlertTriangle className="h-3.5 w-3.5" />{error}
               </CardContent>
             </Card>
@@ -709,7 +709,7 @@ const RealTimeMonitor = () => {
               <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <Flame className="h-4 w-4 text-amber-500" />Assuntos dominantes
+                    <Flame className="h-4 w-4 text-warning" />Assuntos dominantes
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -721,7 +721,7 @@ const RealTimeMonitor = () => {
                         <motion.div key={t.name} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.04 }}
                           className={cn(
                             "rounded-lg border px-3 py-2",
-                            i === 0 ? "border-amber-500/40 bg-amber-500/10" :
+                            i === 0 ? "border-warning/40 bg-warning/10" :
                             i === 1 ? "border-primary/30 bg-primary/10" :
                             "border-border/60 bg-muted/30"
                           )}>
