@@ -818,7 +818,7 @@ const RealTimeMonitor = () => {
               <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <Building2 className="h-4 w-4 text-violet-500" />Veículos mais ativos
+                    <Building2 className="h-4 w-4 text-accent" />Veículos mais ativos
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -831,14 +831,14 @@ const RealTimeMonitor = () => {
                         const pct = Math.round((o.count / max) * 100);
                         return (
                           <li key={o.name} className="flex items-center gap-3">
-                            <span className="w-5 h-5 rounded-md bg-violet-500/10 text-violet-500 text-[11px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                            <span className="w-5 h-5 rounded-md bg-accent/10 text-accent text-[11px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between gap-2">
                                 <span className="text-sm font-medium truncate">{o.name}</span>
                                 <span className="text-[11px] text-muted-foreground tabular-nums">{o.count.toLocaleString("pt-BR")}</span>
                               </div>
                               <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden mt-1">
-                                <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6 }} className="h-full bg-violet-500" />
+                                <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6 }} className="h-full bg-accent" />
                               </div>
                             </div>
                           </li>
@@ -875,15 +875,15 @@ const RealTimeMonitor = () => {
                               <span>{formatRelative(new Date(p.createdAt))}</span>
                               {p.sentiment && (
                                 <Badge variant="secondary" className={cn("h-4 text-[10px] px-1.5",
-                                  p.sentiment === "Positivo" && "bg-emerald-500/10 text-emerald-500",
-                                  p.sentiment === "Negativo" && "bg-red-500/10 text-red-500",
+                                  p.sentiment === "Positivo" && "bg-success/10 text-success",
+                                  p.sentiment === "Negativo" && "bg-destructive/10 text-destructive",
                                 )}>{p.sentiment}</Badge>
                               )}
                             </div>
                           </div>
                           <div className="flex flex-col items-end gap-1 shrink-0">
                             <div className="flex items-center gap-1 text-xs font-semibold tabular-nums">
-                              <Heart className="h-3 w-3 text-red-500" />{p.engagement.toLocaleString("pt-BR")}
+                              <Heart className="h-3 w-3 text-destructive" />{p.engagement.toLocaleString("pt-BR")}
                             </div>
                             {p.url && (
                               <a href={p.url} target="_blank" rel="noopener noreferrer"
@@ -906,7 +906,7 @@ const RealTimeMonitor = () => {
             <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-500" />Alertas IA
+                  <AlertTriangle className="h-4 w-4 text-warning" />Alertas IA
                 </CardTitle>
               </CardHeader>
               <CardContent>
