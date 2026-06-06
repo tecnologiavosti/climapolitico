@@ -45,19 +45,22 @@ interface Alert {
 interface Snapshot {
   // BLOCO 1 — narrativa
   nowNarrative: string;
-  // KPIs principais
+  // KPIs principais (TODOS derivados do mesmo sample filtrado)
   mentionsToday: number;
   positiveToday: number;
   negativeToday: number;
+  neutralToday: number;
+  classifiedToday: number;
   newsCollected: number;
   evidence: EvidenceCounts;
   windowCounts: { h1: number; h6: number; h12: number; h24: number; previous24h: number; };
+  hasStatisticalBase: boolean;
   // BLOCO 2 — temas dominantes
   themes: Theme[];
   // BLOCO 3 — eventos
   events: EventItem[];
   // BLOCO 4 — movimentação sentimento
-  sentimentDelta: { positiveDeltaPct: number; negativeDeltaPct: number; neutralDeltaPct: number; };
+  sentimentDelta: { positiveDeltaPct: number; negativeDeltaPct: number; neutralDeltaPct: number; available: boolean; };
   // BLOCO 5 — veículos
   outlets: Outlet[];
   // BLOCO 6 — publicações
