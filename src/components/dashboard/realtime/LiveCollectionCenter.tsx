@@ -1,14 +1,11 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { useCountUp } from "@/hooks/useCountUp";
-import {
-  Newspaper, Smartphone, Video, MessageSquare, BarChart3, Bot,
-  CheckCircle2, Loader2, Sparkles, Activity,
-} from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Flame, TrendingUp, Smile, Frown, Minus, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// Mantém a mesma interface para compatibilidade com o monitor
 export interface LiveProgress {
   news?: number;
   posts?: number;
@@ -29,202 +26,235 @@ export interface LiveProgress {
   };
 }
 
-const DYNAMIC_MESSAGES = [
-  "Detectando assuntos do momento…",
-  "Identificando tendências políticas…",
+interface CandidateLite { full_name: string; party?: string | null; }
+
+const PHRASES = [
+  "Detectando assuntos emergentes…",
   "Analisando repercussão nacional…",
-  "Calculando sentimento das publicações…",
-  "Mapeando influenciadores políticos…",
-  "Cruzando dados de múltiplas fontes…",
-  "Avaliando picos de engajamento…",
+  "Mapeando veículos de comunicação…",
+  "Identificando tendências políticas…",
+  "Processando sentimento das publicações…",
+  "Cruzando sinais de múltiplas fontes…",
 ];
 
-const FEED_ITEMS = [
-  "Coletando notícias do Google News",
-  "Coletando vídeos do YouTube",
-  "Analisando publicações do TikTok",
-  "Processando sentimento",
-  "Calculando tendências",
-  "Detectando assuntos emergentes",
-  "Mapeando menções no Instagram",
-  "Indexando posts do X (Twitter)",
-];
+const initials = (n: string) =>
+  n.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]?.toUpperCase()).join("");
 
-const Counter = ({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: number; color: string; }) => {
-  const v = useCountUp(value, 600);
+const sentimentVerdict = (p?: number, neu?: number, n?: number) => {
+  const P = p ?? 0, N = n ?? 0, U = neu ?? 0;
+  if (P + N + U === 0) return { label: "—", icon: <Minus className="h-3.5 w-3.5" />, tone: "text-muted-foreground" };
+  if (P > N && P >= U) return { label: "Positivo", icon: <Smile className="h-3.5 w-3.5" />, tone: "text-emerald-500" };
+  if (N > P && N >= U) return { label: "Negativo", icon: <Frown className="h-3.5 w-3.5" />, tone: "text-red-500" };
+  return { label: "Neutro", icon: <Minus className="h-3.5 w-3.5" />, tone: "text-amber-500" };
+};
+
+/** Animação de fundo: pulsos radiais + linhas conectadas (puro SVG/CSS). */
+const AmbientBackdrop = () => (
+  <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+    {/* Gradient orbs */}
+    <motion.div
+      className="absolute -top-32 -left-32 h-80 w-80 rounded-full blur-3xl"
+      style={{ background: "radial-gradient(circle, hsl(var(--primary)/0.25), transparent 60%)" }}
+      animate={{ x: [0, 30, 0], y: [0, 20, 0], scale: [1, 1.1, 1] }}
+      transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
+    />
+    <motion.div
+      className="absolute -bottom-40 -right-32 h-96 w-96 rounded-full blur-3xl"
+      style={{ background: "radial-gradient(circle, hsl(var(--primary)/0.18), transparent 60%)" }}
+      animate={{ x: [0, -25, 0], y: [0, -15, 0], scale: [1, 1.15, 1] }}
+      transition={{ duration: 12, repeat: Infinity, ease: "easeInOut", delay: 1 }}
+    />
+
+    {/* Pulse rings */}
+    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+      {[0, 1, 2].map(i => (
+        <motion.span
+          key={i}
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-primary/30"
+          style={{ width: 120, height: 120 }}
+          animate={{ scale: [1, 3.2], opacity: [0.5, 0] }}
+          transition={{ duration: 3.5, repeat: Infinity, delay: i * 1.1, ease: "easeOut" }}
+        />
+      ))}
+    </div>
+
+    {/* Connected dots */}
+    <svg className="absolute inset-0 h-full w-full opacity-40" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="line-grad" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.6" />
+          <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {[
+        ["10%", "20%", "50%", "55%"],
+        ["50%", "55%", "85%", "30%"],
+        ["50%", "55%", "20%", "80%"],
+        ["50%", "55%", "75%", "75%"],
+      ].map(([x1, y1, x2, y2], i) => (
+        <motion.line
+          key={i} x1={x1} y1={y1} x2={x2} y2={y2}
+          stroke="url(#line-grad)" strokeWidth="1"
+          initial={{ pathLength: 0, opacity: 0 }}
+          animate={{ pathLength: 1, opacity: [0, 0.8, 0.2] }}
+          transition={{ duration: 2.2, repeat: Infinity, delay: i * 0.4, ease: "easeInOut" }}
+        />
+      ))}
+      {[
+        ["10%", "20%"], ["85%", "30%"], ["20%", "80%"], ["75%", "75%"],
+      ].map(([cx, cy], i) => (
+        <motion.circle
+          key={i} cx={cx} cy={cy} r="3" fill="hsl(var(--primary))"
+          animate={{ scale: [1, 1.6, 1], opacity: [0.5, 1, 0.5] }}
+          transition={{ duration: 2, repeat: Infinity, delay: i * 0.3 }}
+        />
+      ))}
+    </svg>
+  </div>
+);
+
+export const LiveCollectionCenter = ({
+  progress,
+  candidate,
+}: {
+  progress: LiveProgress;
+  candidate?: CandidateLite | null;
+}) => {
+  const [phraseIdx, setPhraseIdx] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => setPhraseIdx(i => (i + 1) % PHRASES.length), 2400);
+    return () => clearInterval(t);
+  }, []);
+
+  const topic = progress.emergingTopics?.[0];
+  const verdict = sentimentVerdict(progress.positivePct, progress.neutralPct, progress.negativePct);
+  const trendValue =
+    (progress.mentionsProcessed ?? 0) > 0
+      ? `${(progress.mentionsProcessed ?? 0).toLocaleString("pt-BR")} menções hoje`
+      : "Calculando…";
+
   return (
-    <div className="rounded-lg border border-border/60 bg-card/60 backdrop-blur-sm p-3">
-      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
-        <span className={color}>{icon}</span><span className="truncate">{label}</span>
+    <div className="space-y-5">
+      <Card className="relative overflow-hidden border-border/60 bg-gradient-to-br from-card via-card/80 to-primary/5 backdrop-blur-sm">
+        <AmbientBackdrop />
+        <CardContent className="relative p-8 sm:p-12 flex flex-col items-center text-center space-y-5">
+          {/* Avatar + identidade */}
+          {candidate && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+              className="flex flex-col items-center gap-3"
+            >
+              <div className="relative">
+                <motion.div
+                  className="absolute inset-0 rounded-full"
+                  style={{ background: "conic-gradient(from 0deg, hsl(var(--primary)), transparent, hsl(var(--primary)))" }}
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+                />
+                <div className="relative h-20 w-20 sm:h-24 sm:w-24 rounded-full bg-background flex items-center justify-center m-[3px]">
+                  <span className="text-2xl sm:text-3xl font-bold tracking-tight">{initials(candidate.full_name)}</span>
+                </div>
+              </div>
+              <div>
+                <h2 className="text-base sm:text-lg font-semibold">{candidate.full_name}</h2>
+                {candidate.party && (
+                  <p className="text-xs text-muted-foreground mt-0.5">{candidate.party}</p>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Título central */}
+          <motion.h1
+            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="text-2xl sm:text-4xl font-bold tracking-tight max-w-2xl bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent"
+          >
+            Analisando cenário político em tempo real
+          </motion.h1>
+          <motion.p
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+            className="text-sm sm:text-base text-muted-foreground max-w-xl"
+          >
+            A IA está identificando tendências, repercussões e movimentos relevantes.
+          </motion.p>
+
+          {/* Frase rotativa */}
+          <div className="h-6 flex items-center">
+            <AnimatePresence mode="wait">
+              <motion.span
+                key={phraseIdx}
+                initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.3 }}
+                className="inline-flex items-center gap-2 text-xs sm:text-sm text-primary/90"
+              >
+                <Sparkles className="h-3.5 w-3.5" />{PHRASES[phraseIdx]}
+              </motion.span>
+            </AnimatePresence>
+          </div>
+
+          {/* Preview ao vivo: 3 elementos */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 w-full max-w-2xl pt-2">
+            <PreviewPill
+              icon={<Flame className="h-3.5 w-3.5 text-amber-500" />}
+              label="Assunto do momento"
+              value={topic ?? "Identificando…"}
+              loading={!topic}
+            />
+            <PreviewPill
+              icon={<TrendingUp className="h-3.5 w-3.5 text-primary" />}
+              label="Tendência atual"
+              value={trendValue}
+              loading={!progress.mentionsProcessed}
+            />
+            <PreviewPill
+              icon={<span className={verdict.tone}>{verdict.icon}</span>}
+              label="Sentimento predominante"
+              value={verdict.label}
+              loading={verdict.label === "—"}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Skeleton elegante dos gráficos */}
+      <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
+        <CardContent className="p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <Skeleton className="h-4 w-44" />
+            <Skeleton className="h-6 w-32 rounded-full" />
+          </div>
+          <Skeleton className="h-56 w-full rounded-lg" />
+        </CardContent>
+      </Card>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {[0, 1].map(i => (
+          <Card key={i} className="border-border/60 bg-card/60 backdrop-blur-sm">
+            <CardContent className="p-5 space-y-2.5">
+              <Skeleton className="h-4 w-40" />
+              {[0, 1, 2, 3].map(j => <Skeleton key={j} className="h-6 w-full" />)}
+            </CardContent>
+          </Card>
+        ))}
       </div>
-      <div className="mt-1 text-xl sm:text-2xl font-bold tabular-nums">{v.toLocaleString("pt-BR")}</div>
     </div>
   );
 };
 
-const STEPS: { key: keyof LiveProgress["steps"]; label: string }[] = [
-  { key: "collectNews", label: "Coleta de notícias" },
-  { key: "collectSocial", label: "Coleta de redes sociais" },
-  { key: "processAI", label: "Processamento IA" },
-  { key: "classifySentiment", label: "Classificação de sentimento" },
-  { key: "buildCharts", label: "Construção dos gráficos" },
-];
-
-export const LiveCollectionCenter = ({ progress }: { progress: LiveProgress }) => {
-  const [msgIdx, setMsgIdx] = useState(0);
-  const [feedIdx, setFeedIdx] = useState(0);
-  const [feed, setFeed] = useState<{ text: string; ts: number }[]>([]);
-
-  useEffect(() => {
-    const t = setInterval(() => setMsgIdx(i => (i + 1) % DYNAMIC_MESSAGES.length), 2200);
-    return () => clearInterval(t);
-  }, []);
-
-  useEffect(() => {
-    const t = setInterval(() => {
-      setFeedIdx(i => {
-        const next = (i + 1) % FEED_ITEMS.length;
-        setFeed(prev => [{ text: FEED_ITEMS[next], ts: Date.now() }, ...prev].slice(0, 6));
-        return next;
-      });
-    }, 900);
-    return () => clearInterval(t);
-  }, []);
-
-  // Inicializa feed com algumas linhas
-  useEffect(() => {
-    setFeed(FEED_ITEMS.slice(0, 3).map((text, i) => ({ text, ts: Date.now() - i * 500 })));
-  }, []);
-
-  const completedSteps = useMemo(
-    () => STEPS.filter(s => progress.steps[s.key]).length,
-    [progress.steps]
-  );
-  const totalSteps = STEPS.length;
-  const pct = Math.round((completedSteps / totalSteps) * 100);
-
-  const pos = progress.positivePct ?? 0;
-  const neu = progress.neutralPct ?? 0;
-  const neg = progress.negativePct ?? 0;
-
-  return (
-    <Card className="border-border/60 bg-gradient-to-br from-primary/5 via-card/60 to-transparent backdrop-blur-sm overflow-hidden">
-      <CardContent className="p-4 sm:p-5 space-y-4">
-        {/* Mensagem dinâmica + progresso global */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Activity className="h-4 w-4 text-primary" />
-              <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            </div>
-            <AnimatePresence mode="wait">
-              <motion.span
-                key={msgIdx}
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.25 }}
-                className="text-sm font-medium"
-              >
-                {DYNAMIC_MESSAGES[msgIdx]}
-              </motion.span>
-            </AnimatePresence>
-            <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">{pct}%</span>
-          </div>
-          <Progress value={pct} className="h-1.5" />
-        </div>
-
-        {/* Contadores em tempo real */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-          <Counter icon={<Newspaper className="h-3.5 w-3.5" />} label="Notícias" value={progress.news ?? 0} color="text-violet-500" />
-          <Counter icon={<Smartphone className="h-3.5 w-3.5" />} label="Posts" value={progress.posts ?? 0} color="text-primary" />
-          <Counter icon={<Video className="h-3.5 w-3.5" />} label="Vídeos" value={progress.videos ?? 0} color="text-rose-500" />
-          <Counter icon={<MessageSquare className="h-3.5 w-3.5" />} label="Comentários" value={progress.comments ?? 0} color="text-sky-500" />
-          <Counter icon={<BarChart3 className="h-3.5 w-3.5" />} label="Menções proc." value={progress.mentionsProcessed ?? 0} color="text-emerald-500" />
-          <Counter icon={<Bot className="h-3.5 w-3.5" />} label="Sentim. class." value={progress.sentimentClassified ?? 0} color="text-amber-500" />
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Etapas */}
-          <div className="rounded-lg border border-border/50 bg-background/40 p-3">
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-2">Etapas</div>
-            <ul className="space-y-1.5">
-              {STEPS.map(s => {
-                const done = progress.steps[s.key];
-                return (
-                  <li key={s.key} className="flex items-center gap-2 text-xs">
-                    {done ? (
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                    ) : (
-                      <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin shrink-0" />
-                    )}
-                    <span className={cn(done ? "text-foreground" : "text-muted-foreground")}>{s.label}</span>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-
-          {/* Feed atividade */}
-          <div className="rounded-lg border border-border/50 bg-background/40 p-3">
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-2">Atividade</div>
-            <ul className="space-y-1">
-              <AnimatePresence initial={false}>
-                {feed.map((f, i) => (
-                  <motion.li
-                    key={f.ts}
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1 - i * 0.12, x: 0 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.25 }}
-                    className="flex items-center gap-2 text-xs"
-                  >
-                    <CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0" />
-                    <span className="truncate">{f.text}</span>
-                  </motion.li>
-                ))}
-              </AnimatePresence>
-            </ul>
-          </div>
-
-          {/* Sentimento parcial + topics */}
-          <div className="rounded-lg border border-border/50 bg-background/40 p-3 space-y-3">
-            <div>
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Sentimento parcial</div>
-              {(pos + neu + neg) === 0 ? (
-                <p className="text-xs text-muted-foreground">Aguardando classificação…</p>
-              ) : (
-                <>
-                  <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted/40">
-                    <motion.div initial={{ width: 0 }} animate={{ width: `${pos}%` }} className="h-full bg-emerald-500" />
-                    <motion.div initial={{ width: 0 }} animate={{ width: `${neu}%` }} className="h-full bg-amber-500" />
-                    <motion.div initial={{ width: 0 }} animate={{ width: `${neg}%` }} className="h-full bg-red-500" />
-                  </div>
-                  <div className="mt-1.5 flex justify-between text-[10px] tabular-nums">
-                    <span className="text-emerald-500">Positivo {pos}%</span>
-                    <span className="text-amber-500">Neutro {neu}%</span>
-                    <span className="text-red-500">Negativo {neg}%</span>
-                  </div>
-                </>
-              )}
-            </div>
-            <div>
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5 flex items-center gap-1">
-                <Sparkles className="h-3 w-3 text-primary" />Assuntos emergentes
-              </div>
-              {progress.emergingTopics && progress.emergingTopics.length > 0 ? (
-                <div className="flex flex-wrap gap-1">
-                  {progress.emergingTopics.slice(0, 6).map(t => (
-                    <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">{t}</span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">Identificando…</p>
-              )}
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-};
+const PreviewPill = ({ icon, label, value, loading }: { icon: React.ReactNode; label: string; value: string; loading?: boolean; }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.4 }}
+    className="rounded-xl border border-border/60 bg-background/40 backdrop-blur px-3 py-2.5"
+  >
+    <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+      {icon}<span className="truncate">{label}</span>
+    </div>
+    <div className={cn("mt-1 text-sm font-semibold truncate", loading && "text-muted-foreground/70")}>
+      {value}
+    </div>
+  </motion.div>
+);
