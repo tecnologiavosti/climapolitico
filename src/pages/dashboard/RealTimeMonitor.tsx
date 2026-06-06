@@ -460,6 +460,11 @@ const RealTimeMonitor = () => {
             </Card>
           )}
 
+          {/* Central de coleta ao vivo — antes do primeiro snapshot */}
+          {!snapshot && liveProgress && (
+            <LiveCollectionCenter progress={liveProgress} />
+          )}
+
           {/* LINHA 1: Cards executivos */}
           {snapshot ? (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
@@ -470,11 +475,11 @@ const RealTimeMonitor = () => {
               <KpiCard icon={<Newspaper className="h-3.5 w-3.5 text-violet-500" />} label="Notícias" value={snapshot.newsCollected.toLocaleString("pt-BR")} accent="bg-violet-500/70" />
               <KpiCard icon={<Clock className="h-3.5 w-3.5 text-muted-foreground" />} label="Última Atualização" value={lastUpdate ? formatRelative(lastUpdate) : "—"} />
             </div>
-          ) : (
+          ) : !liveProgress ? (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
               {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[72px] rounded-lg" />)}
             </div>
-          )}
+          ) : null}
 
           {/* LINHA 2: Evolução */}
           <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
