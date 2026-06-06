@@ -462,7 +462,7 @@ const RealTimeMonitor = () => {
 
           {/* Central de coleta ao vivo — antes do primeiro snapshot */}
           {!snapshot && liveProgress && (
-            <LiveCollectionCenter progress={liveProgress} />
+            <LiveCollectionCenter progress={liveProgress} candidate={selectedCandidate} />
           )}
 
           {/* LINHA 1: Cards executivos */}
