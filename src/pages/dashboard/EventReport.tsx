@@ -641,15 +641,6 @@ const EventReportPage = () => {
             </HelpTooltip>
           </div>
 
-          <div className="flex flex-wrap gap-2 items-center">
-            <span className="text-xs text-muted-foreground">Períodos rápidos:</span>
-            <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("2018")}>2018</Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("2022")}>2022</Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("2024")}>2024</Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("2026")}>2026</Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => applyPreset("all")}>2018 → hoje</Button>
-            <span className="text-xs text-muted-foreground ml-2">Sem limite de tempo — pesquise qualquer intervalo histórico.</span>
-          </div>
         </CardContent>
       </Card>
 
