@@ -747,8 +747,24 @@ const RealTimeMonitor = () => {
           {loadingCandidates ? <Skeleton className="h-11 w-full sm:w-[280px]" /> : (
             <CandidateSelector candidates={candidates} value={selectedCandidateId} onChange={setSelectedCandidateId} disabled={false} />
           )}
+          <div className="flex items-center gap-1 ml-auto">
+            {([1, 6, 12, 24] as const).map((h) => (
+              <button
+                key={h}
+                onClick={() => setWindowHours(h)}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors border",
+                  windowHours === h
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-card/60 text-muted-foreground border-border/60 hover:text-foreground"
+                )}
+              >
+                {h}h
+              </button>
+            ))}
+          </div>
           {selectedCandidate && (
-            <span className="text-xs text-muted-foreground ml-auto truncate">Monitorando: <span className="font-semibold text-foreground">{selectedCandidate.full_name}</span></span>
+            <span className="text-xs text-muted-foreground truncate">Monitorando: <span className="font-semibold text-foreground">{selectedCandidate.full_name}</span></span>
           )}
         </CardContent>
       </Card>
