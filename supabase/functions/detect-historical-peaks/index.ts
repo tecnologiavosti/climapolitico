@@ -41,6 +41,18 @@ function cleanText(value: unknown): string {
     .trim();
 }
 
+function decodeXmlValue(value: unknown): string {
+  return String(value || "")
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&#x27;/gi, "'")
+    .trim();
+}
+
 function normalize(value: string): string {
   return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
@@ -73,7 +85,7 @@ async function fetchGoogleHistorical(query: string, start: string, end: string, 
     const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) || [];
     return blocks.slice(0, limit).map((block) => {
       const title = cleanText(block.match(/<title>([\s\S]*?)<\/title>/i)?.[1] || "");
-      const link = cleanText(block.match(/<link>([\s\S]*?)<\/link>/i)?.[1] || "");
+      const link = decodeXmlValue(block.match(/<link>([\s\S]*?)<\/link>/i)?.[1] || "");
       const pubDate = cleanText(block.match(/<pubDate>([\s\S]*?)<\/pubDate>/i)?.[1] || "");
       const source = cleanText(block.match(/<source[^>]*>([\s\S]*?)<\/source>/i)?.[1] || "") || hostNameOf(link);
       const description = cleanText(block.match(/<description>([\s\S]*?)<\/description>/i)?.[1] || "");
