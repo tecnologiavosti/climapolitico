@@ -207,8 +207,6 @@ async function fetchSnapshot(
   timeoutMs = 8000,
 ): Promise<Snapshot> {
   const now = new Date();
-  const startToday = new Date(now); startToday.setHours(0, 0, 0, 0);
-  const startYesterday = new Date(startToday.getTime() - 86400000);
   const start12h = new Date(now.getTime() - 12 * 3600000);
   const start6h = new Date(now.getTime() - 6 * 3600000);
   const start1h = new Date(now.getTime() - 3600000);
@@ -315,7 +313,7 @@ async function fetchSnapshot(
   evidence.total = evidence.news + evidence.posts + evidence.videos;
   const windowCounts = { h1: qH1.count ?? 0, h6: qH6.count ?? 0, h12: qH12.count ?? 0, h24: last24h, previous24h: prev24h };
 
-  // Movimentação de sentimento (delta % vs ontem)
+  // Movimentação de sentimento (delta % vs 24h anteriores)
   const yPos = qYPos.count ?? 0;
   const yNeg = qYNeg.count ?? 0;
   const yNeu = qYNeu.count ?? 0;
