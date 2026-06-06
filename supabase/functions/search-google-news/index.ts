@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isPoliticalCandidateContent, politicalContentVerdict } from "../_shared/political-content.ts";
+import { buildContextualQueries, getTrustedOutlets, getPoliticianContext } from "../_shared/politician-context.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -58,10 +59,23 @@ function primaryNewsQuery(candidateName: string): string {
 }
 
 function activityNewsQueries(candidateName: string): string[] {
+  // Contextual per-politician queries (e.g. Dilma => BRICS/NDB, Lula => Planalto, etc.)
+  const contextual = buildContextualQueries(candidateName, 8);
   const primary = primaryNewsQuery(candidateName);
   const full = `"${candidateName}"`;
-  const activity = `(agenda OR reunião OR reuniao OR discurso OR entrevista OR coletiva OR viagem OR visita OR declaração OR declaracao OR evento OR fórum OR forum OR conferência OR conferencia OR BRICS OR NDB OR "Novo Banco de Desenvolvimento")`;
-  return Array.from(new Set([`${primary} ${activity}`, `${full} ${activity}`])).slice(0, 4);
+  const genericActivity = `(agenda OR reunião OR discurso OR entrevista OR coletiva OR viagem OR visita OR declaração OR evento OR fórum OR conferência)`;
+  return Array.from(new Set([
+    ...contextual,
+    `${primary} ${genericActivity}`,
+    `${full} ${genericActivity}`,
+  ])).slice(0, 10);
+}
+
+function trustedOutletBoost(item: NewsItem, candidateName: string): number {
+  const outlets = getTrustedOutlets(candidateName);
+  const host = hostNameOf(item.link);
+  const src = normalize(item.source || "");
+  return outlets.some((o) => host.includes(o) || src.includes(normalize(o))) ? 1 : 0;
 }
 
 function matchesCandidateNews(item: NewsItem, candidateName: string): boolean {
@@ -230,16 +244,28 @@ serve(async (req) => {
     const gdeltItems = await fetchGdeltNews(candidateName);
     console.log(`[search-google-news] fontes: google=${batches.flatMap((result) => result.status === "fulfilled" ? result.value : []).length}, bing=${bingItems.length}, gdelt=${gdeltItems.length}`);
     const seen = new Set<string>();
+    const profile = getPoliticianContext(candidateName);
+    console.log(`[search-google-news] perfil contextual: ${profile.role} | contextos=${profile.contexts.slice(0,4).join(", ")}`);
     const newsItems = [...batches.flatMap((result) => result.status === "fulfilled" ? result.value : []), ...bingItems, ...gdeltItems]
       .filter((item) => item.title && item.link)
-      .filter((item) => isCurrentPoliticalNews(item, candidateName) || isPoliticalCandidateContent(`${item.title} ${item.description} ${item.source}`, candidateName))
+      .filter((item) => {
+        const text = `${item.title} ${item.description} ${item.source}`;
+        const trusted = trustedOutletBoost(item, candidateName) > 0;
+        // Trusted outlets only need candidate match; others need political+activity match
+        if (trusted && matchesCandidateNews(item, candidateName)) return true;
+        return isCurrentPoliticalNews(item, candidateName) || isPoliticalCandidateContent(text, candidateName);
+      })
       .filter((item) => {
         const key = `${item.link.split("?")[0]}|${normalize(item.title).slice(0, 90)}`;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
       })
-      .sort((a, b) => new Date(b.pubDate || 0).getTime() - new Date(a.pubDate || 0).getTime())
+      .sort((a, b) => {
+        const tb = trustedOutletBoost(b, candidateName) - trustedOutletBoost(a, candidateName);
+        if (tb !== 0) return tb;
+        return new Date(b.pubDate || 0).getTime() - new Date(a.pubDate || 0).getTime();
+      })
       .slice(0, 80);
 
     console.log(`Found ${newsItems.length} news items for ${candidateName}`);
