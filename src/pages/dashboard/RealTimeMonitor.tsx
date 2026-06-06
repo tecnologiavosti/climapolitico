@@ -345,7 +345,7 @@ const RealTimeMonitor = () => {
     if (!user) return;
     (async () => {
       const { data } = await supabase
-        .from("candidates").select("id, full_name")
+        .from("candidates").select("id, full_name, party")
         .eq("user_id", user.id).eq("status", "active").order("full_name");
       if (data) {
         setCandidates(data);
