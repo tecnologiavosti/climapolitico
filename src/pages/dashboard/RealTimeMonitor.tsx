@@ -133,7 +133,7 @@ const cleanText = (raw: string): string =>
 // ============ Mapeamento evidencial → Temas Políticos ============
 const THEME_RULES: Array<{ name: string; keywords: RegExp }> = [
   { name: "Reforma Tributária", keywords: /\b(reforma tributária|reforma tributaria|imposto seletivo|cbs|ibs|iva|tributaç|tributac|alíquota|aliquota|arcabouço|arcabouco fiscal)\w*/i },
-  { name: "Banco dos BRICS", keywords: /\b(banco dos brics|novo banco de desenvolvimento|ndb|brics|dilma|china|rússia|russia|índia|india|áfrica do sul|africa do sul)\b/i },
+  { name: "Banco dos BRICS", keywords: /\b(banco dos brics|novo banco de desenvolvimento|new development bank|\bndb\b|brics|cúpula dos brics|cupula dos brics|banco do brics|china|rússia|russia|índia|india|áfrica do sul|africa do sul)\b/i },
   { name: "Eleições 2026", keywords: /\b(eleição 2026|eleições 2026|eleicao 2026|eleicoes 2026|presidência 2026|presidencia 2026|pré-candidat|pre-candidat|candidato 2026|campanha 2026|pesquisa eleitoral|datafolha|quaest|ipec)\w*/i },
   { name: "Segurança Pública", keywords: /\b(segurança|seguranca|polícia|policia|crime|violência|violencia|homicíd|homicid|facção|faccao|tráfico|trafico|pcc|cv|milíci|milici|operação|operacao)\w*/i },
   { name: "STF e Poder Judiciário", keywords: /\b(stf|supremo tribunal|supremo|judiciário|judiciario|justiça|justica|ministro do stf|moraes|fachin|barroso|toffoli|inquérito|inquerito|julgamento|condenação|condenacao|prisão|prisao)\w*/i },
@@ -149,7 +149,10 @@ const THEME_RULES: Array<{ name: string; keywords: RegExp }> = [
 
 // ============ Filtros de Relevância Política ============
 // Conteúdo descartado automaticamente (memes, humor, nostalgia, fan pages, etc.)
-const IRRELEVANT_REGEX = /\b(meme|memes|fan\s?page|fanpage|humor|humorist|engraçad|engracad|piada|paródia|parodia|edição engraçad|edicao engracad|nostalg|throwback|tbt|relembr|curiosidad|aleatóri|aleatori|montagem|montagens|zoaç|zoac|zueir|gracinha|tributo|homenagem póstuma|playlist|compilaç|compilac|melhores momentos|cortes engraçad|cortes engracad|edit\b|reels engraçad|reels engracad|stitch|duet)\b/i;
+const IRRELEVANT_REGEX = /\b(meme|memes|fan\s?page|fanpage|humor|humorist|engraçad|engracad|piada|paródia|parodia|edição engraçad|edicao engracad|nostalg|throwback|tbt|relembr|curiosidad|aleatóri|aleatori|montagem|montagens|zoaç|zoac|zueir|gracinha|tributo|homenagem póstuma|playlist|compilaç|compilac|melhores momentos|cortes engraçad|cortes engracad|edit\b|reels engraçad|reels engracad|stitch|duet|macarrão|macarrao|pix|primeira mulher presidente)\b/i;
+const HISTORICAL_CONTEXT_REGEX = /\b(impeachment|2010|2011|2012|2013|2014|2015|2016|2017|golpe de 64|ditadura|ex-presidente|ex presidenta|primeiro mandato|segundo mandato|lava jato|pedaladas fiscais|biografia|história de|historia de|há \d+ anos|ha \d+ anos|na época|na epoca|arquivo|relembra|relembre|retrospectiva)\b/i;
+const OFFICIAL_ACTIVITY_REGEX = /\b(agenda oficial|reunião|reuniao|encontro bilateral|comitiva|missão oficial|missao oficial|viagem institucional|visita oficial|cúpula|cupula|fórum|forum|conferência|conferencia|evento do brics|brics|novo banco de desenvolvimento|new development bank|\bndb\b|banco dos brics|presidente do banco|preside o banco|banco multilateral|declaração oficial|declaracao oficial)\b/i;
+const CURRENT_ACTIVITY_REGEX = /\b(hoje|agora|nesta\s+(segunda|terça|terca|quarta|quinta|sexta|semana)|neste\s+(sábado|sabado|domingo|mês|mes)|participa|participou|participará|participara|discursa|discursou|fará discurso|entrevista|concede entrevista|declara|declarou|afirma|afirmou|defende|defendeu|critica|criticou|anuncia|anunciou|lança|lanca|lançou|lancou|recebe|recebeu|se reúne|se reune|reuniu-se|visita|viaja|viajou|cumpre agenda|agenda em|evento em|coletiva)\b/i;
 
 // Sinais políticos fortes (entrevistas, discursos, decisões, etc.)
 const POLITICAL_HARD_REGEX = /\b(entrevist|sabatin|discurso|pronunciamento|debate|coletiva|agenda pública|agenda publica|projeto de lei|pec\b|medida provisória|medida provisoria|decis|liminar|julgamento|operação|operacao|reforma|votaç|votac|eleiç|eleic|cpi|stf|tse|congresso|senado|câmara|camara|governo|prefeit|ministro|presidente|polícia federal|policia federal|tributári|tributari|inflaç|inflac|crise|declaraç|declarac|movimentaç eleitoral|movimentac eleitoral|brics|otan|onu|exterior|posse|nomeaç|nomeac|sanção|sancao|vetou|sancionou)\b/i;
@@ -168,7 +171,12 @@ const scoreRelevance = (row: any, windowStart: number, now: number): number => {
   const isNews = isNewsNetwork(row.social_network, row.platform, row.interaction_type);
   const matchesTheme = THEME_RULES.some(r => r.keywords.test(cleaned));
   const matchesHard = POLITICAL_HARD_REGEX.test(cleaned);
-  if (!isNews && !matchesTheme && !matchesHard) return 0;
+  const officialActivity = OFFICIAL_ACTIVITY_REGEX.test(cleaned);
+  const currentActivity = officialActivity || CURRENT_ACTIVITY_REGEX.test(cleaned) || matchesHard;
+  const historicalOnly = HISTORICAL_CONTEXT_REGEX.test(cleaned) && !currentActivity;
+  if (historicalOnly) return 0;
+  if (!currentActivity) return 0;
+  if (!isNews && !matchesTheme && !matchesHard && !officialActivity) return 0;
   const ageH = Math.max(0.1, (now - t) / 3600000);
   const recency = Math.max(0.25, 1 - ageH / 24);
   const engagement = isNews
@@ -176,8 +184,10 @@ const scoreRelevance = (row: any, windowStart: number, now: number): number => {
     : (Number(row.likes_count) || 0) + (Number(row.shares_count) || 0) + (Number(row.replies_count) || 0) + 1;
   const trust = isNews ? 1.6 : 1.0;
   const trustedBoost = TRUSTED_OUTLET_REGEX.test(`${row.post_url || ""} ${row.author_name || ""} ${row.author_handle || ""}`) ? 1.5 : 1.0;
-  const themeBoost = matchesTheme ? 1.35 : matchesHard ? 1.15 : 1.0;
-  return Math.log10(engagement + 1) * recency * trust * trustedBoost * themeBoost;
+  const activityBoost = officialActivity ? 2.2 : isNews ? 1.7 : matchesHard ? 1.35 : 1.0;
+  const historyPenalty = HISTORICAL_CONTEXT_REGEX.test(cleaned) ? 0.25 : 1;
+  const themeBoost = matchesTheme ? 1.2 : 1.0;
+  return Math.log10(engagement + 1) * recency * trust * trustedBoost * activityBoost * themeBoost * historyPenalty;
 };
 
 const emptyEvidence = (): EvidenceCounts => ({ news: 0, posts: 0, videos: 0, total: 0 });
