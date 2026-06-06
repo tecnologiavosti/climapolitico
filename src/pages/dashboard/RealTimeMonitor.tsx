@@ -10,7 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   RefreshCw, Radio, Clock, CheckCircle2, TrendingUp, TrendingDown,
   Newspaper, Flame, Sparkles, AlertTriangle, Zap, Activity, Calendar,
-  Megaphone, Building2, ExternalLink, Heart, MessageCircle, Share2, BrainCircuit,
+  Megaphone, Building2, ExternalLink, Heart, BrainCircuit,
 } from "lucide-react";
 import { CandidateSelector } from "@/components/dashboard/realtime/CandidateSelector";
 import { LiveCollectionCenter, type LiveProgress } from "@/components/dashboard/realtime/LiveCollectionCenter";
