@@ -12,6 +12,7 @@ import {
   Smile, Frown, Newspaper, Flame, Sparkles, AlertTriangle, Zap, Activity,
 } from "lucide-react";
 import { CandidateSelector } from "@/components/dashboard/realtime/CandidateSelector";
+import { LiveCollectionCenter, type LiveProgress } from "@/components/dashboard/realtime/LiveCollectionCenter";
 import { cn } from "@/lib/utils";
 
 import {
