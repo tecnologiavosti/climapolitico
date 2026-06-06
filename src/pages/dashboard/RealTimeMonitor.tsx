@@ -793,7 +793,7 @@ const RealTimeMonitor = () => {
                 </CardHeader>
                 <CardContent>
                   {snapshot.events.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-4">Nenhum evento detectado nos últimos 30 dias.</p>
+                    <p className="text-xs text-muted-foreground py-4">Nenhum evento detectado nas últimas 24h.</p>
                   ) : (
                     <ul className="space-y-2">
                       {snapshot.events.map(e => (
@@ -804,10 +804,12 @@ const RealTimeMonitor = () => {
                             <div className="text-[11px] text-muted-foreground flex items-center gap-2 mt-0.5">
                               <span className="capitalize">{e.type}</span>
                               <span>·</span>
-                              <span>{new Date(e.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</span>
+                              <span>{formatRelative(new Date(e.date))}</span>
+                              <span>·</span>
+                              <span>{e.publications} publicações / {e.outlets} veículos</span>
                             </div>
                           </div>
-                          <Badge variant="secondary" className="text-[10px] h-5 shrink-0">Impacto {Math.round(e.impact)}</Badge>
+                          <Badge variant="secondary" className="text-[10px] h-5 shrink-0">Evidência recente</Badge>
                         </li>
                       ))}
                     </ul>
@@ -823,7 +825,7 @@ const RealTimeMonitor = () => {
                 </CardHeader>
                 <CardContent>
                   {snapshot.outlets.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-4">Nenhum veículo jornalístico identificado ainda.</p>
+                    <p className="text-xs text-muted-foreground py-4">Nenhum veículo jornalístico identificado nas últimas 24h.</p>
                   ) : (
                     <ul className="space-y-2">
                       {snapshot.outlets.map((o, i) => {
@@ -856,12 +858,12 @@ const RealTimeMonitor = () => {
             <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-primary" />Publicações mais relevantes
+                  <Sparkles className="h-4 w-4 text-primary" />Publicações relevantes nas últimas 24h
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {snapshot.publications.length === 0 ? (
-                  <p className="text-xs text-muted-foreground py-4">Sem publicações com engajamento relevante.</p>
+                    <p className="text-xs text-muted-foreground py-4">Sem publicações recentes com engajamento relevante.</p>
                 ) : (
                   <ul className="space-y-2">
                     {snapshot.publications.map(p => (
@@ -872,6 +874,7 @@ const RealTimeMonitor = () => {
                             <div className="flex items-center gap-2 mt-1.5 flex-wrap text-[11px] text-muted-foreground">
                               <span className="font-medium text-foreground/80 truncate max-w-[160px]">{p.author}</span>
                               <Badge variant="outline" className="h-4 text-[10px] px-1.5">{p.network}</Badge>
+                              <span>{formatRelative(new Date(p.createdAt))}</span>
                               {p.sentiment && (
                                 <Badge variant="secondary" className={cn("h-4 text-[10px] px-1.5",
                                   p.sentiment === "Positivo" && "bg-emerald-500/10 text-emerald-500",
