@@ -207,6 +207,7 @@ serve(async (req) => {
     );
     const bingItems = await fetchBingNews(combinedQuery(candidateName));
     const gdeltItems = await fetchGdeltNews(candidateName);
+    console.log(`[search-google-news] fontes: google=${batches.flatMap((result) => result.status === "fulfilled" ? result.value : []).length}, bing=${bingItems.length}, gdelt=${gdeltItems.length}`);
     const seen = new Set<string>();
     const newsItems = [...batches.flatMap((result) => result.status === "fulfilled" ? result.value : []), ...bingItems, ...gdeltItems]
       .filter((item) => item.title && item.link)
