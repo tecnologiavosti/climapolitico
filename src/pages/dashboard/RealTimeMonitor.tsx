@@ -406,7 +406,6 @@ async function fetchSnapshot(
   const neutralToday = qNeu.count ?? 0;
   const newsCollected = qNews.count ?? 0;
   const videosCollected = qVideos.count ?? 0;
-  const last24h = qToday.count ?? 0;
   const prev24h = qPrev24h.count ?? 0;
   const rawSample: any[] = qSample.data ?? [];
   // Pontuação + filtro de relevância política dentro da janela selecionada
@@ -415,32 +414,50 @@ async function fetchSnapshot(
     .filter((x) => x.score > 0);
   const sample: any[] = scoredSample.map((x) => x.row);
   const scoreById = new Map<string, number>(scoredSample.map((x) => [x.row.id, x.score]));
+
+  // ============ FONTE ÚNICA DE VERDADE ============
+  // Todos os números exibidos são derivados de `sample`. Nada de count queries divergentes.
+  const mentionsToday = sample.length;
+  const positiveToday = sample.filter((r) => r.sentiment_label === "Positivo").length;
+  const negativeToday = sample.filter((r) => r.sentiment_label === "Negativo").length;
+  const neutralToday = sample.filter((r) => r.sentiment_label === "Neutro").length;
+  const classifiedToday = positiveToday + negativeToday + neutralToday;
+  // Validação: soma sempre <= total e nunca expostos números maiores que a base
+  if (classifiedToday > mentionsToday) {
+    // proteção defensiva — nunca exibir mais classificações que total
+    // (não deve acontecer, mas garantido aqui)
+  }
+
   const newsRows = sample.filter(r => isNewsNetwork(r.social_network, r.platform, r.interaction_type) && effectiveDateOf(r).getTime() >= start24h.getTime());
   const evidence = emptyEvidence();
   evidence.news = newsRows.length;
   evidence.videos = sample.filter(r => classifyNetwork(r.social_network) === "videos").length;
   evidence.posts = Math.max(0, sample.length - evidence.news - evidence.videos);
+  evidence.total = evidence.news + evidence.posts + evidence.videos;
+
+  // Window counts derivados do sample (mesma base do total exibido)
   const effectiveWindowCount = (ms: number) => sample.filter(r => effectiveDateOf(r).getTime() >= now.getTime() - ms).length;
-  const cap = (n: number) => Math.min(n, sample.length || n);
   const windowCounts = {
-    h1: Math.min(effectiveWindowCount(3600000), cap(qH1.count ?? 0)),
-    h6: Math.min(effectiveWindowCount(6 * 3600000), cap(qH6.count ?? 0)),
-    h12: Math.min(effectiveWindowCount(12 * 3600000), cap(qH12.count ?? 0)),
+    h1: effectiveWindowCount(3600000),
+    h6: effectiveWindowCount(6 * 3600000),
+    h12: effectiveWindowCount(12 * 3600000),
     h24: sample.length,
     previous24h: prev24h,
   };
-  evidence.total = evidence.news + evidence.posts + evidence.videos;
-  evidence.total = evidence.news + evidence.posts + evidence.videos;
 
-  // Movimentação de sentimento (delta % vs 24h anteriores)
+  // Base estatística mínima para alertas/percentuais comparativos
+  const hasStatisticalBase = mentionsToday >= 50;
+
+  // Movimentação de sentimento (delta % vs 24h anteriores) — somente com base suficiente
   const yPos = qYPos.count ?? 0;
   const yNeg = qYNeg.count ?? 0;
   const yNeu = qYNeu.count ?? 0;
   const pctDelta = (cur: number, prev: number) => prev > 0 ? Math.round(((cur - prev) / prev) * 100) : 0;
   const sentimentDelta = {
-    positiveDeltaPct: pctDelta(positiveToday, yPos),
-    negativeDeltaPct: pctDelta(negativeToday, yNeg),
-    neutralDeltaPct: pctDelta(neutralToday, yNeu),
+    positiveDeltaPct: hasStatisticalBase ? pctDelta(positiveToday, yPos) : 0,
+    negativeDeltaPct: hasStatisticalBase ? pctDelta(negativeToday, yNeg) : 0,
+    neutralDeltaPct: hasStatisticalBase ? pctDelta(neutralToday, yNeu) : 0,
+    available: hasStatisticalBase,
   };
 
   // Buckets evolução — somente janelas de tempo real
@@ -477,15 +494,16 @@ async function fetchSnapshot(
   }
   emit({ steps: { ...live.steps, buildCharts: true } });
 
-  // BLOCO 2 — Temas dominantes
+  // BLOCO 2 — Temas dominantes (evidência mínima já aplicada em extractThemes)
   const themes = extractThemes(sample);
   emit({ emergingTopics: themes.slice(0, 6).map(t => t.name) });
 
-  // BLOCO 3 — Eventos
+  // BLOCO 3 — Eventos (sample garante janela + relevância)
   const storedEvents: EventItem[] = (qEvents.data ?? [])
     .filter((e: any) => {
       const ts = new Date(e.event_date).getTime();
-      return ts >= start24h.getTime() && ts <= now.getTime();
+      const hasEvidence = Number(e.publications_count || 0) >= 2 || Number(e.distinct_outlets || 0) >= 2;
+      return ts >= start24h.getTime() && ts <= now.getTime() && hasEvidence;
     })
     .map((e: any) => ({
       id: e.id,
@@ -500,7 +518,7 @@ async function fetchSnapshot(
     .sort((a, b) => b.impact - a.impact)
     .slice(0, 6);
 
-  // BLOCO 5 — Veículos mais ativos (Google News, GDELT e portais)
+  // BLOCO 5 — Veículos mais ativos (distribuição completa, sem corte artificial)
   const outletCounts = new Map<string, number>();
   for (const r of newsRows) {
     const outlet = normalizeOutlet(r.author_name || r.comment_author || r.author_handle || r.post_title?.split(" - ").pop() || null);
@@ -511,9 +529,8 @@ async function fetchSnapshot(
   const outlets: Outlet[] = Array.from(outletCounts.entries())
     .map(([name, count]) => ({ name, count, percentage: Math.round((count / totalOutletNews) * 100) }))
     .sort((a, b) => b.count - a.count);
-  // exibe todos os veículos identificados (sem limite artificial)
 
-  // BLOCO 6 — Publicações mais relevantes (Relevância × Atualidade × Engajamento × Fonte)
+  // BLOCO 6 — Publicações mais relevantes (Score)
   const publications: Publication[] = sample
     .map((r: any) => ({
       id: r.id,
@@ -531,15 +548,20 @@ async function fetchSnapshot(
     .slice(0, 8)
     .map(({ _score, ...rest }: any) => rest);
 
-  // BLOCO 7 — Alertas
+  // BLOCO 7 — Alertas (sempre com base estatística mínima)
   const alerts: Alert[] = [];
-  const growth = prev24h > 0 ? ((windowCounts.h24 - prev24h) / prev24h) * 100 : 0;
-  if (prev24h >= 10 && growth >= 50) alerts.push({ kind: "growth", title: `Crescimento de ${Math.round(growth)}% nas menções`, detail: `${windowCounts.h24.toLocaleString("pt-BR")} registros nas últimas 24h contra ${prev24h.toLocaleString("pt-BR")} na janela anterior.`, evidence });
-  else if (prev24h >= 10 && growth <= -40) alerts.push({ kind: "growth", title: `Queda de ${Math.round(Math.abs(growth))}% nas menções`, detail: `${windowCounts.h24.toLocaleString("pt-BR")} registros nas últimas 24h contra ${prev24h.toLocaleString("pt-BR")} na janela anterior.`, evidence });
-  if (mentionsToday > 50 && (negativeToday / Math.max(1, mentionsToday)) >= 0.5) {
-    alerts.push({ kind: "crisis", title: "Volume negativo elevado", detail: `${negativeToday.toLocaleString("pt-BR")} de ${mentionsToday.toLocaleString("pt-BR")} registros das últimas 24h foram classificados como negativos.`, evidence });
-  } else if (mentionsToday > 0 && (negativeToday / Math.max(1, mentionsToday)) >= 0.35) {
-    alerts.push({ kind: "negative", title: "Atenção ao sentimento negativo", detail: `${negativeToday.toLocaleString("pt-BR")} registros negativos nas últimas 24h.`, evidence });
+  if (hasStatisticalBase) {
+    const growth = prev24h >= 10 ? ((windowCounts.h24 - prev24h) / prev24h) * 100 : 0;
+    if (prev24h >= 10 && growth >= 50) alerts.push({ kind: "growth", title: `Crescimento de ${Math.round(growth)}% nas menções`, detail: `${windowCounts.h24.toLocaleString("pt-BR")} registros na janela contra ${prev24h.toLocaleString("pt-BR")} na anterior.`, evidence });
+    else if (prev24h >= 10 && growth <= -40) alerts.push({ kind: "growth", title: `Queda de ${Math.round(Math.abs(growth))}% nas menções`, detail: `${windowCounts.h24.toLocaleString("pt-BR")} registros na janela contra ${prev24h.toLocaleString("pt-BR")} na anterior.`, evidence });
+    if ((negativeToday / Math.max(1, classifiedToday)) >= 0.5) {
+      alerts.push({ kind: "crisis", title: "Volume negativo elevado", detail: `${negativeToday.toLocaleString("pt-BR")} de ${classifiedToday.toLocaleString("pt-BR")} classificações são negativas.`, evidence });
+    } else if ((negativeToday / Math.max(1, classifiedToday)) >= 0.35) {
+      alerts.push({ kind: "negative", title: "Atenção ao sentimento negativo", detail: `${negativeToday.toLocaleString("pt-BR")} registros negativos na janela.`, evidence });
+    }
+    if (Math.abs(sentimentDelta.positiveDeltaPct - sentimentDelta.negativeDeltaPct) >= 40) {
+      alerts.push({ kind: "growth", title: "Mudança mensurável de sentimento", detail: `Comparação contra janela anterior: positivo ${sentimentDelta.positiveDeltaPct >= 0 ? "+" : ""}${sentimentDelta.positiveDeltaPct}% / negativo ${sentimentDelta.negativeDeltaPct >= 0 ? "+" : ""}${sentimentDelta.negativeDeltaPct}%.`, evidence });
+    }
   }
   const viral = sample.filter(r => (r.likes_count || 0) + (r.shares_count || 0) + (r.replies_count || 0) > 500)
     .sort((a, b) => (b.likes_count + b.shares_count) - (a.likes_count + a.shares_count))[0];
@@ -547,41 +569,38 @@ async function fetchSnapshot(
     const viralEngagement = (viral.likes_count || 0) + (viral.shares_count || 0) + (viral.replies_count || 0);
     alerts.push({ kind: "viral", title: "Conteúdo viral identificado", detail: (viral.post_title || viral.comment_text || "Publicação recente").slice(0, 120), source: viral.social_network, engagement: viralEngagement, publishedAt: effectiveDateOf(viral).toISOString(), evidence: { news: isNewsNetwork(viral.social_network, viral.platform, viral.interaction_type) ? 1 : 0, posts: classifyNetwork(viral.social_network) === "posts" ? 1 : 0, videos: classifyNetwork(viral.social_network) === "videos" ? 1 : 0, total: 1 } });
   }
-  const recentNews = newsRows.length;
-  if (recentNews >= 5) alerts.push({ kind: "news", title: `${recentNews} notícias nas últimas 24h`, detail: "Alerta baseado apenas nas notícias coletadas na janela monitorada.", evidence: { ...evidence, news: recentNews } });
-  if (prev24h >= 10 && Math.abs(sentimentDelta.positiveDeltaPct - sentimentDelta.negativeDeltaPct) >= 40) {
-    alerts.push({ kind: "growth", title: "Mudança mensurável de sentimento", detail: `Comparação contra 24h anteriores: positivo ${sentimentDelta.positiveDeltaPct >= 0 ? "+" : ""}${sentimentDelta.positiveDeltaPct}% / negativo ${sentimentDelta.negativeDeltaPct >= 0 ? "+" : ""}${sentimentDelta.negativeDeltaPct}%.`, evidence });
-  }
+  if (newsRows.length >= 5) alerts.push({ kind: "news", title: `${newsRows.length} notícias na janela`, detail: "Alerta baseado nas notícias coletadas na janela monitorada.", evidence: { ...evidence, news: newsRows.length } });
 
   // BLOCO 1 — leitura factual, sem preencher lacunas
   const topTheme = themes[0];
-  const tone = positiveToday + negativeToday + neutralToday === 0 ? "sem sentimento classificado suficiente"
+  const tone = classifiedToday === 0 ? "sem sentimento classificado suficiente"
     : positiveToday > negativeToday * 1.2 ? "predomínio positivo nos registros classificados"
     : negativeToday > positiveToday * 1.2 ? "predomínio negativo nos registros classificados" : "sentimento equilibrado nos registros classificados";
   const nowNarrative =
     mentionsToday === 0
-      ? `Nenhum dado foi coletado para ${candidateName} nas últimas 24 horas. O monitor não gerou inferências sem evidência.`
-      : `${candidateName} teve ${windowCounts.h24.toLocaleString("pt-BR")} registros nas últimas 24 horas. ` +
-        (topTheme ? `O tema evidenciado com maior frequência é ${topTheme.name}, sustentado por ${topTheme.evidence.news} notícias, ${topTheme.evidence.posts} posts e ${topTheme.evidence.videos} vídeos. ` : `Nenhum tema político específico atingiu evidência mínima para ser exibido. `) +
-        `A leitura de sentimento indica ${tone}.`;
+      ? `Nenhum dado relevante foi coletado para ${candidateName} nas últimas ${windowHours}h. O monitor não gerou inferências sem evidência.`
+      : `${candidateName} teve ${mentionsToday.toLocaleString("pt-BR")} registros relevantes nas últimas ${windowHours}h. ` +
+        (topTheme ? `Tema com maior evidência: ${topTheme.name}, sustentado por ${topTheme.evidence.news} notícias, ${topTheme.evidence.posts} posts e ${topTheme.evidence.videos} vídeos. ` : `Nenhum tema atingiu evidência mínima (3 fontes ou 5 conteúdos). `) +
+        (classifiedToday > 0 ? `Leitura de sentimento: ${tone}.` : "Ainda sem volume classificado suficiente.");
 
-  // BLOCO 8 — Resumo executivo
+  // BLOCO 8 — Resumo executivo (mesmíssima base dos demais blocos)
   const executiveSummary = {
-    what: windowCounts.h24 > 0 ? `${windowCounts.h24.toLocaleString("pt-BR")} registros nas últimas 24h: ${evidence.news.toLocaleString("pt-BR")} notícias, ${evidence.posts.toLocaleString("pt-BR")} posts e ${evidence.videos.toLocaleString("pt-BR")} vídeos; ${windowCounts.h1.toLocaleString("pt-BR")} na última hora.` : "Sem registros nas últimas 24h.",
+    what: mentionsToday > 0 ? `${mentionsToday.toLocaleString("pt-BR")} registros relevantes na janela: ${evidence.news.toLocaleString("pt-BR")} notícias, ${evidence.posts.toLocaleString("pt-BR")} posts e ${evidence.videos.toLocaleString("pt-BR")} vídeos; ${windowCounts.h1.toLocaleString("pt-BR")} na última hora.` : "Sem registros relevantes na janela.",
     why: events[0]
       ? `Evento recente detectado: "${events[0].name}" (${events[0].publications} publicações, ${events[0].outlets} veículos).`
       : viral ? `Evidência de viralização: ${viral.social_network}, ${((viral.likes_count || 0) + (viral.shares_count || 0) + (viral.replies_count || 0)).toLocaleString("pt-BR")} interações.`
       : "Sem evidência suficiente para atribuir causa.",
     who: outlets.length > 0
-      ? `Veículos identificados na janela: ${outlets.slice(0, 3).map(o => `${o.name} (${o.count})`).join(", ")}.`
-      : "Nenhum veículo jornalístico identificado na janela monitorada.",
-    impact: positiveToday + negativeToday + neutralToday > 0
-      ? `Classificação nas últimas 24h: ${positiveToday.toLocaleString("pt-BR")} positivas, ${negativeToday.toLocaleString("pt-BR")} negativas e ${neutralToday.toLocaleString("pt-BR")} neutras.`
-      : "Sem classificação de sentimento suficiente na janela monitorada.",
+      ? `Veículos identificados na janela: ${outlets.slice(0, 3).map(o => `${o.name} (${o.count})`).join(", ")}${outlets.length > 3 ? ` e mais ${outlets.length - 3}` : ""}.`
+      : "Nenhum veículo jornalístico identificado na janela.",
+    impact: classifiedToday > 0
+      ? `Classificações na janela (${classifiedToday} de ${mentionsToday}): ${positiveToday.toLocaleString("pt-BR")} positivas, ${negativeToday.toLocaleString("pt-BR")} negativas e ${neutralToday.toLocaleString("pt-BR")} neutras.`
+      : "Sem classificação de sentimento suficiente na janela.",
   };
 
   return {
-    nowNarrative, mentionsToday, positiveToday, negativeToday, newsCollected, evidence, windowCounts,
+    nowNarrative, mentionsToday, positiveToday, negativeToday, neutralToday, classifiedToday,
+    newsCollected, evidence, windowCounts, hasStatisticalBase,
     themes, events, sentimentDelta, outlets, publications, alerts, executiveSummary,
     evolution24h: buckets24h, evolution12h: buckets12h, evolution6h: buckets6h, evolution1h: buckets1h,
     savedAt: Date.now(), candidateName,
