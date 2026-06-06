@@ -537,6 +537,11 @@ const EventReportPage = () => {
           endDate: eDate.toISOString(),
           eventName: evt?.name || undefined,
           eventKeywords: evt?.keywords || undefined,
+          eventDescription: evt?.description || undefined,
+          eventType: evt?.type || undefined,
+          eventSources: evt?.sources || undefined,
+          eventSourceTitles: evt?.source_titles || undefined,
+          confirmedEvent: evt?.confirmed_event || false,
         },
       });
       if (error) throw error;
