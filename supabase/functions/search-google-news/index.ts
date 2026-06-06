@@ -51,6 +51,12 @@ function combinedQuery(candidateName: string): string {
   return nameQueries(candidateName).join(" OR ");
 }
 
+function primaryNewsQuery(candidateName: string): string {
+  const tokens = candidateName.split(/\s+/).map((p) => p.trim()).filter((p) => p.length >= 3);
+  const alias = tokens.find((token) => ["lula", "bolsonaro", "tarcisio", "caiado", "haddad", "zema", "alckmin", "boulos"].includes(normalize(token)));
+  return alias || candidateName;
+}
+
 function matchesCandidateNews(item: NewsItem, candidateName: string): boolean {
   const text = normalize(`${item.title} ${item.description} ${item.source}`);
   const full = normalize(candidateName);
@@ -201,11 +207,11 @@ serve(async (req) => {
 
     console.log(`Searching Google News for: ${candidateName}`);
 
-    const queries = [combinedQuery(candidateName)];
+    const queries = [primaryNewsQuery(candidateName)];
     const batches = await Promise.allSettled(
       queries.flatMap((q) => NEWS_WINDOWS.map((w) => fetchGoogleNews(q, w))),
     );
-    const bingItems = await fetchBingNews(combinedQuery(candidateName));
+    const bingItems = await fetchBingNews(primaryNewsQuery(candidateName));
     const gdeltItems = await fetchGdeltNews(candidateName);
     console.log(`[search-google-news] fontes: google=${batches.flatMap((result) => result.status === "fulfilled" ? result.value : []).length}, bing=${bingItems.length}, gdelt=${gdeltItems.length}`);
     const seen = new Set<string>();
