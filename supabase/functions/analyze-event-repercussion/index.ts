@@ -152,6 +152,14 @@ serve(async (req) => {
     const externalTitles = Array.isArray(eventSourceTitles) ? eventSourceTitles.slice(0, 10) : [];
     const hasExternalEvidence = Boolean(confirmedEvent) || externalSources.length > 0 || externalTitles.length > 0;
 
+    if (!hasExternalEvidence) {
+      return new Response(JSON.stringify({
+        report: null,
+        message: 'Relatório bloqueado: acontecimentos históricos exigem pelo menos uma fonte externa, notícia, vídeo jornalístico ou registro oficial.',
+        stats: { total: 0, positive: 0, negative: 0, neutral: 0, byNetwork: {} }
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     if (comments.length === 0 && !hasExternalEvidence) {
       return new Response(JSON.stringify({
         report: null,
@@ -275,6 +283,7 @@ CONTEXTO DOCUMENTADO DO EVENTO:
 
 REGRAS:
 - Explique o que aconteceu, por que aconteceu, quem repercutiu, quais veículos participaram e quais redes impulsionaram.
+- Inclua impacto político e impacto eleitoral na análise de impacto.
 - Se o volume interno for baixo, NÃO exagere impacto: trate como evento documentado com baixa amostra social.
 - Não crie conclusões estratégicas grandiosas baseadas em 3, 4, 5 ou 10 menções sem evidência externa.
 - Use apenas comentários limpos e fontes listadas; ignore tags HTML, links quebrados e RSS bruto.

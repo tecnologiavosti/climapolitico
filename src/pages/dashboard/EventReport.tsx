@@ -471,8 +471,8 @@ const EventReportPage = () => {
           query = query.or(orExpr);
         }
         const { count } = await query;
-        const measured = count ?? evt.mentions_estimate;
-        return { ...evt, mentions_estimate: evt.confirmed_event ? Math.max(measured, evt.mentions_estimate) : measured };
+        const measured = count ?? 0;
+        return { ...evt, mentions_estimate: measured };
       } catch {
         return evt;
       }
@@ -651,7 +651,7 @@ const EventReportPage = () => {
               </HelpTooltip>
             </div>
             <HelpTooltip text="Clica aqui pra IA olhar tudo que falaram nesse período e te dizer se foi bom ou ruim.">
-              <Button onClick={() => handleGenerate()} disabled={isLoading || !selectedCandidate || !startDate || !endDate}>
+              <Button onClick={() => handleGenerate()} disabled={isLoading || !selectedCandidate || selectedEventIdx === ""}>
                 {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analisando...</> : <><CalendarDays className="mr-2 h-4 w-4" />Gerar Relatório</>}
               </Button>
             </HelpTooltip>
@@ -721,11 +721,11 @@ const EventReportPage = () => {
                       </Badge>
                     </div>
                     <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-bold">{e.mentions_estimate.toLocaleString("pt-BR")}</span>
-                      <span className="text-xs text-muted-foreground">registros internos</span>
+                      <span className="text-2xl font-bold">{e.publications_count || e.sources?.length || 0}</span>
+                      <span className="text-xs text-muted-foreground">fonte(s) externa(s)</span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {e.publications_count || 0} fonte(s) externa(s) • {e.distinct_outlets || 0} veículo(s) • {sign}{v}% vs. base interna
+                      {e.distinct_outlets || 0} veículo(s) • {e.mentions_estimate.toLocaleString("pt-BR")} menção(ões) internas correlacionadas • {sign}{v}% vs. base interna
                     </p>
                     {sent && (sent.positivePct + sent.negativePct + sent.neutralPct) > 0 && (
                       <div className="space-y-1">
