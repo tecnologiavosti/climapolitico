@@ -27,6 +27,8 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
+import { resolveOriginalPostUrl } from "@/lib/originalPostUrl";
+
 interface FeedItem {
   id: string;
   candidate_id: string;
@@ -40,6 +42,11 @@ interface FeedItem {
   likes_count: number | null;
   replies_count: number | null;
   shares_count: number | null;
+  post_url: string | null;
+  post_id: string | null;
+  external_id: string | null;
+  author_handle: string | null;
+  platform: string | null;
 }
 
 interface CandidateOption {
