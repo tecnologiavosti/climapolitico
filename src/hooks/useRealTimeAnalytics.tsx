@@ -21,6 +21,11 @@ export interface SocialInteraction {
   original_posted_at: string | null;
   collected_at: string;
   created_at: string;
+  post_url?: string | null;
+  post_id?: string | null;
+  external_id?: string | null;
+  author_handle?: string | null;
+  platform?: string | null;
 }
 
 export interface SourceBreakdown {

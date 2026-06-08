@@ -15,6 +15,7 @@ import {
 import { CandidateSelector } from "@/components/dashboard/realtime/CandidateSelector";
 import { LiveCollectionCenter, type LiveProgress } from "@/components/dashboard/realtime/LiveCollectionCenter";
 import { cn } from "@/lib/utils";
+import { resolveOriginalPostUrl } from "@/lib/originalPostUrl";
 
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -561,7 +562,7 @@ async function fetchSnapshot(
       author: r.author_name || r.comment_author || r.author_handle || "Autor desconhecido",
       network: r.social_network,
       engagement: isNewsNetwork(r.social_network, r.platform, r.interaction_type) ? Math.max(1, r.engagement_score || 1) : (r.likes_count || 0) + (r.shares_count || 0) + (r.replies_count || 0),
-      url: r.post_url || null,
+      url: resolveOriginalPostUrl(r),
       sentiment: r.sentiment_label || null,
       createdAt: effectiveDateOf(r).toISOString(),
       _score: scoreById.get(r.id) || 0,
@@ -1074,11 +1075,13 @@ const RealTimeMonitor = () => {
                             <div className="flex items-center gap-1 text-xs font-semibold tabular-nums">
                               <Heart className="h-3 w-3 text-destructive" />{p.engagement.toLocaleString("pt-BR")}
                             </div>
-                            {p.url && (
+                            {p.url ? (
                               <a href={p.url} target="_blank" rel="noopener noreferrer"
                                 className="text-[11px] text-primary hover:underline inline-flex items-center gap-0.5">
-                                Abrir <ExternalLink className="h-3 w-3" />
+                                <ExternalLink className="h-3 w-3" /> Ver publicação original
                               </a>
+                            ) : (
+                              <span className="text-[10px] italic text-muted-foreground">Link indisponível</span>
                             )}
                           </div>
                         </div>

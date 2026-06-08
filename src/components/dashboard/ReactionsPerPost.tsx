@@ -13,6 +13,7 @@ import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { AlertCircle, ExternalLink, Heart, MessageCircle, RefreshCw, Share2, ThumbsUp, ThumbsDown, Minus, User, Youtube, Instagram, Facebook, Music2, Newspaper, Globe, Twitter, TrendingUp } from "lucide-react";
 import { subDays, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { resolveOriginalPostUrl } from "@/lib/originalPostUrl";
 
 // Carrega Recharts apenas quando o usuário entra na aba — reduz JS inicial.
 const ChartsBlock = lazy(() => import("./ReactionsPerPostCharts"));
@@ -123,19 +124,15 @@ function isValidHttpsUrl(u?: string | null): u is string {
 }
 
 function buildPostUrl(p: PostRow): string | null {
-  if (isValidHttpsUrl(p.post_url)) return (p.post_url as string).trim();
-  const net = normalizePlatformKey(p.platform || p.social_network_raw || p.social_network);
-  const pid = p.post_id?.trim();
-  const handle = p.author_handle?.replace(/^@/, "").trim();
-  if (!pid) return null;
-  let candidate: string | null = null;
-  if (net === "youtube") candidate = `https://www.youtube.com/watch?v=${pid}`;
-  else if (net === "twitter") candidate = `https://x.com/${handle || "i"}/status/${pid}`;
-  else if (net === "tiktok" && handle) candidate = `https://www.tiktok.com/@${handle}/video/${pid}`;
-  else if (net === "instagram") candidate = `https://www.instagram.com/p/${pid}/`;
-  else if (net === "facebook" && handle) candidate = `https://www.facebook.com/${handle}/posts/${pid}`;
-  return isValidHttpsUrl(candidate) ? candidate : null;
+  return resolveOriginalPostUrl({
+    post_url: p.post_url,
+    post_id: p.post_id,
+    author_handle: p.author_handle,
+    platform: p.platform || p.social_network_raw || p.social_network,
+    social_network: p.social_network,
+  });
 }
+
 
 // Deriva thumbnail oficial quando o registro não trouxer uma — YouTube tem URL
 // determinística por video_id. Demais redes dependem do que o coletor salvou.
@@ -795,7 +792,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
                       {url ? (
                         <Button asChild size="sm" className="w-full">
                           <a href={url} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink className="h-3.5 w-3.5 mr-1.5" />Abrir publicação original
+                            <ExternalLink className="h-3.5 w-3.5 mr-1.5" />Ver publicação original
                           </a>
                         </Button>
                       ) : (

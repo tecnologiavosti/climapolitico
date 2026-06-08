@@ -27,6 +27,8 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
+import { resolveOriginalPostUrl } from "@/lib/originalPostUrl";
+
 interface FeedItem {
   id: string;
   candidate_id: string;
@@ -40,6 +42,11 @@ interface FeedItem {
   likes_count: number | null;
   replies_count: number | null;
   shares_count: number | null;
+  post_url: string | null;
+  post_id: string | null;
+  external_id: string | null;
+  author_handle: string | null;
+  platform: string | null;
 }
 
 interface CandidateOption {
@@ -166,7 +173,7 @@ function NetworkFeed({ network }: { network: NetworkConfig }) {
       let query = supabase
         .from("social_interactions")
         .select(
-          "id, candidate_id, comment_text, comment_author, author_profile_url, original_posted_at, collected_at, sentiment_label, social_network, likes_count, replies_count, shares_count",
+          "id, candidate_id, comment_text, comment_author, author_profile_url, original_posted_at, collected_at, sentiment_label, social_network, likes_count, replies_count, shares_count, post_url, post_id, external_id, author_handle, platform",
           { count: "exact" }
         )
         .in("social_network", network.match)
@@ -329,19 +336,29 @@ function NetworkFeed({ network }: { network: NetworkConfig }) {
                     <p className="text-sm text-muted-foreground line-clamp-3">{description}</p>
                   </CardContent>
                 )}
-                {p.author_profile_url && (
-                  <CardContent className="pt-0">
-                    <a
-                      href={p.author_profile_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                    >
-                      Ver em {network.label}
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </CardContent>
-                )}
+                <CardContent className="pt-0">
+                  {(() => {
+                    const url = resolveOriginalPostUrl(p);
+                    if (url) {
+                      return (
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          Ver publicação original
+                        </a>
+                      );
+                    }
+                    return (
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground italic">
+                        Link original indisponível
+                      </span>
+                    );
+                  })()}
+                </CardContent>
               </Card>
             );
           })}
