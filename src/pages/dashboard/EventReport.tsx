@@ -335,20 +335,10 @@ export default function EventReport() {
                       {ev.aftermath ? <Section title="Desdobramentos" body={ev.aftermath} /> : null}
 
                       <div>
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Fontes ({ev.sources.length})</p>
-                        <ul className="space-y-1.5">
-                          {ev.sources.slice(0, 30).map((s, i) => (
-                            <li key={i} className="text-sm flex items-start gap-2">
-                              <ExternalLink className="h-3.5 w-3.5 mt-1 text-muted-foreground flex-shrink-0" />
-                              <a href={s.url} target="_blank" rel="noreferrer"
-                                className="hover:underline text-primary line-clamp-2">
-                                <span className="font-medium">{s.name}</span>
-                                {s.kind ? <span className="text-[10px] uppercase ml-1 text-muted-foreground">[{s.kind}]</span> : null}
-                                {s.title ? <span className="text-muted-foreground"> — {s.title}</span> : null}
-                              </a>
-                            </li>
-                          ))}
-                        </ul>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Cobertura analisada</p>
+                        <p className="text-sm text-muted-foreground">
+                          Análise produzida a partir de <span className="font-semibold text-foreground">{ev.publications_count}</span> evidência{ev.publications_count === 1 ? "" : "s"} externa{ev.publications_count === 1 ? "" : "s"} em <span className="font-semibold text-foreground">{ev.distinct_outlets}</span> veículo{ev.distinct_outlets === 1 ? "" : "s"} distintos.
+                        </p>
                       </div>
                     </div>
                   ) : null}
