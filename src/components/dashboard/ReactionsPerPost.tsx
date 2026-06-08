@@ -792,7 +792,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
                       {url ? (
                         <Button asChild size="sm" className="w-full">
                           <a href={url} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink className="h-3.5 w-3.5 mr-1.5" />Abrir publicação original
+                            <ExternalLink className="h-3.5 w-3.5 mr-1.5" />Ver publicação original
                           </a>
                         </Button>
                       ) : (
