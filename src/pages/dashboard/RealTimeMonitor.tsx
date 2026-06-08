@@ -15,6 +15,7 @@ import {
 import { CandidateSelector } from "@/components/dashboard/realtime/CandidateSelector";
 import { LiveCollectionCenter, type LiveProgress } from "@/components/dashboard/realtime/LiveCollectionCenter";
 import { cn } from "@/lib/utils";
+import { resolveOriginalPostUrl } from "@/lib/originalPostUrl";
 
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
