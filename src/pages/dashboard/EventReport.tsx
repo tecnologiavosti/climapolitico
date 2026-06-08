@@ -39,6 +39,9 @@ interface HistoricalEvent {
   videos_count: number;
   posts_count: number;
   estimated_volume: number;
+  volume_available?: boolean;
+  historical_confirmed?: boolean;
+  evidence_level?: string;
   sentiment_positive: number;
   sentiment_negative: number;
   sentiment_neutral: number;
@@ -253,56 +256,64 @@ export default function EventReport() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4 pt-0">
-                  {/* Volume estimado */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                    <div className="rounded-md border bg-muted/30 p-3">
-                      <div className="text-[11px] uppercase text-muted-foreground">Repercussão estimada</div>
-                      <div className="text-xl font-bold">{formatNumber(ev.estimated_volume)}</div>
-                      <div className="text-[11px] text-muted-foreground">citações</div>
-                    </div>
-                    <div className="rounded-md border p-3 flex items-start gap-2">
-                      <Newspaper className="h-4 w-4 text-primary mt-0.5" />
-                      <div>
-                        <div className="text-[11px] uppercase text-muted-foreground">Notícias</div>
-                        <div className="text-xl font-bold">{formatNumber(ev.news_count)}</div>
+                  {ev.volume_available ? (
+                    <>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <div className="rounded-md border bg-muted/30 p-3">
+                          <div className="text-[11px] uppercase text-muted-foreground">Repercussão estimada</div>
+                          <div className="text-xl font-bold">{formatNumber(ev.estimated_volume)}</div>
+                          <div className="text-[11px] text-muted-foreground">citações</div>
+                        </div>
+                        <div className="rounded-md border p-3 flex items-start gap-2">
+                          <Newspaper className="h-4 w-4 text-primary mt-0.5" />
+                          <div>
+                            <div className="text-[11px] uppercase text-muted-foreground">Notícias</div>
+                            <div className="text-xl font-bold">{formatNumber(ev.news_count)}</div>
+                          </div>
+                        </div>
+                        <div className="rounded-md border p-3 flex items-start gap-2">
+                          <Video className="h-4 w-4 text-red-500 mt-0.5" />
+                          <div>
+                            <div className="text-[11px] uppercase text-muted-foreground">Vídeos</div>
+                            <div className="text-xl font-bold">{formatNumber(ev.videos_count)}</div>
+                          </div>
+                        </div>
+                        <div className="rounded-md border p-3 flex items-start gap-2">
+                          <MessageSquare className="h-4 w-4 text-green-600 mt-0.5" />
+                          <div>
+                            <div className="text-[11px] uppercase text-muted-foreground">Posts</div>
+                            <div className="text-xl font-bold">{formatNumber(ev.posts_count)}</div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="rounded-md border p-3 flex items-start gap-2">
-                      <Video className="h-4 w-4 text-red-500 mt-0.5" />
-                      <div>
-                        <div className="text-[11px] uppercase text-muted-foreground">Vídeos</div>
-                        <div className="text-xl font-bold">{formatNumber(ev.videos_count)}</div>
-                      </div>
-                    </div>
-                    <div className="rounded-md border p-3 flex items-start gap-2">
-                      <MessageSquare className="h-4 w-4 text-green-600 mt-0.5" />
-                      <div>
-                        <div className="text-[11px] uppercase text-muted-foreground">Posts</div>
-                        <div className="text-xl font-bold">{formatNumber(ev.posts_count)}</div>
-                      </div>
-                    </div>
-                  </div>
 
-                  {/* Sentimento agregado */}
-                  <div>
-                    <div className="text-[11px] uppercase text-muted-foreground mb-1.5">Sentimento agregado</div>
-                    <div className="flex h-2.5 rounded-full overflow-hidden bg-muted">
-                      <div className="bg-green-500" style={{ width: `${ev.sentiment_positive}%` }} />
-                      <div className="bg-zinc-400" style={{ width: `${ev.sentiment_neutral}%` }} />
-                      <div className="bg-red-500" style={{ width: `${ev.sentiment_negative}%` }} />
+                      <div>
+                        <div className="text-[11px] uppercase text-muted-foreground mb-1.5">Sentimento agregado</div>
+                        <div className="flex h-2.5 rounded-full overflow-hidden bg-muted">
+                          <div className="bg-green-500" style={{ width: `${ev.sentiment_positive}%` }} />
+                          <div className="bg-zinc-400" style={{ width: `${ev.sentiment_neutral}%` }} />
+                          <div className="bg-red-500" style={{ width: `${ev.sentiment_negative}%` }} />
+                        </div>
+                        <div className="flex justify-between text-[11px] text-muted-foreground mt-1">
+                          <span className="text-green-600">{ev.sentiment_positive}% positivo</span>
+                          <span>{ev.sentiment_neutral}% neutro</span>
+                          <span className="text-red-600">{ev.sentiment_negative}% negativo</span>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="rounded-md border bg-muted/20 px-3 py-3 text-sm text-muted-foreground">
+                      Volume histórico indisponível para quantificação exata.
                     </div>
-                    <div className="flex justify-between text-[11px] text-muted-foreground mt-1">
-                      <span className="text-green-600">{ev.sentiment_positive}% positivo</span>
-                      <span>{ev.sentiment_neutral}% neutro</span>
-                      <span className="text-red-600">{ev.sentiment_negative}% negativo</span>
-                    </div>
-                  </div>
+                  )}
 
                   <p className="text-sm leading-relaxed">{ev.description}</p>
 
-                  <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-                    Cobertura detectada em <span className="font-semibold text-foreground">{ev.distinct_outlets}</span> veículo{ev.distinct_outlets === 1 ? "" : "s"}{ev.publications_count ? <> · <span className="font-semibold text-foreground">{ev.publications_count}</span> evidência{ev.publications_count === 1 ? "" : "s"} externa{ev.publications_count === 1 ? "" : "s"}</> : null}.
-                  </div>
+                  {ev.volume_available ? (
+                    <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                      Cobertura detectada em <span className="font-semibold text-foreground">{ev.distinct_outlets}</span> veículo{ev.distinct_outlets === 1 ? "" : "s"}{ev.publications_count ? <> · <span className="font-semibold text-foreground">{ev.publications_count}</span> evidência{ev.publications_count === 1 ? "" : "s"} externa{ev.publications_count === 1 ? "" : "s"}</> : null}.
+                    </div>
+                  ) : null}
 
                   <Button variant="ghost" size="sm" className="gap-2"
                     onClick={() => setExpanded((p) => ({ ...p, [key]: !p[key] }))}>
@@ -328,9 +339,15 @@ export default function EventReport() {
 
                       <div>
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Cobertura analisada</p>
-                        <p className="text-sm text-muted-foreground">
-                          Análise produzida a partir de <span className="font-semibold text-foreground">{ev.publications_count}</span> evidência{ev.publications_count === 1 ? "" : "s"} externa{ev.publications_count === 1 ? "" : "s"} em <span className="font-semibold text-foreground">{ev.distinct_outlets}</span> veículo{ev.distinct_outlets === 1 ? "" : "s"} distintos.
-                        </p>
+                        {ev.volume_available ? (
+                          <p className="text-sm text-muted-foreground">
+                            Análise produzida a partir de <span className="font-semibold text-foreground">{ev.publications_count}</span> evidência{ev.publications_count === 1 ? "" : "s"} externa{ev.publications_count === 1 ? "" : "s"} em <span className="font-semibold text-foreground">{ev.distinct_outlets}</span> veículo{ev.distinct_outlets === 1 ? "" : "s"} distintos.
+                          </p>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            Evento mantido por confirmação histórica, coerência temporal e relevância política; o volume original não está disponível para quantificação exata pelas APIs atuais.
+                          </p>
+                        )}
                       </div>
                     </div>
                   ) : null}

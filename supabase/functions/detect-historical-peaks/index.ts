@@ -195,9 +195,35 @@ function coverageDurationDays(pubs: ExternalPublication[]): number {
 
 function politicalImpactWeight(type: string): number {
   const t = normalize(type);
-  if (/eleicao|decisao|judicial|operacao|cpi|votacao|posse/.test(t)) return 24;
+  if (/eleicao|decisao|judicial|operacao|cpi|votacao|posse|impeachment|julgamento|prisao|cassacao|condenacao|absolvicao|denuncia/.test(t)) return 24;
   if (/debate|entrevista|discurso|coletiva|agenda/.test(t)) return 16;
   return 10;
+}
+
+const HISTORICAL_EVENT_TYPES = new Set([
+  "eleicao", "debate", "entrevista", "discurso", "coletiva", "decisao_judicial", "cpi", "operacao",
+  "votacao", "impeachment", "posse", "julgamento", "prisao", "cassacao", "denuncia", "condenacao", "absolvicao",
+]);
+
+function isHistoricallyRelevantEvent(evt: any): boolean {
+  const type = normalize(String(evt?.type || "")).replace(/[^a-z_]/g, "");
+  const text = normalize(`${evt?.name || ""} ${evt?.description || ""} ${evt?.motivo || ""} ${evt?.political_impact || ""} ${evt?.electoral_impact || ""}`);
+  const hasKnownType = HISTORICAL_EVENT_TYPES.has(type) || /eleicao|prisao|impeachment|cpi|operacao|stf|tse|decisao|julgamento|posse|cassacao|denuncia|condenacao|absolvicao|debate/.test(type);
+  const hasHistoricalTerm = /eleicao|prisao|curitiba|impeachment|cpi|lava jato|operacao|stf|tse|supremo|tribunal|julgamento|habeas corpus|posse|cassacao|denuncia|condenacao|absolvicao|impugnacao|candidatura|debate|segundo turno|primeiro turno|substituicao/.test(text);
+  const hasContext = cleanText(evt?.description).length >= 80 && (cleanText(evt?.political_impact).length >= 30 || cleanText(evt?.electoral_impact).length >= 30 || cleanText(evt?.motivo).length >= 30);
+  return Boolean(evt?.name && evt?.start_date && hasContext && (hasKnownType || hasHistoricalTerm));
+}
+
+function historicalRelevanceScore(evt: any, pubs: ExternalPublication[]): number {
+  const text = normalize(`${evt?.type || ""} ${evt?.name || ""} ${evt?.description || ""}`);
+  let score = politicalImpactWeight(String(evt?.type || evt?.name || "")) + 28;
+  if (/prisao|impeachment|eleicao|decisao|stf|tse|julgamento|cassacao|condenacao/.test(text)) score += 18;
+  if (/cpi|operacao|lava jato|denuncia|posse|segundo turno|impugnacao|substituicao/.test(text)) score += 12;
+  if (cleanText(evt?.political_impact).length > 80) score += 8;
+  if (cleanText(evt?.electoral_impact).length > 80) score += 8;
+  if (Array.isArray(evt?.participants) && evt.participants.length >= 2) score += 5;
+  score += Math.min(12, pubs.length * 3);
+  return Math.max(45, Math.min(100, Math.round(score)));
 }
 
 function relevanceFromEvidence(evt: any, pubs: ExternalPublication[], mentions: number): number {
@@ -371,7 +397,7 @@ Inclua, quando aplicável:
 - polêmicas e crises políticas
 - substituições de candidatura, alianças, federações
 
-Use seu conhecimento histórico. NÃO invente. Se não houver acontecimento, retorne lista vazia.
+Use seu conhecimento histórico, mas inclua apenas eventos com confirmação histórica em múltiplas fontes confiáveis e coerência temporal. NÃO invente. Se não houver acontecimento, retorne lista vazia.
 Liste o MÁXIMO possível (mire em 25-40 eventos quando o período cobrir uma eleição ou mandato).
 
 Responda APENAS JSON válido:
@@ -553,7 +579,7 @@ SINAIS INTERNOS DE CRESCIMENTO:
 ${localSignal}
 
 INSTRUÇÕES:
-- Retorne TODOS os eventos pré-identificados que forem reais, mesmo que a cobertura coletada seja parcial — use seu conhecimento histórico para preencher descrição, impacto e participantes.
+- Retorne TODOS os eventos pré-identificados que tenham confirmação histórica, múltiplas fontes confiáveis conhecidas e data coerente, mesmo que a cobertura coletada agora seja parcial ou vazia — use seu conhecimento histórico para preencher descrição, impacto e participantes.
 - ADICIONE eventos novos encontrados nas publicações que não estavam na lista.
 - Para cada evento, indique sourceIndices (1-based) das publicações que documentam o fato. Se nenhuma publicação coletada cobrir o evento, devolva [] em sourceIndices — não invente índices.
 - Priorize relevância histórica e institucional, não volume bruto.
@@ -612,7 +638,8 @@ Responda APENAS JSON válido:
       const evPubs = matchedSources(evt, pubs, start, end, candidate.full_name);
       const distinctOutlets = new Set(evPubs.map((p) => normalize(p.outlet))).size;
       const day = String(evt.start_date || "").slice(0, 10);
-      const score = relevanceFromEvidence(evt, evPubs, 0);
+      const historicalConfirmed = isHistoricallyRelevantEvent(evt);
+      const score = evPubs.length > 0 ? relevanceFromEvidence(evt, evPubs, 0) : historicalRelevanceScore(evt, evPubs);
       const counts = countsByClass(evPubs);
       const sentiment = aggregateSentiment(evPubs);
       const estVolume = estimateVolumeFromPubs(evPubs);
@@ -630,7 +657,9 @@ Responda APENAS JSON válido:
         political_impact: cleanText(evt.political_impact).slice(0, 1000),
         electoral_impact: cleanText(evt.electoral_impact).slice(0, 1000),
         aftermath: cleanText(evt.aftermath).slice(0, 1200),
-        evidence_level: evPubs.length >= 1 ? "evento_documentado" : "conhecimento_historico",
+        evidence_level: evPubs.length >= 1 ? "cobertura_coletada" : "confirmacao_historica",
+        historical_confirmed: historicalConfirmed,
+        volume_available: evPubs.length > 0 || estVolume > 0,
         relevance_score: Math.round(score),
         publications_count: evPubs.length,
         distinct_outlets: distinctOutlets,
@@ -649,13 +678,10 @@ Responda APENAS JSON válido:
       if (Number.isNaN(eventDate)) return false;
       if (eventDate < start.getTime() - 86400000 || eventDate > end.getTime() + 86400000) return false;
       if (!evt.name || !evt.description) return false;
-      // Limite mínimo de repercussão real: 3 notícias OU 5 posts OU 3 vídeos OU 10 evidências externas no total.
-      const meetsThreshold =
-        evt.news_count >= 3 ||
-        evt.posts_count >= 5 ||
-        evt.videos_count >= 3 ||
-        evt.publications_count >= 10;
-      return meetsThreshold;
+      // Evento histórico e volume coletado são conceitos separados:
+      // eventos políticos documentados pela IA devem aparecer mesmo quando APIs atuais não recuperam métricas antigas.
+      if (evt.historical_confirmed) return true;
+      return evt.publications_count > 0 || evt.news_count > 0 || evt.posts_count > 0 || evt.videos_count > 0;
     }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0)).slice(0, 40);
 
     const timelineMap = new Map<string, { date: string; total: number; news: number; videos: number; posts: number }>();
