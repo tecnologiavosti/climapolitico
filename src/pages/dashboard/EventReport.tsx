@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
-  Loader2, CalendarDays, ExternalLink, Newspaper, ChevronDown, ChevronUp,
+  Loader2, CalendarDays, Newspaper, ChevronDown, ChevronUp,
   Landmark, Vote, Gavel, Mic, Users, TrendingUp, Video, MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
