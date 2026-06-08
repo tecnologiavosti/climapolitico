@@ -669,11 +669,12 @@ Responda APENAS JSON válido:
       const evPubs = matchedSources(evt, pubs, start, end, candidate.full_name);
       const distinctOutlets = new Set(evPubs.map((p) => normalize(p.outlet))).size;
       const day = String(evt.start_date || "").slice(0, 10);
-      const historicalConfirmed = isHistoricallyRelevantEvent(evt);
-      const score = evPubs.length > 0 ? relevanceFromEvidence(evt, evPubs, 0) : historicalRelevanceScore(evt, evPubs);
       const counts = countsByClass(evPubs);
-      const sentiment = aggregateSentiment(evPubs);
-      const estVolume = estimateVolumeFromPubs(evPubs);
+      const totalEvidence = evPubs.length;
+      // Sentimento exige amostragem mínima de 3 fontes — abaixo disso é estatisticamente irrelevante.
+      const sentimentAvailable = totalEvidence >= 3;
+      const sentiment = sentimentAvailable ? aggregateSentiment(evPubs) : { pos: 0, neg: 0, neu: 0 };
+      const score = relevanceFromEvidence(evt, evPubs, 0);
       return {
         name: cleanText(evt.name).slice(0, 200),
         type: cleanText(evt.type || "noticia"),
@@ -688,31 +689,35 @@ Responda APENAS JSON válido:
         political_impact: cleanText(evt.political_impact).slice(0, 1000),
         electoral_impact: cleanText(evt.electoral_impact).slice(0, 1000),
         aftermath: cleanText(evt.aftermath).slice(0, 1200),
-        evidence_level: evPubs.length >= 1 ? "cobertura_coletada" : "confirmacao_historica",
-        historical_confirmed: historicalConfirmed,
-        volume_available: evPubs.length > 0 || estVolume > 0,
+        evidence_level: "cobertura_coletada",
         relevance_score: Math.round(score),
-        publications_count: evPubs.length,
+        publications_count: totalEvidence,
         distinct_outlets: distinctOutlets,
         coverage_days: coverageDurationDays(evPubs),
         news_count: counts.news,
         videos_count: counts.videos,
         posts_count: counts.posts,
-        estimated_volume: estVolume,
+        // Não inventar volume — exibimos apenas evidências reais. Frontend mostra "Citações indisponíveis."
+        estimated_volume: 0,
+        volume_available: false,
+        sentiment_available: sentimentAvailable,
         sentiment_positive: sentiment.pos,
         sentiment_negative: sentiment.neg,
         sentiment_neutral: sentiment.neu,
-        sources: evPubs.map((p) => ({ name: p.outlet, url: p.url, region: p.outletRegion, publishedAt: p.publishedAt || null, title: p.title, kind: classifyPub(p) })),
+        sources: evPubs.map((p) => ({ name: p.outlet, url: p.url, region: p.outletRegion, publishedAt: p.publishedAt || null, title: cleanText(p.title), kind: classifyPub(p) })),
       };
     }).filter((evt: any) => {
       const eventDate = new Date(`${evt.start_date}T12:00:00Z`).getTime();
       if (Number.isNaN(eventDate)) return false;
       if (eventDate < start.getTime() - 86400000 || eventDate > end.getTime() + 86400000) return false;
       if (!evt.name || !evt.description) return false;
-      // Evento histórico e volume coletado são conceitos separados:
-      // eventos políticos documentados pela IA devem aparecer mesmo quando APIs atuais não recuperam métricas antigas.
-      if (evt.historical_confirmed) return true;
-      return evt.publications_count > 0 || evt.news_count > 0 || evt.posts_count > 0 || evt.videos_count > 0;
+      // Regra dura: o pico só existe se houve repercussão real.
+      // 3 notícias OU 2 notícias + vídeo OU 2 notícias + post OU 10 evidências totais, sempre com ≥2 veículos.
+      return meetsCoverageThreshold(
+        { news: evt.news_count, videos: evt.videos_count, posts: evt.posts_count },
+        evt.publications_count,
+        evt.distinct_outlets,
+      );
     }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0)).slice(0, 40);
 
     const timelineMap = new Map<string, { date: string; total: number; news: number; videos: number; posts: number }>();
