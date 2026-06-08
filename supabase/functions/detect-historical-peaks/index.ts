@@ -415,27 +415,27 @@ Responda APENAS JSON válido:
       const evPubs = matchedSources(evt, pubs, start, end, candidate.full_name);
       const distinctOutlets = new Set(evPubs.map((p) => normalize(p.outlet))).size;
       const day = String(evt.start_date || "").slice(0, 10);
-      const local = localByDate.get(day) as any;
-      const mentions = Math.max(Number(evt.mentions_estimate || 0), Number(local?.count || 0));
-      const score = relevanceFromEvidence(evt, evPubs, mentions);
+      const score = relevanceFromEvidence(evt, evPubs, 0);
       return {
-        name: cleanText(evt.name).slice(0, 180),
+        name: cleanText(evt.name).slice(0, 200),
         type: cleanText(evt.type || "noticia"),
         keywords: Array.isArray(evt.keywords) ? evt.keywords.map(cleanText).filter(Boolean).slice(0, 10) : [],
         start_date: day || startShort,
         end_date: String(evt.end_date || day || startShort).slice(0, 10),
-        mentions_estimate: mentions,
-        variation_pct: Number(evt.variation_pct || local?.growth || 0),
-        description: cleanText(evt.description).slice(0, 700),
-        motivo: cleanText(evt.motivo).slice(0, 300),
-        confirmed_event: true,
+        description: cleanText(evt.description).slice(0, 800),
+        motivo: cleanText(evt.motivo).slice(0, 400),
+        what_happened: cleanText(evt.what_happened).slice(0, 1200),
+        why_happened: cleanText(evt.why_happened).slice(0, 1200),
+        participants: Array.isArray(evt.participants) ? evt.participants.map(cleanText).filter(Boolean).slice(0, 12) : [],
+        political_impact: cleanText(evt.political_impact).slice(0, 1000),
+        electoral_impact: cleanText(evt.electoral_impact).slice(0, 1000),
+        aftermath: cleanText(evt.aftermath).slice(0, 1200),
         evidence_level: "evento_documentado",
         relevance_score: Math.round(score),
         publications_count: evPubs.length,
         distinct_outlets: distinctOutlets,
-        sources: evPubs.map((p) => ({ name: p.outlet, url: p.url, region: p.outletRegion })),
-        source_titles: evPubs.map((p) => p.title).slice(0, 5),
-        topNetworks: [],
+        coverage_days: coverageDurationDays(evPubs),
+        sources: evPubs.map((p) => ({ name: p.outlet, url: p.url, region: p.outletRegion, publishedAt: p.publishedAt || null, title: p.title })),
       };
     }).filter((evt: any) => {
       const eventDate = new Date(`${evt.start_date}T12:00:00Z`).getTime();
