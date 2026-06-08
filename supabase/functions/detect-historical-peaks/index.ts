@@ -380,6 +380,7 @@ serve(async (req) => {
       ...platformQueries,
     ])).slice(0, days > 370 ? 38 : 26);
 
+    const tbs = days <= 31 ? "qdr:m" : "qdr:y";
     const [googleSettled, gdeltSettled, firecrawlSettled] = await Promise.all([
       Promise.allSettled(queryRoots.map((q) => fetchGoogleHistorical(q, startShort, endShort, 18))),
       Promise.allSettled(queryRoots.slice(0, 14).map((q) => fetchGdeltHistorical(q, start, end, 45))),
@@ -396,8 +397,10 @@ serve(async (req) => {
       const text = normalize(`${p.title} ${p.snippet}`);
       const candidateTokens = normalize(candidate.full_name).split(/\s+/).filter((t: string) => t.length >= 4 && !["das", "dos", "de", "da", "do"].includes(t));
       const nameHit = text.includes(normalize(candidate.full_name)) || candidateTokens.filter((t: string) => text.includes(t)).length >= Math.min(2, candidateTokens.length);
-      const eventHit = EVENT_TERMS.some((term) => text.includes(normalize(term)));
+      const klass = classifyPub(p);
+      const eventHit = klass !== "news" || EVENT_TERMS.some((term) => text.includes(normalize(term)));
       return inWindow && nameHit && eventHit && isOfficialOrJournalistic(p);
+
     }).slice(0, 220);
 
     const localCandidates = timelineCandidates(Array.isArray(localTimeline) ? localTimeline : []);
