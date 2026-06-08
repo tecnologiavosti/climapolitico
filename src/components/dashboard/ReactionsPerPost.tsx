@@ -13,6 +13,7 @@ import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { AlertCircle, ExternalLink, Heart, MessageCircle, RefreshCw, Share2, ThumbsUp, ThumbsDown, Minus, User, Youtube, Instagram, Facebook, Music2, Newspaper, Globe, Twitter, TrendingUp } from "lucide-react";
 import { subDays, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { resolveOriginalPostUrl } from "@/lib/originalPostUrl";
 
 // Carrega Recharts apenas quando o usuário entra na aba — reduz JS inicial.
 const ChartsBlock = lazy(() => import("./ReactionsPerPostCharts"));
