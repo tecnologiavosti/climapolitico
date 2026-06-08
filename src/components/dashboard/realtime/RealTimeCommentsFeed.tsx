@@ -214,17 +214,21 @@ export const RealTimeCommentsFeed = ({ comments, isLoading }: Props) => {
                             {c.replies_count > 0 && (
                               <span className="inline-flex items-center gap-0.5"><MessageSquare className="h-3 w-3" /> {c.replies_count}</span>
                             )}
-                            {c.author_profile_url && (
-                              <a
-                                href={c.author_profile_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="ml-auto inline-flex items-center gap-1 text-primary hover:underline"
-                              >
-                                <ExternalLink className="h-3 w-3" /> perfil
-                              </a>
-                            )}
+                            {(() => {
+                              const url = resolveOriginalPostUrl(c);
+                              if (!url) return null;
+                              return (
+                                <a
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="ml-auto inline-flex items-center gap-1 text-primary hover:underline"
+                                >
+                                  <ExternalLink className="h-3 w-3" /> Ver publicação original
+                                </a>
+                              );
+                            })()}
                           </div>
                         </div>
                       </div>
