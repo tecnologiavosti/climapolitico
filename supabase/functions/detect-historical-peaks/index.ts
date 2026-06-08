@@ -72,6 +72,126 @@ function hostNameOf(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "Fonte externa"; }
 }
 
+function eventYearQueries(candidateName: string, start: Date, end: Date): string[] {
+  const years = new Set<number>();
+  for (let y = start.getFullYear(); y <= end.getFullYear(); y++) years.add(y);
+  const terms = [
+    "eleição", "campanha", "segundo turno", "primeiro turno", "debate", "entrevista",
+    "posse", "investigação", "STF", "TSE", "Senado", "CPI", "votação", "discurso",
+  ];
+  const queries: string[] = [];
+  for (const year of years) {
+    for (const term of terms) queries.push(`"${candidateName}" ${term} ${year}`);
+  }
+  return queries;
+}
+
+function sourceDateMs(pub: ExternalPublication): number | null {
+  if (!pub.publishedAt) return null;
+  const t = new Date(pub.publishedAt).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+function isOfficialOrJournalistic(pub: ExternalPublication): boolean {
+  const host = hostNameOf(pub.url).toLowerCase();
+  const outlet = normalize(pub.outlet || "");
+  return /\.(gov|jus|leg)\.br$|gov\.br|tse\.jus\.br|stf\.jus\.br|senado\.leg\.br|camara\.leg\.br|planalto\.gov\.br|youtube\.com|youtu\.be|g1\.globo\.com|folha\.uol\.com\.br|estadao\.com\.br|valor\.globo\.com|poder360\.com\.br|cnnbrasil\.com\.br|uol\.com\.br|metropoles\.com|reuters\.com|bbc\.com|oglobo\.globo\.com/i.test(host)
+    || /agencia brasil|senado|camara|stf|tse|reuters|bbc|folha|estadao|valor|g1|cnn|uol|poder360|metropoles/.test(outlet);
+}
+
+function significantTokens(value: string): string[] {
+  return normalize(value).match(/[a-z0-9]{4,}/g)?.filter((t) => !["para", "como", "sobre", "entre", "pela", "pelo", "brasil", "politico", "politica", "noticia", "evento"].includes(t)) || [];
+}
+
+function supportTermsForEvent(evt: any): string[] {
+  return Array.from(new Set([
+    ...((Array.isArray(evt?.keywords) ? evt.keywords : []) as string[]).flatMap(significantTokens),
+    ...significantTokens(`${evt?.name || ""} ${evt?.description || ""} ${evt?.type || ""}`).slice(0, 10),
+  ])).slice(0, 16);
+}
+
+function sourceSupportsEvent(pub: ExternalPublication, evt: any, start: Date, end: Date): boolean {
+  if (!isOfficialOrJournalistic(pub)) return false;
+  const text = normalize(`${pub.title} ${pub.snippet} ${pub.outlet}`);
+  const terms = supportTermsForEvent(evt);
+  const hasTerm = terms.length === 0 || terms.some((term) => text.includes(term));
+  const date = sourceDateMs(pub);
+  const eventStart = new Date(`${String(evt?.start_date || start.toISOString().slice(0, 10)).slice(0, 10)}T00:00:00Z`).getTime();
+  const eventEnd = new Date(`${String(evt?.end_date || evt?.start_date || end.toISOString().slice(0, 10)).slice(0, 10)}T23:59:59Z`).getTime();
+  const withinEvent = date == null || (date >= eventStart - 21 * 86400000 && date <= eventEnd + 21 * 86400000);
+  const withinPeriod = date == null || (date >= start.getTime() - 86400000 && date <= end.getTime() + 86400000);
+  return hasTerm && withinEvent && withinPeriod;
+}
+
+function matchedSources(evt: any, pubs: ExternalPublication[], start: Date, end: Date): ExternalPublication[] {
+  const indices = Array.isArray(evt?.sourceIndices)
+    ? evt.sourceIndices.map((n: any) => Number(n) - 1).filter((n: number) => n >= 0 && n < pubs.length)
+    : [];
+  const selected = indices.map((i: number) => pubs[i]).filter((p: ExternalPublication) => sourceSupportsEvent(p, evt, start, end));
+  if (selected.length > 0) return selected;
+  return pubs.filter((p) => sourceSupportsEvent(p, evt, start, end)).slice(0, 8);
+}
+
+function coverageDurationDays(pubs: ExternalPublication[]): number {
+  const dates = pubs.map(sourceDateMs).filter((n): n is number => n != null).sort((a, b) => a - b);
+  if (dates.length < 2) return pubs.length > 0 ? 1 : 0;
+  return Math.max(1, Math.ceil((dates[dates.length - 1] - dates[0]) / 86400000) + 1);
+}
+
+function politicalImpactWeight(type: string): number {
+  const t = normalize(type);
+  if (/eleicao|decisao|judicial|operacao|cpi|votacao|posse/.test(t)) return 24;
+  if (/debate|entrevista|discurso|coletiva|agenda/.test(t)) return 16;
+  return 10;
+}
+
+function relevanceFromEvidence(evt: any, pubs: ExternalPublication[], mentions: number): number {
+  const distinctOutlets = new Set(pubs.map((p) => normalize(p.outlet))).size;
+  const reach = pubs.reduce((sum, p) => sum + (p.outletReach || 3), 0);
+  const officialBonus = pubs.some((p) => /\.(gov|jus|leg)\.br|gov\.br|tse\.jus\.br|stf\.jus\.br|senado\.leg\.br|camara\.leg\.br/i.test(hostNameOf(p.url))) ? 12 : 0;
+  const score = Math.min(35, distinctOutlets * 9)
+    + Math.min(18, pubs.length * 3)
+    + Math.min(18, reach * 1.7)
+    + Math.min(10, coverageDurationDays(pubs) * 2)
+    + politicalImpactWeight(String(evt?.type || evt?.name || ""))
+    + officialBonus
+    + Math.min(5, mentions / 25);
+  return Math.max(30, Math.min(100, Math.round(score)));
+}
+
+function fallbackEventsFromSources(pubs: ExternalPublication[], start: Date, end: Date): any[] {
+  const buckets = new Map<string, ExternalPublication[]>();
+  for (const pub of pubs) {
+    if (!isOfficialOrJournalistic(pub)) continue;
+    const date = pub.publishedAt ? new Date(pub.publishedAt).toISOString().slice(0, 10) : start.toISOString().slice(0, 10);
+    const tokens = significantTokens(pub.title).slice(0, 5).join(" ");
+    const key = `${date}|${tokens}`;
+    buckets.set(key, [...(buckets.get(key) || []), pub]);
+  }
+  return [...buckets.entries()].map(([key, sources]) => {
+    const [date] = key.split("|");
+    const main = sources[0];
+    const title = cleanText(main.title).replace(/\s+-\s+[^-]{2,80}$/g, "");
+    const terms = EVENT_TERMS.filter((term) => normalize(`${main.title} ${main.snippet}`).includes(normalize(term))).slice(0, 5);
+    return {
+      name: title || `Acontecimento político documentado em ${date}`,
+      type: terms[0] || "noticia",
+      start_date: date,
+      end_date: date,
+      description: cleanText(main.snippet || main.title).slice(0, 500),
+      motivo: `Evento identificado a partir de cobertura externa documentada por ${new Set(sources.map((s) => s.outlet)).size} veículo(s).`,
+      keywords: terms.length ? terms : significantTokens(main.title).slice(0, 6),
+      sourceIndices: sources.map((s) => pubs.findIndex((p) => p.url === s.url) + 1).filter((n) => n > 0),
+      relevance_score: relevanceFromEvidence({ type: terms[0], name: title }, sources, 0),
+      mentions_estimate: 0,
+      variation_pct: 0,
+    };
+  }).filter((evt) => {
+    const t = new Date(`${evt.start_date}T12:00:00Z`).getTime();
+    return t >= start.getTime() - 86400000 && t <= end.getTime() + 86400000;
+  }).sort((a, b) => Number(b.relevance_score || 0) - Number(a.relevance_score || 0)).slice(0, 24);
+}
+
 async function fetchGoogleHistorical(query: string, start: string, end: string, limit = 25): Promise<ExternalPublication[]> {
   const q = `${query} after:${start} before:${end}`;
   const url = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=pt-BR&gl=BR&ceid=BR:pt-419`;
