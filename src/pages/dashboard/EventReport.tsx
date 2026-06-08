@@ -746,6 +746,21 @@ const EventReportPage = () => {
                         ))}
                       </div>
                     )}
+                    {e.sources && e.sources.length > 0 && (
+                      <div className="space-y-1 rounded-md bg-muted/30 p-2">
+                        {e.sources.slice(0, 3).map((source, sourceIdx) => (
+                          <a
+                            key={`${source.url}-${sourceIdx}`}
+                            href={source.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block truncate text-[11px] text-primary hover:underline"
+                          >
+                            {source.name || 'Fonte externa'}
+                          </a>
+                        ))}
+                      </div>
+                    )}
                     <Button
                       size="sm"
                       variant="outline"
