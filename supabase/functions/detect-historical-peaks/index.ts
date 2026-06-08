@@ -477,6 +477,9 @@ Responda APENAS JSON válido:
       const distinctOutlets = new Set(evPubs.map((p) => normalize(p.outlet))).size;
       const day = String(evt.start_date || "").slice(0, 10);
       const score = relevanceFromEvidence(evt, evPubs, 0);
+      const counts = countsByClass(evPubs);
+      const sentiment = aggregateSentiment(evPubs);
+      const estVolume = estimateVolumeFromPubs(evPubs);
       return {
         name: cleanText(evt.name).slice(0, 200),
         type: cleanText(evt.type || "noticia"),
@@ -496,7 +499,14 @@ Responda APENAS JSON válido:
         publications_count: evPubs.length,
         distinct_outlets: distinctOutlets,
         coverage_days: coverageDurationDays(evPubs),
-        sources: evPubs.map((p) => ({ name: p.outlet, url: p.url, region: p.outletRegion, publishedAt: p.publishedAt || null, title: p.title })),
+        news_count: counts.news,
+        videos_count: counts.videos,
+        posts_count: counts.posts,
+        estimated_volume: estVolume,
+        sentiment_positive: sentiment.pos,
+        sentiment_negative: sentiment.neg,
+        sentiment_neutral: sentiment.neu,
+        sources: evPubs.map((p) => ({ name: p.outlet, url: p.url, region: p.outletRegion, publishedAt: p.publishedAt || null, title: p.title, kind: classifyPub(p) })),
       };
     }).filter((evt: any) => {
       const eventDate = new Date(`${evt.start_date}T12:00:00Z`).getTime();
@@ -504,11 +514,26 @@ Responda APENAS JSON válido:
       return evt.name && evt.description && (evt.publications_count || 0) >= 1 && (evt.sources?.length || 0) >= 1;
     }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0)).slice(0, 30);
 
+    // Aggregated external timeline (per day) — volume real coletado externamente.
+    const timelineMap = new Map<string, { date: string; total: number; news: number; videos: number; posts: number }>();
+    for (const p of pubs) {
+      if (!p.publishedAt) continue;
+      const d = p.publishedAt.slice(0, 10);
+      const bucket = timelineMap.get(d) || { date: d, total: 0, news: 0, videos: 0, posts: 0 };
+      bucket.total++;
+      const k = classifyPub(p);
+      if (k === "video") bucket.videos++; else if (k === "post") bucket.posts++; else bucket.news++;
+      timelineMap.set(d, bucket);
+    }
+    const externalTimeline = [...timelineMap.values()].sort((a, b) => a.date.localeCompare(b.date));
+
     return new Response(JSON.stringify({
       events,
       publications_collected: pubs.length,
       estimated_reach: estimatedReachOf(pubs),
+      external_timeline: externalTimeline,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
   } catch (error) {
     console.error("[detect-historical-peaks]", error);
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Erro desconhecido" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
