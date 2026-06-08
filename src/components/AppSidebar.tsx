@@ -1,41 +1,39 @@
+import { useEffect, useState } from "react";
 import { NavLink } from "@/components/NavLink";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
-  BarChart3,
+  Home,
+  UserPlus,
   Users,
-  TrendingUp,
-  Settings,
+  Radio,
+  FileText,
+  Flame,
+  Heart,
+  Calendar,
+  MapPinned,
+  GitCompareArrows,
+  Sparkles,
   Brain,
   Bell,
-  LineChart,
-  Mic,
   Trophy,
-  ThumbsDown,
-  Sparkles,
-  GitCompareArrows,
-  Shield,
-  UserX,
-  Share2,
-  Database,
-  FileText,
-  Calendar,
-  ClipboardList,
-  Radio,
-  Key,
-  Import,
-  BookUser,
-  Database as DatabaseIcon,
-  MapPinned,
-  Linkedin,
-  Rss,
+  LineChart,
   Network,
+  Rss,
   MessagesSquare,
-  CalendarClock,
-  AlertTriangle,
+  Database,
+  Settings,
+  Shield,
+  Key,
+  BarChart3,
+  BookUser,
+  ChevronDown,
+  Eye,
+  type LucideIcon,
 } from "lucide-react";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { useTooltipsEnabled } from "@/hooks/useTooltipsEnabled";
-
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Sidebar,
   SidebarContent,
@@ -47,74 +45,293 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { HelpTooltip } from "@/components/ui/help-tooltip";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
-// Módulos ativos no menu principal
-const mainItems = [
-  { title: "Visão Geral", url: "/dashboard", icon: BarChart3, tip: "Tela inicial. Mostra um resumão de como seus candidatos estão indo nas redes." },
-  { title: "Candidatos", url: "/dashboard/candidates", icon: Users, tip: "Onde você adiciona, remove e cuida dos candidatos que está acompanhando." },
-  { title: "Resumo Inteligente", url: "/dashboard/candidate-summary", icon: FileText, tip: "A IA lê tudo que falaram do seu candidato e te entrega um resumo pronto." },
-  { title: "Análise de Rejeição", url: "/dashboard/rejection-analysis", icon: ThumbsDown, tip: "Mostra por que as pessoas estão criticando seu candidato." },
-  { title: "Recomendações de Narrativa", url: "/dashboard/narrative-recommendations", icon: Sparkles, tip: "Dicas de fala e postura para o seu candidato, com base no que o povo comenta." },
-  { title: "Comparação de Candidatos", url: "/dashboard/candidate-comparison", icon: GitCompareArrows, tip: "Coloque dois ou mais candidatos lado a lado pra ver quem está melhor." },
-  { title: "Picos de Menções", url: "/dashboard/pico-mencao", icon: Calendar, tip: "Picos calculados a partir do volume externo coletado em notícias, vídeos e posts (Google News, YouTube, TikTok, X, Facebook, Instagram, Telegram, Bluesky, portais e sites oficiais)." },
-  { title: "Monitor Tempo Real", url: "/dashboard/realtime-monitor", icon: Radio, tip: "Acompanhe os comentários chegando ao vivo, na hora em que o povo posta." },
-  { title: "Repercussão por Região", url: "/dashboard/event-repercussion", icon: MessagesSquare, tip: "Descubra como eventos políticos (entrevistas, debates, lives) repercutem em cada região do Brasil, com análise de sentimento em tempo real." },
-  { title: "Análise Regional", url: "/dashboard/regional-analysis", icon: MapPinned, tip: "Veja como seu candidato performa em cada região do Brasil por rede social." },
-  { title: "Visão por Rede Social", url: "/dashboard/network-view", icon: Network, tip: "Filtre por rede (Instagram, X, YouTube, etc.) e veja KPIs, gráficos, top posts, hashtags e horários." },
-  
-  { title: "Comparação Histórica IA", url: "/dashboard/historical-comparison", icon: GitCompareArrows, tip: "Compare dois períodos do candidato — inclusive datas anteriores ao cadastro. A IA analisa a evolução de menções, sentimento, temas e regiões." },
-  
-  { title: "Feeds Redes Sociais", url: "/dashboard/social-feeds", icon: Rss, tip: "Feeds com posts e menções de todas as redes sociais (LinkedIn, YouTube, Twitter, Reddit, Telegram, Notícias e mais)." },
+type NavItem = {
+  title: string;
+  url: string;
+  icon: LucideIcon;
+  badge?: { label: string; variant: "live" | "ai" };
+  tip?: string;
+};
 
-  { title: "Catálogo de Candidatos", url: "/dashboard/candidates-catalog", icon: BookUser, tip: "Lista de candidatos já prontos. Escolha um e adicione na sua conta com 1 clique." },
-  { title: "Analytics Avançado", url: "/dashboard/analytics-advanced", icon: LineChart, tip: "Gráficos detalhados pra quem quer entender tudo a fundo." },
-  { title: "Ranking", url: "/dashboard/ranking", icon: Trophy, tip: "Quem está ganhando e quem está perdendo nas redes nos últimos 30 dias." },
-  { title: "Configuração de Coleta", url: "/dashboard/collection-status", icon: Database, tip: "Veja se a coleta de dados em cada rede social está funcionando direitinho." },
+type NavGroup = {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  items: NavItem[];
+  defaultOpen?: boolean;
+};
+
+// Estrutura principal — fluxo lógico de uso da plataforma
+const groups: NavGroup[] = [
+  {
+    id: "inicio",
+    label: "Início",
+    icon: Home,
+    defaultOpen: true,
+    items: [
+      { title: "Visão Geral", url: "/dashboard", icon: Home, tip: "Tela inicial com o resumo da operação." },
+    ],
+  },
+  {
+    id: "config",
+    label: "Configuração",
+    icon: UserPlus,
+    defaultOpen: true,
+    items: [
+      { title: "Adicionar Candidato", url: "/dashboard/candidates-catalog", icon: UserPlus, tip: "Escolha candidatos prontos no catálogo e adicione na sua conta." },
+      { title: "Meus Candidatos", url: "/dashboard/candidates", icon: Users, tip: "Gerencie os candidatos que você está monitorando." },
+    ],
+  },
+  {
+    id: "monitor",
+    label: "Monitoramento",
+    icon: Radio,
+    defaultOpen: true,
+    items: [
+      { title: "Monitor em Tempo Real", url: "/dashboard/realtime-monitor", icon: Radio, badge: { label: "AO VIVO", variant: "live" }, tip: "Comentários e menções chegando ao vivo." },
+      { title: "Resumo Inteligente", url: "/dashboard/candidate-summary", icon: FileText, badge: { label: "IA", variant: "ai" }, tip: "Resumo automático do que falaram do seu candidato." },
+      { title: "Top Posts por Engajamento", url: "/dashboard/social-feeds", icon: Flame, tip: "Conteúdos com mais reações em cada rede." },
+    ],
+  },
+  {
+    id: "analise",
+    label: "Análise",
+    icon: LineChart,
+    defaultOpen: true,
+    items: [
+      { title: "Análise de Sentimento", url: "/dashboard/rejection-analysis", icon: Heart, tip: "Entenda o tom da conversa: positivo, neutro ou negativo." },
+      { title: "Picos de Menções", url: "/dashboard/pico-mencao", icon: Calendar, tip: "Momentos com volume incomum de menções." },
+      { title: "Mapa de Aceitação", url: "/dashboard/regional-analysis", icon: MapPinned, tip: "Performance por região do Brasil." },
+      { title: "Comparação de Candidatos", url: "/dashboard/candidate-comparison", icon: GitCompareArrows, tip: "Compare candidatos lado a lado." },
+    ],
+  },
+  {
+    id: "ia",
+    label: "Inteligência IA",
+    icon: Brain,
+    defaultOpen: false,
+    items: [
+      { title: "Insights Estratégicos", url: "/dashboard/ai-insights", icon: Brain, badge: { label: "IA", variant: "ai" }, tip: "Análises geradas por IA para guiar decisões." },
+      { title: "Narrativas Detectadas", url: "/dashboard/narrative-recommendations", icon: Sparkles, badge: { label: "IA", variant: "ai" }, tip: "Narrativas em ascensão e recomendações." },
+      { title: "Repercussão de Eventos", url: "/dashboard/event-repercussion", icon: MessagesSquare, tip: "Como entrevistas, debates e lives repercutem em cada região." },
+      { title: "Comparação Histórica", url: "/dashboard/historical-comparison", icon: GitCompareArrows, badge: { label: "IA", variant: "ai" }, tip: "Compare dois períodos do candidato com análise por IA." },
+      { title: "Alertas Inteligentes", url: "/dashboard/notifications", icon: Bell, tip: "Avisos importantes detectados automaticamente." },
+    ],
+  },
+  {
+    id: "relatorios",
+    label: "Relatórios",
+    icon: FileText,
+    defaultOpen: false,
+    items: [
+      { title: "Analytics Avançado", url: "/dashboard/analytics-advanced", icon: LineChart, tip: "Gráficos detalhados e exportação." },
+      { title: "Ranking", url: "/dashboard/ranking", icon: Trophy, tip: "Ranking de desempenho dos candidatos." },
+      { title: "Visão por Rede Social", url: "/dashboard/network-view", icon: Network, tip: "Resultados detalhados por rede social." },
+      { title: "Feeds Redes Sociais", url: "/dashboard/social-feeds", icon: Rss, tip: "Feeds completos de posts e menções." },
+      { title: "Catálogo de Candidatos", url: "/dashboard/candidates-catalog", icon: BookUser, tip: "Candidatos prontos para adicionar." },
+      { title: "Configuração de Coleta", url: "/dashboard/collection-status", icon: Database, tip: "Status da coleta em cada rede." },
+    ],
+  },
 ];
 
-// Módulos temporariamente desativados (mantidos para reativação futura)
-// const inactiveItems = [
-//   { title: "Análises", url: "/dashboard/analytics", icon: TrendingUp },
-//   { title: "Análise de Fala", url: "/dashboard/speech-analysis", icon: Mic },
-//   { title: "Público Indeciso", url: "/dashboard/undecided", icon: UserX },
-//   { title: "Relatório por Rede Social", url: "/dashboard/social-media-report", icon: Share2 },
-//   { title: "Relatório de Rastreabilidade", url: "/dashboard/traceability-report", icon: ClipboardList },
-//   { title: "Relatórios Agendados", url: "/dashboard/scheduled-reports", icon: Calendar },
-//   { title: "Templates de Relatório", url: "/dashboard/report-templates", icon: FileText },
-//   { title: "IA & Insights", url: "/dashboard/ai", icon: Brain },
-// ];
+const accountGroup: NavGroup = {
+  id: "conta",
+  label: "Conta",
+  icon: Settings,
+  defaultOpen: false,
+  items: [
+    { title: "Notificações", url: "/dashboard/notifications", icon: Bell, tip: "Central de avisos da plataforma." },
+    { title: "Configurações", url: "/dashboard/settings", icon: Settings, tip: "Perfil, senha, tema e preferências." },
+  ],
+};
 
-const adminItems = [
-  { title: "Administração", url: "/dashboard/admin", icon: Shield, tip: "Área só pra administradores: cuidar de usuários, planos e da plataforma toda." },
-  { title: "APIs & Integrações", url: "/dashboard/admin/api-settings", icon: Key, tip: "Liga e desliga as conexões com as redes sociais (YouTube, Twitter etc.)." },
-  { title: "Observabilidade", url: "/dashboard/observability", icon: Shield, tip: "Saúde da plataforma, jobs em execução, fila de erros e ações de bulk processing." },
-  { title: "Operations Console", url: "/dashboard/operations", icon: Shield, tip: "Filas distribuídas, workers ativos, providers IA e alertas em tempo real." },
-  { title: "SLO & SLA", url: "/dashboard/slo", icon: Shield, tip: "Metas de serviço (latência, throughput, erro) e fila de jobs mortos (DLQ)." },
-  { title: "Worker Tokens", url: "/dashboard/worker-tokens", icon: Key, tip: "Tokens para conectar workers externos (Docker/Railway) à fila distribuída." },
-  { title: "Tenant Analytics", url: "/dashboard/tenant-analytics", icon: Shield, tip: "Consumo agregado por usuário: top tenants, custos e atividade." },
-  { title: "Enriquecimento de Dados", url: "/dashboard/data-enrichment", icon: Database, tip: "Infere cidade/UF nas menções e roda backfill histórico via GDELT (notícias antigas)." },
-];
+const adminGroup: NavGroup = {
+  id: "admin",
+  label: "Administração",
+  icon: Shield,
+  defaultOpen: false,
+  items: [
+    { title: "Administração", url: "/dashboard/admin", icon: Shield },
+    { title: "APIs & Integrações", url: "/dashboard/admin/api-settings", icon: Key },
+    { title: "Observabilidade", url: "/dashboard/observability", icon: Shield },
+    { title: "Operations Console", url: "/dashboard/operations", icon: Shield },
+    { title: "SLO & SLA", url: "/dashboard/slo", icon: Shield },
+    { title: "Worker Tokens", url: "/dashboard/worker-tokens", icon: Key },
+    { title: "Tenant Analytics", url: "/dashboard/tenant-analytics", icon: Shield },
+    { title: "Enriquecimento de Dados", url: "/dashboard/data-enrichment", icon: Database },
+  ],
+};
 
-const settingsItems = [
-  { title: "Notificações", url: "/dashboard/notifications", icon: Bell, tip: "Avisos importantes: quando algo mudar, você fica sabendo aqui." },
-  { title: "Configurações", url: "/dashboard/settings", icon: Settings, tip: "Mexa no seu perfil, troque a senha, mude o tema e ajuste suas preferências." },
-];
+function BadgePill({ label, variant }: { label: string; variant: "live" | "ai" }) {
+  if (variant === "live") {
+    return (
+      <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-red-500/15 text-red-600 dark:text-red-400 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider">
+        <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+        {label}
+      </span>
+    );
+  }
+  return (
+    <span className="ml-auto inline-flex items-center rounded-full bg-gradient-primary px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
+      {label}
+    </span>
+  );
+}
+
+function useHasCandidates() {
+  const { user } = useAuth();
+  const [hasCandidates, setHasCandidates] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!user) {
+      setHasCandidates(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { count } = await supabase
+        .from("candidates")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id);
+      if (!cancelled) setHasCandidates((count ?? 0) > 0);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+  return hasCandidates;
+}
+
+function OnboardingBanner() {
+  const hasCandidates = useHasCandidates();
+  if (hasCandidates !== false) return null;
+  return (
+    <div className="mx-3 mt-3 mb-1 rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 to-primary/5 p-3 shadow-sm">
+      <div className="flex items-start gap-2">
+        <div className="rounded-lg bg-primary/15 p-1.5">
+          <Sparkles className="h-4 w-4 text-primary" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-primary">
+            Passo 1
+          </div>
+          <p className="text-xs text-foreground/80 mt-0.5 leading-snug">
+            Adicione um candidato para começar.
+          </p>
+        </div>
+      </div>
+      <Button asChild size="sm" className="w-full mt-2 h-8 text-xs">
+        <Link to="/dashboard/candidates-catalog">
+          <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+          Adicionar candidato
+        </Link>
+      </Button>
+    </div>
+  );
+}
+
+function NavRow({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
+  return (
+    <NavLink
+      to={item.url}
+      end={item.url === "/dashboard"}
+      className="group flex items-center gap-3 hover:bg-muted/60 px-2 py-1.5 rounded-md"
+      activeClassName="bg-muted text-primary font-semibold"
+      title={collapsed ? item.title : undefined}
+    >
+      <div className="p-1.5 bg-muted/60 rounded-md group-hover:bg-muted">
+        <item.icon className="h-4 w-4 shrink-0 text-primary" />
+      </div>
+      {!collapsed && (
+        <>
+          <span className="font-medium text-sm leading-snug whitespace-normal break-words flex-1 min-w-0">
+            {item.title}
+          </span>
+          {item.badge && <BadgePill label={item.badge.label} variant={item.badge.variant} />}
+        </>
+      )}
+    </NavLink>
+  );
+}
+
+function GroupBlock({ group, collapsed, currentPath }: { group: NavGroup; collapsed: boolean; currentPath: string }) {
+  const isActiveGroup = group.items.some((it) =>
+    it.url === "/dashboard" ? currentPath === it.url : currentPath.startsWith(it.url),
+  );
+  const [open, setOpen] = useState(group.defaultOpen || isActiveGroup);
+
+  useEffect(() => {
+    if (isActiveGroup) setOpen(true);
+  }, [isActiveGroup]);
+
+  // When the sidebar is collapsed to icons, render items flat
+  if (collapsed) {
+    return (
+      <SidebarGroup>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            {group.items.map((item) => (
+              <SidebarMenuItem key={item.title + item.url}>
+                <SidebarMenuButton asChild>
+                  <NavRow item={item} collapsed />
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+    );
+  }
+
+  const GroupIcon = group.icon;
+
+  return (
+    <SidebarGroup className="py-1">
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors",
+            )}
+          >
+            <GroupIcon className="h-3.5 w-3.5" />
+            <span className="flex-1 text-left">{group.label}</span>
+            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} />
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <SidebarGroupContent className="border-l border-border/60 ml-4 pl-1 mt-1">
+            <SidebarMenu>
+              {group.items.map((item) => (
+                <SidebarMenuItem key={item.title + item.url}>
+                  <SidebarMenuButton asChild>
+                    <NavRow item={item} collapsed={false} />
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </CollapsibleContent>
+      </Collapsible>
+    </SidebarGroup>
+  );
+}
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const location = useLocation();
-  const currentPath = location.pathname;
   const isCollapsed = state === "collapsed";
   const { isAdmin } = useAdminCheck();
   const tooltipsEnabled = useTooltipsEnabled();
-
-  const isActive = (path: string) => {
-    if (path === "/dashboard") {
-      return currentPath === path;
-    }
-    return currentPath.startsWith(path);
-  };
 
   return (
     <Sidebar className={isCollapsed ? "w-14" : "w-[17rem]"}>
@@ -133,127 +350,37 @@ export function AppSidebar() {
           </div>
         </div>
 
-        {/* Main Navigation */}
-        <SidebarGroup>
-          <SidebarGroupLabel>Principal</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {mainItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton 
-                    asChild
-                    data-onboarding={
-                      item.url === "/dashboard" ? "overview" :
-                      item.url === "/dashboard/candidates" ? "candidates" :
-                      item.url === "/dashboard/ai" ? "ai-insights" :
-                      undefined
-                    }
-                  >
-                    <HelpTooltip text={item.tip} side="right">
-                      <NavLink
-                        to={item.url}
-                        end={item.url === "/dashboard"}
-                        className="flex items-center gap-3 hover:bg-muted/50 px-2 py-1.5 rounded-md"
-                        activeClassName="bg-muted text-primary font-medium"
-                      >
-                        <div className="p-1.5 bg-muted/60 rounded-md">
-                          <item.icon className="h-4 w-4 shrink-0 text-primary" />
-                        </div>
-                        {!isCollapsed && <span className="font-medium text-sm leading-snug whitespace-normal break-words">{item.title}</span>}
-                      </NavLink>
-                    </HelpTooltip>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {!isCollapsed && <OnboardingBanner />}
 
-        {/* Admin Section */}
+        {groups.map((group) => (
+          <GroupBlock
+            key={group.id}
+            group={group}
+            collapsed={isCollapsed}
+            currentPath={location.pathname}
+          />
+        ))}
+
         {isAdmin && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Administração</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {adminItems.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild>
-                      <HelpTooltip text={item.tip} side="right">
-                        <NavLink
-                          to={item.url}
-                          className="flex items-center gap-3 hover:bg-muted/50 px-2 py-1.5 rounded-md"
-                          activeClassName="bg-muted text-primary font-medium"
-                        >
-                          <div className="p-1.5 bg-muted/60 rounded-md">
-                            <item.icon className="h-4 w-4 shrink-0 text-primary" />
-                          </div>
-                          {!isCollapsed && <span className="font-medium text-sm leading-snug whitespace-normal break-words">{item.title}</span>}
-                        </NavLink>
-                      </HelpTooltip>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+          <GroupBlock group={adminGroup} collapsed={isCollapsed} currentPath={location.pathname} />
         )}
 
-        {/* Documentação — visível só para a conta demo de tooltips */}
         {tooltipsEnabled && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Documentação</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild>
-                    <HelpTooltip
-                      text="Entenda como cada rede social é monitorada: método, frequência e o que coletamos."
-                      side="right"
-                    >
-                      <NavLink
-                        to="/dashboard/data-collection-methodology"
-                        className="flex items-center gap-3 hover:bg-muted/50 px-2 py-1.5 rounded-md"
-                        activeClassName="bg-muted text-primary font-medium"
-                      >
-                        <div className="p-1.5 bg-muted/60 rounded-md">
-                          <DatabaseIcon className="h-4 w-4 shrink-0 text-primary" />
-                        </div>
-                        {!isCollapsed && <span className="font-medium text-sm leading-snug whitespace-normal break-words">Como Coletamos os Dados</span>}
-                      </NavLink>
-                    </HelpTooltip>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+          <GroupBlock
+            group={{
+              id: "docs",
+              label: "Documentação",
+              icon: Eye,
+              items: [
+                { title: "Como Coletamos os Dados", url: "/dashboard/data-collection-methodology", icon: Database },
+              ],
+            }}
+            collapsed={isCollapsed}
+            currentPath={location.pathname}
+          />
         )}
 
-        {/* Settings */}
-        <SidebarGroup>
-          <SidebarGroupLabel>Configurações</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {settingsItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <HelpTooltip text={item.tip} side="right">
-                      <NavLink
-                        to={item.url}
-                        className="flex items-center gap-3 hover:bg-muted/50 px-2 py-1.5 rounded-md"
-                        activeClassName="bg-muted text-primary font-medium"
-                      >
-                        <div className="p-1.5 bg-muted/60 rounded-md">
-                          <item.icon className="h-4 w-4 shrink-0 text-primary" />
-                        </div>
-                        {!isCollapsed && <span className="font-medium text-sm leading-snug whitespace-normal break-words">{item.title}</span>}
-                      </NavLink>
-                    </HelpTooltip>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <GroupBlock group={accountGroup} collapsed={isCollapsed} currentPath={location.pathname} />
       </SidebarContent>
     </Sidebar>
   );
