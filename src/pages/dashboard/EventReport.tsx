@@ -228,54 +228,7 @@ function detectEventsFromInteractions(comments: LocalInteraction[], _candidateNa
     return { date: day, count: rows.length, positive: pos, negative: neg, neutral: neu };
   });
 
-  const peakDays = daysAsc
-    .map(([day, rows], i) => {
-      const prev = counts.slice(Math.max(0, i - 7), i);
-      const baseline = prev.length > 0 ? prev.reduce((s, n) => s + n, 0) / prev.length : avg;
-      const variation = baseline > 0 ? ((rows.length - baseline) / baseline) * 100 : 0;
-      const { distinctNetworks } = summarizeRows(rows);
-      const confirmedTerms = hasConfirmedEventEvidence(rows);
-      const relevantVolume = rows.length >= Math.max(MIN_SOCIAL_ONLY_PEAK_VOLUME, Math.ceil(avg * 2)) && variation >= 100;
-      const strongGrowthWithEvidence = rows.length >= MIN_EVIDENCED_GROWTH_VOLUME && variation >= 300 && confirmedTerms && distinctNetworks >= 2;
-      const exceptionalVolume = rows.length >= 100 && variation >= 35;
-      const isPeak = relevantVolume || strongGrowthWithEvidence || exceptionalVolume;
-      return { day, rows, variation, baseline, isPeak, confirmedTerms };
-    })
-    .filter(d => d.isPeak)
-    .sort((a, b) => (b.rows.length * Math.max(1, b.variation / 100)) - (a.rows.length * Math.max(1, a.variation / 100)))
-    .slice(0, 50);
-
-  // mark timeline points
-  const peakSet = new Set(peakDays.map(p => p.day));
-  timeline.forEach(p => { if (peakSet.has(p.date)) p.isPeak = true; });
-
-  const events: DetectedEvent[] = peakDays.map(({ day, rows, variation, confirmedTerms }) => {
-    const formatted = day.split('-').reverse().join('/');
-    const sign = variation >= 0 ? '+' : '';
-    const tag = confirmedTerms ? 'Forte repercussão com indícios de evento' : 'Forte crescimento de repercussão';
-    const summary = summarizeRows(rows);
-    const sampleText = rows.map(r => cleanDisplayText(r.post_title || r.comment_text)).filter(Boolean).slice(0, 8).join(' ');
-    const keywords = [...new Set(tokenizeEventText(sampleText).filter(w => !EVENT_STOP_WORDS.has(w)).slice(0, 8))];
-
-    return {
-      name: `${formatted} — ${tag}`,
-      type: 'repercussao_social_evidenciada',
-      keywords,
-      start_date: day,
-      end_date: day,
-      mentions_estimate: rows.length,
-      variation_pct: Math.round(variation),
-      description: `${tag} em ${formatted}: ${rows.length} menções (${sign}${Math.round(variation)}% vs. média anterior), com evidência textual/rede suficiente para investigação histórica.`,
-      motivo: classifyMotivo(variation, rows.length, summary.topNetworks[0] || null),
-      sentiment: summary.sentiment,
-      topNetworks: summary.topNetworks,
-      confirmed_event: false,
-      evidence_level: confirmedTerms ? 'crescimento_com_indicios' : 'volume_relevante',
-      relevance_score: Math.round(Math.min(70, rows.length * 1.2 + Math.max(0, variation) / 10 + (confirmedTerms ? 15 : 0))),
-    };
-  });
-
-  return { events, timeline };
+  return { events: [], timeline };
 }
 
 interface DetectedEvent {
