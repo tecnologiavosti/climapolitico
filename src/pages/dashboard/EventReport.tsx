@@ -126,7 +126,7 @@ export default function EventReport() {
   });
 
   const events = useMemo(() => data?.events || [], [data]);
-  const timeline = useMemo(() => data?.external_timeline || [], [data]);
+  // timeline retornado pelo backend não é exibido — foco em eventos relevantes.
 
   const handleSearch = () => {
     if (!candidateId) { toast.error("Selecione um candidato"); return; }
