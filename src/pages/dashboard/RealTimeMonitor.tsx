@@ -1075,11 +1075,13 @@ const RealTimeMonitor = () => {
                             <div className="flex items-center gap-1 text-xs font-semibold tabular-nums">
                               <Heart className="h-3 w-3 text-destructive" />{p.engagement.toLocaleString("pt-BR")}
                             </div>
-                            {p.url && (
+                            {p.url ? (
                               <a href={p.url} target="_blank" rel="noopener noreferrer"
                                 className="text-[11px] text-primary hover:underline inline-flex items-center gap-0.5">
-                                Abrir <ExternalLink className="h-3 w-3" />
+                                <ExternalLink className="h-3 w-3" /> Ver publicação original
                               </a>
+                            ) : (
+                              <span className="text-[10px] italic text-muted-foreground">Link indisponível</span>
                             )}
                           </div>
                         </div>
