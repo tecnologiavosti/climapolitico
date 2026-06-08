@@ -92,7 +92,6 @@ const sections: Section[] = [
     title: "Inteligência IA",
     icon: Brain,
     items: [
-      { label: "Insights Estratégicos", icon: Brain, to: "/dashboard/ai-insights", badge: "ai" },
       { label: "Narrativas", icon: Sparkles, to: "/dashboard/narrative-recommendations", badge: "ai" },
       { label: "Repercussão", icon: MessagesSquare, to: "/dashboard/event-repercussion" },
       { label: "Comparação Histórica", icon: GitCompareArrows, to: "/dashboard/historical-comparison", badge: "ai" },
