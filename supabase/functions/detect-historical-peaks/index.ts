@@ -14,12 +14,20 @@ const corsHeaders = {
 
 type TimelinePoint = { date: string; count: number; isPeak?: boolean };
 
+// Apenas termos de ALTA RELEVÂNCIA POLÍTICA. Comícios, agendas, visitas, caminhadas,
+// reuniões partidárias e encontros locais foram removidos por orientação do produto.
 const EVENT_TERMS = [
-  "eleição", "debate", "entrevista", "discurso", "coletiva", "posse", "decisão judicial", "STF", "TSE",
-  "CPI", "operação policial", "votação", "Congresso", "Senado", "Câmara", "campanha", "segundo turno",
-  "primeiro turno", "julgamento", "pronunciamento", "comício", "sabatina", "BRICS", "governo", "ministério",
-  "agenda", "reunião", "ato de governo", "investigação", "indiciamento", "cassação", "inelegibilidade",
+  "eleição", "debate presidencial", "decisão judicial", "STF", "TSE", "CPI",
+  "operação policial", "operação da PF", "votação", "Congresso", "Senado", "Câmara",
+  "segundo turno", "primeiro turno", "julgamento", "impeachment", "cassação",
+  "inelegibilidade", "investigação", "indiciamento", "denúncia", "escândalo",
+  "prisão", "absolvição", "condenação", "sanção presidencial", "veto presidencial",
+  "mudança ministerial", "posse presidencial", "crise política", "pronunciamento oficial",
 ];
+
+// Tipos de evento bloqueados — não são "picos" de repercussão política nacional.
+const BLOCKED_EVENT_TYPES = /^(comicio|caminhada|agenda|visita|reuniao|reuniao_partidaria|encontro|encontro_apoiadores|ato_campanha|panfletagem|carreata|evento_local|inauguracao)$/i;
+const BLOCKED_NAME_TERMS = /\b(comicio|comício|caminhada|carreata|panfletagem|reunião partidária|reuniao partidaria|encontro com apoiador|visita de rotina|inauguração local|inauguracao local|evento em |comício em|comicio em)\b/i;
 
 function cleanText(value: unknown): string {
   let s = String(value || "");
@@ -54,6 +62,15 @@ function cleanText(value: unknown): string {
        .replace(/\s+([.,;:!?])/g, "$1")
        .trim();
   return s;
+}
+
+// Corta texto sem quebrar palavras (evita "presenç", "seguranç", "corrupçã").
+function safeSlice(value: string, max: number): string {
+  if (!value) return "";
+  if (value.length <= max) return value;
+  const cut = value.slice(0, max);
+  const lastSpace = cut.lastIndexOf(" ");
+  return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).replace(/[\s,;.:!?-]+$/g, "") + "…";
 }
 
 function decodeXmlValue(value: unknown): string {
@@ -412,31 +429,33 @@ async function discoverKnownEvents(
   startShort: string,
   endShort: string,
 ): Promise<DiscoveredEvent[]> {
-  const prompt = `Você é historiador político brasileiro. Liste TODOS os acontecimentos políticos REAIS e DOCUMENTADOS envolvendo ${candidateName}${party ? ` (${party})` : ""} entre ${startShort} e ${endShort}.
+  const prompt = `Você é historiador político brasileiro. Liste APENAS acontecimentos políticos REAIS e DOCUMENTADOS de ALTA RELEVÂNCIA NACIONAL envolvendo ${candidateName}${party ? ` (${party})` : ""} entre ${startShort} e ${endShort}.
 
-Inclua, quando aplicável:
-- eleições (1º turno, 2º turno, registro, impugnação, posse)
-- debates televisivos e sabatinas
-- julgamentos, decisões do STF/TSE, habeas corpus, condenações, prisões, soltura
+INCLUIR (somente fatos com repercussão nacional documentada):
+- eleições (1º/2º turno, registro, impugnação, posse), debates presidenciais
+- julgamentos, decisões do STF/TSE, habeas corpus, condenações, prisões, soltura, absolvições
 - CPIs, depoimentos, votações importantes no Congresso
-- operações policiais (Lava Jato, PF, MP)
-- impeachment, pedaladas fiscais, afastamento
-- discursos históricos, pronunciamentos oficiais, coletivas
-- entrevistas de grande repercussão (Jornal Nacional, Roda Viva, etc.)
-- viagens oficiais, cúpulas (BRICS, G20, ONU), reuniões bilaterais
-- atos de governo (medidas provisórias, vetos, sanções)
-- polêmicas e crises políticas
-- substituições de candidatura, alianças, federações
+- operações policiais (Lava Jato, PF, MP), denúncias, indiciamentos, escândalos
+- impeachment, cassação, inelegibilidade, afastamento
+- sanção/veto presidencial, mudanças ministeriais, crises políticas nacionais
+- pronunciamentos oficiais e entrevistas com forte repercussão nacional (JN, Roda Viva)
 
-Use seu conhecimento histórico, mas inclua apenas eventos com confirmação histórica em múltiplas fontes confiáveis e coerência temporal. NÃO invente. Se não houver acontecimento, retorne lista vazia.
-Liste o MÁXIMO possível (mire em 25-40 eventos quando o período cobrir uma eleição ou mandato).
+PROIBIDO (não incluir em hipótese alguma):
+- comícios, caminhadas, carreatas, panfletagem, atos de campanha
+- agendas de campanha, visitas de rotina, inaugurações locais
+- reuniões partidárias, encontros com apoiadores
+- eventos municipais/estaduais sem repercussão nacional
+- entrevistas locais sem repercussão nacional
+
+Use APENAS conhecimento histórico confirmado em múltiplas fontes confiáveis. NÃO invente.
+Mire em 25-40 eventos quando o período cobrir eleição ou mandato.
 
 Responda APENAS JSON válido:
 {
   "events": [
     {
       "name": "nome factual e específico (ex.: 'Prisão de Lula em Curitiba')",
-      "type": "eleicao|debate|entrevista|discurso|coletiva|decisao_judicial|cpi|operacao|votacao|agenda|impeachment|posse|julgamento|prisao|noticia",
+      "type": "eleicao|debate|decisao_judicial|cpi|operacao|votacao|impeachment|posse|julgamento|prisao|cassacao|denuncia|condenacao|absolvicao|sancao|crise|noticia",
       "start_date": "YYYY-MM-DD",
       "end_date": "YYYY-MM-DD",
       "description": "o que aconteceu (3-5 frases factuais)",
@@ -672,23 +691,24 @@ Responda APENAS JSON válido:
       const counts = countsByClass(evPubs);
       const totalEvidence = evPubs.length;
       // Sentimento exige amostragem mínima de 3 fontes — abaixo disso é estatisticamente irrelevante.
-      const sentimentAvailable = totalEvidence >= 3;
+      const sentimentAvailable = totalEvidence >= 5 && distinctOutlets >= 3;
       const sentiment = sentimentAvailable ? aggregateSentiment(evPubs) : { pos: 0, neg: 0, neu: 0 };
       const score = relevanceFromEvidence(evt, evPubs, 0);
+      const outletNames = Array.from(new Set(evPubs.map((p) => cleanText(p.outlet)).filter(Boolean))).slice(0, 30);
       return {
-        name: cleanText(evt.name).slice(0, 200),
+        name: safeSlice(cleanText(evt.name), 200),
         type: cleanText(evt.type || "noticia"),
         keywords: Array.isArray(evt.keywords) ? evt.keywords.map(cleanText).filter(Boolean).slice(0, 10) : [],
         start_date: day || startShort,
         end_date: String(evt.end_date || day || startShort).slice(0, 10),
-        description: cleanText(evt.description).slice(0, 800),
-        motivo: cleanText(evt.motivo).slice(0, 400),
-        what_happened: cleanText(evt.what_happened).slice(0, 1200),
-        why_happened: cleanText(evt.why_happened).slice(0, 1200),
+        description: safeSlice(cleanText(evt.description), 800),
+        motivo: safeSlice(cleanText(evt.motivo), 400),
+        what_happened: safeSlice(cleanText(evt.what_happened), 1200),
+        why_happened: safeSlice(cleanText(evt.why_happened), 1200),
         participants: Array.isArray(evt.participants) ? evt.participants.map(cleanText).filter(Boolean).slice(0, 12) : [],
-        political_impact: cleanText(evt.political_impact).slice(0, 1000),
-        electoral_impact: cleanText(evt.electoral_impact).slice(0, 1000),
-        aftermath: cleanText(evt.aftermath).slice(0, 1200),
+        political_impact: safeSlice(cleanText(evt.political_impact), 1000),
+        electoral_impact: safeSlice(cleanText(evt.electoral_impact), 1000),
+        aftermath: safeSlice(cleanText(evt.aftermath), 1200),
         evidence_level: "cobertura_coletada",
         relevance_score: Math.round(score),
         publications_count: totalEvidence,
@@ -697,13 +717,13 @@ Responda APENAS JSON válido:
         news_count: counts.news,
         videos_count: counts.videos,
         posts_count: counts.posts,
-        // Não inventar volume — exibimos apenas evidências reais. Frontend mostra "Citações indisponíveis."
         estimated_volume: 0,
         volume_available: false,
         sentiment_available: sentimentAvailable,
         sentiment_positive: sentiment.pos,
         sentiment_negative: sentiment.neg,
         sentiment_neutral: sentiment.neu,
+        outlet_names: outletNames,
         sources: evPubs.map((p) => ({ name: p.outlet, url: p.url, region: p.outletRegion, publishedAt: p.publishedAt || null, title: cleanText(p.title), kind: classifyPub(p) })),
       };
     }).filter((evt: any) => {
@@ -711,8 +731,11 @@ Responda APENAS JSON válido:
       if (Number.isNaN(eventDate)) return false;
       if (eventDate < start.getTime() - 86400000 || eventDate > end.getTime() + 86400000) return false;
       if (!evt.name || !evt.description) return false;
-      // Regra dura: o pico só existe se houve repercussão real.
-      // 3 notícias OU 2 notícias + vídeo OU 2 notícias + post OU 10 evidências totais, sempre com ≥2 veículos.
+      // Bloqueia eventos de campanha rotineira (comício, agenda, visita etc.).
+      const normType = normalize(String(evt.type || "")).replace(/[^a-z_]/g, "");
+      if (BLOCKED_EVENT_TYPES.test(normType)) return false;
+      if (BLOCKED_NAME_TERMS.test(evt.name)) return false;
+      // Pico só existe com repercussão real.
       return meetsCoverageThreshold(
         { news: evt.news_count, videos: evt.videos_count, posts: evt.posts_count },
         evt.publications_count,

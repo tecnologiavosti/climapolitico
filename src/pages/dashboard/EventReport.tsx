@@ -12,9 +12,8 @@ import {
   Landmark, Vote, Gavel, Mic, Users, TrendingUp, Video, MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
-import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
-} from "recharts";
+
+
 
 
 interface HistoricalEvent {
@@ -46,6 +45,7 @@ interface HistoricalEvent {
   sentiment_negative: number;
   sentiment_neutral: number;
   sources_count?: number;
+  outlet_names?: string[];
 }
 
 interface ExternalTimelinePoint {
@@ -126,7 +126,7 @@ export default function EventReport() {
   });
 
   const events = useMemo(() => data?.events || [], [data]);
-  const timeline = useMemo(() => data?.external_timeline || [], [data]);
+  // timeline retornado pelo backend não é exibido — foco em eventos relevantes.
 
   const handleSearch = () => {
     if (!candidateId) { toast.error("Selecione um candidato"); return; }
@@ -143,14 +143,14 @@ export default function EventReport() {
           <TrendingUp className="h-7 w-7 text-primary" /> Picos de Menções
         </h1>
         <p className="text-muted-foreground text-sm">
-          Detecção de picos a partir do volume real coletado na internet — notícias, vídeos e posts em Google News, YouTube, TikTok, X, Facebook, Instagram, Telegram, Bluesky, portais e sites governamentais. Sem dependência de registros internos.
+          Inteligência política histórica. Detecta apenas acontecimentos com repercussão nacional documentada — crises, escândalos, operações, decisões do STF, CPIs, julgamentos, prisões, impeachments, eleições e debates. Comícios, agendas e visitas de rotina são automaticamente descartados.
         </p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Pesquisar picos</CardTitle>
-          <CardDescription>Escolha o candidato e o período. Os picos são calculados a partir do volume externo encontrado nas fontes coletadas.</CardDescription>
+          <CardDescription>Escolha o candidato e o período. A relevância é calculada a partir da diversidade de veículos, da duração da repercussão e do impacto político.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -204,33 +204,7 @@ export default function EventReport() {
         </CardContent></Card>
       ) : null}
 
-      {timeline.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2"><TrendingUp className="h-5 w-5 text-primary" /> Volume externo agregado</CardTitle>
-            <CardDescription>Publicações encontradas por dia em fontes externas — notícias, vídeos e posts.</CardDescription>
-          </CardHeader>
-          <CardContent className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={timeline}>
-                <defs>
-                  <linearGradient id="gNews" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.7} />
-                    <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.05} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", fontSize: 12 }} />
-                <Area type="monotone" dataKey="news" stackId="1" stroke="hsl(var(--primary))" fill="url(#gNews)" name="Notícias" />
-                <Area type="monotone" dataKey="videos" stackId="1" stroke="#ef4444" fill="#ef4444" fillOpacity={0.35} name="Vídeos" />
-                <Area type="monotone" dataKey="posts" stackId="1" stroke="#22c55e" fill="#22c55e" fillOpacity={0.35} name="Posts" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      ) : null}
+      {/* Linha do tempo agregada removida — exibimos apenas acontecimentos com relevância política comprovada. */}
 
       {events.length > 0 ? (
         <div className="space-y-3">
@@ -312,6 +286,17 @@ export default function EventReport() {
                   <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
                     Cobertura detectada em <span className="font-semibold text-foreground">{ev.distinct_outlets}</span> veículo{ev.distinct_outlets === 1 ? "" : "s"} · <span className="font-semibold text-foreground">{ev.publications_count}</span> evidência{ev.publications_count === 1 ? "" : "s"} externa{ev.publications_count === 1 ? "" : "s"}.
                   </div>
+
+                  {ev.outlet_names && ev.outlet_names.length > 0 ? (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Veículos que repercutiram</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {ev.outlet_names.map((o, i) => (
+                          <Badge key={`${key}-out-${i}`} variant="outline" className="font-normal">{o}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
 
                   <Button variant="ghost" size="sm" className="gap-2"
                     onClick={() => setExpanded((p) => ({ ...p, [key]: !p[key] }))}>
