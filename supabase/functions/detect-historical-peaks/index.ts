@@ -349,10 +349,13 @@ serve(async (req) => {
     const prompt = `Você é um analista político histórico brasileiro. Descubra MÚLTIPLOS acontecimentos políticos reais de ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ""} entre ${startShort} e ${endShort}.
 
 CRITÉRIOS OBRIGATÓRIOS:
+- A fonte primária é EXTERNA: notícias, registros oficiais, entrevistas, debates, discursos, decisões, votações, CPIs, atos de governo ou redes oficiais.
+- Primeiro identifique acontecimentos reais documentados; só depois use sinais internos como correlação secundária.
+- É PROIBIDO criar evento com 0 fontes, 0 notícias, 0 evidências ou 0 registros externos.
 - Só crie evento se houver fato político identificável: notícia, vídeo, entrevista, debate, discurso, coletiva, decisão judicial, eleição, CPI, operação policial, votação ou acontecimento nacional.
 - Não crie evento baseado apenas em 3, 4, 5 ou 10 menções sem fonte externa.
-- O ranking deve priorizar relevância histórica/documental, não volume bruto.
-- Explique o que aconteceu, por que aconteceu, quem repercutiu, veículos envolvidos e redes que impulsionaram quando houver sinal interno.
+- O ranking deve priorizar veículos distintos, repercussão nacional, duração da cobertura, impacto político e engajamento público; nunca volume bruto interno.
+- Explique o que aconteceu, por que aconteceu, quem repercutiu, veículos envolvidos, impacto político e impacto eleitoral.
 - Se uma fonte não provar um evento, ignore.
 
 SINAIS INTERNOS DE CRESCIMENTO:
@@ -397,18 +400,15 @@ Responda APENAS JSON válido:
       console.error("[detect-historical-peaks] AI failed", (error as Error).message);
     }
 
+    const candidateEvents = Array.isArray(parsed?.events) && parsed.events.length > 0 ? parsed.events : fallbackEventsFromSources(pubs, start, end);
     const localByDate = new Map((Array.isArray(localTimeline) ? localTimeline : []).map((p: TimelinePoint) => [p.date, p]));
-    const events = (Array.isArray(parsed?.events) ? parsed.events : []).map((evt: any) => {
-      const sourceIndices = Array.isArray(evt.sourceIndices) ? evt.sourceIndices.map((n: any) => Number(n) - 1).filter((n: number) => n >= 0 && n < pubs.length) : [];
-      const evPubs = sourceIndices.map((i: number) => pubs[i]).filter(Boolean);
+    const events = candidateEvents.map((evt: any) => {
+      const evPubs = matchedSources(evt, pubs, start, end);
       const distinctOutlets = new Set(evPubs.map((p) => normalize(p.outlet))).size;
       const day = String(evt.start_date || "").slice(0, 10);
       const local = localByDate.get(day) as any;
       const mentions = Math.max(Number(evt.mentions_estimate || 0), Number(local?.count || 0));
-      const score = Math.max(0, Math.min(100, Number(evt.relevance_score || 0)))
-        + Math.min(20, distinctOutlets * 4)
-        + Math.min(15, evPubs.length * 2)
-        + Math.min(10, mentions / 10);
+      const score = relevanceFromEvidence(evt, evPubs, mentions);
       return {
         name: cleanText(evt.name).slice(0, 180),
         type: cleanText(evt.type || "noticia"),
@@ -419,8 +419,8 @@ Responda APENAS JSON válido:
         variation_pct: Number(evt.variation_pct || local?.growth || 0),
         description: cleanText(evt.description).slice(0, 700),
         motivo: cleanText(evt.motivo).slice(0, 300),
-        confirmed_event: evPubs.length > 0,
-        evidence_level: evPubs.length > 0 ? "evento_documentado" : "volume_relevante",
+        confirmed_event: true,
+        evidence_level: "evento_documentado",
         relevance_score: Math.round(score),
         publications_count: evPubs.length,
         distinct_outlets: distinctOutlets,
@@ -431,8 +431,7 @@ Responda APENAS JSON válido:
     }).filter((evt: any) => {
       const eventDate = new Date(`${evt.start_date}T12:00:00Z`).getTime();
       if (eventDate < start.getTime() - 86400000 || eventDate > end.getTime() + 86400000) return false;
-      if ((evt.mentions_estimate || 0) <= 10 && !evt.confirmed_event) return false;
-      return evt.name && evt.description && (evt.confirmed_event || (evt.mentions_estimate || 0) >= 25);
+      return evt.name && evt.description && (evt.publications_count || 0) >= 1 && (evt.sources?.length || 0) >= 1;
     }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0)).slice(0, 30);
 
     return new Response(JSON.stringify({
