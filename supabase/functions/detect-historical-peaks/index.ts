@@ -116,7 +116,7 @@ function sourceSupportsEvent(pub: ExternalPublication, evt: any, start: Date, en
   if (!isOfficialOrJournalistic(pub)) return false;
   const text = normalize(`${pub.title} ${pub.snippet} ${pub.outlet}`);
   const candidateTokens = normalize(candidateName).split(/\s+/).filter((t) => t.length >= 4 && !["das", "dos", "de", "da", "do"].includes(t));
-  const candidateHit = text.includes(normalize(candidateName)) || candidateTokens.filter((t) => text.includes(t)).length >= Math.min(2, candidateTokens.length);
+  const candidateHit = text.includes(normalize(candidateName)) || (candidateTokens.length > 0 && candidateTokens.filter((t) => text.includes(t)).length >= Math.min(2, candidateTokens.length));
   const terms = supportTermsForEvent(evt, candidateName);
   const hasTerm = terms.length > 0 && terms.some((term) => text.includes(term));
   const hasPoliticalEventTerm = EVENT_TERMS.some((term) => text.includes(normalize(term)));
