@@ -40,7 +40,7 @@ interface HistoricalEvent {
   posts_count: number;
   estimated_volume: number;
   volume_available?: boolean;
-  historical_confirmed?: boolean;
+  sentiment_available?: boolean;
   evidence_level?: string;
   sentiment_positive: number;
   sentiment_negative: number;
