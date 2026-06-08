@@ -287,6 +287,17 @@ export default function EventReport() {
                     Cobertura detectada em <span className="font-semibold text-foreground">{ev.distinct_outlets}</span> veículo{ev.distinct_outlets === 1 ? "" : "s"} · <span className="font-semibold text-foreground">{ev.publications_count}</span> evidência{ev.publications_count === 1 ? "" : "s"} externa{ev.publications_count === 1 ? "" : "s"}.
                   </div>
 
+                  {ev.outlet_names && ev.outlet_names.length > 0 ? (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Veículos que repercutiram</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {ev.outlet_names.map((o, i) => (
+                          <Badge key={`${key}-out-${i}`} variant="outline" className="font-normal">{o}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
                   <Button variant="ghost" size="sm" className="gap-2"
                     onClick={() => setExpanded((p) => ({ ...p, [key]: !p[key] }))}>
                     {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
