@@ -363,14 +363,23 @@ serve(async (req) => {
     }
 
     const contextual = buildContextualQueries(candidate.full_name, 8);
+    const platformQueries = [
+      `"${candidate.full_name}" site:youtube.com`,
+      `"${candidate.full_name}" site:tiktok.com`,
+      `"${candidate.full_name}" (site:twitter.com OR site:x.com)`,
+      `"${candidate.full_name}" site:facebook.com`,
+      `"${candidate.full_name}" site:instagram.com`,
+      `"${candidate.full_name}" site:t.me`,
+      `"${candidate.full_name}" site:bsky.app`,
+    ];
     const queryRoots = Array.from(new Set([
       `"${candidate.full_name}"`,
       ...contextual,
       ...eventYearQueries(candidate.full_name, start, end),
       ...EVENT_TERMS.map((term) => `"${candidate.full_name}" ${term}`),
-    ])).slice(0, days > 370 ? 34 : 22);
+      ...platformQueries,
+    ])).slice(0, days > 370 ? 38 : 26);
 
-    const tbs = days <= 31 ? "qdr:m" : "qdr:y";
     const [googleSettled, gdeltSettled, firecrawlSettled] = await Promise.all([
       Promise.allSettled(queryRoots.map((q) => fetchGoogleHistorical(q, startShort, endShort, 18))),
       Promise.allSettled(queryRoots.slice(0, 14).map((q) => fetchGdeltHistorical(q, start, end, 45))),
