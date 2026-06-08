@@ -64,6 +64,15 @@ function cleanText(value: unknown): string {
   return s;
 }
 
+// Corta texto sem quebrar palavras (evita "presenç", "seguranç", "corrupçã").
+function safeSlice(value: string, max: number): string {
+  if (!value) return "";
+  if (value.length <= max) return value;
+  const cut = value.slice(0, max);
+  const lastSpace = cut.lastIndexOf(" ");
+  return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).replace(/[\s,;.:!?-]+$/g, "") + "…";
+}
+
 function decodeXmlValue(value: unknown): string {
   return String(value || "")
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
