@@ -22,24 +22,38 @@ const EVENT_TERMS = [
 ];
 
 function cleanText(value: unknown): string {
-  return String(value || "")
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<video[\s\S]*?<\/video>/gi, " ")
-    .replace(/<source[^>]*>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&#x27;/gi, "'")
-    .replace(/https?:\/\/\S+/gi, " ")
-    .replace(/\b(src|href|class|target|rel|nofollow|width|height|type)=\S+/gi, " ")
-    .replace(/[{}<>]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  let s = String(value || "");
+  // strip CDATA + dangerous blocks first
+  s = s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+       .replace(/<script[\s\S]*?<\/script>/gi, " ")
+       .replace(/<style[\s\S]*?<\/style>/gi, " ")
+       .replace(/<video[\s\S]*?<\/video>/gi, " ")
+       .replace(/<source[^>]*>/gi, " ");
+  // remove all real and "broken" HTML tags (with or without angle brackets)
+  // ex: "a Luiz Fux ... /a", "font color=#xxx", "/font", "div", "/p"
+  s = s.replace(/<\/?[a-z][a-z0-9]*(\s[^>]*)?>/gi, " ")
+       .replace(/\b\/?(a|p|div|span|br|hr|img|font|table|tr|td|th|ul|ol|li|h[1-6]|strong|em|b|i|u|small|nav|header|footer|section|article|figure|figcaption|iframe|object|embed|param|video|audio|source|picture|svg|path|style|script|meta|link|head|body|html|title|form|input|button|select|option|label|fieldset|legend|tbody|thead|tfoot|caption|colgroup|col|pre|code|kbd|samp|var|cite|dfn|abbr|acronym|sub|sup|q|s|del|ins|mark|ruby|rt|rp|bdi|bdo|wbr|details|summary|dialog|menu|menuitem|template|slot)\b\s*\/?\s*(?=\s|$|[.,;:!?])/gi, " ")
+       .replace(/\b(?:font|a|p|div|span|img|iframe|table|tr|td|th)\s+[a-z\-]+=("[^"]*"|'[^']*'|\S+)/gi, " ")
+       .replace(/\b(?:href|src|class|target|rel|nofollow|width|height|type|color|style|align|bgcolor|border|cellpadding|cellspacing|colspan|rowspan|valign)\s*=\s*("[^"]*"|'[^']*'|\S+)/gi, " ");
+  // HTML entities
+  s = s.replace(/&nbsp;/gi, " ")
+       .replace(/&amp;/gi, "&")
+       .replace(/&lt;/gi, "<")
+       .replace(/&gt;/gi, ">")
+       .replace(/&quot;/gi, '"')
+       .replace(/&#39;|&#x27;/gi, "'")
+       .replace(/&[a-z]+;/gi, " ")
+       .replace(/&#\d+;/g, " ");
+  // strip URLs and stray markup characters
+  s = s.replace(/https?:\/\/\S+/gi, " ")
+       .replace(/\[[^\]]*\]\([^)]*\)/g, " ") // markdown links
+       .replace(/[{}<>]/g, " ")
+       .replace(/[*_`~]{2,}/g, " ")
+       .replace(/^\s*[-*•]\s+/gm, "")
+       .replace(/\s{2,}/g, " ")
+       .replace(/\s+([.,;:!?])/g, "$1")
+       .trim();
+  return s;
 }
 
 function decodeXmlValue(value: unknown): string {
