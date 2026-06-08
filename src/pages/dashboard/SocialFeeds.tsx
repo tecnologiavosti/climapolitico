@@ -173,7 +173,7 @@ function NetworkFeed({ network }: { network: NetworkConfig }) {
       let query = supabase
         .from("social_interactions")
         .select(
-          "id, candidate_id, comment_text, comment_author, author_profile_url, original_posted_at, collected_at, sentiment_label, social_network, likes_count, replies_count, shares_count",
+          "id, candidate_id, comment_text, comment_author, author_profile_url, original_posted_at, collected_at, sentiment_label, social_network, likes_count, replies_count, shares_count, post_url, post_id, external_id, author_handle, platform",
           { count: "exact" }
         )
         .in("social_network", network.match)
