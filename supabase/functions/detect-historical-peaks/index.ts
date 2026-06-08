@@ -429,31 +429,33 @@ async function discoverKnownEvents(
   startShort: string,
   endShort: string,
 ): Promise<DiscoveredEvent[]> {
-  const prompt = `Você é historiador político brasileiro. Liste TODOS os acontecimentos políticos REAIS e DOCUMENTADOS envolvendo ${candidateName}${party ? ` (${party})` : ""} entre ${startShort} e ${endShort}.
+  const prompt = `Você é historiador político brasileiro. Liste APENAS acontecimentos políticos REAIS e DOCUMENTADOS de ALTA RELEVÂNCIA NACIONAL envolvendo ${candidateName}${party ? ` (${party})` : ""} entre ${startShort} e ${endShort}.
 
-Inclua, quando aplicável:
-- eleições (1º turno, 2º turno, registro, impugnação, posse)
-- debates televisivos e sabatinas
-- julgamentos, decisões do STF/TSE, habeas corpus, condenações, prisões, soltura
+INCLUIR (somente fatos com repercussão nacional documentada):
+- eleições (1º/2º turno, registro, impugnação, posse), debates presidenciais
+- julgamentos, decisões do STF/TSE, habeas corpus, condenações, prisões, soltura, absolvições
 - CPIs, depoimentos, votações importantes no Congresso
-- operações policiais (Lava Jato, PF, MP)
-- impeachment, pedaladas fiscais, afastamento
-- discursos históricos, pronunciamentos oficiais, coletivas
-- entrevistas de grande repercussão (Jornal Nacional, Roda Viva, etc.)
-- viagens oficiais, cúpulas (BRICS, G20, ONU), reuniões bilaterais
-- atos de governo (medidas provisórias, vetos, sanções)
-- polêmicas e crises políticas
-- substituições de candidatura, alianças, federações
+- operações policiais (Lava Jato, PF, MP), denúncias, indiciamentos, escândalos
+- impeachment, cassação, inelegibilidade, afastamento
+- sanção/veto presidencial, mudanças ministeriais, crises políticas nacionais
+- pronunciamentos oficiais e entrevistas com forte repercussão nacional (JN, Roda Viva)
 
-Use seu conhecimento histórico, mas inclua apenas eventos com confirmação histórica em múltiplas fontes confiáveis e coerência temporal. NÃO invente. Se não houver acontecimento, retorne lista vazia.
-Liste o MÁXIMO possível (mire em 25-40 eventos quando o período cobrir uma eleição ou mandato).
+PROIBIDO (não incluir em hipótese alguma):
+- comícios, caminhadas, carreatas, panfletagem, atos de campanha
+- agendas de campanha, visitas de rotina, inaugurações locais
+- reuniões partidárias, encontros com apoiadores
+- eventos municipais/estaduais sem repercussão nacional
+- entrevistas locais sem repercussão nacional
+
+Use APENAS conhecimento histórico confirmado em múltiplas fontes confiáveis. NÃO invente.
+Mire em 25-40 eventos quando o período cobrir eleição ou mandato.
 
 Responda APENAS JSON válido:
 {
   "events": [
     {
       "name": "nome factual e específico (ex.: 'Prisão de Lula em Curitiba')",
-      "type": "eleicao|debate|entrevista|discurso|coletiva|decisao_judicial|cpi|operacao|votacao|agenda|impeachment|posse|julgamento|prisao|noticia",
+      "type": "eleicao|debate|decisao_judicial|cpi|operacao|votacao|impeachment|posse|julgamento|prisao|cassacao|denuncia|condenacao|absolvicao|sancao|crise|noticia",
       "start_date": "YYYY-MM-DD",
       "end_date": "YYYY-MM-DD",
       "description": "o que aconteceu (3-5 frases factuais)",
