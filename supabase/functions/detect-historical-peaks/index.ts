@@ -689,23 +689,24 @@ Responda APENAS JSON válido:
       const counts = countsByClass(evPubs);
       const totalEvidence = evPubs.length;
       // Sentimento exige amostragem mínima de 3 fontes — abaixo disso é estatisticamente irrelevante.
-      const sentimentAvailable = totalEvidence >= 3;
+      const sentimentAvailable = totalEvidence >= 5 && distinctOutlets >= 3;
       const sentiment = sentimentAvailable ? aggregateSentiment(evPubs) : { pos: 0, neg: 0, neu: 0 };
       const score = relevanceFromEvidence(evt, evPubs, 0);
+      const outletNames = Array.from(new Set(evPubs.map((p) => cleanText(p.outlet)).filter(Boolean))).slice(0, 30);
       return {
-        name: cleanText(evt.name).slice(0, 200),
+        name: safeSlice(cleanText(evt.name), 200),
         type: cleanText(evt.type || "noticia"),
         keywords: Array.isArray(evt.keywords) ? evt.keywords.map(cleanText).filter(Boolean).slice(0, 10) : [],
         start_date: day || startShort,
         end_date: String(evt.end_date || day || startShort).slice(0, 10),
-        description: cleanText(evt.description).slice(0, 800),
-        motivo: cleanText(evt.motivo).slice(0, 400),
-        what_happened: cleanText(evt.what_happened).slice(0, 1200),
-        why_happened: cleanText(evt.why_happened).slice(0, 1200),
+        description: safeSlice(cleanText(evt.description), 800),
+        motivo: safeSlice(cleanText(evt.motivo), 400),
+        what_happened: safeSlice(cleanText(evt.what_happened), 1200),
+        why_happened: safeSlice(cleanText(evt.why_happened), 1200),
         participants: Array.isArray(evt.participants) ? evt.participants.map(cleanText).filter(Boolean).slice(0, 12) : [],
-        political_impact: cleanText(evt.political_impact).slice(0, 1000),
-        electoral_impact: cleanText(evt.electoral_impact).slice(0, 1000),
-        aftermath: cleanText(evt.aftermath).slice(0, 1200),
+        political_impact: safeSlice(cleanText(evt.political_impact), 1000),
+        electoral_impact: safeSlice(cleanText(evt.electoral_impact), 1000),
+        aftermath: safeSlice(cleanText(evt.aftermath), 1200),
         evidence_level: "cobertura_coletada",
         relevance_score: Math.round(score),
         publications_count: totalEvidence,
@@ -714,13 +715,13 @@ Responda APENAS JSON válido:
         news_count: counts.news,
         videos_count: counts.videos,
         posts_count: counts.posts,
-        // Não inventar volume — exibimos apenas evidências reais. Frontend mostra "Citações indisponíveis."
         estimated_volume: 0,
         volume_available: false,
         sentiment_available: sentimentAvailable,
         sentiment_positive: sentiment.pos,
         sentiment_negative: sentiment.neg,
         sentiment_neutral: sentiment.neu,
+        outlet_names: outletNames,
         sources: evPubs.map((p) => ({ name: p.outlet, url: p.url, region: p.outletRegion, publishedAt: p.publishedAt || null, title: cleanText(p.title), kind: classifyPub(p) })),
       };
     }).filter((evt: any) => {
@@ -728,8 +729,11 @@ Responda APENAS JSON válido:
       if (Number.isNaN(eventDate)) return false;
       if (eventDate < start.getTime() - 86400000 || eventDate > end.getTime() + 86400000) return false;
       if (!evt.name || !evt.description) return false;
-      // Regra dura: o pico só existe se houve repercussão real.
-      // 3 notícias OU 2 notícias + vídeo OU 2 notícias + post OU 10 evidências totais, sempre com ≥2 veículos.
+      // Bloqueia eventos de campanha rotineira (comício, agenda, visita etc.).
+      const normType = normalize(String(evt.type || "")).replace(/[^a-z_]/g, "");
+      if (BLOCKED_EVENT_TYPES.test(normType)) return false;
+      if (BLOCKED_NAME_TERMS.test(evt.name)) return false;
+      // Pico só existe com repercussão real.
       return meetsCoverageThreshold(
         { news: evt.news_count, videos: evt.videos_count, posts: evt.posts_count },
         evt.publications_count,
