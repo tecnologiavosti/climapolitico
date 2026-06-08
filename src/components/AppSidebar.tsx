@@ -88,6 +88,7 @@ const groups: NavGroup[] = [
     defaultOpen: true,
     items: [
       { title: "Adicionar Candidato", url: "/dashboard/candidates-catalog", icon: UserPlus, tip: "Escolha candidatos prontos no catálogo e adicione na sua conta." },
+      { title: "Catálogo de Candidatos", url: "/dashboard/candidates-catalog", icon: BookUser, tip: "Candidatos prontos para adicionar." },
       { title: "Meus Candidatos", url: "/dashboard/candidates", icon: Users, tip: "Gerencie os candidatos que você está monitorando." },
     ],
   },
