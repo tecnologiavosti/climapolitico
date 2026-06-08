@@ -430,13 +430,12 @@ const EventReportPage = () => {
       if (aiError) throw aiError;
       aiEvents = Array.isArray(aiDetected?.events) ? aiDetected.events as DetectedEvent[] : [];
     } catch (error) {
-      console.warn('Detecção histórica por IA indisponível, mantendo sinais internos qualificados.', error);
+      console.warn('Detecção histórica externa indisponível; nenhum pico interno será promovido a evento.', error);
     }
-    const merged = [...aiEvents, ...localDetection.events]
+    const merged = aiEvents
       .filter((evt) => {
         const hasExternalEvidence = (evt.publications_count || 0) > 0 || (evt.sources?.length || 0) > 0 || evt.confirmed_event;
-        if ((evt.mentions_estimate || 0) <= 10 && !hasExternalEvidence) return false;
-        return hasExternalEvidence || (evt.mentions_estimate || 0) >= MIN_SOCIAL_ONLY_PEAK_VOLUME;
+        return hasExternalEvidence && (evt.sources?.length || 0) > 0 && (evt.publications_count || 0) > 0;
       })
       .sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0))
       .slice(0, 30);
@@ -494,12 +493,12 @@ const EventReportPage = () => {
         const formatted = evt.start_date.split('-').reverse().join('/');
         const v = evt.variation_pct ?? 0;
         const sign = v >= 0 ? '+' : '';
-        const tag = evt.confirmed_event ? 'Evento político documentado' : evt.evidence_level === 'crescimento_com_indicios' ? 'Crescimento com evidências' : 'Volume historicamente relevante';
+        const tag = 'Evento político documentado';
         return {
           ...evt,
-          description: evt.confirmed_event && evt.description
+          description: evt.description
             ? evt.description
-            : `${tag} em ${formatted} — ${evt.mentions_estimate} registros analisados (${sign}${v}% vs. média anterior).`,
+            : `${tag} em ${formatted} — validado por ${evt.publications_count || evt.sources?.length || 0} fonte(s) externa(s).`,
         };
       }).sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0));
       setDetectedEvents(refined);
@@ -526,6 +525,10 @@ const EventReportPage = () => {
   const handleGenerate = async (forcedEvent?: DetectedEvent) => {
     if (!selectedCandidate) { toast.error("Selecione um candidato"); return; }
     const evt = forcedEvent || (selectedEventIdx ? detectedEvents[Number(selectedEventIdx)] : null);
+    if (!evt || !evt.confirmed_event || !evt.sources?.length) {
+      toast.error("Detecte e selecione um acontecimento com evidência externa antes de gerar o relatório.");
+      return;
+    }
     const reportStartDate = evt?.start_date || startDate;
     const reportEndDate = evt?.end_date || endDate;
     if (!reportStartDate || !reportEndDate) { toast.error("Defina o período do evento"); return; }
