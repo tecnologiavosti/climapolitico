@@ -62,6 +62,7 @@ const sections: Section[] = [
     icon: UserPlus,
     items: [
       { label: "Adicionar Candidato", icon: UserPlus, to: "/dashboard/candidates-catalog" },
+      { label: "Catálogo de Candidatos", icon: BookUser, to: "/dashboard/candidates-catalog" },
       { label: "Meus Candidatos", icon: Users, to: "/dashboard/candidates" },
     ],
   },
@@ -91,7 +92,6 @@ const sections: Section[] = [
     title: "Inteligência IA",
     icon: Brain,
     items: [
-      { label: "Insights Estratégicos", icon: Brain, to: "/dashboard/ai-insights", badge: "ai" },
       { label: "Narrativas", icon: Sparkles, to: "/dashboard/narrative-recommendations", badge: "ai" },
       { label: "Repercussão", icon: MessagesSquare, to: "/dashboard/event-repercussion" },
       { label: "Comparação Histórica", icon: GitCompareArrows, to: "/dashboard/historical-comparison", badge: "ai" },
@@ -107,7 +107,6 @@ const sections: Section[] = [
       { label: "Ranking", icon: Trophy, to: "/dashboard/ranking" },
       { label: "Por Rede Social", icon: Network, to: "/dashboard/network-view" },
       { label: "Feeds", icon: Rss, to: "/dashboard/social-feeds" },
-      { label: "Catálogo", icon: BookUser, to: "/dashboard/candidates-catalog" },
       { label: "Coleta", icon: Database, to: "/dashboard/collection-status" },
     ],
   },
