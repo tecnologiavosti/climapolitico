@@ -80,7 +80,7 @@ export default function LinkedInFeed() {
       let query = supabase
         .from("social_interactions")
         .select(
-          "id, candidate_id, comment_text, comment_author, author_profile_url, original_posted_at, collected_at, sentiment_label",
+          "id, candidate_id, comment_text, comment_author, author_profile_url, original_posted_at, collected_at, sentiment_label, post_url, post_id, external_id, author_handle, platform",
           { count: "exact" }
         )
         .eq("social_network", "linkedin")
