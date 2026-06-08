@@ -561,7 +561,7 @@ async function fetchSnapshot(
       author: r.author_name || r.comment_author || r.author_handle || "Autor desconhecido",
       network: r.social_network,
       engagement: isNewsNetwork(r.social_network, r.platform, r.interaction_type) ? Math.max(1, r.engagement_score || 1) : (r.likes_count || 0) + (r.shares_count || 0) + (r.replies_count || 0),
-      url: r.post_url || null,
+      url: resolveOriginalPostUrl(r),
       sentiment: r.sentiment_label || null,
       createdAt: effectiveDateOf(r).toISOString(),
       _score: scoreById.get(r.id) || 0,
