@@ -374,16 +374,20 @@ Responda APENAS JSON válido:
   "events": [
     {
       "name": "nome factual do acontecimento",
-      "type": "eleicao|debate|entrevista|discurso|coletiva|decisao_judicial|cpi|operacao|votacao|agenda|noticia|repercussao_social_evidenciada",
+      "type": "eleicao|debate|entrevista|discurso|coletiva|decisao_judicial|cpi|operacao|votacao|agenda|noticia",
       "start_date": "YYYY-MM-DD",
       "end_date": "YYYY-MM-DD",
-      "description": "o que aconteceu e por que importou",
-      "motivo": "por que isso é um pico histórico real",
+      "description": "o que aconteceu (3-5 frases factuais)",
+      "motivo": "por que isso é historicamente relevante",
+      "what_happened": "narrativa detalhada do acontecimento",
+      "why_happened": "contexto e motivações",
+      "participants": ["pessoa/instituição 1", "pessoa/instituição 2"],
+      "political_impact": "impacto institucional e político",
+      "electoral_impact": "impacto eleitoral (se houver)",
+      "aftermath": "desdobramentos posteriores documentados",
       "keywords": ["termo1", "termo2"],
       "sourceIndices": [1,2],
-      "relevance_score": 0,
-      "mentions_estimate": 0,
-      "variation_pct": 0
+      "relevance_score": 0
     }
   ]
 }`;
@@ -406,32 +410,31 @@ Responda APENAS JSON válido:
     }
 
     const candidateEvents = Array.isArray(parsed?.events) && parsed.events.length > 0 ? parsed.events : fallbackEventsFromSources(pubs, start, end);
-    const localByDate = new Map((Array.isArray(localTimeline) ? localTimeline : []).map((p: TimelinePoint) => [p.date, p]));
     const events = candidateEvents.map((evt: any) => {
       const evPubs = matchedSources(evt, pubs, start, end, candidate.full_name);
       const distinctOutlets = new Set(evPubs.map((p) => normalize(p.outlet))).size;
       const day = String(evt.start_date || "").slice(0, 10);
-      const local = localByDate.get(day) as any;
-      const mentions = Math.max(Number(evt.mentions_estimate || 0), Number(local?.count || 0));
-      const score = relevanceFromEvidence(evt, evPubs, mentions);
+      const score = relevanceFromEvidence(evt, evPubs, 0);
       return {
-        name: cleanText(evt.name).slice(0, 180),
+        name: cleanText(evt.name).slice(0, 200),
         type: cleanText(evt.type || "noticia"),
         keywords: Array.isArray(evt.keywords) ? evt.keywords.map(cleanText).filter(Boolean).slice(0, 10) : [],
         start_date: day || startShort,
         end_date: String(evt.end_date || day || startShort).slice(0, 10),
-        mentions_estimate: mentions,
-        variation_pct: Number(evt.variation_pct || local?.growth || 0),
-        description: cleanText(evt.description).slice(0, 700),
-        motivo: cleanText(evt.motivo).slice(0, 300),
-        confirmed_event: true,
+        description: cleanText(evt.description).slice(0, 800),
+        motivo: cleanText(evt.motivo).slice(0, 400),
+        what_happened: cleanText(evt.what_happened).slice(0, 1200),
+        why_happened: cleanText(evt.why_happened).slice(0, 1200),
+        participants: Array.isArray(evt.participants) ? evt.participants.map(cleanText).filter(Boolean).slice(0, 12) : [],
+        political_impact: cleanText(evt.political_impact).slice(0, 1000),
+        electoral_impact: cleanText(evt.electoral_impact).slice(0, 1000),
+        aftermath: cleanText(evt.aftermath).slice(0, 1200),
         evidence_level: "evento_documentado",
         relevance_score: Math.round(score),
         publications_count: evPubs.length,
         distinct_outlets: distinctOutlets,
-        sources: evPubs.map((p) => ({ name: p.outlet, url: p.url, region: p.outletRegion })),
-        source_titles: evPubs.map((p) => p.title).slice(0, 5),
-        topNetworks: [],
+        coverage_days: coverageDurationDays(evPubs),
+        sources: evPubs.map((p) => ({ name: p.outlet, url: p.url, region: p.outletRegion, publishedAt: p.publishedAt || null, title: p.title })),
       };
     }).filter((evt: any) => {
       const eventDate = new Date(`${evt.start_date}T12:00:00Z`).getTime();
