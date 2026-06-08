@@ -57,7 +57,7 @@ const mainItems = [
   { title: "Análise de Rejeição", url: "/dashboard/rejection-analysis", icon: ThumbsDown, tip: "Mostra por que as pessoas estão criticando seu candidato." },
   { title: "Recomendações de Narrativa", url: "/dashboard/narrative-recommendations", icon: Sparkles, tip: "Dicas de fala e postura para o seu candidato, com base no que o povo comenta." },
   { title: "Comparação de Candidatos", url: "/dashboard/candidate-comparison", icon: GitCompareArrows, tip: "Coloque dois ou mais candidatos lado a lado pra ver quem está melhor." },
-  { title: "Eventos Históricos", url: "/dashboard/pico-mencao", icon: Calendar, tip: "Inteligência histórica: pesquise acontecimentos políticos reais documentados pela imprensa em qualquer período (2018, 2022, 2026...)." },
+  { title: "Picos de Menções", url: "/dashboard/pico-mencao", icon: Calendar, tip: "Picos calculados a partir do volume externo coletado em notícias, vídeos e posts (Google News, YouTube, TikTok, X, Facebook, Instagram, Telegram, Bluesky, portais e sites oficiais)." },
   { title: "Monitor Tempo Real", url: "/dashboard/realtime-monitor", icon: Radio, tip: "Acompanhe os comentários chegando ao vivo, na hora em que o povo posta." },
   { title: "Repercussão por Região", url: "/dashboard/event-repercussion", icon: MessagesSquare, tip: "Descubra como eventos políticos (entrevistas, debates, lives) repercutem em cada região do Brasil, com análise de sentimento em tempo real." },
   { title: "Análise Regional", url: "/dashboard/regional-analysis", icon: MapPinned, tip: "Veja como seu candidato performa em cada região do Brasil por rede social." },

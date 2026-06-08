@@ -9,9 +9,12 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   Loader2, CalendarDays, ExternalLink, Newspaper, ChevronDown, ChevronUp,
-  Landmark, Vote, Gavel, Mic, Users, History,
+  Landmark, Vote, Gavel, Mic, Users, TrendingUp, Video, MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
+} from "recharts";
 
 interface HistoricalSource {
   name: string;
@@ -19,6 +22,7 @@ interface HistoricalSource {
   region?: string;
   publishedAt?: string | null;
   title?: string;
+  kind?: "news" | "video" | "post";
 }
 
 interface HistoricalEvent {
@@ -39,12 +43,25 @@ interface HistoricalEvent {
   publications_count: number;
   distinct_outlets: number;
   coverage_days?: number;
+  news_count: number;
+  videos_count: number;
+  posts_count: number;
+  estimated_volume: number;
+  sentiment_positive: number;
+  sentiment_negative: number;
+  sentiment_neutral: number;
   sources: HistoricalSource[];
+}
+
+interface ExternalTimelinePoint {
+  date: string; total: number; news: number; videos: number; posts: number;
 }
 
 interface HistoricalResponse {
   events: HistoricalEvent[];
   publications_collected: number;
+  estimated_reach?: number;
+  external_timeline?: ExternalTimelinePoint[];
 }
 
 const typeIcon: Record<string, JSX.Element> = {
@@ -61,16 +78,15 @@ const typeIcon: Record<string, JSX.Element> = {
   noticia: <Newspaper className="h-4 w-4" />,
 };
 
-function relevanceLabel(score: number): { label: string; cls: string } {
-  if (score >= 80) return { label: "Crítica", cls: "bg-red-500/15 text-red-600 border-red-500/30" };
-  if (score >= 65) return { label: "Alta", cls: "bg-orange-500/15 text-orange-600 border-orange-500/30" };
-  if (score >= 50) return { label: "Média", cls: "bg-amber-500/15 text-amber-600 border-amber-500/30" };
-  return { label: "Moderada", cls: "bg-blue-500/15 text-blue-600 border-blue-500/30" };
-}
-
 function formatDate(date: string): string {
-  try { return new Date(`${date}T12:00:00Z`).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }); }
+  try { return new Date(`${date}T12:00:00Z`).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }); }
   catch { return date; }
+}
+function formatNumber(n: number): string {
+  if (!Number.isFinite(n)) return "0";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
 }
 
 const YEAR_PRESETS = [
@@ -102,7 +118,7 @@ export default function EventReport() {
   });
 
   const { data, isFetching, refetch, error } = useQuery({
-    queryKey: ["historical-events", candidateId, startDate, endDate],
+    queryKey: ["external-peaks", candidateId, startDate, endDate],
     queryFn: async (): Promise<HistoricalResponse> => {
       const { data, error } = await supabase.functions.invoke("detect-historical-peaks", {
         body: { candidateId, startDate, endDate },
@@ -115,14 +131,7 @@ export default function EventReport() {
   });
 
   const events = useMemo(() => data?.events || [], [data]);
-  const timeline = useMemo(() => {
-    const byYear = new Map<number, HistoricalEvent[]>();
-    for (const e of events) {
-      const y = new Date(`${e.start_date}T12:00:00Z`).getFullYear();
-      byYear.set(y, [...(byYear.get(y) || []), e]);
-    }
-    return [...byYear.entries()].sort((a, b) => a[0] - b[0]);
-  }, [events]);
+  const timeline = useMemo(() => data?.external_timeline || [], [data]);
 
   const handleSearch = () => {
     if (!candidateId) { toast.error("Selecione um candidato"); return; }
@@ -136,17 +145,17 @@ export default function EventReport() {
     <div className="space-y-6 p-2 md:p-4">
       <div className="space-y-1">
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-2">
-          <History className="h-7 w-7 text-primary" /> Eventos Históricos
+          <TrendingUp className="h-7 w-7 text-primary" /> Picos de Menções
         </h1>
         <p className="text-muted-foreground text-sm">
-          Inteligência política baseada em fatos documentados pela imprensa, registros oficiais e cobertura jornalística — sem dependência de menções internas.
+          Detecção de picos a partir do volume real coletado na internet — notícias, vídeos e posts em Google News, YouTube, TikTok, X, Facebook, Instagram, Telegram, Bluesky, portais e sites governamentais. Sem dependência de registros internos.
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Pesquisar acontecimentos</CardTitle>
-          <CardDescription>Selecione um candidato e o período histórico. A IA pesquisará os eventos políticos reais que ocorreram no intervalo.</CardDescription>
+          <CardTitle className="text-lg">Pesquisar picos</CardTitle>
+          <CardDescription>Escolha o candidato e o período. Os picos são calculados a partir do volume externo encontrado nas fontes coletadas.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -179,7 +188,7 @@ export default function EventReport() {
             ))}
           </div>
           <Button onClick={handleSearch} disabled={isFetching || !candidateId} className="w-full md:w-auto">
-            {isFetching ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Pesquisando acontecimentos...</> : "Pesquisar eventos históricos"}
+            {isFetching ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Pesquisando volume externo...</> : "Detectar picos"}
           </Button>
           {error ? <p className="text-sm text-destructive">{(error as Error).message}</p> : null}
         </CardContent>
@@ -188,137 +197,173 @@ export default function EventReport() {
       {isFetching ? (
         <Card><CardContent className="py-12 flex flex-col items-center gap-3 text-muted-foreground">
           <Loader2 className="h-8 w-8 animate-spin" />
-          <p className="text-sm">A IA está pesquisando fontes jornalísticas e oficiais...</p>
+          <p className="text-sm">Coletando publicações externas em portais, redes e plataformas de vídeo...</p>
         </CardContent></Card>
       ) : null}
 
       {!isFetching && data && events.length === 0 ? (
         <Card><CardContent className="py-10 text-center text-muted-foreground space-y-2">
           <Newspaper className="h-10 w-10 mx-auto opacity-50" />
-          <p className="font-medium">Nenhum acontecimento documentado encontrado no período.</p>
-          <p className="text-sm">Tente ampliar o intervalo ou selecionar outro candidato. A busca exige cobertura externa real para gerar resultados.</p>
+          <p className="font-medium">Nenhum pico externo identificado no período.</p>
+          <p className="text-sm">Tente ampliar o intervalo ou selecionar outro candidato. A detecção exige volume real em fontes externas.</p>
         </CardContent></Card>
       ) : null}
 
-      {events.length > 0 ? (
+      {timeline.length > 0 ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2"><CalendarDays className="h-5 w-5 text-primary" /> Linha do tempo</CardTitle>
-            <CardDescription>{events.length} acontecimento(s) documentado(s) entre {formatDate(startDate)} e {formatDate(endDate)}.</CardDescription>
+            <CardTitle className="text-lg flex items-center gap-2"><TrendingUp className="h-5 w-5 text-primary" /> Volume externo agregado</CardTitle>
+            <CardDescription>Publicações encontradas por dia em fontes externas — notícias, vídeos e posts.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-8">
-            {timeline.map(([year, list]) => (
-              <div key={year} className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="h-px bg-border flex-1" />
-                  <Badge variant="outline" className="text-base px-3 py-1 font-bold">{year}</Badge>
-                  <div className="h-px bg-border flex-1" />
-                </div>
-                <div className="space-y-3">
-                  {list.sort((a, b) => a.start_date.localeCompare(b.start_date)).map((ev, idx) => {
-                    const key = `${year}-${idx}-${ev.start_date}`;
-                    const isOpen = !!expanded[key];
-                    const rel = relevanceLabel(ev.relevance_score);
-                    const icon = typeIcon[ev.type] || <Newspaper className="h-4 w-4" />;
-                    return (
-                      <Card key={key} className="border-l-4 border-l-primary/40">
-                        <CardHeader className="pb-3">
-                          <div className="flex flex-wrap items-start justify-between gap-2">
-                            <div className="space-y-1 flex-1 min-w-0">
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <CalendarDays className="h-3.5 w-3.5" />
-                                <span>{formatDate(ev.start_date)}{ev.end_date && ev.end_date !== ev.start_date ? ` → ${formatDate(ev.end_date)}` : ""}</span>
-                              </div>
-                              <CardTitle className="text-base md:text-lg leading-snug flex items-start gap-2">
-                                <span className="text-primary mt-0.5">{icon}</span>
-                                <span>{ev.name}</span>
-                              </CardTitle>
-                            </div>
-                            <div className="flex flex-wrap gap-1.5">
-                              <Badge variant="outline" className={rel.cls}>Relevância {rel.label}</Badge>
-                              <Badge variant="secondary">{ev.distinct_outlets} veículo(s)</Badge>
-                              {ev.coverage_days && ev.coverage_days > 1 ? (
-                                <Badge variant="outline">{ev.coverage_days} dias de cobertura</Badge>
-                              ) : null}
-                            </div>
-                          </div>
-                        </CardHeader>
-                        <CardContent className="space-y-3 pt-0">
-                          <p className="text-sm leading-relaxed">{ev.description}</p>
-
-                          {ev.motivo ? (
-                            <p className="text-sm text-muted-foreground italic">{ev.motivo}</p>
-                          ) : null}
-
-                          {ev.sources.length > 0 ? (
-                            <div className="space-y-2">
-                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Veículos que repercutiram</p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {Array.from(new Set(ev.sources.map((s) => s.name))).slice(0, 12).map((name) => (
-                                  <Badge key={name} variant="outline" className="text-[11px]">{name}</Badge>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
-
-                          <Button variant="ghost" size="sm" className="gap-2"
-                            onClick={() => setExpanded((p) => ({ ...p, [key]: !p[key] }))}>
-                            {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                            {isOpen ? "Recolher" : "Ver cobertura completa"}
-                          </Button>
-
-                          {isOpen ? (
-                            <div className="space-y-4 pt-2 border-t">
-                              {ev.what_happened ? (
-                                <Section title="O que aconteceu" body={ev.what_happened} />
-                              ) : null}
-                              {ev.why_happened ? (
-                                <Section title="Por que aconteceu" body={ev.why_happened} />
-                              ) : null}
-                              {ev.participants && ev.participants.length > 0 ? (
-                                <div>
-                                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 flex items-center gap-1.5"><Users className="h-3.5 w-3.5" /> Quem participou</p>
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {ev.participants.map((p, i) => <Badge key={i} variant="secondary">{p}</Badge>)}
-                                  </div>
-                                </div>
-                              ) : null}
-                              {ev.political_impact ? (
-                                <Section title="Consequências políticas" body={ev.political_impact} />
-                              ) : null}
-                              {ev.electoral_impact ? (
-                                <Section title="Consequências eleitorais" body={ev.electoral_impact} />
-                              ) : null}
-                              {ev.aftermath ? (
-                                <Section title="Desdobramentos posteriores" body={ev.aftermath} />
-                              ) : null}
-
-                              <div>
-                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Fontes ({ev.sources.length})</p>
-                                <ul className="space-y-1.5">
-                                  {ev.sources.slice(0, 30).map((s, i) => (
-                                    <li key={i} className="text-sm flex items-start gap-2">
-                                      <ExternalLink className="h-3.5 w-3.5 mt-1 text-muted-foreground flex-shrink-0" />
-                                      <a href={s.url} target="_blank" rel="noreferrer"
-                                        className="hover:underline text-primary line-clamp-2">
-                                        <span className="font-medium">{s.name}</span>
-                                        {s.title ? <span className="text-muted-foreground"> — {s.title}</span> : null}
-                                      </a>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            </div>
-                          ) : null}
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+          <CardContent className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={timeline}>
+                <defs>
+                  <linearGradient id="gNews" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.7} />
+                    <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", fontSize: 12 }} />
+                <Area type="monotone" dataKey="news" stackId="1" stroke="hsl(var(--primary))" fill="url(#gNews)" name="Notícias" />
+                <Area type="monotone" dataKey="videos" stackId="1" stroke="#ef4444" fill="#ef4444" fillOpacity={0.35} name="Vídeos" />
+                <Area type="monotone" dataKey="posts" stackId="1" stroke="#22c55e" fill="#22c55e" fillOpacity={0.35} name="Posts" />
+              </AreaChart>
+            </ResponsiveContainer>
           </CardContent>
         </Card>
+      ) : null}
+
+      {events.length > 0 ? (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold flex items-center gap-2"><TrendingUp className="h-5 w-5 text-primary" /> Picos detectados ({events.length})</h2>
+          {events.sort((a, b) => a.start_date.localeCompare(b.start_date)).map((ev, idx) => {
+            const key = `${idx}-${ev.start_date}`;
+            const isOpen = !!expanded[key];
+            const icon = typeIcon[ev.type] || <Newspaper className="h-4 w-4" />;
+            return (
+              <Card key={key} className="border-l-4 border-l-primary/60">
+                <CardHeader className="pb-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="space-y-1 flex-1 min-w-0">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <CalendarDays className="h-3.5 w-3.5" />
+                        <span>{formatDate(ev.start_date)}{ev.end_date && ev.end_date !== ev.start_date ? ` → ${formatDate(ev.end_date)}` : ""}</span>
+                      </div>
+                      <CardTitle className="text-base md:text-lg leading-snug flex items-start gap-2">
+                        <span className="text-primary mt-0.5">{icon}</span>
+                        <span>{ev.name}</span>
+                      </CardTitle>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4 pt-0">
+                  {/* Volume estimado */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <div className="rounded-md border bg-muted/30 p-3">
+                      <div className="text-[11px] uppercase text-muted-foreground">Repercussão estimada</div>
+                      <div className="text-xl font-bold">{formatNumber(ev.estimated_volume)}</div>
+                      <div className="text-[11px] text-muted-foreground">citações</div>
+                    </div>
+                    <div className="rounded-md border p-3 flex items-start gap-2">
+                      <Newspaper className="h-4 w-4 text-primary mt-0.5" />
+                      <div>
+                        <div className="text-[11px] uppercase text-muted-foreground">Notícias</div>
+                        <div className="text-xl font-bold">{formatNumber(ev.news_count)}</div>
+                      </div>
+                    </div>
+                    <div className="rounded-md border p-3 flex items-start gap-2">
+                      <Video className="h-4 w-4 text-red-500 mt-0.5" />
+                      <div>
+                        <div className="text-[11px] uppercase text-muted-foreground">Vídeos</div>
+                        <div className="text-xl font-bold">{formatNumber(ev.videos_count)}</div>
+                      </div>
+                    </div>
+                    <div className="rounded-md border p-3 flex items-start gap-2">
+                      <MessageSquare className="h-4 w-4 text-green-600 mt-0.5" />
+                      <div>
+                        <div className="text-[11px] uppercase text-muted-foreground">Posts</div>
+                        <div className="text-xl font-bold">{formatNumber(ev.posts_count)}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sentimento agregado */}
+                  <div>
+                    <div className="text-[11px] uppercase text-muted-foreground mb-1.5">Sentimento agregado</div>
+                    <div className="flex h-2.5 rounded-full overflow-hidden bg-muted">
+                      <div className="bg-green-500" style={{ width: `${ev.sentiment_positive}%` }} />
+                      <div className="bg-zinc-400" style={{ width: `${ev.sentiment_neutral}%` }} />
+                      <div className="bg-red-500" style={{ width: `${ev.sentiment_negative}%` }} />
+                    </div>
+                    <div className="flex justify-between text-[11px] text-muted-foreground mt-1">
+                      <span className="text-green-600">{ev.sentiment_positive}% positivo</span>
+                      <span>{ev.sentiment_neutral}% neutro</span>
+                      <span className="text-red-600">{ev.sentiment_negative}% negativo</span>
+                    </div>
+                  </div>
+
+                  <p className="text-sm leading-relaxed">{ev.description}</p>
+
+                  {ev.sources.length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Veículos que repercutiram ({ev.distinct_outlets})</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {Array.from(new Set(ev.sources.map((s) => s.name))).slice(0, 12).map((name) => (
+                          <Badge key={name} variant="outline" className="text-[11px]">{name}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <Button variant="ghost" size="sm" className="gap-2"
+                    onClick={() => setExpanded((p) => ({ ...p, [key]: !p[key] }))}>
+                    {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    {isOpen ? "Recolher análise IA" : "Análise IA do pico"}
+                  </Button>
+
+                  {isOpen ? (
+                    <div className="space-y-4 pt-2 border-t">
+                      {ev.what_happened ? <Section title="O que aconteceu" body={ev.what_happened} /> : null}
+                      {ev.why_happened ? <Section title="Por que gerou repercussão" body={ev.why_happened} /> : null}
+                      {ev.participants && ev.participants.length > 0 ? (
+                        <div>
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 flex items-center gap-1.5"><Users className="h-3.5 w-3.5" /> Quem participou</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {ev.participants.map((p, i) => <Badge key={i} variant="secondary">{p}</Badge>)}
+                          </div>
+                        </div>
+                      ) : null}
+                      {ev.political_impact ? <Section title="Impacto político" body={ev.political_impact} /> : null}
+                      {ev.electoral_impact ? <Section title="Impacto eleitoral" body={ev.electoral_impact} /> : null}
+                      {ev.aftermath ? <Section title="Desdobramentos" body={ev.aftermath} /> : null}
+
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Fontes ({ev.sources.length})</p>
+                        <ul className="space-y-1.5">
+                          {ev.sources.slice(0, 30).map((s, i) => (
+                            <li key={i} className="text-sm flex items-start gap-2">
+                              <ExternalLink className="h-3.5 w-3.5 mt-1 text-muted-foreground flex-shrink-0" />
+                              <a href={s.url} target="_blank" rel="noreferrer"
+                                className="hover:underline text-primary line-clamp-2">
+                                <span className="font-medium">{s.name}</span>
+                                {s.kind ? <span className="text-[10px] uppercase ml-1 text-muted-foreground">[{s.kind}]</span> : null}
+                                {s.title ? <span className="text-muted-foreground"> — {s.title}</span> : null}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
       ) : null}
     </div>
   );

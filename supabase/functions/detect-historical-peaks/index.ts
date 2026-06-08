@@ -96,8 +96,58 @@ function sourceDateMs(pub: ExternalPublication): number | null {
 function isOfficialOrJournalistic(pub: ExternalPublication): boolean {
   const host = hostNameOf(pub.url).toLowerCase();
   const outlet = normalize(pub.outlet || "");
-  return /\.(gov|jus|leg)\.br$|gov\.br|tse\.jus\.br|stf\.jus\.br|senado\.leg\.br|camara\.leg\.br|planalto\.gov\.br|youtube\.com|youtu\.be|g1\.globo\.com|folha\.uol\.com\.br|estadao\.com\.br|valor\.globo\.com|poder360\.com\.br|cnnbrasil\.com\.br|uol\.com\.br|metropoles\.com|reuters\.com|bbc\.com|oglobo\.globo\.com|veja\.abril\.com\.br|terra\.com\.br|r7\.com|band\.uol\.com\.br/i.test(host)
-    || /agencia brasil|senado|camara|stf|tse|reuters|bbc|folha|estadao|estadao conteudo|valor|g1|cnn|uol|poder360|metropoles|o globo|oglobo|veja|terra|isto[eé]|r7|band|record|jovem pan|congresso em foco|carta ?capital/.test(outlet);
+  return /\.(gov|jus|leg)\.br$|gov\.br|tse\.jus\.br|stf\.jus\.br|senado\.leg\.br|camara\.leg\.br|planalto\.gov\.br|youtube\.com|youtu\.be|tiktok\.com|twitter\.com|x\.com|facebook\.com|instagram\.com|t\.me|telegram\.me|bsky\.app|reddit\.com|threads\.net|g1\.globo\.com|folha\.uol\.com\.br|estadao\.com\.br|valor\.globo\.com|poder360\.com\.br|cnnbrasil\.com\.br|uol\.com\.br|metropoles\.com|reuters\.com|bbc\.com|oglobo\.globo\.com|veja\.abril\.com\.br|terra\.com\.br|r7\.com|band\.uol\.com\.br|congressoemfoco\.uol\.com\.br|cartacapital\.com\.br|nexojornal\.com\.br|brasildefato\.com\.br/i.test(host)
+    || /agencia brasil|senado|camara|stf|tse|reuters|bbc|folha|estadao|estadao conteudo|valor|g1|cnn|uol|poder360|metropoles|o globo|oglobo|veja|terra|isto[eé]|r7|band|record|jovem pan|congresso em foco|carta ?capital|youtube|tiktok|twitter|facebook|instagram|telegram|bluesky|reddit|threads/.test(outlet);
+}
+
+function classifyPub(pub: ExternalPublication): "news" | "video" | "post" {
+  const host = hostNameOf(pub.url).toLowerCase();
+  if (/youtube\.com|youtu\.be|tiktok\.com|vimeo\.com|globoplay\.globo\.com/.test(host)) return "video";
+  if (/twitter\.com|x\.com|facebook\.com|instagram\.com|t\.me|telegram\.me|bsky\.app|reddit\.com|threads\.net/.test(host)) return "post";
+  return "news";
+}
+
+const SENT_POS = ["aprov", "elogi", "vit[óo]ria", "avanç", "conquist", "destaq", "homenag", "celebr", "sucesso", "fortale", "apoio", "favor[áa]vel", "lider", "cresc"];
+const SENT_NEG = ["cr[íi]tic", "ataq", "esc[âa]ndalo", "polem", "denunc", "investiga", "rejeiç", "queda", "derrota", "renunc", "condenaç", "afast", "impeach", "fraude", "corrupç", "pris[ãa]o", "indici"];
+
+function sentimentOf(text: string): "pos" | "neg" | "neu" {
+  const t = normalize(text);
+  let pos = 0, neg = 0;
+  for (const w of SENT_POS) if (new RegExp(w).test(t)) pos++;
+  for (const w of SENT_NEG) if (new RegExp(w).test(t)) neg++;
+  if (pos > neg && pos >= 1) return "pos";
+  if (neg > pos && neg >= 1) return "neg";
+  return "neu";
+}
+
+function aggregateSentiment(pubs: ExternalPublication[]): { pos: number; neg: number; neu: number } {
+  let pos = 0, neg = 0, neu = 0;
+  for (const p of pubs) {
+    const s = sentimentOf(`${p.title} ${p.snippet}`);
+    if (s === "pos") pos++; else if (s === "neg") neg++; else neu++;
+  }
+  const total = pos + neg + neu || 1;
+  return { pos: Math.round((pos / total) * 100), neg: Math.round((neg / total) * 100), neu: Math.round((neu / total) * 100) };
+}
+
+function estimateVolumeFromPubs(pubs: ExternalPublication[]): number {
+  let total = 0;
+  for (const p of pubs) {
+    const klass = classifyPub(p);
+    const reach = p.outletReach || 3;
+    const base = klass === "video" ? 4500 : klass === "post" ? 1200 : 2200;
+    total += Math.round(base * (reach / 4));
+  }
+  return total;
+}
+
+function countsByClass(pubs: ExternalPublication[]): { news: number; videos: number; posts: number } {
+  let news = 0, videos = 0, posts = 0;
+  for (const p of pubs) {
+    const k = classifyPub(p);
+    if (k === "video") videos++; else if (k === "post") posts++; else news++;
+  }
+  return { news, videos, posts };
 }
 
 function significantTokens(value: string): string[] {
@@ -313,12 +363,22 @@ serve(async (req) => {
     }
 
     const contextual = buildContextualQueries(candidate.full_name, 8);
+    const platformQueries = [
+      `"${candidate.full_name}" site:youtube.com`,
+      `"${candidate.full_name}" site:tiktok.com`,
+      `"${candidate.full_name}" (site:twitter.com OR site:x.com)`,
+      `"${candidate.full_name}" site:facebook.com`,
+      `"${candidate.full_name}" site:instagram.com`,
+      `"${candidate.full_name}" site:t.me`,
+      `"${candidate.full_name}" site:bsky.app`,
+    ];
     const queryRoots = Array.from(new Set([
       `"${candidate.full_name}"`,
       ...contextual,
       ...eventYearQueries(candidate.full_name, start, end),
       ...EVENT_TERMS.map((term) => `"${candidate.full_name}" ${term}`),
-    ])).slice(0, days > 370 ? 34 : 22);
+      ...platformQueries,
+    ])).slice(0, days > 370 ? 38 : 26);
 
     const tbs = days <= 31 ? "qdr:m" : "qdr:y";
     const [googleSettled, gdeltSettled, firecrawlSettled] = await Promise.all([
@@ -337,8 +397,10 @@ serve(async (req) => {
       const text = normalize(`${p.title} ${p.snippet}`);
       const candidateTokens = normalize(candidate.full_name).split(/\s+/).filter((t: string) => t.length >= 4 && !["das", "dos", "de", "da", "do"].includes(t));
       const nameHit = text.includes(normalize(candidate.full_name)) || candidateTokens.filter((t: string) => text.includes(t)).length >= Math.min(2, candidateTokens.length);
-      const eventHit = EVENT_TERMS.some((term) => text.includes(normalize(term)));
+      const klass = classifyPub(p);
+      const eventHit = klass !== "news" || EVENT_TERMS.some((term) => text.includes(normalize(term)));
       return inWindow && nameHit && eventHit && isOfficialOrJournalistic(p);
+
     }).slice(0, 220);
 
     const localCandidates = timelineCandidates(Array.isArray(localTimeline) ? localTimeline : []);
@@ -415,6 +477,9 @@ Responda APENAS JSON válido:
       const distinctOutlets = new Set(evPubs.map((p) => normalize(p.outlet))).size;
       const day = String(evt.start_date || "").slice(0, 10);
       const score = relevanceFromEvidence(evt, evPubs, 0);
+      const counts = countsByClass(evPubs);
+      const sentiment = aggregateSentiment(evPubs);
+      const estVolume = estimateVolumeFromPubs(evPubs);
       return {
         name: cleanText(evt.name).slice(0, 200),
         type: cleanText(evt.type || "noticia"),
@@ -434,7 +499,14 @@ Responda APENAS JSON válido:
         publications_count: evPubs.length,
         distinct_outlets: distinctOutlets,
         coverage_days: coverageDurationDays(evPubs),
-        sources: evPubs.map((p) => ({ name: p.outlet, url: p.url, region: p.outletRegion, publishedAt: p.publishedAt || null, title: p.title })),
+        news_count: counts.news,
+        videos_count: counts.videos,
+        posts_count: counts.posts,
+        estimated_volume: estVolume,
+        sentiment_positive: sentiment.pos,
+        sentiment_negative: sentiment.neg,
+        sentiment_neutral: sentiment.neu,
+        sources: evPubs.map((p) => ({ name: p.outlet, url: p.url, region: p.outletRegion, publishedAt: p.publishedAt || null, title: p.title, kind: classifyPub(p) })),
       };
     }).filter((evt: any) => {
       const eventDate = new Date(`${evt.start_date}T12:00:00Z`).getTime();
@@ -442,11 +514,26 @@ Responda APENAS JSON válido:
       return evt.name && evt.description && (evt.publications_count || 0) >= 1 && (evt.sources?.length || 0) >= 1;
     }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0)).slice(0, 30);
 
+    // Aggregated external timeline (per day) — volume real coletado externamente.
+    const timelineMap = new Map<string, { date: string; total: number; news: number; videos: number; posts: number }>();
+    for (const p of pubs) {
+      if (!p.publishedAt) continue;
+      const d = p.publishedAt.slice(0, 10);
+      const bucket = timelineMap.get(d) || { date: d, total: 0, news: 0, videos: 0, posts: 0 };
+      bucket.total++;
+      const k = classifyPub(p);
+      if (k === "video") bucket.videos++; else if (k === "post") bucket.posts++; else bucket.news++;
+      timelineMap.set(d, bucket);
+    }
+    const externalTimeline = [...timelineMap.values()].sort((a, b) => a.date.localeCompare(b.date));
+
     return new Response(JSON.stringify({
       events,
       publications_collected: pubs.length,
       estimated_reach: estimatedReachOf(pubs),
+      external_timeline: externalTimeline,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
   } catch (error) {
     console.error("[detect-historical-peaks]", error);
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Erro desconhecido" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
