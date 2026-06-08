@@ -22,24 +22,38 @@ const EVENT_TERMS = [
 ];
 
 function cleanText(value: unknown): string {
-  return String(value || "")
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<video[\s\S]*?<\/video>/gi, " ")
-    .replace(/<source[^>]*>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&#x27;/gi, "'")
-    .replace(/https?:\/\/\S+/gi, " ")
-    .replace(/\b(src|href|class|target|rel|nofollow|width|height|type)=\S+/gi, " ")
-    .replace(/[{}<>]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  let s = String(value || "");
+  // strip CDATA + dangerous blocks first
+  s = s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+       .replace(/<script[\s\S]*?<\/script>/gi, " ")
+       .replace(/<style[\s\S]*?<\/style>/gi, " ")
+       .replace(/<video[\s\S]*?<\/video>/gi, " ")
+       .replace(/<source[^>]*>/gi, " ");
+  // remove all real and "broken" HTML tags (with or without angle brackets)
+  // ex: "a Luiz Fux ... /a", "font color=#xxx", "/font", "div", "/p"
+  s = s.replace(/<\/?[a-z][a-z0-9]*(\s[^>]*)?>/gi, " ")
+       .replace(/\b\/?(a|p|div|span|br|hr|img|font|table|tr|td|th|ul|ol|li|h[1-6]|strong|em|b|i|u|small|nav|header|footer|section|article|figure|figcaption|iframe|object|embed|param|video|audio|source|picture|svg|path|style|script|meta|link|head|body|html|title|form|input|button|select|option|label|fieldset|legend|tbody|thead|tfoot|caption|colgroup|col|pre|code|kbd|samp|var|cite|dfn|abbr|acronym|sub|sup|q|s|del|ins|mark|ruby|rt|rp|bdi|bdo|wbr|details|summary|dialog|menu|menuitem|template|slot)\b\s*\/?\s*(?=\s|$|[.,;:!?])/gi, " ")
+       .replace(/\b(?:font|a|p|div|span|img|iframe|table|tr|td|th)\s+[a-z\-]+=("[^"]*"|'[^']*'|\S+)/gi, " ")
+       .replace(/\b(?:href|src|class|target|rel|nofollow|width|height|type|color|style|align|bgcolor|border|cellpadding|cellspacing|colspan|rowspan|valign)\s*=\s*("[^"]*"|'[^']*'|\S+)/gi, " ");
+  // HTML entities
+  s = s.replace(/&nbsp;/gi, " ")
+       .replace(/&amp;/gi, "&")
+       .replace(/&lt;/gi, "<")
+       .replace(/&gt;/gi, ">")
+       .replace(/&quot;/gi, '"')
+       .replace(/&#39;|&#x27;/gi, "'")
+       .replace(/&[a-z]+;/gi, " ")
+       .replace(/&#\d+;/g, " ");
+  // strip URLs and stray markup characters
+  s = s.replace(/https?:\/\/\S+/gi, " ")
+       .replace(/\[[^\]]*\]\([^)]*\)/g, " ") // markdown links
+       .replace(/[{}<>]/g, " ")
+       .replace(/[*_`~]{2,}/g, " ")
+       .replace(/^\s*[-*•]\s+/gm, "")
+       .replace(/\s{2,}/g, " ")
+       .replace(/\s+([.,;:!?])/g, "$1")
+       .trim();
+  return s;
 }
 
 function decodeXmlValue(value: unknown): string {
@@ -226,17 +240,34 @@ function historicalRelevanceScore(evt: any, pubs: ExternalPublication[]): number
   return Math.max(45, Math.min(100, Math.round(score)));
 }
 
-function relevanceFromEvidence(evt: any, pubs: ExternalPublication[], mentions: number): number {
+function meetsCoverageThreshold(counts: { news: number; videos: number; posts: number }, totalEvidence: number, distinctOutlets: number): boolean {
+  // Regras de validação solicitadas:
+  // 3 notícias OU 2 notícias + vídeo OU 2 notícias + posts OU 10 evidências totais.
+  // Sempre exigir ao menos 2 veículos distintos — um pico não pode vir de uma única fonte.
+  if (distinctOutlets < 2) return false;
+  if (counts.news >= 3) return true;
+  if (counts.news >= 2 && counts.videos >= 1) return true;
+  if (counts.news >= 2 && counts.posts >= 1) return true;
+  if (totalEvidence >= 10) return true;
+  return false;
+}
+
+function relevanceFromEvidence(evt: any, pubs: ExternalPublication[], _mentions: number): number {
   const distinctOutlets = new Set(pubs.map((p) => normalize(p.outlet))).size;
   const reach = pubs.reduce((sum, p) => sum + (p.outletReach || 3), 0);
-  const officialBonus = pubs.some((p) => /\.(gov|jus|leg)\.br|gov\.br|tse\.jus\.br|stf\.jus\.br|senado\.leg\.br|camara\.leg\.br/i.test(hostNameOf(p.url))) ? 12 : 0;
-  const score = Math.min(35, distinctOutlets * 9)
-    + Math.min(18, pubs.length * 3)
-    + Math.min(18, reach * 1.7)
-    + Math.min(10, coverageDurationDays(pubs) * 2)
+  const counts = countsByClass(pubs);
+  const diversity = (counts.news > 0 ? 1 : 0) + (counts.videos > 0 ? 1 : 0) + (counts.posts > 0 ? 1 : 0);
+  const officialBonus = pubs.some((p) => /\.(gov|jus|leg)\.br|gov\.br|tse\.jus\.br|stf\.jus\.br|senado\.leg\.br|camara\.leg\.br/i.test(hostNameOf(p.url))) ? 10 : 0;
+  const score = Math.min(36, distinctOutlets * 7)        // diversidade de veículos
+    + Math.min(22, pubs.length * 1.6)                     // volume total
+    + Math.min(12, counts.news * 2)                       // notícias
+    + Math.min(8, counts.videos * 3)                      // vídeos
+    + Math.min(8, counts.posts * 2)                       // posts
+    + Math.min(10, reach * 1.2)                           // alcance
+    + Math.min(10, coverageDurationDays(pubs) * 1.5)      // persistência temporal
+    + diversity * 4                                       // diversidade de tipos
     + politicalImpactWeight(String(evt?.type || evt?.name || ""))
-    + officialBonus
-    + Math.min(5, mentions / 25);
+    + officialBonus;
   return Math.max(30, Math.min(100, Math.round(score)));
 }
 
@@ -638,11 +669,12 @@ Responda APENAS JSON válido:
       const evPubs = matchedSources(evt, pubs, start, end, candidate.full_name);
       const distinctOutlets = new Set(evPubs.map((p) => normalize(p.outlet))).size;
       const day = String(evt.start_date || "").slice(0, 10);
-      const historicalConfirmed = isHistoricallyRelevantEvent(evt);
-      const score = evPubs.length > 0 ? relevanceFromEvidence(evt, evPubs, 0) : historicalRelevanceScore(evt, evPubs);
       const counts = countsByClass(evPubs);
-      const sentiment = aggregateSentiment(evPubs);
-      const estVolume = estimateVolumeFromPubs(evPubs);
+      const totalEvidence = evPubs.length;
+      // Sentimento exige amostragem mínima de 3 fontes — abaixo disso é estatisticamente irrelevante.
+      const sentimentAvailable = totalEvidence >= 3;
+      const sentiment = sentimentAvailable ? aggregateSentiment(evPubs) : { pos: 0, neg: 0, neu: 0 };
+      const score = relevanceFromEvidence(evt, evPubs, 0);
       return {
         name: cleanText(evt.name).slice(0, 200),
         type: cleanText(evt.type || "noticia"),
@@ -657,31 +689,35 @@ Responda APENAS JSON válido:
         political_impact: cleanText(evt.political_impact).slice(0, 1000),
         electoral_impact: cleanText(evt.electoral_impact).slice(0, 1000),
         aftermath: cleanText(evt.aftermath).slice(0, 1200),
-        evidence_level: evPubs.length >= 1 ? "cobertura_coletada" : "confirmacao_historica",
-        historical_confirmed: historicalConfirmed,
-        volume_available: evPubs.length > 0 || estVolume > 0,
+        evidence_level: "cobertura_coletada",
         relevance_score: Math.round(score),
-        publications_count: evPubs.length,
+        publications_count: totalEvidence,
         distinct_outlets: distinctOutlets,
         coverage_days: coverageDurationDays(evPubs),
         news_count: counts.news,
         videos_count: counts.videos,
         posts_count: counts.posts,
-        estimated_volume: estVolume,
+        // Não inventar volume — exibimos apenas evidências reais. Frontend mostra "Citações indisponíveis."
+        estimated_volume: 0,
+        volume_available: false,
+        sentiment_available: sentimentAvailable,
         sentiment_positive: sentiment.pos,
         sentiment_negative: sentiment.neg,
         sentiment_neutral: sentiment.neu,
-        sources: evPubs.map((p) => ({ name: p.outlet, url: p.url, region: p.outletRegion, publishedAt: p.publishedAt || null, title: p.title, kind: classifyPub(p) })),
+        sources: evPubs.map((p) => ({ name: p.outlet, url: p.url, region: p.outletRegion, publishedAt: p.publishedAt || null, title: cleanText(p.title), kind: classifyPub(p) })),
       };
     }).filter((evt: any) => {
       const eventDate = new Date(`${evt.start_date}T12:00:00Z`).getTime();
       if (Number.isNaN(eventDate)) return false;
       if (eventDate < start.getTime() - 86400000 || eventDate > end.getTime() + 86400000) return false;
       if (!evt.name || !evt.description) return false;
-      // Evento histórico e volume coletado são conceitos separados:
-      // eventos políticos documentados pela IA devem aparecer mesmo quando APIs atuais não recuperam métricas antigas.
-      if (evt.historical_confirmed) return true;
-      return evt.publications_count > 0 || evt.news_count > 0 || evt.posts_count > 0 || evt.videos_count > 0;
+      // Regra dura: o pico só existe se houve repercussão real.
+      // 3 notícias OU 2 notícias + vídeo OU 2 notícias + post OU 10 evidências totais, sempre com ≥2 veículos.
+      return meetsCoverageThreshold(
+        { news: evt.news_count, videos: evt.videos_count, posts: evt.posts_count },
+        evt.publications_count,
+        evt.distinct_outlets,
+      );
     }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0)).slice(0, 40);
 
     const timelineMap = new Map<string, { date: string; total: number; news: number; videos: number; posts: number }>();
