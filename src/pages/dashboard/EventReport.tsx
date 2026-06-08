@@ -308,16 +308,9 @@ export default function EventReport() {
 
                   <p className="text-sm leading-relaxed">{ev.description}</p>
 
-                  {ev.sources.length > 0 ? (
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Veículos que repercutiram ({ev.distinct_outlets})</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {Array.from(new Set(ev.sources.map((s) => s.name))).slice(0, 12).map((name) => (
-                          <Badge key={name} variant="outline" className="text-[11px]">{name}</Badge>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
+                  <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                    Cobertura detectada em <span className="font-semibold text-foreground">{ev.distinct_outlets}</span> veículo{ev.distinct_outlets === 1 ? "" : "s"}{ev.publications_count ? <> · <span className="font-semibold text-foreground">{ev.publications_count}</span> evidência{ev.publications_count === 1 ? "" : "s"} externa{ev.publications_count === 1 ? "" : "s"}</> : null}.
+                  </div>
 
                   <Button variant="ghost" size="sm" className="gap-2"
                     onClick={() => setExpanded((p) => ({ ...p, [key]: !p[key] }))}>
