@@ -638,7 +638,8 @@ Responda APENAS JSON válido:
       const evPubs = matchedSources(evt, pubs, start, end, candidate.full_name);
       const distinctOutlets = new Set(evPubs.map((p) => normalize(p.outlet))).size;
       const day = String(evt.start_date || "").slice(0, 10);
-      const score = relevanceFromEvidence(evt, evPubs, 0);
+      const historicalConfirmed = isHistoricallyRelevantEvent(evt);
+      const score = evPubs.length > 0 ? relevanceFromEvidence(evt, evPubs, 0) : historicalRelevanceScore(evt, evPubs);
       const counts = countsByClass(evPubs);
       const sentiment = aggregateSentiment(evPubs);
       const estVolume = estimateVolumeFromPubs(evPubs);
@@ -656,7 +657,9 @@ Responda APENAS JSON válido:
         political_impact: cleanText(evt.political_impact).slice(0, 1000),
         electoral_impact: cleanText(evt.electoral_impact).slice(0, 1000),
         aftermath: cleanText(evt.aftermath).slice(0, 1200),
-        evidence_level: evPubs.length >= 1 ? "evento_documentado" : "conhecimento_historico",
+        evidence_level: evPubs.length >= 1 ? "cobertura_coletada" : "confirmacao_historica",
+        historical_confirmed: historicalConfirmed,
+        volume_available: evPubs.length > 0 || estVolume > 0,
         relevance_score: Math.round(score),
         publications_count: evPubs.length,
         distinct_outlets: distinctOutlets,
@@ -675,13 +678,10 @@ Responda APENAS JSON válido:
       if (Number.isNaN(eventDate)) return false;
       if (eventDate < start.getTime() - 86400000 || eventDate > end.getTime() + 86400000) return false;
       if (!evt.name || !evt.description) return false;
-      // Limite mínimo de repercussão real: 3 notícias OU 5 posts OU 3 vídeos OU 10 evidências externas no total.
-      const meetsThreshold =
-        evt.news_count >= 3 ||
-        evt.posts_count >= 5 ||
-        evt.videos_count >= 3 ||
-        evt.publications_count >= 10;
-      return meetsThreshold;
+      // Evento histórico e volume coletado são conceitos separados:
+      // eventos políticos documentados pela IA devem aparecer mesmo quando APIs atuais não recuperam métricas antigas.
+      if (evt.historical_confirmed) return true;
+      return evt.publications_count > 0 || evt.news_count > 0 || evt.posts_count > 0 || evt.videos_count > 0;
     }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0)).slice(0, 40);
 
     const timelineMap = new Map<string, { date: string; total: number; news: number; videos: number; posts: number }>();
