@@ -332,6 +332,117 @@ function timelineCandidates(points: TimelinePoint[]): TimelinePoint[] {
     .slice(0, 20);
 }
 
+type DiscoveredEvent = {
+  name: string;
+  type: string;
+  start_date: string;
+  end_date?: string;
+  description?: string;
+  motivo?: string;
+  what_happened?: string;
+  why_happened?: string;
+  participants?: string[];
+  political_impact?: string;
+  electoral_impact?: string;
+  aftermath?: string;
+  keywords?: string[];
+  search_queries?: string[];
+};
+
+async function discoverKnownEvents(
+  candidateName: string,
+  party: string | null,
+  startShort: string,
+  endShort: string,
+): Promise<DiscoveredEvent[]> {
+  const prompt = `Você é historiador político brasileiro. Liste TODOS os acontecimentos políticos REAIS e DOCUMENTADOS envolvendo ${candidateName}${party ? ` (${party})` : ""} entre ${startShort} e ${endShort}.
+
+Inclua, quando aplicável:
+- eleições (1º turno, 2º turno, registro, impugnação, posse)
+- debates televisivos e sabatinas
+- julgamentos, decisões do STF/TSE, habeas corpus, condenações, prisões, soltura
+- CPIs, depoimentos, votações importantes no Congresso
+- operações policiais (Lava Jato, PF, MP)
+- impeachment, pedaladas fiscais, afastamento
+- discursos históricos, pronunciamentos oficiais, coletivas
+- entrevistas de grande repercussão (Jornal Nacional, Roda Viva, etc.)
+- viagens oficiais, cúpulas (BRICS, G20, ONU), reuniões bilaterais
+- atos de governo (medidas provisórias, vetos, sanções)
+- polêmicas e crises políticas
+- substituições de candidatura, alianças, federações
+
+Use seu conhecimento histórico. NÃO invente. Se não houver acontecimento, retorne lista vazia.
+Liste o MÁXIMO possível (mire em 25-40 eventos quando o período cobrir uma eleição ou mandato).
+
+Responda APENAS JSON válido:
+{
+  "events": [
+    {
+      "name": "nome factual e específico (ex.: 'Prisão de Lula em Curitiba')",
+      "type": "eleicao|debate|entrevista|discurso|coletiva|decisao_judicial|cpi|operacao|votacao|agenda|impeachment|posse|julgamento|prisao|noticia",
+      "start_date": "YYYY-MM-DD",
+      "end_date": "YYYY-MM-DD",
+      "description": "o que aconteceu (3-5 frases factuais)",
+      "motivo": "por que isso é historicamente relevante",
+      "what_happened": "narrativa detalhada",
+      "why_happened": "contexto e motivações",
+      "participants": ["pessoa/instituição"],
+      "political_impact": "impacto institucional",
+      "electoral_impact": "impacto eleitoral (se houver)",
+      "aftermath": "desdobramentos posteriores",
+      "keywords": ["termo factual 1", "termo factual 2"],
+      "search_queries": ["consulta específica para encontrar cobertura desse evento"]
+    }
+  ]
+}`;
+  try {
+    const ai = await callAICerebrasFirst({
+      systemMsg: "Você é historiador político brasileiro. Liste acontecimentos REAIS documentados, com datas precisas. Responda só JSON pt-BR.",
+      userPrompt: prompt,
+      jsonMode: true,
+      maxTokens: 8000,
+      temperature: 0.1,
+      tag: "discover-known-events",
+    });
+    const content = ai.content || "";
+    let parsed: any = {};
+    try { parsed = JSON.parse(content); }
+    catch { const m = content.match(/\{[\s\S]*\}/); if (m) parsed = JSON.parse(m[0]); }
+    const events = Array.isArray(parsed?.events) ? parsed.events : [];
+    return events.filter((e: any) => e && e.name && e.start_date).slice(0, 50);
+  } catch (error) {
+    console.error("[discover-known-events] failed", (error as Error).message);
+    return [];
+  }
+}
+
+function eventWindow(evt: DiscoveredEvent): { start: string; end: string } {
+  const d = new Date(`${evt.start_date}T12:00:00Z`);
+  const endD = new Date(`${evt.end_date || evt.start_date}T12:00:00Z`);
+  const startW = new Date(d.getTime() - 21 * 86400000);
+  const endW = new Date(endD.getTime() + 30 * 86400000);
+  return { start: startW.toISOString().slice(0, 10), end: endW.toISOString().slice(0, 10) };
+}
+
+async function fetchCoverageForKnownEvent(
+  evt: DiscoveredEvent,
+  candidateName: string,
+): Promise<ExternalPublication[]> {
+  const { start: s, end: e } = eventWindow(evt);
+  const startD = new Date(`${s}T00:00:00Z`);
+  const endD = new Date(`${e}T23:59:59Z`);
+  const queries = Array.from(new Set([
+    ...(Array.isArray(evt.search_queries) ? evt.search_queries : []),
+    `"${candidateName}" ${evt.name}`,
+    ...(Array.isArray(evt.keywords) ? evt.keywords.slice(0, 4).map((k) => `"${candidateName}" ${k}`) : []),
+  ])).slice(0, 5);
+  const settled = await Promise.allSettled([
+    ...queries.map((q) => fetchGoogleHistorical(q, s, e, 10)),
+    ...queries.slice(0, 2).map((q) => fetchGdeltHistorical(q, startD, endD, 25)),
+  ]);
+  return settled.flatMap((r) => r.status === "fulfilled" ? r.value : []);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
@@ -362,15 +473,23 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Candidato não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const contextual = buildContextualQueries(candidate.full_name, 8);
+    // === FASE 1: DESCOBERTA HISTÓRICA (antes de qualquer busca) ===
+    // A IA enumera os acontecimentos políticos conhecidos do candidato no período,
+    // garantindo cobertura de prisão, impeachment, debates, CPIs, decisões do STF, BRICS etc.
+    const discovered = await discoverKnownEvents(candidate.full_name, candidate.party, startShort, endShort);
+    console.log(`[detect-historical-peaks] discovered ${discovered.length} known events`);
+
+    // === FASE 2: COBERTURA DIRECIONADA POR EVENTO CONHECIDO ===
+    const focusedSettled = await Promise.allSettled(
+      discovered.slice(0, 40).map((evt) => fetchCoverageForKnownEvent(evt, candidate.full_name)),
+    );
+    const focusedPubs = focusedSettled.flatMap((r) => r.status === "fulfilled" ? r.value : []);
+
+    // === FASE 3: COLETA AMPLA (descobre eventos adicionais não previstos pela IA) ===
+    const contextual = buildContextualQueries(candidate.full_name, 6);
     const platformQueries = [
       `"${candidate.full_name}" site:youtube.com`,
-      `"${candidate.full_name}" site:tiktok.com`,
       `"${candidate.full_name}" (site:twitter.com OR site:x.com)`,
-      `"${candidate.full_name}" site:facebook.com`,
-      `"${candidate.full_name}" site:instagram.com`,
-      `"${candidate.full_name}" site:t.me`,
-      `"${candidate.full_name}" site:bsky.app`,
     ];
     const queryRoots = Array.from(new Set([
       `"${candidate.full_name}"`,
@@ -378,100 +497,117 @@ serve(async (req) => {
       ...eventYearQueries(candidate.full_name, start, end),
       ...EVENT_TERMS.map((term) => `"${candidate.full_name}" ${term}`),
       ...platformQueries,
-    ])).slice(0, days > 370 ? 38 : 26);
+    ])).slice(0, days > 370 ? 32 : 22);
 
     const tbs = days <= 31 ? "qdr:m" : "qdr:y";
     const [googleSettled, gdeltSettled, firecrawlSettled] = await Promise.all([
-      Promise.allSettled(queryRoots.map((q) => fetchGoogleHistorical(q, startShort, endShort, 18))),
-      Promise.allSettled(queryRoots.slice(0, 14).map((q) => fetchGdeltHistorical(q, start, end, 45))),
-      Promise.allSettled(queryRoots.slice(0, 10).map((q) => firecrawlSearch(`${q} ${start.getFullYear()} ${end.getFullYear()}`, { limit: 8, tbs: tbs as "qdr:m" | "qdr:y" }))),
+      Promise.allSettled(queryRoots.map((q) => fetchGoogleHistorical(q, startShort, endShort, 15))),
+      Promise.allSettled(queryRoots.slice(0, 12).map((q) => fetchGdeltHistorical(q, start, end, 40))),
+      Promise.allSettled(queryRoots.slice(0, 8).map((q) => firecrawlSearch(`${q} ${start.getFullYear()} ${end.getFullYear()}`, { limit: 8, tbs: tbs as "qdr:m" | "qdr:y" }))),
     ]);
 
-    const pubs = dedupePublications([
+    const allPubs = dedupePublications([
+      ...focusedPubs,
       ...googleSettled.flatMap((r) => r.status === "fulfilled" ? r.value : []),
       ...gdeltSettled.flatMap((r) => r.status === "fulfilled" ? r.value : []),
       ...firecrawlSettled.flatMap((r) => r.status === "fulfilled" ? r.value : []),
-    ]).filter((p) => {
+    ]);
+
+    const knownWindows = discovered.map(eventWindow);
+    const pubs = allPubs.filter((p) => {
       const date = p.publishedAt ? new Date(p.publishedAt).getTime() : 0;
-      const inWindow = !!date && (date >= start.getTime() - 86400000 && date <= end.getTime() + 86400000);
+      const inMainWindow = !!date && (date >= start.getTime() - 86400000 && date <= end.getTime() + 86400000);
+      const inKnownWindow = !!date && knownWindows.some((w) => {
+        const ws = new Date(`${w.start}T00:00:00Z`).getTime();
+        const we = new Date(`${w.end}T23:59:59Z`).getTime();
+        return date >= ws && date <= we;
+      });
       const text = normalize(`${p.title} ${p.snippet}`);
       const candidateTokens = normalize(candidate.full_name).split(/\s+/).filter((t: string) => t.length >= 4 && !["das", "dos", "de", "da", "do"].includes(t));
       const nameHit = text.includes(normalize(candidate.full_name)) || candidateTokens.filter((t: string) => text.includes(t)).length >= Math.min(2, candidateTokens.length);
       const klass = classifyPub(p);
       const eventHit = klass !== "news" || EVENT_TERMS.some((term) => text.includes(normalize(term)));
-      return inWindow && nameHit && eventHit && isOfficialOrJournalistic(p);
-
-    }).slice(0, 220);
+      return (inMainWindow || inKnownWindow) && nameHit && eventHit && isOfficialOrJournalistic(p);
+    }).slice(0, 320);
 
     const localCandidates = timelineCandidates(Array.isArray(localTimeline) ? localTimeline : []);
-    if (pubs.length === 0) {
-      return new Response(JSON.stringify({ events: [], publications_collected: 0 }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
 
-    const corpus = pubs.slice(0, 110).map((p, i) =>
-      `[${i + 1}] (${p.outlet}, ${p.publishedAt?.slice(0, 10) || "?"}, ${p.source}) ${cleanText(p.title).slice(0, 180)} — ${cleanText(p.snippet).slice(0, 220)} | ${p.url}`
-    ).join("\n");
-    const localSignal = localCandidates.map((p: any) => `${p.date}: ${p.count} menções (${Math.round(p.growth || 0)}%)`).join("\n") || "sem sinal interno relevante";
+    // === FASE 4: ENRIQUECIMENTO E DESCOBERTA COMPLEMENTAR PELA IA ===
+    let aiEvents: any[] = [];
+    if (pubs.length > 0 || discovered.length > 0) {
+      const corpus = pubs.slice(0, 110).map((p, i) =>
+        `[${i + 1}] (${p.outlet}, ${p.publishedAt?.slice(0, 10) || "?"}, ${p.source}) ${cleanText(p.title).slice(0, 180)} — ${cleanText(p.snippet).slice(0, 220)} | ${p.url}`
+      ).join("\n");
+      const localSignal = localCandidates.map((p: any) => `${p.date}: ${p.count} menções (${Math.round(p.growth || 0)}%)`).join("\n") || "sem sinal interno relevante";
+      const knownList = discovered.map((e, i) => `${i + 1}. [${e.start_date}] ${e.name} — ${cleanText(e.description || "").slice(0, 160)}`).join("\n") || "nenhum evento pré-identificado";
 
-    const prompt = `Você é um analista político histórico brasileiro. Descubra MÚLTIPLOS acontecimentos políticos reais de ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ""} entre ${startShort} e ${endShort}.
+      const prompt = `Você é um analista político histórico brasileiro. Confirme, enriqueça e COMPLEMENTE a lista de acontecimentos de ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ""} entre ${startShort} e ${endShort}.
 
-CRITÉRIOS OBRIGATÓRIOS:
-- A fonte primária é EXTERNA: notícias, registros oficiais, entrevistas, debates, discursos, decisões, votações, CPIs, atos de governo ou redes oficiais.
-- Primeiro identifique acontecimentos reais documentados; só depois use sinais internos como correlação secundária.
-- É PROIBIDO criar evento com 0 fontes, 0 notícias, 0 evidências ou 0 registros externos.
-- Só crie evento se houver fato político identificável: notícia, vídeo, entrevista, debate, discurso, coletiva, decisão judicial, eleição, CPI, operação policial, votação ou acontecimento nacional.
-- Não crie evento baseado apenas em 3, 4, 5 ou 10 menções sem fonte externa.
-- O ranking deve priorizar veículos distintos, repercussão nacional, duração da cobertura, impacto político e engajamento público; nunca volume bruto interno.
-- Explique o que aconteceu, por que aconteceu, quem repercutiu, veículos envolvidos, impacto político e impacto eleitoral.
-- Se uma fonte não provar um evento, ignore.
+EVENTOS HISTÓRICOS PRÉ-IDENTIFICADOS (mantenha todos os reais, ajuste datas/descrições conforme as fontes, descarte apenas se forem claramente falsos):
+${knownList}
+
+PUBLICAÇÕES EXTERNAS COLETADAS:
+${corpus || "sem publicações externas"}
 
 SINAIS INTERNOS DE CRESCIMENTO:
 ${localSignal}
 
-PUBLICAÇÕES EXTERNAS:
-${corpus || "sem publicações externas"}
+INSTRUÇÕES:
+- Retorne TODOS os eventos pré-identificados que forem reais, mesmo que a cobertura coletada seja parcial — use seu conhecimento histórico para preencher descrição, impacto e participantes.
+- ADICIONE eventos novos encontrados nas publicações que não estavam na lista.
+- Para cada evento, indique sourceIndices (1-based) das publicações que documentam o fato. Se nenhuma publicação coletada cobrir o evento, devolva [] em sourceIndices — não invente índices.
+- Priorize relevância histórica e institucional, não volume bruto.
+- Mire em 20+ eventos quando o período cobrir um ciclo eleitoral ou mandato.
 
 Responda APENAS JSON válido:
 {
   "events": [
     {
-      "name": "nome factual do acontecimento",
-      "type": "eleicao|debate|entrevista|discurso|coletiva|decisao_judicial|cpi|operacao|votacao|agenda|noticia",
+      "name": "...",
+      "type": "eleicao|debate|entrevista|discurso|coletiva|decisao_judicial|cpi|operacao|votacao|agenda|impeachment|posse|julgamento|prisao|noticia",
       "start_date": "YYYY-MM-DD",
       "end_date": "YYYY-MM-DD",
-      "description": "o que aconteceu (3-5 frases factuais)",
-      "motivo": "por que isso é historicamente relevante",
-      "what_happened": "narrativa detalhada do acontecimento",
-      "why_happened": "contexto e motivações",
-      "participants": ["pessoa/instituição 1", "pessoa/instituição 2"],
-      "political_impact": "impacto institucional e político",
-      "electoral_impact": "impacto eleitoral (se houver)",
-      "aftermath": "desdobramentos posteriores documentados",
-      "keywords": ["termo1", "termo2"],
+      "description": "...",
+      "motivo": "...",
+      "what_happened": "...",
+      "why_happened": "...",
+      "participants": ["..."],
+      "political_impact": "...",
+      "electoral_impact": "...",
+      "aftermath": "...",
+      "keywords": ["..."],
       "sourceIndices": [1,2],
       "relevance_score": 0
     }
   ]
 }`;
-
-    let parsed: any = { events: [] };
-    try {
-      const ai = await callAICerebrasFirst({
-        systemMsg: "Você detecta acontecimentos políticos reais a partir de fontes documentadas. Nunca invente picos genéricos. Responda só JSON em pt-BR.",
-        userPrompt: prompt,
-        jsonMode: true,
-        maxTokens: 5000,
-        temperature: 0.12,
-        tag: "detect-historical-peaks",
-      });
-      const content = ai.content || "";
-      try { parsed = JSON.parse(content); }
-      catch { const m = content.match(/\{[\s\S]*\}/); if (m) parsed = JSON.parse(m[0]); }
-    } catch (error) {
-      console.error("[detect-historical-peaks] AI failed", (error as Error).message);
+      try {
+        const ai = await callAICerebrasFirst({
+          systemMsg: "Você detecta acontecimentos políticos reais cruzando conhecimento histórico e fontes documentadas. Responda só JSON em pt-BR.",
+          userPrompt: prompt,
+          jsonMode: true,
+          maxTokens: 8000,
+          temperature: 0.15,
+          tag: "detect-historical-peaks-enrich",
+        });
+        const content = ai.content || "";
+        let parsed: any = {};
+        try { parsed = JSON.parse(content); }
+        catch { const m = content.match(/\{[\s\S]*\}/); if (m) parsed = JSON.parse(m[0]); }
+        aiEvents = Array.isArray(parsed?.events) ? parsed.events : [];
+      } catch (error) {
+        console.error("[detect-historical-peaks] enrich AI failed", (error as Error).message);
+      }
     }
 
-    const candidateEvents = Array.isArray(parsed?.events) && parsed.events.length > 0 ? parsed.events : fallbackEventsFromSources(pubs, start, end);
+    // Combina eventos da IA enriquecida + descobertos não cobertos.
+    const combinedByKey = new Map<string, any>();
+    const keyOf = (e: any) => `${String(e.start_date || "").slice(0, 10)}|${normalize(String(e.name || "")).slice(0, 60)}`;
+    for (const e of aiEvents) combinedByKey.set(keyOf(e), e);
+    for (const e of discovered) if (!combinedByKey.has(keyOf(e))) combinedByKey.set(keyOf(e), e);
+    let candidateEvents: any[] = [...combinedByKey.values()];
+    if (candidateEvents.length === 0) candidateEvents = fallbackEventsFromSources(pubs, start, end);
+
     const events = candidateEvents.map((evt: any) => {
       const evPubs = matchedSources(evt, pubs, start, end, candidate.full_name);
       const distinctOutlets = new Set(evPubs.map((p) => normalize(p.outlet))).size;
@@ -494,7 +630,7 @@ Responda APENAS JSON válido:
         political_impact: cleanText(evt.political_impact).slice(0, 1000),
         electoral_impact: cleanText(evt.electoral_impact).slice(0, 1000),
         aftermath: cleanText(evt.aftermath).slice(0, 1200),
-        evidence_level: "evento_documentado",
+        evidence_level: evPubs.length >= 1 ? "evento_documentado" : "conhecimento_historico",
         relevance_score: Math.round(score),
         publications_count: evPubs.length,
         distinct_outlets: distinctOutlets,
@@ -510,11 +646,13 @@ Responda APENAS JSON válido:
       };
     }).filter((evt: any) => {
       const eventDate = new Date(`${evt.start_date}T12:00:00Z`).getTime();
+      if (Number.isNaN(eventDate)) return false;
       if (eventDate < start.getTime() - 86400000 || eventDate > end.getTime() + 86400000) return false;
-      return evt.name && evt.description && (evt.publications_count || 0) >= 1 && (evt.sources?.length || 0) >= 1;
-    }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0)).slice(0, 30);
+      // Aceita evento documentado OU evento histórico conhecido (sem cobertura coletada),
+      // porque a aba deve mostrar acontecimentos relevantes mesmo quando o crawler falha.
+      return !!evt.name && !!evt.description;
+    }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0)).slice(0, 40);
 
-    // Aggregated external timeline (per day) — volume real coletado externamente.
     const timelineMap = new Map<string, { date: string; total: number; news: number; videos: number; posts: number }>();
     for (const p of pubs) {
       if (!p.publishedAt) continue;
@@ -530,6 +668,7 @@ Responda APENAS JSON válido:
     return new Response(JSON.stringify({
       events,
       publications_collected: pubs.length,
+      discovered_count: discovered.length,
       estimated_reach: estimatedReachOf(pubs),
       external_timeline: externalTimeline,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
