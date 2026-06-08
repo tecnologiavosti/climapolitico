@@ -205,33 +205,7 @@ export default function EventReport() {
         </CardContent></Card>
       ) : null}
 
-      {timeline.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2"><TrendingUp className="h-5 w-5 text-primary" /> Volume externo agregado</CardTitle>
-            <CardDescription>Publicações encontradas por dia em fontes externas — notícias, vídeos e posts.</CardDescription>
-          </CardHeader>
-          <CardContent className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={timeline}>
-                <defs>
-                  <linearGradient id="gNews" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.7} />
-                    <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.05} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", fontSize: 12 }} />
-                <Area type="monotone" dataKey="news" stackId="1" stroke="hsl(var(--primary))" fill="url(#gNews)" name="Notícias" />
-                <Area type="monotone" dataKey="videos" stackId="1" stroke="#ef4444" fill="#ef4444" fillOpacity={0.35} name="Vídeos" />
-                <Area type="monotone" dataKey="posts" stackId="1" stroke="#22c55e" fill="#22c55e" fillOpacity={0.35} name="Posts" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      ) : null}
+      {/* Linha do tempo agregada removida — exibimos apenas acontecimentos com relevância política comprovada. */}
 
       {events.length > 0 ? (
         <div className="space-y-3">
