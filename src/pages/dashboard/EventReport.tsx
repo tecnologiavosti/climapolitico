@@ -144,14 +144,14 @@ export default function EventReport() {
           <TrendingUp className="h-7 w-7 text-primary" /> Picos de Menções
         </h1>
         <p className="text-muted-foreground text-sm">
-          Detecção de picos a partir do volume real coletado na internet — notícias, vídeos e posts em Google News, YouTube, TikTok, X, Facebook, Instagram, Telegram, Bluesky, portais e sites governamentais. Sem dependência de registros internos.
+          Inteligência política histórica. Detecta apenas acontecimentos com repercussão nacional documentada — crises, escândalos, operações, decisões do STF, CPIs, julgamentos, prisões, impeachments, eleições e debates. Comícios, agendas e visitas de rotina são automaticamente descartados.
         </p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Pesquisar picos</CardTitle>
-          <CardDescription>Escolha o candidato e o período. Os picos são calculados a partir do volume externo encontrado nas fontes coletadas.</CardDescription>
+          <CardDescription>Escolha o candidato e o período. A relevância é calculada a partir da diversidade de veículos, da duração da repercussão e do impacto político.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
