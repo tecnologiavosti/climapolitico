@@ -374,16 +374,20 @@ Responda APENAS JSON válido:
   "events": [
     {
       "name": "nome factual do acontecimento",
-      "type": "eleicao|debate|entrevista|discurso|coletiva|decisao_judicial|cpi|operacao|votacao|agenda|noticia|repercussao_social_evidenciada",
+      "type": "eleicao|debate|entrevista|discurso|coletiva|decisao_judicial|cpi|operacao|votacao|agenda|noticia",
       "start_date": "YYYY-MM-DD",
       "end_date": "YYYY-MM-DD",
-      "description": "o que aconteceu e por que importou",
-      "motivo": "por que isso é um pico histórico real",
+      "description": "o que aconteceu (3-5 frases factuais)",
+      "motivo": "por que isso é historicamente relevante",
+      "what_happened": "narrativa detalhada do acontecimento",
+      "why_happened": "contexto e motivações",
+      "participants": ["pessoa/instituição 1", "pessoa/instituição 2"],
+      "political_impact": "impacto institucional e político",
+      "electoral_impact": "impacto eleitoral (se houver)",
+      "aftermath": "desdobramentos posteriores documentados",
       "keywords": ["termo1", "termo2"],
       "sourceIndices": [1,2],
-      "relevance_score": 0,
-      "mentions_estimate": 0,
-      "variation_pct": 0
+      "relevance_score": 0
     }
   ]
 }`;
