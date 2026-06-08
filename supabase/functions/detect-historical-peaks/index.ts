@@ -18,6 +18,7 @@ const EVENT_TERMS = [
   "eleição", "debate", "entrevista", "discurso", "coletiva", "posse", "decisão judicial", "STF", "TSE",
   "CPI", "operação policial", "votação", "Congresso", "Senado", "Câmara", "campanha", "segundo turno",
   "primeiro turno", "julgamento", "pronunciamento", "comício", "sabatina", "BRICS", "governo", "ministério",
+  "agenda", "reunião", "ato de governo", "investigação", "indiciamento", "cassação", "inelegibilidade",
 ];
 
 function cleanText(value: unknown): string {
@@ -333,7 +334,7 @@ serve(async (req) => {
       const text = normalize(`${p.title} ${p.snippet}`);
       const candidateTokens = normalize(candidate.full_name).split(/\s+/).filter((t: string) => t.length >= 4 && !["das", "dos", "de", "da", "do"].includes(t));
       const nameHit = text.includes(normalize(candidate.full_name)) || candidateTokens.filter((t: string) => text.includes(t)).length >= Math.min(2, candidateTokens.length);
-      const eventHit = EVENT_TERMS.some((term) => text.includes(normalize(term))) || isOfficialOrJournalistic(p);
+      const eventHit = EVENT_TERMS.some((term) => text.includes(normalize(term)));
       return inWindow && nameHit && eventHit && isOfficialOrJournalistic(p);
     }).slice(0, 220);
 
