@@ -307,18 +307,19 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Candidato não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const contextual = buildContextualQueries(candidate.full_name, 6);
+    const contextual = buildContextualQueries(candidate.full_name, 8);
     const queryRoots = Array.from(new Set([
       `"${candidate.full_name}"`,
       ...contextual,
-      ...EVENT_TERMS.slice(0, 8).map((term) => `"${candidate.full_name}" ${term}`),
-    ])).slice(0, 12);
+      ...eventYearQueries(candidate.full_name, start, end),
+      ...EVENT_TERMS.map((term) => `"${candidate.full_name}" ${term}`),
+    ])).slice(0, days > 370 ? 34 : 22);
 
     const tbs = days <= 31 ? "qdr:m" : "qdr:y";
     const [googleSettled, gdeltSettled, firecrawlSettled] = await Promise.all([
-      Promise.allSettled(queryRoots.map((q) => fetchGoogleHistorical(q, startShort, endShort, 16))),
-      Promise.allSettled(queryRoots.slice(0, 6).map((q) => fetchGdeltHistorical(q, start, end, 40))),
-      Promise.allSettled(queryRoots.slice(0, 5).map((q) => firecrawlSearch(`${q} ${start.getFullYear()} ${end.getFullYear()}`, { limit: 8, tbs: tbs as "qdr:m" | "qdr:y" }))),
+      Promise.allSettled(queryRoots.map((q) => fetchGoogleHistorical(q, startShort, endShort, 18))),
+      Promise.allSettled(queryRoots.slice(0, 14).map((q) => fetchGdeltHistorical(q, start, end, 45))),
+      Promise.allSettled(queryRoots.slice(0, 10).map((q) => firecrawlSearch(`${q} ${start.getFullYear()} ${end.getFullYear()}`, { limit: 8, tbs: tbs as "qdr:m" | "qdr:y" }))),
     ]);
 
     const pubs = dedupePublications([
@@ -327,15 +328,16 @@ serve(async (req) => {
       ...firecrawlSettled.flatMap((r) => r.status === "fulfilled" ? r.value : []),
     ]).filter((p) => {
       const date = p.publishedAt ? new Date(p.publishedAt).getTime() : 0;
-      const inWindow = !date || (date >= start.getTime() - 86400000 && date <= end.getTime() + 86400000);
+      const inWindow = !!date && (date >= start.getTime() - 86400000 && date <= end.getTime() + 86400000);
       const text = normalize(`${p.title} ${p.snippet}`);
       const candidateTokens = normalize(candidate.full_name).split(/\s+/).filter((t: string) => t.length >= 4 && !["das", "dos", "de", "da", "do"].includes(t));
       const nameHit = text.includes(normalize(candidate.full_name)) || candidateTokens.filter((t: string) => text.includes(t)).length >= Math.min(2, candidateTokens.length);
-      return inWindow && nameHit;
-    }).slice(0, 140);
+      const eventHit = EVENT_TERMS.some((term) => text.includes(normalize(term))) || isOfficialOrJournalistic(p);
+      return inWindow && nameHit && eventHit && isOfficialOrJournalistic(p);
+    }).slice(0, 220);
 
     const localCandidates = timelineCandidates(Array.isArray(localTimeline) ? localTimeline : []);
-    if (pubs.length === 0 && localCandidates.length === 0) {
+    if (pubs.length === 0) {
       return new Response(JSON.stringify({ events: [], publications_collected: 0 }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
