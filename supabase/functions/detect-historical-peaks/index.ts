@@ -240,17 +240,34 @@ function historicalRelevanceScore(evt: any, pubs: ExternalPublication[]): number
   return Math.max(45, Math.min(100, Math.round(score)));
 }
 
-function relevanceFromEvidence(evt: any, pubs: ExternalPublication[], mentions: number): number {
+function meetsCoverageThreshold(counts: { news: number; videos: number; posts: number }, totalEvidence: number, distinctOutlets: number): boolean {
+  // Regras de validação solicitadas:
+  // 3 notícias OU 2 notícias + vídeo OU 2 notícias + posts OU 10 evidências totais.
+  // Sempre exigir ao menos 2 veículos distintos — um pico não pode vir de uma única fonte.
+  if (distinctOutlets < 2) return false;
+  if (counts.news >= 3) return true;
+  if (counts.news >= 2 && counts.videos >= 1) return true;
+  if (counts.news >= 2 && counts.posts >= 1) return true;
+  if (totalEvidence >= 10) return true;
+  return false;
+}
+
+function relevanceFromEvidence(evt: any, pubs: ExternalPublication[], _mentions: number): number {
   const distinctOutlets = new Set(pubs.map((p) => normalize(p.outlet))).size;
   const reach = pubs.reduce((sum, p) => sum + (p.outletReach || 3), 0);
-  const officialBonus = pubs.some((p) => /\.(gov|jus|leg)\.br|gov\.br|tse\.jus\.br|stf\.jus\.br|senado\.leg\.br|camara\.leg\.br/i.test(hostNameOf(p.url))) ? 12 : 0;
-  const score = Math.min(35, distinctOutlets * 9)
-    + Math.min(18, pubs.length * 3)
-    + Math.min(18, reach * 1.7)
-    + Math.min(10, coverageDurationDays(pubs) * 2)
+  const counts = countsByClass(pubs);
+  const diversity = (counts.news > 0 ? 1 : 0) + (counts.videos > 0 ? 1 : 0) + (counts.posts > 0 ? 1 : 0);
+  const officialBonus = pubs.some((p) => /\.(gov|jus|leg)\.br|gov\.br|tse\.jus\.br|stf\.jus\.br|senado\.leg\.br|camara\.leg\.br/i.test(hostNameOf(p.url))) ? 10 : 0;
+  const score = Math.min(36, distinctOutlets * 7)        // diversidade de veículos
+    + Math.min(22, pubs.length * 1.6)                     // volume total
+    + Math.min(12, counts.news * 2)                       // notícias
+    + Math.min(8, counts.videos * 3)                      // vídeos
+    + Math.min(8, counts.posts * 2)                       // posts
+    + Math.min(10, reach * 1.2)                           // alcance
+    + Math.min(10, coverageDurationDays(pubs) * 1.5)      // persistência temporal
+    + diversity * 4                                       // diversidade de tipos
     + politicalImpactWeight(String(evt?.type || evt?.name || ""))
-    + officialBonus
-    + Math.min(5, mentions / 25);
+    + officialBonus;
   return Math.max(30, Math.min(100, Math.round(score)));
 }
 
