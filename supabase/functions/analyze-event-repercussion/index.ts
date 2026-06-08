@@ -148,9 +148,13 @@ serve(async (req) => {
       console.log(`[event-repercussion] keyword filter: ${before} -> ${comments.length} (removidos: ${filteredOut})`);
     }
 
-    const externalSources = Array.isArray(eventSources) ? eventSources.slice(0, 12) : [];
-    const externalTitles = Array.isArray(eventSourceTitles) ? eventSourceTitles.slice(0, 10) : [];
-    const hasExternalEvidence = Boolean(confirmedEvent) || externalSources.length > 0 || externalTitles.length > 0;
+    const externalSources = Array.isArray(eventSources)
+      ? eventSources.filter((s: any) => sanitizeForAI(s?.url || s?.name || '').length > 0).slice(0, 12)
+      : [];
+    const externalTitles = Array.isArray(eventSourceTitles)
+      ? eventSourceTitles.map((t: any) => sanitizeForAI(t)).filter(Boolean).slice(0, 10)
+      : [];
+    const hasExternalEvidence = externalSources.length > 0 || externalTitles.length > 0;
 
     if (!hasExternalEvidence) {
       return new Response(JSON.stringify({
