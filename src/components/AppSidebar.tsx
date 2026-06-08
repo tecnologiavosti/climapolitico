@@ -120,7 +120,6 @@ const groups: NavGroup[] = [
     icon: Brain,
     defaultOpen: false,
     items: [
-      { title: "Insights Estratégicos", url: "/dashboard/ai-insights", icon: Brain, badge: { label: "IA", variant: "ai" }, tip: "Análises geradas por IA para guiar decisões." },
       { title: "Narrativas Detectadas", url: "/dashboard/narrative-recommendations", icon: Sparkles, badge: { label: "IA", variant: "ai" }, tip: "Narrativas em ascensão e recomendações." },
       { title: "Repercussão de Eventos", url: "/dashboard/event-repercussion", icon: MessagesSquare, tip: "Como entrevistas, debates e lives repercutem em cada região." },
       { title: "Comparação Histórica", url: "/dashboard/historical-comparison", icon: GitCompareArrows, badge: { label: "IA", variant: "ai" }, tip: "Compare dois períodos do candidato com análise por IA." },
