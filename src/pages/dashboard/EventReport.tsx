@@ -573,7 +573,7 @@ const EventReportPage = () => {
                     return (
                       <SelectItem key={i} value={String(i)} className="whitespace-normal break-words pr-8">
                         <span className="block text-sm leading-snug">
-                          {e.name} — relevância {e.relevance_score || 0} • {e.mentions_estimate} registros <span className={v >= 0 ? 'text-green-600' : 'text-red-600'}>({sign}{v}%)</span>
+                          {e.name} — relevância {e.relevance_score || 0} • {e.publications_count || e.sources?.length || 0} fonte(s) • {e.mentions_estimate} menção(ões) correlacionadas <span className={v >= 0 ? 'text-green-600' : 'text-red-600'}>({sign}{v}%)</span>
                         </span>
                       </SelectItem>
                     );
