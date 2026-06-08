@@ -46,6 +46,7 @@ interface HistoricalEvent {
   sentiment_negative: number;
   sentiment_neutral: number;
   sources_count?: number;
+  outlet_names?: string[];
 }
 
 interface ExternalTimelinePoint {
