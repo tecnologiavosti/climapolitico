@@ -195,9 +195,35 @@ function coverageDurationDays(pubs: ExternalPublication[]): number {
 
 function politicalImpactWeight(type: string): number {
   const t = normalize(type);
-  if (/eleicao|decisao|judicial|operacao|cpi|votacao|posse/.test(t)) return 24;
+  if (/eleicao|decisao|judicial|operacao|cpi|votacao|posse|impeachment|julgamento|prisao|cassacao|condenacao|absolvicao|denuncia/.test(t)) return 24;
   if (/debate|entrevista|discurso|coletiva|agenda/.test(t)) return 16;
   return 10;
+}
+
+const HISTORICAL_EVENT_TYPES = new Set([
+  "eleicao", "debate", "entrevista", "discurso", "coletiva", "decisao_judicial", "cpi", "operacao",
+  "votacao", "impeachment", "posse", "julgamento", "prisao", "cassacao", "denuncia", "condenacao", "absolvicao",
+]);
+
+function isHistoricallyRelevantEvent(evt: any): boolean {
+  const type = normalize(String(evt?.type || "")).replace(/[^a-z_]/g, "");
+  const text = normalize(`${evt?.name || ""} ${evt?.description || ""} ${evt?.motivo || ""} ${evt?.political_impact || ""} ${evt?.electoral_impact || ""}`);
+  const hasKnownType = HISTORICAL_EVENT_TYPES.has(type) || /eleicao|prisao|impeachment|cpi|operacao|stf|tse|decisao|julgamento|posse|cassacao|denuncia|condenacao|absolvicao|debate/.test(type);
+  const hasHistoricalTerm = /eleicao|prisao|curitiba|impeachment|cpi|lava jato|operacao|stf|tse|supremo|tribunal|julgamento|habeas corpus|posse|cassacao|denuncia|condenacao|absolvicao|impugnacao|candidatura|debate|segundo turno|primeiro turno|substituicao/.test(text);
+  const hasContext = cleanText(evt?.description).length >= 80 && (cleanText(evt?.political_impact).length >= 30 || cleanText(evt?.electoral_impact).length >= 30 || cleanText(evt?.motivo).length >= 30);
+  return Boolean(evt?.name && evt?.start_date && hasContext && (hasKnownType || hasHistoricalTerm));
+}
+
+function historicalRelevanceScore(evt: any, pubs: ExternalPublication[]): number {
+  const text = normalize(`${evt?.type || ""} ${evt?.name || ""} ${evt?.description || ""}`);
+  let score = politicalImpactWeight(String(evt?.type || evt?.name || "")) + 28;
+  if (/prisao|impeachment|eleicao|decisao|stf|tse|julgamento|cassacao|condenacao/.test(text)) score += 18;
+  if (/cpi|operacao|lava jato|denuncia|posse|segundo turno|impugnacao|substituicao/.test(text)) score += 12;
+  if (cleanText(evt?.political_impact).length > 80) score += 8;
+  if (cleanText(evt?.electoral_impact).length > 80) score += 8;
+  if (Array.isArray(evt?.participants) && evt.participants.length >= 2) score += 5;
+  score += Math.min(12, pubs.length * 3);
+  return Math.max(45, Math.min(100, Math.round(score)));
 }
 
 function relevanceFromEvidence(evt: any, pubs: ExternalPublication[], mentions: number): number {
