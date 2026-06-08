@@ -115,14 +115,17 @@ function supportTermsForEvent(evt: any, candidateName: string): string[] {
 function sourceSupportsEvent(pub: ExternalPublication, evt: any, start: Date, end: Date, candidateName: string): boolean {
   if (!isOfficialOrJournalistic(pub)) return false;
   const text = normalize(`${pub.title} ${pub.snippet} ${pub.outlet}`);
+  const candidateTokens = normalize(candidateName).split(/\s+/).filter((t) => t.length >= 4 && !["das", "dos", "de", "da", "do"].includes(t));
+  const candidateHit = text.includes(normalize(candidateName)) || candidateTokens.filter((t) => text.includes(t)).length >= Math.min(2, candidateTokens.length);
   const terms = supportTermsForEvent(evt, candidateName);
   const hasTerm = terms.length > 0 && terms.some((term) => text.includes(term));
+  const hasPoliticalEventTerm = EVENT_TERMS.some((term) => text.includes(normalize(term)));
   const date = sourceDateMs(pub);
   const eventStart = new Date(`${String(evt?.start_date || start.toISOString().slice(0, 10)).slice(0, 10)}T00:00:00Z`).getTime();
   const eventEnd = new Date(`${String(evt?.end_date || evt?.start_date || end.toISOString().slice(0, 10)).slice(0, 10)}T23:59:59Z`).getTime();
   const withinEvent = date == null || (date >= eventStart - 21 * 86400000 && date <= eventEnd + 21 * 86400000);
   const withinPeriod = date == null || (date >= start.getTime() - 86400000 && date <= end.getTime() + 86400000);
-  return hasTerm && withinEvent && withinPeriod;
+  return candidateHit && (hasTerm || hasPoliticalEventTerm) && withinEvent && withinPeriod;
 }
 
 function matchedSources(evt: any, pubs: ExternalPublication[], start: Date, end: Date, candidateName: string): ExternalPublication[] {
