@@ -18,6 +18,7 @@ const EVENT_TERMS = [
   "eleição", "debate", "entrevista", "discurso", "coletiva", "posse", "decisão judicial", "STF", "TSE",
   "CPI", "operação policial", "votação", "Congresso", "Senado", "Câmara", "campanha", "segundo turno",
   "primeiro turno", "julgamento", "pronunciamento", "comício", "sabatina", "BRICS", "governo", "ministério",
+  "agenda", "reunião", "ato de governo", "investigação", "indiciamento", "cassação", "inelegibilidade",
 ];
 
 function cleanText(value: unknown): string {
@@ -72,6 +73,130 @@ function hostNameOf(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "Fonte externa"; }
 }
 
+function eventYearQueries(candidateName: string, start: Date, end: Date): string[] {
+  const years = new Set<number>();
+  for (let y = start.getFullYear(); y <= end.getFullYear(); y++) years.add(y);
+  const terms = [
+    "eleição", "campanha", "segundo turno", "primeiro turno", "debate", "entrevista",
+    "posse", "investigação", "STF", "TSE", "Senado", "CPI", "votação", "discurso",
+  ];
+  const queries: string[] = [];
+  for (const year of years) {
+    for (const term of terms) queries.push(`"${candidateName}" ${term} ${year}`);
+  }
+  return queries;
+}
+
+function sourceDateMs(pub: ExternalPublication): number | null {
+  if (!pub.publishedAt) return null;
+  const t = new Date(pub.publishedAt).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+function isOfficialOrJournalistic(pub: ExternalPublication): boolean {
+  const host = hostNameOf(pub.url).toLowerCase();
+  const outlet = normalize(pub.outlet || "");
+  return /\.(gov|jus|leg)\.br$|gov\.br|tse\.jus\.br|stf\.jus\.br|senado\.leg\.br|camara\.leg\.br|planalto\.gov\.br|youtube\.com|youtu\.be|g1\.globo\.com|folha\.uol\.com\.br|estadao\.com\.br|valor\.globo\.com|poder360\.com\.br|cnnbrasil\.com\.br|uol\.com\.br|metropoles\.com|reuters\.com|bbc\.com|oglobo\.globo\.com|veja\.abril\.com\.br|terra\.com\.br|r7\.com|band\.uol\.com\.br/i.test(host)
+    || /agencia brasil|senado|camara|stf|tse|reuters|bbc|folha|estadao|estadao conteudo|valor|g1|cnn|uol|poder360|metropoles|o globo|oglobo|veja|terra|isto[eé]|r7|band|record|jovem pan|congresso em foco|carta ?capital/.test(outlet);
+}
+
+function significantTokens(value: string): string[] {
+  return normalize(value).match(/[a-z0-9]{4,}/g)?.filter((t) => !["para", "como", "sobre", "entre", "pela", "pelo", "brasil", "politico", "politica", "noticia", "evento"].includes(t)) || [];
+}
+
+function supportTermsForEvent(evt: any, candidateName: string): string[] {
+  const candidateTokens = new Set(significantTokens(candidateName));
+  return Array.from(new Set([
+    ...((Array.isArray(evt?.keywords) ? evt.keywords : []) as string[]).flatMap(significantTokens),
+    ...significantTokens(`${evt?.name || ""} ${evt?.description || ""} ${evt?.type || ""}`).slice(0, 10),
+  ])).filter((term) => !candidateTokens.has(term)).slice(0, 16);
+}
+
+function sourceSupportsEvent(pub: ExternalPublication, evt: any, start: Date, end: Date, candidateName: string): boolean {
+  if (!isOfficialOrJournalistic(pub)) return false;
+  const text = normalize(`${pub.title} ${pub.snippet} ${pub.outlet}`);
+  const candidateTokens = normalize(candidateName).split(/\s+/).filter((t) => t.length >= 4 && !["das", "dos", "de", "da", "do"].includes(t));
+  const candidateHit = text.includes(normalize(candidateName)) || (candidateTokens.length > 0 && candidateTokens.filter((t) => text.includes(t)).length >= Math.min(2, candidateTokens.length));
+  const terms = supportTermsForEvent(evt, candidateName);
+  const hasTerm = terms.length > 0 && terms.some((term) => text.includes(term));
+  const hasPoliticalEventTerm = EVENT_TERMS.some((term) => text.includes(normalize(term)));
+  const date = sourceDateMs(pub);
+  const eventStart = new Date(`${String(evt?.start_date || start.toISOString().slice(0, 10)).slice(0, 10)}T00:00:00Z`).getTime();
+  const eventEnd = new Date(`${String(evt?.end_date || evt?.start_date || end.toISOString().slice(0, 10)).slice(0, 10)}T23:59:59Z`).getTime();
+  const withinEvent = date == null || (date >= eventStart - 21 * 86400000 && date <= eventEnd + 21 * 86400000);
+  const withinPeriod = date == null || (date >= start.getTime() - 86400000 && date <= end.getTime() + 86400000);
+  return candidateHit && (hasTerm || hasPoliticalEventTerm) && withinEvent && withinPeriod;
+}
+
+function matchedSources(evt: any, pubs: ExternalPublication[], start: Date, end: Date, candidateName: string): ExternalPublication[] {
+  const indices = Array.isArray(evt?.sourceIndices)
+    ? evt.sourceIndices.map((n: any) => Number(n) - 1).filter((n: number) => n >= 0 && n < pubs.length)
+    : [];
+  const selected = indices.map((i: number) => pubs[i]).filter((p: ExternalPublication) => sourceSupportsEvent(p, evt, start, end, candidateName));
+  if (selected.length > 0) return selected;
+  return pubs.filter((p) => sourceSupportsEvent(p, evt, start, end, candidateName)).slice(0, 8);
+}
+
+function coverageDurationDays(pubs: ExternalPublication[]): number {
+  const dates = pubs.map(sourceDateMs).filter((n): n is number => n != null).sort((a, b) => a - b);
+  if (dates.length < 2) return pubs.length > 0 ? 1 : 0;
+  return Math.max(1, Math.ceil((dates[dates.length - 1] - dates[0]) / 86400000) + 1);
+}
+
+function politicalImpactWeight(type: string): number {
+  const t = normalize(type);
+  if (/eleicao|decisao|judicial|operacao|cpi|votacao|posse/.test(t)) return 24;
+  if (/debate|entrevista|discurso|coletiva|agenda/.test(t)) return 16;
+  return 10;
+}
+
+function relevanceFromEvidence(evt: any, pubs: ExternalPublication[], mentions: number): number {
+  const distinctOutlets = new Set(pubs.map((p) => normalize(p.outlet))).size;
+  const reach = pubs.reduce((sum, p) => sum + (p.outletReach || 3), 0);
+  const officialBonus = pubs.some((p) => /\.(gov|jus|leg)\.br|gov\.br|tse\.jus\.br|stf\.jus\.br|senado\.leg\.br|camara\.leg\.br/i.test(hostNameOf(p.url))) ? 12 : 0;
+  const score = Math.min(35, distinctOutlets * 9)
+    + Math.min(18, pubs.length * 3)
+    + Math.min(18, reach * 1.7)
+    + Math.min(10, coverageDurationDays(pubs) * 2)
+    + politicalImpactWeight(String(evt?.type || evt?.name || ""))
+    + officialBonus
+    + Math.min(5, mentions / 25);
+  return Math.max(30, Math.min(100, Math.round(score)));
+}
+
+function fallbackEventsFromSources(pubs: ExternalPublication[], start: Date, end: Date): any[] {
+  const buckets = new Map<string, ExternalPublication[]>();
+  for (const pub of pubs) {
+    if (!isOfficialOrJournalistic(pub)) continue;
+    const date = pub.publishedAt ? new Date(pub.publishedAt).toISOString().slice(0, 10) : start.toISOString().slice(0, 10);
+    const tokens = significantTokens(pub.title).slice(0, 5).join(" ");
+    const key = `${date}|${tokens}`;
+    buckets.set(key, [...(buckets.get(key) || []), pub]);
+  }
+  return [...buckets.entries()].map(([key, sources]) => {
+    const [date] = key.split("|");
+    const main = sources[0];
+    const title = cleanText(main.title).replace(/\s+-\s+[^-]{2,80}$/g, "");
+    const terms = EVENT_TERMS.filter((term) => normalize(`${main.title} ${main.snippet}`).includes(normalize(term))).slice(0, 5);
+    return {
+      name: title || `Acontecimento político documentado em ${date}`,
+      type: terms[0] || "noticia",
+      start_date: date,
+      end_date: date,
+      description: cleanText(main.snippet || main.title).slice(0, 500),
+      motivo: `Evento identificado a partir de cobertura externa documentada por ${new Set(sources.map((s) => s.outlet)).size} veículo(s).`,
+      keywords: terms.length ? terms : significantTokens(main.title).slice(0, 6),
+      sourceIndices: sources.map((s) => pubs.findIndex((p) => p.url === s.url) + 1).filter((n) => n > 0),
+      relevance_score: relevanceFromEvidence({ type: terms[0], name: title }, sources, 0),
+      mentions_estimate: 0,
+      variation_pct: 0,
+    };
+  }).filter((evt) => {
+    const t = new Date(`${evt.start_date}T12:00:00Z`).getTime();
+    return t >= start.getTime() - 86400000 && t <= end.getTime() + 86400000;
+  }).sort((a, b) => Number(b.relevance_score || 0) - Number(a.relevance_score || 0)).slice(0, 24);
+}
+
 async function fetchGoogleHistorical(query: string, start: string, end: string, limit = 25): Promise<ExternalPublication[]> {
   const q = `${query} after:${start} before:${end}`;
   const url = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=pt-BR&gl=BR&ceid=BR:pt-419`;
@@ -109,7 +234,7 @@ async function fetchGoogleHistorical(query: string, start: string, end: string, 
 
 async function fetchGdeltHistorical(query: string, start: Date, end: Date, maxRecords = 60): Promise<ExternalPublication[]> {
   const params = new URLSearchParams({
-    query: `${query} sourcecountry:BR`,
+    query,
     mode: "ArtList",
     format: "json",
     maxrecords: String(maxRecords),
@@ -187,18 +312,19 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Candidato não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const contextual = buildContextualQueries(candidate.full_name, 6);
+    const contextual = buildContextualQueries(candidate.full_name, 8);
     const queryRoots = Array.from(new Set([
       `"${candidate.full_name}"`,
       ...contextual,
-      ...EVENT_TERMS.slice(0, 8).map((term) => `"${candidate.full_name}" ${term}`),
-    ])).slice(0, 12);
+      ...eventYearQueries(candidate.full_name, start, end),
+      ...EVENT_TERMS.map((term) => `"${candidate.full_name}" ${term}`),
+    ])).slice(0, days > 370 ? 34 : 22);
 
     const tbs = days <= 31 ? "qdr:m" : "qdr:y";
     const [googleSettled, gdeltSettled, firecrawlSettled] = await Promise.all([
-      Promise.allSettled(queryRoots.map((q) => fetchGoogleHistorical(q, startShort, endShort, 16))),
-      Promise.allSettled(queryRoots.slice(0, 6).map((q) => fetchGdeltHistorical(q, start, end, 40))),
-      Promise.allSettled(queryRoots.slice(0, 5).map((q) => firecrawlSearch(`${q} ${start.getFullYear()} ${end.getFullYear()}`, { limit: 8, tbs: tbs as "qdr:m" | "qdr:y" }))),
+      Promise.allSettled(queryRoots.map((q) => fetchGoogleHistorical(q, startShort, endShort, 18))),
+      Promise.allSettled(queryRoots.slice(0, 14).map((q) => fetchGdeltHistorical(q, start, end, 45))),
+      Promise.allSettled(queryRoots.slice(0, 10).map((q) => firecrawlSearch(`${q} ${start.getFullYear()} ${end.getFullYear()}`, { limit: 8, tbs: tbs as "qdr:m" | "qdr:y" }))),
     ]);
 
     const pubs = dedupePublications([
@@ -207,15 +333,16 @@ serve(async (req) => {
       ...firecrawlSettled.flatMap((r) => r.status === "fulfilled" ? r.value : []),
     ]).filter((p) => {
       const date = p.publishedAt ? new Date(p.publishedAt).getTime() : 0;
-      const inWindow = !date || (date >= start.getTime() - 86400000 && date <= end.getTime() + 86400000);
+      const inWindow = !!date && (date >= start.getTime() - 86400000 && date <= end.getTime() + 86400000);
       const text = normalize(`${p.title} ${p.snippet}`);
       const candidateTokens = normalize(candidate.full_name).split(/\s+/).filter((t: string) => t.length >= 4 && !["das", "dos", "de", "da", "do"].includes(t));
       const nameHit = text.includes(normalize(candidate.full_name)) || candidateTokens.filter((t: string) => text.includes(t)).length >= Math.min(2, candidateTokens.length);
-      return inWindow && nameHit;
-    }).slice(0, 140);
+      const eventHit = EVENT_TERMS.some((term) => text.includes(normalize(term)));
+      return inWindow && nameHit && eventHit && isOfficialOrJournalistic(p);
+    }).slice(0, 220);
 
     const localCandidates = timelineCandidates(Array.isArray(localTimeline) ? localTimeline : []);
-    if (pubs.length === 0 && localCandidates.length === 0) {
+    if (pubs.length === 0) {
       return new Response(JSON.stringify({ events: [], publications_collected: 0 }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
@@ -227,10 +354,13 @@ serve(async (req) => {
     const prompt = `Você é um analista político histórico brasileiro. Descubra MÚLTIPLOS acontecimentos políticos reais de ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ""} entre ${startShort} e ${endShort}.
 
 CRITÉRIOS OBRIGATÓRIOS:
+- A fonte primária é EXTERNA: notícias, registros oficiais, entrevistas, debates, discursos, decisões, votações, CPIs, atos de governo ou redes oficiais.
+- Primeiro identifique acontecimentos reais documentados; só depois use sinais internos como correlação secundária.
+- É PROIBIDO criar evento com 0 fontes, 0 notícias, 0 evidências ou 0 registros externos.
 - Só crie evento se houver fato político identificável: notícia, vídeo, entrevista, debate, discurso, coletiva, decisão judicial, eleição, CPI, operação policial, votação ou acontecimento nacional.
 - Não crie evento baseado apenas em 3, 4, 5 ou 10 menções sem fonte externa.
-- O ranking deve priorizar relevância histórica/documental, não volume bruto.
-- Explique o que aconteceu, por que aconteceu, quem repercutiu, veículos envolvidos e redes que impulsionaram quando houver sinal interno.
+- O ranking deve priorizar veículos distintos, repercussão nacional, duração da cobertura, impacto político e engajamento público; nunca volume bruto interno.
+- Explique o que aconteceu, por que aconteceu, quem repercutiu, veículos envolvidos, impacto político e impacto eleitoral.
 - Se uma fonte não provar um evento, ignore.
 
 SINAIS INTERNOS DE CRESCIMENTO:
@@ -275,18 +405,15 @@ Responda APENAS JSON válido:
       console.error("[detect-historical-peaks] AI failed", (error as Error).message);
     }
 
+    const candidateEvents = Array.isArray(parsed?.events) && parsed.events.length > 0 ? parsed.events : fallbackEventsFromSources(pubs, start, end);
     const localByDate = new Map((Array.isArray(localTimeline) ? localTimeline : []).map((p: TimelinePoint) => [p.date, p]));
-    const events = (Array.isArray(parsed?.events) ? parsed.events : []).map((evt: any) => {
-      const sourceIndices = Array.isArray(evt.sourceIndices) ? evt.sourceIndices.map((n: any) => Number(n) - 1).filter((n: number) => n >= 0 && n < pubs.length) : [];
-      const evPubs = sourceIndices.map((i: number) => pubs[i]).filter(Boolean);
+    const events = candidateEvents.map((evt: any) => {
+      const evPubs = matchedSources(evt, pubs, start, end, candidate.full_name);
       const distinctOutlets = new Set(evPubs.map((p) => normalize(p.outlet))).size;
       const day = String(evt.start_date || "").slice(0, 10);
       const local = localByDate.get(day) as any;
       const mentions = Math.max(Number(evt.mentions_estimate || 0), Number(local?.count || 0));
-      const score = Math.max(0, Math.min(100, Number(evt.relevance_score || 0)))
-        + Math.min(20, distinctOutlets * 4)
-        + Math.min(15, evPubs.length * 2)
-        + Math.min(10, mentions / 10);
+      const score = relevanceFromEvidence(evt, evPubs, mentions);
       return {
         name: cleanText(evt.name).slice(0, 180),
         type: cleanText(evt.type || "noticia"),
@@ -297,8 +424,8 @@ Responda APENAS JSON válido:
         variation_pct: Number(evt.variation_pct || local?.growth || 0),
         description: cleanText(evt.description).slice(0, 700),
         motivo: cleanText(evt.motivo).slice(0, 300),
-        confirmed_event: evPubs.length > 0,
-        evidence_level: evPubs.length > 0 ? "evento_documentado" : "volume_relevante",
+        confirmed_event: true,
+        evidence_level: "evento_documentado",
         relevance_score: Math.round(score),
         publications_count: evPubs.length,
         distinct_outlets: distinctOutlets,
@@ -309,8 +436,7 @@ Responda APENAS JSON válido:
     }).filter((evt: any) => {
       const eventDate = new Date(`${evt.start_date}T12:00:00Z`).getTime();
       if (eventDate < start.getTime() - 86400000 || eventDate > end.getTime() + 86400000) return false;
-      if ((evt.mentions_estimate || 0) <= 10 && !evt.confirmed_event) return false;
-      return evt.name && evt.description && (evt.confirmed_event || (evt.mentions_estimate || 0) >= 25);
+      return evt.name && evt.description && (evt.publications_count || 0) >= 1 && (evt.sources?.length || 0) >= 1;
     }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0)).slice(0, 30);
 
     return new Response(JSON.stringify({

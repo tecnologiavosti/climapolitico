@@ -228,54 +228,7 @@ function detectEventsFromInteractions(comments: LocalInteraction[], _candidateNa
     return { date: day, count: rows.length, positive: pos, negative: neg, neutral: neu };
   });
 
-  const peakDays = daysAsc
-    .map(([day, rows], i) => {
-      const prev = counts.slice(Math.max(0, i - 7), i);
-      const baseline = prev.length > 0 ? prev.reduce((s, n) => s + n, 0) / prev.length : avg;
-      const variation = baseline > 0 ? ((rows.length - baseline) / baseline) * 100 : 0;
-      const { distinctNetworks } = summarizeRows(rows);
-      const confirmedTerms = hasConfirmedEventEvidence(rows);
-      const relevantVolume = rows.length >= Math.max(MIN_SOCIAL_ONLY_PEAK_VOLUME, Math.ceil(avg * 2)) && variation >= 100;
-      const strongGrowthWithEvidence = rows.length >= MIN_EVIDENCED_GROWTH_VOLUME && variation >= 300 && confirmedTerms && distinctNetworks >= 2;
-      const exceptionalVolume = rows.length >= 100 && variation >= 35;
-      const isPeak = relevantVolume || strongGrowthWithEvidence || exceptionalVolume;
-      return { day, rows, variation, baseline, isPeak, confirmedTerms };
-    })
-    .filter(d => d.isPeak)
-    .sort((a, b) => (b.rows.length * Math.max(1, b.variation / 100)) - (a.rows.length * Math.max(1, a.variation / 100)))
-    .slice(0, 50);
-
-  // mark timeline points
-  const peakSet = new Set(peakDays.map(p => p.day));
-  timeline.forEach(p => { if (peakSet.has(p.date)) p.isPeak = true; });
-
-  const events: DetectedEvent[] = peakDays.map(({ day, rows, variation, confirmedTerms }) => {
-    const formatted = day.split('-').reverse().join('/');
-    const sign = variation >= 0 ? '+' : '';
-    const tag = confirmedTerms ? 'Forte repercussão com indícios de evento' : 'Forte crescimento de repercussão';
-    const summary = summarizeRows(rows);
-    const sampleText = rows.map(r => cleanDisplayText(r.post_title || r.comment_text)).filter(Boolean).slice(0, 8).join(' ');
-    const keywords = [...new Set(tokenizeEventText(sampleText).filter(w => !EVENT_STOP_WORDS.has(w)).slice(0, 8))];
-
-    return {
-      name: `${formatted} — ${tag}`,
-      type: 'repercussao_social_evidenciada',
-      keywords,
-      start_date: day,
-      end_date: day,
-      mentions_estimate: rows.length,
-      variation_pct: Math.round(variation),
-      description: `${tag} em ${formatted}: ${rows.length} menções (${sign}${Math.round(variation)}% vs. média anterior), com evidência textual/rede suficiente para investigação histórica.`,
-      motivo: classifyMotivo(variation, rows.length, summary.topNetworks[0] || null),
-      sentiment: summary.sentiment,
-      topNetworks: summary.topNetworks,
-      confirmed_event: false,
-      evidence_level: confirmedTerms ? 'crescimento_com_indicios' : 'volume_relevante',
-      relevance_score: Math.round(Math.min(70, rows.length * 1.2 + Math.max(0, variation) / 10 + (confirmedTerms ? 15 : 0))),
-    };
-  });
-
-  return { events, timeline };
+  return { events: [], timeline };
 }
 
 interface DetectedEvent {
@@ -430,13 +383,12 @@ const EventReportPage = () => {
       if (aiError) throw aiError;
       aiEvents = Array.isArray(aiDetected?.events) ? aiDetected.events as DetectedEvent[] : [];
     } catch (error) {
-      console.warn('Detecção histórica por IA indisponível, mantendo sinais internos qualificados.', error);
+      console.warn('Detecção histórica externa indisponível; nenhum pico interno será promovido a evento.', error);
     }
-    const merged = [...aiEvents, ...localDetection.events]
+    const merged = aiEvents
       .filter((evt) => {
         const hasExternalEvidence = (evt.publications_count || 0) > 0 || (evt.sources?.length || 0) > 0 || evt.confirmed_event;
-        if ((evt.mentions_estimate || 0) <= 10 && !hasExternalEvidence) return false;
-        return hasExternalEvidence || (evt.mentions_estimate || 0) >= MIN_SOCIAL_ONLY_PEAK_VOLUME;
+        return hasExternalEvidence && (evt.sources?.length || 0) > 0 && (evt.publications_count || 0) > 0;
       })
       .sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0))
       .slice(0, 30);
@@ -472,8 +424,8 @@ const EventReportPage = () => {
           query = query.or(orExpr);
         }
         const { count } = await query;
-        const measured = count ?? evt.mentions_estimate;
-        return { ...evt, mentions_estimate: evt.confirmed_event ? Math.max(measured, evt.mentions_estimate) : measured };
+        const measured = count ?? 0;
+        return { ...evt, mentions_estimate: measured };
       } catch {
         return evt;
       }
@@ -494,12 +446,12 @@ const EventReportPage = () => {
         const formatted = evt.start_date.split('-').reverse().join('/');
         const v = evt.variation_pct ?? 0;
         const sign = v >= 0 ? '+' : '';
-        const tag = evt.confirmed_event ? 'Evento político documentado' : evt.evidence_level === 'crescimento_com_indicios' ? 'Crescimento com evidências' : 'Volume historicamente relevante';
+        const tag = 'Evento político documentado';
         return {
           ...evt,
-          description: evt.confirmed_event && evt.description
+          description: evt.description
             ? evt.description
-            : `${tag} em ${formatted} — ${evt.mentions_estimate} registros analisados (${sign}${v}% vs. média anterior).`,
+            : `${tag} em ${formatted} — validado por ${evt.publications_count || evt.sources?.length || 0} fonte(s) externa(s).`,
         };
       }).sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0));
       setDetectedEvents(refined);
@@ -526,6 +478,10 @@ const EventReportPage = () => {
   const handleGenerate = async (forcedEvent?: DetectedEvent) => {
     if (!selectedCandidate) { toast.error("Selecione um candidato"); return; }
     const evt = forcedEvent || (selectedEventIdx ? detectedEvents[Number(selectedEventIdx)] : null);
+    if (!evt || !evt.confirmed_event || !evt.sources?.length) {
+      toast.error("Detecte e selecione um acontecimento com evidência externa antes de gerar o relatório.");
+      return;
+    }
     const reportStartDate = evt?.start_date || startDate;
     const reportEndDate = evt?.end_date || endDate;
     if (!reportStartDate || !reportEndDate) { toast.error("Defina o período do evento"); return; }
@@ -617,7 +573,7 @@ const EventReportPage = () => {
                     return (
                       <SelectItem key={i} value={String(i)} className="whitespace-normal break-words pr-8">
                         <span className="block text-sm leading-snug">
-                          {e.name} — relevância {e.relevance_score || 0} • {e.mentions_estimate} registros <span className={v >= 0 ? 'text-green-600' : 'text-red-600'}>({sign}{v}%)</span>
+                          {e.name} — relevância {e.relevance_score || 0} • {e.publications_count || e.sources?.length || 0} fonte(s) • {e.mentions_estimate} menção(ões) correlacionadas <span className={v >= 0 ? 'text-green-600' : 'text-red-600'}>({sign}{v}%)</span>
                         </span>
                       </SelectItem>
                     );
@@ -648,7 +604,7 @@ const EventReportPage = () => {
               </HelpTooltip>
             </div>
             <HelpTooltip text="Clica aqui pra IA olhar tudo que falaram nesse período e te dizer se foi bom ou ruim.">
-              <Button onClick={() => handleGenerate()} disabled={isLoading || !selectedCandidate || !startDate || !endDate}>
+              <Button onClick={() => handleGenerate()} disabled={isLoading || !selectedCandidate || selectedEventIdx === ""}>
                 {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analisando...</> : <><CalendarDays className="mr-2 h-4 w-4" />Gerar Relatório</>}
               </Button>
             </HelpTooltip>
@@ -718,11 +674,11 @@ const EventReportPage = () => {
                       </Badge>
                     </div>
                     <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-bold">{e.mentions_estimate.toLocaleString("pt-BR")}</span>
-                      <span className="text-xs text-muted-foreground">registros internos</span>
+                      <span className="text-2xl font-bold">{e.publications_count || e.sources?.length || 0}</span>
+                      <span className="text-xs text-muted-foreground">fonte(s) externa(s)</span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {e.publications_count || 0} fonte(s) externa(s) • {e.distinct_outlets || 0} veículo(s) • {sign}{v}% vs. base interna
+                      {e.distinct_outlets || 0} veículo(s) • {e.mentions_estimate.toLocaleString("pt-BR")} menção(ões) internas correlacionadas • {sign}{v}% vs. base interna
                     </p>
                     {sent && (sent.positivePct + sent.negativePct + sent.neutralPct) > 0 && (
                       <div className="space-y-1">
@@ -740,6 +696,21 @@ const EventReportPage = () => {
                       <div className="flex flex-wrap gap-1">
                         {e.topNetworks.map(n => (
                           <Badge key={n} variant="outline" className="text-[10px] capitalize">{n}</Badge>
+                        ))}
+                      </div>
+                    )}
+                    {e.sources && e.sources.length > 0 && (
+                      <div className="space-y-1 rounded-md bg-muted/30 p-2">
+                        {e.sources.slice(0, 3).map((source, sourceIdx) => (
+                          <a
+                            key={`${source.url}-${sourceIdx}`}
+                            href={source.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block truncate text-[11px] text-primary hover:underline"
+                          >
+                            {source.name || 'Fonte externa'}
+                          </a>
                         ))}
                       </div>
                     )}
