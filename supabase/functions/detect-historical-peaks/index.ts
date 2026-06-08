@@ -103,18 +103,19 @@ function significantTokens(value: string): string[] {
   return normalize(value).match(/[a-z0-9]{4,}/g)?.filter((t) => !["para", "como", "sobre", "entre", "pela", "pelo", "brasil", "politico", "politica", "noticia", "evento"].includes(t)) || [];
 }
 
-function supportTermsForEvent(evt: any): string[] {
+function supportTermsForEvent(evt: any, candidateName: string): string[] {
+  const candidateTokens = new Set(significantTokens(candidateName));
   return Array.from(new Set([
     ...((Array.isArray(evt?.keywords) ? evt.keywords : []) as string[]).flatMap(significantTokens),
     ...significantTokens(`${evt?.name || ""} ${evt?.description || ""} ${evt?.type || ""}`).slice(0, 10),
-  ])).slice(0, 16);
+  ])).filter((term) => !candidateTokens.has(term)).slice(0, 16);
 }
 
-function sourceSupportsEvent(pub: ExternalPublication, evt: any, start: Date, end: Date): boolean {
+function sourceSupportsEvent(pub: ExternalPublication, evt: any, start: Date, end: Date, candidateName: string): boolean {
   if (!isOfficialOrJournalistic(pub)) return false;
   const text = normalize(`${pub.title} ${pub.snippet} ${pub.outlet}`);
-  const terms = supportTermsForEvent(evt);
-  const hasTerm = terms.length === 0 || terms.some((term) => text.includes(term));
+  const terms = supportTermsForEvent(evt, candidateName);
+  const hasTerm = terms.length > 0 && terms.some((term) => text.includes(term));
   const date = sourceDateMs(pub);
   const eventStart = new Date(`${String(evt?.start_date || start.toISOString().slice(0, 10)).slice(0, 10)}T00:00:00Z`).getTime();
   const eventEnd = new Date(`${String(evt?.end_date || evt?.start_date || end.toISOString().slice(0, 10)).slice(0, 10)}T23:59:59Z`).getTime();
@@ -123,13 +124,13 @@ function sourceSupportsEvent(pub: ExternalPublication, evt: any, start: Date, en
   return hasTerm && withinEvent && withinPeriod;
 }
 
-function matchedSources(evt: any, pubs: ExternalPublication[], start: Date, end: Date): ExternalPublication[] {
+function matchedSources(evt: any, pubs: ExternalPublication[], start: Date, end: Date, candidateName: string): ExternalPublication[] {
   const indices = Array.isArray(evt?.sourceIndices)
     ? evt.sourceIndices.map((n: any) => Number(n) - 1).filter((n: number) => n >= 0 && n < pubs.length)
     : [];
-  const selected = indices.map((i: number) => pubs[i]).filter((p: ExternalPublication) => sourceSupportsEvent(p, evt, start, end));
+  const selected = indices.map((i: number) => pubs[i]).filter((p: ExternalPublication) => sourceSupportsEvent(p, evt, start, end, candidateName));
   if (selected.length > 0) return selected;
-  return pubs.filter((p) => sourceSupportsEvent(p, evt, start, end)).slice(0, 8);
+  return pubs.filter((p) => sourceSupportsEvent(p, evt, start, end, candidateName)).slice(0, 8);
 }
 
 function coverageDurationDays(pubs: ExternalPublication[]): number {
