@@ -107,7 +107,6 @@ const sections: Section[] = [
       { label: "Ranking", icon: Trophy, to: "/dashboard/ranking" },
       { label: "Por Rede Social", icon: Network, to: "/dashboard/network-view" },
       { label: "Feeds", icon: Rss, to: "/dashboard/social-feeds" },
-      { label: "Catálogo", icon: BookUser, to: "/dashboard/candidates-catalog" },
       { label: "Coleta", icon: Database, to: "/dashboard/collection-status" },
     ],
   },
