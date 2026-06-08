@@ -410,7 +410,6 @@ Responda APENAS JSON válido:
     }
 
     const candidateEvents = Array.isArray(parsed?.events) && parsed.events.length > 0 ? parsed.events : fallbackEventsFromSources(pubs, start, end);
-    const localByDate = new Map((Array.isArray(localTimeline) ? localTimeline : []).map((p: TimelinePoint) => [p.date, p]));
     const events = candidateEvents.map((evt: any) => {
       const evPubs = matchedSources(evt, pubs, start, end, candidate.full_name);
       const distinctOutlets = new Set(evPubs.map((p) => normalize(p.outlet))).size;
