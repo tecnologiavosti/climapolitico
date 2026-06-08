@@ -648,9 +648,14 @@ Responda APENAS JSON válido:
       const eventDate = new Date(`${evt.start_date}T12:00:00Z`).getTime();
       if (Number.isNaN(eventDate)) return false;
       if (eventDate < start.getTime() - 86400000 || eventDate > end.getTime() + 86400000) return false;
-      // Aceita evento documentado OU evento histórico conhecido (sem cobertura coletada),
-      // porque a aba deve mostrar acontecimentos relevantes mesmo quando o crawler falha.
-      return !!evt.name && !!evt.description;
+      if (!evt.name || !evt.description) return false;
+      // Limite mínimo de repercussão real: 3 notícias OU 5 posts OU 3 vídeos OU 10 evidências externas no total.
+      const meetsThreshold =
+        evt.news_count >= 3 ||
+        evt.posts_count >= 5 ||
+        evt.videos_count >= 3 ||
+        evt.publications_count >= 10;
+      return meetsThreshold;
     }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0)).slice(0, 40);
 
     const timelineMap = new Map<string, { date: string; total: number; news: number; videos: number; posts: number }>();
@@ -665,8 +670,14 @@ Responda APENAS JSON válido:
     }
     const externalTimeline = [...timelineMap.values()].sort((a, b) => a.date.localeCompare(b.date));
 
+    // Remove fontes/URLs externas da resposta — manter usuário dentro da plataforma.
+    const sanitizedEvents = events.map((e: any) => {
+      const { sources: _omit, ...rest } = e;
+      return { ...rest, sources_count: Array.isArray(_omit) ? _omit.length : 0 };
+    });
+
     return new Response(JSON.stringify({
-      events,
+      events: sanitizedEvents,
       publications_collected: pubs.length,
       discovered_count: discovered.length,
       estimated_reach: estimatedReachOf(pubs),

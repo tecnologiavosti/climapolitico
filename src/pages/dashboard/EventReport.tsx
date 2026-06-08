@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
-  Loader2, CalendarDays, ExternalLink, Newspaper, ChevronDown, ChevronUp,
+  Loader2, CalendarDays, Newspaper, ChevronDown, ChevronUp,
   Landmark, Vote, Gavel, Mic, Users, TrendingUp, Video, MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -16,14 +16,6 @@ import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
 } from "recharts";
 
-interface HistoricalSource {
-  name: string;
-  url: string;
-  region?: string;
-  publishedAt?: string | null;
-  title?: string;
-  kind?: "news" | "video" | "post";
-}
 
 interface HistoricalEvent {
   name: string;
@@ -50,7 +42,7 @@ interface HistoricalEvent {
   sentiment_positive: number;
   sentiment_negative: number;
   sentiment_neutral: number;
-  sources: HistoricalSource[];
+  sources_count?: number;
 }
 
 interface ExternalTimelinePoint {
@@ -308,16 +300,9 @@ export default function EventReport() {
 
                   <p className="text-sm leading-relaxed">{ev.description}</p>
 
-                  {ev.sources.length > 0 ? (
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Veículos que repercutiram ({ev.distinct_outlets})</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {Array.from(new Set(ev.sources.map((s) => s.name))).slice(0, 12).map((name) => (
-                          <Badge key={name} variant="outline" className="text-[11px]">{name}</Badge>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
+                  <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                    Cobertura detectada em <span className="font-semibold text-foreground">{ev.distinct_outlets}</span> veículo{ev.distinct_outlets === 1 ? "" : "s"}{ev.publications_count ? <> · <span className="font-semibold text-foreground">{ev.publications_count}</span> evidência{ev.publications_count === 1 ? "" : "s"} externa{ev.publications_count === 1 ? "" : "s"}</> : null}.
+                  </div>
 
                   <Button variant="ghost" size="sm" className="gap-2"
                     onClick={() => setExpanded((p) => ({ ...p, [key]: !p[key] }))}>
@@ -342,20 +327,10 @@ export default function EventReport() {
                       {ev.aftermath ? <Section title="Desdobramentos" body={ev.aftermath} /> : null}
 
                       <div>
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Fontes ({ev.sources.length})</p>
-                        <ul className="space-y-1.5">
-                          {ev.sources.slice(0, 30).map((s, i) => (
-                            <li key={i} className="text-sm flex items-start gap-2">
-                              <ExternalLink className="h-3.5 w-3.5 mt-1 text-muted-foreground flex-shrink-0" />
-                              <a href={s.url} target="_blank" rel="noreferrer"
-                                className="hover:underline text-primary line-clamp-2">
-                                <span className="font-medium">{s.name}</span>
-                                {s.kind ? <span className="text-[10px] uppercase ml-1 text-muted-foreground">[{s.kind}]</span> : null}
-                                {s.title ? <span className="text-muted-foreground"> — {s.title}</span> : null}
-                              </a>
-                            </li>
-                          ))}
-                        </ul>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Cobertura analisada</p>
+                        <p className="text-sm text-muted-foreground">
+                          Análise produzida a partir de <span className="font-semibold text-foreground">{ev.publications_count}</span> evidência{ev.publications_count === 1 ? "" : "s"} externa{ev.publications_count === 1 ? "" : "s"} em <span className="font-semibold text-foreground">{ev.distinct_outlets}</span> veículo{ev.distinct_outlets === 1 ? "" : "s"} distintos.
+                        </p>
                       </div>
                     </div>
                   ) : null}
