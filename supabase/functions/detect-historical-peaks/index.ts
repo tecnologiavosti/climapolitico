@@ -234,7 +234,7 @@ async function fetchGoogleHistorical(query: string, start: string, end: string, 
 
 async function fetchGdeltHistorical(query: string, start: Date, end: Date, maxRecords = 60): Promise<ExternalPublication[]> {
   const params = new URLSearchParams({
-    query: `${query} sourcecountry:BR`,
+    query,
     mode: "ArtList",
     format: "json",
     maxrecords: String(maxRecords),
