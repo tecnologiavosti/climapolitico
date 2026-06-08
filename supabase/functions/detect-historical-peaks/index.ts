@@ -96,8 +96,58 @@ function sourceDateMs(pub: ExternalPublication): number | null {
 function isOfficialOrJournalistic(pub: ExternalPublication): boolean {
   const host = hostNameOf(pub.url).toLowerCase();
   const outlet = normalize(pub.outlet || "");
-  return /\.(gov|jus|leg)\.br$|gov\.br|tse\.jus\.br|stf\.jus\.br|senado\.leg\.br|camara\.leg\.br|planalto\.gov\.br|youtube\.com|youtu\.be|g1\.globo\.com|folha\.uol\.com\.br|estadao\.com\.br|valor\.globo\.com|poder360\.com\.br|cnnbrasil\.com\.br|uol\.com\.br|metropoles\.com|reuters\.com|bbc\.com|oglobo\.globo\.com|veja\.abril\.com\.br|terra\.com\.br|r7\.com|band\.uol\.com\.br/i.test(host)
-    || /agencia brasil|senado|camara|stf|tse|reuters|bbc|folha|estadao|estadao conteudo|valor|g1|cnn|uol|poder360|metropoles|o globo|oglobo|veja|terra|isto[eé]|r7|band|record|jovem pan|congresso em foco|carta ?capital/.test(outlet);
+  return /\.(gov|jus|leg)\.br$|gov\.br|tse\.jus\.br|stf\.jus\.br|senado\.leg\.br|camara\.leg\.br|planalto\.gov\.br|youtube\.com|youtu\.be|tiktok\.com|twitter\.com|x\.com|facebook\.com|instagram\.com|t\.me|telegram\.me|bsky\.app|reddit\.com|threads\.net|g1\.globo\.com|folha\.uol\.com\.br|estadao\.com\.br|valor\.globo\.com|poder360\.com\.br|cnnbrasil\.com\.br|uol\.com\.br|metropoles\.com|reuters\.com|bbc\.com|oglobo\.globo\.com|veja\.abril\.com\.br|terra\.com\.br|r7\.com|band\.uol\.com\.br|congressoemfoco\.uol\.com\.br|cartacapital\.com\.br|nexojornal\.com\.br|brasildefato\.com\.br/i.test(host)
+    || /agencia brasil|senado|camara|stf|tse|reuters|bbc|folha|estadao|estadao conteudo|valor|g1|cnn|uol|poder360|metropoles|o globo|oglobo|veja|terra|isto[eé]|r7|band|record|jovem pan|congresso em foco|carta ?capital|youtube|tiktok|twitter|facebook|instagram|telegram|bluesky|reddit|threads/.test(outlet);
+}
+
+function classifyPub(pub: ExternalPublication): "news" | "video" | "post" {
+  const host = hostNameOf(pub.url).toLowerCase();
+  if (/youtube\.com|youtu\.be|tiktok\.com|vimeo\.com|globoplay\.globo\.com/.test(host)) return "video";
+  if (/twitter\.com|x\.com|facebook\.com|instagram\.com|t\.me|telegram\.me|bsky\.app|reddit\.com|threads\.net/.test(host)) return "post";
+  return "news";
+}
+
+const SENT_POS = ["aprov", "elogi", "vit[óo]ria", "avanç", "conquist", "destaq", "homenag", "celebr", "sucesso", "fortale", "apoio", "favor[áa]vel", "lider", "cresc"];
+const SENT_NEG = ["cr[íi]tic", "ataq", "esc[âa]ndalo", "polem", "denunc", "investiga", "rejeiç", "queda", "derrota", "renunc", "condenaç", "afast", "impeach", "fraude", "corrupç", "pris[ãa]o", "indici"];
+
+function sentimentOf(text: string): "pos" | "neg" | "neu" {
+  const t = normalize(text);
+  let pos = 0, neg = 0;
+  for (const w of SENT_POS) if (new RegExp(w).test(t)) pos++;
+  for (const w of SENT_NEG) if (new RegExp(w).test(t)) neg++;
+  if (pos > neg && pos >= 1) return "pos";
+  if (neg > pos && neg >= 1) return "neg";
+  return "neu";
+}
+
+function aggregateSentiment(pubs: ExternalPublication[]): { pos: number; neg: number; neu: number } {
+  let pos = 0, neg = 0, neu = 0;
+  for (const p of pubs) {
+    const s = sentimentOf(`${p.title} ${p.snippet}`);
+    if (s === "pos") pos++; else if (s === "neg") neg++; else neu++;
+  }
+  const total = pos + neg + neu || 1;
+  return { pos: Math.round((pos / total) * 100), neg: Math.round((neg / total) * 100), neu: Math.round((neu / total) * 100) };
+}
+
+function estimateVolumeFromPubs(pubs: ExternalPublication[]): number {
+  let total = 0;
+  for (const p of pubs) {
+    const klass = classifyPub(p);
+    const reach = p.outletReach || 3;
+    const base = klass === "video" ? 4500 : klass === "post" ? 1200 : 2200;
+    total += Math.round(base * (reach / 4));
+  }
+  return total;
+}
+
+function countsByClass(pubs: ExternalPublication[]): { news: number; videos: number; posts: number } {
+  let news = 0, videos = 0, posts = 0;
+  for (const p of pubs) {
+    const k = classifyPub(p);
+    if (k === "video") videos++; else if (k === "post") posts++; else news++;
+  }
+  return { news, videos, posts };
 }
 
 function significantTokens(value: string): string[] {
