@@ -670,8 +670,14 @@ Responda APENAS JSON válido:
     }
     const externalTimeline = [...timelineMap.values()].sort((a, b) => a.date.localeCompare(b.date));
 
+    // Remove fontes/URLs externas da resposta — manter usuário dentro da plataforma.
+    const sanitizedEvents = events.map((e: any) => {
+      const { sources: _omit, ...rest } = e;
+      return { ...rest, sources_count: Array.isArray(_omit) ? _omit.length : 0 };
+    });
+
     return new Response(JSON.stringify({
-      events,
+      events: sanitizedEvents,
       publications_collected: pubs.length,
       discovered_count: discovered.length,
       estimated_reach: estimatedReachOf(pubs),
