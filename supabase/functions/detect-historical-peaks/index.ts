@@ -397,7 +397,7 @@ Inclua, quando aplicável:
 - polêmicas e crises políticas
 - substituições de candidatura, alianças, federações
 
-Use seu conhecimento histórico. NÃO invente. Se não houver acontecimento, retorne lista vazia.
+Use seu conhecimento histórico, mas inclua apenas eventos com confirmação histórica em múltiplas fontes confiáveis e coerência temporal. NÃO invente. Se não houver acontecimento, retorne lista vazia.
 Liste o MÁXIMO possível (mire em 25-40 eventos quando o período cobrir uma eleição ou mandato).
 
 Responda APENAS JSON válido:
@@ -579,7 +579,7 @@ SINAIS INTERNOS DE CRESCIMENTO:
 ${localSignal}
 
 INSTRUÇÕES:
-- Retorne TODOS os eventos pré-identificados que forem reais, mesmo que a cobertura coletada seja parcial — use seu conhecimento histórico para preencher descrição, impacto e participantes.
+- Retorne TODOS os eventos pré-identificados que tenham confirmação histórica, múltiplas fontes confiáveis conhecidas e data coerente, mesmo que a cobertura coletada agora seja parcial ou vazia — use seu conhecimento histórico para preencher descrição, impacto e participantes.
 - ADICIONE eventos novos encontrados nas publicações que não estavam na lista.
 - Para cada evento, indique sourceIndices (1-based) das publicações que documentam o fato. Se nenhuma publicação coletada cobrir o evento, devolva [] em sourceIndices — não invente índices.
 - Priorize relevância histórica e institucional, não volume bruto.
