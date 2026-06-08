@@ -8,6 +8,7 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import type { SocialInteraction } from "@/hooks/useRealTimeAnalytics";
+import { resolveOriginalPostUrl } from "@/lib/originalPostUrl";
 
 interface Props {
   comments: SocialInteraction[];
