@@ -12,9 +12,8 @@ import {
   Landmark, Vote, Gavel, Mic, Users, TrendingUp, Video, MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
-import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
-} from "recharts";
+
+
 
 
 interface HistoricalEvent {
