@@ -218,19 +218,29 @@ export default function LinkedInFeed() {
                     <p className="text-sm text-muted-foreground line-clamp-3">{description}</p>
                   </CardContent>
                 )}
-                {p.author_profile_url && (
-                  <CardContent className="pt-0">
-                    <a
-                      href={p.author_profile_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                    >
-                      Ver no LinkedIn
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </CardContent>
-                )}
+                <CardContent className="pt-0">
+                  {(() => {
+                    const url = resolveOriginalPostUrl({ ...p, social_network: "linkedin" });
+                    if (url) {
+                      return (
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          Ver publicação original
+                        </a>
+                      );
+                    }
+                    return (
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground italic">
+                        Link original indisponível
+                      </span>
+                    );
+                  })()}
+                </CardContent>
               </Card>
             );
           })}
