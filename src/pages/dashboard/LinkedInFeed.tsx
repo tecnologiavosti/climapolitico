@@ -10,6 +10,8 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
+import { resolveOriginalPostUrl } from "@/lib/originalPostUrl";
+
 interface LinkedInPost {
   id: string;
   candidate_id: string;
@@ -19,6 +21,11 @@ interface LinkedInPost {
   original_posted_at: string | null;
   collected_at: string | null;
   sentiment_label: string | null;
+  post_url: string | null;
+  post_id: string | null;
+  external_id: string | null;
+  author_handle: string | null;
+  platform: string | null;
 }
 
 interface CandidateOption {
