@@ -16,14 +16,6 @@ import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
 } from "recharts";
 
-interface HistoricalSource {
-  name: string;
-  url: string;
-  region?: string;
-  publishedAt?: string | null;
-  title?: string;
-  kind?: "news" | "video" | "post";
-}
 
 interface HistoricalEvent {
   name: string;
