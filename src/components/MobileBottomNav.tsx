@@ -62,6 +62,7 @@ const sections: Section[] = [
     icon: UserPlus,
     items: [
       { label: "Adicionar Candidato", icon: UserPlus, to: "/dashboard/candidates-catalog" },
+      { label: "Catálogo de Candidatos", icon: BookUser, to: "/dashboard/candidates-catalog" },
       { label: "Meus Candidatos", icon: Users, to: "/dashboard/candidates" },
     ],
   },
