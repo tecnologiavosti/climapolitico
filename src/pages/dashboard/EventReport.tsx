@@ -339,9 +339,15 @@ export default function EventReport() {
 
                       <div>
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Cobertura analisada</p>
-                        <p className="text-sm text-muted-foreground">
-                          Análise produzida a partir de <span className="font-semibold text-foreground">{ev.publications_count}</span> evidência{ev.publications_count === 1 ? "" : "s"} externa{ev.publications_count === 1 ? "" : "s"} em <span className="font-semibold text-foreground">{ev.distinct_outlets}</span> veículo{ev.distinct_outlets === 1 ? "" : "s"} distintos.
-                        </p>
+                        {ev.volume_available ? (
+                          <p className="text-sm text-muted-foreground">
+                            Análise produzida a partir de <span className="font-semibold text-foreground">{ev.publications_count}</span> evidência{ev.publications_count === 1 ? "" : "s"} externa{ev.publications_count === 1 ? "" : "s"} em <span className="font-semibold text-foreground">{ev.distinct_outlets}</span> veículo{ev.distinct_outlets === 1 ? "" : "s"} distintos.
+                          </p>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            Evento mantido por confirmação histórica, coerência temporal e relevância política; o volume original não está disponível para quantificação exata pelas APIs atuais.
+                          </p>
+                        )}
                       </div>
                     </div>
                   ) : null}
