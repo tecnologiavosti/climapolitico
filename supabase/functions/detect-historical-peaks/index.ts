@@ -14,12 +14,20 @@ const corsHeaders = {
 
 type TimelinePoint = { date: string; count: number; isPeak?: boolean };
 
+// Apenas termos de ALTA RELEVÂNCIA POLÍTICA. Comícios, agendas, visitas, caminhadas,
+// reuniões partidárias e encontros locais foram removidos por orientação do produto.
 const EVENT_TERMS = [
-  "eleição", "debate", "entrevista", "discurso", "coletiva", "posse", "decisão judicial", "STF", "TSE",
-  "CPI", "operação policial", "votação", "Congresso", "Senado", "Câmara", "campanha", "segundo turno",
-  "primeiro turno", "julgamento", "pronunciamento", "comício", "sabatina", "BRICS", "governo", "ministério",
-  "agenda", "reunião", "ato de governo", "investigação", "indiciamento", "cassação", "inelegibilidade",
+  "eleição", "debate presidencial", "decisão judicial", "STF", "TSE", "CPI",
+  "operação policial", "operação da PF", "votação", "Congresso", "Senado", "Câmara",
+  "segundo turno", "primeiro turno", "julgamento", "impeachment", "cassação",
+  "inelegibilidade", "investigação", "indiciamento", "denúncia", "escândalo",
+  "prisão", "absolvição", "condenação", "sanção presidencial", "veto presidencial",
+  "mudança ministerial", "posse presidencial", "crise política", "pronunciamento oficial",
 ];
+
+// Tipos de evento bloqueados — não são "picos" de repercussão política nacional.
+const BLOCKED_EVENT_TYPES = /^(comicio|caminhada|agenda|visita|reuniao|reuniao_partidaria|encontro|encontro_apoiadores|ato_campanha|panfletagem|carreata|evento_local|inauguracao)$/i;
+const BLOCKED_NAME_TERMS = /\b(comicio|comício|caminhada|carreata|panfletagem|reunião partidária|reuniao partidaria|encontro com apoiador|visita de rotina|inauguração local|inauguracao local|evento em |comício em|comicio em)\b/i;
 
 function cleanText(value: unknown): string {
   let s = String(value || "");
