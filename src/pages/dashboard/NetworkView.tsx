@@ -314,6 +314,12 @@ export default function NetworkView() {
         </Card>
       )}
 
+      {!isLoadingCore && !consistencyOk && (
+        <Card className="p-4 border-warning/40 bg-warning/5 text-sm">
+          Recalculando agregações — algumas métricas estão sendo reprocessadas para garantir consistência.
+        </Card>
+      )}
+
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <Kpi label="Total de menções" value={fmt(total)} icon={<MessageSquare className="h-4 w-4" />} loading={isLoadingCore} />
