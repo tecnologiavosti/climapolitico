@@ -172,13 +172,12 @@ function NetworkFeed({ network }: { network: NetworkConfig }) {
 
     const runQuery = async () => {
       const startedAt = performance.now();
-      // `estimated` evita timeout em redes com centenas de milhares de linhas
-      // (ex.: youtube ~ 450k). Mantém UI responsiva e usa o planner do Postgres.
+      // Sem `count` para evitar scan extra em tabelas grandes (~450k linhas YouTube).
+      // O índice (social_network, original_posted_at DESC) permite paginação rápida.
       let query = supabase
         .from("social_interactions")
         .select(
-          "id, candidate_id, comment_text, comment_author, author_profile_url, original_posted_at, collected_at, sentiment_label, social_network, likes_count, replies_count, shares_count, post_url, post_id, external_id, author_handle, platform",
-          { count: "estimated" }
+          "id, candidate_id, comment_text, comment_author, author_profile_url, original_posted_at, collected_at, sentiment_label, social_network, likes_count, replies_count, shares_count, post_url, post_id, external_id, author_handle, platform"
         )
         .in("social_network", network.match)
         .order("original_posted_at", { ascending: false, nullsFirst: false })
