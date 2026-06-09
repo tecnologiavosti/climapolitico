@@ -576,7 +576,7 @@ function Kpi({ label, value, icon, loading, sub, tone, delta, invertDelta }: {
   );
 }
 
-function SentBar({ label, pct: p, delta, color, invert }: { label: string; pct: number; delta: number; color: string; invert?: boolean }) {
+function SentBar({ label, pct: p, count, delta, color, invert }: { label: string; pct: number; count?: number; delta: number; color: string; invert?: boolean }) {
   const goodDelta = invert ? delta < 0 : delta > 0;
   return (
     <div>
@@ -586,7 +586,7 @@ function SentBar({ label, pct: p, delta, color, invert }: { label: string; pct: 
           {label}
         </span>
         <span className="flex items-center gap-2">
-          <span className="font-semibold">{p}%</span>
+          <span className="font-semibold">{p}%{count !== undefined ? ` (${count.toLocaleString("pt-BR")})` : ""}</span>
           {delta !== 0 && (
             <span className={goodDelta ? "text-success" : "text-destructive"}>
               ({delta > 0 ? "+" : ""}{delta}pp)
