@@ -127,9 +127,9 @@ async function enrichArticleMeta(item: NewsItem): Promise<NewsItem> {
       ...item,
       link: finalUrl,
       image: validHttps(image) ? image : item.image,
-      title: title || item.title,
-      description: description.slice(0, 500),
-      source,
+      title: cleanContent(title || item.title),
+      description: cleanContent(description).slice(0, 500),
+      source: cleanContent(source),
     };
   } catch {
     return item;
