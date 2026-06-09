@@ -3329,11 +3329,18 @@ export type Database = {
       }
       norm_text: { Args: { _value: string }; Returns: string }
       normalize_social_platform: { Args: { _network: string }; Returns: string }
+      nv_clean_text: { Args: { _text: string }; Returns: string }
       nv_is_political_text: {
         Args: { _candidate_name?: string; _text: string }
         Returns: boolean
       }
       nv_is_valid_hashtag: { Args: { _tag: string }; Returns: boolean }
+      nv_network_key: { Args: { _network: string }; Returns: string }
+      nv_normalize_hashtag: { Args: { _tag: string }; Returns: string }
+      nv_political_relevance_score: {
+        Args: { _candidate_name?: string; _text: string }
+        Returns: number
+      }
       prune_edge_function_logs: { Args: never; Returns: undefined }
       reactivate_youtube_keys: { Args: never; Returns: undefined }
       record_collector_call: {
@@ -3369,6 +3376,10 @@ export type Database = {
       refresh_network_profiles_deduplicated: { Args: never; Returns: undefined }
       refresh_network_view_daily_metrics: {
         Args: { p_since?: string }
+        Returns: Json
+      }
+      refresh_network_view_daily_metrics_range: {
+        Args: { p_since: string; p_until: string }
         Returns: Json
       }
       refresh_pipeline_metrics_hourly: { Args: never; Returns: undefined }

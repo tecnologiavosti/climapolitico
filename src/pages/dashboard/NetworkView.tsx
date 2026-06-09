@@ -93,6 +93,20 @@ const fmt = (n: number) => n.toLocaleString("pt-BR");
 const compact = (n: number) => Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
 const growth = (cur: number, prev: number) => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : cur > 0 ? 100 : 0);
+const isValidHashtag = (tag: string) => {
+  const clean = tag
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f\u200B-\u200D\uFEFF\u00A0]/g, "")
+    .toLowerCase()
+    .replace(/^#+/, "");
+  return clean.length >= 3 && clean.length <= 40 && /[a-z]/.test(clean) && !/^(x200b|xfeff|nbsp|amp|[0-9_\-]+|[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(clean);
+};
+const isWithinSelectedPeriod = (date: string | null | undefined, days: number) => {
+  if (!date || days >= 3650) return !!date;
+  const time = new Date(date).getTime();
+  if (!Number.isFinite(time)) return false;
+  return time >= Date.now() - days * 24 * 60 * 60 * 1000 && time <= Date.now() + 60 * 1000;
+};
 
 const sectionErrorMessage = (section: string) => `Não foi possível carregar ${section}. As demais seções continuam disponíveis.`;
 
@@ -189,9 +203,9 @@ export default function NetworkView() {
     series: coreData?.series ?? [],
     by_network: coreData?.by_network ?? [],
     heatmap: coreData?.heatmap ?? [],
-    hashtags: contentData?.hashtags ?? [],
-    topics: contentData?.topics ?? [],
-    top_posts: topPostsData?.top_posts ?? [],
+    hashtags: (contentData?.hashtags ?? []).filter((h) => isValidHashtag(h.tag)),
+    topics: (contentData?.topics ?? []).filter((t) => t.theme?.trim() && t.mentions > 0),
+    top_posts: (topPostsData?.top_posts ?? []).filter((p) => isWithinSelectedPeriod(p.original_posted_at, days)),
   };
 
   const k = agg?.kpis;
