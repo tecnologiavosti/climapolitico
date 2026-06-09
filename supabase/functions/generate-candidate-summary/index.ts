@@ -279,6 +279,7 @@ serve(async (req) => {
     let allComments: any[] = [];
     let offset = 0;
     const pageSize = 1000;
+    const maxPromptComments = 5000;
     const rpcDays = daysBack === null ? 3650 : Math.max(1, Math.ceil(daysBack));
     const { data: coreMetrics } = await supabaseClient.rpc('network_view_core_metrics', {
       p_candidate_id: candidateId,
@@ -302,7 +303,7 @@ serve(async (req) => {
       if (pageError) { console.error('Error fetching comments:', pageError); break; }
       if (!page || page.length === 0) break;
       allComments = [...allComments, ...page];
-      if (page.length < pageSize) break;
+      if (page.length < pageSize || allComments.length >= maxPromptComments) break;
       offset += pageSize;
     }
 
