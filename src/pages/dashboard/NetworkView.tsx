@@ -284,24 +284,26 @@ export default function NetworkView() {
         </div>
       </div>
 
-      {error && (
+      {sectionErrors.length > 0 && (
         <Card className="p-4 border-destructive/40 bg-destructive/5 text-sm text-destructive">
-          Erro ao carregar dados: {(error as Error).message}
+          {sectionErrors.map((err, index) => (
+            <div key={`${err.message}-${index}`}>{err.message}</div>
+          ))}
         </Card>
       )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <Kpi label="Total de menções" value={fmt(total)} icon={<MessageSquare className="h-4 w-4" />} loading={isLoading} />
-        <Kpi label="Interações" value={compact(k?.engagement ?? 0)} icon={<Activity className="h-4 w-4" />} loading={isLoading} sub={`${fmt(k?.likes ?? 0)} curtidas`} />
-        <Kpi label="Sentimento positivo" value={`${posPct}%`} icon={<Heart className="h-4 w-4 text-success" />} loading={isLoading} sub={`${fmt(k?.pos ?? 0)} menções`} tone="success" delta={posPct - prevPosPct} />
-        <Kpi label="Sentimento negativo" value={`${negPct}%`} icon={<TrendingDown className="h-4 w-4 text-destructive" />} loading={isLoading} sub={`${fmt(k?.neg ?? 0)} menções`} tone="destructive" delta={negPct - prevNegPct} invertDelta />
-        <Kpi label="Crescimento" value={`${growthPct >= 0 ? "+" : ""}${growthPct}%`} icon={growthPct >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} loading={isLoading} sub="vs. período anterior" tone={growthPct >= 0 ? "success" : "destructive"} />
-        <Kpi label="Rede dominante" value={dominant === "—" ? "—" : dominant.charAt(0).toUpperCase() + dominant.slice(1)} icon={<Crown className="h-4 w-4" />} loading={isLoading} sub={agg?.by_network?.[0] ? `${compact(agg.by_network[0].mentions)} menções` : ""} />
+        <Kpi label="Total de menções" value={fmt(total)} icon={<MessageSquare className="h-4 w-4" />} loading={isLoadingCore} />
+        <Kpi label="Interações" value={compact(k?.engagement ?? 0)} icon={<Activity className="h-4 w-4" />} loading={isLoadingCore} sub={`${fmt(k?.likes ?? 0)} curtidas`} />
+        <Kpi label="Sentimento positivo" value={`${posPct}%`} icon={<Heart className="h-4 w-4 text-success" />} loading={isLoadingCore} sub={`${fmt(k?.pos ?? 0)} menções`} tone="success" delta={posPct - prevPosPct} />
+        <Kpi label="Sentimento negativo" value={`${negPct}%`} icon={<TrendingDown className="h-4 w-4 text-destructive" />} loading={isLoadingCore} sub={`${fmt(k?.neg ?? 0)} menções`} tone="destructive" delta={negPct - prevNegPct} invertDelta />
+        <Kpi label="Crescimento" value={`${growthPct >= 0 ? "+" : ""}${growthPct}%`} icon={growthPct >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} loading={isLoadingCore} sub="vs. período anterior" tone={growthPct >= 0 ? "success" : "destructive"} />
+        <Kpi label="Rede dominante" value={dominant === "—" ? "—" : dominant.charAt(0).toUpperCase() + dominant.slice(1)} icon={<Crown className="h-4 w-4" />} loading={isLoadingCore} sub={agg?.by_network?.[0] ? `${compact(agg.by_network[0].mentions)} menções` : ""} />
       </div>
 
       {/* AI Insight */}
-      {!isLoading && aiSummary && (
+      {!isLoadingCore && aiSummary && (
         <Card className="p-5 bg-gradient-to-br from-primary/5 to-accent/5 border-primary/20">
           <div className="flex items-start gap-3">
             <div className="p-2 rounded-lg bg-primary/10"><Sparkles className="h-5 w-5 text-primary" /></div>
