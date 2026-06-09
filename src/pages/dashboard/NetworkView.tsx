@@ -115,20 +115,84 @@ export default function NetworkView() {
     enabled: !!user,
   });
 
-  const { data: agg, isLoading, error } = useQuery({
-    queryKey: ["nv-agg", user?.id, network, candidateId, days],
-    queryFn: async (): Promise<Agg> => {
-      const { data, error } = await supabase.rpc("network_view_aggregate", {
-        p_candidate_id: candidateId === "all" ? null : candidateId,
-        p_network: network === "all" ? null : network,
-        p_days: days,
-      });
-      if (error) throw error;
-      return data as unknown as Agg;
+  const queryParams = {
+    p_candidate_id: candidateId === "all" ? null : candidateId,
+    p_network: network === "all" ? null : network,
+    p_days: days,
+  };
+
+  const coreQuery = useQuery({
+    queryKey: ["nv-core", user?.id, network, candidateId, days],
+    queryFn: async (): Promise<SectionResponse<CoreAgg>> => {
+      const started = performance.now();
+      const { data, error } = await supabase.rpc("network_view_core_metrics", queryParams);
+      const elapsed = Math.round(performance.now() - started);
+      if (error) {
+        console.error("[NetworkView] core RPC failed", { elapsed, error, queryParams });
+        throw error;
+      }
+      console.info("[NetworkView] core loaded", { elapsed, diagnostics: (data as SectionResponse<CoreAgg>)?.diagnostics });
+      return data as SectionResponse<CoreAgg>;
     },
     enabled: !!user,
     staleTime: 5 * 60_000,
   });
+
+  const contentQuery = useQuery({
+    queryKey: ["nv-content", user?.id, network, candidateId, days],
+    queryFn: async (): Promise<SectionResponse<ContentAgg>> => {
+      const started = performance.now();
+      const { data, error } = await supabase.rpc("network_view_content_metrics", queryParams);
+      const elapsed = Math.round(performance.now() - started);
+      if (error) {
+        console.error("[NetworkView] content RPC failed", { elapsed, error, queryParams });
+        throw error;
+      }
+      console.info("[NetworkView] content loaded", { elapsed, diagnostics: (data as SectionResponse<ContentAgg>)?.diagnostics });
+      return data as SectionResponse<ContentAgg>;
+    },
+    enabled: !!user,
+    staleTime: 5 * 60_000,
+  });
+
+  const topPostsQuery = useQuery({
+    queryKey: ["nv-top-posts", user?.id, network, candidateId, days],
+    queryFn: async (): Promise<SectionResponse<TopPostsAgg>> => {
+      const started = performance.now();
+      const { data, error } = await supabase.rpc("network_view_top_posts", queryParams);
+      const elapsed = Math.round(performance.now() - started);
+      if (error) {
+        console.error("[NetworkView] top_posts RPC failed", { elapsed, error, queryParams });
+        throw error;
+      }
+      console.info("[NetworkView] top_posts loaded", { elapsed, diagnostics: (data as SectionResponse<TopPostsAgg>)?.diagnostics });
+      return data as SectionResponse<TopPostsAgg>;
+    },
+    enabled: !!user,
+    staleTime: 5 * 60_000,
+  });
+
+  const coreData = coreQuery.data?.data;
+  const contentData = contentQuery.data?.data;
+  const topPostsData = topPostsQuery.data?.data;
+  const isLoadingCore = coreQuery.isLoading;
+  const isLoadingContent = contentQuery.isLoading;
+  const isLoadingTopPosts = topPostsQuery.isLoading;
+  const sectionErrors = [
+    coreQuery.error || (coreQuery.data?.ok === false ? new Error(coreQuery.data.message || sectionErrorMessage("métricas gerais")) : null),
+    contentQuery.error || (contentQuery.data?.ok === false ? new Error(contentQuery.data.message || sectionErrorMessage("assuntos e hashtags")) : null),
+    topPostsQuery.error || (topPostsQuery.data?.ok === false ? new Error(topPostsQuery.data.message || sectionErrorMessage("top posts")) : null),
+  ].filter(Boolean) as Error[];
+
+  const agg: Agg = {
+    kpis: coreData?.kpis ?? emptyKpis,
+    series: coreData?.series ?? [],
+    by_network: coreData?.by_network ?? [],
+    heatmap: coreData?.heatmap ?? [],
+    hashtags: contentData?.hashtags ?? [],
+    topics: contentData?.topics ?? [],
+    top_posts: topPostsData?.top_posts ?? [],
+  };
 
   const k = agg?.kpis;
   const total = k?.total ?? 0;
