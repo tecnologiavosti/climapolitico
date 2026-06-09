@@ -1,6 +1,7 @@
-// IA de Pesquisa Histórica Externa — não usa coletas internas.
-// Pesquisa GDELT + Google News RSS + Wikipedia para o candidato e período,
-// e gera uma análise narrativa profunda com IA (cadeia Cerebras → ... → Lovable Gateway).
+// IA de Pesquisa Histórica — análise factual e contextual.
+// Combina pesquisa externa leve (GDELT + Google News + Wikipedia) com o
+// conhecimento histórico da IA para produzir um relatório de inteligência política.
+// NÃO usa coletas internas. NÃO inventa sentimento popular.
 // Body: { candidateId, startDate, endDate }
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
@@ -23,13 +24,12 @@ async function sha256(input: string): Promise<string> {
 interface ExternalDoc {
   title: string;
   url: string;
-  date: string; // ISO
-  source: string;        // "GDELT" | "Google News" | "Wikipedia"
+  date: string;
+  source: string;
   domain?: string;
   snippet?: string;
 }
 
-// ---------- GDELT ----------
 function gdeltStamp(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}`;
@@ -40,7 +40,7 @@ function parseGdeltDate(s: string): string {
   return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`;
 }
 
-async function fetchGdelt(name: string, start: Date, end: Date, max = 250): Promise<ExternalDoc[]> {
+async function fetchGdelt(name: string, start: Date, end: Date, max = 200): Promise<ExternalDoc[]> {
   try {
     const q = `"${name}" sourcelang:Portuguese sourcecountry:BR`;
     const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(q)}&mode=ArtList&maxrecords=${max}&format=JSON&startdatetime=${gdeltStamp(start)}&enddatetime=${gdeltStamp(end)}&sort=DateDesc`;
@@ -51,22 +51,16 @@ async function fetchGdelt(name: string, start: Date, end: Date, max = 250): Prom
     if (!r.ok) return [];
     const json = await r.json();
     const arts = Array.isArray(json?.articles) ? json.articles : [];
-    return arts
-      .filter((a: any) => a?.title && a?.url)
-      .map((a: any) => ({
-        title: String(a.title),
-        url: String(a.url),
-        date: parseGdeltDate(a.seendate),
-        source: "GDELT",
-        domain: a.domain || undefined,
-      }));
+    return arts.filter((a: any) => a?.title && a?.url).map((a: any) => ({
+      title: String(a.title), url: String(a.url), date: parseGdeltDate(a.seendate),
+      source: "GDELT", domain: a.domain || undefined,
+    }));
   } catch (e) {
-    console.warn(`[hist-ext/GDELT] ${(e as Error).message}`);
+    console.warn(`[hist/GDELT] ${(e as Error).message}`);
     return [];
   }
 }
 
-// ---------- Google News RSS ----------
 function parseRss(xml: string): ExternalDoc[] {
   const items: ExternalDoc[] = [];
   const re = /<item>([\s\S]*?)<\/item>/g;
@@ -83,9 +77,7 @@ function parseRss(xml: string): ExternalDoc[] {
       title: title.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">"),
       url: link,
       date: pub ? new Date(pub).toISOString() : new Date().toISOString(),
-      source: "Google News",
-      domain: src,
-      snippet: desc || undefined,
+      source: "Google News", domain: src, snippet: desc || undefined,
     });
   }
   return items;
@@ -93,9 +85,7 @@ function parseRss(xml: string): ExternalDoc[] {
 
 async function fetchGoogleNews(name: string, start: Date, end: Date): Promise<ExternalDoc[]> {
   try {
-    // RSS do Google News não suporta date range; filtramos depois.
-    const q = `"${name}"`;
-    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=pt-BR&gl=BR&ceid=BR:pt-419`;
+    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(`"${name}"`)}&hl=pt-BR&gl=BR&ceid=BR:pt-419`;
     const r = await fetch(url, {
       headers: { "User-Agent": "Mozilla/5.0 (compatible; ClimaPolitico/1.0)" },
       signal: AbortSignal.timeout(15000),
@@ -103,19 +93,14 @@ async function fetchGoogleNews(name: string, start: Date, end: Date): Promise<Ex
     if (!r.ok) return [];
     const xml = await r.text();
     const all = parseRss(xml);
-    const s = start.getTime();
-    const e = end.getTime();
-    return all.filter((d) => {
-      const t = new Date(d.date).getTime();
-      return t >= s && t <= e;
-    });
+    const s = start.getTime(); const e = end.getTime();
+    return all.filter((d) => { const t = new Date(d.date).getTime(); return t >= s && t <= e; });
   } catch (e) {
-    console.warn(`[hist-ext/GoogleNews] ${(e as Error).message}`);
+    console.warn(`[hist/GoogleNews] ${(e as Error).message}`);
     return [];
   }
 }
 
-// ---------- Wikipedia ----------
 async function fetchWikipedia(name: string): Promise<{ extract: string; url: string } | null> {
   try {
     const direct = await fetch(`https://pt.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name)}`, {
@@ -124,12 +109,7 @@ async function fetchWikipedia(name: string): Promise<{ extract: string; url: str
     });
     if (direct.ok) {
       const d = await direct.json();
-      if (d?.extract) {
-        return {
-          extract: String(d.extract),
-          url: d.content_urls?.desktop?.page || `https://pt.wikipedia.org/wiki/${encodeURIComponent(name)}`,
-        };
-      }
+      if (d?.extract) return { extract: String(d.extract), url: d.content_urls?.desktop?.page || `https://pt.wikipedia.org/wiki/${encodeURIComponent(name)}` };
     }
     const s = await fetch(`https://pt.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(name)}&format=json&srlimit=1`, {
       headers: { "User-Agent": "ClimaPolitico/1.0", "Accept": "application/json" },
@@ -145,25 +125,20 @@ async function fetchWikipedia(name: string): Promise<{ extract: string; url: str
     });
     if (!sec.ok) return null;
     const d2 = await sec.json();
-    return d2?.extract ? {
-      extract: String(d2.extract),
-      url: d2.content_urls?.desktop?.page || `https://pt.wikipedia.org/wiki/${encodeURIComponent(t)}`,
-    } : null;
+    return d2?.extract ? { extract: String(d2.extract), url: d2.content_urls?.desktop?.page || `https://pt.wikipedia.org/wiki/${encodeURIComponent(t)}` } : null;
   } catch (e) {
-    console.warn(`[hist-ext/Wikipedia] ${(e as Error).message}`);
+    console.warn(`[hist/Wikipedia] ${(e as Error).message}`);
     return null;
   }
 }
 
-// ---------- dedupe + ordenação ----------
 function dedupeDocs(docs: ExternalDoc[]): ExternalDoc[] {
   const seen = new Set<string>();
   const out: ExternalDoc[] = [];
   for (const d of docs) {
     const key = (d.url || d.title).toLowerCase().slice(0, 200);
     if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(d);
+    seen.add(key); out.push(d);
   }
   return out.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
@@ -176,30 +151,22 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     const { data: userRes } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
-    const user = userRes?.user;
-    if (!user) return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!userRes?.user) return new Response(JSON.stringify({ error: "Invalid token" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const body = await req.json().catch(() => ({}));
-    const candidateId: string = body.candidateId;
-    const startDate: string = body.startDate;
-    const endDate: string = body.endDate;
+    const { candidateId, startDate, endDate } = body;
     if (!candidateId || !startDate || !endDate) {
       return new Response(JSON.stringify({ error: "candidateId, startDate, endDate são obrigatórios" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const { data: cand } = await supabase
-      .from("candidates")
-      .select("id, full_name, party, region")
-      .eq("id", candidateId)
-      .maybeSingle();
+    const { data: cand } = await supabase.from("candidates").select("id, full_name, party, region").eq("id", candidateId).maybeSingle();
     if (!cand) return new Response(JSON.stringify({ error: "Candidato não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const start = new Date(startDate);
     const end = new Date(endDate);
     const name = cand.full_name as string;
 
-    // ---------- Cache ----------
-    const cacheKey = `hist_ext:v1:${await sha256(`${candidateId}:${ymd(start)}:${ymd(end)}`)}`;
+    const cacheKey = `hist_ctx:v2:${await sha256(`${candidateId}:${ymd(start)}:${ymd(end)}`)}`;
     const { data: cached } = await supabase.from("analysis_cache")
       .select("result, hit_count").eq("cache_key", cacheKey)
       .gt("expires_at", new Date().toISOString()).maybeSingle();
@@ -213,108 +180,100 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ---------- Pesquisa externa (paralela) ----------
     const [gdeltDocs, googleNewsDocs, wiki] = await Promise.all([
-      fetchGdelt(name, start, end, 250),
+      fetchGdelt(name, start, end, 150),
       fetchGoogleNews(name, start, end),
       fetchWikipedia(name),
     ]);
 
     const allDocs = dedupeDocs([...gdeltDocs, ...googleNewsDocs]);
-    const totalExternal = allDocs.length;
-
     const sources = {
       gdelt: gdeltDocs.length,
       googleNews: googleNewsDocs.length,
       wikipedia: !!wiki,
-      total: totalExternal,
+      total: allDocs.length,
     };
 
-    // Amostra para a IA (não enviar tudo)
-    const docsForAI = allDocs.slice(0, 60).map((d) => ({
-      title: d.title,
-      date: d.date.slice(0, 10),
-      source: d.source,
-      domain: d.domain,
-      snippet: d.snippet,
+    const docsForAI = allDocs.slice(0, 50).map((d) => ({
+      title: d.title, date: d.date.slice(0, 10), source: d.source, domain: d.domain, snippet: d.snippet,
     }));
-
-    // ---------- IA ----------
-    let analysis: any = null;
-    let provider = "none";
-    let aiNotice: any = null;
-    let aiError: any = null;
 
     const period = { start: ymd(start), end: ymd(end) };
 
-    if (totalExternal === 0 && !wiki) {
-      aiNotice = {
-        errorType: "NO_EXTERNAL_DATA",
-        userMessage: `Nenhuma fonte externa pública (GDELT, Google News, Wikipedia) retornou resultados para "${name}" no período ${period.start} → ${period.end}. Tente um período mais amplo ou verifique a grafia do nome.`,
-      };
-    } else {
-      const aiInput = {
-        candidate: name,
-        party: cand.party || null,
-        region: cand.region || null,
-        period,
-        wikipedia: wiki ? { extract: wiki.extract.slice(0, 1500), url: wiki.url } : null,
-        externalSources: sources,
-        documents: docsForAI,
-      };
+    let analysis: any = null;
+    let provider = "none";
+    let aiError: any = null;
 
-      const prompt = `Você é um analista político brasileiro sênior. Sua tarefa é produzir uma ANÁLISE HISTÓRICA NARRATIVA sobre o candidato abaixo, baseada EXCLUSIVAMENTE em fontes públicas externas (notícias, GDELT, Wikipedia) recolhidas para o período indicado.
+    const aiInput = {
+      candidate: name,
+      party: cand.party || null,
+      region: cand.region || null,
+      period,
+      wikipedia: wiki ? { extract: wiki.extract.slice(0, 1500), url: wiki.url } : null,
+      externalSources: sources,
+      documents: docsForAI,
+    };
 
-DADOS EXTERNOS COLETADOS:
+    const prompt = `Você é um analista político brasileiro sênior, especialista em CONTEXTO HISTÓRICO e INTELIGÊNCIA POLÍTICA. Sua tarefa é produzir um RELATÓRIO HISTÓRICO FACTUAL sobre o político abaixo, no período indicado.
+
+Use seu conhecimento histórico consolidado do Brasil + as referências externas fornecidas (quando úteis). Esta análise NÃO depende das menções coletadas, NÃO mede sentimento popular, NÃO inventa opiniões da população.
+
+DADOS:
 ${JSON.stringify(aiInput)}
 
 REGRAS CRÍTICAS:
-- Foque em NARRATIVA, CONTEXTO HISTÓRICO e PERCEPÇÃO PÚBLICA da época.
-- NUNCA invente eventos, datas ou citações que não estejam apoiadas pelos títulos/snippets fornecidos ou pelo seu conhecimento factual do contexto político brasileiro daquele período.
-- NÃO use porcentagens de sentimento (positivo/negativo/neutro). NÃO conte menções. Esta análise é qualitativa.
-- Use seu conhecimento histórico do Brasil para enriquecer o contexto (governos da época, crises, eventos relevantes).
-- PT-BR. Tom analítico e claro.
+- PROIBIDO afirmar o que "o povo pensava", "a população acreditava", "as redes reagiam", "o brasileiro sentia", "havia uma percepção popular", etc.
+- PROIBIDO inventar frases populares, humor coletivo, clima emocional, aprovação/rejeição.
+- PROIBIDO usar porcentagens de sentimento ou métricas de engajamento.
+- PERMITIDO: fatos, eventos, decisões institucionais, cargos, contexto governamental, repercussão objetiva (votações, decisões judiciais, atos oficiais), interpretação histórica consolidada.
+- Se uma data exata não for conhecida com segurança, use AAAA-MM ou AAAA.
+- Tom: relatório de inteligência política, sóbrio, objetivo, factual. PT-BR.
+- Mesmo que NÃO existam documentos externos, produza a análise com base no seu conhecimento histórico do político e do período.
 
 Retorne ESTRITAMENTE JSON neste formato:
 {
-  "popularClimate": "Parágrafo (3-5 frases) descrevendo o clima popular da época em relação ao candidato: como o povo o percebia, qual era o tom geral do debate público, atmosfera política do momento.",
-  "topThemes": [
-    { "theme": "Nome do tema (ex: Economia, Impeachment, Reforma da Previdência)", "description": "1-2 frases explicando como esse tema aparecia em relação ao candidato no período." }
-  ],
-  "voicesOfThePeople": [
-    "Frase recorrente da época (ex: 'a economia piorou')",
-    "Outra expressão típica do debate público sobre o candidato"
-  ],
-  "eventsImpact": [
-    { "name": "Nome do evento (entrevista, debate, crise, votação, reforma)", "date": "AAAA-MM-DD ou AAAA-MM se incerto", "description": "O que aconteceu", "impact": "Como afetou a percepção pública sobre o candidato" }
-  ],
-  "perceptionShift": {
-    "from": "Como o candidato era percebido / qual narrativa dominava no INÍCIO do período",
-    "to": "Como passou a ser percebido / nova narrativa no FIM do período",
-    "explanation": "2-3 frases explicando o que causou a mudança de narrativa"
+  "historicalContext": {
+    "role": "Cargo/posição institucional ocupada pelo político durante o período (ex: 'Presidente do Novo Banco de Desenvolvimento dos BRICS').",
+    "relevance": "Relevância política e papel no cenário nacional/internacional (2-4 frases factuais)."
   },
-  "aiFinal": "Análise final longa (8-12 frases) respondendo: Como o candidato era percebido? Quais temas dominavam o debate? O que influenciava a opinião pública? O que mudou ao longo do período? Como o debate evoluiu? Quais grupos apoiavam e quais criticavam, com base no contexto histórico?",
-  "dataNote": "Frase curta indicando as fontes utilizadas (ex: 'Análise baseada em N notícias do GDELT, M do Google News e biografia da Wikipedia')."
+  "politicalScene": {
+    "federalGovernment": "Quem governava o Brasil e contexto do governo federal no período.",
+    "mainDebates": ["Principal debate nacional 1", "Principal debate nacional 2", "..."],
+    "environment": "Ambiente político do período (2-4 frases): eleições, reformas, crises, decisões judiciais, cenário internacional relevante."
+  },
+  "timeline": [
+    { "date": "AAAA-MM-DD ou AAAA-MM", "title": "Título objetivo do evento", "description": "Descrição factual do que aconteceu.", "relevance": "Relevância histórica/institucional do evento para o político." }
+  ],
+  "associatedThemes": [
+    { "theme": "economia | segurança | educação | relações internacionais | corrupção | reformas | democracia | eleições | infraestrutura | saúde | meio ambiente | outro", "description": "Como esse tema se conectava ao político no período (1-2 frases factuais)." }
+  ],
+  "politicalImpact": {
+    "institutional": "Impacto institucional concreto da atuação do político no período.",
+    "governmental": "Repercussão governamental objetiva (decisões, votações, atos oficiais, acordos).",
+    "influence": "Influência política objetiva exercida (sem especulação emocional)."
+  },
+  "historicalInterpretation": "Interpretação histórica consolidada do período em relação ao político (4-6 frases). Como historiadores e analistas políticos enquadram este momento. Sem opiniões populares.",
+  "executiveSummary": "Resumo executivo final (máximo 300 palavras) cobrindo: quem era, o que fazia, o que acontecia no país, qual sua relevância institucional. Tom de briefing de inteligência política.",
+  "dataNote": "Frase curta indicando as bases usadas (ex: 'Análise baseada em conhecimento histórico consolidado e N referências externas (GDELT/Google News/Wikipedia).')."
 }`;
 
+    try {
+      const r = await callAICerebrasFirst({
+        systemMsg: "Você é um analista político brasileiro sênior, especialista em história política do Brasil e inteligência política. Produza relatórios FACTUAIS, sem inventar opiniões populares. Responda em PT-BR. Retorne APENAS JSON válido.",
+        userPrompt: prompt,
+        jsonMode: true,
+        maxTokens: 4000,
+        temperature: 0.4,
+        tag: "hist-context",
+      });
       try {
-        const r = await callAICerebrasFirst({
-          systemMsg: "Você é um analista político brasileiro sênior, especialista em pesquisa histórica e percepção pública. Responda em PT-BR. Retorne APENAS JSON válido. Combine os documentos fornecidos com seu conhecimento histórico do Brasil para produzir uma análise rica em contexto.",
-          userPrompt: prompt,
-          jsonMode: true,
-          maxTokens: 3500,
-          temperature: 0.6,
-          tag: "hist-external",
-        });
-        try {
-          analysis = JSON.parse(r.content);
-          provider = `${r.provider}:${r.model}`;
-        } catch {
-          aiError = { errorType: "AI_PARSE", userMessage: "A IA retornou resposta em formato inválido. Tente novamente." };
-        }
-      } catch (e) {
-        aiError = { errorType: "AI_UNAVAILABLE", userMessage: `Provedores de IA indisponíveis: ${(e as Error).message}` };
+        analysis = JSON.parse(r.content);
+        provider = `${r.provider}:${r.model}`;
+      } catch {
+        aiError = { errorType: "AI_PARSE", userMessage: "A IA retornou resposta em formato inválido. Tente novamente." };
       }
+    } catch (e) {
+      aiError = { errorType: "AI_UNAVAILABLE", userMessage: `Provedores de IA indisponíveis: ${(e as Error).message}` };
     }
 
     const responsePayload = {
@@ -322,19 +281,17 @@ Retorne ESTRITAMENTE JSON neste formato:
       period,
       sources,
       wikipedia: wiki,
-      documents: allDocs.slice(0, 40), // amostra visível para rastreabilidade
+      documents: allDocs.slice(0, 40),
       analysis,
-      aiNotice,
       aiError,
       provider,
       fromCache: false,
     };
 
-    // Cache apenas com IA bem-sucedida
     if (analysis) {
       await supabase.from("analysis_cache").upsert({
         cache_key: cacheKey,
-        analysis_type: "historical_external",
+        analysis_type: "historical_context",
         result: responsePayload,
         provider,
         expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
