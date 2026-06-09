@@ -607,6 +607,15 @@ function SentBar({ label, pct: p, count, delta, color, invert }: { label: string
   );
 }
 
+function LoadingMessage({ label }: { label: string }) {
+  return (
+    <div className="h-[200px] flex flex-col items-center justify-center gap-3 text-sm text-muted-foreground text-center px-4">
+      <Skeleton className="h-8 w-8 rounded-full" />
+      <span>{label}</span>
+    </div>
+  );
+}
+
 function EmptyState() {
   return (
     <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground text-center px-4">
