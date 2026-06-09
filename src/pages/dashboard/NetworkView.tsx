@@ -102,9 +102,10 @@ const isValidHashtag = (tag: string) => {
   return clean.length >= 3 && clean.length <= 40 && /[a-z]/.test(clean) && !/^(x200b|xfeff|nbsp|amp|[0-9_\-]+|[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(clean);
 };
 const isWithinSelectedPeriod = (date: string | null | undefined, days: number) => {
-  if (!date || days >= 3650) return !!date;
+  if (!date) return false;
   const time = new Date(date).getTime();
   if (!Number.isFinite(time)) return false;
+  if (days >= 3650) return true;
   return time >= Date.now() - days * 24 * 60 * 60 * 1000 && time <= Date.now() + 60 * 1000;
 };
 
