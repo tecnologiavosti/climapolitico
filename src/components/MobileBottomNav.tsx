@@ -73,7 +73,7 @@ const sections: Section[] = [
     items: [
       { label: "Monitor em Tempo Real", icon: Radio, to: "/dashboard/realtime-monitor", badge: "live" },
       { label: "Resumo Inteligente", icon: FileText, to: "/dashboard/candidate-summary", badge: "ai" },
-      { label: "Top Posts", icon: Flame, to: "/dashboard/social-feeds" },
+      
     ],
   },
   {
