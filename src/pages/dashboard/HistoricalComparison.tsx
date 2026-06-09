@@ -1,11 +1,13 @@
-// IA de Pesquisa Histórica Externa — não usa dados internos.
-// Pesquisa GDELT + Google News + Wikipedia e gera análise narrativa com IA.
+// IA de Pesquisa Histórica — relatório de inteligência política factual.
+// Combina conhecimento histórico da IA com referências externas (GDELT/Google News/Wikipedia).
+// NÃO usa dados internos. NÃO mede sentimento popular.
 import { useEffect, useState } from "react";
 import { format, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   CalendarIcon, GitCompareArrows, Loader2, Sparkles, AlertTriangle,
-  Megaphone, CalendarDays, Quote, Zap, Activity, ArrowRight, Globe2, BookOpen, ExternalLink,
+  CalendarDays, Landmark, Globe2, BookOpen, ExternalLink, Building2,
+  Newspaper, Clock, Tags, Gavel, ScrollText, FileText,
 } from "lucide-react";
 import { DateRange } from "react-day-picker";
 
@@ -23,12 +25,7 @@ import { cn } from "@/lib/utils";
 interface Candidate { id: string; full_name: string }
 
 interface ExternalDoc {
-  title: string;
-  url: string;
-  date: string;
-  source: string;
-  domain?: string;
-  snippet?: string;
+  title: string; url: string; date: string; source: string; domain?: string; snippet?: string;
 }
 
 interface AnalysisResponse {
@@ -38,26 +35,22 @@ interface AnalysisResponse {
   wikipedia?: { extract: string; url: string } | null;
   documents?: ExternalDoc[];
   analysis: {
-    popularClimate?: string;
-    topThemes?: { theme: string; description: string }[];
-    voicesOfThePeople?: string[];
-    eventsImpact?: { name: string; date: string; description: string; impact: string }[];
-    perceptionShift?: { from: string; to: string; explanation: string };
-    aiFinal?: string;
+    historicalContext?: { role: string; relevance: string };
+    politicalScene?: { federalGovernment: string; mainDebates: string[]; environment: string };
+    timeline?: { date: string; title: string; description: string; relevance: string }[];
+    associatedThemes?: { theme: string; description: string }[];
+    politicalImpact?: { institutional: string; governmental: string; influence: string };
+    historicalInterpretation?: string;
+    executiveSummary?: string;
     dataNote?: string;
   } | null;
-  aiNotice?: { errorType: string; userMessage: string } | null;
   aiError?: { errorType: string; userMessage: string } | null;
   provider?: string;
   fromCache?: boolean;
 }
 
-function toISOStart(d: Date): string {
-  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0)).toISOString();
-}
-function toISOEnd(d: Date): string {
-  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59)).toISOString();
-}
+const toISOStart = (d: Date) => new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0)).toISOString();
+const toISOEnd = (d: Date) => new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59)).toISOString();
 
 export default function HistoricalComparison() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -79,10 +72,10 @@ export default function HistoricalComparison() {
     if (!candidateId) { toast.error("Selecione um candidato"); return; }
     if (!range?.from || !range?.to) { toast.error("Selecione o período"); return; }
     setLoading(true);
-    setProgressMessage("Pesquisando GDELT, Google News e Wikipedia...");
+    setProgressMessage("Pesquisando contexto histórico...");
     setResult(null);
-    const t1 = window.setTimeout(() => setProgressMessage("Consolidando fontes externas..."), 3000);
-    const t2 = window.setTimeout(() => setProgressMessage("Gerando análise narrativa histórica com IA..."), 7000);
+    const t1 = window.setTimeout(() => setProgressMessage("Consolidando referências externas..."), 3000);
+    const t2 = window.setTimeout(() => setProgressMessage("Gerando relatório de inteligência política..."), 7000);
     try {
       const { data, error } = await supabase.functions.invoke("historical-comparison", {
         body: { candidateId, startDate: toISOStart(range.from), endDate: toISOEnd(range.to) },
@@ -108,18 +101,18 @@ export default function HistoricalComparison() {
           <h1 className="text-2xl font-bold">IA de Pesquisa Histórica</h1>
         </div>
         <p className="text-muted-foreground mt-1">
-          Pesquisa automática em fontes externas (GDELT, Google News, Wikipedia) e síntese narrativa com IA — independente das coletas internas.
+          Relatório de inteligência política factual. Contexto histórico, cenário institucional, eventos relevantes e interpretação consolidada — sem usar coletas internas nem inferir opiniões populares.
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Pesquisa externa</CardTitle>
-          <CardDescription>Selecione o candidato e o período histórico. A IA buscará notícias e contexto público do período.</CardDescription>
+          <CardTitle className="text-base">Pesquisa histórica</CardTitle>
+          <CardDescription>Selecione o político e o período. O sistema combinará conhecimento histórico consolidado com referências externas públicas.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-3">
           <div className="space-y-2">
-            <p className="text-sm font-medium">Candidato</p>
+            <p className="text-sm font-medium">Político</p>
             <Select value={candidateId} onValueChange={setCandidateId}>
               <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
               <SelectContent>
@@ -149,8 +142,8 @@ export default function HistoricalComparison() {
           <div className="md:col-span-3">
             <Button onClick={handleAnalyze} disabled={loading} className="w-full md:w-auto">
               {loading
-                ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Pesquisando…</>
-                : <><Sparkles className="mr-2 h-4 w-4" />Pesquisar e gerar análise</>}
+                ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Gerando relatório…</>
+                : <><Sparkles className="mr-2 h-4 w-4" />Gerar relatório histórico</>}
             </Button>
           </div>
         </CardContent>
@@ -162,8 +155,8 @@ export default function HistoricalComparison() {
             <CardContent className="py-6 flex items-center gap-3">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
               <div>
-                <p className="font-medium">{progressMessage || "Pesquisando..."}</p>
-                <p className="text-sm text-muted-foreground">Buscando em múltiplas fontes públicas, sem usar a base interna.</p>
+                <p className="font-medium">{progressMessage || "Processando..."}</p>
+                <p className="text-sm text-muted-foreground">Análise factual independente da base interna.</p>
               </div>
             </CardContent>
           </Card>
@@ -177,17 +170,167 @@ export default function HistoricalComparison() {
             <Card className="border-destructive/50 bg-destructive/5">
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2 text-destructive">
-                  <AlertTriangle className="h-5 w-5" />Falha na análise de IA
+                  <AlertTriangle className="h-5 w-5" />Falha na geração do relatório
                 </CardTitle>
                 <CardDescription>{result.aiError.userMessage}</CardDescription>
               </CardHeader>
             </Card>
           )}
-          {result.aiNotice && (
-            <Card className="border-primary/30 bg-primary/5">
-              <CardContent className="py-4 flex items-center gap-3">
-                <AlertTriangle className="h-5 w-5 text-primary" />
-                <p className="text-sm">{result.aiNotice.userMessage}</p>
+
+          {/* 1. CONTEXTO HISTÓRICO */}
+          {analysis?.historicalContext && (
+            <Card className="border-primary/40 bg-gradient-to-br from-primary/5 to-transparent">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2"><Landmark className="h-5 w-5 text-primary" />Contexto histórico</CardTitle>
+                <CardDescription>Posição institucional e relevância política no período.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="rounded-lg border p-3 bg-background/60">
+                  <p className="text-xs text-muted-foreground mb-1">Cargo / posição institucional</p>
+                  <p className="font-semibold text-sm">{analysis.historicalContext.role}</p>
+                </div>
+                <p className="text-sm leading-relaxed">{analysis.historicalContext.relevance}</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 2. CENÁRIO POLÍTICO DO PERÍODO */}
+          {analysis?.politicalScene && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2"><Building2 className="h-5 w-5 text-primary" />Cenário político do período</CardTitle>
+                <CardDescription>Governo, debates e ambiente institucional do momento.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Governo federal</p>
+                  <p className="text-sm">{analysis.politicalScene.federalGovernment}</p>
+                </div>
+                {analysis.politicalScene.mainDebates?.length > 0 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">Principais debates nacionais</p>
+                    <div className="flex flex-wrap gap-2">
+                      {analysis.politicalScene.mainDebates.map((d, i) => (
+                        <Badge key={i} variant="secondary" className="text-sm">{d}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Ambiente político</p>
+                  <p className="text-sm leading-relaxed">{analysis.politicalScene.environment}</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 3. LINHA DO TEMPO */}
+          {analysis?.timeline && analysis.timeline.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2"><Clock className="h-5 w-5 text-primary" />Linha do tempo — eventos relevantes</CardTitle>
+                <CardDescription>Acontecimentos factuais relacionados ao político no período.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ol className="relative border-l border-border ml-2 space-y-4">
+                  {analysis.timeline.map((e, i) => (
+                    <li key={i} className="ml-4">
+                      <span className="absolute -left-1.5 w-3 h-3 bg-primary rounded-full mt-1.5" />
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <Badge variant="outline" className="text-xs">{e.date}</Badge>
+                        <p className="font-semibold text-sm">{e.title}</p>
+                      </div>
+                      <p className="text-sm text-muted-foreground mb-1">{e.description}</p>
+                      <p className="text-sm"><span className="font-medium text-primary">Relevância:</span> {e.relevance}</p>
+                    </li>
+                  ))}
+                </ol>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 4. TEMAS ASSOCIADOS */}
+          {analysis?.associatedThemes && analysis.associatedThemes.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2"><Tags className="h-5 w-5 text-primary" />Temas associados</CardTitle>
+                <CardDescription>Temas políticos mais conectados ao político no período.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-2">
+                {analysis.associatedThemes.map((t, i) => (
+                  <div key={i} className="rounded-lg border p-3">
+                    <p className="font-semibold text-sm mb-1 capitalize">{t.theme}</p>
+                    <p className="text-sm text-muted-foreground">{t.description}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 5. IMPACTO POLÍTICO E INSTITUCIONAL */}
+          {analysis?.politicalImpact && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2"><Gavel className="h-5 w-5 text-primary" />Impacto político e institucional</CardTitle>
+                <CardDescription>Consequências objetivas — sem especulação emocional.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Institucional</p>
+                  <p className="text-sm">{analysis.politicalImpact.institutional}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Governamental</p>
+                  <p className="text-sm">{analysis.politicalImpact.governmental}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Influência política</p>
+                  <p className="text-sm">{analysis.politicalImpact.influence}</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 6. INTERPRETAÇÃO HISTÓRICA */}
+          {analysis?.historicalInterpretation && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2"><ScrollText className="h-5 w-5 text-primary" />Interpretação histórica</CardTitle>
+                <CardDescription>Como o período é enquadrado por analistas e historiadores.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm leading-relaxed whitespace-pre-line">{analysis.historicalInterpretation}</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 7. RESUMO EXECUTIVO */}
+          {analysis?.executiveSummary && (
+            <Card className="border-primary/40 bg-gradient-to-br from-primary/5 to-transparent">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5 text-primary" />Resumo executivo</CardTitle>
+                <CardDescription>Briefing final de inteligência política.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="leading-relaxed text-sm md:text-base whitespace-pre-line">{analysis.executiveSummary}</p>
+                {analysis.dataNote && (
+                  <p className="text-xs text-muted-foreground italic mt-3">{analysis.dataNote}</p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Biografia Wikipedia */}
+          {result.wikipedia && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2"><BookOpen className="h-5 w-5 text-primary" />Biografia de referência (Wikipedia)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm leading-relaxed">{result.wikipedia.extract}</p>
+                <a href={result.wikipedia.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary mt-2 hover:underline">
+                  Ver na Wikipedia <ExternalLink className="h-3 w-3" />
+                </a>
               </CardContent>
             </Card>
           )}
@@ -196,12 +339,12 @@ export default function HistoricalComparison() {
           {sources && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2"><Globe2 className="h-5 w-5 text-primary" />Fontes externas pesquisadas</CardTitle>
-                <CardDescription>Esta análise NÃO utiliza coletas internas. Todos os dados vêm de fontes públicas externas.</CardDescription>
+                <CardTitle className="text-base flex items-center gap-2"><Globe2 className="h-5 w-5 text-primary" />Referências externas</CardTitle>
+                <CardDescription>Fontes públicas consultadas — análise não depende delas, mas as utiliza quando disponíveis.</CardDescription>
               </CardHeader>
               <CardContent className="grid gap-3 md:grid-cols-4">
                 <div className="rounded-lg border p-3">
-                  <p className="text-xs text-muted-foreground">GDELT (notícias históricas)</p>
+                  <p className="text-xs text-muted-foreground">GDELT</p>
                   <p className="text-2xl font-bold">{sources.gdelt}</p>
                 </div>
                 <div className="rounded-lg border p-3">
@@ -220,135 +363,12 @@ export default function HistoricalComparison() {
             </Card>
           )}
 
-          {/* Contexto Wikipedia */}
-          {result.wikipedia && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2"><BookOpen className="h-5 w-5 text-primary" />Contexto biográfico (Wikipedia)</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm leading-relaxed">{result.wikipedia.extract}</p>
-                <a href={result.wikipedia.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary mt-2 hover:underline">
-                  Ver na Wikipedia <ExternalLink className="h-3 w-3" />
-                </a>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Clima Popular */}
-          {analysis?.popularClimate && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2"><Activity className="h-5 w-5 text-primary" />Clima popular da época</CardTitle>
-                <CardDescription>Como o povo falava do candidato no período.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="leading-relaxed text-sm md:text-base">{analysis.popularClimate}</p>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Temas mais discutidos */}
-          {analysis?.topThemes && analysis.topThemes.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2"><Megaphone className="h-5 w-5 text-primary" />Temas mais discutidos</CardTitle>
-                <CardDescription>Tópicos que dominavam o debate público no período.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-3 md:grid-cols-2">
-                {analysis.topThemes.map((t, i) => (
-                  <div key={i} className="rounded-lg border p-3">
-                    <p className="font-semibold text-sm mb-1">{t.theme}</p>
-                    <p className="text-sm text-muted-foreground">{t.description}</p>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Como o povo falava */}
-          {analysis?.voicesOfThePeople && analysis.voicesOfThePeople.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2"><Quote className="h-5 w-5 text-primary" />Como o povo falava</CardTitle>
-                <CardDescription>Expressões e frases recorrentes da época.</CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-wrap gap-2">
-                {analysis.voicesOfThePeople.map((v, i) => (
-                  <Badge key={i} variant="outline" className="text-sm italic px-3 py-1">"{v}"</Badge>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Eventos que impactaram */}
-          {analysis?.eventsImpact && analysis.eventsImpact.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2"><Zap className="h-5 w-5 text-primary" />Eventos que impactaram</CardTitle>
-                <CardDescription>Acontecimentos detectados nas fontes externas e seu impacto na percepção.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {analysis.eventsImpact.map((e, i) => (
-                  <div key={i} className="rounded-lg border p-3">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <p className="font-semibold text-sm">{e.name}</p>
-                      <span className="text-xs text-muted-foreground">{e.date}</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-2">{e.description}</p>
-                    <p className="text-sm"><span className="font-medium text-primary">Impacto:</span> {e.impact}</p>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Mudança de Narrativa */}
-          {analysis?.perceptionShift && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2"><Megaphone className="h-5 w-5 text-primary" />Mudança de narrativa</CardTitle>
-                <CardDescription>Como o debate evoluiu ao longo do período.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid gap-4 md:grid-cols-[1fr_auto_1fr] items-center">
-                  <div className="rounded-lg border p-4 bg-muted/30">
-                    <p className="text-xs text-muted-foreground mb-1">Antes</p>
-                    <p className="font-semibold text-sm">{analysis.perceptionShift.from}</p>
-                  </div>
-                  <ArrowRight className="h-6 w-6 text-muted-foreground hidden md:block mx-auto" />
-                  <div className="rounded-lg border p-4 bg-primary/5">
-                    <p className="text-xs text-muted-foreground mb-1">Depois</p>
-                    <p className="font-semibold text-sm">{analysis.perceptionShift.to}</p>
-                  </div>
-                </div>
-                <p className="text-sm">{analysis.perceptionShift.explanation}</p>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Análise IA Final */}
-          {analysis?.aiFinal && (
-            <Card className="border-primary/40 bg-gradient-to-br from-primary/5 to-transparent">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" />Análise histórica final</CardTitle>
-                <CardDescription>Síntese narrativa profunda gerada pela IA a partir das fontes externas.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="leading-relaxed text-sm md:text-base whitespace-pre-line">{analysis.aiFinal}</p>
-                {analysis.dataNote && (
-                  <p className="text-xs text-muted-foreground italic mt-3">{analysis.dataNote}</p>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
           {/* Documentos consultados */}
           {result.documents && result.documents.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2"><CalendarDays className="h-5 w-5 text-primary" />Documentos consultados</CardTitle>
-                <CardDescription>Amostra das fontes externas usadas pela IA (ordenadas por data).</CardDescription>
+                <CardTitle className="text-base flex items-center gap-2"><Newspaper className="h-5 w-5 text-primary" />Documentos consultados</CardTitle>
+                <CardDescription>Amostra das referências externas (ordenadas por data).</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="max-h-96 overflow-y-auto divide-y">
@@ -362,7 +382,7 @@ export default function HistoricalComparison() {
                         <Badge variant="outline" className="text-[10px] py-0">{d.source}</Badge>
                         {d.domain && <span>{d.domain}</span>}
                         <span>·</span>
-                        <span>{d.date.slice(0, 10)}</span>
+                        <span className="flex items-center gap-1"><CalendarDays className="h-3 w-3" />{d.date.slice(0, 10)}</span>
                       </div>
                     </a>
                   ))}
