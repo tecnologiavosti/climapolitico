@@ -2293,6 +2293,57 @@ export type Database = {
           },
         ]
       }
+      social_metrics_daily: {
+        Row: {
+          candidate_id: string
+          comments: number
+          created_at: string
+          date: string
+          likes: number
+          mentions: number
+          negative: number
+          network: string
+          neutral: number
+          positive: number
+          shares: number
+          unique_authors: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          candidate_id: string
+          comments?: number
+          created_at?: string
+          date: string
+          likes?: number
+          mentions?: number
+          negative?: number
+          network: string
+          neutral?: number
+          positive?: number
+          shares?: number
+          unique_authors?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          candidate_id?: string
+          comments?: number
+          created_at?: string
+          date?: string
+          likes?: number
+          mentions?: number
+          negative?: number
+          network?: string
+          neutral?: number
+          positive?: number
+          shares?: number
+          unique_authors?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       social_posts: {
         Row: {
           apify_run_id: string | null
@@ -3394,6 +3445,10 @@ export type Database = {
       norm_text: { Args: { _value: string }; Returns: string }
       normalize_social_platform: { Args: { _network: string }; Returns: string }
       nv_clean_text: { Args: { _text: string }; Returns: string }
+      nv_fast_sentiment: {
+        Args: { _label: string; _score?: number }
+        Returns: string
+      }
       nv_hashtag_display: { Args: { _tag: string }; Returns: string }
       nv_is_political_text: {
         Args: { _candidate_name?: string; _text: string }
@@ -3448,6 +3503,10 @@ export type Database = {
         Returns: Json
       }
       refresh_pipeline_metrics_hourly: { Args: never; Returns: undefined }
+      refresh_social_metrics_daily: {
+        Args: { p_since?: string; p_until?: string }
+        Returns: Json
+      }
       reprocess_social_interactions_political_validation: {
         Args: { _batch_size?: number }
         Returns: Json
