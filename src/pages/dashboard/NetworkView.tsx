@@ -135,7 +135,7 @@ export default function NetworkView() {
       return data as SectionResponse<CoreAgg>;
     },
     enabled: !!user,
-    staleTime: 5 * 60_000,
+    staleTime: 15 * 60_000, gcTime: 60 * 60_000, refetchOnWindowFocus: false,
   });
 
   const contentQuery = useQuery({
@@ -152,7 +152,7 @@ export default function NetworkView() {
       return data as SectionResponse<ContentAgg>;
     },
     enabled: !!user,
-    staleTime: 5 * 60_000,
+    staleTime: 15 * 60_000, gcTime: 60 * 60_000, refetchOnWindowFocus: false,
   });
 
   const topPostsQuery = useQuery({
@@ -169,7 +169,7 @@ export default function NetworkView() {
       return data as SectionResponse<TopPostsAgg>;
     },
     enabled: !!user,
-    staleTime: 5 * 60_000,
+    staleTime: 15 * 60_000, gcTime: 60 * 60_000, refetchOnWindowFocus: false,
   });
 
   const coreData = coreQuery.data?.data;
