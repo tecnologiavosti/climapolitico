@@ -121,11 +121,11 @@ function parseRSSFeed(xmlText: string): NewsItem[] {
     
     if (title && link) {
       items.push({
-        title: decodeHtml(title),
+        title: cleanContent(title),
         link: decodeHtml(link).trim(),
         pubDate,
-        source: decodeHtml((bingSource || source).replace(/<[^>]*>/g, "")) || "Google News",
-        description: decodeHtml(description.replace(/<[^>]*>/g, "")).substring(0, 500),
+        source: cleanContent(bingSource || source) || "Google News",
+        description: cleanContent(description).substring(0, 500),
       });
     }
   }
