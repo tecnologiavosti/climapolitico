@@ -320,7 +320,7 @@ export default function NetworkView() {
         <Card className="p-6 lg:col-span-2">
           <h3 className="text-lg font-bold mb-1">Sentimento ao longo do tempo</h3>
           <p className="text-sm text-muted-foreground mb-4">Evolução de positivo, negativo e neutro</p>
-          {isLoading ? <Skeleton className="h-[300px] w-full" /> : sentimentSeries.length === 0 ? (
+          {isLoadingCore ? <Skeleton className="h-[300px] w-full" /> : sentimentSeries.length === 0 ? (
             <EmptyState />
           ) : (
             <ResponsiveContainer width="100%" height={300}>
@@ -347,7 +347,7 @@ export default function NetworkView() {
         <Card className="p-6">
           <h3 className="text-lg font-bold mb-1">Distribuição de sentimento</h3>
           <p className="text-sm text-muted-foreground mb-4">Proporção atual e variação</p>
-          {isLoading ? <Skeleton className="h-[300px] w-full" /> : sentimentPie.length === 0 ? (
+          {isLoadingCore ? <Skeleton className="h-[300px] w-full" /> : sentimentPie.length === 0 ? (
             <EmptyState />
           ) : (
             <>
@@ -374,7 +374,7 @@ export default function NetworkView() {
         <Card className="p-6">
           <h3 className="text-lg font-bold mb-1">Engajamento por rede</h3>
           <p className="text-sm text-muted-foreground mb-4">Curtidas, respostas e compartilhamentos</p>
-          {isLoading ? <Skeleton className="h-[280px] w-full" /> : !agg?.by_network.length ? <EmptyState /> : (
+          {isLoadingCore ? <Skeleton className="h-[280px] w-full" /> : !agg?.by_network.length ? <EmptyState /> : (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={agg.by_network}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -396,7 +396,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h3 className="text-lg font-bold mb-1">Horários de maior movimento</h3>
         <p className="text-sm text-muted-foreground mb-4">Dia da semana × hora — concentração de atividade</p>
-        {isLoading ? <Skeleton className="h-[220px] w-full" /> : !agg?.heatmap.length ? <EmptyState /> : (
+        {isLoadingCore ? <Skeleton className="h-[220px] w-full" /> : !agg?.heatmap.length ? <EmptyState /> : (
           <div className="overflow-x-auto">
             <div className="inline-grid gap-1" style={{ gridTemplateColumns: "auto repeat(24, minmax(20px, 1fr))" }}>
               <div />
@@ -430,7 +430,7 @@ export default function NetworkView() {
         <Card className="p-6">
           <h3 className="text-lg font-bold mb-1">Assuntos dominantes</h3>
           <p className="text-sm text-muted-foreground mb-4">Temas detectados em posts, comentários e respostas (agrupamento semântico)</p>
-          {isLoading ? <Skeleton className="h-[200px] w-full" /> : !agg?.topics.length ? <EmptyState /> : (
+          {isLoadingContent ? <Skeleton className="h-[200px] w-full" /> : !agg?.topics.length ? <EmptyState /> : (
             <div className="space-y-2 max-h-[420px] overflow-y-auto pr-2">
               {agg.topics.map((t) => {
                 const lab = t.pos + t.neg + t.neu;
@@ -468,7 +468,7 @@ export default function NetworkView() {
         <Card className="p-6">
           <h3 className="text-lg font-bold mb-1 flex items-center gap-2"><Hash className="h-5 w-5" /> Hashtags recorrentes</h3>
           <p className="text-sm text-muted-foreground mb-4">Top 20 — explícitas e implícitas, com variação e sentimento</p>
-          {isLoading ? <Skeleton className="h-[200px] w-full" /> : !agg?.hashtags.length ? <EmptyState /> : (
+          {isLoadingContent ? <Skeleton className="h-[200px] w-full" /> : !agg?.hashtags.length ? <EmptyState /> : (
             <div className="space-y-1.5 max-h-[420px] overflow-y-auto pr-2">
               {agg.hashtags.map((h) => {
                 const lab = h.pos + h.neg + h.neu;
@@ -496,7 +496,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h3 className="text-lg font-bold mb-1">Top 5 posts</h3>
         <p className="text-sm text-muted-foreground mb-4">Posts com maior engajamento no período</p>
-        {isLoading ? <Skeleton className="h-[300px] w-full" /> : !agg?.top_posts.length ? <EmptyState /> : (
+        {isLoadingTopPosts ? <Skeleton className="h-[300px] w-full" /> : !agg?.top_posts.length ? <EmptyState /> : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {agg.top_posts.map((p) => (
               <div key={p.id} className="border border-border rounded-lg p-4 hover:bg-muted/30 transition">
