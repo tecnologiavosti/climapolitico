@@ -3377,6 +3377,10 @@ export type Database = {
         Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
         Returns: Json
       }
+      network_view_core_metrics_v12_impl: {
+        Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
+        Returns: Json
+      }
       network_view_sentiment:
         | { Args: { _label: string }; Returns: string }
         | {
