@@ -2,6 +2,7 @@
 // e via Google News (site:facebook.com) para menções indexadas. Não substitui Apify,
 // roda em paralelo para aumentar volume. Salva em social_interactions.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { cleanContent } from "../_shared/clean-content.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
