@@ -211,15 +211,19 @@ function NetworkFeed({ network }: { network: NetworkConfig }) {
       const maxAttempts = 3;
       while (attempt < maxAttempts) {
         attempt++;
-        const { data, error, count, elapsed } = await runQuery();
+        const { data, error, elapsed } = await runQuery();
         if (cancelled) return;
 
         if (!error) {
+          const received = data?.length ?? 0;
+          const items = (data || []) as FeedItem[];
+          const afterFilter = items.filter((it) => !looksLikeCode(it.comment_text));
+          const afterDedupe = dedupeItems(afterFilter);
           console.info(
-            `[SocialFeeds] ${network.key} ok — itens=${data?.length ?? 0} total~=${count ?? "?"} tempo=${elapsed}ms tentativa=${attempt}`
+            `[SocialFeeds] ${network.key} feed recebido — recebidos=${received} apósFiltro=${afterFilter.length} apósDedupe/Ordenação=${afterDedupe.length} renderizados=${afterDedupe.length} tempo=${elapsed}ms tentativa=${attempt}`
           );
-          setItems((data || []) as FeedItem[]);
-          setTotal(count || 0);
+          setItems(items);
+          setTotal(received < PAGE_SIZE ? page * PAGE_SIZE + received : (page + 2) * PAGE_SIZE);
           setLoading(false);
           return;
         }
