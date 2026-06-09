@@ -3,6 +3,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isPoliticalCandidateContent } from "../_shared/political-content.ts";
+import { cleanContent } from "../_shared/clean-content.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -127,9 +128,9 @@ async function enrichArticleMeta(item: NewsItem): Promise<NewsItem> {
       ...item,
       link: finalUrl,
       image: validHttps(image) ? image : item.image,
-      title: title || item.title,
-      description: description.slice(0, 500),
-      source,
+      title: cleanContent(title || item.title),
+      description: cleanContent(description).slice(0, 500),
+      source: cleanContent(source),
     };
   } catch {
     return item;
@@ -163,11 +164,11 @@ function parseRSSFeed(xmlText: string): NewsItem[] {
 
     if (title && link) {
       items.push({
-        title: decodeHtml(title),
+        title: cleanContent(title),
         link: link.trim(),
         pubDate,
-        source: decodeHtml(source.replace(/<[^>]*>/g, "")) || "Google News",
-        description: decodeHtml(description.replace(/<[^>]*>/g, "")).substring(0, 500),
+        source: cleanContent(source) || "Google News",
+        description: cleanContent(description).substring(0, 500),
         image,
       });
     }

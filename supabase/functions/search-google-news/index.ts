@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isPoliticalCandidateContent, politicalContentVerdict } from "../_shared/political-content.ts";
 import { buildContextualQueries, getTrustedOutlets, getPoliticianContext } from "../_shared/politician-context.ts";
+import { cleanContent } from "../_shared/clean-content.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -120,11 +121,11 @@ function parseRSSFeed(xmlText: string): NewsItem[] {
     
     if (title && link) {
       items.push({
-        title: decodeHtml(title),
+        title: cleanContent(title),
         link: decodeHtml(link).trim(),
         pubDate,
-        source: decodeHtml((bingSource || source).replace(/<[^>]*>/g, "")) || "Google News",
-        description: decodeHtml(description.replace(/<[^>]*>/g, "")).substring(0, 500),
+        source: cleanContent(bingSource || source) || "Google News",
+        description: cleanContent(description).substring(0, 500),
       });
     }
   }
@@ -160,11 +161,11 @@ async function fetchGdeltNews(candidateName: string): Promise<NewsItem[]> {
     if (!response.ok) return [];
     const json = await response.json();
     return (Array.isArray(json?.articles) ? json.articles : []).map((article: any) => ({
-      title: String(article?.title || "").slice(0, 300),
+      title: cleanContent(article?.title).slice(0, 300),
       link: String(article?.url || ""),
       pubDate: article?.seendate ? parseGdeltDate(String(article.seendate)) : new Date().toUTCString(),
-      source: String(article?.domain || "Portal de notícia"),
-      description: String(article?.title || "").slice(0, 500),
+      source: cleanContent(article?.domain) || "Portal de notícia",
+      description: cleanContent(article?.title).slice(0, 500),
     })).filter((item) => item.title && item.link);
   } catch (error) {
     console.warn("[search-google-news] GDELT fallback falhou:", error instanceof Error ? error.message : String(error));

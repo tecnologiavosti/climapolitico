@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { cleanContent } from "../_shared/clean-content.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -33,9 +34,8 @@ function parseRSSFeed(xmlText: string): RSSMention[] {
     const pubDate = xml.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] || '';
     const source = xml.match(/<source.*?>(.*?)<\/source>/)?.[1] || '';
 
-    // Clean HTML tags from description
-    const cleanDesc = desc.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').trim();
-    const cleanTitle = title.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+    const cleanDesc = cleanContent(desc);
+    const cleanTitle = cleanContent(title);
 
     if (cleanTitle || cleanDesc) {
       items.push({
@@ -43,7 +43,7 @@ function parseRSSFeed(xmlText: string): RSSMention[] {
         link,
         description: cleanDesc.substring(0, 1000),
         pubDate,
-        source: source || extractDomainFromUrl(link),
+        source: cleanContent(source) || extractDomainFromUrl(link),
       });
     }
   }

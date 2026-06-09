@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { INVIDIOUS_MIRRORS, fetchFromMirrors } from "../_shared/scrape-utils.ts";
 import { isPoliticalCandidateContent } from "../_shared/political-content.ts";
+import { cleanContent } from "../_shared/clean-content.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -69,12 +70,12 @@ Deno.serve(async (req) => {
             user_id: c.user_id, candidate_id: c.id, social_network: "youtube",
             platform: "youtube",
             interaction_type: "video",
-            comment_text: `${v.title}\n${(v.description || "").slice(0, 1000)}`,
-            comment_author: v.author || "YouTube",
+            comment_text: cleanContent(`${v.title}\n${(v.description || "").slice(0, 1000)}`),
+            comment_author: cleanContent(v.author) || "YouTube",
             author_profile_url: videoUrl,
             post_url: videoUrl,
-            post_title: v.title || null,
-            post_description: (v.description || "").slice(0, 1000) || null,
+            post_title: cleanContent(v.title) || null,
+            post_description: cleanContent((v.description || "").slice(0, 1000)) || null,
             thumbnail_url: v.videoThumbnails?.[0]?.url || null,
             author_name: v.author || "YouTube",
             author_handle: v.authorId || null,
@@ -102,10 +103,10 @@ Deno.serve(async (req) => {
           const { error } = await supabase.from("social_interactions").insert({
             user_id: c.user_id, candidate_id: c.id, social_network: "youtube",
             platform: "youtube",
-            interaction_type: "comment", comment_text: text,
-            comment_author: cm.author || "anon", author_profile_url: url,
-            post_url: videoUrl, post_title: v.title || null,
-            post_description: (v.description || "").slice(0, 1000) || null,
+            interaction_type: "comment", comment_text: cleanContent(text),
+            comment_author: cleanContent(cm.author) || "anon", author_profile_url: url,
+            post_url: videoUrl, post_title: cleanContent(v.title) || null,
+            post_description: cleanContent((v.description || "").slice(0, 1000)) || null,
             thumbnail_url: v.videoThumbnails?.[0]?.url || `https://img.youtube.com/vi/${vid}/hqdefault.jpg`,
             author_name: v.author || "YouTube",
             author_handle: v.authorId || null,
