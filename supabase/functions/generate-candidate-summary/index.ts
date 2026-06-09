@@ -215,6 +215,11 @@ serve(async (req) => {
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
     const supabaseClient = supabaseAdmin;
+    const supabaseUser = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: `Bearer ${token}` } } },
+    );
     if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Não autorizado' }), {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -281,7 +286,7 @@ serve(async (req) => {
     const pageSize = 1000;
     const maxPromptComments = 5000;
     const rpcDays = daysBack === null ? 3650 : Math.max(1, Math.ceil(daysBack));
-    const { data: coreMetrics } = await supabaseClient.rpc('network_view_core_metrics', {
+    const { data: coreMetrics } = await supabaseUser.rpc('network_view_core_metrics', {
       p_candidate_id: candidateId,
       p_network: null,
       p_days: rpcDays,
