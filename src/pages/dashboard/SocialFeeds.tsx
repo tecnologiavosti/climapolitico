@@ -172,13 +172,12 @@ function NetworkFeed({ network }: { network: NetworkConfig }) {
 
     const runQuery = async () => {
       const startedAt = performance.now();
-      // `estimated` evita timeout em redes com centenas de milhares de linhas
-      // (ex.: youtube ~ 450k). Mantém UI responsiva e usa o planner do Postgres.
+      // Sem `count` para evitar scan extra em tabelas grandes (~450k linhas YouTube).
+      // O índice (social_network, original_posted_at DESC) permite paginação rápida.
       let query = supabase
         .from("social_interactions")
         .select(
-          "id, candidate_id, comment_text, comment_author, author_profile_url, original_posted_at, collected_at, sentiment_label, social_network, likes_count, replies_count, shares_count, post_url, post_id, external_id, author_handle, platform",
-          { count: "estimated" }
+          "id, candidate_id, comment_text, comment_author, author_profile_url, original_posted_at, collected_at, sentiment_label, social_network, likes_count, replies_count, shares_count, post_url, post_id, external_id, author_handle, platform"
         )
         .in("social_network", network.match)
         .order("original_posted_at", { ascending: false, nullsFirst: false })
@@ -212,15 +211,19 @@ function NetworkFeed({ network }: { network: NetworkConfig }) {
       const maxAttempts = 3;
       while (attempt < maxAttempts) {
         attempt++;
-        const { data, error, count, elapsed } = await runQuery();
+        const { data, error, elapsed } = await runQuery();
         if (cancelled) return;
 
         if (!error) {
+          const received = data?.length ?? 0;
+          const items = (data || []) as FeedItem[];
+          const afterFilter = items.filter((it) => !looksLikeCode(it.comment_text));
+          const afterDedupe = dedupeItems(afterFilter);
           console.info(
-            `[SocialFeeds] ${network.key} ok — itens=${data?.length ?? 0} total~=${count ?? "?"} tempo=${elapsed}ms tentativa=${attempt}`
+            `[SocialFeeds] ${network.key} feed recebido — recebidos=${received} apósFiltro=${afterFilter.length} apósDedupe/Ordenação=${afterDedupe.length} renderizados=${afterDedupe.length} tempo=${elapsed}ms tentativa=${attempt}`
           );
-          setItems((data || []) as FeedItem[]);
-          setTotal(count || 0);
+          setItems(items);
+          setTotal(received < PAGE_SIZE ? page * PAGE_SIZE + received : (page + 2) * PAGE_SIZE);
           setLoading(false);
           return;
         }

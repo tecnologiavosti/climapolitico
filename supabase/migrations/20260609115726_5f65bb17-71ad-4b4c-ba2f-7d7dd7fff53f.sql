@@ -1,0 +1,2 @@
+CREATE INDEX IF NOT EXISTS idx_social_interactions_network_posted ON public.social_interactions (social_network, original_posted_at DESC NULLS LAST, collected_at DESC);
+CREATE INDEX IF NOT EXISTS idx_social_interactions_network_candidate_posted ON public.social_interactions (social_network, candidate_id, original_posted_at DESC NULLS LAST, collected_at DESC);
