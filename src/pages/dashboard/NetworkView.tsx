@@ -115,7 +115,7 @@ export default function NetworkView() {
   const { isAdmin } = useAdminCheck();
   const [network, setNetwork] = useState("all");
   const [candidateId, setCandidateId] = useState<string>("all");
-  const [days, setDays] = useState(3650);
+  const [days, setDays] = useState(30);
 
   const { data: candidates } = useQuery({
     queryKey: ["nv-candidates", user?.id, isAdmin],
