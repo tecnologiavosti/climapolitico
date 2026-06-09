@@ -65,10 +65,36 @@ type Agg = {
   top_posts: { id: string; social_network: string; comment_text: string; comment_author: string; sent: string; eng: number; likes: number; replies: number; shares: number; original_posted_at: string; collected_at: string }[];
 };
 
+type SectionResponse<T> = {
+  ok?: boolean;
+  data?: T;
+  message?: string;
+  diagnostics?: {
+    duration_ms?: number;
+    records_read?: number;
+    records_returned?: number;
+    cache_hit?: boolean;
+    plan?: unknown;
+  };
+};
+
+type CoreAgg = Pick<Agg, "kpis" | "series" | "by_network" | "heatmap">;
+type ContentAgg = Pick<Agg, "hashtags" | "topics">;
+type TopPostsAgg = Pick<Agg, "top_posts">;
+
+const emptyKpis: Agg["kpis"] = {
+  total: 0, authors: 0, engagement: 0,
+  likes: 0, replies: 0, shares: 0,
+  pos: 0, neg: 0, neu: 0,
+  prev_total: 0, prev_pos: 0, prev_neg: 0, prev_neu: 0,
+};
+
 const fmt = (n: number) => n.toLocaleString("pt-BR");
 const compact = (n: number) => Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
 const growth = (cur: number, prev: number) => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : cur > 0 ? 100 : 0);
+
+const sectionErrorMessage = (section: string) => `Não foi possível carregar ${section}. As demais seções continuam disponíveis.`;
 
 export default function NetworkView() {
   const { user } = useAuth();
@@ -89,20 +115,84 @@ export default function NetworkView() {
     enabled: !!user,
   });
 
-  const { data: agg, isLoading, error } = useQuery({
-    queryKey: ["nv-agg", user?.id, network, candidateId, days],
-    queryFn: async (): Promise<Agg> => {
-      const { data, error } = await supabase.rpc("network_view_aggregate", {
-        p_candidate_id: candidateId === "all" ? null : candidateId,
-        p_network: network === "all" ? null : network,
-        p_days: days,
-      });
-      if (error) throw error;
-      return data as unknown as Agg;
+  const queryParams = {
+    p_candidate_id: candidateId === "all" ? null : candidateId,
+    p_network: network === "all" ? null : network,
+    p_days: days,
+  };
+
+  const coreQuery = useQuery({
+    queryKey: ["nv-core", user?.id, network, candidateId, days],
+    queryFn: async (): Promise<SectionResponse<CoreAgg>> => {
+      const started = performance.now();
+      const { data, error } = await supabase.rpc("network_view_core_metrics", queryParams);
+      const elapsed = Math.round(performance.now() - started);
+      if (error) {
+        console.error("[NetworkView] core RPC failed", { elapsed, error, queryParams });
+        throw error;
+      }
+      console.info("[NetworkView] core loaded", { elapsed, diagnostics: (data as SectionResponse<CoreAgg>)?.diagnostics });
+      return data as SectionResponse<CoreAgg>;
     },
     enabled: !!user,
     staleTime: 5 * 60_000,
   });
+
+  const contentQuery = useQuery({
+    queryKey: ["nv-content", user?.id, network, candidateId, days],
+    queryFn: async (): Promise<SectionResponse<ContentAgg>> => {
+      const started = performance.now();
+      const { data, error } = await supabase.rpc("network_view_content_metrics", queryParams);
+      const elapsed = Math.round(performance.now() - started);
+      if (error) {
+        console.error("[NetworkView] content RPC failed", { elapsed, error, queryParams });
+        throw error;
+      }
+      console.info("[NetworkView] content loaded", { elapsed, diagnostics: (data as SectionResponse<ContentAgg>)?.diagnostics });
+      return data as SectionResponse<ContentAgg>;
+    },
+    enabled: !!user,
+    staleTime: 5 * 60_000,
+  });
+
+  const topPostsQuery = useQuery({
+    queryKey: ["nv-top-posts", user?.id, network, candidateId, days],
+    queryFn: async (): Promise<SectionResponse<TopPostsAgg>> => {
+      const started = performance.now();
+      const { data, error } = await supabase.rpc("network_view_top_posts", queryParams);
+      const elapsed = Math.round(performance.now() - started);
+      if (error) {
+        console.error("[NetworkView] top_posts RPC failed", { elapsed, error, queryParams });
+        throw error;
+      }
+      console.info("[NetworkView] top_posts loaded", { elapsed, diagnostics: (data as SectionResponse<TopPostsAgg>)?.diagnostics });
+      return data as SectionResponse<TopPostsAgg>;
+    },
+    enabled: !!user,
+    staleTime: 5 * 60_000,
+  });
+
+  const coreData = coreQuery.data?.data;
+  const contentData = contentQuery.data?.data;
+  const topPostsData = topPostsQuery.data?.data;
+  const isLoadingCore = coreQuery.isLoading;
+  const isLoadingContent = contentQuery.isLoading;
+  const isLoadingTopPosts = topPostsQuery.isLoading;
+  const sectionErrors = [
+    coreQuery.error || (coreQuery.data?.ok === false ? new Error(coreQuery.data.message || sectionErrorMessage("métricas gerais")) : null),
+    contentQuery.error || (contentQuery.data?.ok === false ? new Error(contentQuery.data.message || sectionErrorMessage("assuntos e hashtags")) : null),
+    topPostsQuery.error || (topPostsQuery.data?.ok === false ? new Error(topPostsQuery.data.message || sectionErrorMessage("top posts")) : null),
+  ].filter(Boolean) as Error[];
+
+  const agg: Agg = {
+    kpis: coreData?.kpis ?? emptyKpis,
+    series: coreData?.series ?? [],
+    by_network: coreData?.by_network ?? [],
+    heatmap: coreData?.heatmap ?? [],
+    hashtags: contentData?.hashtags ?? [],
+    topics: contentData?.topics ?? [],
+    top_posts: topPostsData?.top_posts ?? [],
+  };
 
   const k = agg?.kpis;
   const total = k?.total ?? 0;
@@ -194,24 +284,26 @@ export default function NetworkView() {
         </div>
       </div>
 
-      {error && (
+      {sectionErrors.length > 0 && (
         <Card className="p-4 border-destructive/40 bg-destructive/5 text-sm text-destructive">
-          Erro ao carregar dados: {(error as Error).message}
+          {sectionErrors.map((err, index) => (
+            <div key={`${err.message}-${index}`}>{err.message}</div>
+          ))}
         </Card>
       )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <Kpi label="Total de menções" value={fmt(total)} icon={<MessageSquare className="h-4 w-4" />} loading={isLoading} />
-        <Kpi label="Interações" value={compact(k?.engagement ?? 0)} icon={<Activity className="h-4 w-4" />} loading={isLoading} sub={`${fmt(k?.likes ?? 0)} curtidas`} />
-        <Kpi label="Sentimento positivo" value={`${posPct}%`} icon={<Heart className="h-4 w-4 text-success" />} loading={isLoading} sub={`${fmt(k?.pos ?? 0)} menções`} tone="success" delta={posPct - prevPosPct} />
-        <Kpi label="Sentimento negativo" value={`${negPct}%`} icon={<TrendingDown className="h-4 w-4 text-destructive" />} loading={isLoading} sub={`${fmt(k?.neg ?? 0)} menções`} tone="destructive" delta={negPct - prevNegPct} invertDelta />
-        <Kpi label="Crescimento" value={`${growthPct >= 0 ? "+" : ""}${growthPct}%`} icon={growthPct >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} loading={isLoading} sub="vs. período anterior" tone={growthPct >= 0 ? "success" : "destructive"} />
-        <Kpi label="Rede dominante" value={dominant === "—" ? "—" : dominant.charAt(0).toUpperCase() + dominant.slice(1)} icon={<Crown className="h-4 w-4" />} loading={isLoading} sub={agg?.by_network?.[0] ? `${compact(agg.by_network[0].mentions)} menções` : ""} />
+        <Kpi label="Total de menções" value={fmt(total)} icon={<MessageSquare className="h-4 w-4" />} loading={isLoadingCore} />
+        <Kpi label="Interações" value={compact(k?.engagement ?? 0)} icon={<Activity className="h-4 w-4" />} loading={isLoadingCore} sub={`${fmt(k?.likes ?? 0)} curtidas`} />
+        <Kpi label="Sentimento positivo" value={`${posPct}%`} icon={<Heart className="h-4 w-4 text-success" />} loading={isLoadingCore} sub={`${fmt(k?.pos ?? 0)} menções`} tone="success" delta={posPct - prevPosPct} />
+        <Kpi label="Sentimento negativo" value={`${negPct}%`} icon={<TrendingDown className="h-4 w-4 text-destructive" />} loading={isLoadingCore} sub={`${fmt(k?.neg ?? 0)} menções`} tone="destructive" delta={negPct - prevNegPct} invertDelta />
+        <Kpi label="Crescimento" value={`${growthPct >= 0 ? "+" : ""}${growthPct}%`} icon={growthPct >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} loading={isLoadingCore} sub="vs. período anterior" tone={growthPct >= 0 ? "success" : "destructive"} />
+        <Kpi label="Rede dominante" value={dominant === "—" ? "—" : dominant.charAt(0).toUpperCase() + dominant.slice(1)} icon={<Crown className="h-4 w-4" />} loading={isLoadingCore} sub={agg?.by_network?.[0] ? `${compact(agg.by_network[0].mentions)} menções` : ""} />
       </div>
 
       {/* AI Insight */}
-      {!isLoading && aiSummary && (
+      {!isLoadingCore && aiSummary && (
         <Card className="p-5 bg-gradient-to-br from-primary/5 to-accent/5 border-primary/20">
           <div className="flex items-start gap-3">
             <div className="p-2 rounded-lg bg-primary/10"><Sparkles className="h-5 w-5 text-primary" /></div>
@@ -228,7 +320,7 @@ export default function NetworkView() {
         <Card className="p-6 lg:col-span-2">
           <h3 className="text-lg font-bold mb-1">Sentimento ao longo do tempo</h3>
           <p className="text-sm text-muted-foreground mb-4">Evolução de positivo, negativo e neutro</p>
-          {isLoading ? <Skeleton className="h-[300px] w-full" /> : sentimentSeries.length === 0 ? (
+          {isLoadingCore ? <Skeleton className="h-[300px] w-full" /> : sentimentSeries.length === 0 ? (
             <EmptyState />
           ) : (
             <ResponsiveContainer width="100%" height={300}>
@@ -255,7 +347,7 @@ export default function NetworkView() {
         <Card className="p-6">
           <h3 className="text-lg font-bold mb-1">Distribuição de sentimento</h3>
           <p className="text-sm text-muted-foreground mb-4">Proporção atual e variação</p>
-          {isLoading ? <Skeleton className="h-[300px] w-full" /> : sentimentPie.length === 0 ? (
+          {isLoadingCore ? <Skeleton className="h-[300px] w-full" /> : sentimentPie.length === 0 ? (
             <EmptyState />
           ) : (
             <>
@@ -282,7 +374,7 @@ export default function NetworkView() {
         <Card className="p-6">
           <h3 className="text-lg font-bold mb-1">Engajamento por rede</h3>
           <p className="text-sm text-muted-foreground mb-4">Curtidas, respostas e compartilhamentos</p>
-          {isLoading ? <Skeleton className="h-[280px] w-full" /> : !agg?.by_network.length ? <EmptyState /> : (
+          {isLoadingCore ? <Skeleton className="h-[280px] w-full" /> : !agg?.by_network.length ? <EmptyState /> : (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={agg.by_network}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -304,7 +396,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h3 className="text-lg font-bold mb-1">Horários de maior movimento</h3>
         <p className="text-sm text-muted-foreground mb-4">Dia da semana × hora — concentração de atividade</p>
-        {isLoading ? <Skeleton className="h-[220px] w-full" /> : !agg?.heatmap.length ? <EmptyState /> : (
+        {isLoadingCore ? <Skeleton className="h-[220px] w-full" /> : !agg?.heatmap.length ? <EmptyState /> : (
           <div className="overflow-x-auto">
             <div className="inline-grid gap-1" style={{ gridTemplateColumns: "auto repeat(24, minmax(20px, 1fr))" }}>
               <div />
@@ -338,7 +430,7 @@ export default function NetworkView() {
         <Card className="p-6">
           <h3 className="text-lg font-bold mb-1">Assuntos dominantes</h3>
           <p className="text-sm text-muted-foreground mb-4">Temas detectados em posts, comentários e respostas (agrupamento semântico)</p>
-          {isLoading ? <Skeleton className="h-[200px] w-full" /> : !agg?.topics.length ? <EmptyState /> : (
+          {isLoadingContent ? <Skeleton className="h-[200px] w-full" /> : !agg?.topics.length ? <EmptyState /> : (
             <div className="space-y-2 max-h-[420px] overflow-y-auto pr-2">
               {agg.topics.map((t) => {
                 const lab = t.pos + t.neg + t.neu;
@@ -376,7 +468,7 @@ export default function NetworkView() {
         <Card className="p-6">
           <h3 className="text-lg font-bold mb-1 flex items-center gap-2"><Hash className="h-5 w-5" /> Hashtags recorrentes</h3>
           <p className="text-sm text-muted-foreground mb-4">Top 20 — explícitas e implícitas, com variação e sentimento</p>
-          {isLoading ? <Skeleton className="h-[200px] w-full" /> : !agg?.hashtags.length ? <EmptyState /> : (
+          {isLoadingContent ? <Skeleton className="h-[200px] w-full" /> : !agg?.hashtags.length ? <EmptyState /> : (
             <div className="space-y-1.5 max-h-[420px] overflow-y-auto pr-2">
               {agg.hashtags.map((h) => {
                 const lab = h.pos + h.neg + h.neu;
@@ -404,7 +496,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h3 className="text-lg font-bold mb-1">Top 5 posts</h3>
         <p className="text-sm text-muted-foreground mb-4">Posts com maior engajamento no período</p>
-        {isLoading ? <Skeleton className="h-[300px] w-full" /> : !agg?.top_posts.length ? <EmptyState /> : (
+        {isLoadingTopPosts ? <Skeleton className="h-[300px] w-full" /> : !agg?.top_posts.length ? <EmptyState /> : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {agg.top_posts.map((p) => (
               <div key={p.id} className="border border-border rounded-lg p-4 hover:bg-muted/30 transition">
