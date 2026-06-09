@@ -17,7 +17,7 @@ export default function DataDiagnostics() {
   const { data, isLoading } = useQuery({
     queryKey: ["data-consistency-diagnostics", days],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("data_consistency_diagnostics", { p_days: days, p_candidate_id: null });
+      const { data, error } = await (supabase as any).rpc("data_consistency_diagnostics", { p_days: days, p_candidate_id: null });
       if (error) throw error;
       return data as any;
     },
