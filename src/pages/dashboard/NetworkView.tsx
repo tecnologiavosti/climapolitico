@@ -174,7 +174,13 @@ export default function NetworkView() {
     queryKey: ["nv-top-posts", user?.id, network, candidateId, days],
     queryFn: async (): Promise<SectionResponse<TopPostsAgg>> => {
       const started = performance.now();
-      const { data, error } = await supabase.rpc("network_view_top_posts", queryParams);
+      const { data, error } = await supabase.functions.invoke("social/top-posts", {
+        body: {
+          candidateId: candidateId === "all" ? null : candidateId,
+          network: network === "all" ? null : network,
+          days,
+        },
+      });
       const elapsed = Math.round(performance.now() - started);
       if (error) {
         console.error("[NetworkView] top_posts RPC failed", { elapsed, error, queryParams });
@@ -458,7 +464,7 @@ export default function NetworkView() {
         <Card className="p-6">
           <h3 className="text-lg font-bold mb-1">Assuntos dominantes</h3>
           <p className="text-sm text-muted-foreground mb-4">Temas detectados em posts, comentários e respostas (agrupamento semântico)</p>
-          {isLoadingContent ? <Skeleton className="h-[200px] w-full" /> : !agg?.topics.length ? <EmptyState /> : (
+          {isLoadingContent ? <LoadingMessage label="Carregando assuntos..." /> : !agg?.topics.length ? <EmptyState /> : (
             <div className="space-y-2 max-h-[420px] overflow-y-auto pr-2">
               {agg.topics.map((t) => {
                 const lab = t.pos + t.neg + t.neu;
@@ -494,7 +500,7 @@ export default function NetworkView() {
         <Card className="p-6">
           <h3 className="text-lg font-bold mb-1 flex items-center gap-2"><Hash className="h-5 w-5" /> Hashtags recorrentes</h3>
           <p className="text-sm text-muted-foreground mb-4">Top 20 — explícitas e implícitas, com variação e sentimento</p>
-          {isLoadingContent ? <Skeleton className="h-[200px] w-full" /> : !agg?.hashtags.length ? <EmptyState /> : (
+          {isLoadingContent ? <LoadingMessage label="Carregando hashtags..." /> : !agg?.hashtags.length ? <EmptyState /> : (
             <div className="space-y-1.5 max-h-[420px] overflow-y-auto pr-2">
               {agg.hashtags.map((h) => {
                 const lab = h.pos + h.neg + h.neu;
@@ -518,8 +524,8 @@ export default function NetworkView() {
 
       {/* Top posts */}
       <Card className="p-6">
-        <h3 className="text-lg font-bold mb-1">Top 5 posts</h3>
-        <p className="text-sm text-muted-foreground mb-4">Posts com maior engajamento no período</p>
+        <h3 className="text-lg font-bold mb-1">Top 20 posts</h3>
+        <p className="text-sm text-muted-foreground mb-4">Posts políticos com maior engajamento no período</p>
         {isLoadingTopPosts ? <Skeleton className="h-[300px] w-full" /> : !agg?.top_posts.length ? <EmptyState /> : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {agg.top_posts.map((p) => (
