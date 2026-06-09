@@ -65,10 +65,36 @@ type Agg = {
   top_posts: { id: string; social_network: string; comment_text: string; comment_author: string; sent: string; eng: number; likes: number; replies: number; shares: number; original_posted_at: string; collected_at: string }[];
 };
 
+type SectionResponse<T> = {
+  ok?: boolean;
+  data?: T;
+  message?: string;
+  diagnostics?: {
+    duration_ms?: number;
+    records_read?: number;
+    records_returned?: number;
+    cache_hit?: boolean;
+    plan?: unknown;
+  };
+};
+
+type CoreAgg = Pick<Agg, "kpis" | "series" | "by_network" | "heatmap">;
+type ContentAgg = Pick<Agg, "hashtags" | "topics">;
+type TopPostsAgg = Pick<Agg, "top_posts">;
+
+const emptyKpis: Agg["kpis"] = {
+  total: 0, authors: 0, engagement: 0,
+  likes: 0, replies: 0, shares: 0,
+  pos: 0, neg: 0, neu: 0,
+  prev_total: 0, prev_pos: 0, prev_neg: 0, prev_neu: 0,
+};
+
 const fmt = (n: number) => n.toLocaleString("pt-BR");
 const compact = (n: number) => Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
 const growth = (cur: number, prev: number) => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : cur > 0 ? 100 : 0);
+
+const sectionErrorMessage = (section: string) => `Não foi possível carregar ${section}. As demais seções continuam disponíveis.`;
 
 export default function NetworkView() {
   const { user } = useAuth();
