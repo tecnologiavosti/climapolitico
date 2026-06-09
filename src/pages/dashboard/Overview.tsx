@@ -6,7 +6,7 @@ import { TrendingUp, TrendingDown, Users, MessageSquare, AlertCircle, Activity, 
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { format, subDays, startOfDay, endOfDay } from "date-fns";
+import { format, subDays } from "date-fns";
 import { toast } from "sonner";
 import { ptBR } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -121,6 +121,30 @@ export default function Overview() {
   // Query: Métricas agregadas do cache (fonte única de verdade)
   const { data: allMetrics, isLoading: loadingMetrics } = useAllCandidateMetrics();
 
+  const { data: consolidatedMetrics, isLoading: loadingConsolidated } = useQuery({
+    queryKey: ["overview-consolidated-core", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("network_view_core_metrics", { p_candidate_id: null, p_network: null, p_days: 3650 });
+      if (error) throw error;
+      return (data as any)?.data;
+    },
+    enabled: !!user,
+    staleTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  const { data: weeklyCore } = useQuery({
+    queryKey: ["overview-weekly-core", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("network_view_core_metrics", { p_candidate_id: null, p_network: null, p_days: 7 });
+      if (error) throw error;
+      return (data as any)?.data;
+    },
+    enabled: !!user,
+    staleTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
   // Query: Interações sociais para gráfico temporal (últimos 7 dias)
   // Considera tanto a data de postagem original (original_posted_at) quanto a
   // data de coleta (created_at) para capturar tudo que aconteceu na janela.
@@ -210,7 +234,7 @@ export default function Overview() {
   })();
 
   // Aggregate metrics from cache (single source of truth)
-  const aggregatedMetrics = allMetrics?.reduce(
+  const fallbackAggregatedMetrics = allMetrics?.reduce(
     (acc, m) => ({
       totalMentions: acc.totalMentions + m.totalMentions,
       uniqueAuthors: acc.uniqueAuthors + m.uniqueAuthors,
@@ -222,6 +246,16 @@ export default function Overview() {
     { totalMentions: 0, uniqueAuthors: 0, totalEngagement: 0, positiveCount: 0, neutralCount: 0, negativeCount: 0 }
   ) || { totalMentions: 0, uniqueAuthors: 0, totalEngagement: 0, positiveCount: 0, neutralCount: 0, negativeCount: 0 };
 
+  const kpis = consolidatedMetrics?.kpis;
+  const aggregatedMetrics = kpis ? {
+    totalMentions: Number(kpis.total || 0),
+    uniqueAuthors: Number(kpis.authors || 0),
+    totalEngagement: Number(kpis.engagement || 0),
+    positiveCount: Number(kpis.pos || 0),
+    neutralCount: Number(kpis.neu || 0),
+    negativeCount: Number(kpis.neg || 0),
+  } : fallbackAggregatedMetrics;
+
   const totalMentions = aggregatedMetrics.totalMentions;
   const uniqueAuthors = aggregatedMetrics.uniqueAuthors;
   const totalCandidates = candidates?.length || 0;
@@ -230,62 +264,19 @@ export default function Overview() {
     ? Math.round(((aggregatedMetrics.positiveCount * 100) + (aggregatedMetrics.neutralCount * 50) + (aggregatedMetrics.negativeCount * 0)) / totalSentimentItems)
     : 0;
 
-  // Preparar dados de sentimento por dia (últimos 7 dias)
-  // Usa created_at (data de coleta) para garantir que toda interação coletada
-  // nos últimos 7 dias apareça no gráfico, independentemente de quando foi postada.
-  // Normaliza labels (case-insensitive + acentos) para não perder linhas com
-  // variações como "positivo", "POSITIVO", "Positive", etc.
-  const normalizeSentiment = (label?: string | null, score?: number | null): 'positive' | 'negative' | 'neutral' | null => {
-    const numericScore = typeof score === 'number' ? score : null;
-
-    // "Neutro 0.5" é usado pelo pipeline como valor padrão/pendente quando a IA falha.
-    // Não entra no gráfico temporal para evitar uma curva artificialmente gigante de neutros.
-    if (!label && numericScore === null) return null;
-    if (label?.trim().toLowerCase() === 'neutro' && numericScore === 0.5) return null;
-
-    if (label) {
-      const l = label
-        .toString()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .trim();
-      if (l.startsWith('pos')) return 'positive';
-      if (l.startsWith('neg')) return 'negative';
-      if (l.startsWith('neu')) return 'neutral';
-    }
-    if (numericScore !== null) {
-      if (numericScore >= 0.6) return 'positive';
-      if (numericScore <= 0.4) return 'negative';
-      return 'neutral';
-    }
-    return null;
-  };
-
-  const sentimentData = Array.from({ length: 7 }, (_, i) => {
-    const date = subDays(new Date(), 6 - i);
-    const dayStart = startOfDay(date);
-    const dayEnd = endOfDay(date);
-
-    let positive = 0, negative = 0, neutral = 0;
-    socialInteractions?.forEach(interaction => {
-      // Prioriza a data de postagem original; cai para created_at se ausente
-      const ref = interaction.original_posted_at || interaction.created_at || '';
-      const d = new Date(ref);
-      if (isNaN(d.getTime()) || d < dayStart || d > dayEnd) return;
-      const s = normalizeSentiment(interaction.sentiment_label, interaction.sentiment_score as number | null);
-      if (s === 'positive') positive++;
-      else if (s === 'negative') negative++;
-      else if (s === 'neutral') neutral++;
-    });
-
-    return {
-      name: format(date, 'EEE dd/MM', { locale: ptBR }),
-      positive,
-      negative,
-      neutral,
-    };
-  });
+  const sentimentData = weeklyCore?.series?.length
+    ? weeklyCore.series.map((d: any) => ({
+        name: format(new Date(`${d.day}T00:00:00`), 'EEE dd/MM', { locale: ptBR }),
+        positive: Number(d.p || 0),
+        negative: Number(d.n || 0),
+        neutral: Number(d.u || 0),
+      }))
+    : Array.from({ length: 7 }, (_, i) => ({
+        name: format(subDays(new Date(), 6 - i), 'EEE dd/MM', { locale: ptBR }),
+        positive: 0,
+        negative: 0,
+        neutral: 0,
+      }));
 
   // Preparar dados de candidatos (top 5 por menções) — fallback para interactions se cache vazio
   const metricsMap = new Map<string, CandidateMetrics>();
@@ -338,9 +329,13 @@ export default function Overview() {
     return map[n?.toLowerCase?.()] || n || 'Outro';
   };
 
-  // Distribuição por rede social (cache + fallback para social_interactions)
+  // Distribuição por rede social (mesma base consolidada da Visão por Rede Social)
   const networkCount: Record<string, number> = {};
-  allMetrics?.forEach(m => {
+  consolidatedMetrics?.by_network?.forEach((nb: any) => {
+    const key = normalizeNetwork(nb.network);
+    networkCount[key] = (networkCount[key] || 0) + Number(nb.mentions || 0);
+  });
+  if (Object.keys(networkCount).length === 0) allMetrics?.forEach(m => {
     m.networkBreakdown.forEach(nb => {
       const key = normalizeNetwork(nb.network);
       networkCount[key] = (networkCount[key] || 0) + nb.mentions;
@@ -376,7 +371,7 @@ export default function Overview() {
     color: NETWORK_COLORS[name] || COLORS[index % COLORS.length]
   })).filter(d => d.value > 0 && !isHiddenNetwork(d.name));
 
-  const isLoading = loadingCandidates || loadingInteractions || loadingRankings || loadingMetrics;
+  const isLoading = loadingCandidates || loadingInteractions || loadingRankings || loadingMetrics || loadingConsolidated;
 
   const handleCollectAll = async () => {
     if (!candidates || candidates.length === 0) {

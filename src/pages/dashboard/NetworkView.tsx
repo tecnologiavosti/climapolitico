@@ -92,7 +92,7 @@ const emptyKpis: Agg["kpis"] = {
 const fmt = (n: number) => n.toLocaleString("pt-BR");
 const compact = (n: number) => Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
-const growth = (cur: number, prev: number) => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : cur > 0 ? 100 : 0);
+const growth = (cur: number, prev: number) => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null);
 const isValidHashtag = (tag: string) => {
   const clean = tag
     .normalize("NFD")
@@ -115,7 +115,7 @@ export default function NetworkView() {
   const { isAdmin } = useAdminCheck();
   const [network, setNetwork] = useState("all");
   const [candidateId, setCandidateId] = useState<string>("all");
-  const [days, setDays] = useState(30);
+  const [days, setDays] = useState(3650);
 
   const { data: candidates } = useQuery({
     queryKey: ["nv-candidates", user?.id, isAdmin],
@@ -263,9 +263,9 @@ export default function NetworkView() {
     const totalNet = agg.by_network.reduce((s, n) => s + (n.mentions || 0), 0);
     const sharePct = totalNet > 0 ? Math.round((top.mentions / totalNet) * 100) : 0;
     const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-    const trend = k?.prev_total
-      ? (growthPct >= 0 ? `crescimento de ${growthPct}%` : `queda de ${Math.abs(growthPct)}%`)
-      : "sem base comparativa anterior";
+    const trend = growthPct === null
+      ? "Sem base comparativa"
+      : (growthPct >= 0 ? `crescimento de ${growthPct}%` : `queda de ${Math.abs(growthPct)}%`);
     return `${cap(top.network)} concentra o maior volume com ${fmt(top.mentions)} menções (${sharePct}% do total de ${fmt(total)}). Variação vs. período anterior: ${trend}. Sentimento atual: ${posPct}% positivo, ${negPct}% negativo, ${neuPct}% neutro (base de ${fmt(labeled)} menções classificadas).`;
   }, [agg, total, k?.prev_total, growthPct, posPct, negPct, neuPct, labeled]);
 
@@ -312,9 +312,9 @@ export default function NetworkView() {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <Kpi label="Total de menções" value={fmt(total)} icon={<MessageSquare className="h-4 w-4" />} loading={isLoadingCore} />
         <Kpi label="Interações" value={compact(k?.engagement ?? 0)} icon={<Activity className="h-4 w-4" />} loading={isLoadingCore} sub={`${fmt(k?.likes ?? 0)} curtidas`} />
-        <Kpi label="Sentimento positivo" value={`${posPct}%`} icon={<Heart className="h-4 w-4 text-success" />} loading={isLoadingCore} sub={`${fmt(k?.pos ?? 0)} menções`} tone="success" delta={posPct - prevPosPct} />
-        <Kpi label="Sentimento negativo" value={`${negPct}%`} icon={<TrendingDown className="h-4 w-4 text-destructive" />} loading={isLoadingCore} sub={`${fmt(k?.neg ?? 0)} menções`} tone="destructive" delta={negPct - prevNegPct} invertDelta />
-        <Kpi label="Crescimento" value={`${growthPct >= 0 ? "+" : ""}${growthPct}%`} icon={growthPct >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} loading={isLoadingCore} sub="vs. período anterior" tone={growthPct >= 0 ? "success" : "destructive"} />
+        <Kpi label="Sentimento positivo" value={`${posPct}%`} icon={<Heart className="h-4 w-4 text-success" />} loading={isLoadingCore} sub={`${fmt(k?.pos ?? 0)} menções`} tone="success" delta={prevLabeled > 0 ? posPct - prevPosPct : undefined} />
+        <Kpi label="Sentimento negativo" value={`${negPct}%`} icon={<TrendingDown className="h-4 w-4 text-destructive" />} loading={isLoadingCore} sub={`${fmt(k?.neg ?? 0)} menções`} tone="destructive" delta={prevLabeled > 0 ? negPct - prevNegPct : undefined} invertDelta />
+        <Kpi label="Crescimento" value={growthPct === null ? "Sem base" : `${growthPct >= 0 ? "+" : ""}${growthPct}%`} icon={growthPct === null || growthPct >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} loading={isLoadingCore} sub={growthPct === null ? "Sem base comparativa" : "vs. período anterior"} tone={growthPct === null || growthPct >= 0 ? "success" : "destructive"} />
         <Kpi label="Rede dominante" value={dominant === "—" ? "—" : dominant.charAt(0).toUpperCase() + dominant.slice(1)} icon={<Crown className="h-4 w-4" />} loading={isLoadingCore} sub={agg?.by_network?.[0] && total > 0 ? `${fmt(agg.by_network[0].mentions)} (${pct(agg.by_network[0].mentions, agg.by_network.reduce((s,n)=>s+(n.mentions||0),0))}%)` : ""} />
       </div>
 
@@ -376,9 +376,9 @@ export default function NetworkView() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="space-y-2 mt-2">
-                <SentBar label="Positivo" pct={posPct} delta={posPct - prevPosPct} color={COLORS.positive} />
-                <SentBar label="Negativo" pct={negPct} delta={negPct - prevNegPct} color={COLORS.negative} invert />
-                <SentBar label="Neutro" pct={neuPct} delta={neuPct - prevNeuPct} color={COLORS.neutral} />
+                <SentBar label="Positivo" pct={posPct} delta={prevLabeled > 0 ? posPct - prevPosPct : 0} color={COLORS.positive} />
+                <SentBar label="Negativo" pct={negPct} delta={prevLabeled > 0 ? negPct - prevNegPct : 0} color={COLORS.negative} invert />
+                <SentBar label="Neutro" pct={neuPct} delta={prevLabeled > 0 ? neuPct - prevNeuPct : 0} color={COLORS.neutral} />
               </div>
             </>
           )}
@@ -458,9 +458,7 @@ export default function NetworkView() {
                       <span className="font-semibold">{t.theme}</span>
                       <div className="flex items-center gap-2 text-xs">
                         <span className="text-muted-foreground">{fmt(t.mentions)} menções</span>
-                        <span className={`font-medium ${variation >= 0 ? "text-success" : "text-destructive"}`}>
-                          {variation >= 0 ? "+" : ""}{variation}%
-                        </span>
+                        {variation === null ? <span className="text-muted-foreground">Sem base</span> : <span className={`font-medium ${variation >= 0 ? "text-success" : "text-destructive"}`}>{variation >= 0 ? "+" : ""}{variation}%</span>}
                       </div>
                     </div>
                     <div className="text-[11px] text-muted-foreground mb-1">{posP}% positivo</div>
@@ -495,9 +493,7 @@ export default function NetworkView() {
                     <span className="font-medium truncate max-w-[40%]">{h.tag}</span>
                     <div className="flex items-center gap-3 text-xs">
                       <span className="text-muted-foreground">{fmt(h.c)}</span>
-                      <span className={`font-medium ${variation >= 0 ? "text-success" : "text-destructive"}`}>
-                        {variation >= 0 ? "+" : ""}{variation}%
-                      </span>
+                      {variation === null ? <span className="text-muted-foreground">Sem base</span> : <span className={`font-medium ${variation >= 0 ? "text-success" : "text-destructive"}`}>{variation >= 0 ? "+" : ""}{variation}%</span>}
                       {lab > 0 && <span className="text-success">{posP}% pos</span>}
                     </div>
                   </div>

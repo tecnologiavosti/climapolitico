@@ -67,6 +67,18 @@ function buildDeterministicSummary(stats: any, candidate: any, periodLabel: stri
   };
 }
 
+function normalizeSentiment(label?: string | null, score?: number | null): 'positive' | 'negative' | 'neutral' {
+  const clean = (label || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  if (clean.startsWith('pos')) return 'positive';
+  if (clean.startsWith('neg')) return 'negative';
+  if (clean.startsWith('neu')) return 'neutral';
+  if (typeof score === 'number') {
+    if (score >= 0.6) return 'positive';
+    if (score <= 0.4) return 'negative';
+  }
+  return 'neutral';
+}
+
 const SUMMARY_SCHEMA = {
   type: 'object',
   properties: {
@@ -203,6 +215,11 @@ serve(async (req) => {
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
     const supabaseClient = supabaseAdmin;
+    const supabaseUser = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: `Bearer ${token}` } } },
+    );
     if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Não autorizado' }), {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -267,22 +284,31 @@ serve(async (req) => {
     let allComments: any[] = [];
     let offset = 0;
     const pageSize = 1000;
+    const maxPromptComments = 5000;
+    const rpcDays = daysBack === null ? 3650 : Math.max(1, Math.ceil(daysBack));
+    const { data: coreMetrics } = await supabaseUser.rpc('network_view_core_metrics', {
+      p_candidate_id: candidateId,
+      p_network: null,
+      p_days: rpcDays,
+    });
+    const coreKpis = (coreMetrics as any)?.data?.kpis || null;
 
     while (true) {
       let q = supabaseClient
         .from('social_interactions')
-        .select('comment_text, comment_author, sentiment_label, sentiment_score, likes_count, social_network, original_posted_at')
+        .select('comment_text, comment_author, sentiment_label, sentiment_score, likes_count, social_network, original_posted_at, created_at, collected_at')
         .eq('candidate_id', candidateId)
+        .not('social_network', 'in', '(mastodon,lemmy,pinterest,gdelt)')
         .order('created_at', { ascending: false })
         .range(offset, offset + pageSize - 1);
-      if (startDate) q = q.gte('created_at', startDate.toISOString());
+      if (startDate) q = q.or(`original_posted_at.gte.${startDate.toISOString()},and(original_posted_at.is.null,created_at.gte.${startDate.toISOString()})`);
       if (endDate) q = q.lte('created_at', endDate.toISOString());
 
       const { data: page, error: pageError } = await q;
       if (pageError) { console.error('Error fetching comments:', pageError); break; }
       if (!page || page.length === 0) break;
       allComments = [...allComments, ...page];
-      if (page.length < pageSize) break;
+      if (page.length < pageSize || allComments.length >= maxPromptComments) break;
       offset += pageSize;
     }
 
@@ -294,13 +320,13 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const positive = allComments.filter(c => c.sentiment_label === 'Positivo').length;
-    const negative = allComments.filter(c => c.sentiment_label === 'Negativo').length;
-    const neutral = allComments.filter(c => c.sentiment_label === 'Neutro').length;
+    const positive = coreKpis ? Number(coreKpis.pos || 0) : allComments.filter(c => normalizeSentiment(c.sentiment_label, c.sentiment_score) === 'positive').length;
+    const negative = coreKpis ? Number(coreKpis.neg || 0) : allComments.filter(c => normalizeSentiment(c.sentiment_label, c.sentiment_score) === 'negative').length;
+    const neutral = coreKpis ? Number(coreKpis.neu || 0) : allComments.filter(c => normalizeSentiment(c.sentiment_label, c.sentiment_score) === 'neutral').length;
     const withoutSentiment = allComments.filter(c => !c.sentiment_label).length;
-    // total exibido = soma das três classes (pos+neu+neg). Garante que a soma sempre bata.
+    // total exibido = mesma base consolidada usada nas demais telas.
     const stats = {
-      total: positive + negative + neutral,
+      total: coreKpis ? Number(coreKpis.total || 0) : positive + negative + neutral,
       positive,
       negative,
       neutral,

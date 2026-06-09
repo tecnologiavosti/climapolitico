@@ -133,6 +133,7 @@ const adminSection: Section = {
     { label: "SLO & SLA", icon: Shield, to: "/dashboard/slo" },
     { label: "Tokens", icon: Key, to: "/dashboard/worker-tokens" },
     { label: "Tenants", icon: Shield, to: "/dashboard/tenant-analytics" },
+    { label: "Diagnóstico", icon: Database, to: "/dashboard/data-diagnostics" },
   ],
 };
 

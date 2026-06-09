@@ -3127,6 +3127,10 @@ export type Database = {
         Args: { _expires_days?: number; _name: string; _scopes?: string[] }
         Returns: Json
       }
+      data_consistency_diagnostics: {
+        Args: { p_candidate_id?: string; p_days?: number }
+        Returns: Json
+      }
       dlq_summary: {
         Args: never
         Returns: {
@@ -3330,6 +3334,7 @@ export type Database = {
       norm_text: { Args: { _value: string }; Returns: string }
       normalize_social_platform: { Args: { _network: string }; Returns: string }
       nv_clean_text: { Args: { _text: string }; Returns: string }
+      nv_hashtag_display: { Args: { _tag: string }; Returns: string }
       nv_is_political_text: {
         Args: { _candidate_name?: string; _text: string }
         Returns: boolean
