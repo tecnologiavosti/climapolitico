@@ -810,6 +810,195 @@ export type Database = {
         }
         Relationships: []
       }
+      daily_candidate_metrics: {
+        Row: {
+          candidate_id: string
+          created_at: string
+          engagement: number
+          likes: number
+          mentions: number
+          metric_date: string
+          negative_count: number
+          neutral_count: number
+          positive_count: number
+          replies: number
+          shares: number
+          unique_authors: number
+          unknown_count: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          candidate_id: string
+          created_at?: string
+          engagement?: number
+          likes?: number
+          mentions?: number
+          metric_date: string
+          negative_count?: number
+          neutral_count?: number
+          positive_count?: number
+          replies?: number
+          shares?: number
+          unique_authors?: number
+          unknown_count?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          candidate_id?: string
+          created_at?: string
+          engagement?: number
+          likes?: number
+          mentions?: number
+          metric_date?: string
+          negative_count?: number
+          neutral_count?: number
+          positive_count?: number
+          replies?: number
+          shares?: number
+          unique_authors?: number
+          unknown_count?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      daily_hashtag_metrics: {
+        Row: {
+          candidate_id: string
+          created_at: string
+          mentions: number
+          metric_date: string
+          negative_count: number
+          network: string
+          neutral_count: number
+          positive_count: number
+          tag: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          candidate_id: string
+          created_at?: string
+          mentions?: number
+          metric_date: string
+          negative_count?: number
+          network: string
+          neutral_count?: number
+          positive_count?: number
+          tag: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          candidate_id?: string
+          created_at?: string
+          mentions?: number
+          metric_date?: string
+          negative_count?: number
+          network?: string
+          neutral_count?: number
+          positive_count?: number
+          tag?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      daily_network_metrics: {
+        Row: {
+          candidate_id: string
+          created_at: string
+          engagement: number
+          likes: number
+          mentions: number
+          metric_date: string
+          negative_count: number
+          network: string
+          neutral_count: number
+          positive_count: number
+          replies: number
+          shares: number
+          unique_authors: number
+          unknown_count: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          candidate_id: string
+          created_at?: string
+          engagement?: number
+          likes?: number
+          mentions?: number
+          metric_date: string
+          negative_count?: number
+          network: string
+          neutral_count?: number
+          positive_count?: number
+          replies?: number
+          shares?: number
+          unique_authors?: number
+          unknown_count?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          candidate_id?: string
+          created_at?: string
+          engagement?: number
+          likes?: number
+          mentions?: number
+          metric_date?: string
+          negative_count?: number
+          network?: string
+          neutral_count?: number
+          positive_count?: number
+          replies?: number
+          shares?: number
+          unique_authors?: number
+          unknown_count?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      daily_sentiment_metrics: {
+        Row: {
+          candidate_id: string
+          created_at: string
+          engagement: number
+          mentions: number
+          metric_date: string
+          network: string
+          sentiment: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          candidate_id: string
+          created_at?: string
+          engagement?: number
+          mentions?: number
+          metric_date: string
+          network: string
+          sentiment: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          candidate_id?: string
+          created_at?: string
+          engagement?: number
+          mentions?: number
+          metric_date?: string
+          network?: string
+          sentiment?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       edge_function_logs: {
         Row: {
           duration_ms: number | null
@@ -1220,6 +1409,114 @@ export type Database = {
           suggested_action?: string | null
           trigger_reason?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      network_view_cache: {
+        Row: {
+          cache_key: string
+          candidate_id: string | null
+          created_at: string
+          days: number
+          duration_ms: number
+          expires_at: string
+          hit_count: number
+          last_hit_at: string
+          network: string | null
+          plan: Json
+          result: Json
+          section: string
+          source_rows: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cache_key: string
+          candidate_id?: string | null
+          created_at?: string
+          days: number
+          duration_ms?: number
+          expires_at: string
+          hit_count?: number
+          last_hit_at?: string
+          network?: string | null
+          plan?: Json
+          result: Json
+          section: string
+          source_rows?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cache_key?: string
+          candidate_id?: string | null
+          created_at?: string
+          days?: number
+          duration_ms?: number
+          expires_at?: string
+          hit_count?: number
+          last_hit_at?: string
+          network?: string | null
+          plan?: Json
+          result?: Json
+          section?: string
+          source_rows?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      network_view_query_logs: {
+        Row: {
+          cache_hit: boolean
+          candidate_id: string | null
+          created_at: string
+          days: number | null
+          duration_ms: number
+          error_message: string | null
+          id: string
+          network: string | null
+          plan: Json
+          records_read: number
+          records_returned: number
+          section: string
+          status: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          cache_hit?: boolean
+          candidate_id?: string | null
+          created_at?: string
+          days?: number | null
+          duration_ms?: number
+          error_message?: string | null
+          id?: string
+          network?: string | null
+          plan?: Json
+          records_read?: number
+          records_returned?: number
+          section: string
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          cache_hit?: boolean
+          candidate_id?: string | null
+          created_at?: string
+          days?: number | null
+          duration_ms?: number
+          error_message?: string | null
+          id?: string
+          network?: string | null
+          plan?: Json
+          records_read?: number
+          records_returned?: number
+          section?: string
+          status?: string
+          updated_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -2918,7 +3215,37 @@ export type Database = {
         }
         Returns: boolean
       }
+      log_network_view_query: {
+        Args: {
+          p_cache_hit: boolean
+          p_candidate_id: string
+          p_days: number
+          p_duration_ms: number
+          p_error_message?: string
+          p_network: string
+          p_plan?: Json
+          p_records_read: number
+          p_records_returned: number
+          p_section: string
+          p_status: string
+          p_user_id: string
+        }
+        Returns: undefined
+      }
       network_view_aggregate: {
+        Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
+        Returns: Json
+      }
+      network_view_content_metrics: {
+        Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
+        Returns: Json
+      }
+      network_view_core_metrics: {
+        Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
+        Returns: Json
+      }
+      network_view_sentiment: { Args: { _label: string }; Returns: string }
+      network_view_top_posts: {
         Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
         Returns: Json
       }
@@ -2957,6 +3284,10 @@ export type Database = {
       }
       recover_stuck_jobs: { Args: never; Returns: number }
       refresh_network_profiles_deduplicated: { Args: never; Returns: undefined }
+      refresh_network_view_daily_metrics: {
+        Args: { p_since?: string }
+        Returns: Json
+      }
       refresh_pipeline_metrics_hourly: { Args: never; Returns: undefined }
       reprocess_social_interactions_political_validation: {
         Args: { _batch_size?: number }
