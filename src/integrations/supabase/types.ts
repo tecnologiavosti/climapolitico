@@ -3329,11 +3329,17 @@ export type Database = {
       }
       norm_text: { Args: { _value: string }; Returns: string }
       normalize_social_platform: { Args: { _network: string }; Returns: string }
+      nv_clean_text: { Args: { _text: string }; Returns: string }
       nv_is_political_text: {
         Args: { _candidate_name?: string; _text: string }
         Returns: boolean
       }
       nv_is_valid_hashtag: { Args: { _tag: string }; Returns: boolean }
+      nv_normalize_hashtag: { Args: { _tag: string }; Returns: string }
+      nv_political_relevance_score: {
+        Args: { _candidate_name?: string; _text: string }
+        Returns: number
+      }
       prune_edge_function_logs: { Args: never; Returns: undefined }
       reactivate_youtube_keys: { Args: never; Returns: undefined }
       record_collector_call: {
