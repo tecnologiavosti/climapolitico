@@ -3445,6 +3445,10 @@ export type Database = {
       norm_text: { Args: { _value: string }; Returns: string }
       normalize_social_platform: { Args: { _network: string }; Returns: string }
       nv_clean_text: { Args: { _text: string }; Returns: string }
+      nv_fast_sentiment: {
+        Args: { _label: string; _score?: number }
+        Returns: string
+      }
       nv_hashtag_display: { Args: { _tag: string }; Returns: string }
       nv_is_political_text: {
         Args: { _candidate_name?: string; _text: string }
