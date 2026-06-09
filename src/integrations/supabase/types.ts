@@ -906,6 +906,42 @@ export type Database = {
         }
         Relationships: []
       }
+      daily_heatmap_metrics: {
+        Row: {
+          candidate_id: string
+          created_at: string
+          dow: number
+          hr: number
+          mentions: number
+          metric_date: string
+          network: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          candidate_id: string
+          created_at?: string
+          dow: number
+          hr: number
+          mentions?: number
+          metric_date: string
+          network: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          candidate_id?: string
+          created_at?: string
+          dow?: number
+          hr?: number
+          mentions?: number
+          metric_date?: string
+          network?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       daily_network_metrics: {
         Row: {
           candidate_id: string
@@ -994,6 +1030,48 @@ export type Database = {
           metric_date?: string
           network?: string
           sentiment?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      daily_topic_metrics: {
+        Row: {
+          candidate_id: string
+          created_at: string
+          mentions: number
+          metric_date: string
+          negative_count: number
+          network: string
+          neutral_count: number
+          positive_count: number
+          theme: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          candidate_id: string
+          created_at?: string
+          mentions?: number
+          metric_date: string
+          negative_count?: number
+          network: string
+          neutral_count?: number
+          positive_count?: number
+          theme: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          candidate_id?: string
+          created_at?: string
+          mentions?: number
+          metric_date?: string
+          negative_count?: number
+          network?: string
+          neutral_count?: number
+          positive_count?: number
+          theme?: string
           updated_at?: string
           user_id?: string
         }
