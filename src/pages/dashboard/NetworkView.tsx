@@ -388,9 +388,9 @@ export default function NetworkView() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="space-y-2 mt-2">
-                <SentBar label="Positivo" pct={posPct} delta={prevLabeled > 0 ? posPct - prevPosPct : 0} color={COLORS.positive} />
-                <SentBar label="Negativo" pct={negPct} delta={prevLabeled > 0 ? negPct - prevNegPct : 0} color={COLORS.negative} invert />
-                <SentBar label="Neutro" pct={neuPct} delta={prevLabeled > 0 ? neuPct - prevNeuPct : 0} color={COLORS.neutral} />
+                <SentBar label="Positivo" pct={posPct} count={k?.pos ?? 0} delta={prevLabeled > 0 ? posPct - prevPosPct : 0} color={COLORS.positive} />
+                <SentBar label="Negativo" pct={negPct} count={k?.neg ?? 0} delta={prevLabeled > 0 ? negPct - prevNegPct : 0} color={COLORS.negative} invert />
+                <SentBar label="Neutro" pct={neuPct} count={k?.neu ?? 0} delta={prevLabeled > 0 ? neuPct - prevNeuPct : 0} color={COLORS.neutral} />
               </div>
             </>
           )}
