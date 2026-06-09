@@ -708,7 +708,6 @@ const RealTimeMonitor = () => {
   const [, force] = useState(0);
   const tickRef = useRef<NodeJS.Timeout | null>(null);
   const bgTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const [core24h, setCore24h] = useState<any>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -743,10 +742,7 @@ const RealTimeMonitor = () => {
           snap.neutralToday = Number(k.neu || snap.neutralToday);
           snap.classifiedToday = snap.positiveToday + snap.negativeToday + snap.neutralToday;
           snap.windowCounts.h24 = snap.mentionsToday;
-          setCore24h(k);
         }
-      } else {
-        setCore24h(null);
       }
       writeCache(cacheKey(uid, cid) + `:${hours}h`, snap);
       setSnapshot(snap);
