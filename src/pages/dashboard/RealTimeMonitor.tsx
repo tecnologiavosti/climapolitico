@@ -708,6 +708,7 @@ const RealTimeMonitor = () => {
   const [, force] = useState(0);
   const tickRef = useRef<NodeJS.Timeout | null>(null);
   const bgTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [core24h, setCore24h] = useState<any>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -732,6 +733,21 @@ const RealTimeMonitor = () => {
     });
     try {
       const snap = await fetchSnapshot(uid, cid, name, (p) => setLiveProgress(prev => ({ ...(prev as LiveProgress), ...p })), hours);
+      if (hours === 24) {
+        const { data } = await supabase.rpc("network_view_core_metrics", { p_candidate_id: cid, p_network: null, p_days: 1 });
+        const k = (data as any)?.data?.kpis;
+        if (k) {
+          snap.mentionsToday = Number(k.total || snap.mentionsToday);
+          snap.positiveToday = Number(k.pos || snap.positiveToday);
+          snap.negativeToday = Number(k.neg || snap.negativeToday);
+          snap.neutralToday = Number(k.neu || snap.neutralToday);
+          snap.classifiedToday = snap.positiveToday + snap.negativeToday + snap.neutralToday;
+          snap.windowCounts.h24 = snap.mentionsToday;
+          setCore24h(k);
+        }
+      } else {
+        setCore24h(null);
+      }
       writeCache(cacheKey(uid, cid) + `:${hours}h`, snap);
       setSnapshot(snap);
     } catch (e: any) {
