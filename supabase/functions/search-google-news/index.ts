@@ -161,11 +161,11 @@ async function fetchGdeltNews(candidateName: string): Promise<NewsItem[]> {
     if (!response.ok) return [];
     const json = await response.json();
     return (Array.isArray(json?.articles) ? json.articles : []).map((article: any) => ({
-      title: String(article?.title || "").slice(0, 300),
+      title: cleanContent(article?.title).slice(0, 300),
       link: String(article?.url || ""),
       pubDate: article?.seendate ? parseGdeltDate(String(article.seendate)) : new Date().toUTCString(),
-      source: String(article?.domain || "Portal de notícia"),
-      description: String(article?.title || "").slice(0, 500),
+      source: cleanContent(article?.domain) || "Portal de notícia",
+      description: cleanContent(article?.title).slice(0, 500),
     })).filter((item) => item.title && item.link);
   } catch (error) {
     console.warn("[search-google-news] GDELT fallback falhou:", error instanceof Error ? error.message : String(error));
