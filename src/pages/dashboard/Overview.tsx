@@ -121,6 +121,30 @@ export default function Overview() {
   // Query: Métricas agregadas do cache (fonte única de verdade)
   const { data: allMetrics, isLoading: loadingMetrics } = useAllCandidateMetrics();
 
+  const { data: consolidatedMetrics, isLoading: loadingConsolidated } = useQuery({
+    queryKey: ["overview-consolidated-core", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("network_view_core_metrics", { p_candidate_id: null, p_network: null, p_days: 3650 });
+      if (error) throw error;
+      return (data as any)?.data;
+    },
+    enabled: !!user,
+    staleTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  const { data: weeklyCore } = useQuery({
+    queryKey: ["overview-weekly-core", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("network_view_core_metrics", { p_candidate_id: null, p_network: null, p_days: 7 });
+      if (error) throw error;
+      return (data as any)?.data;
+    },
+    enabled: !!user,
+    staleTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
   // Query: Interações sociais para gráfico temporal (últimos 7 dias)
   // Considera tanto a data de postagem original (original_posted_at) quanto a
   // data de coleta (created_at) para capturar tudo que aconteceu na janela.
@@ -210,7 +234,7 @@ export default function Overview() {
   })();
 
   // Aggregate metrics from cache (single source of truth)
-  const aggregatedMetrics = allMetrics?.reduce(
+  const fallbackAggregatedMetrics = allMetrics?.reduce(
     (acc, m) => ({
       totalMentions: acc.totalMentions + m.totalMentions,
       uniqueAuthors: acc.uniqueAuthors + m.uniqueAuthors,
@@ -221,6 +245,16 @@ export default function Overview() {
     }),
     { totalMentions: 0, uniqueAuthors: 0, totalEngagement: 0, positiveCount: 0, neutralCount: 0, negativeCount: 0 }
   ) || { totalMentions: 0, uniqueAuthors: 0, totalEngagement: 0, positiveCount: 0, neutralCount: 0, negativeCount: 0 };
+
+  const kpis = consolidatedMetrics?.kpis;
+  const aggregatedMetrics = kpis ? {
+    totalMentions: Number(kpis.total || 0),
+    uniqueAuthors: Number(kpis.authors || 0),
+    totalEngagement: Number(kpis.engagement || 0),
+    positiveCount: Number(kpis.pos || 0),
+    neutralCount: Number(kpis.neu || 0),
+    negativeCount: Number(kpis.neg || 0),
+  } : fallbackAggregatedMetrics;
 
   const totalMentions = aggregatedMetrics.totalMentions;
   const uniqueAuthors = aggregatedMetrics.uniqueAuthors;
