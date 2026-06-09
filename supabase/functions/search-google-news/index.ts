@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isPoliticalCandidateContent, politicalContentVerdict } from "../_shared/political-content.ts";
 import { buildContextualQueries, getTrustedOutlets, getPoliticianContext } from "../_shared/politician-context.ts";
+import { cleanContent } from "../_shared/clean-content.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
