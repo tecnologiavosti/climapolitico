@@ -296,30 +296,19 @@ export default function Overview() {
     return null;
   };
 
-  const sentimentData = Array.from({ length: 7 }, (_, i) => {
-    const date = subDays(new Date(), 6 - i);
-    const dayStart = startOfDay(date);
-    const dayEnd = endOfDay(date);
-
-    let positive = 0, negative = 0, neutral = 0;
-    socialInteractions?.forEach(interaction => {
-      // Prioriza a data de postagem original; cai para created_at se ausente
-      const ref = interaction.original_posted_at || interaction.created_at || '';
-      const d = new Date(ref);
-      if (isNaN(d.getTime()) || d < dayStart || d > dayEnd) return;
-      const s = normalizeSentiment(interaction.sentiment_label, interaction.sentiment_score as number | null);
-      if (s === 'positive') positive++;
-      else if (s === 'negative') negative++;
-      else if (s === 'neutral') neutral++;
-    });
-
-    return {
-      name: format(date, 'EEE dd/MM', { locale: ptBR }),
-      positive,
-      negative,
-      neutral,
-    };
-  });
+  const sentimentData = weeklyCore?.series?.length
+    ? weeklyCore.series.map((d: any) => ({
+        name: format(new Date(`${d.day}T00:00:00`), 'EEE dd/MM', { locale: ptBR }),
+        positive: Number(d.p || 0),
+        negative: Number(d.n || 0),
+        neutral: Number(d.u || 0),
+      }))
+    : Array.from({ length: 7 }, (_, i) => ({
+        name: format(subDays(new Date(), 6 - i), 'EEE dd/MM', { locale: ptBR }),
+        positive: 0,
+        negative: 0,
+        neutral: 0,
+      }));
 
   // Preparar dados de candidatos (top 5 por menções) — fallback para interactions se cache vazio
   const metricsMap = new Map<string, CandidateMetrics>();
@@ -372,9 +361,13 @@ export default function Overview() {
     return map[n?.toLowerCase?.()] || n || 'Outro';
   };
 
-  // Distribuição por rede social (cache + fallback para social_interactions)
+  // Distribuição por rede social (mesma base consolidada da Visão por Rede Social)
   const networkCount: Record<string, number> = {};
-  allMetrics?.forEach(m => {
+  consolidatedMetrics?.by_network?.forEach((nb: any) => {
+    const key = normalizeNetwork(nb.network);
+    networkCount[key] = (networkCount[key] || 0) + Number(nb.mentions || 0);
+  });
+  if (Object.keys(networkCount).length === 0) allMetrics?.forEach(m => {
     m.networkBreakdown.forEach(nb => {
       const key = normalizeNetwork(nb.network);
       networkCount[key] = (networkCount[key] || 0) + nb.mentions;
@@ -410,7 +403,7 @@ export default function Overview() {
     color: NETWORK_COLORS[name] || COLORS[index % COLORS.length]
   })).filter(d => d.value > 0 && !isHiddenNetwork(d.name));
 
-  const isLoading = loadingCandidates || loadingInteractions || loadingRankings || loadingMetrics;
+  const isLoading = loadingCandidates || loadingInteractions || loadingRankings || loadingMetrics || loadingConsolidated;
 
   const handleCollectAll = async () => {
     if (!candidates || candidates.length === 0) {
