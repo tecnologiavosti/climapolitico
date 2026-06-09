@@ -2719,6 +2719,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      clean_external_content: { Args: { input: string }; Returns: string }
       cleanup_analysis_cache: { Args: never; Returns: number }
       cleanup_old_notifications: { Args: never; Returns: number }
       cleanup_pipeline_data: { Args: never; Returns: undefined }

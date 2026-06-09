@@ -168,13 +168,17 @@ function NetworkFeed({ network }: { network: NetworkConfig }) {
   }, [network.key]);
 
   useEffect(() => {
-    (async () => {
-      setLoading(true);
+    let cancelled = false;
+
+    const runQuery = async () => {
+      const startedAt = performance.now();
+      // `estimated` evita timeout em redes com centenas de milhares de linhas
+      // (ex.: youtube ~ 450k). Mantém UI responsiva e usa o planner do Postgres.
       let query = supabase
         .from("social_interactions")
         .select(
           "id, candidate_id, comment_text, comment_author, author_profile_url, original_posted_at, collected_at, sentiment_label, social_network, likes_count, replies_count, shares_count, post_url, post_id, external_id, author_handle, platform",
-          { count: "exact" }
+          { count: "estimated" }
         )
         .in("social_network", network.match)
         .order("original_posted_at", { ascending: false, nullsFirst: false })
@@ -185,18 +189,77 @@ function NetworkFeed({ network }: { network: NetworkConfig }) {
         query = query.eq("candidate_id", selectedCandidate);
       }
 
-      const { data, error, count } = await query;
-      if (error) {
-        console.error(error);
-        toast.error(`Erro ao carregar feed de ${network.label}`);
+      const result = await query;
+      const elapsed = Math.round(performance.now() - startedAt);
+      return { ...result, elapsed };
+    };
+
+    const isTransient = (err: any): boolean => {
+      const msg = String(err?.message || "").toLowerCase();
+      const code = String(err?.code || "");
+      return (
+        code === "57014" /* statement_timeout */ ||
+        code === "08006" /* connection_failure */ ||
+        msg.includes("timeout") ||
+        msg.includes("fetch failed") ||
+        msg.includes("network")
+      );
+    };
+
+    (async () => {
+      setLoading(true);
+      let attempt = 0;
+      const maxAttempts = 3;
+      while (attempt < maxAttempts) {
+        attempt++;
+        const { data, error, count, elapsed } = await runQuery();
+        if (cancelled) return;
+
+        if (!error) {
+          console.info(
+            `[SocialFeeds] ${network.key} ok — itens=${data?.length ?? 0} total~=${count ?? "?"} tempo=${elapsed}ms tentativa=${attempt}`
+          );
+          setItems((data || []) as FeedItem[]);
+          setTotal(count || 0);
+          setLoading(false);
+          return;
+        }
+
+        console.error(
+          `[SocialFeeds] ${network.key} falhou — tentativa ${attempt}/${maxAttempts}`,
+          {
+            code: (error as any).code,
+            message: error.message,
+            details: (error as any).details,
+            hint: (error as any).hint,
+            elapsedMs: elapsed,
+            range: [page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1],
+            filter: { social_network: network.match, candidate: selectedCandidate },
+          }
+        );
+
+        if (attempt < maxAttempts && isTransient(error)) {
+          const delay = 400 * Math.pow(2, attempt - 1);
+          toast.info(
+            `Feed de ${network.label} temporariamente indisponível. Tentando nova sincronização…`
+          );
+          await new Promise((r) => setTimeout(r, delay));
+          continue;
+        }
+
+        toast.error(
+          `Não foi possível carregar o feed de ${network.label}. Tente novamente em instantes.`
+        );
         setItems([]);
         setTotal(0);
-      } else {
-        setItems((data || []) as FeedItem[]);
-        setTotal(count || 0);
+        setLoading(false);
+        return;
       }
-      setLoading(false);
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [page, selectedCandidate, network.key]);
 
   const candidateMap = useMemo(() => {
