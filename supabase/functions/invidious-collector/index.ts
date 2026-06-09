@@ -2,6 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { INVIDIOUS_MIRRORS, fetchFromMirrors } from "../_shared/scrape-utils.ts";
 import { isPoliticalCandidateContent } from "../_shared/political-content.ts";
+import { cleanContent } from "../_shared/clean-content.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
