@@ -102,9 +102,10 @@ const isValidHashtag = (tag: string) => {
   return clean.length >= 3 && clean.length <= 40 && /[a-z]/.test(clean) && !/^(x200b|xfeff|nbsp|amp|[0-9_\-]+|[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(clean);
 };
 const isWithinSelectedPeriod = (date: string | null | undefined, days: number) => {
-  if (!date || days >= 3650) return !!date;
+  if (!date) return false;
   const time = new Date(date).getTime();
   if (!Number.isFinite(time)) return false;
+  if (days >= 3650) return true;
   return time >= Date.now() - days * 24 * 60 * 60 * 1000 && time <= Date.now() + 60 * 1000;
 };
 
@@ -115,7 +116,7 @@ export default function NetworkView() {
   const { isAdmin } = useAdminCheck();
   const [network, setNetwork] = useState("all");
   const [candidateId, setCandidateId] = useState<string>("all");
-  const [days, setDays] = useState(3650);
+  const [days, setDays] = useState(30);
 
   const { data: candidates } = useQuery({
     queryKey: ["nv-candidates", user?.id, isAdmin],
@@ -220,6 +221,11 @@ export default function NetworkView() {
   const prevNeuPct = pct(k?.prev_neu ?? 0, prevLabeled);
   const growthPct = growth(total, k?.prev_total ?? 0);
   const dominant = agg?.by_network?.[0]?.network ?? "—";
+  const networksSum = (agg?.by_network ?? []).reduce((s, n) => s + (n.mentions || 0), 0);
+  const consistencyOk = total === 0 || (
+    Math.abs(networksSum - total) / Math.max(total, 1) <= 0.01 &&
+    Math.abs(labeled - total) / Math.max(total, 1) <= 0.05
+  );
 
   const sentimentSeries = useMemo(() => {
     return (agg?.series ?? []).map((d) => {
@@ -308,6 +314,12 @@ export default function NetworkView() {
         </Card>
       )}
 
+      {!isLoadingCore && !consistencyOk && (
+        <Card className="p-4 border-warning/40 bg-warning/5 text-sm">
+          Recalculando agregações — algumas métricas estão sendo reprocessadas para garantir consistência.
+        </Card>
+      )}
+
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <Kpi label="Total de menções" value={fmt(total)} icon={<MessageSquare className="h-4 w-4" />} loading={isLoadingCore} />
@@ -376,9 +388,9 @@ export default function NetworkView() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="space-y-2 mt-2">
-                <SentBar label="Positivo" pct={posPct} delta={prevLabeled > 0 ? posPct - prevPosPct : 0} color={COLORS.positive} />
-                <SentBar label="Negativo" pct={negPct} delta={prevLabeled > 0 ? negPct - prevNegPct : 0} color={COLORS.negative} invert />
-                <SentBar label="Neutro" pct={neuPct} delta={prevLabeled > 0 ? neuPct - prevNeuPct : 0} color={COLORS.neutral} />
+                <SentBar label="Positivo" pct={posPct} count={k?.pos ?? 0} delta={prevLabeled > 0 ? posPct - prevPosPct : 0} color={COLORS.positive} />
+                <SentBar label="Negativo" pct={negPct} count={k?.neg ?? 0} delta={prevLabeled > 0 ? negPct - prevNegPct : 0} color={COLORS.negative} invert />
+                <SentBar label="Neutro" pct={neuPct} count={k?.neu ?? 0} delta={prevLabeled > 0 ? neuPct - prevNeuPct : 0} color={COLORS.neutral} />
               </div>
             </>
           )}
@@ -564,7 +576,7 @@ function Kpi({ label, value, icon, loading, sub, tone, delta, invertDelta }: {
   );
 }
 
-function SentBar({ label, pct: p, delta, color, invert }: { label: string; pct: number; delta: number; color: string; invert?: boolean }) {
+function SentBar({ label, pct: p, count, delta, color, invert }: { label: string; pct: number; count?: number; delta: number; color: string; invert?: boolean }) {
   const goodDelta = invert ? delta < 0 : delta > 0;
   return (
     <div>
@@ -574,7 +586,7 @@ function SentBar({ label, pct: p, delta, color, invert }: { label: string; pct: 
           {label}
         </span>
         <span className="flex items-center gap-2">
-          <span className="font-semibold">{p}%</span>
+          <span className="font-semibold">{p}%{count !== undefined ? ` (${count.toLocaleString("pt-BR")})` : ""}</span>
           {delta !== 0 && (
             <span className={goodDelta ? "text-success" : "text-destructive"}>
               ({delta > 0 ? "+" : ""}{delta}pp)
