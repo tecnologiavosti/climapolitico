@@ -6,7 +6,7 @@ import { TrendingUp, TrendingDown, Users, MessageSquare, AlertCircle, Activity, 
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { format, subDays, startOfDay, endOfDay } from "date-fns";
+import { format, subDays } from "date-fns";
 import { toast } from "sonner";
 import { ptBR } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -263,38 +263,6 @@ export default function Overview() {
   const avgSentiment = totalSentimentItems > 0
     ? Math.round(((aggregatedMetrics.positiveCount * 100) + (aggregatedMetrics.neutralCount * 50) + (aggregatedMetrics.negativeCount * 0)) / totalSentimentItems)
     : 0;
-
-  // Preparar dados de sentimento por dia (últimos 7 dias)
-  // Usa created_at (data de coleta) para garantir que toda interação coletada
-  // nos últimos 7 dias apareça no gráfico, independentemente de quando foi postada.
-  // Normaliza labels (case-insensitive + acentos) para não perder linhas com
-  // variações como "positivo", "POSITIVO", "Positive", etc.
-  const normalizeSentiment = (label?: string | null, score?: number | null): 'positive' | 'negative' | 'neutral' | null => {
-    const numericScore = typeof score === 'number' ? score : null;
-
-    // "Neutro 0.5" é usado pelo pipeline como valor padrão/pendente quando a IA falha.
-    // Não entra no gráfico temporal para evitar uma curva artificialmente gigante de neutros.
-    if (!label && numericScore === null) return null;
-    if (label?.trim().toLowerCase() === 'neutro' && numericScore === 0.5) return null;
-
-    if (label) {
-      const l = label
-        .toString()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .trim();
-      if (l.startsWith('pos')) return 'positive';
-      if (l.startsWith('neg')) return 'negative';
-      if (l.startsWith('neu')) return 'neutral';
-    }
-    if (numericScore !== null) {
-      if (numericScore >= 0.6) return 'positive';
-      if (numericScore <= 0.4) return 'negative';
-      return 'neutral';
-    }
-    return null;
-  };
 
   const sentimentData = weeklyCore?.series?.length
     ? weeklyCore.series.map((d: any) => ({
