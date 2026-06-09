@@ -221,6 +221,11 @@ export default function NetworkView() {
   const prevNeuPct = pct(k?.prev_neu ?? 0, prevLabeled);
   const growthPct = growth(total, k?.prev_total ?? 0);
   const dominant = agg?.by_network?.[0]?.network ?? "—";
+  const networksSum = (agg?.by_network ?? []).reduce((s, n) => s + (n.mentions || 0), 0);
+  const consistencyOk = total === 0 || (
+    Math.abs(networksSum - total) / Math.max(total, 1) <= 0.01 &&
+    Math.abs(labeled - total) / Math.max(total, 1) <= 0.05
+  );
 
   const sentimentSeries = useMemo(() => {
     return (agg?.series ?? []).map((d) => {
