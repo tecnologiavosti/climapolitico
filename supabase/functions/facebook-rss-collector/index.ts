@@ -33,11 +33,13 @@ function parseRssXml(xml: string): Item[] {
   const items: Item[] = [];
   for (const m of xml.matchAll(/<item>([\s\S]*?)<\/item>/g)) {
     const x = m[1];
-    const title = (x.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/)?.[1] ?? x.match(/<title>(.*?)<\/title>/)?.[1] ?? "").replace(/<!\[CDATA\[|\]\]>/g, "");
+    const rawTitle = (x.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/)?.[1] ?? x.match(/<title>(.*?)<\/title>/)?.[1] ?? "");
+    const title = cleanContent(rawTitle);
     const link = x.match(/<link>(.*?)<\/link>/)?.[1] ?? "";
-    const description = (x.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/s)?.[1] ?? "").replace(/<[^>]+>/g, "");
+    const rawDescription = (x.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/s)?.[1] ?? x.match(/<description>(.*?)<\/description>/s)?.[1] ?? "");
+    const description = cleanContent(rawDescription);
     const pubDate = x.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] ?? "";
-    const author = x.match(/<author>(.*?)<\/author>/)?.[1] ?? x.match(/<dc:creator><!\[CDATA\[(.*?)\]\]><\/dc:creator>/)?.[1];
+    const author = cleanContent(x.match(/<author>(.*?)<\/author>/)?.[1] ?? x.match(/<dc:creator><!\[CDATA\[(.*?)\]\]><\/dc:creator>/)?.[1] ?? "") || undefined;
     const image = x.match(/<media:content[^>]+url=["']([^"']+)["']/)?.[1]
       || x.match(/<enclosure[^>]+url=["']([^"']+)["']/)?.[1]
       || x.match(/<img[^>]+src=["']([^"']+)["']/)?.[1]
