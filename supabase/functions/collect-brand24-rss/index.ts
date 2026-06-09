@@ -34,9 +34,8 @@ function parseRSSFeed(xmlText: string): RSSMention[] {
     const pubDate = xml.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] || '';
     const source = xml.match(/<source.*?>(.*?)<\/source>/)?.[1] || '';
 
-    // Clean HTML tags from description
-    const cleanDesc = desc.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').trim();
-    const cleanTitle = title.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+    const cleanDesc = cleanContent(desc);
+    const cleanTitle = cleanContent(title);
 
     if (cleanTitle || cleanDesc) {
       items.push({
@@ -44,7 +43,7 @@ function parseRSSFeed(xmlText: string): RSSMention[] {
         link,
         description: cleanDesc.substring(0, 1000),
         pubDate,
-        source: source || extractDomainFromUrl(link),
+        source: cleanContent(source) || extractDomainFromUrl(link),
       });
     }
   }
