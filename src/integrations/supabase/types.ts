@@ -1077,6 +1077,57 @@ export type Database = {
         }
         Relationships: []
       }
+      data_consistency_audit_logs: {
+        Row: {
+          actual_count: number
+          candidate_id: string | null
+          check_name: string
+          corrected_at: string | null
+          created_at: string
+          days: number
+          details: Json
+          diff_pct: number
+          expected_count: number
+          id: string
+          network: string | null
+          status: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          actual_count?: number
+          candidate_id?: string | null
+          check_name: string
+          corrected_at?: string | null
+          created_at?: string
+          days: number
+          details?: Json
+          diff_pct?: number
+          expected_count?: number
+          id?: string
+          network?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          actual_count?: number
+          candidate_id?: string | null
+          check_name?: string
+          corrected_at?: string | null
+          created_at?: string
+          days?: number
+          details?: Json
+          diff_pct?: number
+          expected_count?: number
+          id?: string
+          network?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       edge_function_logs: {
         Row: {
           duration_ms: number | null
@@ -3326,7 +3377,12 @@ export type Database = {
         Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
         Returns: Json
       }
-      network_view_sentiment: { Args: { _label: string }; Returns: string }
+      network_view_sentiment:
+        | { Args: { _label: string }; Returns: string }
+        | {
+            Args: { _label: string; _score?: number; _text?: string }
+            Returns: string
+          }
       network_view_top_posts: {
         Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
         Returns: Json
@@ -3397,6 +3453,10 @@ export type Database = {
         Returns: number
       }
       reset_provider_circuits: { Args: never; Returns: undefined }
+      run_network_view_consistency_audit: {
+        Args: { p_days?: number }
+        Returns: Json
+      }
       should_skip_collector: { Args: { _name: string }; Returns: boolean }
       social_interaction_political_score: {
         Args: {
