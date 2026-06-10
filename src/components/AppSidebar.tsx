@@ -28,6 +28,7 @@ import {
   BookUser,
   ChevronDown,
   Eye,
+  Activity,
   type LucideIcon,
 } from "lucide-react";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
