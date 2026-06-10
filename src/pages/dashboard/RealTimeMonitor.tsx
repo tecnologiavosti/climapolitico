@@ -994,7 +994,7 @@ const RealTimeMonitor = () => {
               <CardContent className="p-3 space-y-2">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-muted-foreground">
                   <span className="font-semibold text-foreground">
-                    {snapshot.mentionsToday.toLocaleString("pt-BR")} registros detectados nas últimas {windowHours}h
+                    {snapshot.mentionsToday.toLocaleString("pt-BR")} registros monitorados nas últimas {windowHours}h
                   </span>
                   <span className="hidden sm:inline">·</span>
                   <span>{snapshot.evidence.news.toLocaleString("pt-BR")} notícias</span>
@@ -1004,18 +1004,21 @@ const RealTimeMonitor = () => {
                   <span>{snapshot.evidence.videos.toLocaleString("pt-BR")} vídeos</span>
                   <Badge variant="outline" className="w-fit sm:ml-auto text-[10px]">Últimas {windowHours}h</Badge>
                 </div>
+                <div className="text-[11px] text-muted-foreground italic">
+                  Registros = notícias, posts e vídeos coletados. Citações = ocorrências reais do nome do candidato dentro desses conteúdos.
+                </div>
                 {(() => {
-                  // Oculta janelas que repetem o mesmo valor (sem cálculo real disponível para distinguir)
                   const total = historicalBase.total;
                   const d30 = historicalBase.d30;
                   const d90 = historicalBase.d90;
                   const d365 = historicalBase.d365;
                   const items: Array<{ k: string; v: number }> = [];
+                  items.push({ k: "Citações detectadas (janela)", v: snapshot.citationsDetected });
                   if (typeof total === "number") items.push({ k: "Base histórica", v: total });
                   if (typeof d365 === "number" && d365 !== total) items.push({ k: "Último ano", v: d365 });
                   if (typeof d90 === "number" && d90 !== d365 && d90 !== total) items.push({ k: "Últimos 90 dias", v: d90 });
                   if (typeof d30 === "number" && d30 !== d90 && d30 !== d365 && d30 !== total) items.push({ k: "Últimos 30 dias", v: d30 });
-                  items.push({ k: "Citações históricas (janela)", v: snapshot.historicalMentions });
+                  if (snapshot.historicalMentions > 0) items.push({ k: "Citações históricas (janela)", v: snapshot.historicalMentions });
                   return (
                     <div className={cn("grid gap-2 text-[11px] text-muted-foreground border-t border-border/40 pt-2",
                       items.length >= 4 ? "grid-cols-2 sm:grid-cols-5" : items.length === 3 ? "grid-cols-3" : "grid-cols-2")}>
@@ -1028,11 +1031,19 @@ const RealTimeMonitor = () => {
                     </div>
                   );
                 })()}
-                <div className="text-[11px] text-muted-foreground">
-                  {snapshot.hasSentimentSample ? (
-                    <>Sentimento calculado sobre <span className="font-semibold text-foreground/80">{snapshot.classifiedToday.toLocaleString("pt-BR")} registros classificados</span>{snapshot.mentionsToday > snapshot.classifiedToday && (<> de {snapshot.mentionsToday.toLocaleString("pt-BR")} totais</>)}.</>
+                <div className="text-[11px] text-muted-foreground border-t border-border/40 pt-2">
+                  {snapshot.mentionsToday > 0 ? (
+                    <>
+                      Cobertura do classificador:{" "}
+                      <span className="font-semibold text-foreground/80">{snapshot.classifiedToday.toLocaleString("pt-BR")} classificados ({snapshot.classifiedCoveragePct}%)</span>
+                      {" · "}
+                      <span className="font-semibold text-foreground/80">{snapshot.unclassifiedToday.toLocaleString("pt-BR")} não classificados ({100 - snapshot.classifiedCoveragePct}%)</span>
+                      {!snapshot.hasSentimentSample && (
+                        <span className="italic"> · Sentimento indisponível por amostra insuficiente (mínimo de 5).</span>
+                      )}
+                    </>
                   ) : (
-                    <span className="italic">Sentimento indisponível por amostra insuficiente ({snapshot.classifiedToday} classificações; mínimo de 5).</span>
+                    <span className="italic">Sem registros monitorados na janela.</span>
                   )}
                 </div>
               </CardContent>
