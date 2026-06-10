@@ -88,9 +88,9 @@ export function CandidatesComparisonPanel({ candidates }: Props) {
       for (const id of top5Ids) buckets[k][id] = 0;
     }
     for (const r of timeline || []) {
-      if (!r.collected_at) continue;
-      const k = format(new Date(r.collected_at), "dd/MM");
-      if (buckets[k]) buckets[k][r.candidate_id] = (buckets[k][r.candidate_id] || 0) + 1;
+      if (!r.day) continue;
+      const k = format(new Date(r.day), "dd/MM");
+      if (buckets[k]) buckets[k][r.candidate_id] = (buckets[k][r.candidate_id] || 0) + Number(r.mentions || 0);
     }
     return Object.values(buckets);
   }, [timeline, top5Ids]);
