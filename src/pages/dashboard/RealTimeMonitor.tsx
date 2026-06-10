@@ -832,20 +832,32 @@ const RealTimeMonitor = () => {
   const selectedCandidate = candidates.find(c => c.id === selectedCandidateId);
 
   useEffect(() => {
-    if (!user || !selectedCandidateId || !selectedCandidate) { setSnapshot(null); setHistoricalBase(null); return; }
+    if (!user || !selectedCandidateId || !selectedCandidate) { setSnapshot(null); setHistoricalBase({ total: null, d30: null, d90: null, d365: null }); return; }
     const cached = readCache(cacheKey(user.id, selectedCandidateId) + `:${windowHours}h`);
     if (cached) setSnapshot(cached); else setSnapshot(null);
     const stale = !cached || (Date.now() - cached.savedAt) > 2 * 60 * 1000;
     if (stale) runSync(selectedCandidateId, user.id, selectedCandidate.full_name, windowHours);
-    // Base histórica total (todas as menções coletadas para o candidato)
+    // Base histórica total + janelas (30 / 90 / 365 dias)
     (async () => {
-      const { count } = await supabase
+      const baseQ = () => supabase
         .from("social_interactions")
         .select("*", { count: "exact", head: true })
         .eq("user_id", user.id)
         .eq("candidate_id", selectedCandidateId)
         .not("social_network", "in", "(mastodon,lemmy,pinterest)");
-      setHistoricalBase(typeof count === "number" ? count : null);
+      const since = (days: number) => new Date(Date.now() - days * 86400000).toISOString();
+      const [total, d30, d90, d365] = await Promise.all([
+        baseQ(),
+        baseQ().or(`created_at.gte.${since(30)},original_posted_at.gte.${since(30)}`),
+        baseQ().or(`created_at.gte.${since(90)},original_posted_at.gte.${since(90)}`),
+        baseQ().or(`created_at.gte.${since(365)},original_posted_at.gte.${since(365)}`),
+      ]);
+      setHistoricalBase({
+        total: total.count ?? 0,
+        d30: d30.count ?? 0,
+        d90: d90.count ?? 0,
+        d365: d365.count ?? 0,
+      });
     })();
   }, [user, selectedCandidateId, selectedCandidate, windowHours, runSync]);
 
