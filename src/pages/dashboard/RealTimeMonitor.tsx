@@ -56,6 +56,8 @@ interface Snapshot {
   evidence: EvidenceCounts;
   windowCounts: { h1: number; h6: number; h12: number; h24: number; previous24h: number; };
   hasStatisticalBase: boolean;
+  hasSentimentSample: boolean; // >= 5 classificações
+  historicalMentions: number;  // citações históricas separadas
   // BLOCO 2 — temas dominantes
   themes: Theme[];
   // BLOCO 3 — eventos
@@ -79,6 +81,38 @@ interface Snapshot {
   savedAt: number;
   candidateName: string;
 }
+
+// ============ Normalização de nomes de políticos ============
+const CANDIDATE_NAME_FIXES: Array<{ pattern: RegExp; canonical: string }> = [
+  { pattern: /\b(dilma( vana)?(\s+rou?ssef[f]?)?|dilma)\b/i, canonical: "Dilma Rousseff" },
+  { pattern: /\b(luiz?\s+in[áa]cio(\s+lula)?(\s+da\s+silva)?|lula\s+da\s+silva|presidente\s+lula|lula)\b/i, canonical: "Luiz Inácio Lula da Silva" },
+  { pattern: /\b(jair(\s+messias)?\s+bolsonaro|ex-?presidente\s+bolsonaro|jair\s+bolsonaro)\b/i, canonical: "Jair Bolsonaro" },
+  { pattern: /\b(fl[áa]vio(\s+nantes)?\s+bolsonaro|senador\s+fl[áa]vio\s+bolsonaro|fl[áa]vio\s+bolsonaro)\b/i, canonical: "Flávio Bolsonaro" },
+  { pattern: /\b(eduardo\s+bolsonaro)\b/i, canonical: "Eduardo Bolsonaro" },
+  { pattern: /\b(michelle\s+bolsonaro)\b/i, canonical: "Michelle Bolsonaro" },
+  { pattern: /\b(tarc[íi]sio(\s+de\s+freitas)?)\b/i, canonical: "Tarcísio de Freitas" },
+  { pattern: /\b(geraldo\s+alckmin|alckmin)\b/i, canonical: "Geraldo Alckmin" },
+  { pattern: /\b(fernando\s+haddad|haddad)\b/i, canonical: "Fernando Haddad" },
+];
+const normalizeCandidateName = (raw: string): string => {
+  if (!raw) return raw;
+  for (const { pattern, canonical } of CANDIDATE_NAME_FIXES) {
+    if (pattern.test(raw)) return canonical;
+  }
+  return raw.trim().replace(/\s+/g, " ");
+};
+
+// Gera tokens significativos do nome para verificar centralidade no conteúdo
+const buildNameMatcher = (name: string): RegExp | null => {
+  const canonical = normalizeCandidateName(name);
+  const tokens = canonical.split(/\s+/).filter(t => t.length >= 4 && !/^(de|da|do|dos|das)$/i.test(t));
+  if (tokens.length === 0) return null;
+  const escaped = tokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  // Match completo OR sobrenome principal (último token longo)
+  const last = escaped[escaped.length - 1];
+  const full = escaped.join("\\s+");
+  return new RegExp(`(${full}|\\b${last}\\b)`, "i");
+};
 
 // ============ Cache 5 min ============
 const cacheKey = (uid: string, cid: string) => `rt-activity-v1:${uid}:${cid}`;
