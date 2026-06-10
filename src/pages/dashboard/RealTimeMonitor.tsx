@@ -195,14 +195,28 @@ const POLITICAL_HARD_REGEX = /\b(entrevist|sabatin|discurso|pronunciamento|debat
 // Veículos confiáveis (boost de pontuação)
 const TRUSTED_OUTLET_REGEX = /(g1\.globo|globo\.com|globonews|cnnbrasil|uol\.com|folha\.uol|folha\.com|estadao|poder360|metropoles|metrópoles|valor\.globo|valor\.com|r7\.com|veja\.abril|cartacapital|jovempan|band\.uol|sbt\.com|record\.com|antagonista|infomoney|reuters|bbc|gazetadopovo|correiobraziliense|nexojornal|brasildefato|agenciabrasil|congressoemfoco|jota\.info)/i;
 
-const scoreRelevance = (row: any, windowStart: number, now: number): number => {
+const scoreRelevance = (row: any, windowStart: number, now: number, nameMatcher: RegExp | null): number => {
   const t = effectiveDateOf(row).getTime();
   if (t < windowStart || t > now + 60_000) return 0; // fora da janela
-  const rawText = `${row.post_title || ""} ${row.post_description || ""} ${row.comment_text || ""}`;
+  const title = String(row.post_title || "");
+  const description = String(row.post_description || "");
+  const commentText = String(row.comment_text || "");
+  const rawText = `${title} ${description} ${commentText}`;
   if (!rawText.trim()) return 0;
   if (IRRELEVANT_REGEX.test(rawText)) return 0;
   const cleaned = cleanText(rawText);
   if (!cleaned || cleaned.length < 8) return 0;
+
+  // ===== Centralidade do político =====
+  // O nome precisa aparecer no título OU nos primeiros 280 caracteres do texto.
+  // Caso contrário, é uma menção lateral e não é contabilizada.
+  if (nameMatcher) {
+    const headline = `${title} ${description}`.slice(0, 280);
+    const inHeadline = nameMatcher.test(headline);
+    const inEarlyBody = nameMatcher.test(cleaned.slice(0, 280));
+    if (!inHeadline && !inEarlyBody) return 0;
+  }
+
   const isNews = isNewsNetwork(row.social_network, row.platform, row.interaction_type);
   const matchesTheme = THEME_RULES.some(r => r.keywords.test(cleaned));
   const matchesHard = POLITICAL_HARD_REGEX.test(cleaned);
@@ -223,6 +237,18 @@ const scoreRelevance = (row: any, windowStart: number, now: number): number => {
   const historyPenalty = HISTORICAL_CONTEXT_REGEX.test(cleaned) ? 0.25 : 1;
   const themeBoost = matchesTheme ? 1.2 : 1.0;
   return Math.log10(engagement + 1) * recency * trust * trustedBoost * activityBoost * themeBoost * historyPenalty;
+};
+
+// Detecta apenas citação histórica (sem qualquer sinal de atividade atual)
+const isHistoricalOnly = (row: any): boolean => {
+  const rawText = `${row.post_title || ""} ${row.post_description || ""} ${row.comment_text || ""}`;
+  if (!rawText.trim()) return false;
+  const cleaned = cleanText(rawText);
+  if (!cleaned) return false;
+  const hasHistory = HISTORICAL_CONTEXT_REGEX.test(cleaned);
+  if (!hasHistory) return false;
+  const currentActivity = OFFICIAL_ACTIVITY_REGEX.test(cleaned) || CURRENT_ACTIVITY_REGEX.test(cleaned) || POLITICAL_HARD_REGEX.test(cleaned);
+  return !currentActivity;
 };
 
 const hasOfficialActivity = (text: string): boolean => OFFICIAL_ACTIVITY_REGEX.test(cleanText(text));
