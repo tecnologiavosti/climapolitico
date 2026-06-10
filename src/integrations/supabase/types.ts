@@ -1760,6 +1760,36 @@ export type Database = {
         }
         Relationships: []
       }
+      non_political_keywords: {
+        Row: {
+          active: boolean
+          category: string
+          created_at: string
+          id: string
+          keyword: string
+          notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          category?: string
+          created_at?: string
+          id?: string
+          keyword: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          category?: string
+          created_at?: string
+          id?: string
+          keyword?: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           candidate_id: string | null
@@ -3520,6 +3550,14 @@ export type Database = {
       }
       norm_text: { Args: { _value: string }; Returns: string }
       normalize_social_platform: { Args: { _network: string }; Returns: string }
+      nv_canonical_timestamp: {
+        Args: {
+          _collected_at: string
+          _created_at: string
+          _original_posted_at: string
+        }
+        Returns: string
+      }
       nv_clean_text: { Args: { _text: string }; Returns: string }
       nv_fast_sentiment: {
         Args: { _label: string; _score?: number }
@@ -3532,11 +3570,14 @@ export type Database = {
       }
       nv_is_valid_hashtag: { Args: { _tag: string }; Returns: boolean }
       nv_network_key: { Args: { _network: string }; Returns: string }
+      nv_non_political_regex: { Args: never; Returns: string }
       nv_normalize_hashtag: { Args: { _tag: string }; Returns: string }
       nv_political_relevance_score: {
         Args: { _candidate_name?: string; _text: string }
         Returns: number
       }
+      nv_visible_networks: { Args: never; Returns: string[] }
+      overview_summary: { Args: { p_days?: number }; Returns: Json }
       prune_edge_function_logs: { Args: never; Returns: undefined }
       reactivate_youtube_keys: { Args: never; Returns: undefined }
       record_collector_call: {
