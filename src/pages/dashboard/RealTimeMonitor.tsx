@@ -1120,7 +1120,7 @@ const RealTimeMonitor = () => {
           {snapshot && (
             <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2"><Activity className="h-4 w-4 text-primary" />Evolução das menções</CardTitle>
+                <CardTitle className="text-sm font-semibold flex items-center gap-2"><Activity className="h-4 w-4 text-primary" />Evolução dos registros monitorados</CardTitle>
               </CardHeader>
               <CardContent>
                 {snapshot.mentionsToday === 0 ? (
