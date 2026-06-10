@@ -1,5 +1,8 @@
-// Edge function: orquestrador que dispara coletas em todas as redes para todos os candidatos.
-// Chamado pelo pg_cron a cada 6h. Inclui retry automático de resolução de @handle do TikTok.
+// Edge function: orquestrador de coleta.
+// L1 refactor: paralelização com Promise.allSettled + concurrency limit,
+// retry exponencial (429/503/timeout), quota check 1x por coletor,
+// tarefas pesadas (reprocess/classify-region/apify-poll/meta-mass/tiktok-resolve)
+// movidas para cron próprio.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -29,6 +32,56 @@ const COLLECTORS: Array<{ name: string; fn: string; payload: (c: any) => Record<
   { name: "Facebook RSS", fn: "facebook-rss-collector",   payload: (c) => ({ candidateId: c.id }) },
 ];
 
+const CANDIDATE_CONCURRENCY = 5;
+const COLLECTOR_CONCURRENCY = 5;
+const RETRY_BACKOFFS_MS = [1000, 3000, 9000]; // tentativas 1, 2, 3
+
+// Concurrency limiter (sem dependência externa)
+async function pMapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const i = cursor++;
+      if (i >= items.length) return;
+      try { results[i] = await fn(items[i]); }
+      catch (e) { results[i] = e as any; }
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+// Retry exponencial para 429/503/timeout
+function isRetryableError(msg: string): boolean {
+  const s = msg.toLowerCase();
+  return s.includes("429") || s.includes("503") || s.includes("timeout") ||
+         s.includes("timed out") || s.includes("rate limit") || s.includes("unavailable");
+}
+
+async function invokeWithRetry(
+  supabase: any, fn: string, body: any,
+): Promise<{ ok: boolean; error?: string; attempts: number }> {
+  let lastErr = "";
+  for (let attempt = 0; attempt <= RETRY_BACKOFFS_MS.length; attempt++) {
+    try {
+      const { error } = await supabase.functions.invoke(fn, { body });
+      if (!error) return { ok: true, attempts: attempt + 1 };
+      lastErr = error.message || String(error);
+      if (!isRetryableError(lastErr) || attempt === RETRY_BACKOFFS_MS.length) {
+        return { ok: false, error: lastErr, attempts: attempt + 1 };
+      }
+    } catch (e) {
+      lastErr = (e as Error).message;
+      if (!isRetryableError(lastErr) || attempt === RETRY_BACKOFFS_MS.length) {
+        return { ok: false, error: lastErr, attempts: attempt + 1 };
+      }
+    }
+    await new Promise((r) => setTimeout(r, RETRY_BACKOFFS_MS[attempt]));
+  }
+  return { ok: false, error: lastErr, attempts: RETRY_BACKOFFS_MS.length + 1 };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -52,23 +105,6 @@ Deno.serve(async (req) => {
       { auth: { persistSession: false } },
     );
 
-    // 1) Reagenda resolução de @handles TikTok pendentes (não bloqueante)
-    try {
-      await supabase.functions.invoke("tiktok-resolve-batch", { body: { force: false } });
-      console.log("[ORCHESTRATOR] tiktok-resolve-batch disparado");
-    } catch (e) {
-      console.warn("[ORCHESTRATOR] tiktok-resolve-batch falhou:", (e as Error).message);
-    }
-
-    // 1.1) Dispara coleta Meta pública/Apify uma vez para abastecer Instagram e Facebook.
-    try {
-      await supabase.functions.invoke("meta-mass-collector", { body: {} });
-      console.log("[ORCHESTRATOR] meta-mass-collector disparado");
-    } catch (e) {
-      console.warn("[ORCHESTRATOR] meta-mass-collector falhou:", (e as Error).message);
-    }
-
-    // 2) Lista candidatos ativos
     const candidatesQuery = supabase
       .from("candidates")
       .select("id, full_name, user_id")
@@ -83,87 +119,52 @@ Deno.serve(async (req) => {
     console.log(`[ORCHESTRATOR] ${list.length} candidatos | ${selectedCollectors.length} coletores (${requestedCollector})`);
 
     const job = (async () => {
-      const summary: Record<string, { ok: number; fail: number }> = {};
-      try {
-        for (let i = 0; i < 20; i += 1) {
-          const { data, error: reprocessError } = await supabase.rpc("reprocess_social_interactions_political_validation", { _batch_size: 10000 });
-          if (reprocessError) {
-            console.warn("[ORCHESTRATOR] reprocessamento político falhou:", reprocessError.message);
-            break;
-          }
-          console.log("[ORCHESTRATOR] reprocessamento político:", JSON.stringify(data));
-          if (!data || Number((data as any).updated || 0) === 0 || Number((data as any).remaining || 0) === 0) break;
-        }
-      } catch (e) {
-        console.warn("[ORCHESTRATOR] reprocessamento político exception:", (e as Error).message);
-      }
-
-      for (const c of list) {
-        for (const col of selectedCollectors) {
-          summary[col.name] = summary[col.name] || { ok: 0, fail: 0 };
-
-          // Quota check por coletor
-          const quotaName = col.name.toLowerCase().replace("/x", "").replace(" ", "_");
-          try {
-            const { data: skipData } = await supabase.rpc("should_skip_collector", { _name: quotaName });
-            if (skipData === true) {
-              console.log(`[ORCHESTRATOR] ${col.name} pulado por quota`);
-              continue;
-            }
-          } catch (_) { /* segue */ }
-
-          try {
-            const body = col.fn === "search-twitter-mentions" || col.fn === "search-youtube-mentions"
-              ? { ...col.payload(c), userId: c.user_id }
-              : col.payload(c);
-            const { error: invErr } = await supabase.functions.invoke(col.fn, { body });
-            if (invErr) {
-              summary[col.name].fail++;
-              console.warn(`[ORCHESTRATOR] ${col.name} ${c.full_name}: ${invErr.message}`);
-            } else {
-              summary[col.name].ok++;
-            }
-          } catch (e) {
-            summary[col.name].fail++;
-            console.warn(`[ORCHESTRATOR] ${col.name} ${c.full_name} exception:`, (e as Error).message);
-          }
-          await new Promise((r) => setTimeout(r, 800));
-        }
-      }
-      console.log(`[ORCHESTRATOR] Concluído em ${(Date.now() - startedAt) / 1000}s | summary=`, JSON.stringify(summary));
-
-      // Registra calls em quota
-      for (const col of selectedCollectors) {
+      // QUOTA CHECK: 1x por coletor (não por candidato)
+      const quotaSkip: Record<string, boolean> = {};
+      await Promise.allSettled(selectedCollectors.map(async (col) => {
         const quotaName = col.name.toLowerCase().replace("/x", "").replace(" ", "_");
-        const s = summary[col.name] || { ok: 0, fail: 0 };
         try {
-          // Só conta como erro quando NENHUM candidato teve sucesso no ciclo.
-          // Antes: s.fail > 0 marcava o ciclo inteiro como erro mesmo com 27/28 sucessos,
-          // gerando falso positivo "5/5 falha" para Telegram, Google News, YouTube.
-          const hadError = s.ok === 0 && s.fail > 0;
+          const { data: skip } = await supabase.rpc("should_skip_collector", { _name: quotaName });
+          quotaSkip[col.name] = skip === true;
+          if (skip === true) console.log(`[ORCHESTRATOR] ${col.name} pulado por quota`);
+        } catch (_) { quotaSkip[col.name] = false; }
+      }));
+
+      const activeCollectors = selectedCollectors.filter((c) => !quotaSkip[c.name]);
+      const summary: Record<string, { ok: number; fail: number; retries: number }> = {};
+      for (const col of activeCollectors) summary[col.name] = { ok: 0, fail: 0, retries: 0 };
+
+      // PARALELIZAÇÃO: candidatos em paralelo (CANDIDATE_CONCURRENCY),
+      // dentro de cada candidato coletores em paralelo (COLLECTOR_CONCURRENCY).
+      await pMapLimit(list, CANDIDATE_CONCURRENCY, async (c) => {
+        await pMapLimit(activeCollectors, COLLECTOR_CONCURRENCY, async (col) => {
+          const body = col.fn === "search-twitter-mentions" || col.fn === "search-youtube-mentions"
+            ? { ...col.payload(c), userId: c.user_id }
+            : col.payload(c);
+          const res = await invokeWithRetry(supabase, col.fn, body);
+          if (res.ok) summary[col.name].ok++;
+          else {
+            summary[col.name].fail++;
+            console.warn(`[ORCHESTRATOR] ${col.name} ${c.full_name} (${res.attempts}t): ${res.error}`);
+          }
+          if (res.attempts > 1) summary[col.name].retries += res.attempts - 1;
+        });
+      });
+
+      const elapsedSec = (Date.now() - startedAt) / 1000;
+      console.log(`[ORCHESTRATOR] Concluído em ${elapsedSec}s | summary=`, JSON.stringify(summary));
+
+      // Registra calls em quota (apenas para os ativos)
+      await Promise.allSettled(activeCollectors.map(async (col) => {
+        const quotaName = col.name.toLowerCase().replace("/x", "").replace(" ", "_");
+        const s = summary[col.name];
+        const hadError = s.ok === 0 && s.fail > 0;
+        try {
           await supabase.rpc("record_collector_call", {
             _name: quotaName, _items: s.ok, _had_error: hadError,
           });
         } catch (_) { /* ignora */ }
-      }
-
-      // 3) Classifica regiões das novas interações (heurística + IA em lote)
-      try {
-        for (let i = 0; i < 5; i++) {
-          const { data: cr } = await supabase.functions.invoke("classify-region", { body: { limit: 300 } });
-          console.log(`[ORCHESTRATOR] classify-region pass ${i + 1}:`, JSON.stringify(cr));
-          if (!cr || (cr as any).processed === 0) break;
-        }
-      } catch (e) {
-        console.warn("[ORCHESTRATOR] classify-region falhou:", (e as Error).message);
-      }
-
-      try {
-        const { data: poll } = await supabase.functions.invoke("apify-poll-runs", { body: {} });
-        console.log("[ORCHESTRATOR] apify-poll-runs:", JSON.stringify(poll));
-      } catch (e) {
-        console.warn("[ORCHESTRATOR] apify-poll-runs falhou:", (e as Error).message);
-      }
+      }));
     })();
 
     // @ts-ignore EdgeRuntime
@@ -177,7 +178,8 @@ Deno.serve(async (req) => {
       accepted: true,
       candidates: list.length,
       collectors: selectedCollectors.map((c) => c.name),
-      message: "Orquestração iniciada em background",
+      concurrency: { candidates: CANDIDATE_CONCURRENCY, collectors: COLLECTOR_CONCURRENCY },
+      message: "Orquestração iniciada em background (paralelo)",
     }), { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Erro desconhecido";
