@@ -919,52 +919,108 @@ Deno.serve(async (req) => {
       }
     });
 
-    // Carrega instâncias Nitter ativas do banco (saudáveis primeiro)
+    // ===== L2.a: Pool resiliente com cache 5min + blacklist automática =====
+    // Carrega instâncias ativas não-blacklistadas. Saudáveis primeiro (consec_failures asc).
     const { data: instanceRows } = await supabaseService
       .from('nitter_instances')
-      .select('id, url, last_error_at')
+      .select('id, url, last_checked, consecutive_failures, success_count, failure_count, latency_ms_avg')
       .eq('is_active', true)
-      .order('last_error_at', { ascending: true, nullsFirst: true })
-      .limit(15);
+      .or('blacklisted_until.is.null,blacklisted_until.lt.' + new Date().toISOString())
+      .order('consecutive_failures', { ascending: true })
+      .order('last_checked', { ascending: false, nullsFirst: false })
+      .limit(20);
     const dbHosts = (instanceRows || []).map((r: any) => r.url as string);
-    // Descobre dinamicamente novas instâncias Nitter (status.d420.de + wiki)
+
+    // Cache TTL 5min: instâncias com last_checked recente E sem falhas consecutivas
+    // são consideradas saudáveis sem novo ping (economiza 24 fetches por invocação).
+    const FIVE_MIN_MS = 5 * 60 * 1000;
+    const now = Date.now();
+    const cachedAlive = new Set<string>();
+    (instanceRows || []).forEach((r: any) => {
+      if (r.consecutive_failures === 0 && r.last_checked &&
+          (now - new Date(r.last_checked).getTime()) < FIVE_MIN_MS) {
+        cachedAlive.add(r.url);
+      }
+    });
+
+    // Descobre dinamicamente novas instâncias (uma vez por execução)
     const discovered = await discoverNitterHosts();
     if (discovered.length > 0) console.log(`[TWITTER] Descobertas ${discovered.length} instâncias dinâmicas`);
-    // Mescla DB + descobertas + fallback estático para maximizar chance de sucesso
+
     const hostSet = new Set<string>([...dbHosts, ...discovered, ...FALLBACK_NITTER_HOSTS]);
     const allHosts = Array.from(hostSet).slice(0, 30);
 
-    // Health-check ativo paralelo: ping em /about (3s timeout) — descarta hosts mortos antes de gastar query
+    // Só pinga quem NÃO está no cache saudável
+    const toProbe = allHosts.filter((h) => !cachedAlive.has(h));
     const pingResults = await Promise.allSettled(
-      allHosts.map(async (h) => {
+      toProbe.map(async (h) => {
+        const t0 = Date.now();
         try {
           const r = await fetch(`${h}/about`, { method: 'GET', signal: AbortSignal.timeout(3500), headers: { 'User-Agent': randomUA() } });
-          return { host: h, ok: r.ok };
-        } catch { return { host: h, ok: false }; }
+          return { host: h, ok: r.ok, latency: Date.now() - t0 };
+        } catch { return { host: h, ok: false, latency: Date.now() - t0 }; }
       })
     );
-    const aliveHosts = pingResults
-      .filter((p): p is PromiseFulfilledResult<{host: string; ok: boolean}> => p.status === 'fulfilled' && p.value.ok)
+    const aliveProbed = pingResults
+      .filter((p): p is PromiseFulfilledResult<{host: string; ok: boolean; latency: number}> => p.status === 'fulfilled' && p.value.ok)
       .map((p) => p.value.host);
-    console.log(`[TWITTER] Health-check: ${aliveHosts.length}/${allHosts.length} instâncias vivas`);
+    const aliveHosts = [...cachedAlive, ...aliveProbed];
+    console.log(`[TWITTER] Health-check: ${aliveHosts.length}/${allHosts.length} vivas (cache: ${cachedAlive.size}, probed: ${aliveProbed.length}/${toProbe.length})`);
     const hosts = aliveHosts.length > 0 ? aliveHosts.slice(0, 12) : allHosts.slice(0, 8);
-    const hostIdByUrl = new Map<string, string>();
-    (instanceRows || []).forEach((r: any) => hostIdByUrl.set(r.url, r.id));
 
-    const onHostResult = async (host: string, ok: boolean, error?: string) => {
+    const hostIdByUrl = new Map<string, string>();
+    const hostStatsByUrl = new Map<string, any>();
+    (instanceRows || []).forEach((r: any) => {
+      hostIdByUrl.set(r.url, r.id);
+      hostStatsByUrl.set(r.url, r);
+    });
+
+    // Persiste ping results (failures incrementais, blacklist se >=3 consec)
+    for (const p of pingResults) {
+      if (p.status !== 'fulfilled') continue;
+      const id = hostIdByUrl.get(p.value.host);
+      if (!id || p.value.ok) continue;
+      const stats = hostStatsByUrl.get(p.value.host) || { consecutive_failures: 0, failure_count: 0 };
+      const newConsec = (stats.consecutive_failures || 0) + 1;
+      const blacklistUntil = newConsec >= 3 ? new Date(now + 30 * 60 * 1000).toISOString() : null;
+      await supabaseService.from('nitter_instances').update({
+        last_checked: new Date().toISOString(),
+        last_error_at: new Date().toISOString(),
+        last_error_message: 'health-check failed',
+        consecutive_failures: newConsec,
+        failure_count: (stats.failure_count || 0) + 1,
+        blacklisted_until: blacklistUntil,
+      }).eq('id', id);
+    }
+
+    const onHostResult = async (host: string, ok: boolean, error?: string, items?: number, latencyMs?: number) => {
       const id = hostIdByUrl.get(host);
       if (!id) return;
+      const stats = hostStatsByUrl.get(host) || { success_count: 0, failure_count: 0, consecutive_failures: 0, latency_ms_avg: 0, items_collected: 0 };
       if (ok) {
+        const newAvg = stats.latency_ms_avg > 0
+          ? Math.round((stats.latency_ms_avg * 0.7) + ((latencyMs ?? stats.latency_ms_avg) * 0.3))
+          : (latencyMs ?? 0);
         await supabaseService.from('nitter_instances').update({
           last_checked: new Date().toISOString(),
           last_error_at: null,
           last_error_message: null,
+          success_count: (stats.success_count || 0) + 1,
+          consecutive_failures: 0,
+          latency_ms_avg: newAvg,
+          items_collected: (stats.items_collected || 0) + (items || 0),
+          blacklisted_until: null,
         }).eq('id', id);
       } else {
+        const newConsec = (stats.consecutive_failures || 0) + 1;
+        const blacklistUntil = newConsec >= 3 ? new Date(Date.now() + 30 * 60 * 1000).toISOString() : null;
         await supabaseService.from('nitter_instances').update({
           last_error_at: new Date().toISOString(),
           last_error_message: (error || 'unknown').substring(0, 200),
           last_checked: new Date().toISOString(),
+          failure_count: (stats.failure_count || 0) + 1,
+          consecutive_failures: newConsec,
+          blacklisted_until: blacklistUntil,
         }).eq('id', id);
       }
     };
