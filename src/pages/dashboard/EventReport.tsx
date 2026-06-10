@@ -131,8 +131,10 @@ const YEAR_PRESETS = [
 export default function EventReport() {
   const { user } = useAuth();
   const [candidateId, setCandidateId] = useState<string>("");
-  const [startDate, setStartDate] = useState("2022-01-01");
-  const [endDate, setEndDate] = useState("2022-12-31");
+  const [startDate, setStartDate] = useState("2018-01-01");
+  const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [category, setCategory] = useState<string>("all");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const { data: candidates } = useQuery({
