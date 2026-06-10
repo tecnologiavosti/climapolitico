@@ -145,59 +145,30 @@ export default function Overview() {
     refetchOnWindowFocus: false,
   });
 
-  // Query: Interações sociais para gráfico temporal (últimos 7 dias)
-  // Considera tanto a data de postagem original (original_posted_at) quanto a
-  // data de coleta (created_at) para capturar tudo que aconteceu na janela.
-  const { data: socialInteractions, isLoading: loadingInteractions } = useQuery({
-    queryKey: ['social-interactions-overview', isAdmin, user?.id],
+  // C1+C4: agregação completa via RPC overview_summary (sem .limit, respeita admin)
+  // Substitui as duas queries antigas (.limit(10000) e .limit(5000)) que viam apenas
+  // 1-10% da base. Agora vem direto de daily_network_metrics + daily_candidate_metrics.
+  const { data: overviewSummary, isLoading: loadingInteractions } = useQuery({
+    queryKey: ['overview-summary-30d', isAdmin, user?.id],
     queryFn: async () => {
-      if (!user) return [];
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      let query = supabase
-        .from('social_interactions')
-        .select('id, candidate_id, sentiment_label, sentiment_score, likes_count, social_network, created_at, original_posted_at, comment_author')
-        .or(`original_posted_at.gte.${sevenDaysAgo},and(original_posted_at.is.null,created_at.gte.${sevenDaysAgo})`)
-        .not('social_network', 'in', '(mastodon,lemmy,pinterest)')
-        .order('created_at', { ascending: false })
-        .limit(10000);
-      if (!isAdmin) query = query.eq('user_id', user.id);
-      const { data, error } = await query;
+      if (!user) return null;
+      const { data, error } = await supabase.rpc('overview_summary', { p_days: 30 });
       if (error) throw error;
-      return data || [];
+      return (data as any)?.data ?? null;
     },
     enabled: !!user,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 60 * 1000, // M1: 60s para alinhar com Tempo Real
   });
 
-  // Query removida: Análises de fala (não mais exibida na Visão Geral)
-  // const { data: speeches, isLoading: loadingSpeeches } = useQuery({...});
+  // Mantém shape antigo para o resto do componente sem refactor amplo
+  const socialInteractions = null as any;
+  const loadingRankings = loadingInteractions;
+  // Reconstruído a partir do agregado by_candidate (RPC já filtra admin e redes visíveis)
+  const rankingInteractions = (overviewSummary?.by_candidate ?? []) as Array<{
+    candidate_id: string; mentions: number; engagement: number; authors: number;
+    pos: number; neg: number; neu: number;
+  }>;
 
-  // Query: Rankings calculados em tempo real (últimos 30 dias)
-  // Limitada a 5000 linhas — mais que suficiente para o top-5 da Visão Geral.
-  // Para a aba Ranking completa, a query original (paginada) continua.
-  const { data: rankingInteractions, isLoading: loadingRankings } = useQuery({
-    queryKey: ['rankings-overview-interactions', isAdmin, user?.id],
-    queryFn: async () => {
-      if (!user) return [];
-      const from = new Date();
-      from.setDate(from.getDate() - 30);
-      const to = new Date();
-      to.setDate(to.getDate() + 1);
-      const orFilter = `and(original_posted_at.gte.${from.toISOString()},original_posted_at.lt.${to.toISOString()}),and(original_posted_at.is.null,created_at.gte.${from.toISOString()},created_at.lt.${to.toISOString()})`;
-      const { data, error } = await supabase
-        .from('social_interactions')
-        .select('candidate_id, sentiment_label, sentiment_score, likes_count, comment_author')
-        .eq('user_id', user.id)
-        .not('social_network', 'in', '(mastodon,lemmy,pinterest)')
-        .or(orFilter)
-        .order('created_at', { ascending: false })
-        .limit(5000);
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!user,
-    staleTime: 5 * 60 * 1000,
-  });
 
   // Calcula ranking com a mesma fórmula da página Ranking
   const rankings = (() => {
