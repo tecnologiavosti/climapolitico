@@ -1301,9 +1301,11 @@ const RealTimeMonitor = () => {
                     <div><div className="text-muted-foreground">Total analisado</div><div className="font-semibold text-foreground tabular-nums">{snapshot.mentionsToday.toLocaleString("pt-BR")}</div></div>
                   </div>
                   <div className="mt-2 text-[11px] text-muted-foreground border-t border-primary/20 pt-2">
-                    Sentimento calculado sobre <span className="font-semibold text-foreground/80">{snapshot.classifiedToday.toLocaleString("pt-BR")} registros classificados</span>
-                    {historicalBase !== null && (
-                      <> · Base histórica da plataforma: <span className="font-semibold text-foreground/80">{historicalBase.toLocaleString("pt-BR")}</span></>
+                    {snapshot.hasSentimentSample
+                      ? <>Sentimento calculado sobre <span className="font-semibold text-foreground/80">{snapshot.classifiedToday.toLocaleString("pt-BR")} registros classificados</span></>
+                      : <span className="italic">Sentimento indisponível por amostra insuficiente (mínimo de 5 classificações).</span>}
+                    {historicalBase.total !== null && (
+                      <> · Base histórica da plataforma: <span className="font-semibold text-foreground/80">{historicalBase.total.toLocaleString("pt-BR")}</span> · Citações históricas na janela: <span className="font-semibold text-foreground/80">{snapshot.historicalMentions.toLocaleString("pt-BR")}</span></>
                     )}
                   </div>
                 </div>
