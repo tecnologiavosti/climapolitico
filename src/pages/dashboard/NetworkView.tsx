@@ -522,38 +522,6 @@ export default function NetworkView() {
         </Card>
       </div>
 
-      {/* Top posts */}
-      <Card className="p-6">
-        <h3 className="text-lg font-bold mb-1">Top 20 posts</h3>
-        <p className="text-sm text-muted-foreground mb-4">Posts políticos com maior engajamento no período</p>
-        {isLoadingTopPosts ? <Skeleton className="h-[300px] w-full" /> : !agg?.top_posts.length ? <EmptyState /> : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {agg.top_posts.map((p) => (
-              <div key={p.id} className="border border-border rounded-lg p-4 hover:bg-muted/30 transition">
-                <div className="flex items-center justify-between mb-2">
-                  <Badge variant="outline" className="text-xs">{p.social_network}</Badge>
-                  {p.sent && (
-                    <Badge variant={p.sent === "positive" ? "default" : p.sent === "negative" ? "destructive" : "secondary"} className="text-[10px]">
-                      {p.sent === "positive" ? "Positivo" : p.sent === "negative" ? "Negativo" : "Neutro"}
-                    </Badge>
-                  )}
-                </div>
-                <p className="text-sm line-clamp-3 mb-2">{p.comment_text}</p>
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span className="truncate max-w-[140px]">{p.comment_author || "anônimo"}</span>
-                  <span><Users className="h-3 w-3 inline mr-1" />{compact(p.eng)} interações</span>
-                </div>
-                <div className="text-[10px] text-muted-foreground mt-1">
-                  {p.original_posted_at && format(parseISO(p.original_posted_at), "dd MMM yyyy", { locale: ptBR })}
-                </div>
-                <Button variant="ghost" size="sm" className="mt-2 w-full text-xs h-7" disabled>
-                  <ExternalLink className="h-3 w-3 mr-1" /> Ver detalhes
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
     </div>
   );
 }
