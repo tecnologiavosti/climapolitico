@@ -572,9 +572,6 @@ export default function RegionalAnalysis() {
         <BrazilStateMap userId={user.id} candidateId={candidateId} network={network} />
       )}
 
-      {candidateId && user && (
-        <CitiesRanking userId={user.id} candidateId={candidateId} network={network} />
-      )}
 
       {/* ─── Detalhe da região selecionada ─── */}
       {candidateId && !mapLoading && (
