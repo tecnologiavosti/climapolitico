@@ -4,6 +4,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { enrichRecordLocation } from "../_shared/infer-location.ts";
+import { newPipelineRecorder } from "../_shared/pipeline-metrics.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
