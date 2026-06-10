@@ -459,6 +459,8 @@ export default function EventReport() {
               </Card>
             );
           })}
+            </div>
+          ))}
         </div>
       ) : null}
     </div>
