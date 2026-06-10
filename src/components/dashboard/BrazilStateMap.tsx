@@ -240,7 +240,7 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
                                 <div className="font-semibold">{UF_NAME[code]} ({code})</div>
                                 {hasData ? (
                                   <>
-                                    <div>Menções: {a!.Number(total ?? 0).toLocaleString("pt-BR")}</div>
+                                    <div>Menções: {Number(a!.total ?? 0).toLocaleString("pt-BR")}</div>
                                     <div className="text-green-600">+ {a!.pos} positivos</div>
                                     <div className="text-red-600">- {a!.neg} negativos</div>
                                     <div className="text-muted-foreground">= {a!.neu} neutros</div>
