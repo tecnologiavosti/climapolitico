@@ -3201,6 +3201,7 @@ export type Database = {
       cleanup_old_notifications: { Args: never; Returns: number }
       cleanup_pipeline_data: { Args: never; Returns: undefined }
       cleanup_rate_limits: { Args: never; Returns: undefined }
+      collector_health_snapshot: { Args: never; Returns: Json }
       compute_slo_status: {
         Args: never
         Returns: {
