@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import BrazilStateMap from "@/components/dashboard/BrazilStateMap";
-import CitiesRanking from "@/components/dashboard/CitiesRanking";
+
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { BR_MAP } from "@/data/brRegionsMap";
