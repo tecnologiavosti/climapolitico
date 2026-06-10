@@ -755,10 +755,34 @@ Responda APENAS JSON válido:
     }
     const externalTimeline = [...timelineMap.values()].sort((a, b) => a.date.localeCompare(b.date));
 
+    // === FASE 4: ENRIQUECIMENTO COM SSOT (social_interactions) ===
+    // Para cada pico, busca repercussão real observada nas 16 redes monitoradas,
+    // em janela de ±7 dias ao redor do evento. NÃO substitui Google News/GDELT/scores externos.
+    const correlations = await Promise.allSettled(events.map(async (ev: any) => {
+      const startMs = new Date(`${ev.start_date}T00:00:00Z`).getTime() - 7 * 86400000;
+      const endMs   = new Date(`${ev.end_date || ev.start_date}T23:59:59Z`).getTime() + 7 * 86400000;
+      const { data, error } = await admin.rpc("event_ssot_correlation", {
+        p_candidate_id: candidate.id,
+        p_start: new Date(startMs).toISOString(),
+        p_end:   new Date(endMs).toISOString(),
+      });
+      if (error) { console.warn("[detect-historical-peaks] ssot rpc:", error.message); return null; }
+      return data as { total_mentions: number; unique_authors: number; total_engagement: number; by_network: Record<string, number> } | null;
+    }));
+
     // Remove fontes/URLs externas da resposta — manter usuário dentro da plataforma.
-    const sanitizedEvents = events.map((e: any) => {
+    const sanitizedEvents = events.map((e: any, i: number) => {
       const { sources: _omit, ...rest } = e;
-      return { ...rest, sources_count: Array.isArray(_omit) ? _omit.length : 0 };
+      const c = correlations[i].status === "fulfilled" ? (correlations[i] as any).value : null;
+      return {
+        ...rest,
+        sources_count: Array.isArray(_omit) ? _omit.length : 0,
+        internal_mentions:   Number(c?.total_mentions   ?? 0),
+        internal_authors:    Number(c?.unique_authors   ?? 0),
+        internal_engagement: Number(c?.total_engagement ?? 0),
+        internal_by_network: (c?.by_network ?? {}) as Record<string, number>,
+        internal_window_days: 14,
+      };
     });
 
     return new Response(JSON.stringify({
