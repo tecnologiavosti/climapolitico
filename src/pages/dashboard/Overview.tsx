@@ -129,7 +129,7 @@ export default function Overview() {
       return (data as any)?.data;
     },
     enabled: !!user,
-    staleTime: 15 * 60 * 1000,
+    staleTime: 60 * 1000, // M1: alinhado com Tempo Real
     refetchOnWindowFocus: false,
   });
 
@@ -141,97 +141,68 @@ export default function Overview() {
       return (data as any)?.data;
     },
     enabled: !!user,
-    staleTime: 15 * 60 * 1000,
+    staleTime: 60 * 1000, // M1: alinhado com Tempo Real
     refetchOnWindowFocus: false,
   });
 
-  // Query: Interações sociais para gráfico temporal (últimos 7 dias)
-  // Considera tanto a data de postagem original (original_posted_at) quanto a
-  // data de coleta (created_at) para capturar tudo que aconteceu na janela.
-  const { data: socialInteractions, isLoading: loadingInteractions } = useQuery({
-    queryKey: ['social-interactions-overview', isAdmin, user?.id],
+  // C1+C4: agregação completa via RPC overview_summary (sem .limit, respeita admin)
+  // Substitui as duas queries antigas (.limit(10000) e .limit(5000)) que viam apenas
+  // 1-10% da base. Agora vem direto de daily_network_metrics + daily_candidate_metrics.
+  const { data: overviewSummary, isLoading: loadingInteractions } = useQuery({
+    queryKey: ['overview-summary-30d', isAdmin, user?.id],
     queryFn: async () => {
-      if (!user) return [];
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      let query = supabase
-        .from('social_interactions')
-        .select('id, candidate_id, sentiment_label, sentiment_score, likes_count, social_network, created_at, original_posted_at, comment_author')
-        .or(`original_posted_at.gte.${sevenDaysAgo},and(original_posted_at.is.null,created_at.gte.${sevenDaysAgo})`)
-        .not('social_network', 'in', '(mastodon,lemmy,pinterest)')
-        .order('created_at', { ascending: false })
-        .limit(10000);
-      if (!isAdmin) query = query.eq('user_id', user.id);
-      const { data, error } = await query;
+      if (!user) return null;
+      const { data, error } = await supabase.rpc('overview_summary', { p_days: 30 });
       if (error) throw error;
-      return data || [];
+      return (data as any)?.data ?? null;
     },
     enabled: !!user,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 60 * 1000, // M1: 60s para alinhar com Tempo Real
   });
 
-  // Query removida: Análises de fala (não mais exibida na Visão Geral)
-  // const { data: speeches, isLoading: loadingSpeeches } = useQuery({...});
+  // Mantém shape antigo para o resto do componente sem refactor amplo
+  const socialInteractions = null as any;
+  const loadingRankings = loadingInteractions;
+  // Reconstruído a partir do agregado by_candidate (RPC já filtra admin e redes visíveis)
+  const rankingInteractions = (overviewSummary?.by_candidate ?? []) as Array<{
+    candidate_id: string; mentions: number; engagement: number; authors: number;
+    pos: number; neg: number; neu: number;
+  }>;
 
-  // Query: Rankings calculados em tempo real (últimos 30 dias)
-  // Limitada a 5000 linhas — mais que suficiente para o top-5 da Visão Geral.
-  // Para a aba Ranking completa, a query original (paginada) continua.
-  const { data: rankingInteractions, isLoading: loadingRankings } = useQuery({
-    queryKey: ['rankings-overview-interactions', isAdmin, user?.id],
-    queryFn: async () => {
-      if (!user) return [];
-      const from = new Date();
-      from.setDate(from.getDate() - 30);
-      const to = new Date();
-      to.setDate(to.getDate() + 1);
-      const orFilter = `and(original_posted_at.gte.${from.toISOString()},original_posted_at.lt.${to.toISOString()}),and(original_posted_at.is.null,created_at.gte.${from.toISOString()},created_at.lt.${to.toISOString()})`;
-      const { data, error } = await supabase
-        .from('social_interactions')
-        .select('candidate_id, sentiment_label, sentiment_score, likes_count, comment_author')
-        .eq('user_id', user.id)
-        .not('social_network', 'in', '(mastodon,lemmy,pinterest)')
-        .or(orFilter)
-        .order('created_at', { ascending: false })
-        .limit(5000);
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!user,
-    staleTime: 5 * 60 * 1000,
-  });
 
-  // Calcula ranking com a mesma fórmula da página Ranking
+  // Ranking calculado a partir dos agregados completos (overview_summary)
   const rankings = (() => {
-    if (!candidates || !rankingInteractions) return [] as Array<{ id: string; candidate_id: string; overall_score: number; rank_change: number; candidates: { full_name: string } }>;
-    const map = new Map<string, { mentions: number; authors: Set<string>; engagement: number; sentSum: number }>();
-    candidates.forEach((c: any) => map.set(c.id, { mentions: 0, authors: new Set(), engagement: 0, sentSum: 0 }));
-    rankingInteractions.forEach((i: any) => {
-      const m = map.get(i.candidate_id);
+    if (!candidates || !rankingInteractions?.length) {
+      return [] as Array<{ id: string; candidate_id: string; overall_score: number; rank_change: number; candidates: { full_name: string } }>;
+    }
+    const map = new Map<string, { mentions: number; authors: number; engagement: number; pos: number; neg: number; neu: number }>();
+    candidates.forEach((c: any) => map.set(c.id, { mentions: 0, authors: 0, engagement: 0, pos: 0, neg: 0, neu: 0 }));
+    rankingInteractions.forEach((row) => {
+      const m = map.get(row.candidate_id);
       if (!m) return;
-      m.mentions++;
-      if (i.comment_author) m.authors.add(i.comment_author);
-      m.engagement += i.likes_count || 0;
-      // Mesma classificação da aba Ranking (case-sensitive, sem fallback de score)
-      if (i.sentiment_label === 'Positivo') m.sentSum += 100;
-      else if (i.sentiment_label === 'Negativo') m.sentSum += 0;
-      else m.sentSum += 50;
+      m.mentions += Number(row.mentions) || 0;
+      m.authors += Number(row.authors) || 0;
+      m.engagement += Number(row.engagement) || 0;
+      m.pos += Number(row.pos) || 0;
+      m.neg += Number(row.neg) || 0;
+      m.neu += Number(row.neu) || 0;
     });
     let maxM = 0, maxA = 0, maxE = 0;
-    map.forEach(m => { if (m.mentions > maxM) maxM = m.mentions; if (m.authors.size > maxA) maxA = m.authors.size; if (m.engagement > maxE) maxE = m.engagement; });
+    map.forEach(m => { if (m.mentions > maxM) maxM = m.mentions; if (m.authors > maxA) maxA = m.authors; if (m.engagement > maxE) maxE = m.engagement; });
     const arr = candidates.map((c: any) => {
       const m = map.get(c.id)!;
-      // Mesma lógica da aba Ranking: avg arredondado ANTES de entrar no score
-      const avgSent = m.mentions > 0 ? Math.round(m.sentSum / m.mentions) : 50;
+      const total = m.pos + m.neg + m.neu;
+      const avgSent = total > 0 ? Math.round((m.pos * 100 + m.neu * 50) / total) : 50;
       const mScore = maxM > 0 ? (m.mentions / maxM) * 100 : 0;
-      const aScore = maxA > 0 ? (m.authors.size / maxA) * 100 : 0;
+      const aScore = maxA > 0 ? (m.authors / maxA) * 100 : 0;
       const eScore = maxE > 0 ? (m.engagement / maxE) * 100 : 0;
-      // Mesma fórmula da aba Ranking: cada métrica entra com peso integral (100%)
-      // e o score final é a média das 4 dimensões normalizadas (escala 0-100).
       const overall = Math.round((mScore + aScore + avgSent + eScore) / 4);
       return { id: c.id, candidate_id: c.id, overall_score: overall, rank_change: 0, candidates: { full_name: c.full_name } };
     });
     arr.sort((a, b) => b.overall_score - a.overall_score);
     return arr;
   })();
+
 
   // Aggregate metrics from cache (single source of truth)
   const fallbackAggregatedMetrics = allMetrics?.reduce(
