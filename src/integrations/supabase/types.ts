@@ -3243,6 +3243,14 @@ export type Database = {
           uf: string
         }[]
       }
+      candidates_comparison_timeline: {
+        Args: { _candidate_ids: string[]; _days?: number }
+        Returns: {
+          candidate_id: string
+          day: string
+          mentions: number
+        }[]
+      }
       check_api_rate_limit: {
         Args: { _key_id: string; _limit: number }
         Returns: boolean
@@ -3306,6 +3314,15 @@ export type Database = {
       cleanup_old_notifications: { Args: never; Returns: number }
       cleanup_pipeline_data: { Args: never; Returns: undefined }
       cleanup_rate_limits: { Args: never; Returns: undefined }
+      collection_status_summary: {
+        Args: never
+        Returns: {
+          last_collected_at: string
+          last24h_count: number
+          network: string
+          total_30d: number
+        }[]
+      }
       collector_health_snapshot: { Args: never; Returns: Json }
       compute_slo_status: {
         Args: never
