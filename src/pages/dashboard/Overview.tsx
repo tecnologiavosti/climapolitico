@@ -170,39 +170,39 @@ export default function Overview() {
   }>;
 
 
-  // Calcula ranking com a mesma fórmula da página Ranking
+  // Ranking calculado a partir dos agregados completos (overview_summary)
   const rankings = (() => {
-    if (!candidates || !rankingInteractions) return [] as Array<{ id: string; candidate_id: string; overall_score: number; rank_change: number; candidates: { full_name: string } }>;
-    const map = new Map<string, { mentions: number; authors: Set<string>; engagement: number; sentSum: number }>();
-    candidates.forEach((c: any) => map.set(c.id, { mentions: 0, authors: new Set(), engagement: 0, sentSum: 0 }));
-    rankingInteractions.forEach((i: any) => {
-      const m = map.get(i.candidate_id);
+    if (!candidates || !rankingInteractions?.length) {
+      return [] as Array<{ id: string; candidate_id: string; overall_score: number; rank_change: number; candidates: { full_name: string } }>;
+    }
+    const map = new Map<string, { mentions: number; authors: number; engagement: number; pos: number; neg: number; neu: number }>();
+    candidates.forEach((c: any) => map.set(c.id, { mentions: 0, authors: 0, engagement: 0, pos: 0, neg: 0, neu: 0 }));
+    rankingInteractions.forEach((row) => {
+      const m = map.get(row.candidate_id);
       if (!m) return;
-      m.mentions++;
-      if (i.comment_author) m.authors.add(i.comment_author);
-      m.engagement += i.likes_count || 0;
-      // Mesma classificação da aba Ranking (case-sensitive, sem fallback de score)
-      if (i.sentiment_label === 'Positivo') m.sentSum += 100;
-      else if (i.sentiment_label === 'Negativo') m.sentSum += 0;
-      else m.sentSum += 50;
+      m.mentions += Number(row.mentions) || 0;
+      m.authors += Number(row.authors) || 0;
+      m.engagement += Number(row.engagement) || 0;
+      m.pos += Number(row.pos) || 0;
+      m.neg += Number(row.neg) || 0;
+      m.neu += Number(row.neu) || 0;
     });
     let maxM = 0, maxA = 0, maxE = 0;
-    map.forEach(m => { if (m.mentions > maxM) maxM = m.mentions; if (m.authors.size > maxA) maxA = m.authors.size; if (m.engagement > maxE) maxE = m.engagement; });
+    map.forEach(m => { if (m.mentions > maxM) maxM = m.mentions; if (m.authors > maxA) maxA = m.authors; if (m.engagement > maxE) maxE = m.engagement; });
     const arr = candidates.map((c: any) => {
       const m = map.get(c.id)!;
-      // Mesma lógica da aba Ranking: avg arredondado ANTES de entrar no score
-      const avgSent = m.mentions > 0 ? Math.round(m.sentSum / m.mentions) : 50;
+      const total = m.pos + m.neg + m.neu;
+      const avgSent = total > 0 ? Math.round((m.pos * 100 + m.neu * 50) / total) : 50;
       const mScore = maxM > 0 ? (m.mentions / maxM) * 100 : 0;
-      const aScore = maxA > 0 ? (m.authors.size / maxA) * 100 : 0;
+      const aScore = maxA > 0 ? (m.authors / maxA) * 100 : 0;
       const eScore = maxE > 0 ? (m.engagement / maxE) * 100 : 0;
-      // Mesma fórmula da aba Ranking: cada métrica entra com peso integral (100%)
-      // e o score final é a média das 4 dimensões normalizadas (escala 0-100).
       const overall = Math.round((mScore + aScore + avgSent + eScore) / 4);
       return { id: c.id, candidate_id: c.id, overall_score: overall, rank_change: 0, candidates: { full_name: c.full_name } };
     });
     arr.sort((a, b) => b.overall_score - a.overall_score);
     return arr;
   })();
+
 
   // Aggregate metrics from cache (single source of truth)
   const fallbackAggregatedMetrics = allMetrics?.reduce(
