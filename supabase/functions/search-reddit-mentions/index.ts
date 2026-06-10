@@ -165,6 +165,7 @@ Deno.serve(async (req) => {
     }
     const userId = cand.user_id as string;
 
+    const rec = newPipelineRecorder("reddit", candidateId);
     const query = `"${candidateName}"`;
 
     const tasks: Promise<any[]>[] = [
@@ -192,21 +193,27 @@ Deno.serve(async (req) => {
       Promise.allSettled(redditFallback).then((rs) => rs.map((r) => r.status === "fulfilled" ? r.value : [])),
     ]);
 
+    const pullpushCount = results.flat().length;
+    const fallbackCount = fallbackResults.flat().length;
+    rec.addCollected(pullpushCount, "pullpush_arctic");
+    rec.addCollected(fallbackCount, "reddit_json_fallback");
+
     const allPosts = [
       ...results[0],
       ...results.slice(2, 2 + BR_SUBREDDITS.length).flat(),
       ...results[results.length - 2],
-      ...fallbackResults.flat(), // posts do fallback oficial
+      ...fallbackResults.flat(),
     ];
     const allComments = [...results[1], ...results[results.length - 1]];
-    console.log(`[REDDIT] PullPush=${results.flat().length} Fallback=${fallbackResults.flat().length}`);
+    console.log(`[REDDIT] PullPush=${pullpushCount} Fallback=${fallbackCount}`);
 
     const items: any[] = [];
     for (const p of allPosts) {
       const text = `${p.title || ""}\n${p.selftext || ""}`.trim();
       const url = p.permalink ? `https://reddit.com${p.permalink}` : (p.url || "");
-      if (!text || !url) continue;
-      if (!semanticMatch(text, candidateName)) continue;
+      if (!text || !url) { rec.addFiltered(1, "invalid_payload"); continue; }
+      if (!semanticMatch(text, candidateName)) { rec.addFiltered(1, "semantic_mismatch"); continue; }
+      rec.addParsed(1);
       items.push({
         candidate_id: candidateId, user_id: userId, social_network: "Reddit", interaction_type: "post",
         comment_text: text.slice(0, 4000),
@@ -221,8 +228,9 @@ Deno.serve(async (req) => {
     for (const c of allComments) {
       const text = (c.body || "").trim();
       const url = c.permalink ? `https://reddit.com${c.permalink}` : (c.link_permalink || "");
-      if (!text || !url || text === "[removed]" || text === "[deleted]") continue;
-      if (!semanticMatch(text, candidateName)) continue;
+      if (!text || !url || text === "[removed]" || text === "[deleted]") { rec.addFiltered(1, "invalid_payload"); continue; }
+      if (!semanticMatch(text, candidateName)) { rec.addFiltered(1, "semantic_mismatch"); continue; }
+      rec.addParsed(1);
       items.push({
         candidate_id: candidateId, user_id: userId, social_network: "Reddit", interaction_type: "comment",
         comment_text: text.slice(0, 4000),
@@ -238,8 +246,10 @@ Deno.serve(async (req) => {
     const byUrl = new Map<string, any>();
     for (const it of items) byUrl.set(it.author_profile_url, it);
     const dedupedLocal = [...byUrl.values()];
+    rec.addDeduped(items.length - dedupedLocal.length, "local");
 
     if (dedupedLocal.length === 0) {
+      await rec.flush();
       return new Response(JSON.stringify({ collected: 0, message: "Nenhuma menção nova" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -256,8 +266,10 @@ Deno.serve(async (req) => {
       (existing ?? []).forEach((e: any) => existingSet.add(e.author_profile_url));
     }
     const fresh = dedupedLocal.filter((r) => !existingSet.has(r.author_profile_url));
+    rec.addDeduped(dedupedLocal.length - fresh.length, "db");
 
     if (fresh.length === 0) {
+      await rec.flush();
       return new Response(JSON.stringify({ collected: 0, message: "Todos duplicados" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -265,7 +277,9 @@ Deno.serve(async (req) => {
 
     const freshEnriched = fresh.map((r) => enrichRecordLocation(r));
     const { error } = await supabase.from("social_interactions").insert(freshEnriched);
-    if (error) throw error;
+    if (error) { rec.setError(error.message); await rec.flush(); throw error; }
+    rec.addInserted(fresh.length);
+    await rec.flush();
 
     return new Response(JSON.stringify({ collected: fresh.length, raw: dedupedLocal.length }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
