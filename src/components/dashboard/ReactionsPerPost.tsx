@@ -429,6 +429,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
     const totalRecords = d?.totalRecords || 0;
     const pending = d?.pendingCount ?? Math.max(0, totalRecords - labeled);
     const denom = totalRecords > 0 ? totalRecords : 1;
+    const denomLabeled = labeled > 0 ? labeled : 1;
     return {
       pos, neg, neu, labeled, pending, totalRecords,
       postsCount: d?.postsCount || 0,
@@ -440,7 +441,13 @@ export function ReactionsPerPost({ candidateId }: Props) {
       negPct: Math.round((neg / denom) * 100),
       neuPct: Math.round((neu / denom) * 100),
       pendingPct: Math.round((pending / denom) * 100),
+      // Sentimento geral dinâmico: calculado apenas sobre menções já classificadas
+      // (ignora "sem classificação"), refletindo o clima real entre os registros analisados.
+      posPctLabeled: Math.round((pos / denomLabeled) * 100),
+      negPctLabeled: Math.round((neg / denomLabeled) * 100),
+      neuPctLabeled: Math.round((neu / denomLabeled) * 100),
     };
+
   }, [summary]);
 
   // Plataformas tratadas como portais de notícia — NÃO entram no Top 5 social
