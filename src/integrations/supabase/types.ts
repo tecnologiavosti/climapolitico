@@ -1726,35 +1726,53 @@ export type Database = {
       }
       nitter_instances: {
         Row: {
+          blacklisted_until: string | null
+          consecutive_failures: number
           created_at: string
+          failure_count: number
           health_score: number
           id: string
           is_active: boolean
+          items_collected: number
           last_checked: string | null
           last_error_at: string | null
           last_error_message: string | null
+          latency_ms_avg: number
+          success_count: number
           updated_at: string
           url: string
         }
         Insert: {
+          blacklisted_until?: string | null
+          consecutive_failures?: number
           created_at?: string
+          failure_count?: number
           health_score?: number
           id?: string
           is_active?: boolean
+          items_collected?: number
           last_checked?: string | null
           last_error_at?: string | null
           last_error_message?: string | null
+          latency_ms_avg?: number
+          success_count?: number
           updated_at?: string
           url: string
         }
         Update: {
+          blacklisted_until?: string | null
+          consecutive_failures?: number
           created_at?: string
+          failure_count?: number
           health_score?: number
           id?: string
           is_active?: boolean
+          items_collected?: number
           last_checked?: string | null
           last_error_at?: string | null
           last_error_message?: string | null
+          latency_ms_avg?: number
+          success_count?: number
           updated_at?: string
           url?: string
         }
