@@ -46,6 +46,40 @@ function semanticMatch(text: string, fullName: string): boolean {
   return t.includes(parts[0]);
 }
 
+// ===== L2.b: fallback Reddit oficial (.json + .rss) com retry exponencial =====
+const USER_AGENTS = [
+  "ClimaPolitico/1.0 (by /u/clima_politico)",
+  "Mozilla/5.0 (compatible; ClimaPoliticoBot/1.0; +https://climapolitico.com.br)",
+  "ClimaPolitico-Monitor/1.1 (research)",
+];
+const RETRY_BACKOFFS_MS = [1000, 3000, 9000];
+
+async function fetchWithRetry(url: string, timeoutMs = 15000): Promise<Response | null> {
+  let lastErr = "";
+  for (let attempt = 0; attempt <= RETRY_BACKOFFS_MS.length; attempt++) {
+    try {
+      const r = await fetch(url, {
+        headers: {
+          "Accept": "application/json, application/rss+xml, */*",
+          "User-Agent": USER_AGENTS[attempt % USER_AGENTS.length],
+        },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (r.ok) return r;
+      lastErr = `HTTP ${r.status}`;
+      if (r.status !== 429 && r.status !== 503) return null;
+    } catch (e) {
+      lastErr = (e as Error).message;
+      if (!lastErr.toLowerCase().includes("timeout") && !lastErr.toLowerCase().includes("timed out")) return null;
+    }
+    if (attempt < RETRY_BACKOFFS_MS.length) {
+      await new Promise((r) => setTimeout(r, RETRY_BACKOFFS_MS[attempt] + Math.floor(Math.random() * 500)));
+    }
+  }
+  console.warn(`[REDDIT] fetchWithRetry esgotado: ${url} → ${lastErr}`);
+  return null;
+}
+
 async function fetchPullPush(
   kind: "submission" | "comment",
   query: string,
@@ -57,41 +91,49 @@ async function fetchPullPush(
   });
   if (subreddit) params.set("subreddit", subreddit);
   const url = `${PULLPUSH_BASE}/${kind}/?${params.toString()}`;
+  const res = await fetchWithRetry(url, 20000);
+  if (!res) return [];
   try {
-    const res = await fetch(url, {
-      headers: { "Accept": "application/json", "User-Agent": "ClimaPolitico/1.0 (+lovable)" },
-      signal: AbortSignal.timeout(20000),
-    });
-    if (!res.ok) {
-      console.warn(`[REDDIT] pullpush ${kind}${subreddit ? ` r/${subreddit}` : ""} HTTP ${res.status}`);
-      return [];
-    }
     const json = await res.json();
     return Array.isArray(json?.data) ? json.data : [];
-  } catch (e) {
-    console.warn(`[REDDIT] pullpush ${kind} falhou:`, (e as Error).message);
-    return [];
-  }
+  } catch { return []; }
 }
 
 async function fetchArcticShift(kind: "posts" | "comments", query: string): Promise<any[]> {
   const after = Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
   const url = `${ARCTIC_SHIFT_BASE}/${kind}/search?q=${encodeURIComponent(query)}&limit=200&after=${after}`;
+  const res = await fetchWithRetry(url, 25000);
+  if (!res) return [];
   try {
-    const res = await fetch(url, {
-      headers: { "Accept": "application/json", "User-Agent": "ClimaPolitico/1.0 (+lovable)" },
-      signal: AbortSignal.timeout(25000),
-    });
-    if (!res.ok) {
-      console.warn(`[REDDIT] arctic-shift ${kind} HTTP ${res.status}`);
-      return [];
-    }
     const json = await res.json();
     return Array.isArray(json?.data) ? json.data : [];
-  } catch (e) {
-    console.warn(`[REDDIT] arctic-shift ${kind} falhou:`, (e as Error).message);
-    return [];
-  }
+  } catch { return []; }
+}
+
+// Fallback: Reddit oficial via .json (sem OAuth)
+async function fetchRedditJson(subreddit: string, query: string): Promise<any[]> {
+  const url = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodeURIComponent(query)}&restrict_sr=on&sort=new&limit=100&t=month`;
+  const res = await fetchWithRetry(url, 15000);
+  if (!res) return [];
+  try {
+    const json = await res.json();
+    const children = json?.data?.children;
+    if (!Array.isArray(children)) return [];
+    return children.map((c: any) => c?.data).filter(Boolean);
+  } catch { return []; }
+}
+
+// Fallback adicional: novos posts via .json do feed (sem busca)
+async function fetchRedditNewJson(subreddit: string): Promise<any[]> {
+  const url = `https://www.reddit.com/r/${subreddit}/new.json?limit=100`;
+  const res = await fetchWithRetry(url, 15000);
+  if (!res) return [];
+  try {
+    const json = await res.json();
+    const children = json?.data?.children;
+    if (!Array.isArray(children)) return [];
+    return children.map((c: any) => c?.data).filter(Boolean);
+  } catch { return []; }
 }
 
 Deno.serve(async (req) => {
