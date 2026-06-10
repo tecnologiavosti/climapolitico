@@ -162,6 +162,19 @@ export default function EventReport() {
   });
 
   const events = useMemo(() => data?.events || [], [data]);
+  const filteredEvents = useMemo(
+    () => (category === "all" ? events : events.filter((e) => (e.category || "outros") === category)),
+    [events, category],
+  );
+  const eventsByYear = useMemo(() => {
+    const groups = new Map<string, HistoricalEvent[]>();
+    for (const ev of [...filteredEvents].sort((a, b) => a.start_date.localeCompare(b.start_date))) {
+      const year = (ev.start_date || "").slice(0, 4) || "—";
+      if (!groups.has(year)) groups.set(year, []);
+      groups.get(year)!.push(ev);
+    }
+    return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [filteredEvents]);
   // timeline retornado pelo backend não é exibido — foco em eventos relevantes.
 
   const handleSearch = () => {
