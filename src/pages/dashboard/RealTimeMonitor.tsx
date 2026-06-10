@@ -891,14 +891,31 @@ const RealTimeMonitor = () => {
 
           {snapshot && (
             <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
-              <CardContent className="p-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground">Baseado em:</span>
-                <span>{snapshot.evidence.news.toLocaleString("pt-BR")} notícias</span>
-                <span className="hidden sm:inline">·</span>
-                <span>{snapshot.evidence.posts.toLocaleString("pt-BR")} posts</span>
-                <span className="hidden sm:inline">·</span>
-                <span>{snapshot.evidence.videos.toLocaleString("pt-BR")} vídeos</span>
-                <Badge variant="outline" className="w-fit sm:ml-auto text-[10px]">Últimas {windowHours}h</Badge>
+              <CardContent className="p-3 space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">
+                    {snapshot.mentionsToday.toLocaleString("pt-BR")} registros detectados nas últimas {windowHours}h
+                  </span>
+                  <span className="hidden sm:inline">·</span>
+                  <span>{snapshot.evidence.news.toLocaleString("pt-BR")} notícias</span>
+                  <span className="hidden sm:inline">·</span>
+                  <span>{snapshot.evidence.posts.toLocaleString("pt-BR")} posts</span>
+                  <span className="hidden sm:inline">·</span>
+                  <span>{snapshot.evidence.videos.toLocaleString("pt-BR")} vídeos</span>
+                  <Badge variant="outline" className="w-fit sm:ml-auto text-[10px]">Últimas {windowHours}h</Badge>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-[11px] text-muted-foreground border-t border-border/40 pt-2">
+                  <span>
+                    Base histórica: <span className="font-semibold text-foreground/80">{(historicalBase ?? 0).toLocaleString("pt-BR")} registros</span>
+                  </span>
+                  <span className="hidden sm:inline">·</span>
+                  <span>
+                    Sentimento calculado sobre <span className="font-semibold text-foreground/80">{snapshot.classifiedToday.toLocaleString("pt-BR")} registros classificados</span>
+                    {snapshot.mentionsToday > snapshot.classifiedToday && (
+                      <> de {snapshot.mentionsToday.toLocaleString("pt-BR")} totais</>
+                    )}
+                  </span>
+                </div>
               </CardContent>
             </Card>
           )}
