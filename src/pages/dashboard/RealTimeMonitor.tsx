@@ -1188,7 +1188,22 @@ const RealTimeMonitor = () => {
                   <Badge variant="secondary" className="text-[10px] h-4 px-1.5">Evidências</Badge>
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+                  <div className="text-[11px] uppercase tracking-wide text-primary font-semibold mb-2">Base utilizada</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    <div><div className="text-muted-foreground">Notícias</div><div className="font-semibold text-foreground tabular-nums">{snapshot.evidence.news.toLocaleString("pt-BR")}</div></div>
+                    <div><div className="text-muted-foreground">Posts</div><div className="font-semibold text-foreground tabular-nums">{snapshot.evidence.posts.toLocaleString("pt-BR")}</div></div>
+                    <div><div className="text-muted-foreground">Vídeos</div><div className="font-semibold text-foreground tabular-nums">{snapshot.evidence.videos.toLocaleString("pt-BR")}</div></div>
+                    <div><div className="text-muted-foreground">Total analisado</div><div className="font-semibold text-foreground tabular-nums">{snapshot.mentionsToday.toLocaleString("pt-BR")}</div></div>
+                  </div>
+                  <div className="mt-2 text-[11px] text-muted-foreground border-t border-primary/20 pt-2">
+                    Sentimento calculado sobre <span className="font-semibold text-foreground/80">{snapshot.classifiedToday.toLocaleString("pt-BR")} registros classificados</span>
+                    {historicalBase !== null && (
+                      <> · Base histórica da plataforma: <span className="font-semibold text-foreground/80">{historicalBase.toLocaleString("pt-BR")}</span></>
+                    )}
+                  </div>
+                </div>
                 <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {[
                     { k: "O que aconteceu", v: snapshot.executiveSummary.what, icon: <Activity className="h-3.5 w-3.5" /> },
