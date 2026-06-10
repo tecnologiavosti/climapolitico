@@ -655,7 +655,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
             <KpiBox label="Posts" value={totals.postsCount} />
             <KpiBox label="Comentários / respostas" value={totals.commentsCount} />
             <KpiBox label="Interações totais" value={totals.totalInteractions} />
-            <KpiBox label="Sentimento geral" value={totals.posPct - totals.negPct} suffix="%" tone={totals.posPct >= totals.negPct ? "pos" : "neg"} />
+            <KpiBox label="Sentimento geral" value={totals.posPctLabeled - totals.negPctLabeled} suffix="%" tone={totals.posPctLabeled >= totals.negPctLabeled ? "pos" : "neg"} />
           </div>
 
           {/* Barra de sentimento consolidado */}
