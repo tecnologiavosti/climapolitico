@@ -1321,21 +1321,27 @@ const RealTimeMonitor = () => {
                     )}
                   </div>
                 </div>
-                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {[
-                    { k: "O que aconteceu", v: snapshot.executiveSummary.what, icon: <Activity className="h-3.5 w-3.5" /> },
-                    { k: "Evidência associada", v: snapshot.executiveSummary.why, icon: <Sparkles className="h-3.5 w-3.5" /> },
-                    { k: "Fontes observadas", v: snapshot.executiveSummary.who, icon: <Megaphone className="h-3.5 w-3.5" /> },
-                    { k: "Qual foi o impacto", v: snapshot.executiveSummary.impact, icon: <TrendingUp className="h-3.5 w-3.5" /> },
-                  ].map(item => (
-                    <div key={item.k} className="rounded-lg border border-border/60 bg-background/40 p-3">
-                      <dt className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium flex items-center gap-1.5">
-                        <span className="text-primary">{item.icon}</span>{item.k}
-                      </dt>
-                      <dd className="text-sm text-foreground/90 mt-1.5 leading-relaxed">{item.v}</dd>
-                    </div>
-                  ))}
-                </dl>
+                {snapshot.mentionsToday < 3 ? (
+                  <div className="rounded-lg border border-border/60 bg-background/40 p-4 text-sm text-muted-foreground italic text-center">
+                    Não há evidências suficientes para gerar uma análise confiável.
+                  </div>
+                ) : (
+                  <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {[
+                      { k: "O que aconteceu", v: snapshot.executiveSummary.what, icon: <Activity className="h-3.5 w-3.5" /> },
+                      { k: "Evidência associada", v: snapshot.executiveSummary.why, icon: <Sparkles className="h-3.5 w-3.5" /> },
+                      { k: "Fontes observadas", v: snapshot.executiveSummary.who, icon: <Megaphone className="h-3.5 w-3.5" /> },
+                      { k: "Qual foi o impacto", v: snapshot.executiveSummary.impact, icon: <TrendingUp className="h-3.5 w-3.5" /> },
+                    ].map(item => (
+                      <div key={item.k} className="rounded-lg border border-border/60 bg-background/40 p-3">
+                        <dt className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium flex items-center gap-1.5">
+                          <span className="text-primary">{item.icon}</span>{item.k}
+                        </dt>
+                        <dd className="text-sm text-foreground/90 mt-1.5 leading-relaxed">{item.v}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
               </CardContent>
             </Card>
           )}
