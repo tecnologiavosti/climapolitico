@@ -522,11 +522,21 @@ async function fetchSnapshot(
   const negativeToday = sample.filter((r) => r.sentiment_label === "Negativo").length;
   const neutralToday = sample.filter((r) => r.sentiment_label === "Neutro").length;
   const classifiedToday = positiveToday + negativeToday + neutralToday;
+  const unclassifiedToday = Math.max(0, mentionsToday - classifiedToday);
+  const classifiedCoveragePct = mentionsToday > 0 ? Math.round((classifiedToday / mentionsToday) * 100) : 0;
   const hasSentimentSample = classifiedToday >= 5;
-  // Validação: soma sempre <= total e nunca expostos números maiores que a base
-  if (classifiedToday > mentionsToday) {
-    // proteção defensiva — nunca exibir mais classificações que total
-    // (não deve acontecer, mas garantido aqui)
+
+  // Citações detectadas — contagem real de ocorrências do nome do candidato dentro dos conteúdos
+  let citationsDetected = 0;
+  if (nameMatcher) {
+    const globalMatcher = new RegExp(nameMatcher.source, "gi");
+    for (const r of sample) {
+      const text = `${r.post_title || ""} ${r.post_description || ""} ${r.comment_text || ""}`;
+      const matches = text.match(globalMatcher);
+      if (matches) citationsDetected += matches.length;
+    }
+  } else {
+    citationsDetected = mentionsToday;
   }
 
   const newsRows = sample.filter(r => isNewsNetwork(r.social_network, r.platform, r.interaction_type) && effectiveDateOf(r).getTime() >= start24h.getTime());
