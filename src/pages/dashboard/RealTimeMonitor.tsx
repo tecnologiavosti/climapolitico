@@ -58,6 +58,9 @@ interface Snapshot {
   hasStatisticalBase: boolean;
   hasSentimentSample: boolean; // >= 5 classificações
   historicalMentions: number;  // citações históricas separadas
+  citationsDetected: number;   // ocorrências reais do nome do candidato nos conteúdos
+  classifiedCoveragePct: number; // % de cobertura do classificador
+  unclassifiedToday: number;
   // BLOCO 2 — temas dominantes
   themes: Theme[];
   // BLOCO 3 — eventos
