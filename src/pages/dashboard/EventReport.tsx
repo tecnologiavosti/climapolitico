@@ -135,7 +135,6 @@ export default function EventReport() {
   const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [category, setCategory] = useState<string>("all");
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const { data: candidates } = useQuery({
     queryKey: ["candidates-mine", user?.id],
