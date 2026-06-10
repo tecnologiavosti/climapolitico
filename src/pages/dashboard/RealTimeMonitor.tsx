@@ -990,17 +990,34 @@ const RealTimeMonitor = () => {
                   <span>{snapshot.evidence.videos.toLocaleString("pt-BR")} vídeos</span>
                   <Badge variant="outline" className="w-fit sm:ml-auto text-[10px]">Últimas {windowHours}h</Badge>
                 </div>
-                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-[11px] text-muted-foreground border-t border-border/40 pt-2">
-                  <span>
-                    Base histórica: <span className="font-semibold text-foreground/80">{(historicalBase ?? 0).toLocaleString("pt-BR")} registros</span>
-                  </span>
-                  <span className="hidden sm:inline">·</span>
-                  <span>
-                    Sentimento calculado sobre <span className="font-semibold text-foreground/80">{snapshot.classifiedToday.toLocaleString("pt-BR")} registros classificados</span>
-                    {snapshot.mentionsToday > snapshot.classifiedToday && (
-                      <> de {snapshot.mentionsToday.toLocaleString("pt-BR")} totais</>
-                    )}
-                  </span>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px] text-muted-foreground border-t border-border/40 pt-2">
+                  <div>
+                    <div>Base histórica</div>
+                    <div className="font-semibold text-foreground/80 tabular-nums">{(historicalBase.total ?? 0).toLocaleString("pt-BR")}</div>
+                  </div>
+                  <div>
+                    <div>Últimos 30 dias</div>
+                    <div className="font-semibold text-foreground/80 tabular-nums">{(historicalBase.d30 ?? 0).toLocaleString("pt-BR")}</div>
+                  </div>
+                  <div>
+                    <div>Últimos 90 dias</div>
+                    <div className="font-semibold text-foreground/80 tabular-nums">{(historicalBase.d90 ?? 0).toLocaleString("pt-BR")}</div>
+                  </div>
+                  <div>
+                    <div>Último ano</div>
+                    <div className="font-semibold text-foreground/80 tabular-nums">{(historicalBase.d365 ?? 0).toLocaleString("pt-BR")}</div>
+                  </div>
+                  <div>
+                    <div>Citações históricas (janela)</div>
+                    <div className="font-semibold text-foreground/80 tabular-nums">{snapshot.historicalMentions.toLocaleString("pt-BR")}</div>
+                  </div>
+                </div>
+                <div className="text-[11px] text-muted-foreground">
+                  {snapshot.hasSentimentSample ? (
+                    <>Sentimento calculado sobre <span className="font-semibold text-foreground/80">{snapshot.classifiedToday.toLocaleString("pt-BR")} registros classificados</span>{snapshot.mentionsToday > snapshot.classifiedToday && (<> de {snapshot.mentionsToday.toLocaleString("pt-BR")} totais</>)}.</>
+                  ) : (
+                    <span className="italic">Sentimento indisponível por amostra insuficiente ({snapshot.classifiedToday} classificações; mínimo de 5).</span>
+                  )}
                 </div>
               </CardContent>
             </Card>
