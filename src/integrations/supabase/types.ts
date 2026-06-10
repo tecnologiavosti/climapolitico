@@ -810,6 +810,81 @@ export type Database = {
         }
         Relationships: []
       }
+      collector_snapshots: {
+        Row: {
+          collector_name: string
+          daily_calls: number
+          daily_errors: number
+          daily_items_collected: number
+          id: string
+          last_call_at: string | null
+          max_daily_calls: number
+          notes: string | null
+          paused_until: string | null
+          snapshot_label: string
+          taken_at: string
+        }
+        Insert: {
+          collector_name: string
+          daily_calls?: number
+          daily_errors?: number
+          daily_items_collected?: number
+          id?: string
+          last_call_at?: string | null
+          max_daily_calls?: number
+          notes?: string | null
+          paused_until?: string | null
+          snapshot_label: string
+          taken_at?: string
+        }
+        Update: {
+          collector_name?: string
+          daily_calls?: number
+          daily_errors?: number
+          daily_items_collected?: number
+          id?: string
+          last_call_at?: string | null
+          max_daily_calls?: number
+          notes?: string | null
+          paused_until?: string | null
+          snapshot_label?: string
+          taken_at?: string
+        }
+        Relationships: []
+      }
+      collector_volume_snapshots: {
+        Row: {
+          id: string
+          snapshot_label: string
+          social_network: string
+          taken_at: string
+          volume_24h: number
+          volume_30d: number
+          volume_30d_previous: number
+          volume_7d: number
+        }
+        Insert: {
+          id?: string
+          snapshot_label: string
+          social_network: string
+          taken_at?: string
+          volume_24h?: number
+          volume_30d?: number
+          volume_30d_previous?: number
+          volume_7d?: number
+        }
+        Update: {
+          id?: string
+          snapshot_label?: string
+          social_network?: string
+          taken_at?: string
+          volume_24h?: number
+          volume_30d?: number
+          volume_30d_previous?: number
+          volume_7d?: number
+        }
+        Relationships: []
+      }
       daily_candidate_metrics: {
         Row: {
           candidate_id: string
