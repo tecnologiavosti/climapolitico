@@ -492,12 +492,25 @@ async function fetchSnapshot(
   const newsCollected = qNews.count ?? 0;
   const prev24h = qPrev24h.count ?? 0;
   const rawSample: any[] = qSample.data ?? [];
+  // Matcher de centralidade: o nome do político precisa ser protagonista, não apenas mencionado
+  const nameMatcher = buildNameMatcher(candidateName);
   // Pontuação + filtro de relevância política dentro da janela selecionada
   const scoredSample = rawSample
-    .map((r) => ({ row: r, score: scoreRelevance(r, start24h.getTime(), now.getTime()) }))
+    .map((r) => ({ row: r, score: scoreRelevance(r, start24h.getTime(), now.getTime(), nameMatcher) }))
     .filter((x) => x.score > 0);
   const sample: any[] = scoredSample.map((x) => x.row);
   const scoreById = new Map<string, number>(scoredSample.map((x) => [x.row.id, x.score]));
+
+  // Citações históricas (separadas) — itens dentro da janela que falam só de contexto histórico
+  const historicalMentions = rawSample.filter((r) => {
+    const t = effectiveDateOf(r).getTime();
+    if (t < start24h.getTime() || t > now.getTime() + 60_000) return false;
+    if (nameMatcher) {
+      const headline = `${r.post_title || ""} ${r.post_description || ""}`.slice(0, 280);
+      if (!nameMatcher.test(headline) && !nameMatcher.test(cleanText(`${r.post_title || ""} ${r.post_description || ""} ${r.comment_text || ""}`).slice(0, 280))) return false;
+    }
+    return isHistoricalOnly(r);
+  }).length;
 
   // ============ FONTE ÚNICA DE VERDADE ============
   // Todos os números exibidos são derivados de `sample`. Nada de count queries divergentes.
@@ -506,6 +519,7 @@ async function fetchSnapshot(
   const negativeToday = sample.filter((r) => r.sentiment_label === "Negativo").length;
   const neutralToday = sample.filter((r) => r.sentiment_label === "Neutro").length;
   const classifiedToday = positiveToday + negativeToday + neutralToday;
+  const hasSentimentSample = classifiedToday >= 5;
   // Validação: soma sempre <= total e nunca expostos números maiores que a base
   if (classifiedToday > mentionsToday) {
     // proteção defensiva — nunca exibir mais classificações que total
