@@ -990,28 +990,30 @@ const RealTimeMonitor = () => {
                   <span>{snapshot.evidence.videos.toLocaleString("pt-BR")} vídeos</span>
                   <Badge variant="outline" className="w-fit sm:ml-auto text-[10px]">Últimas {windowHours}h</Badge>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px] text-muted-foreground border-t border-border/40 pt-2">
-                  <div>
-                    <div>Base histórica</div>
-                    <div className="font-semibold text-foreground/80 tabular-nums">{(historicalBase.total ?? 0).toLocaleString("pt-BR")}</div>
-                  </div>
-                  <div>
-                    <div>Últimos 30 dias</div>
-                    <div className="font-semibold text-foreground/80 tabular-nums">{(historicalBase.d30 ?? 0).toLocaleString("pt-BR")}</div>
-                  </div>
-                  <div>
-                    <div>Últimos 90 dias</div>
-                    <div className="font-semibold text-foreground/80 tabular-nums">{(historicalBase.d90 ?? 0).toLocaleString("pt-BR")}</div>
-                  </div>
-                  <div>
-                    <div>Último ano</div>
-                    <div className="font-semibold text-foreground/80 tabular-nums">{(historicalBase.d365 ?? 0).toLocaleString("pt-BR")}</div>
-                  </div>
-                  <div>
-                    <div>Citações históricas (janela)</div>
-                    <div className="font-semibold text-foreground/80 tabular-nums">{snapshot.historicalMentions.toLocaleString("pt-BR")}</div>
-                  </div>
-                </div>
+                {(() => {
+                  // Oculta janelas que repetem o mesmo valor (sem cálculo real disponível para distinguir)
+                  const total = historicalBase.total;
+                  const d30 = historicalBase.d30;
+                  const d90 = historicalBase.d90;
+                  const d365 = historicalBase.d365;
+                  const items: Array<{ k: string; v: number }> = [];
+                  if (typeof total === "number") items.push({ k: "Base histórica", v: total });
+                  if (typeof d365 === "number" && d365 !== total) items.push({ k: "Último ano", v: d365 });
+                  if (typeof d90 === "number" && d90 !== d365 && d90 !== total) items.push({ k: "Últimos 90 dias", v: d90 });
+                  if (typeof d30 === "number" && d30 !== d90 && d30 !== d365 && d30 !== total) items.push({ k: "Últimos 30 dias", v: d30 });
+                  items.push({ k: "Citações históricas (janela)", v: snapshot.historicalMentions });
+                  return (
+                    <div className={cn("grid gap-2 text-[11px] text-muted-foreground border-t border-border/40 pt-2",
+                      items.length >= 4 ? "grid-cols-2 sm:grid-cols-5" : items.length === 3 ? "grid-cols-3" : "grid-cols-2")}>
+                      {items.map(it => (
+                        <div key={it.k}>
+                          <div>{it.k}</div>
+                          <div className="font-semibold text-foreground/80 tabular-nums">{it.v.toLocaleString("pt-BR")}</div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
                 <div className="text-[11px] text-muted-foreground">
                   {snapshot.hasSentimentSample ? (
                     <>Sentimento calculado sobre <span className="font-semibold text-foreground/80">{snapshot.classifiedToday.toLocaleString("pt-BR")} registros classificados</span>{snapshot.mentionsToday > snapshot.classifiedToday && (<> de {snapshot.mentionsToday.toLocaleString("pt-BR")} totais</>)}.</>
