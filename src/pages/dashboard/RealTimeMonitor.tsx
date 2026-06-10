@@ -1107,18 +1107,24 @@ const RealTimeMonitor = () => {
                 <CardTitle className="text-sm font-semibold flex items-center gap-2"><Activity className="h-4 w-4 text-primary" />Evolução das menções</CardTitle>
               </CardHeader>
               <CardContent>
-                <Tabs defaultValue="24h">
-                  <TabsList className="h-8">
-                    <TabsTrigger value="1h" className="text-xs">1h</TabsTrigger>
-                    <TabsTrigger value="6h" className="text-xs">6h</TabsTrigger>
-                    <TabsTrigger value="12h" className="text-xs">12h</TabsTrigger>
-                    <TabsTrigger value="24h" className="text-xs">24h</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="1h" className="mt-3"><EvolutionChart data={snapshot.evolution1h} /></TabsContent>
-                  <TabsContent value="6h" className="mt-3"><EvolutionChart data={snapshot.evolution6h} /></TabsContent>
-                  <TabsContent value="12h" className="mt-3"><EvolutionChart data={snapshot.evolution12h} /></TabsContent>
-                  <TabsContent value="24h" className="mt-3"><EvolutionChart data={snapshot.evolution24h} /></TabsContent>
-                </Tabs>
+                {snapshot.mentionsToday === 0 ? (
+                  <p className="text-xs text-muted-foreground py-6 text-center italic">
+                    Sem dados suficientes para gerar visualizações neste período.
+                  </p>
+                ) : (
+                  <Tabs defaultValue="24h">
+                    <TabsList className="h-8">
+                      <TabsTrigger value="1h" className="text-xs">1h</TabsTrigger>
+                      <TabsTrigger value="6h" className="text-xs">6h</TabsTrigger>
+                      <TabsTrigger value="12h" className="text-xs">12h</TabsTrigger>
+                      <TabsTrigger value="24h" className="text-xs">24h</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="1h" className="mt-3"><EvolutionChart data={snapshot.evolution1h} /></TabsContent>
+                    <TabsContent value="6h" className="mt-3"><EvolutionChart data={snapshot.evolution6h} /></TabsContent>
+                    <TabsContent value="12h" className="mt-3"><EvolutionChart data={snapshot.evolution12h} /></TabsContent>
+                    <TabsContent value="24h" className="mt-3"><EvolutionChart data={snapshot.evolution24h} /></TabsContent>
+                  </Tabs>
+                )}
               </CardContent>
             </Card>
           )}
