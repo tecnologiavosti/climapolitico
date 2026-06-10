@@ -765,6 +765,57 @@ export type Database = {
           },
         ]
       }
+      collector_pipeline_metrics: {
+        Row: {
+          candidate_id: string | null
+          collected_count: number
+          collector_name: string
+          deduped_count: number
+          discard_reasons: Json
+          error_message: string | null
+          executed_at: string
+          execution_time_ms: number | null
+          filtered_count: number
+          had_error: boolean
+          id: string
+          inserted_count: number
+          parsed_count: number
+          source_breakdown: Json
+        }
+        Insert: {
+          candidate_id?: string | null
+          collected_count?: number
+          collector_name: string
+          deduped_count?: number
+          discard_reasons?: Json
+          error_message?: string | null
+          executed_at?: string
+          execution_time_ms?: number | null
+          filtered_count?: number
+          had_error?: boolean
+          id?: string
+          inserted_count?: number
+          parsed_count?: number
+          source_breakdown?: Json
+        }
+        Update: {
+          candidate_id?: string | null
+          collected_count?: number
+          collector_name?: string
+          deduped_count?: number
+          discard_reasons?: Json
+          error_message?: string | null
+          executed_at?: string
+          execution_time_ms?: number | null
+          filtered_count?: number
+          had_error?: boolean
+          id?: string
+          inserted_count?: number
+          parsed_count?: number
+          source_breakdown?: Json
+        }
+        Relationships: []
+      }
       collector_quota_state: {
         Row: {
           collector_name: string
@@ -3637,6 +3688,23 @@ export type Database = {
       record_collector_call: {
         Args: { _had_error?: boolean; _items?: number; _name: string }
         Returns: undefined
+      }
+      record_pipeline_stage: {
+        Args: {
+          _candidate_id: string
+          _collected: number
+          _collector: string
+          _deduped: number
+          _discard_reasons?: Json
+          _error_message?: string
+          _execution_ms: number
+          _filtered: number
+          _had_error?: boolean
+          _inserted: number
+          _parsed: number
+          _source_breakdown?: Json
+        }
+        Returns: string
       }
       record_provider_call: {
         Args: { _latency_ms?: number; _provider: string; _success: boolean }
