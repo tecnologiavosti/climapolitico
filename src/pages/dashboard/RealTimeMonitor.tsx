@@ -944,6 +944,9 @@ const RealTimeMonitor = () => {
                     <p className="text-xs text-muted-foreground py-4">Sem evidência recente suficiente para identificar temas políticos nas últimas 24h.</p>
                   ) : (
                     <div className="space-y-2">
+                      <p className="text-[11px] text-muted-foreground italic">
+                        Um mesmo registro pode contribuir para múltiplos temas — a soma pode exceder o total da janela.
+                      </p>
                       {snapshot.themes.map((t, i) => (
                         <motion.div key={t.name} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.04 }}
                           className={cn(
