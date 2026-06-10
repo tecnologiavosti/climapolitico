@@ -46,7 +46,19 @@ interface HistoricalEvent {
   sentiment_neutral: number;
   sources_count?: number;
   outlet_names?: string[];
+  internal_mentions?: number;
+  internal_authors?: number;
+  internal_engagement?: number;
+  internal_by_network?: Record<string, number>;
+  internal_window_days?: number;
 }
+
+const NETWORK_LABEL: Record<string, string> = {
+  youtube: "YouTube", twitter: "Twitter / X", telegram: "Telegram", tiktok: "TikTok",
+  facebook: "Facebook", google_news: "Google News", reddit: "Reddit", bluesky: "Bluesky",
+  linkedin: "LinkedIn", instagram: "Instagram", mastodon: "Mastodon", lemmy: "Lemmy",
+  wikipedia: "Wikipedia", pinterest: "Pinterest", gdelt: "GDELT", "4chan": "4chan",
+};
 
 interface ExternalTimelinePoint {
   date: string; total: number; news: number; videos: number; posts: number;
