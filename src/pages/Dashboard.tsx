@@ -45,6 +45,7 @@ const SLO = lazy(() => import("./dashboard/SLO"));
 const WorkerTokens = lazy(() => import("./dashboard/WorkerTokens"));
 const TenantAnalytics = lazy(() => import("./dashboard/TenantAnalytics"));
 const DataDiagnostics = lazy(() => import("./dashboard/DataDiagnostics"));
+const CollectorHealth = lazy(() => import("./dashboard/CollectorHealth"));
 
 const HistoricalComparison = lazy(() => import("./dashboard/HistoricalComparison"));
 
@@ -143,6 +144,7 @@ const Dashboard = () => {
                 <Route path="/worker-tokens" element={wrap("WorkerTokens", WorkerTokens)} />
                 <Route path="/tenant-analytics" element={wrap("TenantAnalytics", TenantAnalytics)} />
                 <Route path="/data-diagnostics" element={wrap("DataDiagnostics", DataDiagnostics)} />
+                <Route path="/collector-health" element={wrap("CollectorHealth", CollectorHealth)} />
                 <Route path="/notifications" element={wrap("Notifications", Notifications)} />
                 <Route path="/data-collection-methodology" element={wrap("DataCollectionMethodology", DataCollectionMethodology)} />
                 <Route path="/regional-analysis" element={wrap("RegionalAnalysis", RegionalAnalysis)} />

@@ -168,6 +168,7 @@ const adminGroup: NavGroup = {
     { title: "Worker Tokens", url: "/dashboard/worker-tokens", icon: Key },
     { title: "Tenant Analytics", url: "/dashboard/tenant-analytics", icon: Shield },
     { title: "Diagnóstico de Dados", url: "/dashboard/data-diagnostics", icon: Database },
+    { title: "Saúde dos Coletores", url: "/dashboard/collector-health", icon: Activity },
     { title: "Enriquecimento de Dados", url: "/dashboard/data-enrichment", icon: Database },
   ],
 };
