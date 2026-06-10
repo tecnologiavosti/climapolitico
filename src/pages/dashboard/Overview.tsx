@@ -129,7 +129,7 @@ export default function Overview() {
       return (data as any)?.data;
     },
     enabled: !!user,
-    staleTime: 15 * 60 * 1000,
+    staleTime: 60 * 1000, // M1: alinhado com Tempo Real
     refetchOnWindowFocus: false,
   });
 
@@ -141,7 +141,7 @@ export default function Overview() {
       return (data as any)?.data;
     },
     enabled: !!user,
-    staleTime: 15 * 60 * 1000,
+    staleTime: 60 * 1000, // M1: alinhado com Tempo Real
     refetchOnWindowFocus: false,
   });
 
