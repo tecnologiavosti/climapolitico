@@ -58,6 +58,9 @@ interface Snapshot {
   hasStatisticalBase: boolean;
   hasSentimentSample: boolean; // >= 5 classificações
   historicalMentions: number;  // citações históricas separadas
+  citationsDetected: number;   // ocorrências reais do nome do candidato nos conteúdos
+  classifiedCoveragePct: number; // % de cobertura do classificador
+  unclassifiedToday: number;
   // BLOCO 2 — temas dominantes
   themes: Theme[];
   // BLOCO 3 — eventos
@@ -519,11 +522,21 @@ async function fetchSnapshot(
   const negativeToday = sample.filter((r) => r.sentiment_label === "Negativo").length;
   const neutralToday = sample.filter((r) => r.sentiment_label === "Neutro").length;
   const classifiedToday = positiveToday + negativeToday + neutralToday;
+  const unclassifiedToday = Math.max(0, mentionsToday - classifiedToday);
+  const classifiedCoveragePct = mentionsToday > 0 ? Math.round((classifiedToday / mentionsToday) * 100) : 0;
   const hasSentimentSample = classifiedToday >= 5;
-  // Validação: soma sempre <= total e nunca expostos números maiores que a base
-  if (classifiedToday > mentionsToday) {
-    // proteção defensiva — nunca exibir mais classificações que total
-    // (não deve acontecer, mas garantido aqui)
+
+  // Citações detectadas — contagem real de ocorrências do nome do candidato dentro dos conteúdos
+  let citationsDetected = 0;
+  if (nameMatcher) {
+    const globalMatcher = new RegExp(nameMatcher.source, "gi");
+    for (const r of sample) {
+      const text = `${r.post_title || ""} ${r.post_description || ""} ${r.comment_text || ""}`;
+      const matches = text.match(globalMatcher);
+      if (matches) citationsDetected += matches.length;
+    }
+  } else {
+    citationsDetected = mentionsToday;
   }
 
   const newsRows = sample.filter(r => isNewsNetwork(r.social_network, r.platform, r.interaction_type) && effectiveDateOf(r).getTime() >= start24h.getTime());
@@ -653,8 +666,8 @@ async function fetchSnapshot(
   const alerts: Alert[] = [];
   if (hasStatisticalBase) {
     const growth = prev24h >= 10 ? ((windowCounts.h24 - prev24h) / prev24h) * 100 : 0;
-    if (prev24h >= 10 && growth >= 50) alerts.push({ kind: "growth", title: `Crescimento de ${Math.round(growth)}% nas menções`, detail: `${windowCounts.h24.toLocaleString("pt-BR")} registros na janela contra ${prev24h.toLocaleString("pt-BR")} na anterior.`, evidence });
-    else if (prev24h >= 10 && growth <= -40) alerts.push({ kind: "growth", title: `Queda de ${Math.round(Math.abs(growth))}% nas menções`, detail: `${windowCounts.h24.toLocaleString("pt-BR")} registros na janela contra ${prev24h.toLocaleString("pt-BR")} na anterior.`, evidence });
+    if (prev24h >= 10 && growth >= 50) alerts.push({ kind: "growth", title: `Crescimento de ${Math.round(growth)}% nos registros monitorados`, detail: `Janela atual: ${windowCounts.h24.toLocaleString("pt-BR")} registros · Janela anterior: ${prev24h.toLocaleString("pt-BR")} registros (comparação contra as 24h anteriores).`, evidence });
+    else if (prev24h >= 10 && growth <= -40) alerts.push({ kind: "growth", title: `Queda de ${Math.round(Math.abs(growth))}% nos registros monitorados`, detail: `Janela atual: ${windowCounts.h24.toLocaleString("pt-BR")} registros · Janela anterior: ${prev24h.toLocaleString("pt-BR")} registros (comparação contra as 24h anteriores).`, evidence });
     if ((negativeToday / Math.max(1, classifiedToday)) >= 0.5) {
       alerts.push({ kind: "crisis", title: "Volume negativo elevado", detail: `${negativeToday.toLocaleString("pt-BR")} de ${classifiedToday.toLocaleString("pt-BR")} classificações são negativas.`, evidence });
     } else if ((negativeToday / Math.max(1, classifiedToday)) >= 0.35) {
@@ -680,13 +693,13 @@ async function fetchSnapshot(
   const nowNarrative =
     mentionsToday === 0
       ? `Pouca atividade pública relevante detectada para ${candidateName} nas últimas ${windowHours}h.`
-      : `${candidateName} teve ${mentionsToday.toLocaleString("pt-BR")} sinais de atividade política atual nas últimas ${windowHours}h. ` +
+      : `${candidateName} teve ${mentionsToday.toLocaleString("pt-BR")} registros monitorados (notícias, posts e vídeos) e ${citationsDetected.toLocaleString("pt-BR")} citações detectadas nas últimas ${windowHours}h. ` +
         (topTheme ? `Tema com maior evidência: ${topTheme.name}, sustentado por ${topTheme.evidence.news} notícias, ${topTheme.evidence.posts} posts e ${topTheme.evidence.videos} vídeos. ` : `Nenhum tema atingiu evidência mínima (3 evidências, 2 veículos ou evento oficial). `) +
         (classifiedToday > 0 ? `Leitura de sentimento: ${tone}.` : "Ainda sem volume classificado suficiente.");
 
   // BLOCO 8 — Resumo executivo (mesmíssima base dos demais blocos)
   const executiveSummary = {
-    what: mentionsToday > 0 ? `${candidateName} apresentou ${mentionsToday.toLocaleString("pt-BR")} sinais de atividade política atual: ${evidence.news.toLocaleString("pt-BR")} notícias, ${evidence.posts.toLocaleString("pt-BR")} posts e ${evidence.videos.toLocaleString("pt-BR")} vídeos; ${windowCounts.h1.toLocaleString("pt-BR")} na última hora.` : "Pouca atividade pública relevante detectada nas últimas 24 horas.",
+    what: mentionsToday > 0 ? `${candidateName} apresentou ${mentionsToday.toLocaleString("pt-BR")} registros monitorados: ${evidence.news.toLocaleString("pt-BR")} notícias, ${evidence.posts.toLocaleString("pt-BR")} posts e ${evidence.videos.toLocaleString("pt-BR")} vídeos (${citationsDetected.toLocaleString("pt-BR")} citações detectadas); ${windowCounts.h1.toLocaleString("pt-BR")} na última hora.` : "Pouca atividade pública relevante detectada nas últimas 24 horas.",
     why: events[0]
       ? `Evento recente detectado: "${events[0].name}" (${events[0].publications} publicações, ${events[0].outlets} veículos).`
       : viral ? `Evidência de viralização: ${viral.social_network}, ${((viral.likes_count || 0) + (viral.shares_count || 0) + (viral.replies_count || 0)).toLocaleString("pt-BR")} interações.`
@@ -702,6 +715,7 @@ async function fetchSnapshot(
   return {
     nowNarrative, mentionsToday, positiveToday, negativeToday, neutralToday, classifiedToday,
     newsCollected, evidence, windowCounts, hasStatisticalBase, hasSentimentSample, historicalMentions,
+    citationsDetected, classifiedCoveragePct, unclassifiedToday,
     themes, events, sentimentDelta, outlets, publications, alerts, executiveSummary,
     evolution24h: buckets24h, evolution12h: buckets12h, evolution6h: buckets6h, evolution1h: buckets1h,
     savedAt: Date.now(), candidateName: normalizeCandidateName(candidateName),
@@ -980,7 +994,7 @@ const RealTimeMonitor = () => {
               <CardContent className="p-3 space-y-2">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-muted-foreground">
                   <span className="font-semibold text-foreground">
-                    {snapshot.mentionsToday.toLocaleString("pt-BR")} registros detectados nas últimas {windowHours}h
+                    {snapshot.mentionsToday.toLocaleString("pt-BR")} registros monitorados nas últimas {windowHours}h
                   </span>
                   <span className="hidden sm:inline">·</span>
                   <span>{snapshot.evidence.news.toLocaleString("pt-BR")} notícias</span>
@@ -990,18 +1004,21 @@ const RealTimeMonitor = () => {
                   <span>{snapshot.evidence.videos.toLocaleString("pt-BR")} vídeos</span>
                   <Badge variant="outline" className="w-fit sm:ml-auto text-[10px]">Últimas {windowHours}h</Badge>
                 </div>
+                <div className="text-[11px] text-muted-foreground italic">
+                  Registros = notícias, posts e vídeos coletados. Citações = ocorrências reais do nome do candidato dentro desses conteúdos.
+                </div>
                 {(() => {
-                  // Oculta janelas que repetem o mesmo valor (sem cálculo real disponível para distinguir)
                   const total = historicalBase.total;
                   const d30 = historicalBase.d30;
                   const d90 = historicalBase.d90;
                   const d365 = historicalBase.d365;
                   const items: Array<{ k: string; v: number }> = [];
+                  items.push({ k: "Citações detectadas (janela)", v: snapshot.citationsDetected });
                   if (typeof total === "number") items.push({ k: "Base histórica", v: total });
                   if (typeof d365 === "number" && d365 !== total) items.push({ k: "Último ano", v: d365 });
                   if (typeof d90 === "number" && d90 !== d365 && d90 !== total) items.push({ k: "Últimos 90 dias", v: d90 });
                   if (typeof d30 === "number" && d30 !== d90 && d30 !== d365 && d30 !== total) items.push({ k: "Últimos 30 dias", v: d30 });
-                  items.push({ k: "Citações históricas (janela)", v: snapshot.historicalMentions });
+                  if (snapshot.historicalMentions > 0) items.push({ k: "Citações históricas (janela)", v: snapshot.historicalMentions });
                   return (
                     <div className={cn("grid gap-2 text-[11px] text-muted-foreground border-t border-border/40 pt-2",
                       items.length >= 4 ? "grid-cols-2 sm:grid-cols-5" : items.length === 3 ? "grid-cols-3" : "grid-cols-2")}>
@@ -1014,11 +1031,19 @@ const RealTimeMonitor = () => {
                     </div>
                   );
                 })()}
-                <div className="text-[11px] text-muted-foreground">
-                  {snapshot.hasSentimentSample ? (
-                    <>Sentimento calculado sobre <span className="font-semibold text-foreground/80">{snapshot.classifiedToday.toLocaleString("pt-BR")} registros classificados</span>{snapshot.mentionsToday > snapshot.classifiedToday && (<> de {snapshot.mentionsToday.toLocaleString("pt-BR")} totais</>)}.</>
+                <div className="text-[11px] text-muted-foreground border-t border-border/40 pt-2">
+                  {snapshot.mentionsToday > 0 ? (
+                    <>
+                      Cobertura do classificador:{" "}
+                      <span className="font-semibold text-foreground/80">{snapshot.classifiedToday.toLocaleString("pt-BR")} classificados ({snapshot.classifiedCoveragePct}%)</span>
+                      {" · "}
+                      <span className="font-semibold text-foreground/80">{snapshot.unclassifiedToday.toLocaleString("pt-BR")} não classificados ({100 - snapshot.classifiedCoveragePct}%)</span>
+                      {!snapshot.hasSentimentSample && (
+                        <span className="italic"> · Sentimento indisponível por amostra insuficiente (mínimo de 5).</span>
+                      )}
+                    </>
                   ) : (
-                    <span className="italic">Sentimento indisponível por amostra insuficiente ({snapshot.classifiedToday} classificações; mínimo de 5).</span>
+                    <span className="italic">Sem registros monitorados na janela.</span>
                   )}
                 </div>
               </CardContent>
@@ -1106,7 +1131,7 @@ const RealTimeMonitor = () => {
           {snapshot && (
             <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2"><Activity className="h-4 w-4 text-primary" />Evolução das menções</CardTitle>
+                <CardTitle className="text-sm font-semibold flex items-center gap-2"><Activity className="h-4 w-4 text-primary" />Evolução dos registros monitorados</CardTitle>
               </CardHeader>
               <CardContent>
                 {snapshot.mentionsToday === 0 ? (
@@ -1317,7 +1342,7 @@ const RealTimeMonitor = () => {
                       ? <>Sentimento calculado sobre <span className="font-semibold text-foreground/80">{snapshot.classifiedToday.toLocaleString("pt-BR")} registros classificados</span></>
                       : <span className="italic">Sentimento indisponível por amostra insuficiente (mínimo de 5 classificações).</span>}
                     {historicalBase.total !== null && (
-                      <> · Base histórica da plataforma: <span className="font-semibold text-foreground/80">{historicalBase.total.toLocaleString("pt-BR")}</span> · Citações históricas na janela: <span className="font-semibold text-foreground/80">{snapshot.historicalMentions.toLocaleString("pt-BR")}</span></>
+                      <> · Base histórica da plataforma: <span className="font-semibold text-foreground/80">{historicalBase.total.toLocaleString("pt-BR")}</span> · Citações detectadas na janela: <span className="font-semibold text-foreground/80">{snapshot.citationsDetected.toLocaleString("pt-BR")}</span>{snapshot.historicalMentions > 0 && (<> · Citações históricas: <span className="font-semibold text-foreground/80">{snapshot.historicalMentions.toLocaleString("pt-BR")}</span></>)}</>
                     )}
                   </div>
                 </div>
