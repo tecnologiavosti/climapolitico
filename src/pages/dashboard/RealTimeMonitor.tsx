@@ -1080,7 +1080,11 @@ const RealTimeMonitor = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {snapshot.sentimentDelta.available ? (
+                  {!snapshot.hasSentimentSample ? (
+                    <p className="text-xs text-muted-foreground italic py-4">
+                      Sentimento indisponível por amostra insuficiente ({snapshot.classifiedToday} classificações; mínimo de 5).
+                    </p>
+                  ) : snapshot.sentimentDelta.available ? (
                     <div className="grid grid-cols-3 gap-2">
                       <SentimentDeltaPill label="Positivo" delta={snapshot.sentimentDelta.positiveDeltaPct} positive />
                       <SentimentDeltaPill label="Negativo" delta={snapshot.sentimentDelta.negativeDeltaPct} positive={false} />
