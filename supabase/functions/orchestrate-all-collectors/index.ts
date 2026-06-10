@@ -137,8 +137,12 @@ Deno.serve(async (req) => {
         const quotaName = col.name.toLowerCase().replace("/x", "").replace(" ", "_");
         const s = summary[col.name] || { ok: 0, fail: 0 };
         try {
+          // Só conta como erro quando NENHUM candidato teve sucesso no ciclo.
+          // Antes: s.fail > 0 marcava o ciclo inteiro como erro mesmo com 27/28 sucessos,
+          // gerando falso positivo "5/5 falha" para Telegram, Google News, YouTube.
+          const hadError = s.ok === 0 && s.fail > 0;
           await supabase.rpc("record_collector_call", {
-            _name: quotaName, _items: s.ok, _had_error: s.fail > 0,
+            _name: quotaName, _items: s.ok, _had_error: hadError,
           });
         } catch (_) { /* ignora */ }
       }
