@@ -257,16 +257,33 @@ function historicalRelevanceScore(evt: any, pubs: ExternalPublication[]): number
   return Math.max(45, Math.min(100, Math.round(score)));
 }
 
-function meetsCoverageThreshold(counts: { news: number; videos: number; posts: number }, totalEvidence: number, distinctOutlets: number): boolean {
-  // Regras de validação solicitadas:
-  // 3 notícias OU 2 notícias + vídeo OU 2 notícias + posts OU 10 evidências totais.
-  // Sempre exigir ao menos 2 veículos distintos — um pico não pode vir de uma única fonte.
-  if (distinctOutlets < 2) return false;
-  if (counts.news >= 3) return true;
-  if (counts.news >= 2 && counts.videos >= 1) return true;
-  if (counts.news >= 2 && counts.posts >= 1) return true;
-  if (totalEvidence >= 10) return true;
-  return false;
+// Classifica a qualidade da cobertura externa de um evento.
+// Nenhum evento é descartado por cobertura fraca — o nível é exibido como badge na UI
+// e usado para modular o relevance_score.
+type CoverageQuality = "forte" | "media" | "fraca" | "ai_only";
+function coverageQuality(totalEvidence: number, distinctOutlets: number): CoverageQuality {
+  if (totalEvidence === 0 || distinctOutlets === 0) return "ai_only";
+  if (distinctOutlets >= 5 && totalEvidence >= 10) return "forte";
+  if (distinctOutlets >= 2) return "media";
+  return "fraca";
+}
+
+// Categoria do evento para os filtros da timeline histórica.
+function categoryOf(evt: { name?: string; type?: string }): string {
+  const text = normalize(`${evt.type || ""} ${evt.name || ""}`);
+  if (/\beleicao|eleicoes|primeiro turno|segundo turno|debate|posse presidencial\b/.test(text)) {
+    if (/\bdebate\b/.test(text)) return "debate";
+    return "eleicao";
+  }
+  if (/\boperacao|policia federal|\bpf\b|busca e apreensao\b/.test(text)) return "operacao_pf";
+  if (/\bstf|supremo tribunal\b/.test(text)) return "stf";
+  if (/\btse|tribunal superior eleitoral|inelegibilidade|cassacao\b/.test(text)) return "tse";
+  if (/\bcpi\b/.test(text)) return "cpi";
+  if (/\bjulgamento|condenacao|absolvicao|sentenca\b/.test(text)) return "julgamento";
+  if (/\bprisao|preso|detido|indiciamento\b/.test(text)) return "prisao";
+  if (/\bescandalo|denuncia|corrupcao|rachadinha|propina\b/.test(text)) return "escandalo";
+  if (/\bimpeachment\b/.test(text)) return "escandalo";
+  return "outros";
 }
 
 function relevanceFromEvidence(evt: any, pubs: ExternalPublication[], _mentions: number): number {
