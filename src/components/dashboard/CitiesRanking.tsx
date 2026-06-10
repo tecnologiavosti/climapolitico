@@ -42,7 +42,7 @@ function Metric({ label, value, sub }: { label: string; value: string | number; 
   return (
     <div className="rounded-lg border bg-card p-3">
       <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="text-xl font-bold mt-0.5">{typeof value === "number" ? value.toLocaleString("pt-BR") : value}</p>
+      <p className="text-xl font-bold mt-0.5">{typeof value === "number" ? Number(value ?? 0).toLocaleString("pt-BR") : value}</p>
       {sub && <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>}
     </div>
   );
@@ -93,7 +93,7 @@ export default function CitiesRanking({ userId, candidateId }: Props) {
         </CardTitle>
         <CardDescription>
           {summary
-            ? `${summary.citiesCount.toLocaleString("pt-BR")} cidades · ${summary.statesCount}/27 estados · ${summary.regionsCount}/5 regiões`
+            ? `${Number(summary.citiesCount ?? 0).toLocaleString("pt-BR")} cidades · ${summary.statesCount}/27 estados · ${summary.regionsCount}/5 regiões`
             : "Carregando..."}
         </CardDescription>
       </CardHeader>
@@ -164,12 +164,12 @@ export default function CitiesRanking({ userId, candidateId }: Props) {
                                 {c.uf && <Badge variant="outline" className="font-mono text-[10px]">{c.uf}</Badge>}
                               </span>
                             </td>
-                            <td className="py-2 pr-3 text-right">{c.total.toLocaleString("pt-BR")}</td>
+                            <td className="py-2 pr-3 text-right">{Number(c.total ?? 0).toLocaleString("pt-BR")}</td>
                             <td className="py-2 pr-3 text-right text-emerald-600">
-                              <span className="inline-flex items-center gap-1"><ThumbsUp className="h-3 w-3" />{c.pos.toLocaleString("pt-BR")}</span>
+                              <span className="inline-flex items-center gap-1"><ThumbsUp className="h-3 w-3" />{Number(c.pos ?? 0).toLocaleString("pt-BR")}</span>
                             </td>
-                            <td className="py-2 pr-3 text-right text-rose-600">{c.neg.toLocaleString("pt-BR")}</td>
-                            <td className="py-2 pr-3 text-right text-muted-foreground">{c.neu.toLocaleString("pt-BR")}</td>
+                            <td className="py-2 pr-3 text-right text-rose-600">{Number(c.neg ?? 0).toLocaleString("pt-BR")}</td>
+                            <td className="py-2 pr-3 text-right text-muted-foreground">{Number(c.neu ?? 0).toLocaleString("pt-BR")}</td>
                             <td className="py-2 pr-3 text-right">
                               <span className={`inline-flex items-center gap-1 ${growthDisplay.cls}`}>
                                 {growthDisplay.Icon ? <growthDisplay.Icon className="h-3 w-3" /> : null}
@@ -189,9 +189,9 @@ export default function CitiesRanking({ userId, candidateId }: Props) {
                     </tbody>
                   </table>
                   <p className="text-xs text-muted-foreground mt-2">
-                    {filtered.length.toLocaleString("pt-BR")} cidades
-                    {filter && ` filtradas de ${cities.length.toLocaleString("pt-BR")}`}
-                    {" · "}{summary.totalRecords.toLocaleString("pt-BR")} menções analisadas
+                    {Number(filtered.length ?? 0).toLocaleString("pt-BR")} cidades
+                    {filter && ` filtradas de ${Number(cities.length ?? 0).toLocaleString("pt-BR")}`}
+                    {" · "}{Number(summary.totalRecords ?? 0).toLocaleString("pt-BR")} menções analisadas
                   </p>
                 </div>
               </>

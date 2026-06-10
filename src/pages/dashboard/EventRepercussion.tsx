@@ -343,10 +343,10 @@ export default function EventRepercussion() {
                   ) : (
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                        <div className="min-w-0"><p className="text-base sm:text-xl font-bold truncate">{analysis.internalReaction.mentions.toLocaleString("pt-BR")}</p><p className="text-[11px] text-muted-foreground">Menções</p></div>
+                        <div className="min-w-0"><p className="text-base sm:text-xl font-bold truncate">{Number(analysis.internalReaction.mentions ?? 0).toLocaleString("pt-BR")}</p><p className="text-[11px] text-muted-foreground">Menções</p></div>
                         <div className="min-w-0"><p className="text-base sm:text-xl font-bold text-green-400 truncate">{analysis.internalReaction.positive}</p><p className="text-[11px] text-muted-foreground">Positivos</p></div>
                         <div className="min-w-0"><p className="text-base sm:text-xl font-bold text-red-400 truncate">{analysis.internalReaction.negative}</p><p className="text-[11px] text-muted-foreground">Negativos</p></div>
-                        <div className="min-w-0"><p className="text-base sm:text-xl font-bold truncate">{analysis.internalReaction.engagement.toLocaleString("pt-BR")}</p><p className="text-[11px] text-muted-foreground">Engajamento</p></div>
+                        <div className="min-w-0"><p className="text-base sm:text-xl font-bold truncate">{Number(analysis.internalReaction.engagement ?? 0).toLocaleString("pt-BR")}</p><p className="text-[11px] text-muted-foreground">Engajamento</p></div>
                       </div>
                       {analysis.internalReaction.sample.length > 0 && (
                         <div className="space-y-1.5">

@@ -372,14 +372,14 @@ export default function RegionalAnalysis() {
           <CardContent className="pt-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-bold">{grandTotal.toLocaleString("pt-BR")}</span>
+                <span className="text-2xl font-bold">{Number(grandTotal ?? 0).toLocaleString("pt-BR")}</span>
                 <span className="text-sm text-muted-foreground">
                   menções totais em {networkLabelText}
                 </span>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Badge variant="secondary">
-                  Com região: {classifiedTotal.toLocaleString("pt-BR")}
+                  Com região: {Number(classifiedTotal ?? 0).toLocaleString("pt-BR")}
                 </Badge>
                 {unclassifiedTotal > 0 && (
                   <TooltipProvider>
@@ -390,7 +390,7 @@ export default function RegionalAnalysis() {
                           className="border-amber-500/50 text-amber-700 dark:text-amber-400 cursor-help"
                         >
                           <Info className="h-3 w-3 mr-1" />
-                          Sem região: {unclassifiedTotal.toLocaleString("pt-BR")}
+                          Sem região: {Number(unclassifiedTotal ?? 0).toLocaleString("pt-BR")}
                         </Badge>
                       </TooltipTrigger>
                       <TooltipContent className="max-w-xs">
@@ -480,7 +480,7 @@ export default function RegionalAnalysis() {
                             <TooltipContent>
                               <div className="text-sm space-y-0.5">
                                 <div className="font-semibold">{r}</div>
-                                <div>Menções: {m.total.toLocaleString("pt-BR")}</div>
+                                <div>Menções: {Number(m.total ?? 0).toLocaleString("pt-BR")}</div>
                                 <div>Aceitação: {m.acceptance}%</div>
                                 <div>Rejeição: {m.rejection}%</div>
                                 {m.total < 10 && (
@@ -520,7 +520,7 @@ export default function RegionalAnalysis() {
                         <div className="flex items-center justify-between mb-1.5">
                           <span className="font-medium text-sm">{r.region}</span>
                           <span className="text-xs text-muted-foreground">
-                            {r.total.toLocaleString("pt-BR")} menções
+                            {Number(r.total ?? 0).toLocaleString("pt-BR")} menções
                           </span>
                         </div>
                         {(r.pos + r.neg) >= 10 ? (
@@ -551,7 +551,7 @@ export default function RegionalAnalysis() {
                                   </span>
                                 </div>
                                 <div className="text-[10px] text-muted-foreground mt-0.5">
-                                  Base: {opinionated.toLocaleString("pt-BR")} menções com opinião (neutros excluídos)
+                                  Base: {Number(opinionated ?? 0).toLocaleString("pt-BR")} menções com opinião (neutros excluídos)
                                 </div>
                               </>
                             );
@@ -587,7 +587,7 @@ export default function RegionalAnalysis() {
                   {region}
                 </CardTitle>
                 <CardDescription>
-                  {networkLabelText} · {currentMetrics.total.toLocaleString("pt-BR")} menções analisadas
+                  {networkLabelText} · {Number(currentMetrics.total ?? 0).toLocaleString("pt-BR")} menções analisadas
                 </CardDescription>
               </div>
               {currentMetrics.total > 0 && (
@@ -638,7 +638,7 @@ export default function RegionalAnalysis() {
                     Menções
                   </div>
                   <div className="text-2xl font-bold text-blue-600">
-                    {currentMetrics.total.toLocaleString("pt-BR")}
+                    {Number(currentMetrics.total ?? 0).toLocaleString("pt-BR")}
                   </div>
                   <div className="text-xs text-muted-foreground">
                     {currentMetrics.pos} pos · {currentMetrics.neg} neg · {currentMetrics.neu} neu
@@ -677,7 +677,7 @@ export default function RegionalAnalysis() {
                   <NetworkIcon n={n.label} className="h-4 w-4 text-primary shrink-0" />
                   <div className="min-w-0">
                     <div className="text-xs text-muted-foreground truncate">{n.label}</div>
-                    <div className="text-sm font-semibold">{n.total.toLocaleString("pt-BR")}</div>
+                    <div className="text-sm font-semibold">{Number(n.total ?? 0).toLocaleString("pt-BR")}</div>
                   </div>
                 </div>
               ))}

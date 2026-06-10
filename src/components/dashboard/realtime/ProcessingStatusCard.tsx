@@ -27,7 +27,7 @@ const Stat = ({ label, value, tone = "default", icon }: { label: string; value: 
       tone === "red" && "text-red-500",
       tone === "muted" && "text-muted-foreground"
     )}>
-      {typeof value === "number" ? value.toLocaleString("pt-BR") : value}
+      {typeof value === "number" ? Number(value ?? 0).toLocaleString("pt-BR") : value}
     </div>
   </div>
 );
@@ -69,14 +69,14 @@ export const ProcessingStatusCard = ({ metrics }: Props) => {
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-xs text-muted-foreground tabular-nums">
             <span>
-              <span className="font-semibold text-foreground">{metrics.processedMentions.toLocaleString("pt-BR")}</span>
+              <span className="font-semibold text-foreground">{Number(metrics.processedMentions ?? 0).toLocaleString("pt-BR")}</span>
               {" / "}
-              <span>{metrics.totalCollected.toLocaleString("pt-BR")}</span>
+              <span>{Number(metrics.totalCollected ?? 0).toLocaleString("pt-BR")}</span>
               {" analisados"}
             </span>
             <span>
               {metrics.pendingMentions > 0 && (
-                <span className="text-amber-500">{metrics.pendingMentions.toLocaleString("pt-BR")} pendentes</span>
+                <span className="text-amber-500">{Number(metrics.pendingMentions ?? 0).toLocaleString("pt-BR")} pendentes</span>
               )}
             </span>
           </div>
@@ -124,8 +124,8 @@ export const ProcessingStatusCard = ({ metrics }: Props) => {
                       />
                     </div>
                     <div className="w-32 shrink-0 text-right tabular-nums">
-                      <span className="font-semibold text-foreground">{s.processed.toLocaleString("pt-BR")}</span>
-                      <span className="text-muted-foreground"> / {s.collected.toLocaleString("pt-BR")}</span>
+                      <span className="font-semibold text-foreground">{Number(s.processed ?? 0).toLocaleString("pt-BR")}</span>
+                      <span className="text-muted-foreground"> / {Number(s.collected ?? 0).toLocaleString("pt-BR")}</span>
                       {s.pending > 0 && (
                         <span className="ml-1.5 text-[10px] text-amber-500">+{s.pending}</span>
                       )}

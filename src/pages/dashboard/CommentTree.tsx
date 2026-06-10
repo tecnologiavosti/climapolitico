@@ -277,7 +277,7 @@ export default function CommentTree() {
                         {t.root.comment_text || <span className="text-muted-foreground italic">(sem texto)</span>}
                       </p>
                       <div className="flex gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
-                        <span className="flex items-center gap-1"><ThumbsUp className="h-3 w-3" />{t.totalLikes.toLocaleString("pt-BR")}</span>
+                        <span className="flex items-center gap-1"><ThumbsUp className="h-3 w-3" />{Number(t.totalLikes ?? 0).toLocaleString("pt-BR")}</span>
                         <span className="flex items-center gap-1"><Reply className="h-3 w-3" />{t.totalReplies} respostas</span>
                         <span className="flex items-center gap-1"><Share2 className="h-3 w-3" />{t.totalShares}</span>
                         <span>·</span>

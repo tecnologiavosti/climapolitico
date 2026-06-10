@@ -137,7 +137,7 @@ export default function LinkedInFeed() {
             Feed do LinkedIn
           </h1>
           <p className="text-muted-foreground mt-1">
-            Posts e menções públicas coletadas automaticamente. Total: {total.toLocaleString("pt-BR")}
+            Posts e menções públicas coletadas automaticamente. Total: {Number(total ?? 0).toLocaleString("pt-BR")}
           </p>
         </div>
         <div className="flex items-center gap-2">

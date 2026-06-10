@@ -74,7 +74,7 @@ function ReactionsPerPostChartsImpl({
               >
                 {pieData.map((d) => <Cell key={d.key} fill={SENT_COLORS[d.key as keyof typeof SENT_COLORS]} />)}
               </Pie>
-              <Tooltip formatter={(v: number) => v.toLocaleString("pt-BR")} />
+              <Tooltip formatter={(v: number) => Number(v ?? 0).toLocaleString("pt-BR")} />
               <Legend
                 verticalAlign="bottom"
                 height={36}
@@ -95,7 +95,7 @@ function ReactionsPerPostChartsImpl({
               <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
               <XAxis dataKey="rede" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={56} />
               <YAxis tick={{ fontSize: 11 }} width={40} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v} />
-              <Tooltip formatter={(v: number) => v.toLocaleString("pt-BR")} />
+              <Tooltip formatter={(v: number) => Number(v ?? 0).toLocaleString("pt-BR")} />
               <Legend iconSize={10} wrapperStyle={{ fontSize: 12, paddingTop: 4 }} />
               <Bar dataKey="curtidas" stackId="e" fill="hsl(var(--primary))" />
               <Bar dataKey="comentarios_respostas" stackId="e" name="comentários/respostas" fill="hsl(var(--accent))" />
@@ -115,7 +115,7 @@ function ReactionsPerPostChartsImpl({
               <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
               <XAxis dataKey="rede" tick={{ fontSize: 10 }} interval={0} angle={-15} textAnchor="end" height={42} />
               <YAxis tick={{ fontSize: 10 }} width={36} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v} />
-              <Tooltip formatter={(v: number) => v.toLocaleString("pt-BR")} />
+              <Tooltip formatter={(v: number) => Number(v ?? 0).toLocaleString("pt-BR")} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="positivo" stackId="s" fill={SENT_COLORS.positive} />
               <Bar dataKey="neutro" stackId="s" fill={SENT_COLORS.neutral} />
@@ -145,7 +145,7 @@ function ReactionsPerPostChartsImpl({
                   return (
                     <div
                       key={h}
-                      title={`${WEEKDAYS[day]} ${h}h — ${v.toLocaleString("pt-BR")} registro(s)`}
+                      title={`${WEEKDAYS[day]} ${h}h — ${Number(v ?? 0).toLocaleString("pt-BR")} registro(s)`}
                       className="w-6 h-6 m-[1px] rounded-sm border border-border/50 shrink-0"
                       style={{ backgroundColor: v > 0 ? `hsl(var(--primary) / ${alpha.toFixed(3)})` : "hsl(var(--muted))" }}
                     />

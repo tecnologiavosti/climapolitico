@@ -24,14 +24,14 @@ export function SocialMediaKPIs({ data }: SocialMediaKPIsProps) {
     },
     {
       title: "Perfis Únicos",
-      value: totalProfiles.toLocaleString('pt-BR'),
+      value: Number(totalProfiles ?? 0).toLocaleString('pt-BR'),
       description: "Usuários que mencionaram",
       icon: Users,
       color: "text-blue-600"
     },
     {
       title: "Total de Menções",
-      value: totalMentions.toLocaleString('pt-BR'),
+      value: Number(totalMentions ?? 0).toLocaleString('pt-BR'),
       description: "Posts + comentários",
       icon: MessageSquare,
       color: "text-purple-600"
@@ -39,7 +39,7 @@ export function SocialMediaKPIs({ data }: SocialMediaKPIsProps) {
     {
       title: "Rede Mais Ativa",
       value: mostActiveNetwork?.network || "N/A",
-      description: `${mostActiveNetwork?.totalMentions.toLocaleString('pt-BR') || 0} menções`,
+      description: `${Number(mostActiveNetwork?.totalMentions ?? 0).toLocaleString('pt-BR') || 0} menções`,
       icon: TrendingUp,
       color: "text-green-600"
     }

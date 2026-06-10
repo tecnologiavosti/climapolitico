@@ -370,7 +370,7 @@ export default function CollectionStatus() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <HelpTooltip text="Total de comentários e posts já coletados pela plataforma.">
               <div className="p-4 border rounded-lg text-center">
-                <p className="text-2xl font-bold">{stats.totalComments.toLocaleString('pt-BR')}</p>
+                <p className="text-2xl font-bold">{Number(stats.totalComments ?? 0).toLocaleString('pt-BR')}</p>
                 <p className="text-sm text-muted-foreground">Comentários Coletados</p>
               </div>
             </HelpTooltip>

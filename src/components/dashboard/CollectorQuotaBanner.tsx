@@ -45,7 +45,7 @@ export function CollectorQuotaBanner() {
           <div key={c.collector_name} className="text-sm">
             <strong>{c.collector_name}</strong> pausado até{" "}
             {format(new Date(c.paused_until), "HH:mm", { locale: ptBR })} — quota diária atingida
-            ({c.daily_calls.toLocaleString("pt-BR")} / {c.max_daily_calls.toLocaleString("pt-BR")}).
+            ({Number(c.daily_calls ?? 0).toLocaleString("pt-BR")} / {Number(c.max_daily_calls ?? 0).toLocaleString("pt-BR")}).
           </div>
         ))}
       </AlertDescription>

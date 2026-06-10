@@ -467,7 +467,7 @@ export default function Overview() {
                 {isLoading ? (
                   <Skeleton className="h-10 w-24 mt-2" />
                 ) : (
-                  <p className="text-3xl font-bold mt-2">{totalMentions.toLocaleString('pt-BR')}</p>
+                  <p className="text-3xl font-bold mt-2">{Number(totalMentions ?? 0).toLocaleString('pt-BR')}</p>
                 )}
                 <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
                   <Activity className="h-4 w-4" />
@@ -537,7 +537,7 @@ export default function Overview() {
                 {isLoading ? (
                   <Skeleton className="h-10 w-16 mt-2" />
                 ) : (
-                  <p className="text-3xl font-bold mt-2">{aggregatedMetrics.totalEngagement.toLocaleString('pt-BR')}</p>
+                  <p className="text-3xl font-bold mt-2">{Number(aggregatedMetrics.totalEngagement ?? 0).toLocaleString('pt-BR')}</p>
                 )}
                 <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
                   <Activity className="h-4 w-4" />
@@ -638,7 +638,7 @@ export default function Overview() {
                     formatter={(value: number, name: string) => {
                       const total = networkData.reduce((s, d) => s + d.value, 0);
                       const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
-                      return [`${value.toLocaleString('pt-BR')} (${pct}%)`, name];
+                      return [`${Number(value ?? 0).toLocaleString('pt-BR')} (${pct}%)`, name];
                     }}
                   />
                 </PieChart>

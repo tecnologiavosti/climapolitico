@@ -307,7 +307,7 @@ function NetworkFeed({ network }: { network: NetworkConfig }) {
             Feed de {network.label}
           </h2>
           <p className="text-sm text-muted-foreground">
-            Total coletado: {total.toLocaleString("pt-BR")}
+            Total coletado: {Number(total ?? 0).toLocaleString("pt-BR")}
           </p>
         </div>
         <div className="flex items-center gap-2">

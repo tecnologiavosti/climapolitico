@@ -130,7 +130,7 @@ export function CandidatesComparisonPanel({ candidates }: Props) {
                 formatter={(v: any, n: any) => [`${v}%`, n]}
                 labelFormatter={(label, items) => {
                   const it: any = items?.[0]?.payload;
-                  return `${label}${it ? ` • ${it.mentions.toLocaleString("pt-BR")} menções` : ""}`;
+                  return `${label}${it ? ` • ${Number(it.mentions ?? 0).toLocaleString("pt-BR")} menções` : ""}`;
                 }}
                 contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
               />
@@ -164,7 +164,7 @@ export function CandidatesComparisonPanel({ candidates }: Props) {
       <div className="text-xs text-muted-foreground flex flex-wrap gap-2 pt-3 border-t">
         {rows.slice(0, 12).map((r) => (
           <Badge key={r.candidate.id} variant="outline" className="text-[10px]">
-            {r.candidate.full_name}: {r.mentions.toLocaleString("pt-BR")}
+            {r.candidate.full_name}: {Number(r.mentions ?? 0).toLocaleString("pt-BR")}
           </Badge>
         ))}
       </div>

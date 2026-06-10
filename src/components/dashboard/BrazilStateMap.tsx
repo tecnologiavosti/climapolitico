@@ -159,14 +159,14 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
           <div className="flex gap-2 flex-wrap">
             <Badge variant="secondary">
               <MessageSquare className="h-3 w-3 mr-1" />
-              {totalScanned.toLocaleString("pt-BR")} comentários
+              {Number(totalScanned ?? 0).toLocaleString("pt-BR")} comentários
             </Badge>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Badge variant="outline" className="cursor-help">
                     <Info className="h-3 w-3 mr-1" />
-                    {identified.toLocaleString("pt-BR")} com localização identificada
+                    {Number(identified ?? 0).toLocaleString("pt-BR")} com localização identificada
                   </Badge>
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs">
@@ -240,7 +240,7 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
                                 <div className="font-semibold">{UF_NAME[code]} ({code})</div>
                                 {hasData ? (
                                   <>
-                                    <div>Menções: {a!.total.toLocaleString("pt-BR")}</div>
+                                    <div>Menções: {Number(a!.total ?? 0).toLocaleString("pt-BR")}</div>
                                     <div className="text-green-600">+ {a!.pos} positivos</div>
                                     <div className="text-red-600">- {a!.neg} negativos</div>
                                     <div className="text-muted-foreground">= {a!.neu} neutros</div>
@@ -282,7 +282,7 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
                         {a.uf} · {UF_NAME[a.uf]}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {a.total.toLocaleString("pt-BR")}
+                        {Number(a.total ?? 0).toLocaleString("pt-BR")}
                       </span>
                     </div>
                     {opin >= 3 ? (

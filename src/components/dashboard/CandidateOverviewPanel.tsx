@@ -115,7 +115,7 @@ export function CandidateOverviewPanel({ candidateId, candidateName }: Candidate
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total de Menções</p>
-                <p className="text-3xl font-bold mt-1">{metrics.totalMentions.toLocaleString('pt-BR')}</p>
+                <p className="text-3xl font-bold mt-1">{Number(metrics.totalMentions ?? 0).toLocaleString('pt-BR')}</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   histórico completo · all-time
                 </p>
@@ -133,7 +133,7 @@ export function CandidateOverviewPanel({ candidateId, candidateName }: Candidate
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Pessoas Citando</p>
-                <p className="text-3xl font-bold mt-1">{metrics.uniqueAuthors.toLocaleString('pt-BR')}</p>
+                <p className="text-3xl font-bold mt-1">{Number(metrics.uniqueAuthors ?? 0).toLocaleString('pt-BR')}</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   autores únicos · all-time
                 </p>
@@ -151,7 +151,7 @@ export function CandidateOverviewPanel({ candidateId, candidateName }: Candidate
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Engajamento Total</p>
-                <p className="text-3xl font-bold mt-1">{metrics.totalLikes.toLocaleString('pt-BR')}</p>
+                <p className="text-3xl font-bold mt-1">{Number(metrics.totalLikes ?? 0).toLocaleString('pt-BR')}</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   curtidas nos comentários
                 </p>
@@ -293,7 +293,7 @@ export function CandidateOverviewPanel({ candidateId, candidateName }: Candidate
                     tick={{ fontSize: 12 }}
                   />
                   <Tooltip 
-                    formatter={(value: number) => [value.toLocaleString('pt-BR'), 'Menções']}
+                    formatter={(value: number) => [Number(value ?? 0).toLocaleString('pt-BR'), 'Menções']}
                     contentStyle={{
                       backgroundColor: 'hsl(var(--card))',
                       border: '1px solid hsl(var(--border))',
@@ -325,7 +325,7 @@ export function CandidateOverviewPanel({ candidateId, candidateName }: Candidate
                     <span className="text-sm font-medium">{network.network}</span>
                   </div>
                   <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                    <span>{network.mentions.toLocaleString('pt-BR')} comentários</span>
+                    <span>{Number(network.mentions ?? 0).toLocaleString('pt-BR')} comentários</span>
                     <Badge variant={network.avgSentiment >= 60 ? 'default' : network.avgSentiment >= 40 ? 'secondary' : 'destructive'}>
                       {network.avgSentiment}%
                     </Badge>

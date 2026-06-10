@@ -62,13 +62,13 @@ export function SocialMediaTable({ data }: SocialMediaTableProps) {
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      {row.totalMentions.toLocaleString('pt-BR')}
+                      {Number(row.totalMentions ?? 0).toLocaleString('pt-BR')}
                     </TableCell>
                     <TableCell className="text-right">
-                      {row.uniqueProfiles.toLocaleString('pt-BR')}
+                      {Number(row.uniqueProfiles ?? 0).toLocaleString('pt-BR')}
                     </TableCell>
                     <TableCell className="text-right">
-                      {row.totalInteractions.toLocaleString('pt-BR')}
+                      {Number(row.totalInteractions ?? 0).toLocaleString('pt-BR')}
                     </TableCell>
                     <TableCell className="text-center">
                       <Badge variant="outline" className={sentimentColors.Positivo}>

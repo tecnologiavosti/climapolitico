@@ -173,7 +173,7 @@ export function EventSelectorList({ events, loading, selectedId, onSelect, onRet
                           )}
                           {volume > 0 && (
                             <span className="text-[11px] text-primary/90 flex items-center gap-1 font-medium">
-                              <MessageSquare className="h-3 w-3" />{volume.toLocaleString("pt-BR")}
+                              <MessageSquare className="h-3 w-3" />{Number(volume ?? 0).toLocaleString("pt-BR")}
                             </span>
                           )}
                         </div>

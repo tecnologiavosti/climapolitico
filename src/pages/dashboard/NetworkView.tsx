@@ -89,7 +89,7 @@ const emptyKpis: Agg["kpis"] = {
   prev_total: 0, prev_pos: 0, prev_neg: 0, prev_neu: 0,
 };
 
-const fmt = (n: number) => n.toLocaleString("pt-BR");
+const fmt = (n: number) => Number(n ?? 0).toLocaleString("pt-BR");
 const compact = (n: number) => Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
 const growth = (cur: number, prev: number) => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null);
@@ -592,7 +592,7 @@ function SentBar({ label, pct: p, count, delta, color, invert }: { label: string
           {label}
         </span>
         <span className="flex items-center gap-2">
-          <span className="font-semibold">{p}%{count !== undefined ? ` (${count.toLocaleString("pt-BR")})` : ""}</span>
+          <span className="font-semibold">{p}%{count !== undefined ? ` (${Number(count ?? 0).toLocaleString("pt-BR")})` : ""}</span>
           {delta !== 0 && (
             <span className={goodDelta ? "text-success" : "text-destructive"}>
               ({delta > 0 ? "+" : ""}{delta}pp)
