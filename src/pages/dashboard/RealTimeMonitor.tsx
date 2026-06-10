@@ -704,6 +704,7 @@ const RealTimeMonitor = () => {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
   const [loadingCandidates, setLoadingCandidates] = useState(true);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [historicalBase, setHistoricalBase] = useState<number | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [liveProgress, setLiveProgress] = useState<LiveProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
