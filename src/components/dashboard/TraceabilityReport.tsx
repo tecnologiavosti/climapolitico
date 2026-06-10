@@ -156,8 +156,8 @@ export function TraceabilityReport({ data }: TraceabilityReportProps) {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold text-primary">{quantitative.profiles.total.toLocaleString()}</p>
-                <p className="text-sm text-muted-foreground mt-1">{quantitative.profiles.unique.toLocaleString()} únicos</p>
+                <p className="text-3xl font-bold text-primary">{Number(quantitative.profiles.total ?? 0).toLocaleString()}</p>
+                <p className="text-sm text-muted-foreground mt-1">{Number(quantitative.profiles.unique ?? 0).toLocaleString()} únicos</p>
               </CardContent>
             </Card>
 
@@ -169,8 +169,8 @@ export function TraceabilityReport({ data }: TraceabilityReportProps) {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold text-accent">{quantitative.content.totalPosts.toLocaleString()}</p>
-                <p className="text-sm text-muted-foreground mt-1">{quantitative.content.totalComments.toLocaleString()} comentários</p>
+                <p className="text-3xl font-bold text-accent">{Number(quantitative.content.totalPosts ?? 0).toLocaleString()}</p>
+                <p className="text-sm text-muted-foreground mt-1">{Number(quantitative.content.totalComments ?? 0).toLocaleString()} comentários</p>
               </CardContent>
             </Card>
 
@@ -182,7 +182,7 @@ export function TraceabilityReport({ data }: TraceabilityReportProps) {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold text-success">{quantitative.interactions.total.toLocaleString()}</p>
+                <p className="text-3xl font-bold text-success">{Number(quantitative.interactions.total ?? 0).toLocaleString()}</p>
                 <p className="text-sm text-muted-foreground mt-1">{quantitative.interactions.avgPerPost.toFixed(1)} média/post</p>
               </CardContent>
             </Card>
@@ -274,15 +274,15 @@ export function TraceabilityReport({ data }: TraceabilityReportProps) {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Total de Posts</p>
-                  <p className="text-2xl font-bold">{quantitative.content.totalPosts.toLocaleString()}</p>
+                  <p className="text-2xl font-bold">{Number(quantitative.content.totalPosts ?? 0).toLocaleString()}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Comentários</p>
-                  <p className="text-2xl font-bold">{quantitative.content.totalComments.toLocaleString()}</p>
+                  <p className="text-2xl font-bold">{Number(quantitative.content.totalComments ?? 0).toLocaleString()}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Menções</p>
-                  <p className="text-2xl font-bold">{quantitative.content.mentions.toLocaleString()}</p>
+                  <p className="text-2xl font-bold">{Number(quantitative.content.mentions ?? 0).toLocaleString()}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Posts/Dia</p>

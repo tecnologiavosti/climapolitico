@@ -162,7 +162,7 @@ export const CollectionStatusPanel = () => {
                   Última coleta: <strong>{formatRelative(row.latest)}</strong>
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  Últimas 24h: <strong>{row.last24h.toLocaleString("pt-BR")}</strong> itens
+                  Últimas 24h: <strong>{Number(row.last24h ?? 0).toLocaleString("pt-BR")}</strong> itens
                 </div>
                 {row.failureMessage && (
                   <div className="text-xs text-destructive line-clamp-2" title={row.failureMessage}>

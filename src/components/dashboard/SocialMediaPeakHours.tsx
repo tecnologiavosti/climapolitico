@@ -488,8 +488,8 @@ export const SocialMediaPeakHours = ({
                         .map((hour, idx) => (
                           <tr key={idx} className="border-b hover:bg-muted/50">
                             <td className="p-2 font-medium">{hour.hour}</td>
-                            <td className="text-right p-2">{hour.mentions.toLocaleString()}</td>
-                            <td className="text-right p-2">{hour.interactions.toLocaleString()}</td>
+                            <td className="text-right p-2">{Number(hour.mentions ?? 0).toLocaleString()}</td>
+                            <td className="text-right p-2">{Number(hour.interactions ?? 0).toLocaleString()}</td>
                             <td className="text-right p-2">
                               <Badge variant={hour.engagementRate > 1 ? "default" : "secondary"}>
                                 {hour.engagementRate.toFixed(2)}

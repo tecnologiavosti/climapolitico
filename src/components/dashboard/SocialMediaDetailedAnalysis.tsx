@@ -89,7 +89,7 @@ export const SocialMediaDetailedAnalysis = ({ data }: SocialMediaDetailedAnalysi
                     <div>
                       <CardTitle className="text-xl">{network.network}</CardTitle>
                       <CardDescription>
-                        {network.uniqueProfiles.toLocaleString()} perfis únicos
+                        {Number(network.uniqueProfiles ?? 0).toLocaleString()} perfis únicos
                       </CardDescription>
                     </div>
                   </div>
@@ -116,7 +116,7 @@ export const SocialMediaDetailedAnalysis = ({ data }: SocialMediaDetailedAnalysi
                       <MessageSquare className="h-3 w-3" />
                       <span>Menções</span>
                     </div>
-                    <p className="text-2xl font-bold">{network.totalMentions.toLocaleString()}</p>
+                    <p className="text-2xl font-bold">{Number(network.totalMentions ?? 0).toLocaleString()}</p>
                   </div>
 
                   <div className="space-y-1">
@@ -124,7 +124,7 @@ export const SocialMediaDetailedAnalysis = ({ data }: SocialMediaDetailedAnalysi
                       <Users className="h-3 w-3" />
                       <span>Perfis</span>
                     </div>
-                    <p className="text-2xl font-bold">{network.uniqueProfiles.toLocaleString()}</p>
+                    <p className="text-2xl font-bold">{Number(network.uniqueProfiles ?? 0).toLocaleString()}</p>
                   </div>
 
                   <div className="space-y-1">
@@ -132,7 +132,7 @@ export const SocialMediaDetailedAnalysis = ({ data }: SocialMediaDetailedAnalysi
                       <Activity className="h-3 w-3" />
                       <span>Interações</span>
                     </div>
-                    <p className="text-2xl font-bold">{network.totalInteractions.toLocaleString()}</p>
+                    <p className="text-2xl font-bold">{Number(network.totalInteractions ?? 0).toLocaleString()}</p>
                   </div>
                 </div>
 

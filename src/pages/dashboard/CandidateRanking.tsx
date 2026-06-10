@@ -297,7 +297,7 @@ export default function CandidateRanking() {
             <Clock className="h-4 w-4" />
             <span>Período: <strong>{dateRangeText}</strong></span>
             <span className="mx-2">•</span>
-            <span>{totalInteractions.toLocaleString('pt-BR')} comentários analisados</span>
+            <span>{Number(totalInteractions ?? 0).toLocaleString('pt-BR')} comentários analisados</span>
             <span className="mx-2">•</span>
             <span>{rankings.length} candidatos ranqueados</span>
           </div>
@@ -339,7 +339,7 @@ export default function CandidateRanking() {
                     <>
                       <div className="text-xl font-bold">{most?.candidateName}</div>
                       <p className="text-xs text-muted-foreground">
-                        {most?.totalMentions.toLocaleString('pt-BR')} menções
+                        {Number(most?.totalMentions ?? 0).toLocaleString('pt-BR')} menções
                       </p>
                     </>
                   );
@@ -389,7 +389,7 @@ export default function CandidateRanking() {
                     <>
                       <div className="text-xl font-bold">{top?.candidateName}</div>
                       <p className="text-xs text-muted-foreground">
-                        {top?.totalEngagement.toLocaleString('pt-BR')} curtidas
+                        {Number(top?.totalEngagement ?? 0).toLocaleString('pt-BR')} curtidas
                       </p>
                     </>
                   );
@@ -465,13 +465,13 @@ export default function CandidateRanking() {
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
                         <MessageSquare className="h-3 w-3 text-muted-foreground" />
-                        {rank.totalMentions.toLocaleString('pt-BR')}
+                        {Number(rank.totalMentions ?? 0).toLocaleString('pt-BR')}
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
                         <Users className="h-3 w-3 text-muted-foreground" />
-                        {rank.uniqueAuthors.toLocaleString('pt-BR')}
+                        {Number(rank.uniqueAuthors ?? 0).toLocaleString('pt-BR')}
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
@@ -486,7 +486,7 @@ export default function CandidateRanking() {
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
                         <Heart className="h-3 w-3 text-muted-foreground" />
-                        {rank.totalEngagement.toLocaleString('pt-BR')}
+                        {Number(rank.totalEngagement ?? 0).toLocaleString('pt-BR')}
                       </div>
                     </TableCell>
                   </TableRow>

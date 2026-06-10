@@ -125,9 +125,9 @@ export const RealTimeSentimentChart = ({ metrics }: Props) => {
             <div className="space-y-1.5">
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Engajamento por sentimento</p>
               <div className="space-y-0.5 text-xs">
-                <div className="flex justify-between"><span className="text-emerald-500">❤️ Positivos</span><span className="font-semibold tabular-nums">{metrics.engagementBySentiment.positive.toLocaleString("pt-BR")}</span></div>
-                <div className="flex justify-between"><span className="text-amber-500">💬 Neutros</span><span className="font-semibold tabular-nums">{metrics.engagementBySentiment.neutral.toLocaleString("pt-BR")}</span></div>
-                <div className="flex justify-between"><span className="text-red-500">⚠️ Negativos</span><span className="font-semibold tabular-nums">{metrics.engagementBySentiment.negative.toLocaleString("pt-BR")}</span></div>
+                <div className="flex justify-between"><span className="text-emerald-500">❤️ Positivos</span><span className="font-semibold tabular-nums">{Number(metrics.engagementBySentiment.positive ?? 0).toLocaleString("pt-BR")}</span></div>
+                <div className="flex justify-between"><span className="text-amber-500">💬 Neutros</span><span className="font-semibold tabular-nums">{Number(metrics.engagementBySentiment.neutral ?? 0).toLocaleString("pt-BR")}</span></div>
+                <div className="flex justify-between"><span className="text-red-500">⚠️ Negativos</span><span className="font-semibold tabular-nums">{Number(metrics.engagementBySentiment.negative ?? 0).toLocaleString("pt-BR")}</span></div>
               </div>
             </div>
           </div>

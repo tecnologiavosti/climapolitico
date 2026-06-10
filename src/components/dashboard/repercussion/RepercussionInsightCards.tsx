@@ -36,7 +36,7 @@ export function RepercussionInsightCards({ data }: { data: EventRepercussionData
     {
       icon: Newspaper,
       label: "Publicações externas",
-      value: ext.totalPublications.toLocaleString("pt-BR"),
+      value: Number(ext.totalPublications ?? 0).toLocaleString("pt-BR"),
       sub: `${outletsCount} veículos distintos`,
       color: "text-blue-400",
       bg: "bg-blue-500/10",

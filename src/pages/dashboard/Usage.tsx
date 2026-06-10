@@ -50,7 +50,7 @@ export default function UsagePage() {
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card><CardHeader><CardTitle className="text-sm">Total de eventos</CardTitle></CardHeader>
-          <CardContent className="text-3xl font-bold">{total.toLocaleString("pt-BR")}</CardContent></Card>
+          <CardContent className="text-3xl font-bold">{Number(total ?? 0).toLocaleString("pt-BR")}</CardContent></Card>
         <Card><CardHeader><CardTitle className="text-sm">Custo total (unidades)</CardTitle></CardHeader>
           <CardContent className="text-3xl font-bold">{totalCost.toFixed(2)}</CardContent></Card>
       </div>

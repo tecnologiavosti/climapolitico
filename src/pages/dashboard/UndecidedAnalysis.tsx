@@ -413,7 +413,7 @@ export default function UndecidedAnalysis() {
       if (topNetwork?.network && engagementValue > 0) {
         insights.push({
           type: 'info',
-          message: `${topNetwork.network} é a rede mais engajada com ${engagementValue.toLocaleString('pt-BR')} interações - Priorize investimento nesta plataforma.`
+          message: `${topNetwork.network} é a rede mais engajada com ${Number(engagementValue ?? 0).toLocaleString('pt-BR')} interações - Priorize investimento nesta plataforma.`
         });
       }
     }

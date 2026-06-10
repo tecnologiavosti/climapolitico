@@ -79,7 +79,7 @@ const KPICard = ({ title, value, icon, tone, sparkline, change, index }: KPIProp
             )}
           </div>
           <div className="text-2xl font-bold tabular-nums tracking-tight">
-            {animated.toLocaleString("pt-BR")}
+            {Number(animated ?? 0).toLocaleString("pt-BR")}
           </div>
           <Sparkline data={sparkline.length ? sparkline : [0, 0, 0]} stroke={s.stroke} fill={s.fill} />
         </div>

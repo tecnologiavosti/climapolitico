@@ -81,7 +81,7 @@ export function SocialMediaCharts({ data }: SocialMediaChartsProps) {
                     border: '1px solid hsl(var(--border))',
                     borderRadius: '8px'
                   }}
-                  formatter={(value: number) => value.toLocaleString('pt-BR')}
+                  formatter={(value: number) => Number(value ?? 0).toLocaleString('pt-BR')}
                 />
                 <Bar 
                   dataKey="mentions" 

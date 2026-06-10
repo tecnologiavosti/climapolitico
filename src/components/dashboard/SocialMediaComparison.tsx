@@ -209,7 +209,7 @@ export const SocialMediaComparison = ({ data }: SocialMediaComparisonProps) => {
                   </div>
                   <div>
                     <CardTitle className="text-xl">{network1}</CardTitle>
-                    <CardDescription>{data1.uniqueProfiles.toLocaleString()} perfis</CardDescription>
+                    <CardDescription>{Number(data1.uniqueProfiles ?? 0).toLocaleString()} perfis</CardDescription>
                   </div>
                 </div>
               </CardHeader>
@@ -217,11 +217,11 @@ export const SocialMediaComparison = ({ data }: SocialMediaComparisonProps) => {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Menções</span>
-                    <span className="text-xl font-bold">{data1.totalMentions.toLocaleString()}</span>
+                    <span className="text-xl font-bold">{Number(data1.totalMentions ?? 0).toLocaleString()}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Interações</span>
-                    <span className="text-xl font-bold">{data1.totalInteractions.toLocaleString()}</span>
+                    <span className="text-xl font-bold">{Number(data1.totalInteractions ?? 0).toLocaleString()}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Engajamento</span>
@@ -276,7 +276,7 @@ export const SocialMediaComparison = ({ data }: SocialMediaComparisonProps) => {
                   </div>
                   <div>
                     <CardTitle className="text-xl">{network2}</CardTitle>
-                    <CardDescription>{data2.uniqueProfiles.toLocaleString()} perfis</CardDescription>
+                    <CardDescription>{Number(data2.uniqueProfiles ?? 0).toLocaleString()} perfis</CardDescription>
                   </div>
                 </div>
               </CardHeader>
@@ -284,11 +284,11 @@ export const SocialMediaComparison = ({ data }: SocialMediaComparisonProps) => {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Menções</span>
-                    <span className="text-xl font-bold">{data2.totalMentions.toLocaleString()}</span>
+                    <span className="text-xl font-bold">{Number(data2.totalMentions ?? 0).toLocaleString()}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Interações</span>
-                    <span className="text-xl font-bold">{data2.totalInteractions.toLocaleString()}</span>
+                    <span className="text-xl font-bold">{Number(data2.totalInteractions ?? 0).toLocaleString()}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Engajamento</span>

@@ -231,7 +231,7 @@ export default function Analytics() {
             <Clock className="h-4 w-4" />
             <span>Período analisado: <strong>{dateRangeText}</strong></span>
             <span className="mx-2">•</span>
-            <span>{totalMentions.toLocaleString('pt-BR')} comentários encontrados</span>
+            <span>{Number(totalMentions ?? 0).toLocaleString('pt-BR')} comentários encontrados</span>
           </div>
         </CardContent>
       </Card>
@@ -269,7 +269,7 @@ export default function Analytics() {
               <MessageSquare className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{totalMentions.toLocaleString('pt-BR')}</div>
+              <div className="text-2xl font-bold">{Number(totalMentions ?? 0).toLocaleString('pt-BR')}</div>
               <p className="text-xs text-muted-foreground">{uniqueAuthors} autores únicos</p>
             </CardContent>
           </Card>
@@ -295,7 +295,7 @@ export default function Analytics() {
               <TrendingUp className="h-4 w-4 text-primary" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{totalLikes.toLocaleString('pt-BR')}</div>
+              <div className="text-2xl font-bold">{Number(totalLikes ?? 0).toLocaleString('pt-BR')}</div>
               <p className="text-xs text-muted-foreground">curtidas nos comentários</p>
             </CardContent>
           </Card>
@@ -428,7 +428,7 @@ export default function Analytics() {
                       width={80}
                       tick={{ fontSize: 12 }}
                     />
-                    <Tooltip formatter={(value: number) => [value.toLocaleString('pt-BR'), 'Comentários']} />
+                    <Tooltip formatter={(value: number) => [Number(value ?? 0).toLocaleString('pt-BR'), 'Comentários']} />
                     <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                       {networkChartData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={NETWORK_COLORS[entry.name] || NETWORK_COLORS['Outro']} />
@@ -449,7 +449,7 @@ export default function Analytics() {
                         <span className="text-sm font-medium">{network.name}</span>
                       </div>
                       <span className="text-sm text-muted-foreground">
-                        {network.value.toLocaleString('pt-BR')} comentários ({totalMentions > 0 ? Math.round((network.value / totalMentions) * 100) : 0}%)
+                        {Number(network.value ?? 0).toLocaleString('pt-BR')} comentários ({totalMentions > 0 ? Math.round((network.value / totalMentions) * 100) : 0}%)
                       </span>
                     </div>
                   ))}

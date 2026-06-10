@@ -57,7 +57,7 @@ const SentimentBar = ({ positive, negative, neutral }: { positive: number; negat
           <TooltipContent side="top">
             <div className="text-xs">
               <div className="font-semibold text-green-600 dark:text-green-400">Positivo: {fmt(pPos)}</div>
-              <div className="text-muted-foreground">{positive.toLocaleString('pt-BR')} de {total.toLocaleString('pt-BR')} comentários</div>
+              <div className="text-muted-foreground">{Number(positive ?? 0).toLocaleString('pt-BR')} de {Number(total ?? 0).toLocaleString('pt-BR')} comentários</div>
             </div>
           </TooltipContent>
         </Tooltip>
@@ -68,7 +68,7 @@ const SentimentBar = ({ positive, negative, neutral }: { positive: number; negat
           <TooltipContent side="top">
             <div className="text-xs">
               <div className="font-semibold text-yellow-600 dark:text-yellow-400">Neutro: {fmt(pNeu)}</div>
-              <div className="text-muted-foreground">{neutral.toLocaleString('pt-BR')} de {total.toLocaleString('pt-BR')} comentários</div>
+              <div className="text-muted-foreground">{Number(neutral ?? 0).toLocaleString('pt-BR')} de {Number(total ?? 0).toLocaleString('pt-BR')} comentários</div>
             </div>
           </TooltipContent>
         </Tooltip>
@@ -79,7 +79,7 @@ const SentimentBar = ({ positive, negative, neutral }: { positive: number; negat
           <TooltipContent side="top">
             <div className="text-xs">
               <div className="font-semibold text-red-600 dark:text-red-400">Negativo: {fmt(pNeg)}</div>
-              <div className="text-muted-foreground">{negative.toLocaleString('pt-BR')} de {total.toLocaleString('pt-BR')} comentários</div>
+              <div className="text-muted-foreground">{Number(negative ?? 0).toLocaleString('pt-BR')} de {Number(total ?? 0).toLocaleString('pt-BR')} comentários</div>
             </div>
           </TooltipContent>
         </Tooltip>
@@ -293,9 +293,9 @@ const CandidateComparisonPage = () => {
                             {c.name}
                             {c.party && <Badge variant="outline" className="ml-2 text-xs">{c.party}</Badge>}
                           </td>
-                          <td className="py-2 px-2 text-right">{c.mentions.toLocaleString('pt-BR')}</td>
-                          <td className="py-2 px-2 text-right">{c.authors.toLocaleString('pt-BR')}</td>
-                          <td className="py-2 px-2 text-right">{c.engagement.toLocaleString('pt-BR')}</td>
+                          <td className="py-2 px-2 text-right">{Number(c.mentions ?? 0).toLocaleString('pt-BR')}</td>
+                          <td className="py-2 px-2 text-right">{Number(c.authors ?? 0).toLocaleString('pt-BR')}</td>
+                          <td className="py-2 px-2 text-right">{Number(c.engagement ?? 0).toLocaleString('pt-BR')}</td>
                           <td className={`py-2 px-2 text-right font-bold ${label.class}`}>
                             {c.sentiment != null ? `${c.sentiment.toFixed(0)}%` : 'N/A'}
                           </td>

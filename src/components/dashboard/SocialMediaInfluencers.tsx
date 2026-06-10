@@ -331,7 +331,7 @@ export const SocialMediaInfluencers = ({
                   <div className="flex-1 min-w-0">
                     <CardTitle className="text-base truncate">{influencer.username}</CardTitle>
                     <CardDescription className="text-xs">
-                      {influencer.totalFollowers.toLocaleString()} seguidores
+                      {Number(influencer.totalFollowers ?? 0).toLocaleString()} seguidores
                     </CardDescription>
                   </div>
                 </div>
@@ -510,13 +510,13 @@ export const SocialMediaInfluencers = ({
                         </div>
                       </td>
                       <td className="text-right p-3 font-bold">
-                        {influencer.totalFollowers.toLocaleString()}
+                        {Number(influencer.totalFollowers ?? 0).toLocaleString()}
                       </td>
                       <td className="text-right p-3">
                         {influencer.totalMentions}
                       </td>
                       <td className="text-right p-3">
-                        {influencer.totalInteractions.toLocaleString()}
+                        {Number(influencer.totalInteractions ?? 0).toLocaleString()}
                       </td>
                       <td className="text-right p-3">
                         <Badge variant={influencer.engagementRate > 5 ? "default" : "secondary"}>

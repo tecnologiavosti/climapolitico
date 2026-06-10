@@ -59,7 +59,7 @@ export const StateDetailModal = ({ isOpen, onClose, stateData, detailedData }: S
                 <CardTitle className="text-sm font-medium text-muted-foreground">Total de Menções</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{stateData.totalMentions.toLocaleString()}</div>
+                <div className="text-2xl font-bold">{Number(stateData.totalMentions ?? 0).toLocaleString()}</div>
               </CardContent>
             </Card>
           </div>
@@ -284,11 +284,11 @@ export const StateDetailModal = ({ isOpen, onClose, stateData, detailedData }: S
                             <CardContent className="space-y-1 text-sm">
                               <div className="flex justify-between">
                                 <span className="text-muted-foreground">Menções:</span>
-                                <span className="font-bold">{network.mentions.toLocaleString()}</span>
+                                <span className="font-bold">{Number(network.mentions ?? 0).toLocaleString()}</span>
                               </div>
                               <div className="flex justify-between">
                                 <span className="text-muted-foreground">Engajamento:</span>
-                                <span className="font-bold">{network.engagement.toLocaleString()}</span>
+                                <span className="font-bold">{Number(network.engagement ?? 0).toLocaleString()}</span>
                               </div>
                             </CardContent>
                           </Card>

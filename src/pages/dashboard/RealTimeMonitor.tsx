@@ -666,12 +666,12 @@ async function fetchSnapshot(
   const alerts: Alert[] = [];
   if (hasStatisticalBase) {
     const growth = prev24h >= 10 ? ((windowCounts.h24 - prev24h) / prev24h) * 100 : 0;
-    if (prev24h >= 10 && growth >= 50) alerts.push({ kind: "growth", title: `Crescimento de ${Math.round(growth)}% nos registros monitorados`, detail: `Janela atual: ${windowCounts.h24.toLocaleString("pt-BR")} registros · Janela anterior: ${prev24h.toLocaleString("pt-BR")} registros (comparação contra as 24h anteriores).`, evidence });
-    else if (prev24h >= 10 && growth <= -40) alerts.push({ kind: "growth", title: `Queda de ${Math.round(Math.abs(growth))}% nos registros monitorados`, detail: `Janela atual: ${windowCounts.h24.toLocaleString("pt-BR")} registros · Janela anterior: ${prev24h.toLocaleString("pt-BR")} registros (comparação contra as 24h anteriores).`, evidence });
+    if (prev24h >= 10 && growth >= 50) alerts.push({ kind: "growth", title: `Crescimento de ${Math.round(growth)}% nos registros monitorados`, detail: `Janela atual: ${Number(windowCounts.h24 ?? 0).toLocaleString("pt-BR")} registros · Janela anterior: ${Number(prev24h ?? 0).toLocaleString("pt-BR")} registros (comparação contra as 24h anteriores).`, evidence });
+    else if (prev24h >= 10 && growth <= -40) alerts.push({ kind: "growth", title: `Queda de ${Math.round(Math.abs(growth))}% nos registros monitorados`, detail: `Janela atual: ${Number(windowCounts.h24 ?? 0).toLocaleString("pt-BR")} registros · Janela anterior: ${Number(prev24h ?? 0).toLocaleString("pt-BR")} registros (comparação contra as 24h anteriores).`, evidence });
     if ((negativeToday / Math.max(1, classifiedToday)) >= 0.5) {
-      alerts.push({ kind: "crisis", title: "Volume negativo elevado", detail: `${negativeToday.toLocaleString("pt-BR")} de ${classifiedToday.toLocaleString("pt-BR")} classificações são negativas.`, evidence });
+      alerts.push({ kind: "crisis", title: "Volume negativo elevado", detail: `${Number(negativeToday ?? 0).toLocaleString("pt-BR")} de ${Number(classifiedToday ?? 0).toLocaleString("pt-BR")} classificações são negativas.`, evidence });
     } else if ((negativeToday / Math.max(1, classifiedToday)) >= 0.35) {
-      alerts.push({ kind: "negative", title: "Atenção ao sentimento negativo", detail: `${negativeToday.toLocaleString("pt-BR")} registros negativos na janela.`, evidence });
+      alerts.push({ kind: "negative", title: "Atenção ao sentimento negativo", detail: `${Number(negativeToday ?? 0).toLocaleString("pt-BR")} registros negativos na janela.`, evidence });
     }
     if (Math.abs(sentimentDelta.positiveDeltaPct - sentimentDelta.negativeDeltaPct) >= 40) {
       alerts.push({ kind: "growth", title: "Mudança mensurável de sentimento", detail: `Comparação contra janela anterior: positivo ${sentimentDelta.positiveDeltaPct >= 0 ? "+" : ""}${sentimentDelta.positiveDeltaPct}% / negativo ${sentimentDelta.negativeDeltaPct >= 0 ? "+" : ""}${sentimentDelta.negativeDeltaPct}%.`, evidence });
@@ -693,13 +693,13 @@ async function fetchSnapshot(
   const nowNarrative =
     mentionsToday === 0
       ? `Pouca atividade pública relevante detectada para ${candidateName} nas últimas ${windowHours}h.`
-      : `${candidateName} teve ${mentionsToday.toLocaleString("pt-BR")} registros monitorados (notícias, posts e vídeos) e ${citationsDetected.toLocaleString("pt-BR")} citações detectadas nas últimas ${windowHours}h. ` +
+      : `${candidateName} teve ${Number(mentionsToday ?? 0).toLocaleString("pt-BR")} registros monitorados (notícias, posts e vídeos) e ${Number(citationsDetected ?? 0).toLocaleString("pt-BR")} citações detectadas nas últimas ${windowHours}h. ` +
         (topTheme ? `Tema com maior evidência: ${topTheme.name}, sustentado por ${topTheme.evidence.news} notícias, ${topTheme.evidence.posts} posts e ${topTheme.evidence.videos} vídeos. ` : `Nenhum tema atingiu evidência mínima (3 evidências, 2 veículos ou evento oficial). `) +
         (classifiedToday > 0 ? `Leitura de sentimento: ${tone}.` : "Ainda sem volume classificado suficiente.");
 
   // BLOCO 8 — Resumo executivo (mesmíssima base dos demais blocos)
   const executiveSummary = {
-    what: mentionsToday > 0 ? `${candidateName} apresentou ${mentionsToday.toLocaleString("pt-BR")} registros monitorados: ${evidence.news.toLocaleString("pt-BR")} notícias, ${evidence.posts.toLocaleString("pt-BR")} posts e ${evidence.videos.toLocaleString("pt-BR")} vídeos (${citationsDetected.toLocaleString("pt-BR")} citações detectadas); ${windowCounts.h1.toLocaleString("pt-BR")} na última hora.` : "Pouca atividade pública relevante detectada nas últimas 24 horas.",
+    what: mentionsToday > 0 ? `${candidateName} apresentou ${Number(mentionsToday ?? 0).toLocaleString("pt-BR")} registros monitorados: ${Number(evidence.news ?? 0).toLocaleString("pt-BR")} notícias, ${Number(evidence.posts ?? 0).toLocaleString("pt-BR")} posts e ${Number(evidence.videos ?? 0).toLocaleString("pt-BR")} vídeos (${Number(citationsDetected ?? 0).toLocaleString("pt-BR")} citações detectadas); ${Number(windowCounts.h1 ?? 0).toLocaleString("pt-BR")} na última hora.` : "Pouca atividade pública relevante detectada nas últimas 24 horas.",
     why: events[0]
       ? `Evento recente detectado: "${events[0].name}" (${events[0].publications} publicações, ${events[0].outlets} veículos).`
       : viral ? `Evidência de viralização: ${viral.social_network}, ${((viral.likes_count || 0) + (viral.shares_count || 0) + (viral.replies_count || 0)).toLocaleString("pt-BR")} interações.`
@@ -708,7 +708,7 @@ async function fetchSnapshot(
       ? `Veículos identificados na janela: ${outlets.slice(0, 3).map(o => `${o.name} (${o.count})`).join(", ")}${outlets.length > 3 ? ` e mais ${outlets.length - 3}` : ""}.`
       : "Nenhum veículo jornalístico identificado na janela.",
     impact: classifiedToday > 0
-      ? `Classificações na janela (${classifiedToday} de ${mentionsToday}): ${positiveToday.toLocaleString("pt-BR")} positivas, ${negativeToday.toLocaleString("pt-BR")} negativas e ${neutralToday.toLocaleString("pt-BR")} neutras.`
+      ? `Classificações na janela (${classifiedToday} de ${mentionsToday}): ${Number(positiveToday ?? 0).toLocaleString("pt-BR")} positivas, ${Number(negativeToday ?? 0).toLocaleString("pt-BR")} negativas e ${Number(neutralToday ?? 0).toLocaleString("pt-BR")} neutras.`
       : "Sem classificação de sentimento suficiente na janela.",
   };
 
@@ -994,14 +994,14 @@ const RealTimeMonitor = () => {
               <CardContent className="p-3 space-y-2">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-muted-foreground">
                   <span className="font-semibold text-foreground">
-                    {snapshot.mentionsToday.toLocaleString("pt-BR")} registros monitorados nas últimas {windowHours}h
+                    {Number(snapshot.mentionsToday ?? 0).toLocaleString("pt-BR")} registros monitorados nas últimas {windowHours}h
                   </span>
                   <span className="hidden sm:inline">·</span>
-                  <span>{snapshot.evidence.news.toLocaleString("pt-BR")} notícias</span>
+                  <span>{Number(snapshot.evidence.news ?? 0).toLocaleString("pt-BR")} notícias</span>
                   <span className="hidden sm:inline">·</span>
-                  <span>{snapshot.evidence.posts.toLocaleString("pt-BR")} posts</span>
+                  <span>{Number(snapshot.evidence.posts ?? 0).toLocaleString("pt-BR")} posts</span>
                   <span className="hidden sm:inline">·</span>
-                  <span>{snapshot.evidence.videos.toLocaleString("pt-BR")} vídeos</span>
+                  <span>{Number(snapshot.evidence.videos ?? 0).toLocaleString("pt-BR")} vídeos</span>
                   <Badge variant="outline" className="w-fit sm:ml-auto text-[10px]">Últimas {windowHours}h</Badge>
                 </div>
                 <div className="text-[11px] text-muted-foreground italic">
@@ -1025,7 +1025,7 @@ const RealTimeMonitor = () => {
                       {items.map(it => (
                         <div key={it.k}>
                           <div>{it.k}</div>
-                          <div className="font-semibold text-foreground/80 tabular-nums">{it.v.toLocaleString("pt-BR")}</div>
+                          <div className="font-semibold text-foreground/80 tabular-nums">{Number(it.v ?? 0).toLocaleString("pt-BR")}</div>
                         </div>
                       ))}
                     </div>
@@ -1035,9 +1035,9 @@ const RealTimeMonitor = () => {
                   {snapshot.mentionsToday > 0 ? (
                     <>
                       Cobertura do classificador:{" "}
-                      <span className="font-semibold text-foreground/80">{snapshot.classifiedToday.toLocaleString("pt-BR")} classificados ({snapshot.classifiedCoveragePct}%)</span>
+                      <span className="font-semibold text-foreground/80">{Number(snapshot.classifiedToday ?? 0).toLocaleString("pt-BR")} classificados ({snapshot.classifiedCoveragePct}%)</span>
                       {" · "}
-                      <span className="font-semibold text-foreground/80">{snapshot.unclassifiedToday.toLocaleString("pt-BR")} não classificados ({100 - snapshot.classifiedCoveragePct}%)</span>
+                      <span className="font-semibold text-foreground/80">{Number(snapshot.unclassifiedToday ?? 0).toLocaleString("pt-BR")} não classificados ({100 - snapshot.classifiedCoveragePct}%)</span>
                       {!snapshot.hasSentimentSample && (
                         <span className="italic"> · Sentimento indisponível por amostra insuficiente (mínimo de 5).</span>
                       )}
@@ -1053,10 +1053,10 @@ const RealTimeMonitor = () => {
           {/* KPIs */}
           {snapshot && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
-              <KpiCard icon={<Activity className="h-3.5 w-3.5 text-primary" />} label="Última hora" value={snapshot.windowCounts.h1.toLocaleString("pt-BR")} accent="bg-primary/70" />
-              <KpiCard icon={<Clock className="h-3.5 w-3.5 text-primary" />} label="Últimas 6h" value={snapshot.windowCounts.h6.toLocaleString("pt-BR")} accent="bg-primary/50" />
-              <KpiCard icon={<Activity className="h-3.5 w-3.5 text-primary" />} label="Últimas 12h" value={snapshot.windowCounts.h12.toLocaleString("pt-BR")} accent="bg-primary/40" />
-              <KpiCard icon={<Newspaper className="h-3.5 w-3.5 text-primary" />} label="Notícias relevantes" value={snapshot.evidence.news.toLocaleString("pt-BR")} accent="bg-primary/30" />
+              <KpiCard icon={<Activity className="h-3.5 w-3.5 text-primary" />} label="Última hora" value={Number(snapshot.windowCounts.h1 ?? 0).toLocaleString("pt-BR")} accent="bg-primary/70" />
+              <KpiCard icon={<Clock className="h-3.5 w-3.5 text-primary" />} label="Últimas 6h" value={Number(snapshot.windowCounts.h6 ?? 0).toLocaleString("pt-BR")} accent="bg-primary/50" />
+              <KpiCard icon={<Activity className="h-3.5 w-3.5 text-primary" />} label="Últimas 12h" value={Number(snapshot.windowCounts.h12 ?? 0).toLocaleString("pt-BR")} accent="bg-primary/40" />
+              <KpiCard icon={<Newspaper className="h-3.5 w-3.5 text-primary" />} label="Notícias relevantes" value={Number(snapshot.evidence.news ?? 0).toLocaleString("pt-BR")} accent="bg-primary/30" />
             </div>
           )}
 
@@ -1211,7 +1211,7 @@ const RealTimeMonitor = () => {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between gap-2">
                                 <span className="text-sm font-medium truncate">{o.name}</span>
-                                <span className="text-[11px] text-muted-foreground tabular-nums">{o.count.toLocaleString("pt-BR")} · {o.percentage}%</span>
+                                <span className="text-[11px] text-muted-foreground tabular-nums">{Number(o.count ?? 0).toLocaleString("pt-BR")} · {o.percentage}%</span>
                               </div>
                               <div className="h-1.5 rounded-full bg-muted/40 overflow-hidden mt-1">
                                 <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6 }} className="h-full bg-accent" />
@@ -1259,7 +1259,7 @@ const RealTimeMonitor = () => {
                           </div>
                           <div className="flex flex-col items-end gap-1 shrink-0">
                             <div className="flex items-center gap-1 text-xs font-semibold tabular-nums">
-                              <Heart className="h-3 w-3 text-destructive" />{p.engagement.toLocaleString("pt-BR")}
+                              <Heart className="h-3 w-3 text-destructive" />{Number(p.engagement ?? 0).toLocaleString("pt-BR")}
                             </div>
                             {p.url ? (
                               <a href={p.url} target="_blank" rel="noopener noreferrer"
@@ -1304,7 +1304,7 @@ const RealTimeMonitor = () => {
                               <div className="text-xs text-muted-foreground">{a.detail}</div>
                               <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
                                 {a.source && <span>Fonte: {a.source}</span>}
-                                {typeof a.engagement === "number" && <span>Engajamento: {a.engagement.toLocaleString("pt-BR")}</span>}
+                                {typeof a.engagement === "number" && <span>Engajamento: {Number(a.engagement ?? 0).toLocaleString("pt-BR")}</span>}
                                 {a.publishedAt && <span>Publicado: {formatRelative(new Date(a.publishedAt))}</span>}
                                 {a.evidence && <span>Base: {a.evidence.news} notícias · {a.evidence.posts} posts · {a.evidence.videos} vídeos</span>}
                               </div>
@@ -1332,17 +1332,17 @@ const RealTimeMonitor = () => {
                 <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
                   <div className="text-[11px] uppercase tracking-wide text-primary font-semibold mb-2">Base utilizada</div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                    <div><div className="text-muted-foreground">Notícias</div><div className="font-semibold text-foreground tabular-nums">{snapshot.evidence.news.toLocaleString("pt-BR")}</div></div>
-                    <div><div className="text-muted-foreground">Posts</div><div className="font-semibold text-foreground tabular-nums">{snapshot.evidence.posts.toLocaleString("pt-BR")}</div></div>
-                    <div><div className="text-muted-foreground">Vídeos</div><div className="font-semibold text-foreground tabular-nums">{snapshot.evidence.videos.toLocaleString("pt-BR")}</div></div>
-                    <div><div className="text-muted-foreground">Total analisado</div><div className="font-semibold text-foreground tabular-nums">{snapshot.mentionsToday.toLocaleString("pt-BR")}</div></div>
+                    <div><div className="text-muted-foreground">Notícias</div><div className="font-semibold text-foreground tabular-nums">{Number(snapshot.evidence.news ?? 0).toLocaleString("pt-BR")}</div></div>
+                    <div><div className="text-muted-foreground">Posts</div><div className="font-semibold text-foreground tabular-nums">{Number(snapshot.evidence.posts ?? 0).toLocaleString("pt-BR")}</div></div>
+                    <div><div className="text-muted-foreground">Vídeos</div><div className="font-semibold text-foreground tabular-nums">{Number(snapshot.evidence.videos ?? 0).toLocaleString("pt-BR")}</div></div>
+                    <div><div className="text-muted-foreground">Total analisado</div><div className="font-semibold text-foreground tabular-nums">{Number(snapshot.mentionsToday ?? 0).toLocaleString("pt-BR")}</div></div>
                   </div>
                   <div className="mt-2 text-[11px] text-muted-foreground border-t border-primary/20 pt-2">
                     {snapshot.hasSentimentSample
-                      ? <>Sentimento calculado sobre <span className="font-semibold text-foreground/80">{snapshot.classifiedToday.toLocaleString("pt-BR")} registros classificados</span></>
+                      ? <>Sentimento calculado sobre <span className="font-semibold text-foreground/80">{Number(snapshot.classifiedToday ?? 0).toLocaleString("pt-BR")} registros classificados</span></>
                       : <span className="italic">Sentimento indisponível por amostra insuficiente (mínimo de 5 classificações).</span>}
                     {historicalBase.total !== null && (
-                      <> · Base histórica da plataforma: <span className="font-semibold text-foreground/80">{historicalBase.total.toLocaleString("pt-BR")}</span> · Citações detectadas na janela: <span className="font-semibold text-foreground/80">{snapshot.citationsDetected.toLocaleString("pt-BR")}</span>{snapshot.historicalMentions > 0 && (<> · Citações históricas: <span className="font-semibold text-foreground/80">{snapshot.historicalMentions.toLocaleString("pt-BR")}</span></>)}</>
+                      <> · Base histórica da plataforma: <span className="font-semibold text-foreground/80">{Number(historicalBase.total ?? 0).toLocaleString("pt-BR")}</span> · Citações detectadas na janela: <span className="font-semibold text-foreground/80">{Number(snapshot.citationsDetected ?? 0).toLocaleString("pt-BR")}</span>{snapshot.historicalMentions > 0 && (<> · Citações históricas: <span className="font-semibold text-foreground/80">{Number(snapshot.historicalMentions ?? 0).toLocaleString("pt-BR")}</span></>)}</>
                     )}
                   </div>
                 </div>

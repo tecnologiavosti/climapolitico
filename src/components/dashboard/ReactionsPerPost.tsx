@@ -656,7 +656,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
             <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-2">
               Sentimento consolidado{" "}
               <span className="ml-1 normal-case text-[10px] text-muted-foreground/80">
-                (pos + neu + neg + sem classificação = {totals.totalRecords.toLocaleString("pt-BR")})
+                (pos + neu + neg + sem classificação = {Number(totals.totalRecords ?? 0).toLocaleString("pt-BR")})
               </span>
             </h4>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
@@ -677,7 +677,7 @@ export function ReactionsPerPost({ candidateId }: Props) {
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-muted-foreground">Assuntos dominantes:</span>
               {topTopics.map((t) => (
-                <Badge key={t.label} variant="secondary" className="text-xs">{t.label} · {t.mentions.toLocaleString("pt-BR")}</Badge>
+                <Badge key={t.label} variant="secondary" className="text-xs">{t.label} · {Number(t.mentions ?? 0).toLocaleString("pt-BR")}</Badge>
               ))}
             </div>
           )}
@@ -777,7 +777,7 @@ function KpiBox({ label, value, highlight = false, tone, suffix }: { label: stri
   return (
     <div className={`p-3 rounded-lg border ${toneClass}`}>
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-xl font-bold mt-0.5">{value.toLocaleString("pt-BR")}{suffix || ""}</div>
+      <div className="text-xl font-bold mt-0.5">{Number(value ?? 0).toLocaleString("pt-BR")}{suffix || ""}</div>
     </div>
   );
 }
@@ -786,7 +786,7 @@ function Metric({ Icon, label, value }: { Icon: typeof Heart; label: string; val
   return (
     <div className="flex flex-col items-center gap-0.5 rounded-md border bg-muted/30 py-1.5">
       <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-      <span className="text-sm font-semibold tabular-nums leading-none">{value.toLocaleString("pt-BR")}</span>
+      <span className="text-sm font-semibold tabular-nums leading-none">{Number(value ?? 0).toLocaleString("pt-BR")}</span>
       <span className="text-[9px] uppercase tracking-wide text-muted-foreground">{label}</span>
     </div>
   );
