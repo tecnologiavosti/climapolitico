@@ -543,10 +543,13 @@ async function fetchSnapshot(
     .slice(0, 6);
 
   // BLOCO 5 — Veículos mais ativos (distribuição completa, sem corte artificial)
+  // Exclui agregadores genéricos (Google News/Notícias) — exibir apenas veículos reais (G1, UOL, etc.)
+  const AGGREGATOR_REGEX = /^(google\s*(news|not[ií]cias?)|news\.google|notícias|noticias)$/i;
   const outletCounts = new Map<string, number>();
   for (const r of newsRows) {
     const outlet = normalizeOutlet(r.author_name || r.comment_author || r.author_handle || r.post_title?.split(" - ").pop() || null);
     if (!outlet) continue;
+    if (AGGREGATOR_REGEX.test(outlet.trim())) continue;
     outletCounts.set(outlet, (outletCounts.get(outlet) || 0) + 1);
   }
   const totalOutletNews = Array.from(outletCounts.values()).reduce((sum, count) => sum + count, 0) || 1;
@@ -701,6 +704,7 @@ const RealTimeMonitor = () => {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
   const [loadingCandidates, setLoadingCandidates] = useState(true);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [historicalBase, setHistoricalBase] = useState<number | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [liveProgress, setLiveProgress] = useState<LiveProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -754,11 +758,21 @@ const RealTimeMonitor = () => {
   const selectedCandidate = candidates.find(c => c.id === selectedCandidateId);
 
   useEffect(() => {
-    if (!user || !selectedCandidateId || !selectedCandidate) { setSnapshot(null); return; }
+    if (!user || !selectedCandidateId || !selectedCandidate) { setSnapshot(null); setHistoricalBase(null); return; }
     const cached = readCache(cacheKey(user.id, selectedCandidateId) + `:${windowHours}h`);
     if (cached) setSnapshot(cached); else setSnapshot(null);
     const stale = !cached || (Date.now() - cached.savedAt) > 2 * 60 * 1000;
     if (stale) runSync(selectedCandidateId, user.id, selectedCandidate.full_name, windowHours);
+    // Base histórica total (todas as menções coletadas para o candidato)
+    (async () => {
+      const { count } = await supabase
+        .from("social_interactions")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("candidate_id", selectedCandidateId)
+        .not("social_network", "in", "(mastodon,lemmy,pinterest)");
+      setHistoricalBase(typeof count === "number" ? count : null);
+    })();
   }, [user, selectedCandidateId, selectedCandidate, windowHours, runSync]);
 
   useEffect(() => {
@@ -877,14 +891,31 @@ const RealTimeMonitor = () => {
 
           {snapshot && (
             <Card className="border-border/60 bg-card/60 backdrop-blur-sm">
-              <CardContent className="p-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground">Baseado em:</span>
-                <span>{snapshot.evidence.news.toLocaleString("pt-BR")} notícias</span>
-                <span className="hidden sm:inline">·</span>
-                <span>{snapshot.evidence.posts.toLocaleString("pt-BR")} posts</span>
-                <span className="hidden sm:inline">·</span>
-                <span>{snapshot.evidence.videos.toLocaleString("pt-BR")} vídeos</span>
-                <Badge variant="outline" className="w-fit sm:ml-auto text-[10px]">Últimas {windowHours}h</Badge>
+              <CardContent className="p-3 space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">
+                    {snapshot.mentionsToday.toLocaleString("pt-BR")} registros detectados nas últimas {windowHours}h
+                  </span>
+                  <span className="hidden sm:inline">·</span>
+                  <span>{snapshot.evidence.news.toLocaleString("pt-BR")} notícias</span>
+                  <span className="hidden sm:inline">·</span>
+                  <span>{snapshot.evidence.posts.toLocaleString("pt-BR")} posts</span>
+                  <span className="hidden sm:inline">·</span>
+                  <span>{snapshot.evidence.videos.toLocaleString("pt-BR")} vídeos</span>
+                  <Badge variant="outline" className="w-fit sm:ml-auto text-[10px]">Últimas {windowHours}h</Badge>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-[11px] text-muted-foreground border-t border-border/40 pt-2">
+                  <span>
+                    Base histórica: <span className="font-semibold text-foreground/80">{(historicalBase ?? 0).toLocaleString("pt-BR")} registros</span>
+                  </span>
+                  <span className="hidden sm:inline">·</span>
+                  <span>
+                    Sentimento calculado sobre <span className="font-semibold text-foreground/80">{snapshot.classifiedToday.toLocaleString("pt-BR")} registros classificados</span>
+                    {snapshot.mentionsToday > snapshot.classifiedToday && (
+                      <> de {snapshot.mentionsToday.toLocaleString("pt-BR")} totais</>
+                    )}
+                  </span>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -913,6 +944,9 @@ const RealTimeMonitor = () => {
                     <p className="text-xs text-muted-foreground py-4">Sem evidência recente suficiente para identificar temas políticos nas últimas 24h.</p>
                   ) : (
                     <div className="space-y-2">
+                      <p className="text-[11px] text-muted-foreground italic">
+                        Um mesmo registro pode contribuir para múltiplos temas — a soma pode exceder o total da janela.
+                      </p>
                       {snapshot.themes.map((t, i) => (
                         <motion.div key={t.name} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.04 }}
                           className={cn(
@@ -1154,7 +1188,22 @@ const RealTimeMonitor = () => {
                   <Badge variant="secondary" className="text-[10px] h-4 px-1.5">Evidências</Badge>
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+                  <div className="text-[11px] uppercase tracking-wide text-primary font-semibold mb-2">Base utilizada</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    <div><div className="text-muted-foreground">Notícias</div><div className="font-semibold text-foreground tabular-nums">{snapshot.evidence.news.toLocaleString("pt-BR")}</div></div>
+                    <div><div className="text-muted-foreground">Posts</div><div className="font-semibold text-foreground tabular-nums">{snapshot.evidence.posts.toLocaleString("pt-BR")}</div></div>
+                    <div><div className="text-muted-foreground">Vídeos</div><div className="font-semibold text-foreground tabular-nums">{snapshot.evidence.videos.toLocaleString("pt-BR")}</div></div>
+                    <div><div className="text-muted-foreground">Total analisado</div><div className="font-semibold text-foreground tabular-nums">{snapshot.mentionsToday.toLocaleString("pt-BR")}</div></div>
+                  </div>
+                  <div className="mt-2 text-[11px] text-muted-foreground border-t border-primary/20 pt-2">
+                    Sentimento calculado sobre <span className="font-semibold text-foreground/80">{snapshot.classifiedToday.toLocaleString("pt-BR")} registros classificados</span>
+                    {historicalBase !== null && (
+                      <> · Base histórica da plataforma: <span className="font-semibold text-foreground/80">{historicalBase.toLocaleString("pt-BR")}</span></>
+                    )}
+                  </div>
+                </div>
                 <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {[
                     { k: "O que aconteceu", v: snapshot.executiveSummary.what, icon: <Activity className="h-3.5 w-3.5" /> },
