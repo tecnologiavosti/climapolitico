@@ -543,10 +543,13 @@ async function fetchSnapshot(
     .slice(0, 6);
 
   // BLOCO 5 — Veículos mais ativos (distribuição completa, sem corte artificial)
+  // Exclui agregadores genéricos (Google News/Notícias) — exibir apenas veículos reais (G1, UOL, etc.)
+  const AGGREGATOR_REGEX = /^(google\s*(news|not[ií]cias?)|news\.google|notícias|noticias)$/i;
   const outletCounts = new Map<string, number>();
   for (const r of newsRows) {
     const outlet = normalizeOutlet(r.author_name || r.comment_author || r.author_handle || r.post_title?.split(" - ").pop() || null);
     if (!outlet) continue;
+    if (AGGREGATOR_REGEX.test(outlet.trim())) continue;
     outletCounts.set(outlet, (outletCounts.get(outlet) || 0) + 1);
   }
   const totalOutletNews = Array.from(outletCounts.values()).reduce((sum, count) => sum + count, 0) || 1;
