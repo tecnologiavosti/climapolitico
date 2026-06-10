@@ -257,16 +257,33 @@ function historicalRelevanceScore(evt: any, pubs: ExternalPublication[]): number
   return Math.max(45, Math.min(100, Math.round(score)));
 }
 
-function meetsCoverageThreshold(counts: { news: number; videos: number; posts: number }, totalEvidence: number, distinctOutlets: number): boolean {
-  // Regras de validação solicitadas:
-  // 3 notícias OU 2 notícias + vídeo OU 2 notícias + posts OU 10 evidências totais.
-  // Sempre exigir ao menos 2 veículos distintos — um pico não pode vir de uma única fonte.
-  if (distinctOutlets < 2) return false;
-  if (counts.news >= 3) return true;
-  if (counts.news >= 2 && counts.videos >= 1) return true;
-  if (counts.news >= 2 && counts.posts >= 1) return true;
-  if (totalEvidence >= 10) return true;
-  return false;
+// Classifica a qualidade da cobertura externa de um evento.
+// Nenhum evento é descartado por cobertura fraca — o nível é exibido como badge na UI
+// e usado para modular o relevance_score.
+type CoverageQuality = "forte" | "media" | "fraca" | "ai_only";
+function coverageQuality(totalEvidence: number, distinctOutlets: number): CoverageQuality {
+  if (totalEvidence === 0 || distinctOutlets === 0) return "ai_only";
+  if (distinctOutlets >= 5 && totalEvidence >= 10) return "forte";
+  if (distinctOutlets >= 2) return "media";
+  return "fraca";
+}
+
+// Categoria do evento para os filtros da timeline histórica.
+function categoryOf(evt: { name?: string; type?: string }): string {
+  const text = normalize(`${evt.type || ""} ${evt.name || ""}`);
+  if (/\beleicao|eleicoes|primeiro turno|segundo turno|debate|posse presidencial\b/.test(text)) {
+    if (/\bdebate\b/.test(text)) return "debate";
+    return "eleicao";
+  }
+  if (/\boperacao|policia federal|\bpf\b|busca e apreensao\b/.test(text)) return "operacao_pf";
+  if (/\bstf|supremo tribunal\b/.test(text)) return "stf";
+  if (/\btse|tribunal superior eleitoral|inelegibilidade|cassacao\b/.test(text)) return "tse";
+  if (/\bcpi\b/.test(text)) return "cpi";
+  if (/\bjulgamento|condenacao|absolvicao|sentenca\b/.test(text)) return "julgamento";
+  if (/\bprisao|preso|detido|indiciamento\b/.test(text)) return "prisao";
+  if (/\bescandalo|denuncia|corrupcao|rachadinha|propina\b/.test(text)) return "escandalo";
+  if (/\bimpeachment\b/.test(text)) return "escandalo";
+  return "outros";
 }
 
 function relevanceFromEvidence(evt: any, pubs: ExternalPublication[], _mentions: number): number {
@@ -724,6 +741,8 @@ Responda APENAS JSON válido:
         sentiment_negative: sentiment.neg,
         sentiment_neutral: sentiment.neu,
         outlet_names: outletNames,
+        coverage_quality: coverageQuality(totalEvidence, distinctOutlets),
+        category: categoryOf(evt),
         sources: evPubs.map((p) => ({ name: p.outlet, url: p.url, region: p.outletRegion, publishedAt: p.publishedAt || null, title: cleanText(p.title), kind: classifyPub(p) })),
       };
     }).filter((evt: any) => {
@@ -731,17 +750,13 @@ Responda APENAS JSON válido:
       if (Number.isNaN(eventDate)) return false;
       if (eventDate < start.getTime() - 86400000 || eventDate > end.getTime() + 86400000) return false;
       if (!evt.name || !evt.description) return false;
-      // Bloqueia eventos de campanha rotineira (comício, agenda, visita etc.).
+      // Bloqueia eventos de campanha rotineira (comício, agenda, visita etc.) — mantido por design.
       const normType = normalize(String(evt.type || "")).replace(/[^a-z_]/g, "");
       if (BLOCKED_EVENT_TYPES.test(normType)) return false;
       if (BLOCKED_NAME_TERMS.test(evt.name)) return false;
-      // Pico só existe com repercussão real.
-      return meetsCoverageThreshold(
-        { news: evt.news_count, videos: evt.videos_count, posts: evt.posts_count },
-        evt.publications_count,
-        evt.distinct_outlets,
-      );
-    }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0)).slice(0, 40);
+      // Nenhum threshold de cobertura: enciclopédia histórica exibe todos os eventos políticos relevantes.
+      return true;
+    }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0)).slice(0, 120);
 
     const timelineMap = new Map<string, { date: string; total: number; news: number; videos: number; posts: number }>();
     for (const p of pubs) {

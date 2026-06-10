@@ -1,111 +1,60 @@
-# Plano: Refatoração "Repercussão por Região" + Mobile QA Global
+# Reformular "Picos de Menções" em Enciclopédia Histórica
 
-Esta é uma entrega grande. Proponho dividir em **3 fases** entregáveis e testáveis separadamente, para evitar quebrar o que já funciona.
+## Objetivo
 
----
+Tornar a aba **Clima Político → Picos de Menções** uma linha do tempo cronológica de acontecimentos políticos relevantes do candidato (2018+), independente de existir dado na SSOT. Detector atual (Google News + GDELT + IA) preservado; SSOT vira enriquecimento opcional já implementado.
 
-## FASE 1 — Responsividade global (gráficos + sidebar + nomes de abas)
+## O que muda
 
-Aplica-se a TODA a plataforma, não só à aba Repercussão.
+### Backend — `supabase/functions/detect-historical-peaks/index.ts`
 
-### 1.1 Gráficos (Recharts) responsivos
-Auditar e padronizar todos os componentes em `src/components/dashboard/**` que usam Recharts:
-- `SocialMediaCharts`, `ReactionsPerPost(Charts)`, `SocialMediaTemporalEvolution`, `SocialMediaPeakHours`, `RealTimeMentionsChart`, `RealTimeSentimentChart`, `RealTimeSentimentGauge`, `StatsGrid`, `RepercussionTimeline`, etc.
-- Garantir `<ResponsiveContainer width="100%" aspect={...}>` com aspect menor no mobile.
-- Pizza/Donut: raio dinâmico via `useIsMobile()`, legenda empilhada abaixo, fontes menores, sem labels externos longos no mobile.
-- Tooltip com `wrapperStyle` adaptado a touch.
-- Reforçar regras já adicionadas em `src/index.css` (`.recharts-*`, `svg { max-width:100% }`).
+1. **Substituir `meetsCoverageThreshold` por `coverageQuality`** que devolve um nível (`forte` | `media` | `fraca` | `ai_only`) em vez de booleano. **Nenhum evento é descartado por baixa cobertura.** O nível alimenta `relevance_score` e aparece como badge na UI.
 
-### 1.2 Nomes de abas/menus — NÃO truncar
-- `AppSidebar.tsx` e `MobileBottomNav.tsx`: remover qualquer `truncate`/abreviação.
-- Permitir `whitespace-normal break-words leading-tight`, `min-h` em vez de altura fixa.
-- Bottom nav mobile: empilhar ícone + label em 2 linhas se necessário; reduzir ícone antes do texto.
-- Manter rótulos completos: "Repercussão por Região", "Monitor Geográfico", "Feed em Tempo Real", "Análise IA", etc.
+2. **Manter** filtros que já existem e são por design:
+   - `BLOCKED_EVENT_TYPES` (comício, agenda, visita…) — continuam barrando ruído de campanha rotineira.
+   - `BLOCKED_NAME_TERMS` — idem.
+   - Janela temporal (start..end ±1 dia) e tipo válido — mantidos.
 
-### 1.3 Sidebar mobile (drawer)
-- Aumentar largura do `Sheet` mobile (ex. `w-[85vw] max-w-[340px]`).
-- Scroll interno habilitado, labels completos, ícones alinhados.
+3. **Aumentar limite `.slice(0, 40)` → `.slice(0, 120)`** para suportar varredura plurianual (2018–2026 = 9 anos).
 
-### 1.4 Cards "Reações por post" e similares
-- Layout `flex-col` no mobile, gráfico abaixo do texto, métricas empilhadas, botões `min-h-11`.
+4. **Garantir descoberta histórica multi-ano:** confirmar que `discoverKnownEvents` (IA) recebe a janela completa e que `discoverFromGoogleRSS`/`discoverFromGDELT` não impõem filtro de recência (já está assim hoje — apenas validar).
 
----
+5. **Adicionar `category`** a cada evento (derivada de `type` + heurística no nome): `eleicao`, `operacao_pf`, `stf`, `tse`, `cpi`, `julgamento`, `escandalo`, `prisao`, `debate`, `outros`. Usado pelos novos filtros da UI.
 
-## FASE 2 — Refatoração funcional da aba Repercussão por Região
+6. **Camada 2 (SSOT) — já implementada** na iteração anterior via `event_ssot_correlation`. Mantida: roda só quando `candidate.id` tem registros no período; nunca esconde evento sem SSOT.
 
-### 2.1 Remoção e simplificação
-- Remover seletor de período (7/30/±7 dias) em `EventRepercussion.tsx` e no hook.
-- Detecção sempre busca eventos recentes + relevantes (auto).
-- Remover painel Debug da produção (manter atrás de flag dev).
+### Frontend — `src/pages/dashboard/EventReport.tsx`
 
-### 2.2 Detecção real de eventos (edge `detect-candidate-events`)
-- Pipeline: Firecrawl Search (notícias BR) + GDELT → normalizar → agrupar por similaridade (título + entidades + janela 48h) via Cerebras → produzir eventos com: título, descrição, categoria, local, data, fontes[], importanceScore, confidenceScore, themes[], narratives[].
-- Categorias: entrevista, discurso, reunião, coletiva, viagem, debate, polêmica, internacional, economia, eleição.
-- Deduplicação por hash de título normalizado + janela temporal.
+1. **Filtros por categoria** (chips horizontais): Todos · Eleições · Operações PF · STF · TSE · CPI · Julgamentos · Escândalos · Prisões · Debates. Filtragem client-side sobre `events`.
 
-### 2.3 Thresholds de qualidade
-Só persistir/exibir evento se:
-- `distinctOutlets >= 3` E `publications >= 5` E `confidenceScore >= 0.4`.
-- Caso contrário, marcar `lowCoverage = true` e ocultar do feed principal (toggle "Mostrar baixa cobertura").
+2. **Linha do tempo agrupada por ano** (substitui a lista plana). Cada ano vira uma seção com header `2018`, `2019`, … e os eventos do ano listados cronologicamente dentro.
 
-### 2.4 Análise externa-first (edge `analyze-event-regional`)
-- Já refatorada parcialmente; reforçar que `internalReaction` é só complemento.
-- Inferência regional: outlet origin + menções regionais no texto + circulação conhecida (já existe em `outlet-regions.ts`, expandir lista).
-- Gerar: tom da cobertura, polarização, narrativas (apoio/críticas/debates), temas dominantes, repercussão política/econômica/internacional — todos baseados em evidência textual.
+3. **Badge de cobertura por evento:**
+   - `forte` (≥5 outlets, ≥10 evidências) — verde
+   - `media` (2–4 outlets) — âmbar
+   - `fraca` (1 outlet) — cinza
+   - `ai_only` (sem cobertura externa, descoberto só por IA) — outline
 
-### 2.5 Chat IA por evento (Cerebras)
-- `chat-event-region` já existe; garantir que recebe contexto cheio (evento + narrativas + dist regional + top 30 fontes + sentimentos).
-- Sugestões de perguntas no UI: "Como o Nordeste reagiu?", "Quais críticas dominaram no Sudeste?", "Compare Sul e Nordeste", "Quais veículos deram mais destaque?".
+4. **Métricas visuais** já presentes (outlets, evidências, duração, sentimento, volume SSOT) — mantidas e exibidas mesmo em eventos `ai_only` (mostra "Cobertura limitada — registrado por descoberta histórica").
 
-### 2.6 Mapa do Brasil refeito
-- `RegionalSentimentMap`: melhorar gradiente, hover (raise + glow), tooltip com mini-stats (publicações, top veículo, tom). Mobile: SVG `width:100%`, legenda colapsada em accordion.
+5. **Preset padrão de período:** ampliar para `2018-01-01` → `current_date` (era 2022 only). Mantém os presets existentes.
 
-### 2.7 Nova estrutura visual
-- TOPO: KPIs (candidato, total eventos, publicações, veículos, alcance).
-- ESQUERDA: lista de eventos + filtros por categoria.
-- CENTRO: análise IA, narrativas, temas, timeline.
-- DIREITA: mapa + ranking regional + veículos.
-- INFERIOR: chat IA contextual.
-- Em mobile, vira tabs verticais: Evento → Análise → Mapa → Chat.
+## O que NÃO muda
 
-### 2.8 Fontes
-- Lista de veículos com link, data, região, score de relevância (já existe parcial em `ExternalSource`; expor melhor no UI).
+- Detector atual, RPCs de SSOT, filtros políticos, sentimento, deduplicação, dashboards de outras abas.
+- Pipeline de coleta (`social_interactions`), `social_metrics_daily`, cron de refresh.
 
-### 2.9 Performance
-- Cache em `political_events.metadata.external_cache` (já existe) com TTL 6h.
-- Detecção incremental: só processar URLs ainda não vistas (set de hashes de URL).
+## Critérios de aceite
 
----
+- Buscar Flavio Bolsonaro com janela 2018-01-01..2026-12-31 retorna eventos em ≥4 anos distintos.
+- Eventos `ai_only` aparecem com badge correto e não são escondidos.
+- Filtros de categoria reduzem corretamente a lista sem refazer fetch.
+- Eventos com SSOT continuam mostrando o bloco "Repercussão observada".
+- Nenhuma regressão em `EventRepercussion.tsx` (consome `political_events` diretamente, não a edge function).
 
-## FASE 3 — QA mobile final
+## Arquivos tocados
 
-- Testar em viewports 375, 414, 768 das telas: Overview, RealTime, EventRepercussion, NetworkView, RegionalAnalysis, AIInsights.
-- Validar: nenhum gráfico cortado, nenhum nome de aba truncado, nenhum overflow horizontal.
+- `supabase/functions/detect-historical-peaks/index.ts` — alterar threshold/filtros, adicionar `category` e `coverage_quality`, aumentar limite.
+- `src/pages/dashboard/EventReport.tsx` — filtros de categoria, agrupamento por ano, badge de cobertura, preset 2018+.
 
----
-
-## Detalhes técnicos
-
-**Arquivos principais afetados:**
-- `src/components/AppSidebar.tsx`, `src/components/MobileBottomNav.tsx`
-- `src/components/dashboard/**/*Chart*.tsx`, `ReactionsPerPost*.tsx`
-- `src/components/dashboard/repercussion/*` (todos)
-- `src/pages/dashboard/EventRepercussion.tsx`
-- `src/hooks/useEventRepercussion.tsx`
-- `supabase/functions/detect-candidate-events/index.ts`
-- `supabase/functions/analyze-event-regional/index.ts`
-- `supabase/functions/chat-event-region/index.ts`
-- `supabase/functions/_shared/outlet-regions.ts` (expandir)
-- `src/index.css` (já tem base, reforçar)
-
-**Migração DB:** adicionar `low_coverage boolean default false`, `confidence_score numeric` em `political_events` se ainda não existirem.
-
-**Sem mudanças em:** auth, RLS de outras tabelas, ranking, monitor em tempo real (apenas correções visuais de gráficos).
-
----
-
-## Pergunta antes de começar
-
-Quer que eu execute **as 3 fases em sequência neste mesmo loop** (vai ser um patch grande, ~15-20 arquivos), ou prefere que eu comece pela **Fase 1 (mobile global)** e depois você valide antes de eu mexer na lógica da Repercussão (Fase 2)?
-
-Recomendo começar pela **Fase 1** — corrige o problema mais visível (gráficos/sidebar quebrados em produção) sem risco de quebrar a lógica de eventos que ainda está sendo estabilizada.
+Total estimado: ~150 linhas backend, ~120 linhas frontend.
