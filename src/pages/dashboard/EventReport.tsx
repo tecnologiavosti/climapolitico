@@ -256,20 +256,55 @@ export default function EventReport() {
       {/* Linha do tempo agregada removida — exibimos apenas acontecimentos com relevância política comprovada. */}
 
       {events.length > 0 ? (
-        <div className="space-y-3">
-          <h2 className="text-lg font-semibold flex items-center gap-2"><TrendingUp className="h-5 w-5 text-primary" /> Picos detectados ({events.length})</h2>
-          {events.sort((a, b) => a.start_date.localeCompare(b.start_date)).map((ev, idx) => {
-            const key = `${idx}-${ev.start_date}`;
+        <div className="space-y-5">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-primary" /> Enciclopédia política ({filteredEvents.length}/{events.length})
+            </h2>
+            <div className="flex flex-wrap gap-1.5">
+              {CATEGORY_FILTERS.map((c) => (
+                <Button
+                  key={c.id}
+                  size="sm"
+                  variant={category === c.id ? "default" : "outline"}
+                  className="h-7 px-2.5 text-xs"
+                  onClick={() => setCategory(c.id)}
+                >
+                  {c.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {filteredEvents.length === 0 ? (
+            <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">
+              Nenhum acontecimento nesta categoria. Selecione outro filtro.
+            </CardContent></Card>
+          ) : null}
+
+          {eventsByYear.map(([year, yearEvents]) => (
+            <div key={year} className="space-y-3">
+              <div className="flex items-center gap-3">
+                <h3 className="text-2xl font-bold tracking-tight text-primary">{year}</h3>
+                <div className="h-px bg-border flex-1" />
+                <span className="text-xs text-muted-foreground">{yearEvents.length} acontecimento{yearEvents.length === 1 ? "" : "s"}</span>
+              </div>
+              {yearEvents.map((ev, idx) => {
+            const key = `${year}-${idx}-${ev.start_date}`;
             const isOpen = !!expanded[key];
             const icon = typeIcon[ev.type] || <Newspaper className="h-4 w-4" />;
+            const coverage = COVERAGE_BADGE[ev.coverage_quality || "fraca"];
             return (
               <Card key={key} className="border-l-4 border-l-primary/60">
                 <CardHeader className="pb-3">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="space-y-1 flex-1 min-w-0">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                         <CalendarDays className="h-3.5 w-3.5" />
                         <span>{formatDate(ev.start_date)}{ev.end_date && ev.end_date !== ev.start_date ? ` → ${formatDate(ev.end_date)}` : ""}</span>
+                        {coverage ? (
+                          <Badge variant="outline" className={`text-[10px] font-normal ${coverage.className}`}>{coverage.label}</Badge>
+                        ) : null}
                       </div>
                       <CardTitle className="text-base md:text-lg leading-snug flex items-start gap-2">
                         <span className="text-primary mt-0.5">{icon}</span>
