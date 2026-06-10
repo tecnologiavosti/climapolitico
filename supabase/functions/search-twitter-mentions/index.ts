@@ -10,6 +10,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { enrichRecordLocation } from "../_shared/infer-location.ts";
 import { isPoliticalCandidateContent } from "../_shared/political-content.ts";
+import { newPipelineRecorder } from "../_shared/pipeline-metrics.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1040,19 +1041,27 @@ Deno.serve(async (req) => {
       if (collected.length >= maxTweets) break;
     }
 
+    // F1: telemetria pipeline
+    const __rec = newPipelineRecorder("twitter", candidateId);
+    __rec.addCollected(collected.length, "nitter");
+
     // Pós-filtro de RELEVÂNCIA: descarta posts que não citam claramente o candidato
     const relevant = collected.filter((t: ScrapedTweet) => matchesCandidate(t.text) && isPoliticalCandidateContent(`${t.text} ${t.author}`, candidateName));
     const dropped = collected.length - relevant.length;
+    __rec.addFiltered(dropped, "political_filter");
+    __rec.addParsed(relevant.length);
     if (dropped > 0) console.log(`[TWITTER] Filtro de relevância removeu ${dropped}/${collected.length} posts irrelevantes`);
 
     const fresh = relevant.filter((t: ScrapedTweet) => {
       const k = t.tweetId ? `tweet:${t.tweetId}` : `${t.author}:${t.text.substring(0, 80)}`;
       return !existingKeys.has(k);
     }).slice(0, maxTweets);
+    __rec.addDeduped(relevant.length - fresh.length, "db");
 
     console.log(`[TWITTER] Bruto=${collected.length} | Relevantes=${relevant.length} | Novos=${fresh.length}`);
 
     if (fresh.length === 0) {
+      await __rec.flush();
       return new Response(JSON.stringify({
         success: true, totalFound: collected.length, newTweets: 0, inserted: 0, analyzed: 0,
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -1104,10 +1113,12 @@ Deno.serve(async (req) => {
         continue;
       }
       totalInserted += inserted?.length || 0;
+      __rec.addInserted(inserted?.length || 0);
       if (sentiments) totalAnalyzed += sentiments.length;
     }
 
     console.log(`[TWITTER] === Inseridos=${totalInserted} | Analisados=${totalAnalyzed} ===`);
+    await __rec.flush();
 
     // ========= COLETA DE REPLIES via Nitter para tweets coletados =========
     let repliesInserted = 0;
