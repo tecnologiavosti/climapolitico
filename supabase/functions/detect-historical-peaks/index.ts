@@ -741,6 +741,8 @@ Responda APENAS JSON válido:
         sentiment_negative: sentiment.neg,
         sentiment_neutral: sentiment.neu,
         outlet_names: outletNames,
+        coverage_quality: coverageQuality(totalEvidence, distinctOutlets),
+        category: categoryOf(evt),
         sources: evPubs.map((p) => ({ name: p.outlet, url: p.url, region: p.outletRegion, publishedAt: p.publishedAt || null, title: cleanText(p.title), kind: classifyPub(p) })),
       };
     }).filter((evt: any) => {
@@ -748,17 +750,13 @@ Responda APENAS JSON válido:
       if (Number.isNaN(eventDate)) return false;
       if (eventDate < start.getTime() - 86400000 || eventDate > end.getTime() + 86400000) return false;
       if (!evt.name || !evt.description) return false;
-      // Bloqueia eventos de campanha rotineira (comício, agenda, visita etc.).
+      // Bloqueia eventos de campanha rotineira (comício, agenda, visita etc.) — mantido por design.
       const normType = normalize(String(evt.type || "")).replace(/[^a-z_]/g, "");
       if (BLOCKED_EVENT_TYPES.test(normType)) return false;
       if (BLOCKED_NAME_TERMS.test(evt.name)) return false;
-      // Pico só existe com repercussão real.
-      return meetsCoverageThreshold(
-        { news: evt.news_count, videos: evt.videos_count, posts: evt.posts_count },
-        evt.publications_count,
-        evt.distinct_outlets,
-      );
-    }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0)).slice(0, 40);
+      // Nenhum threshold de cobertura: enciclopédia histórica exibe todos os eventos políticos relevantes.
+      return true;
+    }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0)).slice(0, 120);
 
     const timelineMap = new Map<string, { date: string; total: number; news: number; videos: number; posts: number }>();
     for (const p of pubs) {
