@@ -68,19 +68,13 @@ export function CandidatesComparisonPanel({ candidates }: Props) {
   const { data: timeline } = useQuery({
     queryKey: ["comparison-timeline", user?.id, isAdmin, top5Ids.join(",")],
     queryFn: async () => {
-      if (top5Ids.length === 0) return [];
-      const since = subDays(new Date(), 14).toISOString();
-      let q = supabase
-        .from("social_interactions")
-        .select("candidate_id, collected_at")
-        .in("candidate_id", top5Ids)
-        .gte("collected_at", since)
-        .order("collected_at", { ascending: true })
-        .limit(10000);
-      if (!isAdmin && user) q = q.eq("user_id", user.id);
-      const { data, error } = await q;
+      if (top5Ids.length === 0) return [] as Array<{ day: string; candidate_id: string; mentions: number }>;
+      const { data, error } = await supabase.rpc("candidates_comparison_timeline" as any, {
+        _candidate_ids: top5Ids,
+        _days: 14,
+      });
       if (error) throw error;
-      return data || [];
+      return (data || []) as Array<{ day: string; candidate_id: string; mentions: number }>;
     },
     enabled: !!user && top5Ids.length > 0,
   });
