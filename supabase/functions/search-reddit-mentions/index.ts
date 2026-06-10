@@ -176,13 +176,29 @@ Deno.serve(async (req) => {
     tasks.push(fetchArcticShift("posts", candidateName));
     tasks.push(fetchArcticShift("comments", candidateName));
 
-    const results = await Promise.all(tasks);
+    // L2.b: Fallback Reddit oficial (.json) — subreddits BR + busca por query
+    const redditFallback: Promise<any[]>[] = [];
+    for (const sr of BR_SUBREDDITS) {
+      redditFallback.push(fetchRedditJson(sr, candidateName));
+    }
+    // Top 8 subreddits mais ativos também via /new (cobertura adicional sem busca)
+    for (const sr of BR_SUBREDDITS.slice(0, 8)) {
+      redditFallback.push(fetchRedditNewJson(sr));
+    }
+
+    const [results, fallbackResults] = await Promise.all([
+      Promise.all(tasks),
+      Promise.allSettled(redditFallback).then((rs) => rs.map((r) => r.status === "fulfilled" ? r.value : [])),
+    ]);
+
     const allPosts = [
       ...results[0],
       ...results.slice(2, 2 + BR_SUBREDDITS.length).flat(),
       ...results[results.length - 2],
+      ...fallbackResults.flat(), // posts do fallback oficial
     ];
     const allComments = [...results[1], ...results[results.length - 1]];
+    console.log(`[REDDIT] PullPush=${results.flat().length} Fallback=${fallbackResults.flat().length}`);
 
     const items: any[] = [];
     for (const p of allPosts) {
