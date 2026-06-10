@@ -51,7 +51,30 @@ interface HistoricalEvent {
   internal_engagement?: number;
   internal_by_network?: Record<string, number>;
   internal_window_days?: number;
+  coverage_quality?: "forte" | "media" | "fraca" | "ai_only";
+  category?: string;
 }
+
+const CATEGORY_FILTERS: { id: string; label: string }[] = [
+  { id: "all", label: "Todos" },
+  { id: "eleicao", label: "Eleições" },
+  { id: "operacao_pf", label: "Operações PF" },
+  { id: "stf", label: "STF" },
+  { id: "tse", label: "TSE" },
+  { id: "cpi", label: "CPI" },
+  { id: "julgamento", label: "Julgamentos" },
+  { id: "escandalo", label: "Escândalos" },
+  { id: "prisao", label: "Prisões" },
+  { id: "debate", label: "Debates" },
+  { id: "outros", label: "Outros" },
+];
+
+const COVERAGE_BADGE: Record<string, { label: string; className: string }> = {
+  forte: { label: "Cobertura forte", className: "bg-emerald-500/15 text-emerald-700 border-emerald-500/30 dark:text-emerald-300" },
+  media: { label: "Cobertura média", className: "bg-amber-500/15 text-amber-700 border-amber-500/30 dark:text-amber-300" },
+  fraca: { label: "Cobertura fraca", className: "bg-zinc-500/15 text-zinc-700 border-zinc-500/30 dark:text-zinc-300" },
+  ai_only: { label: "Registro histórico (IA)", className: "bg-primary/10 text-primary border-primary/30" },
+};
 
 const NETWORK_LABEL: Record<string, string> = {
   youtube: "YouTube", twitter: "Twitter / X", telegram: "Telegram", tiktok: "TikTok",
