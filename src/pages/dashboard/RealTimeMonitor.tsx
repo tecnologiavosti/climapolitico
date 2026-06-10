@@ -666,8 +666,8 @@ async function fetchSnapshot(
   const alerts: Alert[] = [];
   if (hasStatisticalBase) {
     const growth = prev24h >= 10 ? ((windowCounts.h24 - prev24h) / prev24h) * 100 : 0;
-    if (prev24h >= 10 && growth >= 50) alerts.push({ kind: "growth", title: `Crescimento de ${Math.round(growth)}% nas menções`, detail: `${windowCounts.h24.toLocaleString("pt-BR")} registros na janela contra ${prev24h.toLocaleString("pt-BR")} na anterior.`, evidence });
-    else if (prev24h >= 10 && growth <= -40) alerts.push({ kind: "growth", title: `Queda de ${Math.round(Math.abs(growth))}% nas menções`, detail: `${windowCounts.h24.toLocaleString("pt-BR")} registros na janela contra ${prev24h.toLocaleString("pt-BR")} na anterior.`, evidence });
+    if (prev24h >= 10 && growth >= 50) alerts.push({ kind: "growth", title: `Crescimento de ${Math.round(growth)}% nos registros monitorados`, detail: `Janela atual: ${windowCounts.h24.toLocaleString("pt-BR")} registros · Janela anterior: ${prev24h.toLocaleString("pt-BR")} registros (comparação contra as 24h anteriores).`, evidence });
+    else if (prev24h >= 10 && growth <= -40) alerts.push({ kind: "growth", title: `Queda de ${Math.round(Math.abs(growth))}% nos registros monitorados`, detail: `Janela atual: ${windowCounts.h24.toLocaleString("pt-BR")} registros · Janela anterior: ${prev24h.toLocaleString("pt-BR")} registros (comparação contra as 24h anteriores).`, evidence });
     if ((negativeToday / Math.max(1, classifiedToday)) >= 0.5) {
       alerts.push({ kind: "crisis", title: "Volume negativo elevado", detail: `${negativeToday.toLocaleString("pt-BR")} de ${classifiedToday.toLocaleString("pt-BR")} classificações são negativas.`, evidence });
     } else if ((negativeToday / Math.max(1, classifiedToday)) >= 0.35) {
