@@ -758,11 +758,21 @@ const RealTimeMonitor = () => {
   const selectedCandidate = candidates.find(c => c.id === selectedCandidateId);
 
   useEffect(() => {
-    if (!user || !selectedCandidateId || !selectedCandidate) { setSnapshot(null); return; }
+    if (!user || !selectedCandidateId || !selectedCandidate) { setSnapshot(null); setHistoricalBase(null); return; }
     const cached = readCache(cacheKey(user.id, selectedCandidateId) + `:${windowHours}h`);
     if (cached) setSnapshot(cached); else setSnapshot(null);
     const stale = !cached || (Date.now() - cached.savedAt) > 2 * 60 * 1000;
     if (stale) runSync(selectedCandidateId, user.id, selectedCandidate.full_name, windowHours);
+    // Base histórica total (todas as menções coletadas para o candidato)
+    (async () => {
+      const { count } = await supabase
+        .from("social_interactions")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("candidate_id", selectedCandidateId)
+        .not("social_network", "in", "(mastodon,lemmy,pinterest)");
+      setHistoricalBase(typeof count === "number" ? count : null);
+    })();
   }, [user, selectedCandidateId, selectedCandidate, windowHours, runSync]);
 
   useEffect(() => {
