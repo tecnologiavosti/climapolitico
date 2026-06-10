@@ -203,16 +203,56 @@ async function collectForAllCandidates(supabase: any) {
       const query = encodeURIComponent(`"${candidate.full_name}" OR ${firstName}`);
       const url = `https://news.google.com/rss/search?q=${query}&hl=pt-BR&gl=BR&ceid=BR:pt-419`;
 
-      const resp = await fetch(url, {
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; ClimaPolitico/1.0)" },
-      });
-      if (!resp.ok) {
-        console.warn(`[google-news-collector] ${candidate.full_name}: HTTP ${resp.status}`);
-        continue;
+      let items: NewsItem[] = [];
+      try {
+        const resp = await fetch(url, {
+          headers: { "User-Agent": "Mozilla/5.0 (compatible; ClimaPolitico/1.0)" },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (resp.ok) {
+          const xml = await resp.text();
+          items = await enrichInChunks(parseRSSFeed(xml).slice(0, 30));
+        } else {
+          console.warn(`[google-news-collector] ${candidate.full_name}: Google HTTP ${resp.status} — tentando fallback GDELT`);
+        }
+      } catch (e) {
+        console.warn(`[google-news-collector] ${candidate.full_name}: Google falhou — tentando fallback GDELT (${(e as Error).message})`);
       }
 
-      const xml = await resp.text();
-      const items = await enrichInChunks(parseRSSFeed(xml).slice(0, 30));
+      // Fallback GDELT 2.0 DOC API (gratuito, sem chave, retorna artigos BR)
+      if (items.length === 0) {
+        try {
+          const gdeltUrl = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(
+            `"${candidate.full_name}" sourcecountry:BR`,
+          )}&mode=ArtList&format=json&sort=DateDesc&maxrecords=50&timespan=72H`;
+          const gResp = await fetch(gdeltUrl, {
+            headers: { "User-Agent": "Mozilla/5.0 (compatible; ClimaPolitico/1.0)" },
+            signal: AbortSignal.timeout(10000),
+          });
+          if (gResp.ok) {
+            const gJson = await gResp.json().catch(() => ({ articles: [] }));
+            const arts = Array.isArray(gJson.articles) ? gJson.articles : [];
+            items = arts
+              .filter((a: any) => a?.url && a?.title)
+              .map((a: any) => ({
+                title: cleanContent(a.title),
+                link: a.url,
+                pubDate: a.seendate
+                  ? `${a.seendate.slice(0, 4)}-${a.seendate.slice(4, 6)}-${a.seendate.slice(6, 8)}T${a.seendate.slice(9, 11)}:${a.seendate.slice(11, 13)}:${a.seendate.slice(13, 15)}Z`
+                  : new Date().toISOString(),
+                source: cleanContent(a.domain || a.sourcecountry || "GDELT"),
+                description: cleanContent(a.title).slice(0, 500),
+                image: validHttps(a.socialimage) ? a.socialimage : null,
+              })) as NewsItem[];
+            if (items.length > 0) {
+              console.log(`[google-news-collector] ${candidate.full_name}: GDELT recuperou ${items.length} artigos`);
+            }
+          }
+        } catch (e) {
+          console.warn(`[google-news-collector] ${candidate.full_name}: GDELT também falhou: ${(e as Error).message}`);
+        }
+      }
+
       if (items.length === 0) continue;
 
       // Deduplicação: buscar URLs já coletadas para esse candidato

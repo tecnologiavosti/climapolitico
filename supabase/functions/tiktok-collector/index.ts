@@ -75,7 +75,10 @@ async function autoResolveHandle(
 
 async function fetchTikwmPosts(handle: string): Promise<TikwmPost[]> {
   const url = `https://www.tikwm.com/api/user/posts?unique_id=${encodeURIComponent(handle)}&count=15&cursor=0`;
-  const resp = await fetch(url, { headers: { "User-Agent": randomUA(), "Accept": "application/json" } });
+  const resp = await fetch(url, {
+    headers: { "User-Agent": randomUA(), "Accept": "application/json" },
+    signal: AbortSignal.timeout(10000),
+  });
   if (!resp.ok) throw new Error(`tikwm posts HTTP ${resp.status}`);
   const json = await resp.json();
   if (json?.code !== 0) throw new Error(`tikwm code ${json?.code}: ${json?.msg}`);
@@ -84,7 +87,10 @@ async function fetchTikwmPosts(handle: string): Promise<TikwmPost[]> {
 
 async function fetchTikwmSearch(keyword: string, count = 20): Promise<TikwmPost[]> {
   const url = `https://www.tikwm.com/api/feed/search?keywords=${encodeURIComponent(keyword)}&count=${count}&cursor=0`;
-  const resp = await fetch(url, { headers: { "User-Agent": randomUA(), "Accept": "application/json" } });
+  const resp = await fetch(url, {
+    headers: { "User-Agent": randomUA(), "Accept": "application/json" },
+    signal: AbortSignal.timeout(10000),
+  });
   if (!resp.ok) throw new Error(`tikwm search HTTP ${resp.status}`);
   const json = await resp.json();
   if (json?.code !== 0) throw new Error(`tikwm search code ${json?.code}: ${json?.msg}`);
@@ -93,7 +99,10 @@ async function fetchTikwmSearch(keyword: string, count = 20): Promise<TikwmPost[
 
 async function fetchTikwmComments(videoId: string): Promise<TikwmComment[]> {
   const url = `https://www.tikwm.com/api/comment/list?aweme_id=${encodeURIComponent(videoId)}&count=30&cursor=0`;
-  const resp = await fetch(url, { headers: { "User-Agent": randomUA(), "Accept": "application/json" } });
+  const resp = await fetch(url, {
+    headers: { "User-Agent": randomUA(), "Accept": "application/json" },
+    signal: AbortSignal.timeout(8000),
+  });
   if (!resp.ok) throw new Error(`tikwm comments HTTP ${resp.status}`);
   const json = await resp.json();
   if (json?.code !== 0) return [];

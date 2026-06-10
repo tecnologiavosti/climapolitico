@@ -3623,6 +3623,19 @@ export type Database = {
           token_id: string
         }[]
       }
+      youtube_key_stats: {
+        Args: never
+        Returns: {
+          hours_since_exceeded: number
+          id: string
+          is_active: boolean
+          label: string
+          last_quota_exceeded_at: string
+          last_used_at: string
+          next_reset_at: string
+          quota_exceeded_count: number
+        }[]
+      }
     }
     Enums: {
       app_role: "admin" | "analyst" | "subscriber"
