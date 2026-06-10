@@ -40,13 +40,18 @@ export const CollectionStatusPanel = () => {
 
       const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-      // Latest interactions per user (limit large but bounded)
-      const { data: interactions } = await supabase
-        .from("social_interactions")
-        .select("social_network, created_at")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(5000);
+      // Server-side aggregate per network (no client sampling)
+      const { data: agg, error: aggErr } = await supabase.rpc(
+        "collection_status_summary" as any,
+      );
+      if (aggErr) throw aggErr;
+      const aggByNetwork = new Map<string, { last: string | null; last24h: number }>();
+      for (const row of (agg || []) as Array<{ network: string; last_collected_at: string | null; last24h_count: number }>) {
+        aggByNetwork.set((row.network || "").toLowerCase(), {
+          last: row.last_collected_at,
+          last24h: Number(row.last24h_count || 0),
+        });
+      }
 
       // Recent failure notifications
       const { data: notifs } = await supabase
@@ -59,12 +64,11 @@ export const CollectionStatusPanel = () => {
         .limit(50);
 
       const stats = NETWORKS.map((n) => {
-        const matches = (interactions || []).filter((i) => {
-          const sn = (i.social_network || "").toLowerCase();
-          return n.aliases.includes(sn) || sn === n.key.toLowerCase();
-        });
-        const latest = matches[0]?.created_at ? new Date(matches[0].created_at) : null;
-        const last24h = matches.filter((m) => m.created_at >= since24h).length;
+        const hit = n.aliases
+          .map((a) => aggByNetwork.get(a))
+          .find(Boolean) || aggByNetwork.get(n.key.toLowerCase());
+        const latest = hit?.last ? new Date(hit.last) : null;
+        const last24h = hit?.last24h ?? 0;
 
         // Find failure notifications that mention this network
         const failure = (notifs || []).find((nt) => {
@@ -84,7 +88,7 @@ export const CollectionStatusPanel = () => {
           color: n.color,
           latest,
           last24h,
-          totalSampled: matches.length,
+          totalSampled: last24h,
           status,
           failureMessage: failure?.message || null,
         };
