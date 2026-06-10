@@ -3,6 +3,7 @@
 // roda em paralelo para aumentar volume. Salva em social_interactions.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { cleanContent } from "../_shared/clean-content.ts";
+import { newPipelineRecorder } from "../_shared/pipeline-metrics.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -94,8 +95,10 @@ Deno.serve(async (req) => {
 
     let inserted = 0;
     for (const c of candidates) {
+      const rec = newPipelineRecorder("facebook_rss", c.id);
       // 1) busca Google News para menções de FB
       const newsItems = await fbViaGoogleNews(c.full_name);
+      rec.addCollected(newsItems.length, "google_news");
 
       // 2) tenta página oficial do candidato se tiver link conhecido
       let pageItems: Item[] = [];
@@ -109,13 +112,16 @@ Deno.serve(async (req) => {
       const mainHandle = extractFbHandle(c.social_media_link);
       if (mainHandle) handles.add(mainHandle);
       for (const h of handles) {
-        pageItems = pageItems.concat(await fbViaBridge(h));
+        const bItems = await fbViaBridge(h);
+        rec.addCollected(bItems.length, "rssbridge");
+        pageItems = pageItems.concat(bItems);
       }
 
       const all = [...newsItems, ...pageItems];
       for (const it of all) {
         const text = (it.title + " " + it.description).trim().slice(0, 4000);
-        if (!text || text.length < 20 || !it.link) continue;
+        if (!text || text.length < 20 || !it.link) { rec.addFiltered(1, "invalid_payload"); continue; }
+        rec.addParsed(1);
         const { error } = await supabase.from("social_interactions").insert({
           user_id: c.user_id, candidate_id: c.id, social_network: "facebook",
           platform: "facebook",
@@ -132,8 +138,11 @@ Deno.serve(async (req) => {
           collected_at: new Date().toISOString(),
           original_posted_at: it.pubDate ? new Date(it.pubDate).toISOString() : null,
         });
-        if (!error) inserted++;
+        if (!error) { inserted++; rec.addInserted(1); }
+        else if ((error as any).code === "23505") rec.addDeduped(1, "db");
+        else rec.setError(error.message);
       }
+      await rec.flush();
     }
     return new Response(JSON.stringify({ ok: true, inserted, candidates: candidates.length }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

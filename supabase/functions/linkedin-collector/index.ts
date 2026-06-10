@@ -2,6 +2,7 @@
 // para coletar posts/menções públicas indexadas, sem chamar linkedin.com diretamente.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { newPipelineRecorder } from "../_shared/pipeline-metrics.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -139,9 +140,12 @@ async function collectForAllCandidates(supabase: any) {
   let hadError = false;
 
   for (const candidate of (candidates as CandidateRow[])) {
+    const rec = newPipelineRecorder("linkedin", candidate.id);
     try {
       const items = await fetchLinkedInForCandidate(candidate);
-      if (items.length === 0) continue;
+      rec.addCollected(items.length, "google_news_dork");
+      rec.addParsed(items.length);
+      if (items.length === 0) { await rec.flush(); continue; }
 
       const links = items.map((i) => i.link);
       const { data: existing } = await supabase
@@ -155,7 +159,8 @@ async function collectForAllCandidates(supabase: any) {
         ((existing || []) as ExistingInteractionRow[]).map((e) => e.author_profile_url),
       );
       const fresh = items.filter((i) => !existingSet.has(i.link));
-      if (fresh.length === 0) continue;
+      rec.addDeduped(items.length - fresh.length, "db");
+      if (fresh.length === 0) { await rec.flush(); continue; }
 
       const rows = fresh.map((item) => ({
         user_id: candidate.user_id,
@@ -172,16 +177,20 @@ async function collectForAllCandidates(supabase: any) {
       const { error: insErr } = await supabase.from("social_interactions").insert(rows);
       if (insErr) {
         hadError = true;
+        rec.setError(insErr.message);
         console.error(`[${COLLECTOR_NAME}] insert erro (${candidate.full_name}):`, insErr.message);
       } else {
         totalInserted += rows.length;
+        rec.addInserted(rows.length);
         console.log(`[${COLLECTOR_NAME}] ${candidate.full_name}: +${rows.length} posts`);
       }
     } catch (err) {
       hadError = true;
       const msg = err instanceof Error ? err.message : String(err);
+      rec.setError(msg);
       console.warn(`[${COLLECTOR_NAME}] erro em ${candidate.full_name}:`, msg);
     }
+    await rec.flush();
   }
 
   // Registrar chamada/itens (se função existir)

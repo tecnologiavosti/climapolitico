@@ -1,6 +1,7 @@
 // Pinterest collector — coleta pins via RSS nativo + fallback RSS-Bridge.
 // Sem API key. Salva no schema real do projeto: social_interactions.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { newPipelineRecorder } from "../_shared/pipeline-metrics.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -90,11 +91,15 @@ Deno.serve(async (req) => {
 
     let inserted = 0;
     for (const c of candidates) {
+      const rec = newPipelineRecorder("pinterest", c.id);
       const [a, b] = await Promise.all([fetchPinterestRSS(c.full_name), fetchPinterestBridge(c.full_name)]);
+      rec.addCollected(a.length, "pinterest_rss");
+      rec.addCollected(b.length, "rssbridge");
       const items = [...a, ...b];
       for (const it of items) {
         const text = `${it.title} ${it.description}`.trim().slice(0, 4000);
-        if (!text || text.length < 15 || !it.link) continue;
+        if (!text || text.length < 15 || !it.link) { rec.addFiltered(1, "invalid_payload"); continue; }
+        rec.addParsed(1);
         const { error } = await supabase.from("social_interactions").insert({
           user_id: c.user_id, candidate_id: c.id, social_network: "pinterest",
           interaction_type: "post", comment_text: text,
@@ -104,8 +109,11 @@ Deno.serve(async (req) => {
           collected_at: new Date().toISOString(),
           original_posted_at: it.pubDate ? new Date(it.pubDate).toISOString() : null,
         });
-        if (!error) inserted++;
+        if (!error) { inserted++; rec.addInserted(1); }
+        else if ((error as any).code === "23505") rec.addDeduped(1, "db");
+        else rec.setError(error.message);
       }
+      await rec.flush();
     }
     return new Response(JSON.stringify({ ok: true, inserted, candidates: candidates.length }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

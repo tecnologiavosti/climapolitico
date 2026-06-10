@@ -27,7 +27,8 @@ const COLLECTORS: Array<{ name: string; fn: string; payload: (c: any) => Record<
   { name: "Tumblr",       fn: "tumblr-collector",         payload: (c) => ({ candidateId: c.id }) },
   { name: "LinkedIn",     fn: "linkedin-collector",       payload: (c) => ({ candidateId: c.id }) },
   { name: "GDELT",        fn: "gdelt-collector",          payload: (c) => ({ candidateId: c.id, candidateName: c.full_name }) },
-  { name: "Brand24",      fn: "collect-brand24-rss",      payload: (c) => ({ candidateId: c.id }) },
+  // F6: Brand24 removido — 22/22 falhas em 24h, token inválido. Pausado por 30d em collector_quota_state.
+  // { name: "Brand24",      fn: "collect-brand24-rss",      payload: (c) => ({ candidateId: c.id }) },
   { name: "Pinterest",    fn: "pinterest-collector",      payload: (c) => ({ candidateId: c.id }) },
   { name: "Facebook RSS", fn: "facebook-rss-collector",   payload: (c) => ({ candidateId: c.id }) },
 ];
