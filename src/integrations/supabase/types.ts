@@ -3564,6 +3564,16 @@ export type Database = {
         Returns: string
       }
       nv_hashtag_display: { Args: { _tag: string }; Returns: string }
+      nv_hashtag_normalization_audit: {
+        Args: { p_days?: number }
+        Returns: {
+          consolidated_mentions: number
+          display_tag: string
+          normalized_tag: string
+          variant_count: number
+          variants: string[]
+        }[]
+      }
       nv_is_political_text: {
         Args: { _candidate_name?: string; _text: string }
         Returns: boolean
@@ -3575,6 +3585,15 @@ export type Database = {
       nv_political_relevance_score: {
         Args: { _candidate_name?: string; _text: string }
         Returns: number
+      }
+      nv_subject_dedup_audit: {
+        Args: { p_days?: number }
+        Returns: {
+          dedup_count: number
+          inflation_pct: number
+          raw_count: number
+          theme: string
+        }[]
       }
       nv_visible_networks: { Args: never; Returns: string[] }
       overview_summary: { Args: { p_days?: number }; Returns: Json }
