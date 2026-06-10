@@ -693,7 +693,7 @@ async function fetchSnapshot(
   const nowNarrative =
     mentionsToday === 0
       ? `Pouca atividade pública relevante detectada para ${candidateName} nas últimas ${windowHours}h.`
-      : `${candidateName} teve ${mentionsToday.toLocaleString("pt-BR")} sinais de atividade política atual nas últimas ${windowHours}h. ` +
+      : `${candidateName} teve ${mentionsToday.toLocaleString("pt-BR")} registros monitorados (notícias, posts e vídeos) e ${citationsDetected.toLocaleString("pt-BR")} citações detectadas nas últimas ${windowHours}h. ` +
         (topTheme ? `Tema com maior evidência: ${topTheme.name}, sustentado por ${topTheme.evidence.news} notícias, ${topTheme.evidence.posts} posts e ${topTheme.evidence.videos} vídeos. ` : `Nenhum tema atingiu evidência mínima (3 evidências, 2 veículos ou evento oficial). `) +
         (classifiedToday > 0 ? `Leitura de sentimento: ${tone}.` : "Ainda sem volume classificado suficiente.");
 
