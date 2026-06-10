@@ -715,6 +715,7 @@ async function fetchSnapshot(
   return {
     nowNarrative, mentionsToday, positiveToday, negativeToday, neutralToday, classifiedToday,
     newsCollected, evidence, windowCounts, hasStatisticalBase, hasSentimentSample, historicalMentions,
+    citationsDetected, classifiedCoveragePct, unclassifiedToday,
     themes, events, sentimentDelta, outlets, publications, alerts, executiveSummary,
     evolution24h: buckets24h, evolution12h: buckets12h, evolution6h: buckets6h, evolution1h: buckets1h,
     savedAt: Date.now(), candidateName: normalizeCandidateName(candidateName),
