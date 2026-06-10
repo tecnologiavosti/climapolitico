@@ -101,7 +101,7 @@ const groups: NavGroup[] = [
     items: [
       { title: "Monitor em Tempo Real", url: "/dashboard/realtime-monitor", icon: Radio, badge: { label: "AO VIVO", variant: "live" }, tip: "Comentários e menções chegando ao vivo." },
       { title: "Resumo Inteligente", url: "/dashboard/candidate-summary", icon: FileText, badge: { label: "IA", variant: "ai" }, tip: "Resumo automático do que falaram do seu candidato." },
-      { title: "Top Posts por Engajamento", url: "/dashboard/social-feeds", icon: Flame, tip: "Conteúdos com mais reações em cada rede." },
+      
     ],
   },
   {
