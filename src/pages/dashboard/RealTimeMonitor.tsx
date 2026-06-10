@@ -930,7 +930,7 @@ const RealTimeMonitor = () => {
             ))}
           </div>
           {selectedCandidate && (
-            <span className="text-xs text-muted-foreground truncate">Monitorando: <span className="font-semibold text-foreground">{selectedCandidate.full_name}</span></span>
+            <span className="text-xs text-muted-foreground truncate">Monitorando: <span className="font-semibold text-foreground">{normalizeCandidateName(selectedCandidate.full_name)}</span></span>
           )}
         </CardContent>
       </Card>
