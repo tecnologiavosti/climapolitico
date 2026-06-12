@@ -246,8 +246,14 @@ Deno.serve(async (req) => {
     const entityConfidence = calculateEntityConfidence(evidence, interactions.length);
     const externalEvidenceConfidence = Math.min(1, confidenceWeightSum / 3);
 
-    // Status from pipeline (hard rule: indeterminate => no AI factual claims)
-    const pipelineStatus = pipelineConf.status; // "confirmed" | "probable" | "weak" | "indeterminate"
+    // Status from pipeline + upgrade rules:
+    // - If ≥3 strong (tier1/tier2) sources exist, never report "indeterminate" — at minimum probable.
+    // - If a clear institutional domain dominates (≥1 tier1 official), upgrade to confirmed.
+    let pipelineStatus = pipelineConf.status; // "confirmed" | "probable" | "weak" | "indeterminate"
+    const tier1OfficialHit = classifiedPubs.some((p) => p.tier === "tier1");
+    if (pipelineStatus === "indeterminate" && strongSources >= 3) pipelineStatus = "probable";
+    if (pipelineStatus !== "confirmed" && tier1OfficialHit && strongSources >= 2) pipelineStatus = "confirmed";
+
     const responseMode: ResponseMode =
       pipelineStatus === "confirmed" ? "CONFIRMED_EVENT" :
       pipelineStatus === "probable" ? "PROBABLE_NARRATIVE" :
