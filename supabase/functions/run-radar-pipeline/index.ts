@@ -592,7 +592,7 @@ Deno.serve(async (req) => {
           cluster_size: clusterSize,
           status: "active",
           sources_json: sourcesJson,
-          entities_json: ner,
+          metadata: { ner, detection: "radar-pipeline-v3-semantic" },
           detection_source: "radar-pipeline",
           updated_at: new Date().toISOString(),
         };
