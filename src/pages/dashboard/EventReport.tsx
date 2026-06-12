@@ -211,6 +211,7 @@ export default function EventReport() {
   const [causes, setCauses] = useState<Record<string, PeakCause>>({});
   const [causeLoading, setCauseLoading] = useState<Record<string, boolean>>({});
   const [causeError, setCauseError] = useState<Record<string, string>>({});
+  const [enterpriseEvent, setEnterpriseEvent] = useState<EnterprisePeakEvent | null>(null);
 
   const { data: candidates } = useQuery({
     queryKey: ["candidates-mine", user?.id],
