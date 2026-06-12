@@ -234,9 +234,21 @@ export default function EventReport() {
   });
 
   const events = useMemo(() => data?.events || [], [data]);
+  const statusCounts = useMemo(() => {
+    const c = { confirmed: 0, probable: 0, weak: 0, indeterminate: 0 };
+    for (const e of events) {
+      const s = (e.status || "indeterminate") as keyof typeof c;
+      if (s in c) c[s]++;
+    }
+    return c;
+  }, [events]);
   const filteredEvents = useMemo(
-    () => (category === "all" ? events : events.filter((e) => (e.category || "outros") === category)),
-    [events, category],
+    () => events.filter((e) => {
+      if (category !== "all" && (e.category || "outros") !== category) return false;
+      if (statusFilter !== "all" && (e.status || "indeterminate") !== statusFilter) return false;
+      return true;
+    }),
+    [events, category, statusFilter],
   );
   const eventsByYear = useMemo(() => {
     const groups = new Map<string, HistoricalEvent[]>();
