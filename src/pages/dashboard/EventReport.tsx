@@ -129,13 +129,33 @@ const YEAR_PRESETS = [
   { label: "Eleição 2026", start: "2026-01-01", end: "2026-12-31" },
 ];
 
+interface PeakCause {
+  event_title: string;
+  event_summary: string;
+  root_cause: string;
+  confidence: number;
+  main_networks: string[];
+  main_entities: string[];
+  top_keywords?: Array<{ term: string; count: number }>;
+  top_hashtags?: Array<{ term: string; count: number }>;
+  top_domains?: Array<{ domain: string; count: number }>;
+  sentiment_summary: string;
+  internal_mentions?: number;
+  external_evidence?: Array<{ title: string; url: string; outlet: string; publishedAt?: string }>;
+  fallback_text?: string | null;
+}
+
 export default function EventReport() {
   const { user } = useAuth();
   const [candidateId, setCandidateId] = useState<string>("");
+  const [candidateName, setCandidateName] = useState<string>("");
   const [startDate, setStartDate] = useState("2018-01-01");
   const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [category, setCategory] = useState<string>("all");
+  const [causes, setCauses] = useState<Record<string, PeakCause>>({});
+  const [causeLoading, setCauseLoading] = useState<Record<string, boolean>>({});
+  const [causeError, setCauseError] = useState<Record<string, string>>({});
 
   const { data: candidates } = useQuery({
     queryKey: ["candidates-mine", user?.id],
