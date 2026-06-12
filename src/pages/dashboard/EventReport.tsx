@@ -401,13 +401,6 @@ export default function EventReport() {
                     </div>
                   </div>
                 </CardHeader>
-                      <CardTitle className="text-base md:text-lg leading-snug flex items-start gap-2">
-                        <span className="text-primary mt-0.5">{icon}</span>
-                        <span>{ev.name}</span>
-                      </CardTitle>
-                    </div>
-                  </div>
-                </CardHeader>
                 <CardContent className="space-y-4 pt-0">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     <div className="rounded-md border bg-muted/30 p-3">
