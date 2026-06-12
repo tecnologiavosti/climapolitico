@@ -740,41 +740,35 @@ serve(async (req) => {
     }).slice(0, 320);
     console.log("[4] external search finished — pubs:", pubs.length);
 
-    const localCandidates = timelineCandidates(Array.isArray(localTimeline) ? localTimeline : []);
+    // === DETECÇÃO PEAK-FIRST ===
+    // Busca a timeline SSOT direto do banco (não confia só no que veio do cliente)
+    // e detecta picos via z-score + rolling baseline 14d. Picos NÃO dependem de cobertura externa.
+    const dbTimeline = await fetchSsotTimelineFromDb(admin, user.id, candidate.id, start, end);
+    const clientTimeline = Array.isArray(localTimeline) ? localTimeline : [];
+    // Server-side wins quando tem dados; client é fallback (compatibilidade).
+    const effectiveTimeline: TimelinePoint[] = dbTimeline.length >= 5 ? dbTimeline : clientTimeline;
+    console.log("[5] ssot timeline loaded — db:", dbTimeline.length, "client:", clientTimeline.length, "effective:", effectiveTimeline.length);
+    const localCandidates = timelineCandidates(effectiveTimeline);
 
     // === FASE 4: ENRIQUECIMENTO IA — DESABILITADO ===
-    // A IA NÃO pode criar eventos nem invocar fatos. Detecção fica 100% baseada em evidência.
-    console.log("[5] ssot fallback started");
     const aiEvents: any[] = [];
     console.log("[6] ssot fallback finished — localCandidates:", localCandidates.length);
     console.log("[7] clustering started");
 
-    // Combina eventos da IA enriquecida + descobertos + picos SSOT puros (z-score >= 2.5).
+    // Picos SSOT são a FONTE PRIMÁRIA. Cobertura externa apenas enriquece.
     const combinedByKey = new Map<string, any>();
     const keyOf = (e: any) => `${String(e.start_date || "").slice(0, 10)}|${normalize(String(e.name || "")).slice(0, 60)}`;
     const dayKey = (e: any) => String(e.start_date || "").slice(0, 10);
-    for (const e of aiEvents) combinedByKey.set(keyOf(e), e);
+    const ssotPeakRaw = ssotPeakEvents(effectiveTimeline);
+    for (const sp of ssotPeakRaw) combinedByKey.set(keyOf(sp), sp);
+    // Eventos descobertos via news (fase desabilitada) e fallback — apenas se não houver pico SSOT no mesmo dia.
+    for (const e of aiEvents) if (!combinedByKey.has(keyOf(e))) combinedByKey.set(keyOf(e), e);
     for (const e of discovered) if (!combinedByKey.has(keyOf(e))) combinedByKey.set(keyOf(e), e);
-    // SSOT peaks: adiciona se nenhum evento já existir no mesmo dia (anexa metadados de z-score).
-    const existingDays = new Set([...combinedByKey.values()].map(dayKey));
-    const ssotPeakRaw = ssotPeakEvents(Array.isArray(localTimeline) ? localTimeline : []);
-    for (const sp of ssotPeakRaw) {
-      if (existingDays.has(sp.start_date)) {
-        // Anexa z-score ao evento existente naquele dia
-        for (const ev of combinedByKey.values()) {
-          if (dayKey(ev) === sp.start_date) {
-            ev._ssot_z = sp._ssot_z; ev._ssot_baseline = sp._ssot_baseline; ev._ssot_peak = sp._ssot_peak;
-          }
-        }
-      } else {
-        combinedByKey.set(keyOf(sp), sp);
-      }
-    }
     let candidateEvents: any[] = [...combinedByKey.values()];
     if (candidateEvents.length === 0) candidateEvents = fallbackEventsFromSources(pubs, start, end);
-    // Limite duro para evitar timeout em candidatos de altíssimo volume (Lula, Bolsonaro etc.)
-    candidateEvents = candidateEvents.slice(0, 20);
-    console.log("[8] clustering finished — candidateEvents:", candidateEvents.length);
+    // Cap generoso para suportar candidatos de alto volume (Lula, Bolsonaro) — antes era 20.
+    candidateEvents = candidateEvents.slice(0, 150);
+    console.log("[8] clustering finished — candidateEvents:", candidateEvents.length, "ssotPeaks:", ssotPeakRaw.length);
 
     const events = candidateEvents.map((evt: any) => {
       const evPubs = matchedSources(evt, pubs, start, end, candidate.full_name);
