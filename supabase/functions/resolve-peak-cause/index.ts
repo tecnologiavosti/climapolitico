@@ -219,8 +219,28 @@ Deno.serve(async (req) => {
       return d >= wStartLoose && d <= wEndLoose;
     }).slice(0, 25);
 
-    const external_evidence = pubs.map((p) => ({
-      title: p.title, url: p.url, outlet: p.outlet, publishedAt: p.publishedAt,
+    const classifiedPubs = pubs.map((p) => ({ pub: p, strength: classifyExternalSource(p) }));
+    const strongSources = classifiedPubs.filter((p) => p.strength === "strong").length;
+    const weakSources = classifiedPubs.filter((p) => p.strength === "weak").length;
+    const semanticConfidence = calculateSemanticConfidence(evidence, interactions.length);
+    const entityConfidence = calculateEntityConfidence(evidence, interactions.length);
+    const externalEvidenceConfidence = clamp01(Math.min(1, strongSources / 3) * 0.85 + Math.min(1, weakSources / 8) * 0.15);
+    const responseMode: ResponseMode = strongSources >= 1
+      ? "CONFIRMED_EVENT"
+      : semanticConfidence >= 0.75
+        ? "PROBABLE_NARRATIVE"
+        : "UNKNOWN_TRIGGER";
+    const computedConfidence = Math.round(
+      clamp01(
+        semanticConfidence * 0.45 +
+        entityConfidence * 0.20 +
+        externalEvidenceConfidence * 0.35,
+      ) * 100,
+    ) / 100;
+    const finalConfidence = strongSources === 0 ? Math.min(computedConfidence, 0.70) : computedConfidence;
+
+    const external_evidence = classifiedPubs.map(({ pub, strength }) => ({
+      title: pub.title, url: pub.url, outlet: pub.outlet, publishedAt: pub.publishedAt, source_strength: strength,
     }));
 
     // ---------- STAGE 3: AI explanation ----------
@@ -228,13 +248,26 @@ Deno.serve(async (req) => {
 REGRAS CRÍTICAS:
 - Baseie-se APENAS nas evidências fornecidas (internas e externas).
 - NUNCA invente eventos, datas, prisões, operações, CPIs ou decisões judiciais que não estejam nas evidências.
-- Se as evidências forem fracas ou ambíguas, retorne confidence < 0.6 e seja honesto na explicação.
+- Do not invent events.
+- If evidence is insufficient, explicitly say uncertainty.
+- Never convert correlated terms into factual claims.
+- Sem STRONG_EXTERNAL_SOURCE, é PROIBIDO afirmar fatos como reunião, decisão, operação, prisão, CPI, acordo, denúncia ou encontro. Use linguagem probabilística ou diga que a causa é indeterminada.
+- MODE A CONFIRMED_EVENT: somente se houver fonte forte; pode afirmar o evento explicitamente citado pelas fontes.
+- MODE B PROBABLE_NARRATIVE: sem fonte forte e com sinal semântico consistente; use "os dados sugerem", "parece relacionado", "não encontramos confirmação externa suficiente".
+- MODE C UNKNOWN_TRIGGER: diga que não foi possível identificar com confiança a causa exata do pico.
 - Responda APENAS em JSON válido, em português brasileiro.`;
 
     const userPrompt = `CANDIDATO: ${candidateName}
 DATA DO PICO: ${peakDate}
 JANELA: ${wStart.toISOString().slice(0,10)} → ${wEnd.toISOString().slice(0,10)}
 PICO DE MENÇÕES: ${peakMentions ?? "n/d"}
+MODO OBRIGATÓRIO: ${responseMode}
+FONTES FORTES: ${strongSources}
+FONTES FRACAS: ${weakSources}
+CONFIANÇA SEMÂNTICA: ${semanticConfidence.toFixed(2)}
+CONFIANÇA DE ENTIDADES: ${entityConfidence.toFixed(2)}
+CONFIANÇA DE EVIDÊNCIA EXTERNA: ${externalEvidenceConfidence.toFixed(2)}
+CONFIANÇA FINAL JÁ CALCULADA PELO SISTEMA: ${finalConfidence.toFixed(2)}
 
 EVIDÊNCIA INTERNA (extraída de ${interactions.length} interações monitoradas):
 - Top palavras: ${evidence.top_keywords.slice(0,12).map(k=>`${k.term}(${k.count})`).join(", ") || "—"}
@@ -246,14 +279,13 @@ EVIDÊNCIA INTERNA (extraída de ${interactions.length} interações monitoradas
 - Sentimento: ${sentiment_summary}
 
 EVIDÊNCIA EXTERNA (${external_evidence.length} publicações encontradas):
-${external_evidence.slice(0,15).map((e,i)=>`${i+1}. [${e.outlet}] ${e.title}${e.publishedAt?` (${e.publishedAt.slice(0,10)})`:""}`).join("\n") || "Nenhuma publicação externa relevante."}
+${external_evidence.slice(0,15).map((e,i)=>`${i+1}. [${e.source_strength.toUpperCase()} · ${e.outlet}] ${e.title}${e.publishedAt?` (${e.publishedAt.slice(0,10)})`:""}`).join("\n") || "Nenhuma publicação externa relevante."}
 
 Responda em JSON estrito com este schema:
 {
-  "event_title": "título curto e factual do acontecimento (até 90 caracteres)",
-  "event_summary": "1-2 frases descrevendo o que aconteceu, baseado nas evidências",
-  "root_cause": "explicação da causa do pico de menções",
-  "confidence": 0.0,
+  "event_title": "MODE A: título factual citado por fonte forte; MODE B: título probabilístico do padrão; MODE C: Causa indeterminada",
+  "event_summary": "MODE A: o que aconteceu segundo fonte forte; MODE B/C: padrão observado sem afirmar acontecimento factual",
+  "root_cause": "explicação da causa do pico, respeitando o modo obrigatório",
   "main_networks": ["..."],
   "main_entities": ["pessoas, instituições ou termos mais relevantes"],
   "sentiment_summary": "resumo qualitativo do sentimento das redes"
