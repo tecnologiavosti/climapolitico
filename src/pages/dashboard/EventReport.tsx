@@ -781,9 +781,49 @@ function PeakCauseView({ cause }: { cause: PeakCause }) {
       ) : (
         <>
           {cause.event_summary ? <Section title="O que aconteceu" body={cause.event_summary} /> : null}
-          {cause.root_cause ? <Section title="Por que virou pico" body={cause.root_cause} /> : null}
+          {cause.cause ? <Section title="Causa identificada" body={cause.cause} /> : null}
+          {cause.why_peak ? <Section title="Por que virou pico" body={cause.why_peak} /> : (cause.root_cause ? <Section title="Por que virou pico" body={cause.root_cause} /> : null)}
         </>
       )}
+
+      {cause.score_components ? (
+        <div className="space-y-1.5">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground flex items-center justify-between">
+            <span>Composição do confidence score</span>
+            {typeof cause.enterprise_score === "number" ? (
+              <span className="font-mono text-foreground">{cause.enterprise_score}/100 · {cause.enterprise_band}</span>
+            ) : null}
+          </p>
+          <ScoreCompositionBar c={cause.score_components} />
+        </div>
+      ) : null}
+
+      {typeof cause.sentiment === "number" ? (
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5 flex items-center justify-between">
+            <span>Sentimento (−1 a +1)</span>
+            <span className="font-mono text-foreground">{cause.sentiment.toFixed(2)}</span>
+          </p>
+          <SentimentBar value={cause.sentiment} />
+        </div>
+      ) : null}
+
+      {cause.evidence_quality ? (
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-muted-foreground uppercase tracking-wide">Qualidade da evidência:</span>
+          <Badge variant="outline" className={
+            cause.evidence_quality === "strong" ? "border-emerald-500/40 text-emerald-700 dark:text-emerald-300" :
+            cause.evidence_quality === "moderate" ? "border-blue-500/40 text-blue-700 dark:text-blue-300" :
+            cause.evidence_quality === "weak" ? "border-amber-500/40 text-amber-700 dark:text-amber-300" :
+            "border-rose-500/40 text-rose-700 dark:text-rose-300"
+          }>
+            {cause.evidence_quality === "strong" ? "Forte" :
+              cause.evidence_quality === "moderate" ? "Moderada" :
+              cause.evidence_quality === "weak" ? "Fraca" : "Insuficiente"}
+          </Badge>
+        </div>
+      ) : null}
+
 
       {cause.main_networks?.length ? (
         <div>
