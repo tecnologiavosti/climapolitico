@@ -824,7 +824,7 @@ serve(async (req) => {
         sentiment_neutral: sentiment.neu,
         outlet_names: outletNames,
         coverage_quality: coverageQuality(totalEvidence, distinctOutlets),
-        category: categoryOf(evt),
+        category: categoryOf({ ...evt, outlet_names, sources: evPubs.map((p) => ({ title: p.title, name: p.outlet })) }),
         ssot_z_score: typeof evt._ssot_z === "number" ? evt._ssot_z : null,
         ssot_baseline_volume: typeof evt._ssot_baseline === "number" ? evt._ssot_baseline : null,
         ssot_peak_volume: typeof evt._ssot_peak === "number" ? evt._ssot_peak : null,
