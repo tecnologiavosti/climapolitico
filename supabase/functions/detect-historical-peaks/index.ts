@@ -440,6 +440,8 @@ async function fetchSsotTimelineFromDb(
   let from = 0;
   const pageSize = 1000;
   while (true) {
+    const currentPageSize = Math.min(pageSize, MAX_STAT_RECORDS - from);
+    if (currentPageSize <= 0) break;
     const { data, error } = await admin
       .from("social_metrics_daily")
       .select("date, mentions")
@@ -448,16 +450,16 @@ async function fetchSsotTimelineFromDb(
       .gte("date", startISO)
       .lte("date", endISO)
       .order("date", { ascending: true })
-      .range(from, from + pageSize - 1);
+      .range(from, from + currentPageSize - 1);
     if (error) { console.warn("[detect-historical-peaks] smd fetch:", error.message); break; }
     if (!data || data.length === 0) break;
     for (const row of data) {
       const d = String(row.date).slice(0, 10);
       byDay.set(d, (byDay.get(d) || 0) + Number(row.mentions || 0));
     }
-    if (data.length < pageSize) break;
+    if (data.length < currentPageSize) break;
     from += pageSize;
-    if (from > 50000) break;
+    if (from >= MAX_STAT_RECORDS) break;
   }
   return [...byDay.entries()].map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date));
 }
