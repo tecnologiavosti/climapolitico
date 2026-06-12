@@ -807,12 +807,13 @@ Responda APENAS JSON válido:
       const eventDate = new Date(`${evt.start_date}T12:00:00Z`).getTime();
       if (Number.isNaN(eventDate)) return false;
       if (eventDate < start.getTime() - 86400000 || eventDate > end.getTime() + 86400000) return false;
+      // BLOQUEIO ESTRITO DE DATAS FUTURAS — nenhum pico pode ocorrer depois de hoje.
+      if (eventDate > Date.now()) return false;
       if (!evt.name || !evt.description) return false;
       // Bloqueia eventos de campanha rotineira (comício, agenda, visita etc.) — mantido por design.
       const normType = normalize(String(evt.type || "")).replace(/[^a-z_]/g, "");
       if (BLOCKED_EVENT_TYPES.test(normType)) return false;
       if (BLOCKED_NAME_TERMS.test(evt.name)) return false;
-      // Nenhum threshold de cobertura: enciclopédia histórica exibe todos os eventos políticos relevantes.
       return true;
     }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0)).slice(0, 120);
 
