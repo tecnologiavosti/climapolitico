@@ -56,19 +56,24 @@ interface HistoricalEvent {
   peak_type?: "external_confirmed" | "external_social" | "internal_trend";
   political_relevance?: number;
   category?: string;
+  status?: "confirmed" | "probable" | "indeterminate";
+  confidence_score?: number;
+  independent_strong_sources?: number;
+  trusted_sources_count?: number;
+  relevance_band?: "baixa" | "media" | "alta" | "critica";
 }
 
 const CATEGORY_FILTERS: { id: string; label: string }[] = [
   { id: "all", label: "Todos" },
-  { id: "eleicao", label: "Eleições" },
-  { id: "operacao_pf", label: "Operações PF" },
+  { id: "eleicoes", label: "Eleições" },
+  { id: "operacoes_pf", label: "Operações PF" },
   { id: "stf", label: "STF" },
   { id: "tse", label: "TSE" },
   { id: "cpi", label: "CPI" },
-  { id: "julgamento", label: "Julgamentos" },
-  { id: "escandalo", label: "Escândalos" },
-  { id: "prisao", label: "Prisões" },
-  { id: "debate", label: "Debates" },
+  { id: "julgamentos", label: "Julgamentos" },
+  { id: "escandalos", label: "Escândalos" },
+  { id: "prisoes", label: "Prisões" },
+  { id: "debates", label: "Debates" },
   { id: "outros", label: "Outros" },
 ];
 
@@ -77,6 +82,16 @@ const COVERAGE_BADGE: Record<string, { label: string; className: string }> = {
   media: { label: "Cobertura média", className: "bg-amber-500/15 text-amber-700 border-amber-500/30 dark:text-amber-300" },
   fraca: { label: "Cobertura fraca", className: "bg-zinc-500/15 text-zinc-700 border-zinc-500/30 dark:text-zinc-300" },
   ai_only: { label: "Registro histórico (IA)", className: "bg-primary/10 text-primary border-primary/30" },
+};
+
+const STATUS_BADGE: Record<string, { label: string; className: string; emoji: string }> = {
+  confirmed: { emoji: "🟢", label: "Evento confirmado", className: "bg-emerald-500/15 text-emerald-700 border-emerald-500/30 dark:text-emerald-300" },
+  probable: { emoji: "🟡", label: "Evento provável", className: "bg-amber-500/15 text-amber-700 border-amber-500/30 dark:text-amber-300" },
+  indeterminate: { emoji: "🔴", label: "Causa indeterminada", className: "bg-rose-500/10 text-rose-700 border-rose-500/30 dark:text-rose-300" },
+};
+
+const RELEVANCE_BAND_LABEL: Record<string, string> = {
+  baixa: "Baixa", media: "Média", alta: "Alta", critica: "Crítica",
 };
 
 const NETWORK_LABEL: Record<string, string> = {
@@ -344,6 +359,8 @@ export default function EventReport() {
             const isOpen = !!expanded[key];
             const icon = typeIcon[ev.type] || <Newspaper className="h-4 w-4" />;
             const coverage = COVERAGE_BADGE[ev.coverage_quality || "fraca"];
+            const statusBadge = STATUS_BADGE[ev.status || "indeterminate"];
+            const categoryLabel = CATEGORY_FILTERS.find((c) => c.id === (ev.category || "outros"))?.label || "Outros";
             return (
               <Card key={key} className="border-l-4 border-l-primary/60">
                 <CardHeader className="pb-3">
@@ -352,24 +369,35 @@ export default function EventReport() {
                       <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                         <CalendarDays className="h-3.5 w-3.5" />
                         <span>{formatDate(ev.start_date)}{ev.end_date && ev.end_date !== ev.start_date ? ` → ${formatDate(ev.end_date)}` : ""}</span>
+                        {statusBadge ? (
+                          <Badge variant="outline" className={`text-[10px] font-medium ${statusBadge.className}`}>
+                            {statusBadge.emoji} {statusBadge.label}
+                          </Badge>
+                        ) : null}
+                        <Badge variant="outline" className="text-[10px] font-normal">{categoryLabel}</Badge>
                         {coverage ? (
                           <Badge variant="outline" className={`text-[10px] font-normal ${coverage.className}`}>{coverage.label}</Badge>
                         ) : null}
-                        {ev.peak_type === "external_confirmed" || ev.detected_by === "external" ? (
-                          <Badge variant="outline" className="text-[10px] font-normal border-blue-500/40 text-blue-600 dark:text-blue-400">Detectado por fontes externas</Badge>
-                        ) : ev.peak_type === "external_social" || ev.detected_by === "external_social" ? (
-                          <Badge variant="outline" className="text-[10px] font-normal border-purple-500/40 text-purple-600 dark:text-purple-400">Detectado por redes sociais externas</Badge>
-                        ) : ev.peak_type === "internal_trend" || ev.detected_by === "internal_ssot" ? (
-                          <Badge variant="outline" className="text-[10px] font-normal border-emerald-500/40 text-emerald-600 dark:text-emerald-400">Detectado por comportamento anômalo nas redes</Badge>
+                        {typeof ev.relevance_score === "number" ? (
+                          <Badge variant="outline" className="text-[10px] font-normal">
+                            Relevância {ev.relevance_score}/100{ev.relevance_band ? ` · ${RELEVANCE_BAND_LABEL[ev.relevance_band]}` : ""}
+                          </Badge>
                         ) : null}
-                        {typeof ev.political_relevance === "number" ? (
-                          <Badge variant="outline" className="text-[10px] font-normal">Relevância {ev.political_relevance}/100</Badge>
+                        {typeof ev.trusted_sources_count === "number" && ev.trusted_sources_count > 0 ? (
+                          <Badge variant="outline" className="text-[10px] font-normal border-blue-500/40 text-blue-600 dark:text-blue-400">
+                            {ev.trusted_sources_count} fonte{ev.trusted_sources_count === 1 ? "" : "s"} confiáve{ev.trusted_sources_count === 1 ? "l" : "is"}
+                          </Badge>
                         ) : null}
                       </div>
                       <CardTitle className="text-base md:text-lg leading-snug flex items-start gap-2">
                         <span className="text-primary mt-0.5">{icon}</span>
-                        <span>{ev.name}</span>
+                        <span>{ev.status === "indeterminate" ? "Causa indeterminada" : ev.name}</span>
                       </CardTitle>
+                      {ev.status === "indeterminate" ? (
+                        <p className="text-xs text-muted-foreground italic">
+                          A IA não encontrou evidências externas suficientes para classificar este pico como um evento factual.
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                 </CardHeader>

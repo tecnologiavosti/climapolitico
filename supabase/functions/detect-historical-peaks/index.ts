@@ -5,6 +5,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 import { firecrawlSearch, dedupePublications, estimatedReachOf, type ExternalPublication } from "../_shared/external-collector.ts";
 import { buildContextualQueries } from "../_shared/politician-context.ts";
+import {
+  classifySource as pipelineClassifySource,
+  confidenceFromSources as pipelineConfidence,
+  classifyCategory as pipelineCategory,
+  computeRelevance as pipelineRelevance,
+} from "../_shared/peak-pipeline.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -855,6 +861,33 @@ serve(async (req) => {
       const sentiment = sentimentAvailable ? aggregateSentiment(evPubs) : { pos: 0, neg: 0, neu: 0 };
       const score = relevanceFromEvidence(evt, evPubs, 0);
       const outletNames = Array.from(new Set(evPubs.map((p) => cleanText(p.outlet)).filter(Boolean))).slice(0, 30);
+
+      // ====== NEW PIPELINE: tier-based confidence, factual category, relevance band ======
+      const pipelinePubs = evPubs.map((p) => ({ url: p.url || "", outlet: p.outlet || "" }));
+      const conf = pipelineConfidence(pipelinePubs);
+      const ssotZ = typeof evt._ssot_z === "number" ? evt._ssot_z : 0;
+      const ssotPeak = typeof evt._ssot_peak === "number" ? evt._ssot_peak : 0;
+      const newCategory = pipelineCategory(
+        evt?.name, evt?.type, evt?.description, evt?.motivo,
+        evt?.what_happened, evt?.why_happened, evt?.political_impact, evt?.electoral_impact, evt?.aftermath,
+        Array.isArray(evt?.keywords) ? evt.keywords.join(" ") : "",
+        Array.isArray(evt?.participants) ? evt.participants.join(" ") : "",
+        outletNames.join(" "),
+        evPubs.map((p) => `${p.title || ""} ${p.outlet || ""}`).join(" "),
+      );
+      const politicalImpact =
+        newCategory === "stf" || newCategory === "operacoes_pf" || newCategory === "prisoes" ? 1.0 :
+        newCategory === "cpi" || newCategory === "tse" || newCategory === "julgamentos" || newCategory === "escandalos" ? 0.8 :
+        newCategory === "eleicoes" || newCategory === "debates" ? 0.5 : 0.2;
+      const relevance = pipelineRelevance({
+        mentions: ssotPeak || totalEvidence,
+        durationDays: coverageDurationDays(evPubs),
+        independent_strong_sources: conf.independent_strong_sources,
+        trusted_sources_count: conf.trusted_sources_count,
+        politicalImpact,
+        maxMentionsRef: ssotPeak * 2,
+      });
+
       return {
         name: safeSlice(cleanText(evt.name), 200),
         type: cleanText(evt.type || "noticia"),
@@ -870,7 +903,9 @@ serve(async (req) => {
         electoral_impact: safeSlice(cleanText(evt.electoral_impact), 1000),
         aftermath: safeSlice(cleanText(evt.aftermath), 1200),
         evidence_level: "cobertura_coletada",
-        relevance_score: Math.round(score),
+        relevance_score: relevance.score,
+        relevance_band: relevance.band,
+        relevance_breakdown: relevance.breakdown,
         publications_count: totalEvidence,
         distinct_outlets: distinctOutlets,
         coverage_days: coverageDurationDays(evPubs),
@@ -885,12 +920,24 @@ serve(async (req) => {
         sentiment_neutral: sentiment.neu,
         outlet_names: outletNames,
         coverage_quality: coverageQuality(totalEvidence, distinctOutlets),
-        category: categoryOf({ ...evt, outlet_names: outletNames, sources: evPubs.map((p) => ({ title: p.title, name: p.outlet })) }),
+        // NEW: status / category / confidence based on tier-weighted sources
+        status: conf.status, // "confirmed" | "probable" | "indeterminate"
+        category: newCategory, // 10 official categories
+        confidence_score: conf.weight_sum,
+        independent_strong_sources: conf.independent_strong_sources,
+        trusted_sources_count: conf.trusted_sources_count,
+        tier_breakdown: conf.tier_breakdown,
         ssot_z_score: typeof evt._ssot_z === "number" ? evt._ssot_z : null,
         ssot_baseline_volume: typeof evt._ssot_baseline === "number" ? evt._ssot_baseline : null,
         ssot_peak_volume: typeof evt._ssot_peak === "number" ? evt._ssot_peak : null,
         external_score: Math.round(score),
-        sources: evPubs.map((p) => ({ name: p.outlet, url: p.url, region: p.outletRegion, publishedAt: p.publishedAt || null, title: cleanText(p.title), kind: classifyPub(p) })),
+        legacy_score: Math.round(score),
+        // Drop tier4-only events (Instagram/TikTok) before display
+        _hide_indeterminate: conf.status === "indeterminate" && !(ssotZ >= 4 && ssotPeak >= 100),
+        sources: evPubs.map((p) => {
+          const c = pipelineClassifySource(p.url || "", p.outlet || "");
+          return { name: p.outlet, url: p.url, region: p.outletRegion, publishedAt: p.publishedAt || null, title: cleanText(p.title), kind: classifyPub(p), tier: c.tier, weight: c.weight };
+        }),
       };
     }).filter((evt: any) => {
       const eventDate = new Date(`${evt.start_date}T12:00:00Z`).getTime();
@@ -903,6 +950,8 @@ serve(async (req) => {
       const normType = normalize(String(evt.type || "")).replace(/[^a-z_]/g, "");
       if (BLOCKED_EVENT_TYPES.test(normType)) return false;
       if (BLOCKED_NAME_TERMS.test(evt.name)) return false;
+      // NEW: drop indeterminate events without a strong spike — eliminates noise/hallucination candidates.
+      if (evt._hide_indeterminate) return false;
       return true;
     }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0)).slice(0, 120);
 
