@@ -642,25 +642,3 @@ function expectedMinFor(fullName: string): number {
   if (k.includes("ciro") || k.includes("nikolas") || k.includes("eduardo bolsonaro") || k.includes("ratinho") || k.includes("caiado") || k.includes("tebet")) return 100;
   return 50;
 }
-            await supabase.from("event_sources").upsert(sourceRows, { onConflict: "event_id,url" });
-            inserted++;
-            totalInserted++;
-          }
-        }
-      }
-
-      perCandidate[c.full_name] = { inserted, clusters: clusters.size, items: unique.length };
-    }
-
-    return new Response(
-      JSON.stringify({ ok: true, totalInserted, perCandidate, lookback }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
-  } catch (e) {
-    console.error("[run-radar-pipeline] error", e);
-    return new Response(
-      JSON.stringify({ ok: false, error: (e as Error).message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
-  }
-});
