@@ -465,11 +465,12 @@ Deno.serve(async (req) => {
 
         // aceita single-source SE for institucional ou grande imprensa
         const hasQuality = institutionalCount > 0 || majorMediaCount > 0;
-        if (uniqueSources.length < 2 && !hasQuality) continue;
+        // aceita single-source (recall maximizado); IA filtra ruído depois
+        if (uniqueSources.length < 1) continue;
 
         const headlines = uniqueSources.map((u) => `${u.title} (${u.domain})`);
         const cls = await classifyCluster(headlines, c.full_name);
-        if (!cls || cls.relevance < 30) continue;
+        if (!cls || cls.relevance < 20) continue;
 
         const socialScore = await calcSocialScore(supabase, c.id, day);
         const importance = computeImportance({
