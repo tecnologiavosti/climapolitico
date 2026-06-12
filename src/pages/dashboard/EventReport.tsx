@@ -12,6 +12,7 @@ import {
   Landmark, Vote, Gavel, Mic, Users, TrendingUp, Video, MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
+import { AnnualPeaksTimeline } from "@/components/events/AnnualPeaksTimeline";
 
 
 
