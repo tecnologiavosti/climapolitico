@@ -2000,6 +2000,7 @@ export type Database = {
           category: string | null
           category_v2: string | null
           city: string | null
+          cluster_size: number
           confidence_band: string
           confidence_level: string | null
           confidence_score: number
@@ -2067,6 +2068,7 @@ export type Database = {
           category?: string | null
           category_v2?: string | null
           city?: string | null
+          cluster_size?: number
           confidence_band?: string
           confidence_level?: string | null
           confidence_score?: number
@@ -2134,6 +2136,7 @@ export type Database = {
           category?: string | null
           category_v2?: string | null
           city?: string | null
+          cluster_size?: number
           confidence_band?: string
           confidence_level?: string | null
           confidence_score?: number
@@ -2333,6 +2336,50 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      radar_pipeline_health: {
+        Row: {
+          candidate_id: string
+          created_at: string
+          events_found: number
+          expected_min: number
+          id: string
+          status: string
+          updated_at: string
+          user_id: string
+          year: number
+        }
+        Insert: {
+          candidate_id: string
+          created_at?: string
+          events_found?: number
+          expected_min?: number
+          id?: string
+          status: string
+          updated_at?: string
+          user_id: string
+          year: number
+        }
+        Update: {
+          candidate_id?: string
+          created_at?: string
+          events_found?: number
+          expected_min?: number
+          id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "radar_pipeline_health_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       rate_limits: {
         Row: {
