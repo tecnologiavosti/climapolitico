@@ -924,8 +924,6 @@ serve(async (req) => {
         ssot_peak_volume: typeof evt._ssot_peak === "number" ? evt._ssot_peak : null,
         external_score: Math.round(score),
         legacy_score: Math.round(score),
-        // Drop tier4-only events (Instagram/TikTok) before display
-        _hide_indeterminate: conf.status === "indeterminate" && !(ssotZ >= 4 && ssotPeak >= 100),
         sources: evPubs.map((p) => {
           const c = pipelineClassifySource(p.url || "", p.outlet || "");
           return { name: p.outlet, url: p.url, region: p.outletRegion, publishedAt: p.publishedAt || null, title: cleanText(p.title), kind: classifyPub(p), tier: c.tier, weight: c.weight };
@@ -942,10 +940,8 @@ serve(async (req) => {
       const normType = normalize(String(evt.type || "")).replace(/[^a-z_]/g, "");
       if (BLOCKED_EVENT_TYPES.test(normType)) return false;
       if (BLOCKED_NAME_TERMS.test(evt.name)) return false;
-      // NEW: drop indeterminate events without a strong spike — eliminates noise/hallucination candidates.
-      if (evt._hide_indeterminate) return false;
       return true;
-    }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0)).slice(0, 120);
+    }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0)).slice(0, 200);
 
     const timelineMap = new Map<string, { date: string; total: number; news: number; videos: number; posts: number }>();
     for (const p of pubs) {
