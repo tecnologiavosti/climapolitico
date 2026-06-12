@@ -222,12 +222,21 @@ Deno.serve(async (req) => {
     const classifiedPubs = pubs.map((p) => ({ pub: p, strength: classifyExternalSource(p) }));
     const strongSources = classifiedPubs.filter((p) => p.strength === "strong").length;
     const weakSources = classifiedPubs.filter((p) => p.strength === "weak").length;
+    // Independent strong sources = distinct domains classified as strong
+    const independentStrongDomains = new Set(
+      classifiedPubs
+        .filter((p) => p.strength === "strong")
+        .map((p) => hostOf(p.pub.url || ""))
+        .filter(Boolean),
+    );
+    const independentStrongSources = independentStrongDomains.size;
     const semanticConfidence = calculateSemanticConfidence(evidence, interactions.length);
     const entityConfidence = calculateEntityConfidence(evidence, interactions.length);
-    const externalEvidenceConfidence = clamp01(Math.min(1, strongSources / 3) * 0.85 + Math.min(1, weakSources / 8) * 0.15);
-    const responseMode: ResponseMode = strongSources >= 1
+    const externalEvidenceConfidence = clamp01(Math.min(1, independentStrongSources / 3) * 0.85 + Math.min(1, weakSources / 8) * 0.15);
+    // NEW RULE: require >=2 independent strong sources to confirm an event.
+    const responseMode: ResponseMode = independentStrongSources >= 2
       ? "CONFIRMED_EVENT"
-      : semanticConfidence >= 0.75
+      : semanticConfidence >= 0.75 && independentStrongSources >= 1
         ? "PROBABLE_NARRATIVE"
         : "UNKNOWN_TRIGGER";
     const computedConfidence = Math.round(
@@ -237,7 +246,8 @@ Deno.serve(async (req) => {
         externalEvidenceConfidence * 0.35,
       ) * 100,
     ) / 100;
-    const finalConfidence = strongSources === 0 ? Math.min(computedConfidence, 0.70) : computedConfidence;
+    const finalConfidence = independentStrongSources < 2 ? Math.min(computedConfidence, 0.70) : computedConfidence;
+    const shouldDisplay = responseMode !== "UNKNOWN_TRIGGER";
 
     const external_evidence = classifiedPubs.map(({ pub, strength }) => ({
       title: pub.title, url: pub.url, outlet: pub.outlet, publishedAt: pub.publishedAt, source_strength: strength,
