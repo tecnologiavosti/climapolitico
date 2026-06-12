@@ -87,6 +87,36 @@ const ALIAS_MAP: Record<string, string[]> = {
   "lira": ["Arthur Lira"],
 };
 
+// Contextual role keywords — disparam match mesmo SEM o nome do candidato no título.
+// Devem ser específicos o suficiente para evitar falso positivo (ex.: "governo" sozinho não basta).
+const ROLE_MAP: Record<string, string[]> = {
+  "lula": ["planalto","palacio do planalto","palácio do planalto","governo lula","presidente da republica","presidente da república","executivo federal","presidencia da republica","presidência da república"],
+  "luiz inacio lula da silva": ["planalto","palacio do planalto","palácio do planalto","governo lula","presidente da republica","presidente da república","executivo federal"],
+  "jair bolsonaro": ["ex-presidente","clã bolsonaro","cla bolsonaro","bolsonarismo","pl de bolsonaro","inelegivel","inelegível"],
+  "bolsonaro": ["ex-presidente","clã bolsonaro","cla bolsonaro","bolsonarismo","inelegivel","inelegível"],
+  "flavio bolsonaro": ["senador flavio","senador flávio","filho de bolsonaro","rachadinha","caso queiroz","gabinete do senador"],
+  "flávio bolsonaro": ["senador flavio","senador flávio","filho de bolsonaro","rachadinha","caso queiroz"],
+  "eduardo bolsonaro": ["deputado eduardo","filho de bolsonaro","03"],
+  "tarcisio de freitas": ["governador de sao paulo","governador de são paulo","palacio dos bandeirantes","palácio dos bandeirantes","governo de sp"],
+  "tarcísio de freitas": ["governador de são paulo","palácio dos bandeirantes","governo de sp"],
+  "tarcisio": ["governador de são paulo","palácio dos bandeirantes","governo de sp"],
+  "ratinho junior": ["governador do parana","governador do paraná","palacio iguacu","palácio iguaçu"],
+  "ronaldo caiado": ["governador de goias","governador de goiás","palacio das esmeraldas","palácio das esmeraldas"],
+  "geraldo alckmin": ["vice-presidente","mdic","ministerio do desenvolvimento","ministério do desenvolvimento"],
+  "fernando haddad": ["ministro da fazenda","ministerio da fazenda","ministério da fazenda","equipe economica","equipe econômica"],
+  "simone tebet": ["ministra do planejamento","ministerio do planejamento","ministério do planejamento"],
+  "pacheco": ["presidente do senado","mesa do senado"],
+  "lira": ["presidente da camara","presidente da câmara","mesa da camara","mesa da câmara"],
+};
+
+function roleKeywordsFor(fullName: string): string[] {
+  const key = normalize(fullName);
+  if (ROLE_MAP[key]) return ROLE_MAP[key];
+  const parts = key.split(/\s+/);
+  for (const p of parts) if (ROLE_MAP[p]) return ROLE_MAP[p];
+  return [];
+}
+
 function normalize(s: string): string {
   return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 }
@@ -288,13 +318,20 @@ async function fetchAllRss(): Promise<NewsItem[]> {
   return results.flat();
 }
 
-function filterByAliases(items: NewsItem[], aliases: string[], lookbackDays: number): NewsItem[] {
+function filterByAliases(
+  items: NewsItem[],
+  aliases: string[],
+  lookbackDays: number,
+  roleKeywords: string[] = [],
+): NewsItem[] {
   const cutoff = Date.now() - lookbackDays * 86400_000;
   const normAliases = aliases.map((a) => normalize(a)).filter((a) => a.length >= 3);
+  const normRoles = roleKeywords.map((r) => normalize(r)).filter((r) => r.length >= 4);
   return items.filter((it) => {
     if (new Date(it.published_at).getTime() < cutoff) return false;
     const t = normalize(it.title);
-    return normAliases.some((a) => t.includes(a));
+    // alias match (forte) OU role context match (institucional/cargo) — IA depois descarta ruído
+    return normAliases.some((a) => t.includes(a)) || normRoles.some((r) => t.includes(r));
   });
 }
 
@@ -395,20 +432,34 @@ async function calcSocialScore(supabase: any, candidateId: string, day: string):
   return Math.min(100, Math.round(score));
 }
 
-function computeImportance(opts: {
+// Importance v2 — fórmula aditiva com bonus institucional e cluster_size
+const INSTITUTIONAL_BONUS: { match: string; bonus: number }[] = [
+  { match: "stf.jus.br", bonus: 20 },
+  { match: "tse.jus.br", bonus: 20 },
+  { match: "pf.gov.br", bonus: 18 },
+  { match: "senado.leg.br", bonus: 15 },
+  { match: "camara.leg.br", bonus: 15 },
+  { match: "reuters.com", bonus: 12 },
+  { match: "bloomberg.com", bonus: 10 },
+];
+
+function computeImportanceV2(opts: {
   sourceCount: number;
-  institutionalCount: number;
+  clusterSize: number;
   socialScore: number;
   relevance: number;
+  domains: string[];
 }): number {
-  const sourceScore = Math.min(100, opts.sourceCount * 10);
-  const institutionalScore = Math.min(100, opts.institutionalCount * 25);
-  const importance =
-    0.30 * sourceScore +
-    0.25 * institutionalScore +
-    0.15 * opts.socialScore +
-    0.30 * opts.relevance;
-  return Math.round(Math.min(100, importance));
+  const sourceTerm = opts.sourceCount * 2;
+  const socialTerm = Math.log(opts.socialScore + 1) * 5;
+  const clusterTerm = opts.clusterSize * 1.5;
+  let institutionalBonus = 0;
+  for (const d of opts.domains) {
+    for (const ib of INSTITUTIONAL_BONUS) if (d.endsWith(ib.match)) institutionalBonus += ib.bonus;
+  }
+  const base = opts.relevance * 0.5; // ancora no julgamento da IA
+  const importance = base + sourceTerm + socialTerm + clusterTerm + institutionalBonus;
+  return Math.round(Math.min(100, Math.max(0, importance)));
 }
 
 Deno.serve(async (req) => {
@@ -433,15 +484,14 @@ Deno.serve(async (req) => {
 
     for (const c of candidates ?? []) {
       const aliases = aliasesFor(c.full_name);
-      // coleta múltiplas queries por candidato
+      const roleKw = roleKeywordsFor(c.full_name);
       const all: NewsItem[] = [];
       for (const alias of aliases) {
         const items = await fetchGoogleNews(alias, lookback);
         all.push(...items);
       }
-      // adiciona itens RSS que casam com aliases do candidato
-      all.push(...filterByAliases(rssPool, aliases, lookback));
-      // dedupe por url
+      // RSS pool: alias OU role context
+      all.push(...filterByAliases(rssPool, aliases, lookback, roleKw));
       const byUrl = new Map<string, NewsItem>();
       for (const it of all) if (!byUrl.has(it.url)) byUrl.set(it.url, it);
       const unique = [...byUrl.values()];
@@ -451,43 +501,32 @@ Deno.serve(async (req) => {
 
       for (const [key, group] of clusters) {
         const day = key.split("::")[0];
-        // dedupe por domínio dentro do cluster
         const uniqByDomain = new Map<string, NewsItem>();
         for (const it of group) if (!uniqByDomain.has(it.domain)) uniqByDomain.set(it.domain, it);
         const uniqueSources = [...uniqByDomain.values()];
+        if (uniqueSources.length < 1) continue;
 
         const institutionalCount = uniqueSources.filter((u) =>
           INSTITUTIONAL_DOMAINS.some((id) => u.domain.endsWith(id))
         ).length;
-        const majorMediaCount = uniqueSources.filter((u) =>
-          MAJOR_NEWS_DOMAINS.some((d) => u.domain.endsWith(d))
-        ).length;
-
-        // aceita single-source SE for institucional ou grande imprensa
-        const hasQuality = institutionalCount > 0 || majorMediaCount > 0;
-        // aceita single-source (recall maximizado); IA filtra ruído depois
-        if (uniqueSources.length < 1) continue;
 
         const headlines = uniqueSources.map((u) => `${u.title} (${u.domain})`);
         const cls = await classifyCluster(headlines, c.full_name);
         if (!cls || cls.relevance < 20) continue;
 
         const socialScore = await calcSocialScore(supabase, c.id, day);
-        const importance = computeImportance({
+        const clusterSize = group.length; // total de artigos agrupados (inclui duplicados de domínio)
+        const importance = computeImportanceV2({
           sourceCount: uniqueSources.length,
-          institutionalCount,
+          clusterSize,
           socialScore,
           relevance: cls.relevance,
+          domains: uniqueSources.map((u) => u.domain),
         });
 
         const sourcesJson = uniqueSources.map((u) => {
           const { type } = classifyDomain(u.url);
-          return {
-            source_name: u.source_name,
-            url: u.url,
-            type,
-            published_at: u.published_at,
-          };
+          return { source_name: u.source_name, url: u.url, type, published_at: u.published_at };
         });
 
         const eventDate = new Date(day).toISOString();
@@ -519,6 +558,7 @@ Deno.serve(async (req) => {
           social_score: socialScore,
           importance,
           importance_score: importance,
+          cluster_size: clusterSize,
           status: "active",
           sources_json: sourcesJson,
           detection_source: "radar-pipeline",
@@ -556,6 +596,29 @@ Deno.serve(async (req) => {
       }
 
       perCandidate[c.full_name] = { inserted, clusters: clusters.size, items: unique.length };
+
+      // === Health check ===
+      const year = new Date().getUTCFullYear();
+      const yearStart = `${year}-01-01T00:00:00Z`;
+      const { count: yearCount } = await supabase
+        .from("political_events")
+        .select("id", { count: "exact", head: true })
+        .eq("candidate_id", c.id)
+        .gte("event_date", yearStart);
+      const expectedMin = expectedMinFor(c.full_name);
+      const found = yearCount ?? 0;
+      const status = found >= expectedMin ? "OK" : found >= Math.floor(expectedMin / 2) ? "WARNING" : "FAIL";
+      await supabase
+        .from("radar_pipeline_health")
+        .upsert({
+          candidate_id: c.id,
+          user_id: c.user_id,
+          year,
+          events_found: found,
+          expected_min: expectedMin,
+          status,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "candidate_id,year" });
     }
 
     return new Response(
@@ -570,3 +633,12 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+// Volume mínimo anual esperado por candidato (heurística por relevância nacional)
+function expectedMinFor(fullName: string): number {
+  const k = normalize(fullName);
+  if (k.includes("lula") || k.includes("bolsonaro") && !k.includes("flavio") && !k.includes("eduardo") && !k.includes("michelle")) return 300;
+  if (k.includes("tarcisio") || k.includes("haddad") || k.includes("alckmin") || k.includes("flavio") || k.includes("flávio")) return 150;
+  if (k.includes("ciro") || k.includes("nikolas") || k.includes("eduardo bolsonaro") || k.includes("ratinho") || k.includes("caiado") || k.includes("tebet")) return 100;
+  return 50;
+}

@@ -52,6 +52,7 @@ export default function RadarPolitico() {
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const [category, setCategory] = useState<string>("all");
+  const [importanceFilter, setImportanceFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<RadarEvent | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -81,15 +82,51 @@ export default function RadarPolitico() {
     from, to, category, search,
   });
 
-  const kpis = useMemo(() => {
+  // Filtro por banda de importância
+  const filteredEvents = useMemo(() => {
     const ev = events ?? [];
+    if (importanceFilter === "all") return ev;
+    if (importanceFilter === "grande") return ev.filter((e) => e.importance >= 70);
+    if (importanceFilter === "medio") return ev.filter((e) => e.importance >= 40 && e.importance < 70);
+    if (importanceFilter === "pequeno") return ev.filter((e) => e.importance >= 20 && e.importance < 40);
+    return ev;
+  }, [events, importanceFilter]);
+
+  // Pipeline health (do candidato selecionado, ou pior status entre todos)
+  const { data: health } = useQuery({
+    queryKey: ["radar-health", user?.id, candidateId],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      let q = supabase
+        .from("radar_pipeline_health" as any)
+        .select("candidate_id,year,events_found,expected_min,status")
+        .eq("user_id", user!.id)
+        .eq("year", new Date().getFullYear());
+      if (candidateId !== "all") q = q.eq("candidate_id", candidateId);
+      const { data } = await q;
+      return ((data ?? []) as unknown) as Array<{ candidate_id: string; events_found: number; expected_min: number; status: string }>;
+    },
+  });
+
+  const healthSummary = useMemo(() => {
+    const rows = health ?? [];
+    if (rows.length === 0) return null;
+    const order = { FAIL: 0, WARNING: 1, OK: 2 } as Record<string, number>;
+    const worst = rows.slice().sort((a, b) => order[a.status] - order[b.status])[0];
+    const totalFound = rows.reduce((s, r) => s + (r.events_found || 0), 0);
+    const totalMin = rows.reduce((s, r) => s + (r.expected_min || 0), 0);
+    return { status: worst.status, found: totalFound, min: totalMin };
+  }, [health]);
+
+  const kpis = useMemo(() => {
+    const ev = filteredEvents;
     return {
       total: ev.length,
-      grandes: ev.filter((e) => e.importance > 75).length,
+      grandes: ev.filter((e) => e.importance >= 70).length,
       institucional: ev.filter((e) => e.sources_json?.some((s) => s.type === "institutional")).length,
       altaRepercussao: ev.filter((e) => e.social_score >= 60).length,
     };
-  }, [events]);
+  }, [filteredEvents]);
 
   const timeline = useMemo(() => {
     const map = new Map<string, number>();
@@ -174,6 +211,16 @@ export default function RadarPolitico() {
             </SelectContent>
           </Select>
 
+          <Select value={importanceFilter} onValueChange={setImportanceFilter}>
+            <SelectTrigger className="w-[130px] h-9"><SelectValue placeholder="Importância" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas</SelectItem>
+              <SelectItem value="grande">Grandes</SelectItem>
+              <SelectItem value="medio">Médios</SelectItem>
+              <SelectItem value="pequeno">Pequenos</SelectItem>
+            </SelectContent>
+          </Select>
+
           <div className="relative flex-1 min-w-[180px]">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
@@ -186,9 +233,30 @@ export default function RadarPolitico() {
         </div>
       </header>
 
+      {healthSummary && (
+        <div className="flex items-center justify-between border rounded-md px-3 py-2 text-xs bg-card">
+          <div className="flex items-center gap-2">
+            <span
+              className={`px-2 py-0.5 rounded font-medium ${
+                healthSummary.status === "OK"
+                  ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                  : healthSummary.status === "WARNING"
+                  ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                  : "bg-red-500/15 text-red-700 dark:text-red-400"
+              }`}
+            >
+              Pipeline {healthSummary.status}
+            </span>
+            <span className="text-muted-foreground">
+              {healthSummary.found} / meta mínima {healthSummary.min} eventos (ano corrente)
+            </span>
+          </div>
+        </div>
+      )}
+
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <KpiCard label="Eventos" value={kpis.total} />
-        <KpiCard label="Alta relevância" value={kpis.grandes} hint=">75 importância" />
+        <KpiCard label="Alta relevância" value={kpis.grandes} hint="≥70 importância" />
         <KpiCard label="Institucional" value={kpis.institucional} hint="STF · TSE · PF" />
         <KpiCard label="Alta repercussão" value={kpis.altaRepercussao} hint="social ≥ 60" />
       </section>
@@ -223,13 +291,13 @@ export default function RadarPolitico() {
 
       <section className="space-y-2">
         <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">
-          {isLoading ? "Carregando..." : `${events?.length ?? 0} eventos`}
+          {isLoading ? "Carregando..." : `${filteredEvents.length} eventos`}
         </h2>
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : (events?.length ?? 0) === 0 ? (
+        ) : filteredEvents.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center text-sm text-muted-foreground">
               Nenhum evento. Clique em "Atualizar" para rodar o pipeline.
@@ -237,7 +305,7 @@ export default function RadarPolitico() {
           </Card>
         ) : (
           <div className="divide-y border rounded-md bg-card">
-            {events!.map((e) => {
+            {filteredEvents.map((e) => {
               const band = importanceBand(e.importance);
               return (
                 <button
@@ -253,6 +321,12 @@ export default function RadarPolitico() {
                         <span className="font-medium text-foreground/80">{e.category}</span>
                         <span>·</span>
                         <span>{e.source_count} fontes</span>
+                        {e.cluster_size > 1 && (
+                          <>
+                            <span>·</span>
+                            <span>{e.cluster_size} artigos</span>
+                          </>
+                        )}
                       </div>
                       <h3 className="text-sm font-medium leading-snug truncate">{e.title}</h3>
                       {e.summary && (
