@@ -758,6 +758,45 @@ function Section({ title, body }: { title: string; body: string }) {
   );
 }
 
+function ScoreCompositionBar({ c }: { c: Record<string, number> }) {
+  const parts: Array<{ key: string; label: string; color: string }> = [
+    { key: "coverage", label: "Cobertura", color: "bg-blue-500" },
+    { key: "diversity", label: "Diversidade", color: "bg-violet-500" },
+    { key: "consensus", label: "Consenso", color: "bg-emerald-500" },
+    { key: "significance", label: "Relevância", color: "bg-amber-500" },
+  ];
+  const total = parts.reduce((s, p) => s + (Number(c[p.key]) || 0), 0) || 1;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
+        {parts.map((p) => {
+          const v = Number(c[p.key]) || 0;
+          const pct = (v / total) * 100;
+          return pct > 0 ? <div key={p.key} className={p.color} style={{ width: `${pct}%` }} title={`${p.label}: ${v.toFixed(1)}`} /> : null;
+        })}
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+        {parts.map((p) => (
+          <span key={p.key} className="flex items-center gap-1">
+            <span className={`h-2 w-2 rounded-sm ${p.color}`} />
+            {p.label} <span className="font-mono text-foreground">{(Number(c[p.key]) || 0).toFixed(1)}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SentimentBar({ value }: { value: number }) {
+  const v = Math.max(-1, Math.min(1, value));
+  const pct = ((v + 1) / 2) * 100;
+  return (
+    <div className="relative h-2 w-full rounded-full bg-gradient-to-r from-rose-500 via-zinc-300 to-emerald-500 dark:via-zinc-700">
+      <div className="absolute top-1/2 h-3 w-1 -translate-x-1/2 -translate-y-1/2 rounded-sm bg-foreground" style={{ left: `${pct}%` }} />
+    </div>
+  );
+}
+
 function PeakCauseView({ cause }: { cause: PeakCause }) {
   const conf = Math.round((cause.confidence || 0) * 100);
   const confColor = conf >= 60 ? "text-emerald-600 dark:text-emerald-400" : conf >= 30 ? "text-amber-600 dark:text-amber-400" : "text-zinc-500";
