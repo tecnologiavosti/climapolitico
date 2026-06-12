@@ -25,6 +25,10 @@ export const POLITICAL_CATEGORIES: PoliticalCategory[] = [
   { id: "escandalos", label: "Escândalos" },
   { id: "prisoes", label: "Prisões" },
   { id: "debates", label: "Debates" },
+  { id: "congresso", label: "Congresso" },
+  { id: "executivo", label: "Executivo" },
+  { id: "economia", label: "Economia" },
+  { id: "internacional", label: "Internacional" },
   { id: "outros", label: "Outros" },
 ];
 
