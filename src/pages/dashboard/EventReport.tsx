@@ -885,3 +885,42 @@ function PeakCauseView({ cause }: { cause: PeakCause }) {
     </div>
   );
 }
+
+function ScoreCompositionBar({ c }: { c: { coverage: number; diversity: number; consensus: number; significance: number } }) {
+  // Each component contributes its weighted portion to a 100% segmented bar.
+  const segs = [
+    { label: "Cobertura", v: c.coverage * 30, raw: c.coverage, cls: "bg-emerald-500" },
+    { label: "Diversidade", v: c.diversity * 20, raw: c.diversity, cls: "bg-blue-500" },
+    { label: "Consenso", v: c.consensus * 25, raw: c.consensus, cls: "bg-amber-500" },
+    { label: "Significância", v: c.significance * 25, raw: c.significance, cls: "bg-violet-500" },
+  ];
+  return (
+    <div className="space-y-1.5">
+      <div className="flex h-2.5 rounded-full overflow-hidden bg-muted">
+        {segs.map((s) => (
+          <div key={s.label} className={s.cls} style={{ width: `${Math.max(0, s.v)}%` }} title={`${s.label}: ${(s.raw * 100).toFixed(0)}%`} />
+        ))}
+      </div>
+      <div className="grid grid-cols-4 gap-1 text-[10px] text-muted-foreground">
+        {segs.map((s) => (
+          <div key={s.label} className="flex items-center gap-1">
+            <span className={`inline-block h-2 w-2 rounded-sm ${s.cls}`} />
+            <span className="truncate">{s.label} · <span className="font-mono text-foreground">{(s.raw * 100).toFixed(0)}</span></span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SentimentBar({ value }: { value: number }) {
+  const pct = Math.max(0, Math.min(100, ((value + 1) / 2) * 100));
+  return (
+    <div className="relative h-2 rounded-full bg-gradient-to-r from-rose-500 via-zinc-400 to-emerald-500">
+      <div
+        className="absolute top-1/2 -translate-y-1/2 h-3.5 w-1 bg-foreground rounded-sm shadow"
+        style={{ left: `calc(${pct}% - 2px)` }}
+      />
+    </div>
+  );
+}
