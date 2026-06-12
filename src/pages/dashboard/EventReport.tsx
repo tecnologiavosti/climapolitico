@@ -575,37 +575,44 @@ export default function EventReport() {
                     </div>
                   ) : null}
 
-                  <Button variant="ghost" size="sm" className="gap-2"
-                    onClick={async () => {
-                      const willOpen = !isOpen;
-                      setExpanded((p) => ({ ...p, [key]: willOpen }));
-                      if (willOpen && !causes[key] && !causeLoading[key]) {
-                        setCauseLoading((p) => ({ ...p, [key]: true }));
-                        setCauseError((p) => ({ ...p, [key]: "" }));
-                        try {
-                          const { data: c, error: cErr } = await supabase.functions.invoke("resolve-peak-cause", {
-                            body: {
-                              candidateId,
-                              candidateName,
-                              peakDate: ev.start_date,
-                              windowStart: ev.start_date,
-                              windowEnd: ev.end_date || ev.start_date,
-                              peakMentions: ev.internal_mentions ?? 0,
-                            },
-                          });
-                          if (cErr) throw cErr;
-                          if ((c as any)?.error) throw new Error((c as any).error);
-                          setCauses((p) => ({ ...p, [key]: c as PeakCause }));
-                        } catch (e) {
-                          setCauseError((p) => ({ ...p, [key]: (e as Error).message }));
-                        } finally {
-                          setCauseLoading((p) => ({ ...p, [key]: false }));
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="ghost" size="sm" className="gap-2"
+                      onClick={async () => {
+                        const willOpen = !isOpen;
+                        setExpanded((p) => ({ ...p, [key]: willOpen }));
+                        if (willOpen && !causes[key] && !causeLoading[key]) {
+                          setCauseLoading((p) => ({ ...p, [key]: true }));
+                          setCauseError((p) => ({ ...p, [key]: "" }));
+                          try {
+                            const { data: c, error: cErr } = await supabase.functions.invoke("resolve-peak-cause", {
+                              body: {
+                                candidateId,
+                                candidateName,
+                                peakDate: ev.start_date,
+                                windowStart: ev.start_date,
+                                windowEnd: ev.end_date || ev.start_date,
+                                peakMentions: ev.internal_mentions ?? 0,
+                              },
+                            });
+                            if (cErr) throw cErr;
+                            if ((c as any)?.error) throw new Error((c as any).error);
+                            setCauses((p) => ({ ...p, [key]: c as PeakCause }));
+                          } catch (e) {
+                            setCauseError((p) => ({ ...p, [key]: (e as Error).message }));
+                          } finally {
+                            setCauseLoading((p) => ({ ...p, [key]: false }));
+                          }
                         }
-                      }
-                    }}>
-                    {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    {isOpen ? "Recolher análise IA" : "Análise IA do pico"}
-                  </Button>
+                      }}>
+                      {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                      {isOpen ? "Recolher análise IA" : "Análise IA do pico"}
+                    </Button>
+                    <Button variant="outline" size="sm" className="gap-2"
+                      onClick={() => setEnterpriseEvent(ev as unknown as EnterprisePeakEvent)}>
+                      <BarChart3 className="h-4 w-4" />
+                      Métricas enterprise
+                    </Button>
+                  </div>
 
                   {isOpen ? (
                     <div className="space-y-4 pt-2 border-t">
