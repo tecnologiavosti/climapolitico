@@ -304,18 +304,53 @@ Responda em JSON estrito com este schema:
       console.warn("[resolve-peak-cause] AI failed:", aiError);
     }
 
-    const confidence = Number(ai?.confidence ?? 0);
-    const lowConfidence = !ai || confidence < 0.6;
     const topTermsList = evidence.top_keywords.slice(0, 6).map((k) => k.term).join(", ");
+    const topicLabel = buildTopicLabel(evidence);
+    const unknownText = "Não foi possível identificar com confiança a causa exata do pico.";
+    const probableText = `Os dados sugerem que o pico está relacionado a discussões sobre ${topicLabel}, porém não encontramos confirmação externa suficiente para determinar o gatilho exato.`;
+    const lowConfidence = responseMode === "UNKNOWN_TRIGGER" || !ai || finalConfidence < 0.50;
+    const modeFallback = responseMode === "UNKNOWN_TRIGGER" ? unknownText : probableText;
+    const safeTitle = responseMode === "CONFIRMED_EVENT"
+      ? (ai?.event_title || `Pico de menções em ${peakDate}`)
+      : responseMode === "PROBABLE_NARRATIVE"
+        ? `Narrativa provável: ${topicLabel}`
+        : "Causa indeterminada";
+    const safeSummary = responseMode === "CONFIRMED_EVENT"
+      ? (ai?.event_summary || "")
+      : modeFallback;
+    const safeRootCause = responseMode === "CONFIRMED_EVENT"
+      ? (ai?.root_cause || "")
+      : `${modeFallback}${topTermsList ? ` Principais termos associados: ${topTermsList}.` : ""}`;
     const fallback_text = lowConfidence
-      ? `Não encontramos evidências externas suficientes para determinar com alta confiança a causa deste pico. Principais termos associados nas redes monitoradas: ${topTermsList || "—"}.`
+      ? `${unknownText} Principais termos associados nas redes monitoradas: ${topTermsList || "—"}.`
       : null;
 
+    console.log(JSON.stringify({
+      tag: "resolve_peak_cause_grounding",
+      candidateName,
+      peakDate,
+      response_mode: responseMode,
+      strong_sources: strongSources,
+      weak_sources: weakSources,
+      semantic_confidence: semanticConfidence,
+      entity_confidence: entityConfidence,
+      external_evidence_confidence: externalEvidenceConfidence,
+      final_confidence: finalConfidence,
+    }));
+
     const out = {
-      event_title: ai?.event_title || `Pico de menções em ${peakDate}`,
-      event_summary: ai?.event_summary || "",
-      root_cause: ai?.root_cause || "",
-      confidence: Number.isFinite(confidence) ? confidence : 0,
+      response_mode: responseMode,
+      event_title: safeTitle,
+      event_summary: safeSummary,
+      root_cause: safeRootCause,
+      confidence: finalConfidence,
+      confidence_breakdown: {
+        semanticConfidence,
+        entityConfidence,
+        externalEvidenceConfidence,
+        strongSources,
+        weakSources,
+      },
       main_networks: ai?.main_networks || evidence.top_networks.map((n) => n.network),
       main_entities: ai?.main_entities || evidence.top_bigrams.slice(0, 6).map((b) => b.term),
       top_keywords: evidence.top_keywords.slice(0, 12),
