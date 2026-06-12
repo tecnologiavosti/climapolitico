@@ -452,33 +452,54 @@ export default function EventReport() {
                   ) : null}
 
                   <Button variant="ghost" size="sm" className="gap-2"
-                    onClick={() => setExpanded((p) => ({ ...p, [key]: !p[key] }))}>
+                    onClick={async () => {
+                      const willOpen = !isOpen;
+                      setExpanded((p) => ({ ...p, [key]: willOpen }));
+                      if (willOpen && !causes[key] && !causeLoading[key]) {
+                        setCauseLoading((p) => ({ ...p, [key]: true }));
+                        setCauseError((p) => ({ ...p, [key]: "" }));
+                        try {
+                          const { data: c, error: cErr } = await supabase.functions.invoke("resolve-peak-cause", {
+                            body: {
+                              candidateId,
+                              candidateName,
+                              peakDate: ev.start_date,
+                              windowStart: ev.start_date,
+                              windowEnd: ev.end_date || ev.start_date,
+                              peakMentions: ev.internal_mentions ?? 0,
+                            },
+                          });
+                          if (cErr) throw cErr;
+                          if ((c as any)?.error) throw new Error((c as any).error);
+                          setCauses((p) => ({ ...p, [key]: c as PeakCause }));
+                        } catch (e) {
+                          setCauseError((p) => ({ ...p, [key]: (e as Error).message }));
+                        } finally {
+                          setCauseLoading((p) => ({ ...p, [key]: false }));
+                        }
+                      }
+                    }}>
                     {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     {isOpen ? "Recolher análise IA" : "Análise IA do pico"}
                   </Button>
 
                   {isOpen ? (
                     <div className="space-y-4 pt-2 border-t">
-                      {ev.what_happened ? <Section title="O que aconteceu" body={ev.what_happened} /> : null}
-                      {ev.why_happened ? <Section title="Por que gerou repercussão" body={ev.why_happened} /> : null}
-                      {ev.participants && ev.participants.length > 0 ? (
-                        <div>
-                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 flex items-center gap-1.5"><Users className="h-3.5 w-3.5" /> Quem participou</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {ev.participants.map((p, i) => <Badge key={i} variant="secondary">{p}</Badge>)}
-                          </div>
+                      {causeLoading[key] ? (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                          <Loader2 className="h-4 w-4 animate-spin" /> Investigando causa do pico…
                         </div>
+                      ) : causeError[key] ? (
+                        <p className="text-sm text-destructive">{causeError[key]}</p>
+                      ) : causes[key] ? (
+                        <PeakCauseView cause={causes[key]} />
                       ) : null}
+
+                      {ev.what_happened ? <Section title="O que aconteceu (registro)" body={ev.what_happened} /> : null}
+                      {ev.why_happened ? <Section title="Por que gerou repercussão (registro)" body={ev.why_happened} /> : null}
                       {ev.political_impact ? <Section title="Impacto político" body={ev.political_impact} /> : null}
                       {ev.electoral_impact ? <Section title="Impacto eleitoral" body={ev.electoral_impact} /> : null}
                       {ev.aftermath ? <Section title="Desdobramentos" body={ev.aftermath} /> : null}
-
-                      <div>
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Cobertura analisada</p>
-                        <p className="text-sm text-muted-foreground">
-                          Análise produzida a partir de <span className="font-semibold text-foreground">{ev.publications_count}</span> evidência{ev.publications_count === 1 ? "" : "s"} externa{ev.publications_count === 1 ? "" : "s"} em <span className="font-semibold text-foreground">{ev.distinct_outlets}</span> veículo{ev.distinct_outlets === 1 ? "" : "s"} distintos.
-                        </p>
-                      </div>
                     </div>
                   ) : null}
                 </CardContent>
