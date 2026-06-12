@@ -4,7 +4,7 @@
 // (Google News / Bing RSS + GDELT) and asks the AI to explain the cause.
 //
 // Input:  { candidateId, candidateName, peakDate, windowStart?, windowEnd?, peakMentions? }
-// Output: { event_title, event_summary, root_cause, confidence, main_networks,
+// Output: { response_mode, event_title, event_summary, root_cause, confidence, main_networks,
 //           main_entities, top_keywords, top_hashtags, top_domains, sentiment_summary,
 //           external_evidence: [{title,url,outlet,publishedAt}], internal_mentions, fallback_text? }
 
@@ -37,6 +37,59 @@ function tokenize(text: string): string[] {
 
 function topN(map: Map<string, number>, n: number): Array<[string, number]> {
   return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, n);
+}
+
+type SourceStrength = "strong" | "weak";
+type ResponseMode = "CONFIRMED_EVENT" | "PROBABLE_NARRATIVE" | "UNKNOWN_TRIGGER";
+
+const WEAK_SOURCE_RE = /(^|\.)(instagram\.com|facebook\.com|m\.facebook\.com|fb\.com|youtube\.com|youtu\.be|tiktok\.com|threads\.net|threads\.com|x\.com|twitter\.com|t\.me|telegram\.me|reddit\.com|pinterest\.com|bsky\.app|mastodon\.|truthsocial\.com)$/i;
+const WEAK_OUTLET_RE = /\b(instagram|facebook|youtube|tiktok|threads|twitter|x\.com|telegram|reddit|pinterest|bluesky|bsky|mastodon|truth social)\b/i;
+const STRONG_OFFICIAL_RE = /(^|\.)(stf\.jus\.br|tse\.jus\.br|senado\.leg\.br|camara\.leg\.br|gov\.br|planalto\.gov\.br|mpf\.mp\.br|pf\.gov\.br|tcu\.gov\.br)$/i;
+const STRONG_NEWS_RE = /(^|\.)(g1\.globo\.com|oglobo\.globo\.com|valor\.globo\.com|folha\.uol\.com\.br|estadao\.com\.br|uol\.com\.br|poder360\.com\.br|cnnbrasil\.com\.br|metropoles\.com|reuters\.com|bbc\.com|veja\.abril\.com\.br|terra\.com\.br|r7\.com|band\.uol\.com\.br|congressoemfoco\.uol\.com\.br|cartacapital\.com\.br|nexojornal\.com\.br|brasildefato\.com\.br|agenciabrasil\.ebc\.com\.br)$/i;
+const STRONG_OUTLET_RE = /\b(g1|globo|o globo|valor|folha|estad[aã]o|uol|poder360|cnn|metropoles|m[eé]tropoles|reuters|bbc|veja|terra|r7|band|record|jovem pan|congresso em foco|carta ?capital|nexo|brasil de fato|ag[êe]ncia brasil|senado|c[aâ]mara|stf|tse|planalto|pol[ií]cia federal|pf|mpf|tcu)\b/i;
+
+function hostOf(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, "").toLowerCase(); } catch { return ""; }
+}
+
+function classifyExternalSource(pub: ExternalPublication): SourceStrength {
+  const host = hostOf(pub.url || "");
+  const outlet = String(pub.outlet || "");
+  if (WEAK_SOURCE_RE.test(host) || WEAK_OUTLET_RE.test(outlet)) return "weak";
+  if (STRONG_OFFICIAL_RE.test(host) || STRONG_NEWS_RE.test(host) || STRONG_OUTLET_RE.test(outlet)) return "strong";
+  if (pub.source === "gdelt") return "strong";
+  if (pub.source === "rss" && outlet && !WEAK_OUTLET_RE.test(outlet)) return "strong";
+  return "weak";
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+}
+
+function calculateSemanticConfidence(evidence: ReturnType<typeof extractEvidence>, interactionsCount: number): number {
+  const keywordTotal = evidence.top_keywords.reduce((acc, k) => acc + k.count, 0);
+  const topKeyword = evidence.top_keywords[0]?.count ?? 0;
+  const dominance = keywordTotal > 0 ? clamp01((topKeyword / keywordTotal) * 3) : 0;
+  const minRepeated = Math.max(3, Math.floor(interactionsCount * 0.01));
+  const keywordDepth = clamp01(evidence.top_keywords.filter((k) => k.count >= minRepeated).length / 8);
+  const bigramSignal = clamp01(evidence.top_bigrams.filter((k) => k.count >= Math.max(3, Math.floor(interactionsCount * 0.006))).length / 4);
+  const hashtagSignal = clamp01(evidence.top_hashtags.filter((k) => k.count >= Math.max(3, Math.floor(interactionsCount * 0.004))).length / 3);
+  return clamp01(dominance * 0.30 + keywordDepth * 0.30 + bigramSignal * 0.25 + hashtagSignal * 0.15);
+}
+
+function calculateEntityConfidence(evidence: ReturnType<typeof extractEvidence>, interactionsCount: number): number {
+  const minEntity = Math.max(3, Math.floor(interactionsCount * 0.005));
+  const mentionedEntities = evidence.top_mentions.filter((k) => k.count >= minEntity).length;
+  const namedBigrams = evidence.top_bigrams.filter((k) => /\b(stf|tse|senado|camara|câmara|trump|eua|pf|lula|bolsonaro|ministro|congresso)\b/i.test(k.term) || k.count >= minEntity).length;
+  return clamp01((mentionedEntities / 5) * 0.55 + (namedBigrams / 6) * 0.45);
+}
+
+function buildTopicLabel(evidence: ReturnType<typeof extractEvidence>): string {
+  const terms = [
+    ...evidence.top_bigrams.slice(0, 2).map((k) => k.term),
+    ...evidence.top_keywords.slice(0, 4).map((k) => k.term),
+  ].filter(Boolean);
+  return terms.length ? terms.slice(0, 5).join(", ") : "termos recorrentes nas redes";
 }
 
 function extractEvidence(rows: Array<{ comment_text?: string | null; post_title?: string | null; social_network?: string | null; post_url?: string | null }>) {
