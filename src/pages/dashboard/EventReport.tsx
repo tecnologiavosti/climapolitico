@@ -429,12 +429,52 @@ export default function EventReport() {
             </div>
           </div>
 
-          <div className="rounded-lg border bg-card px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
-            <div className="text-xs font-medium text-muted-foreground sm:w-44">Confiança mínima: <span className="tabular-nums text-foreground">{minConfidence}</span></div>
-            <div className="flex-1">
-              <Slider value={[minConfidence]} onValueChange={(v) => setMinConfidence(v[0] ?? 0)} min={0} max={100} step={5} />
+          <div className="rounded-lg border bg-card px-4 py-3 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="text-xs font-medium text-muted-foreground sm:w-44">Confiança mínima: <span className="tabular-nums text-foreground">{minConfidence}</span></div>
+              <div className="flex-1">
+                <Slider value={[minConfidence]} onValueChange={(v) => setMinConfidence(v[0] ?? 0)} min={0} max={100} step={5} />
+              </div>
+            </div>
+            <div className="flex flex-col md:flex-row md:items-center gap-2">
+              <Input
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="🔍 Buscar evento por título, descrição ou palavra-chave..."
+                className="flex-1 h-9"
+              />
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+                <SelectTrigger className="h-9 md:w-56"><SelectValue placeholder="Ordenar por" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="date_desc">Data (mais recente)</SelectItem>
+                  <SelectItem value="date_asc">Data (mais antigo)</SelectItem>
+                  <SelectItem value="score">Score de confiança</SelectItem>
+                  <SelectItem value="volume">Volume de menções</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={onlyValidated}
+                  onChange={(e) => setOnlyValidated(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-primary"
+                />
+                Apenas validados externamente (≥2 fontes fortes)
+              </label>
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={onlyInstitutional}
+                  onChange={(e) => setOnlyInstitutional(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-primary"
+                />
+                Com fontes institucionais (STF, TSE, PF, Câmara…)
+              </label>
             </div>
           </div>
+
 
           {filteredEvents.length === 0 ? (
             <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">
