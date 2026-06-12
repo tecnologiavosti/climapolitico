@@ -522,3 +522,86 @@ function Section({ title, body }: { title: string; body: string }) {
     </div>
   );
 }
+
+function PeakCauseView({ cause }: { cause: PeakCause }) {
+  const conf = Math.round((cause.confidence || 0) * 100);
+  const confColor = conf >= 60 ? "text-emerald-600 dark:text-emerald-400" : conf >= 30 ? "text-amber-600 dark:text-amber-400" : "text-zinc-500";
+  return (
+    <div className="space-y-4 rounded-md border bg-primary/5 p-4">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex-1 min-w-0">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Causa provável do pico</p>
+          <p className="text-base font-semibold leading-snug">{cause.event_title}</p>
+        </div>
+        <Badge variant="outline" className={`text-xs ${confColor}`}>Confiança {conf}%</Badge>
+      </div>
+
+      {cause.fallback_text ? (
+        <p className="text-sm text-muted-foreground italic">{cause.fallback_text}</p>
+      ) : (
+        <>
+          {cause.event_summary ? <Section title="O que aconteceu" body={cause.event_summary} /> : null}
+          {cause.root_cause ? <Section title="Por que virou pico" body={cause.root_cause} /> : null}
+        </>
+      )}
+
+      {cause.main_networks?.length ? (
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">Redes onde mais repercutiu</p>
+          <div className="flex flex-wrap gap-1.5">
+            {cause.main_networks.slice(0, 8).map((n, i) => (
+              <Badge key={i} variant="secondary" className="capitalize">{n}</Badge>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {cause.main_entities?.length ? (
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5 flex items-center gap-1.5"><Users className="h-3.5 w-3.5" /> Principais entidades</p>
+          <div className="flex flex-wrap gap-1.5">
+            {cause.main_entities.slice(0, 12).map((e, i) => (
+              <Badge key={i} variant="outline">{e}</Badge>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {cause.top_keywords?.length ? (
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">Termos mais associados</p>
+          <div className="flex flex-wrap gap-1.5">
+            {cause.top_keywords.slice(0, 12).map((k, i) => (
+              <Badge key={i} variant="outline" className="font-normal">{k.term} <span className="text-muted-foreground ml-1">({k.count})</span></Badge>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {cause.sentiment_summary ? (
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Sentimento</p>
+          <p className="text-sm">{cause.sentiment_summary}</p>
+        </div>
+      ) : null}
+
+      {cause.external_evidence?.length ? (
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">Evidências externas ({cause.external_evidence.length})</p>
+          <ul className="space-y-1 text-sm">
+            {cause.external_evidence.slice(0, 8).map((e, i) => (
+              <li key={i} className="leading-snug">
+                <a href={e.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                  {e.title || e.url}
+                </a>
+                <span className="text-muted-foreground"> — {e.outlet}{e.publishedAt ? ` · ${e.publishedAt.slice(0, 10)}` : ""}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">Baseado em {cause.internal_mentions ?? 0} interações monitoradas. Nenhuma publicação externa relevante foi encontrada na janela.</p>
+      )}
+    </div>
+  );
+}
