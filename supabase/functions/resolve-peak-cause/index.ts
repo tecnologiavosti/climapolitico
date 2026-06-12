@@ -302,30 +302,41 @@ Deno.serve(async (req) => {
     });
 
 
-    // ---------- STAGE 3: AI explanation ----------
-    const systemMsg = `Você é um analista político factual.
+    // ---------- STAGE 3: AI explanation (analista político sênior, brief v2 §6) ----------
+    const systemMsg = `Você é um analista político sênior brasileiro com 20 anos de experiência.
+Receberá dados sobre um pico de menções de um político, incluindo notícias, métricas e entidades identificadas.
+
+Tarefa:
+1. Identificar o evento político central que causou o pico.
+2. Explicar objetivamente o que aconteceu em 2 a 3 frases (campo "summary").
+3. Explicar por que isso gerou aumento de menções (campo "why_peak").
+4. Identificar a causa raiz factual citada nas fontes (campo "cause").
+5. Classificar na categoria correta da taxonomia.
+6. Avaliar a qualidade da evidência (campo "evidence_quality").
+7. Retornar sua confiança (0..1) e o sentimento agregado (-1..+1).
 
 REGRAS ABSOLUTAS:
-- Nunca invente eventos.
-- Nunca deduza acontecimentos sem evidência externa.
-- Nunca crie encontros diplomáticos, prisões, escândalos ou decisões sem fonte explícita.
-- Use APENAS as evidências fornecidas.
-- Menções sociais NÃO provam fatos.
+- Nunca invente eventos sem evidência nas fontes fornecidas.
+- Se as fontes forem insuficientes, use category="outros", confidence<0.5, evidence_quality="insufficient".
 - Redes sociais (Instagram, TikTok, Facebook, X, YouTube, Telegram, Threads) NÃO contam como fonte confiável.
-- Se existirem menos de 2 fontes confiáveis independentes (tier1/tier2, domínios distintos):
-  retorne status="indeterminate", title="Causa indeterminada", confidence baixa.
+- Seja factual e objetivo, sem viés político.
+- Responda SOMENTE em JSON válido, sem texto adicional.
 
-Formato JSON estrito:
+Taxonomia de "category" (use o ID exato): eleicoes, operacoes_pf, stf, tse, cpi, julgamentos, escandalos, prisoes, debates, congresso, executivo, economia, internacional, outros.
+
+JSON estrito:
 {
-  "status": "confirmed | probable | indeterminate",
-  "title": "...",
-  "summary": "...",
-  "category": "Eleições | Operações PF | STF | TSE | CPI | Julgamentos | Escândalos | Prisões | Debates | Outros | Indeterminado",
+  "title": "string — título factual curto",
+  "summary": "string — 2 a 3 frases objetivas",
+  "cause": "string — evento central identificado nas fontes",
+  "why_peak": "string — por que virou pico de menções",
+  "category": "id da taxonomia acima",
   "confidence": 0.0,
-  "sentiment": "positivo | negativo | neutro | misto",
-  "why_peak": "...",
-  "entities": ["..."],
-  "terms": ["..."],
+  "sentiment": -1.0,
+  "sentiment_summary": "resumo qualitativo do sentimento",
+  "main_entities": ["pessoas, instituições, partidos"],
+  "key_terms": ["termos centrais do evento"],
+  "evidence_quality": "strong | moderate | weak | insufficient",
   "shouldDisplay": true
 }`;
 
@@ -334,38 +345,32 @@ DATA DO PICO: ${peakDate}
 JANELA: ${wStart.toISOString().slice(0,10)} → ${wEnd.toISOString().slice(0,10)}
 PICO DE MENÇÕES: ${peakMentions ?? "n/d"}
 MODO OBRIGATÓRIO: ${responseMode}
-FONTES FORTES (total): ${strongSources}
-FONTES FORTES INDEPENDENTES (domínios distintos): ${independentStrongSources}
-FONTES FRACAS (redes sociais): ${weakSources}
-CONFIANÇA SEMÂNTICA: ${semanticConfidence.toFixed(2)}
-CONFIANÇA DE ENTIDADES: ${entityConfidence.toFixed(2)}
-CONFIANÇA DE EVIDÊNCIA EXTERNA: ${externalEvidenceConfidence.toFixed(2)}
-CONFIANÇA FINAL JÁ CALCULADA PELO SISTEMA: ${finalConfidence.toFixed(2)}
+CATEGORIA PRELIMINAR (heurística por domínio/keyword): ${preliminaryCategoryId}
 
-EVIDÊNCIA INTERNA (extraída de ${interactions.length} interações monitoradas):
+MÉTRICAS DE VALIDAÇÃO:
+- Fontes fortes totais: ${strongSources}
+- Fontes fortes independentes (domínios distintos): ${independentStrongSources}
+- Fontes fracas (redes sociais): ${weakSources}
+- Tipos de fonte presentes (news/social/gov/intl): ${sourceTypesPresent}/4
+- Fonte institucional oficial? ${hasInstitutional ? "sim" : "não"}
+- Coverage score: ${enterprise.components.coverage}
+- Diversity score: ${enterprise.components.diversity}
+- Consensus score (Jaccard manchetes): ${enterprise.components.consensus}
+- Significance score (categoria): ${enterprise.components.significance}
+- Confiança 4-componentes (sistema): ${enterprise.score}/100 → banda ${enterprise.band}
+
+EVIDÊNCIA INTERNA (${interactions.length} interações monitoradas):
 - Top palavras: ${evidence.top_keywords.slice(0,12).map(k=>`${k.term}(${k.count})`).join(", ") || "—"}
 - Top hashtags: ${evidence.top_hashtags.slice(0,8).map(k=>`#${k.term}(${k.count})`).join(", ") || "—"}
-- Top menções (@): ${evidence.top_mentions.slice(0,6).map(k=>`@${k.term}(${k.count})`).join(", ") || "—"}
 - Top bigramas: ${evidence.top_bigrams.slice(0,8).map(k=>`"${k.term}"(${k.count})`).join(", ") || "—"}
 - Redes principais: ${evidence.top_networks.map(k=>`${k.network}(${k.count})`).join(", ") || "—"}
-- Domínios mais citados: ${evidence.top_domains.slice(0,6).map(k=>`${k.domain}(${k.count})`).join(", ") || "—"}
-- Sentimento: ${sentiment_summary}
+- Sentimento agregado: ${sentiment_summary}
 
-EVIDÊNCIA EXTERNA (${external_evidence.length} publicações encontradas):
+EVIDÊNCIA EXTERNA (${external_evidence.length} publicações):
 ${external_evidence.slice(0,15).map((e,i)=>`${i+1}. [${e.source_strength.toUpperCase()} · ${e.outlet}] ${e.title}${e.publishedAt?` (${e.publishedAt.slice(0,10)})`:""}`).join("\n") || "Nenhuma publicação externa relevante."}
 
-Responda em JSON estrito com este schema:
-{
-  "category": "STF | TSE | Operação PF | CPI | Julgamento | Escândalo | Debate | Eleições | Outros | Indeterminado",
-  "title": "MODE A: título factual citado por >=2 fontes fortes; MODE B: título probabilístico; MODE C: 'Causa indeterminada'",
-  "summary": "MODE A: o que aconteceu segundo fontes fortes; MODE B/C: padrão observado sem afirmar acontecimento factual",
-  "confidence": 0.0,
-  "shouldDisplay": true,
-  "root_cause": "explicação respeitando o modo obrigatório",
-  "main_networks": ["..."],
-  "main_entities": ["pessoas, instituições ou termos mais relevantes"],
-  "sentiment_summary": "resumo qualitativo do sentimento das redes"
-}`;
+Responda em JSON estrito conforme o schema definido no system message.`;
+
 
     let ai: any = null;
     let aiError: string | null = null;
