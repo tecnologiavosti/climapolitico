@@ -9,10 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   Loader2, CalendarDays, Newspaper, ChevronDown, ChevronUp,
-  Landmark, Vote, Gavel, Mic, Users, TrendingUp, Video, MessageSquare,
+  Landmark, Vote, Gavel, Mic, Users, TrendingUp, Video, MessageSquare, BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AnnualPeaksTimeline } from "@/components/events/AnnualPeaksTimeline";
+import { EnterprisePeakSheet, type EnterprisePeakEvent } from "@/components/events/EnterprisePeakSheet";
 
 
 
