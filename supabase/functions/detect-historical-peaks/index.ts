@@ -662,76 +662,16 @@ serve(async (req) => {
       const eventHit = klass !== "news" || EVENT_TERMS.some((term) => text.includes(normalize(term)));
       return (inMainWindow || inKnownWindow) && nameHit && eventHit && isOfficialOrJournalistic(p);
     }).slice(0, 320);
+    console.log("[4] external search finished — pubs:", pubs.length);
 
     const localCandidates = timelineCandidates(Array.isArray(localTimeline) ? localTimeline : []);
 
-    // === FASE 4: ENRIQUECIMENTO E DESCOBERTA COMPLEMENTAR PELA IA ===
-    let aiEvents: any[] = [];
-    if (pubs.length > 0 || discovered.length > 0) {
-      const corpus = pubs.slice(0, 110).map((p, i) =>
-        `[${i + 1}] (${p.outlet}, ${p.publishedAt?.slice(0, 10) || "?"}, ${p.source}) ${cleanText(p.title).slice(0, 180)} — ${cleanText(p.snippet).slice(0, 220)} | ${p.url}`
-      ).join("\n");
-      const localSignal = localCandidates.map((p: any) => `${p.date}: ${p.count} menções (${Math.round(p.growth || 0)}%)`).join("\n") || "sem sinal interno relevante";
-      const knownList = discovered.map((e, i) => `${i + 1}. [${e.start_date}] ${e.name} — ${cleanText(e.description || "").slice(0, 160)}`).join("\n") || "nenhum evento pré-identificado";
-
-      const prompt = `Você é um analista político histórico brasileiro. Confirme, enriqueça e COMPLEMENTE a lista de acontecimentos de ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ""} entre ${startShort} e ${endShort}.
-
-EVENTOS HISTÓRICOS PRÉ-IDENTIFICADOS (mantenha todos os reais, ajuste datas/descrições conforme as fontes, descarte apenas se forem claramente falsos):
-${knownList}
-
-PUBLICAÇÕES EXTERNAS COLETADAS:
-${corpus || "sem publicações externas"}
-
-SINAIS INTERNOS DE CRESCIMENTO:
-${localSignal}
-
-INSTRUÇÕES:
-- Retorne TODOS os eventos pré-identificados que tenham confirmação histórica, múltiplas fontes confiáveis conhecidas e data coerente, mesmo que a cobertura coletada agora seja parcial ou vazia — use seu conhecimento histórico para preencher descrição, impacto e participantes.
-- ADICIONE eventos novos encontrados nas publicações que não estavam na lista.
-- Para cada evento, indique sourceIndices (1-based) das publicações que documentam o fato. Se nenhuma publicação coletada cobrir o evento, devolva [] em sourceIndices — não invente índices.
-- Priorize relevância histórica e institucional, não volume bruto.
-- Mire em 20+ eventos quando o período cobrir um ciclo eleitoral ou mandato.
-
-Responda APENAS JSON válido:
-{
-  "events": [
-    {
-      "name": "...",
-      "type": "eleicao|debate|entrevista|discurso|coletiva|decisao_judicial|cpi|operacao|votacao|agenda|impeachment|posse|julgamento|prisao|noticia",
-      "start_date": "YYYY-MM-DD",
-      "end_date": "YYYY-MM-DD",
-      "description": "...",
-      "motivo": "...",
-      "what_happened": "...",
-      "why_happened": "...",
-      "participants": ["..."],
-      "political_impact": "...",
-      "electoral_impact": "...",
-      "aftermath": "...",
-      "keywords": ["..."],
-      "sourceIndices": [1,2],
-      "relevance_score": 0
-    }
-  ]
-}`;
-      try {
-        const ai = await callAICerebrasFirst({
-          systemMsg: "Você detecta acontecimentos políticos reais cruzando conhecimento histórico e fontes documentadas. Responda só JSON em pt-BR.",
-          userPrompt: prompt,
-          jsonMode: true,
-          maxTokens: 8000,
-          temperature: 0.15,
-          tag: "detect-historical-peaks-enrich",
-        });
-        const content = ai.content || "";
-        let parsed: any = {};
-        try { parsed = JSON.parse(content); }
-        catch { const m = content.match(/\{[\s\S]*\}/); if (m) parsed = JSON.parse(m[0]); }
-        aiEvents = Array.isArray(parsed?.events) ? parsed.events : [];
-      } catch (error) {
-        console.error("[detect-historical-peaks] enrich AI failed", (error as Error).message);
-      }
-    }
+    // === FASE 4: ENRIQUECIMENTO IA — DESABILITADO ===
+    // A IA NÃO pode criar eventos nem invocar fatos. Detecção fica 100% baseada em evidência.
+    console.log("[5] ssot fallback started");
+    const aiEvents: any[] = [];
+    console.log("[6] ssot fallback finished — localCandidates:", localCandidates.length);
+    console.log("[7] clustering started");
 
     // Combina eventos da IA enriquecida + descobertos + picos SSOT puros (z-score >= 2.5).
     const combinedByKey = new Map<string, any>();
