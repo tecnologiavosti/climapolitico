@@ -391,7 +391,7 @@ function ssotPeakEvents(timeline: TimelinePoint[]): any[] {
     const prevTs = cur ? new Date(`${cur.end}T00:00:00Z`).getTime() : 0;
     const curTs = new Date(`${f.date}T00:00:00Z`).getTime();
     const gapDays = cur ? (curTs - prevTs) / 86400000 : 0;
-    if (cur && gapDays <= 2) {
+    if (cur && gapDays <= 3) {
       cur.end = f.date;
       cur.days += 1;
       for (const s of f.signals) cur.signals.add(s);
