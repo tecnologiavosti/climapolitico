@@ -912,9 +912,10 @@ serve(async (req) => {
         outlet_names: outletNames,
         coverage_quality: coverageQuality(totalEvidence, distinctOutlets),
         // NEW: status / category / confidence based on tier-weighted sources
-        status: conf.status, // "confirmed" | "probable" | "indeterminate"
+        status: conf.status, // "confirmed" | "probable" | "weak" | "indeterminate"
         category: newCategory, // 10 official categories
         confidence_score: conf.weight_sum,
+        signals: Array.isArray(evt._ssot_signals) ? evt._ssot_signals : [],
         independent_strong_sources: conf.independent_strong_sources,
         trusted_sources_count: conf.trusted_sources_count,
         tier_breakdown: conf.tier_breakdown,
