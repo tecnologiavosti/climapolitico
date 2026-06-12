@@ -576,6 +576,8 @@ async function fetchCoverageForKnownEvent(
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  console.time("detect-historical-peaks");
+  console.log("[1] function started");
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -603,12 +605,12 @@ serve(async (req) => {
     if (!candidate || candidate.user_id !== user.id) {
       return new Response(JSON.stringify({ error: "Candidato não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+    console.log("[2] candidate loaded", candidate.full_name);
 
-    // === FASE 1: DESCOBERTA HISTÓRICA (antes de qualquer busca) ===
-    // A IA enumera os acontecimentos políticos conhecidos do candidato no período,
-    // garantindo cobertura de prisão, impeachment, debates, CPIs, decisões do STF, BRICS etc.
-    const discovered = await discoverKnownEvents(candidate.full_name, candidate.party, startShort, endShort);
-    console.log(`[detect-historical-peaks] discovered ${discovered.length} known events`);
+    // === FASE 1: DESCOBERTA HISTÓRICA — DESABILITADA ===
+    // IA NUNCA cria eventos. Picos vêm de evidência real: cobertura externa + timeline SSOT.
+    const discovered: DiscoveredEvent[] = [];
+    console.log("[3] external search started");
 
     // === FASE 2: COBERTURA DIRECIONADA POR EVENTO CONHECIDO ===
     const focusedSettled = await Promise.allSettled(
