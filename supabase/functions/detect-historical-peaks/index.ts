@@ -887,16 +887,35 @@ Responda APENAS JSON válido:
     });
 
     // === HARD VALIDATION — proíbe picos sem evidência real ===
-    // Regra do produto: (≥3 publicações externas OU ≥500 menções internas) E has_real_evidence.
+    // Aceita o pico se houver: cobertura externa (≥1 publicação), correlação interna SSOT (≥1 menção),
+    // OU pico estatístico real na timeline interna (z-score ≥ 2). Picos puramente "inventados pela IA"
+    // (sem nenhuma evidência) são descartados como sintéticos.
     let discarded_synthetic = 0;
     let discarded_insufficient_evidence = 0;
+    let externalPeaks = 0;
+    let ssotPeaks = 0;
     const total_detected = sanitizedEventsRaw.length;
     const sanitizedEvents = sanitizedEventsRaw.filter((ev: any) => {
-      const meetsThreshold = ev.external_evidence_count >= 3 || ev.internal_mentions_count >= 500;
-      const valid = meetsThreshold && ev.has_real_evidence === true && ev.is_ai_synthetic === false;
+      const hasSsotStatPeak = Number(ev.ssot_z_score ?? 0) >= 2;
+      const hasAnyEvidence =
+        ev.external_evidence_count >= 1 ||
+        ev.internal_mentions_count >= 1 ||
+        hasSsotStatPeak;
+      if (!hasAnyEvidence) {
+        ev.is_ai_synthetic = true;
+      }
+      const valid = hasAnyEvidence;
       const discard_reason = !valid
-        ? (ev.is_ai_synthetic ? "synthetic" : "insufficient_evidence")
+        ? "no_evidence_ai_synthetic"
         : null;
+      // Origem do pico (badge na UI)
+      ev.detected_by = ev.has_external_evidence
+        ? "external"
+        : (ev.has_internal_evidence || hasSsotStatPeak ? "internal_ssot" : "none");
+      if (valid) {
+        if (ev.detected_by === "external") externalPeaks++;
+        else ssotPeaks++;
+      }
       console.log(JSON.stringify({
         tag: "peak_audit",
         name: ev.name,
@@ -909,6 +928,7 @@ Responda APENAS JSON válido:
         ssot_score: ev.ssot_score,
         final_score: ev.relevance_score,
         coverage_quality: ev.coverage_quality,
+        detected_by: ev.detected_by,
         is_ai_synthetic: ev.is_ai_synthetic,
         discard_reason,
       }));
@@ -919,6 +939,16 @@ Responda APENAS JSON válido:
       }
       return true;
     }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0));
+
+    console.log(JSON.stringify({
+      tag: "peak_summary",
+      total_detected,
+      externalPeaks,
+      ssotPeaks,
+      finalPeaks: sanitizedEvents.length,
+      discarded_synthetic,
+      discarded_insufficient_evidence,
+    }));
 
     // === FASE 5: GARANTIA DE ANÁLISE — fallback IA com dados internos (SSOT) ===
     // Todo pico deve ter narrativa analítica, mesmo sem evidências externas.
