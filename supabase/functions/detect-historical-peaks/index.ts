@@ -950,6 +950,8 @@ serve(async (req) => {
       const normType = normalize(String(evt.type || "")).replace(/[^a-z_]/g, "");
       if (BLOCKED_EVENT_TYPES.test(normType)) return false;
       if (BLOCKED_NAME_TERMS.test(evt.name)) return false;
+      // NEW: drop indeterminate events without a strong spike — eliminates noise/hallucination candidates.
+      if (evt._hide_indeterminate) return false;
       return true;
     }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0)).slice(0, 120);
 
