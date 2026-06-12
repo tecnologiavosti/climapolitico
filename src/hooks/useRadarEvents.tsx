@@ -12,6 +12,7 @@ export interface RadarEvent {
   source_count: number;
   social_score: number;
   importance: number;
+  cluster_size: number;
   status: string;
   sources_json: Array<{
     source_name: string;
