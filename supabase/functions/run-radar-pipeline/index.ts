@@ -330,10 +330,10 @@ Retorne SOMENTE JSON:
 {"title":"título canônico curto","summary":"resumo 1-2 frases PT-BR","category":"UMA de [${CATEGORIES.join(", ")}]","relevance":0-100}
 
 Relevância:
-- 75+: crise nacional, STF, PF, CPI, escândalo, prisão, decisão histórica
-- 45-74: decisão política relevante, votação importante, fala com impacto
-- 30-44: declaração política comum, agenda institucional
-- <30: trivial/irrelevante (será descartado)
+- 70+: grande (crise nacional, STF, PF, CPI, escândalo, prisão, decisão histórica)
+- 40-69: médio (decisão política relevante, votação, fala com impacto)
+- 20-39: pequeno (declaração comum, agenda institucional, mas politicamente relevante)
+- <20: trivial/irrelevante (será descartado)
 
 Manchetes:
 ${headlines.slice(0, 10).map((h, i) => `${i + 1}. ${h}`).join("\n")}`;
