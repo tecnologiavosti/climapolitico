@@ -763,7 +763,7 @@ serve(async (req) => {
     // === FASE 1: DESCOBERTA HISTÓRICA — DESABILITADA ===
     // IA NUNCA cria eventos. Picos vêm de evidência real: cobertura externa + timeline SSOT.
     const discovered: DiscoveredEvent[] = [];
-    console.log("[3] external search started");
+    logStage("busca_fontes_externas", { safe_mode: safeMode });
 
     // === FASE 2: COBERTURA DIRECIONADA POR EVENTO CONHECIDO ===
     const focusedSettled = await Promise.allSettled(
@@ -772,7 +772,7 @@ serve(async (req) => {
     const focusedPubs = focusedSettled.flatMap((r) => r.status === "fulfilled" ? r.value : []);
 
     // === FASE 3: COLETA AMPLA (descobre eventos adicionais não previstos pela IA) ===
-    const contextual = buildContextualQueries(candidate.full_name, 6);
+    const contextual = buildContextualQueries(candidate.full_name, safeMode ? 2 : 6);
     const platformQueries = [
       `"${candidate.full_name}" site:youtube.com`,
       `"${candidate.full_name}" (site:twitter.com OR site:x.com)`,
@@ -783,13 +783,13 @@ serve(async (req) => {
       ...eventYearQueries(candidate.full_name, start, end),
       ...EVENT_TERMS.map((term) => `"${candidate.full_name}" ${term}`),
       ...platformQueries,
-    ])).slice(0, days > 370 ? 32 : 22);
+    ])).slice(0, safeMode ? 10 : (days > 370 ? 32 : 22));
 
     const tbs = days <= 31 ? "qdr:m" : "qdr:y";
     const [googleSettled, gdeltSettled, firecrawlSettled] = await Promise.all([
-      Promise.allSettled(queryRoots.map((q) => fetchGoogleHistorical(q, startShort, endShort, 15))),
-      Promise.allSettled(queryRoots.slice(0, 12).map((q) => fetchGdeltHistorical(q, start, end, 40))),
-      Promise.allSettled(queryRoots.slice(0, 8).map((q) => firecrawlSearch(`${q} ${start.getFullYear()} ${end.getFullYear()}`, { limit: 8, tbs: tbs as "qdr:m" | "qdr:y" }))),
+      Promise.allSettled(queryRoots.map((q) => fetchGoogleHistorical(q, startShort, endShort, safeMode ? 8 : 15))),
+      Promise.allSettled(queryRoots.slice(0, safeMode ? 4 : 12).map((q) => fetchGdeltHistorical(q, start, end, safeMode ? 15 : 40))),
+      timedOut() ? Promise.resolve([]) : Promise.allSettled(queryRoots.slice(0, safeMode ? 2 : 8).map((q) => firecrawlSearch(`${q} ${start.getFullYear()} ${end.getFullYear()}`, { limit: safeMode ? 4 : 8, tbs: tbs as "qdr:m" | "qdr:y" }))),
     ]);
 
     const allPubs = dedupePublications([
@@ -814,23 +814,19 @@ serve(async (req) => {
       const klass = classifyPub(p);
       const eventHit = klass !== "news" || EVENT_TERMS.some((term) => text.includes(normalize(term)));
       return (inMainWindow || inKnownWindow) && nameHit && eventHit && isOfficialOrJournalistic(p);
-    }).slice(0, 320);
-    console.log("[4] external search finished — pubs:", pubs.length);
+    }).slice(0, safeMode ? 120 : 320);
+    console.log("[detect-historical-peaks] external search finished — pubs:", pubs.length);
 
     // === DETECÇÃO PEAK-FIRST ===
     // Busca a timeline SSOT direto do banco (não confia só no que veio do cliente)
     // e detecta picos via z-score + rolling baseline 14d. Picos NÃO dependem de cobertura externa.
-    const dbTimeline = await fetchSsotTimelineFromDb(admin, user.id, candidate.id, start, end);
-    const clientTimeline = Array.isArray(localTimeline) ? localTimeline : [];
-    // Server-side wins quando tem dados; client é fallback (compatibilidade).
-    const effectiveTimeline: TimelinePoint[] = dbTimeline.length >= 5 ? dbTimeline : clientTimeline;
-    console.log("[5] ssot timeline loaded — db:", dbTimeline.length, "client:", clientTimeline.length, "effective:", effectiveTimeline.length);
+    logStage("calculo_baseline", { timeline_points: effectiveTimeline.length });
     const localCandidates = timelineCandidates(effectiveTimeline);
 
     // === FASE 4: ENRIQUECIMENTO IA — DESABILITADO ===
     const aiEvents: any[] = [];
-    console.log("[6] ssot fallback finished — localCandidates:", localCandidates.length);
-    console.log("[7] clustering started");
+    console.log("[detect-historical-peaks] ssot fallback finished — localCandidates:", localCandidates.length);
+    logStage("deteccao_picos");
 
     // Picos SSOT são a FONTE PRIMÁRIA. Cobertura externa apenas enriquece.
     const combinedByKey = new Map<string, any>();
@@ -845,7 +841,8 @@ serve(async (req) => {
     if (candidateEvents.length === 0) candidateEvents = fallbackEventsFromSources(pubs, start, end);
     // Cap generoso para suportar candidatos de alto volume (Lula, Bolsonaro) — antes era 20.
     candidateEvents = candidateEvents.slice(0, 150);
-    console.log("[8] clustering finished — candidateEvents:", candidateEvents.length, "ssotPeaks:", ssotPeakRaw.length);
+    console.log("[detect-historical-peaks] clustering finished — candidateEvents:", candidateEvents.length, "ssotPeaks:", ssotPeakRaw.length);
+    logStage("classificacao_categoria", { candidate_events: candidateEvents.length });
 
     const events = candidateEvents.map((evt: any) => {
       const evPubs = matchedSources(evt, pubs, start, end, candidate.full_name);
