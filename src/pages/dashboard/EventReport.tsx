@@ -52,8 +52,8 @@ interface HistoricalEvent {
   internal_by_network?: Record<string, number>;
   internal_window_days?: number;
   coverage_quality?: "forte" | "media" | "fraca" | "ai_only";
-  detected_by?: "external" | "internal_ssot" | "none";
-  peak_type?: "external_confirmed" | "internal_trend";
+  detected_by?: "external" | "external_social" | "internal_ssot" | "none";
+  peak_type?: "external_confirmed" | "external_social" | "internal_trend";
   political_relevance?: number;
   category?: string;
 }
