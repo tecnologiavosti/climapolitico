@@ -758,6 +758,7 @@ function Section({ title, body }: { title: string; body: string }) {
   );
 }
 
+
 function PeakCauseView({ cause }: { cause: PeakCause }) {
   const conf = Math.round((cause.confidence || 0) * 100);
   const confColor = conf >= 60 ? "text-emerald-600 dark:text-emerald-400" : conf >= 30 ? "text-amber-600 dark:text-amber-400" : "text-zinc-500";
