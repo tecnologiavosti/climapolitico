@@ -4,6 +4,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 import { firecrawlSearch, gdeltSearch, rssNewsSearch, dedupePublications, computeRegionalDistribution, estimatedReachOf, type ExternalPublication } from "../_shared/external-collector.ts";
+import {
+  classifySource as pipelineClassifySource,
+  classifyCategory as pipelineCategory,
+  computeConfidenceScore as pipelineConfidenceV2,
+  dynamicThreshold as pipelineDynamicThreshold,
+  type SourceTier,
+} from "../_shared/peak-pipeline.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
