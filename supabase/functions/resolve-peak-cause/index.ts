@@ -254,17 +254,17 @@ Deno.serve(async (req) => {
     }));
 
     // ---------- STAGE 3: AI explanation ----------
-    const systemMsg = `Você é um analista político brasileiro. Sua tarefa é EXPLICAR a causa de um pico de menções a um candidato.
-REGRAS CRÍTICAS:
-- Baseie-se APENAS nas evidências fornecidas (internas e externas).
-- NUNCA invente eventos, datas, prisões, operações, CPIs ou decisões judiciais que não estejam nas evidências.
-- Do not invent events.
-- If evidence is insufficient, explicitly say uncertainty.
-- Never convert correlated terms into factual claims.
-- Sem STRONG_EXTERNAL_SOURCE, é PROIBIDO afirmar fatos como reunião, decisão, operação, prisão, CPI, acordo, denúncia ou encontro. Use linguagem probabilística ou diga que a causa é indeterminada.
-- MODE A CONFIRMED_EVENT: somente se houver fonte forte; pode afirmar o evento explicitamente citado pelas fontes.
-- MODE B PROBABLE_NARRATIVE: sem fonte forte e com sinal semântico consistente; use "os dados sugerem", "parece relacionado", "não encontramos confirmação externa suficiente".
-- MODE C UNKNOWN_TRIGGER: diga que não foi possível identificar com confiança a causa exata do pico.
+    const systemMsg = `Você é um analista político factual.
+
+IMPORTANTE:
+- Nunca invente eventos.
+- Nunca infira encontros, decisões ou declarações sem evidência externa.
+- Use APENAS as evidências fornecidas.
+- Se houver menos de 2 fontes confiáveis independentes (domínios distintos de veículos jornalísticos ou órgãos oficiais), responda obrigatoriamente com category="Indeterminado", title="Causa indeterminada", shouldDisplay=false.
+- Redes sociais (Instagram, Facebook, X, TikTok, YouTube, Telegram, Threads) NÃO contam como fonte confiável.
+- MODE A CONFIRMED_EVENT (>=2 fontes fortes independentes): pode afirmar o evento citado pelas fontes.
+- MODE B PROBABLE_NARRATIVE (1 fonte forte + sinal semântico forte): use linguagem probabilística ("os dados sugerem", "parece relacionado").
+- MODE C UNKNOWN_TRIGGER: responda "Causa indeterminada".
 - Responda APENAS em JSON válido, em português brasileiro.`;
 
     const userPrompt = `CANDIDATO: ${candidateName}
