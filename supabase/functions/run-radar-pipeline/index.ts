@@ -483,15 +483,22 @@ Deno.serve(async (req) => {
     // Pré-carrega todos os RSS feeds uma vez (compartilhado entre candidatos)
     const rssPool = await fetchAllRss();
 
+    const embedClient = { apiKey: LOVABLE_API_KEY, supabase };
+
     for (const c of candidates ?? []) {
       const aliases = aliasesFor(c.full_name);
       const roleKw = roleKeywordsFor(c.full_name);
+
+      // Reference embedding per candidate (alias + role context bag)
+      const refText = [c.full_name, ...aliases, ...roleKw].join(". ");
+      const refEmbedding = await embedText(embedClient, refText);
+
       const all: NewsItem[] = [];
       for (const alias of aliases) {
         const items = await fetchGoogleNews(alias, lookback);
         all.push(...items);
       }
-      // RSS pool: alias OU role context
+      // RSS pool: alias OU role context (filtro grosso); semântica refina depois
       all.push(...filterByAliases(rssPool, aliases, lookback, roleKw));
       const byUrl = new Map<string, NewsItem>();
       for (const it of all) if (!byUrl.has(it.url)) byUrl.set(it.url, it);
