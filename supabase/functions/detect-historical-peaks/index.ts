@@ -962,23 +962,27 @@ ${netBreakdown}
 
 Descrição prévia: ${ev.description || "(sem descrição)"}
 
-Explique, com base no conhecimento histórico do evento e nos dados acima:
+Explique, com base ESTRITAMENTE nos dados acima:
 1. O que provavelmente causou o aumento das menções (what_happened).
 2. Por que repercutiu (why_happened).
 3. Impacto político observado (political_impact).
 4. Impacto eleitoral, se houver (electoral_impact).
 5. Desdobramentos posteriores (aftermath).
 
-Mesmo sem notícias externas coletadas, produza análise sólida baseada em conhecimento histórico e nos dados estatísticos disponíveis. Responda APENAS JSON:
+REGRAS OBRIGATÓRIAS:
+- Analise SOMENTE os dados fornecidos. Não invente fatos, datas, operações, prisões, CPIs, resultados eleitorais ou acontecimentos.
+- Se os dados forem insuficientes para análise confiável, responda EXATAMENTE: {"what_happened":"Dados insuficientes para análise confiável.","why_happened":"","political_impact":"","electoral_impact":"","aftermath":""}
+
+Responda APENAS JSON:
 {"what_happened":"...","why_happened":"...","political_impact":"...","electoral_impact":"...","aftermath":"..."}`;
 
       try {
         const ai = await callAICerebrasFirst({
-          systemMsg: "Você é analista político brasileiro. Sempre produza análise textual mesmo com dados parciais. Responda só JSON em pt-BR.",
+          systemMsg: "Você é analista político brasileiro. Use apenas os dados fornecidos. NUNCA invente fatos, datas, operações, prisões ou eleições. Responda só JSON em pt-BR.",
           userPrompt: prompt,
           jsonMode: true,
           maxTokens: 2000,
-          temperature: 0.3,
+          temperature: 0.2,
           tag: "detect-historical-peaks-fallback",
         });
         const content = ai.content || "";
@@ -1011,6 +1015,10 @@ Mesmo sem notícias externas coletadas, produza análise sólida baseada em conh
 
     return new Response(JSON.stringify({
       events: sanitizedEvents,
+      total_detected,
+      valid_peaks: sanitizedEvents.length,
+      discarded_synthetic,
+      discarded_insufficient_evidence,
       publications_collected: pubs.length,
       discovered_count: discovered.length,
       estimated_reach: estimatedReachOf(pubs),
