@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AnnualPeaksTimeline } from "@/components/events/AnnualPeaksTimeline";
+import { MonthlyPeaksHeatmap } from "@/components/events/MonthlyPeaksHeatmap";
+import { Slider } from "@/components/ui/slider";
 import { EnterprisePeakSheet, type EnterprisePeakEvent } from "@/components/events/EnterprisePeakSheet";
 
 
@@ -208,6 +210,7 @@ export default function EventReport() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [category, setCategory] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [minConfidence, setMinConfidence] = useState<number>(0);
   const [causes, setCauses] = useState<Record<string, PeakCause>>({});
   const [causeLoading, setCauseLoading] = useState<Record<string, boolean>>({});
   const [causeError, setCauseError] = useState<Record<string, string>>({});
@@ -253,9 +256,11 @@ export default function EventReport() {
     () => events.filter((e) => {
       if (category !== "all" && (e.category || "outros") !== category) return false;
       if (statusFilter !== "all" && (e.status || "indeterminate") !== statusFilter) return false;
+      const score = typeof e.confidence_score === "number" ? e.confidence_score * 100 : (e.relevance_score ?? 0);
+      if (score < minConfidence) return false;
       return true;
     }),
-    [events, category, statusFilter],
+    [events, category, statusFilter, minConfidence],
   );
   const eventsByYear = useMemo(() => {
     const groups = new Map<string, HistoricalEvent[]>();
@@ -387,21 +392,37 @@ export default function EventReport() {
             </div>
           </div>
 
+          <div className="rounded-lg border bg-card px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="text-xs font-medium text-muted-foreground sm:w-44">Confiança mínima: <span className="tabular-nums text-foreground">{minConfidence}</span></div>
+            <div className="flex-1">
+              <Slider value={[minConfidence]} onValueChange={(v) => setMinConfidence(v[0] ?? 0)} min={0} max={100} step={5} />
+            </div>
+          </div>
+
           {filteredEvents.length === 0 ? (
             <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">
-              Nenhum pico encontrado nesta categoria.
+              Nenhum pico encontrado nesta categoria ou acima da confiança mínima.
             </CardContent></Card>
           ) : (
-            <AnnualPeaksTimeline
-              events={filteredEvents.map((e) => ({
-                date: e.start_date,
-                title: e.name,
-                category: e.category,
-                status: (e.status || "indeterminate") as "confirmed" | "probable" | "weak" | "indeterminate",
-                score: typeof e.confidence_score === "number" ? Math.round(e.confidence_score * 10) : e.relevance_score,
-                mentions: e.internal_mentions || e.estimated_volume || e.publications_count,
-              }))}
-            />
+            <div className="space-y-4">
+              <AnnualPeaksTimeline
+                events={filteredEvents.map((e) => ({
+                  date: e.start_date,
+                  title: e.name,
+                  category: e.category,
+                  status: (e.status || "indeterminate") as "confirmed" | "probable" | "weak" | "indeterminate",
+                  score: typeof e.confidence_score === "number" ? Math.round(e.confidence_score * 100) : e.relevance_score,
+                  mentions: e.internal_mentions || e.estimated_volume || e.publications_count,
+                }))}
+              />
+              <MonthlyPeaksHeatmap
+                events={filteredEvents.map((e) => ({
+                  date: e.start_date,
+                  status: (e.status || "indeterminate") as "confirmed" | "probable" | "weak" | "indeterminate",
+                  score: typeof e.confidence_score === "number" ? Math.round(e.confidence_score * 100) : e.relevance_score,
+                }))}
+              />
+            </div>
           )}
 
           {eventsByYear.map(([year, yearEvents]) => (

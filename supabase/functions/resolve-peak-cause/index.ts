@@ -12,7 +12,15 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 import { rssNewsSearch, gdeltSearch, dedupePublications, type ExternalPublication } from "../_shared/external-collector.ts";
-import { confidenceFromSources as pipelineConfidence, classifyCategory as pipelineCategory, classifySource as pipelineClassifySource } from "../_shared/peak-pipeline.ts";
+import { confidenceFromSources as pipelineConfidence, classifyCategory as pipelineCategory, classifySource as pipelineClassifySource, categoryFromSources } from "../_shared/peak-pipeline.ts";
+
+const CATEGORY_LABEL: Record<string, string> = {
+  stf: "STF", tse: "TSE", operacoes_pf: "Operações PF", cpi: "CPI",
+  congresso: "Congresso", executivo: "Executivo", julgamentos: "Julgamentos",
+  escandalos: "Escândalos", prisoes: "Prisões", debates: "Debates",
+  eleicoes: "Eleições", economia: "Economia", internacional: "Internacional",
+  outros: "Outros",
+};
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -238,8 +246,14 @@ Deno.serve(async (req) => {
     const entityConfidence = calculateEntityConfidence(evidence, interactions.length);
     const externalEvidenceConfidence = Math.min(1, confidenceWeightSum / 3);
 
-    // Status from pipeline (hard rule: indeterminate => no AI factual claims)
-    const pipelineStatus = pipelineConf.status; // "confirmed" | "probable" | "weak" | "indeterminate"
+    // Status from pipeline + upgrade rules:
+    // - If ≥3 strong (tier1/tier2) sources exist, never report "indeterminate" — at minimum probable.
+    // - If a clear institutional domain dominates (≥1 tier1 official), upgrade to confirmed.
+    let pipelineStatus = pipelineConf.status; // "confirmed" | "probable" | "weak" | "indeterminate"
+    const tier1OfficialHit = classifiedPubs.some((p) => p.tier === "tier1");
+    if (pipelineStatus === "indeterminate" && strongSources >= 3) pipelineStatus = "probable";
+    if (pipelineStatus !== "confirmed" && tier1OfficialHit && strongSources >= 2) pipelineStatus = "confirmed";
+
     const responseMode: ResponseMode =
       pipelineStatus === "confirmed" ? "CONFIRMED_EVENT" :
       pipelineStatus === "probable" ? "PROBABLE_NARRATIVE" :
@@ -355,21 +369,40 @@ Responda em JSON estrito com este schema:
       : responseMode === "PROBABLE_NARRATIVE"
         ? (ai?.title || `Narrativa provável: ${topicLabel}`)
         : "Causa indeterminada";
-    const safeSummary = responseMode === "CONFIRMED_EVENT"
+    // Will append headline fallback after it's defined below.
+    let safeSummary = responseMode === "CONFIRMED_EVENT"
       ? (ai?.summary || ai?.event_summary || "")
       : modeFallback;
     const safeRootCause = responseMode === "CONFIRMED_EVENT"
       ? (ai?.root_cause || "")
       : `${modeFallback}${topTermsList ? ` Principais termos associados: ${topTermsList}.` : ""}`;
+    // Domain-forced category: when ≥3 strong sources, prefer the institution
+    // that dominates the URL list over a weak keyword guess.
+    const forcedCategoryId = strongSources >= 3
+      ? categoryFromSources(classifiedPubs.filter((p) => p.strength === "strong").map((p) => p.pub.url))
+      : null;
+    const aiCategoryRaw = ai?.category ? String(ai.category) : null;
     const safeCategory = responseMode === "UNKNOWN_TRIGGER"
       ? "Indeterminado"
-      : (ai?.category || "Outros");
+      : (forcedCategoryId ? CATEGORY_LABEL[forcedCategoryId] : (aiCategoryRaw || "Outros"));
+
+    // Deterministic fallback summary using the top-3 strong headlines when AI failed.
+    const topStrongHeadlines = classifiedPubs
+      .filter((p) => p.strength === "strong")
+      .slice(0, 3)
+      .map((p) => p.pub.title)
+      .filter(Boolean);
+    const headlineFallback = topStrongHeadlines.length
+      ? `Cobertura registrada: ${topStrongHeadlines.map((t) => `“${t}”`).join("; ")}.`
+      : "";
+    if (!safeSummary && headlineFallback) safeSummary = headlineFallback;
+
     const shouldDisplayFinal = responseMode === "UNKNOWN_TRIGGER"
       ? false
       : (typeof ai?.shouldDisplay === "boolean" ? ai.shouldDisplay : shouldDisplay);
     const fallback_text = lowConfidence
       ? `${unknownText} Principais termos associados nas redes monitoradas: ${topTermsList || "—"}.`
-      : null;
+      : (headlineFallback || null);
 
     console.log(JSON.stringify({
       tag: "resolve_peak_cause_grounding",

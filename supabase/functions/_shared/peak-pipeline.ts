@@ -160,23 +160,24 @@ export function detectHybridSpikes(series: SeriesPoint[], opts: { minVolume?: nu
   const counts = series.map((p) => Number(p.mentions || 0));
   const out: HybridSpike[] = [];
   let cusum = 0;
-  // EWMA state (alpha=0.3): smoothed mean and smoothed variance.
   const alpha = 0.3;
   let ewmaMean = counts[0] ?? 0;
   let ewmaVar = 1;
   for (let i = 0; i < n; i++) {
     const c = counts[i];
-    // baselines
+    // Robust baseline: median + MAD over 14d window (resistant to outliers).
     const win14 = counts.slice(Math.max(0, i - 14), i);
+    const sorted14 = win14.slice().sort((a, b) => a - b);
+    const median14 = sorted14.length ? quantile(sorted14, 0.5) : 0;
+    const absDev = win14.map((v) => Math.abs(v - median14)).sort((a, b) => a - b);
+    const mad = absDev.length ? quantile(absDev, 0.5) : 0;
     const mean14 = win14.length ? win14.reduce((s, v) => s + v, 0) / win14.length : 0;
-    const var14 = win14.length ? win14.reduce((s, v) => s + (v - mean14) ** 2, 0) / win14.length : 0;
-    const std14 = Math.sqrt(var14) || Math.max(1, mean14 * 0.25);
-    const z = (c - mean14) / std14;
+    const std14 = Math.max(1.4826 * mad, Math.max(1, mean14 * 0.25));
+    const z = (c - median14) / std14;
 
-    // EWMA control chart: fires if value > mean + 3*std (smoothed).
+    // EWMA control chart relaxed: mean + 2.5σ (was 3σ).
     const ewmaStd = Math.sqrt(ewmaVar) || Math.max(1, ewmaMean * 0.25);
-    const ewmaHit = i >= 7 && c >= minVol && c > ewmaMean + 3 * ewmaStd && c > ewmaMean * 1.5;
-    // update AFTER comparison so today doesn't smooth itself away
+    const ewmaHit = i >= 5 && c >= minVol && c > ewmaMean + 2.5 * ewmaStd && c > ewmaMean * 1.4;
     const prevMean = ewmaMean;
     ewmaMean = alpha * c + (1 - alpha) * ewmaMean;
     ewmaVar = alpha * (c - prevMean) ** 2 + (1 - alpha) * ewmaVar;
@@ -187,10 +188,10 @@ export function detectHybridSpikes(series: SeriesPoint[], opts: { minVolume?: nu
     const mean7 = last7.length ? last7.reduce((s, v) => s + v, 0) / last7.length : 0;
     const momentum = mean7 > 0 ? mean3 / mean7 : 0;
 
-    // CUSUM-style burst: accumulate (c - 1.5*mean14)+, reset on dip.
-    if (c > mean14 * 1.5) cusum += (c - mean14 * 1.5);
+    // CUSUM-style burst relaxed: 1.3·median + lower floor.
+    if (c > median14 * 1.3) cusum += (c - median14 * 1.3);
     else cusum = Math.max(0, cusum * 0.6);
-    const burstHit = cusum >= Math.max(50, mean14 * 3);
+    const burstHit = cusum >= Math.max(30, median14 * 2);
 
     const win30 = counts.slice(Math.max(0, i - 30), i).slice().sort((a, b) => a - b);
     const q1 = quantile(win30, 0.25);
@@ -199,17 +200,19 @@ export function detectHybridSpikes(series: SeriesPoint[], opts: { minVolume?: nu
     const anomalyHit = win30.length >= 8 && c > q3 + 1.5 * iqr && c >= minVol;
 
     const signals: SpikeSignal[] = [];
-    if (win14.length >= 5 && z >= 2.0 && c >= minVol) signals.push("z");
+    if (win14.length >= 5 && z >= 1.6 && c >= minVol) signals.push("z");
     if (ewmaHit) signals.push("ewma");
-    if (last7.length >= 5 && momentum >= 1.5 && c >= minVol) signals.push("momentum");
+    if (last7.length >= 5 && momentum >= 1.4 && c >= minVol) signals.push("momentum");
     if (burstHit && c >= minVol) signals.push("burst");
     if (anomalyHit) signals.push("anomaly");
 
-    const isSpike = signals.length >= 2 && c > mean14;
+    // Relaxed gate: ≥2 signals OR (z≥2.5 alone) OR (burst+anomaly alone).
+    const strongAlone = (z >= 2.5 && c >= minVol) || (burstHit && anomalyHit);
+    const isSpike = (signals.length >= 2 || strongAlone) && c > median14;
     out.push({
       date: series[i].date,
       mentions: c,
-      baseline: Math.round(mean14 * 10) / 10,
+      baseline: Math.round(median14 * 10) / 10,
       zscore: Math.round(z * 100) / 100,
       signals,
       isSpike,
@@ -218,14 +221,67 @@ export function detectHybridSpikes(series: SeriesPoint[], opts: { minVolume?: nu
   return out;
 }
 
-// Dynamic per-candidate threshold: max(baseline*2.5, p95).
-// Use to gate borderline cases or to compute relative intensity in UI.
-export function dynamicThreshold(series: SeriesPoint[]): { baseline: number; p95: number; threshold: number } {
+// Dynamic per-candidate threshold: max(baseline*1.8, p90). Relaxed from 2.5×/p95
+// so we surface ~2× more candidate peaks for political analysis.
+export function dynamicThreshold(series: SeriesPoint[]): { baseline: number; p90: number; p95: number; threshold: number } {
   const counts = series.map((p) => Number(p.mentions || 0)).filter((v) => v > 0).sort((a, b) => a - b);
-  if (counts.length === 0) return { baseline: 0, p95: 0, threshold: 0 };
+  if (counts.length === 0) return { baseline: 0, p90: 0, p95: 0, threshold: 0 };
   const baseline = counts.reduce((s, v) => s + v, 0) / counts.length;
+  const p90 = quantile(counts, 0.90);
   const p95 = quantile(counts, 0.95);
-  return { baseline: Math.round(baseline * 10) / 10, p95: Math.round(p95), threshold: Math.round(Math.max(baseline * 2.5, p95)) };
+  return { baseline: Math.round(baseline * 10) / 10, p90: Math.round(p90), p95: Math.round(p95), threshold: Math.round(Math.max(baseline * 1.8, p90)) };
+}
+
+// Merge peaks of the same candidate occurring within `gapDays` and sharing
+// keywords. Keeps the higher-score peak as the survivor; absorbs the other.
+export interface MergeablePeak {
+  date: string;          // YYYY-MM-DD
+  score: number;         // any sortable score (confidence or relevance)
+  keywords?: string[];
+  [k: string]: unknown;
+}
+export function mergeNearbyPeaks<T extends MergeablePeak>(peaks: T[], gapDays = 3, minSharedKw = 2): T[] {
+  if (peaks.length <= 1) return peaks;
+  const sorted = [...peaks].sort((a, b) => a.date.localeCompare(b.date));
+  const out: T[] = [];
+  for (const p of sorted) {
+    const last = out[out.length - 1];
+    if (!last) { out.push(p); continue; }
+    const gap = (new Date(p.date).getTime() - new Date(last.date).getTime()) / 86400_000;
+    const setA = new Set((last.keywords || []).map((k) => k.toLowerCase()));
+    const setB = (p.keywords || []).map((k) => k.toLowerCase());
+    const shared = setB.filter((k) => setA.has(k)).length;
+    const closeEnough = gap <= gapDays && (shared >= minSharedKw || (last.keywords?.length ?? 0) === 0 || (p.keywords?.length ?? 0) === 0);
+    if (closeEnough) {
+      // Keep higher-score one as base; merge keywords.
+      const winner = (p.score >= last.score) ? p : last;
+      const merged: T = { ...winner, keywords: Array.from(new Set([...(last.keywords || []), ...(p.keywords || [])])) } as T;
+      out[out.length - 1] = merged;
+    } else {
+      out.push(p);
+    }
+  }
+  return out;
+}
+
+// Force a category when external sources clearly point to an institution.
+// Used by resolve-peak-cause to avoid "Outros" / "Indeterminado" when ≥3 strong
+// sources hit a clearly-identifiable domain (STF, TSE, PF, Câmara, Senado…).
+export function categoryFromSources(urls: Array<string | null | undefined>): string | null {
+  let stf = 0, tse = 0, pf = 0, congresso = 0, planalto = 0;
+  for (const u of urls) {
+    const h = hostOf(String(u || ""));
+    if (!h) continue;
+    if (/stf\.jus\.br/.test(h)) stf++;
+    else if (/tse\.jus\.br/.test(h)) tse++;
+    else if (/(pf\.gov\.br|policiafederal)/.test(h)) pf++;
+    else if (/(camara\.leg\.br|senado\.leg\.br|congressoemfoco)/.test(h)) congresso++;
+    else if (/(planalto\.gov\.br|gov\.br)/.test(h)) planalto++;
+  }
+  const ranked: Array<[string, number]> = [
+    ["stf", stf], ["tse", tse], ["operacoes_pf", pf], ["congresso", congresso], ["executivo", planalto],
+  ].sort((a, b) => b[1] - a[1]);
+  return ranked[0][1] >= 1 ? ranked[0][0] : null;
 }
 
 // Weighted confidence score per the brief spec (0..100).

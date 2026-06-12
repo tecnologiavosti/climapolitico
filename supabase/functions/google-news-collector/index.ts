@@ -50,6 +50,35 @@ const POLITICAL_KEYWORDS = [
   "saúde pública brasil", "segurança pública",
 ];
 
+// Official Brazilian political RSS feeds — high-authority institutional + major outlets.
+// Pulled once per run, items get attached to candidates whose name appears in title/desc.
+const OFFICIAL_POLITICAL_FEEDS: { name: string; url: string }[] = [
+  // Institutional (Tier 1)
+  { name: "STF Notícias", url: "https://www.stf.jus.br/portal/RSS/rssNoticia.asp" },
+  { name: "TSE Notícias", url: "https://www.tse.jus.br/comunicacao/noticias/rss" },
+  { name: "Câmara dos Deputados", url: "https://www.camara.leg.br/noticias/rss/ultimas" },
+  { name: "Senado Federal", url: "https://www12.senado.leg.br/noticias/ultimas/rss" },
+  { name: "Agência Brasil Política", url: "https://agenciabrasil.ebc.com.br/rss/politica/feed.xml" },
+  { name: "Gov.br Notícias", url: "https://www.gov.br/planalto/pt-br/acompanhe-o-planalto/rss" },
+  // Major media — Politics sections (Tier 2)
+  { name: "G1 Política", url: "https://g1.globo.com/rss/g1/politica/" },
+  { name: "Folha Poder", url: "https://feeds.folha.uol.com.br/poder/rss091.xml" },
+  { name: "Estadão Política", url: "https://politica.estadao.com.br/rss.xml" },
+  { name: "UOL Política", url: "https://rss.uol.com.br/feed/politica.xml" },
+  { name: "CNN Brasil Política", url: "https://www.cnnbrasil.com.br/politica/feed/" },
+  { name: "Poder360", url: "https://www.poder360.com.br/feed/" },
+  { name: "Metrópoles Política", url: "https://www.metropoles.com/politica/feed" },
+  { name: "Congresso em Foco", url: "https://congressoemfoco.uol.com.br/feed/" },
+  { name: "Carta Capital Política", url: "https://www.cartacapital.com.br/politica/feed/" },
+  { name: "Nexo Política", url: "https://www.nexojornal.com.br/rss" },
+  { name: "BBC Brasil", url: "https://feeds.bbci.co.uk/portuguese/rss.xml" },
+  { name: "Reuters Brasil", url: "https://www.reuters.com/world/americas/brazil/rss" },
+  { name: "Valor Político", url: "https://valor.globo.com/rss/politica/" },
+  { name: "Brasil de Fato Política", url: "https://www.brasildefato.com.br/rss2.xml" },
+];
+
+
+
 function nameMatches(text: string, fullName: string): boolean {
   const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const t = norm(text);
@@ -364,7 +393,68 @@ async function collectForAllCandidates(supabase: any) {
     }
   }
 
-  console.log(`[google-news-collector] concluído: ${totalInserted} (por candidato) + ${keywordInserted} (keywords) em ${Date.now() - startedAt}ms`);
+  // ========= Sweep extra: feeds RSS oficiais/imprensa (alta autoridade) =========
+  let officialInserted = 0;
+  for (const feed of OFFICIAL_POLITICAL_FEEDS) {
+    try {
+      const resp = await fetch(feed.url, {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; ClimaPolitico/1.0)" },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!resp.ok) continue;
+      const xml = await resp.text();
+      const items = parseRSSFeed(xml).slice(0, 40).map((i) => ({ ...i, source: i.source && i.source !== "Google News" ? i.source : feed.name }));
+      if (items.length === 0) continue;
+      const rowsByCandidate = new Map<string, any[]>();
+      for (const item of items) {
+        const haystack = `${item.title} ${item.description}`;
+        for (const cand of candList) {
+          if (!nameMatches(haystack, cand.full_name)) continue;
+          if (!isPoliticalCandidateContent(`${haystack} ${item.source}`, cand.full_name)) continue;
+          const row = {
+            user_id: cand.user_id,
+            candidate_id: cand.id,
+            social_network: "google_news",
+            platform: "google_news",
+            interaction_type: "news",
+            comment_text: `${item.title}\n\n${item.description}`,
+            comment_author: item.source,
+            author_profile_url: item.link,
+            post_url: item.link,
+            post_title: item.title,
+            post_description: item.description,
+            thumbnail_url: item.image,
+            author_name: item.source,
+            engagement_score: 1,
+            original_posted_at: item.pubDate ? new Date(item.pubDate).toISOString() : null,
+            collected_at: new Date().toISOString(),
+          };
+          const arr = rowsByCandidate.get(cand.id) ?? [];
+          arr.push(row);
+          rowsByCandidate.set(cand.id, arr);
+        }
+      }
+      for (const [candId, rows] of rowsByCandidate.entries()) {
+        const links = rows.map((r) => r.author_profile_url);
+        const { data: existing } = await supabase
+          .from("social_interactions")
+          .select("author_profile_url")
+          .eq("candidate_id", candId)
+          .eq("social_network", "google_news")
+          .in("author_profile_url", links);
+        const existingSet = new Set(((existing || []) as ExistingInteractionRow[]).map((e) => e.author_profile_url));
+        const fresh = rows.filter((r) => !existingSet.has(r.author_profile_url));
+        if (fresh.length === 0) continue;
+        const { error: insErr } = await supabase.from("social_interactions").insert(fresh);
+        if (!insErr) officialInserted += fresh.length;
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[google-news-collector] feed oficial "${feed.name}" falhou:`, msg);
+    }
+  }
+
+  console.log(`[google-news-collector] concluído: ${totalInserted} (por candidato) + ${keywordInserted} (keywords) + ${officialInserted} (oficiais) em ${Date.now() - startedAt}ms`);
 }
 
 async function repairExistingNewsMetadata(supabase: any, candidateId?: string) {
