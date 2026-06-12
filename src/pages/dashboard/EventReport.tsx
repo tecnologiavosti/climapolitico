@@ -56,19 +56,24 @@ interface HistoricalEvent {
   peak_type?: "external_confirmed" | "external_social" | "internal_trend";
   political_relevance?: number;
   category?: string;
+  status?: "confirmed" | "probable" | "indeterminate";
+  confidence_score?: number;
+  independent_strong_sources?: number;
+  trusted_sources_count?: number;
+  relevance_band?: "baixa" | "media" | "alta" | "critica";
 }
 
 const CATEGORY_FILTERS: { id: string; label: string }[] = [
   { id: "all", label: "Todos" },
-  { id: "eleicao", label: "Eleições" },
-  { id: "operacao_pf", label: "Operações PF" },
+  { id: "eleicoes", label: "Eleições" },
+  { id: "operacoes_pf", label: "Operações PF" },
   { id: "stf", label: "STF" },
   { id: "tse", label: "TSE" },
   { id: "cpi", label: "CPI" },
-  { id: "julgamento", label: "Julgamentos" },
-  { id: "escandalo", label: "Escândalos" },
-  { id: "prisao", label: "Prisões" },
-  { id: "debate", label: "Debates" },
+  { id: "julgamentos", label: "Julgamentos" },
+  { id: "escandalos", label: "Escândalos" },
+  { id: "prisoes", label: "Prisões" },
+  { id: "debates", label: "Debates" },
   { id: "outros", label: "Outros" },
 ];
 
@@ -77,6 +82,16 @@ const COVERAGE_BADGE: Record<string, { label: string; className: string }> = {
   media: { label: "Cobertura média", className: "bg-amber-500/15 text-amber-700 border-amber-500/30 dark:text-amber-300" },
   fraca: { label: "Cobertura fraca", className: "bg-zinc-500/15 text-zinc-700 border-zinc-500/30 dark:text-zinc-300" },
   ai_only: { label: "Registro histórico (IA)", className: "bg-primary/10 text-primary border-primary/30" },
+};
+
+const STATUS_BADGE: Record<string, { label: string; className: string; emoji: string }> = {
+  confirmed: { emoji: "🟢", label: "Evento confirmado", className: "bg-emerald-500/15 text-emerald-700 border-emerald-500/30 dark:text-emerald-300" },
+  probable: { emoji: "🟡", label: "Evento provável", className: "bg-amber-500/15 text-amber-700 border-amber-500/30 dark:text-amber-300" },
+  indeterminate: { emoji: "🔴", label: "Causa indeterminada", className: "bg-rose-500/10 text-rose-700 border-rose-500/30 dark:text-rose-300" },
+};
+
+const RELEVANCE_BAND_LABEL: Record<string, string> = {
+  baixa: "Baixa", media: "Média", alta: "Alta", critica: "Crítica",
 };
 
 const NETWORK_LABEL: Record<string, string> = {
