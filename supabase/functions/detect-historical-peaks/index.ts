@@ -30,7 +30,8 @@ const NORMAL_CORRELATION_LIMIT = 60;
 const SAFE_CORRELATION_LIMIT = 24;
 
 const VALID_PEAK_CATEGORIES = new Set([
-  "eleicao", "operacao_pf", "stf", "tse", "cpi", "julgamento", "escandalo", "prisao", "debate", "outros",
+  "eleicao", "operacao_pf", "stf", "tse", "cpi", "julgamento", "escandalo", "prisao", "debate",
+  "congresso", "executivo", "economia", "internacional", "outros",
 ]);
 
 // Apenas termos de ALTA RELEVÂNCIA POLÍTICA. Comícios, agendas, visitas, caminhadas,
