@@ -56,11 +56,12 @@ interface HistoricalEvent {
   peak_type?: "external_confirmed" | "external_social" | "internal_trend";
   political_relevance?: number;
   category?: string;
-  status?: "confirmed" | "probable" | "indeterminate";
+  status?: "confirmed" | "probable" | "weak" | "indeterminate";
   confidence_score?: number;
   independent_strong_sources?: number;
   trusted_sources_count?: number;
   relevance_band?: "baixa" | "media" | "alta" | "critica";
+  signals?: Array<"z" | "momentum" | "burst" | "anomaly">;
 }
 
 const CATEGORY_FILTERS: { id: string; label: string }[] = [
