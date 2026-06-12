@@ -681,8 +681,8 @@ serve(async (req) => {
     for (const e of discovered) if (!combinedByKey.has(keyOf(e))) combinedByKey.set(keyOf(e), e);
     // SSOT peaks: adiciona se nenhum evento já existir no mesmo dia (anexa metadados de z-score).
     const existingDays = new Set([...combinedByKey.values()].map(dayKey));
-    const ssotPeaks = ssotPeakEvents(Array.isArray(localTimeline) ? localTimeline : []);
-    for (const sp of ssotPeaks) {
+    const ssotPeakRaw = ssotPeakEvents(Array.isArray(localTimeline) ? localTimeline : []);
+    for (const sp of ssotPeakRaw) {
       if (existingDays.has(sp.start_date)) {
         // Anexa z-score ao evento existente naquele dia
         for (const ev of combinedByKey.values()) {
@@ -696,6 +696,9 @@ serve(async (req) => {
     }
     let candidateEvents: any[] = [...combinedByKey.values()];
     if (candidateEvents.length === 0) candidateEvents = fallbackEventsFromSources(pubs, start, end);
+    // Limite duro para evitar timeout em candidatos de altíssimo volume (Lula, Bolsonaro etc.)
+    candidateEvents = candidateEvents.slice(0, 20);
+    console.log("[8] clustering finished — candidateEvents:", candidateEvents.length);
 
     const events = candidateEvents.map((evt: any) => {
       const evPubs = matchedSources(evt, pubs, start, end, candidate.full_name);
