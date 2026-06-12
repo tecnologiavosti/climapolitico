@@ -256,9 +256,11 @@ export default function EventReport() {
     () => events.filter((e) => {
       if (category !== "all" && (e.category || "outros") !== category) return false;
       if (statusFilter !== "all" && (e.status || "indeterminate") !== statusFilter) return false;
+      const score = typeof e.confidence_score === "number" ? e.confidence_score * 100 : (e.relevance_score ?? 0);
+      if (score < minConfidence) return false;
       return true;
     }),
-    [events, category, statusFilter],
+    [events, category, statusFilter, minConfidence],
   );
   const eventsByYear = useMemo(() => {
     const groups = new Map<string, HistoricalEvent[]>();
