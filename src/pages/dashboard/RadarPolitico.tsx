@@ -291,13 +291,13 @@ export default function RadarPolitico() {
 
       <section className="space-y-2">
         <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">
-          {isLoading ? "Carregando..." : `${events?.length ?? 0} eventos`}
+          {isLoading ? "Carregando..." : `${filteredEvents.length} eventos`}
         </h2>
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : (events?.length ?? 0) === 0 ? (
+        ) : filteredEvents.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center text-sm text-muted-foreground">
               Nenhum evento. Clique em "Atualizar" para rodar o pipeline.
@@ -305,7 +305,7 @@ export default function RadarPolitico() {
           </Card>
         ) : (
           <div className="divide-y border rounded-md bg-card">
-            {events!.map((e) => {
+            {filteredEvents.map((e) => {
               const band = importanceBand(e.importance);
               return (
                 <button
@@ -321,6 +321,12 @@ export default function RadarPolitico() {
                         <span className="font-medium text-foreground/80">{e.category}</span>
                         <span>·</span>
                         <span>{e.source_count} fontes</span>
+                        {e.cluster_size > 1 && (
+                          <>
+                            <span>·</span>
+                            <span>{e.cluster_size} artigos</span>
+                          </>
+                        )}
                       </div>
                       <h3 className="text-sm font-medium leading-snug truncate">{e.title}</h3>
                       {e.summary && (
