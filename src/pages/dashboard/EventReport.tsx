@@ -53,6 +53,8 @@ interface HistoricalEvent {
   internal_window_days?: number;
   coverage_quality?: "forte" | "media" | "fraca" | "ai_only";
   detected_by?: "external" | "internal_ssot" | "none";
+  peak_type?: "external_confirmed" | "internal_trend";
+  political_relevance?: number;
   category?: string;
 }
 
