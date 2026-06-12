@@ -1,92 +1,95 @@
-## Refator completo — Clima Político > Picos de Menções
+# Refator Enterprise — Aba "Picos de Menções"
 
-Objetivo: detectar dezenas de picos políticos reais por ano para figuras de alta relevância (Lula, Bolsonaro), sem alucinação, com classificação correta e relevância calibrada.
+Vou reestruturar todo o pipeline mantendo SSOT (`social_interactions`) e o cron existente, mas trocando o detector, o validador e a UI por módulos profissionais.
 
-### Arquitetura nova (pipeline modular)
+## 1. Novos módulos compartilhados (`supabase/functions/_shared/peaks/`)
 
 ```text
-SSOT (social_interactions)
-   │
-   ▼
-[1] Ingestão por tiers (A/B/C/D)        ── _shared/source-tiers.ts
-   │
-   ▼
-[2] Spike detector híbrido               ── _shared/spike-detector.ts
-   (zscore + momentum + burst + anomaly)
-   │
-   ▼
-[3] Entity clustering (embeddings)       ── _shared/event-clustering.ts
-   (Lovable AI embeddings + cosine)
-   │
-   ▼
-[4] Evidence collector (Tier A/B só)     ── _shared/evidence-collector.ts
-   (Firecrawl search + filtro de domínios)
-   │
-   ▼
-[5] Event resolver                       ── resolve-peak-cause/index.ts
-   (confirmed / probable / weak / indeterminate)
-   │
-   ▼
-[6] Category classifier (score-based)    ── _shared/category-classifier.ts
-   (default = outros, nunca TSE fallback)
-   │
-   ▼
-[7] Relevance engine                     ── _shared/relevance-engine.ts
-   (volume + engajamento + duração + autoridade + impacto)
-   │
-   ▼
-[8] UI EventReport.tsx
-   (contadores: total/confirmados/prováveis/indeterminados)
+peaks/
+ ├─ source-registry.ts      # 300+ portais + RSS + institucionais classificados por tier (A/B/C/D)
+ ├─ ingestion.ts            # Firecrawl search + RSS fetch + dedup por URL/hash semântico
+ ├─ entity-extractor.ts     # match candidato (nome, apelidos, @handle, variações)
+ ├─ time-series.ts          # constrói série diária por candidato (SSOT + externos)
+ ├─ detectors.ts            # zScore, ewma, cusum, burst, momentum, iqrAnomaly → DetectorSignals
+ ├─ dynamic-threshold.ts    # max(baseline*2.5, p95) por candidato + janela 90d
+ ├─ clustering.ts           # embeddings (google/gemini-embedding-001) + cosine ≥0.78
+ ├─ taxonomy.ts             # 14 categorias + score por keyword com threshold mínimo
+ ├─ validator.ts            # Tier A/B/C/D; confirma se ≥3 Tier A ou ≥1 institucional
+ ├─ confidence.ts           # score ponderado (fórmula do brief) → confirmed/probable/weak/indeterminate
+ └─ ai-summarizer.ts        # gemini-3-flash factual, sem alucinação, com citações
 ```
 
-### Mudanças por arquivo
+### Fórmula de confidence (fiel ao brief)
+```
+score = 0.20*z + 0.15*burst + 0.15*momentum
+      + 0.20*source_diversity + 0.10*source_authority
+      + 0.10*cross_platform + 0.10*political_relevance
+```
+Bandas: ≥85 confirmed · 70–84 probable · 50–69 weak · <50 indeterminate. **Nenhum evento é descartado.**
 
-**Novos módulos shared (`supabase/functions/_shared/`)**
-- `source-tiers.ts` — 4 tiers (A: Reuters/BBC/STF/TSE/PF/Senado/Câmara/gov.br/Folha/G1/Estadão; B: regionais/Metrópoles/Poder360/CNN BR; C: contas verificadas; D: Instagram/TikTok/Telegram/Facebook/YouTube → BLOQUEADO como evidência). Função `classifySource(url, outlet) → {tier, weight, isExternalEvidence}`. Apenas Tier A/B contam como evidência externa.
-- `spike-detector.ts` — detector híbrido:
-  - z-score (janela 14d, threshold ≥2.0, **mais sensível** que o atual 2.5)
-  - momentum (derivada 3d > 1.5× média 7d)
-  - burst (CUSUM acumulado > threshold)
-  - anomaly (IQR outlier, mentions > Q3 + 1.5×IQR)
-  - pico = OR de qualquer 2 dos 4 sinais + volume mínimo (≥20/dia, reduzido de 30)
-- `event-clustering.ts` — clusteriza menções diárias em eventos semânticos via embeddings (`google/gemini-embedding-001`) + cosine similarity (threshold 0.78). Janela ±2 dias. Evita dividir um mesmo evento em vários picos.
-- `category-classifier.ts` — score por categoria com threshold mínimo. **Default sempre `outros`** (jamais TSE). Termos TSE exigem ≥2 pts explícitos (tse / tribunal superior eleitoral / justiça eleitoral / inelegibilidade / urna).
-- `relevance-engine.ts` — score 0–100:
-  - volume (log-scale, ceiling 5k) — peso 30%
-  - engajamento (log-scale, ceiling 1M) — peso 25%
-  - duração (dias) — peso 15%
-  - autoridade da fonte (Σ pesos tier A/B) — peso 20%
-  - impacto político (heurística por categoria) — peso 10%
-  - bandas: baixa <30, média 30-54, alta 55-79, crítica ≥80
+### Tiers de fonte
+- **A (peso 1.0):** g1, folha, estadão, uol, cnn, globo, reuters, bbc, ap, valor, oglobo, veja, poder360, agência brasil, metrópoles
+- **B (0.7):** regionais verificados (~200 portais)
+- **C (0.4):** blogs políticos verificados
+- **D (0.0, bloqueado como evidência):** instagram, facebook, youtube, tiktok, telegram, x/twitter, threads, reddit
+- **Institucional (peso 1.5):** stf.jus.br, tse.jus.br, pf.gov.br, gov.br, senado.leg.br, camara.leg.br, planalto.gov.br
 
-**`supabase/functions/detect-historical-peaks/index.ts`**
-- Substitui pipeline atual pela orquestração dos 7 módulos acima.
-- Para cada candidato: detecta picos híbridos → clusteriza → busca evidência (Firecrawl, Tier A/B apenas) → classifica → calcula relevância → resolve causa.
-- Devolve para cada evento: `status`, `category`, `relevance`, `relevance_band`, `evidence_count`, `tier_breakdown`, `signals` (quais detectores dispararam).
-- Remove o filtro que descarta indeterminados — agora todos passam, UI decide exibição.
+## 2. Edge functions
 
-**`supabase/functions/resolve-peak-cause/index.ts`**
-- Status passa a ter 4 níveis: `confirmed` (≥2 fontes Tier A independentes), `probable` (≥1 Tier A ou ≥2 Tier B), `weak` (apenas Tier B/C ou 1 Tier B), `indeterminate` (<0.5 weight). 
-- Sem evidência Tier A/B → IA não é chamada, retorna `indeterminate` com `title: "Causa indeterminada"`.
-- Prompt factual reforçado: proíbe inventar fatos, exige citação por URL.
+**`detect-historical-peaks/index.ts`** — orquestrador:
+1. Carrega 365d de série temporal (SSOT) por candidato
+2. Roda **5 detectores em paralelo** (z, ewma, cusum, burst, momentum) + IQR
+3. Pico = ≥2 sinais OR z≥2.0 com threshold dinâmico
+4. Cluster por embeddings (janela ±3d)
+5. Para cada cluster: Firecrawl search (Tier A/B + institucionais) → validator
+6. Classifica via taxonomy → resolve cause via AI summarizer
+7. Calcula confidence → grava `political_events` com `status`, `signals`, `tier_breakdown`, `evidence_urls`
 
-**`src/pages/dashboard/EventReport.tsx`**
-- Header: cards com 4 contadores (Total / 🟢 Confirmados / 🟡 Prováveis / 🟠 Fracos / 🔴 Indeterminados).
-- Badge de status nos cards (4 cores).
-- Filtro por status além de categoria.
-- Mostra `signals` no card (quais detectores dispararam: Z, Momentum, Burst, Anomaly).
-- Categorias = 10 obrigatórias + "Todos".
+**`resolve-peak-cause/index.ts`** — recebe evidências já validadas, gera resumo factual; nunca chama IA se evidência insuficiente (retorna "Causa indeterminada").
 
-### O que NÃO muda
-- SSOT (`social_interactions`), coleta, cron, sentimento, outras abas, detector de picos da aba Repercussão.
+**`ingest-external-sources/index.ts`** (novo) — cron 30min:
+- Lê RSS feeds (registry)
+- Firecrawl scrape em portais Tier A
+- Insere em nova tabela `external_mentions` (raw evidence pool)
 
-### Critérios de aceite
-- Lula / Bolsonaro: ≥20 picos detectados em 12 meses (vs 2 hoje).
-- Nenhum evento com 0 fontes Tier A/B é exibido como `confirmed`.
-- Categoria "Outros" e "TSE" deixam de absorver a maioria dos eventos.
-- Instagram/TikTok/Telegram nunca contam como evidência externa.
-- Relevância varia em 0–100 (não fica concentrada em uma faixa).
-- UI mostra contadores totais e por status.
+## 3. Banco de dados (migração)
 
-### Estimativa
-~600 linhas em 5 novos módulos shared, ~200 linhas refatoradas em `detect-historical-peaks`, ~80 em `resolve-peak-cause`, ~120 em `EventReport.tsx`. Embeddings via Lovable AI Gateway (sem chave do usuário).
+- `external_mentions` (id, candidate_id, source_host, source_tier, url, title, content, published_at, embedding vector(3072))
+  - índice HNSW em `embedding`, índice em `(candidate_id, published_at)`
+- `political_events`: adicionar colunas `status`, `signals jsonb`, `tier_breakdown jsonb`, `evidence_urls text[]`, `confidence_band`, `dynamic_threshold`
+- pgvector enable + GRANTs + RLS
+
+## 4. Frontend — `src/pages/dashboard/EventReport.tsx`
+
+- Header com 5 contadores clicáveis: Total · Confirmados (🟢) · Prováveis (🟡) · Fracos (🟠) · Indeterminados (🔴)
+- **Timeline anual** (recharts) com pontos coloridos por status, tooltip com título
+- Filtros: categoria (14), status, período, tier de fonte
+- Card de evento: título, data, categoria, badges de sinais (Z·EWMA·CUSUM·Burst·Momentum), confidence bar, lista de evidências (favicon + host + link), resumo IA com disclaimer
+- Skeleton states + virtualização para >100 picos
+
+## 5. Performance
+
+- Particionamento mensal lógico em queries (range em `published_at`)
+- Cache de embeddings por hash de texto
+- Detectores em `Promise.all`
+- Validator em batches de 10 candidatos
+- Materialized view `mv_candidate_daily_volume` (refresh diário)
+
+## 6. Não muda
+
+SSOT (`social_interactions`), coleta de redes sociais, sentimento, repercussão de eventos, autenticação, billing.
+
+## Entregáveis
+
+- 11 arquivos novos em `_shared/peaks/`
+- 1 nova edge function `ingest-external-sources`
+- 2 edge functions reescritas (`detect-historical-peaks`, `resolve-peak-cause`)
+- 1 migração (pgvector + colunas + tabela + MV)
+- `EventReport.tsx` reescrito (~400 linhas)
+- Estimativa: ~2.000 linhas, ~15 min de execução
+
+## Meta de qualidade
+
+Para Lula/Bolsonaro: **30–80 picos/ano** detectados, ≥60% com status ≥ probable, zero invenção de eventos sem evidência Tier A/B.
+
+Aprove para eu executar tudo em sequência (migração primeiro, depois código).
