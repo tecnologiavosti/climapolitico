@@ -466,16 +466,49 @@ function computeImportanceV2(opts: {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  try {
-    const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
-    const body = await req.json().catch(() => ({}));
-    const targetCandidate: string | undefined = body?.candidate_id;
-    const lookback: number = Math.max(1, Math.min(365, body?.lookback_days || DEFAULT_LOOKBACK_DAYS));
+  const body = await req.json().catch(() => ({}));
+  const targetCandidate: string | undefined = body?.candidate_id;
+  const lookback: number = Math.max(1, Math.min(365, body?.lookback_days || DEFAULT_LOOKBACK_DAYS));
+  const sync: boolean = body?.sync === true;
 
-    let candQ = supabase.from("candidates").select("id,user_id,full_name").eq("status", "active");
-    if (targetCandidate) candQ = candQ.eq("id", targetCandidate);
-    const { data: candidates, error: candErr } = await candQ.limit(50);
-    if (candErr) throw candErr;
+  const job = runPipeline({ targetCandidate, lookback }).catch((e) => {
+    console.error("[run-radar-pipeline] background error", e);
+  });
+
+  // Default: run in background and return immediately to avoid the 150s edge timeout.
+  if (!sync) {
+    // @ts-ignore EdgeRuntime is provided by Supabase edge runtime
+    if (typeof EdgeRuntime !== "undefined" && (EdgeRuntime as any).waitUntil) {
+      // @ts-ignore
+      (EdgeRuntime as any).waitUntil(job);
+    }
+    return new Response(
+      JSON.stringify({ ok: true, status: "started", mode: "background", targetCandidate, lookback }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  // Synchronous mode (manual debugging): may hit 150s timeout for full runs
+  try {
+    const result = await job;
+    return new Response(JSON.stringify({ ok: true, ...result }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    return new Response(JSON.stringify({ ok: false, error: (e as Error).message }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
+
+async function runPipeline(opts: { targetCandidate?: string; lookback: number }) {
+  const { targetCandidate, lookback } = opts;
+  const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
+
+  let candQ = supabase.from("candidates").select("id,user_id,full_name").eq("status", "active");
+  if (targetCandidate) candQ = candQ.eq("id", targetCandidate);
+  const { data: candidates, error: candErr } = await candQ.limit(50);
+  if (candErr) throw candErr;
 
     let totalInserted = 0;
     const perCandidate: Record<string, { inserted: number; clusters: number; items: number }> = {};
@@ -676,18 +709,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(
-      JSON.stringify({ ok: true, totalInserted, perCandidate, lookback }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
-  } catch (e) {
-    console.error("[run-radar-pipeline] error", e);
-    return new Response(
-      JSON.stringify({ ok: false, error: (e as Error).message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
-  }
-});
+  return { totalInserted, perCandidate, lookback };
+}
 
 // Volume mínimo anual esperado por candidato (heurística por relevância nacional)
 function expectedMinFor(fullName: string): number {
