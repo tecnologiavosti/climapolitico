@@ -75,6 +75,9 @@ const OFFICIAL_POLITICAL_FEEDS: { name: string; url: string }[] = [
   { name: "Reuters Brasil", url: "https://www.reuters.com/world/americas/brazil/rss" },
   { name: "Valor Político", url: "https://valor.globo.com/rss/politica/" },
   { name: "Brasil de Fato Política", url: "https://www.brasildefato.com.br/rss2.xml" },
+];
+
+
 
 function nameMatches(text: string, fullName: string): boolean {
   const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
