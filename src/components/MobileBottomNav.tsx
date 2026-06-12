@@ -82,7 +82,7 @@ const sections: Section[] = [
     icon: LineChart,
     items: [
       { label: "Sentimento", icon: Heart, to: "/dashboard/rejection-analysis" },
-      { label: "Picos de Menções", icon: Calendar, to: "/dashboard/pico-mencao" },
+      { label: "Radar Político", icon: Calendar, to: "/dashboard/radar-politico" },
       { label: "Mapa de Aceitação", icon: MapPinned, to: "/dashboard/regional-analysis" },
       { label: "Comparação", icon: GitCompareArrows, to: "/dashboard/candidate-comparison" },
     ],
