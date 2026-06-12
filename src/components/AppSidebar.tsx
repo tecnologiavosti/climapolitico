@@ -123,7 +123,7 @@ const groups: NavGroup[] = [
     defaultOpen: false,
     items: [
       { title: "Narrativas Detectadas", url: "/dashboard/narrative-recommendations", icon: Sparkles, badge: { label: "IA", variant: "ai" }, tip: "Narrativas em ascensão e recomendações." },
-      { title: "Repercussão de Eventos", url: "/dashboard/event-repercussion", icon: MessagesSquare, tip: "Como entrevistas, debates e lives repercutem em cada região." },
+      { title: "Radar Político", url: "/dashboard/radar-politico", icon: MessagesSquare, tip: "Eventos políticos de fontes institucionais e grande imprensa, com repercussão social." },
       { title: "Comparação Histórica", url: "/dashboard/historical-comparison", icon: GitCompareArrows, badge: { label: "IA", variant: "ai" }, tip: "Compare dois períodos do candidato com análise por IA." },
       { title: "Alertas Inteligentes", url: "/dashboard/notifications", icon: Bell, tip: "Avisos importantes detectados automaticamente." },
     ],

@@ -51,6 +51,7 @@ const HistoricalComparison = lazy(() => import("./dashboard/HistoricalComparison
 
 const DataEnrichment = lazy(() => import("./dashboard/DataEnrichment"));
 const EventRepercussion = lazy(() => import("./dashboard/EventRepercussion"));
+const RadarPolitico = lazy(() => import("./dashboard/RadarPolitico"));
 
 /** Wraps a lazy route element in a per-route error boundary. */
 const wrap = (name: string, El: React.ComponentType) => (
@@ -148,7 +149,8 @@ const Dashboard = () => {
                 <Route path="/notifications" element={wrap("Notifications", Notifications)} />
                 <Route path="/data-collection-methodology" element={wrap("DataCollectionMethodology", DataCollectionMethodology)} />
                 <Route path="/regional-analysis" element={wrap("RegionalAnalysis", RegionalAnalysis)} />
-                <Route path="/event-repercussion" element={wrap("EventRepercussion", EventRepercussion)} />
+                <Route path="/radar-politico" element={wrap("RadarPolitico", RadarPolitico)} />
+                <Route path="/event-repercussion" element={wrap("RadarPolitico", RadarPolitico)} />
                 <Route path="/social-feeds" element={wrap("SocialFeeds", SocialFeeds)} />
                 <Route path="/network-view" element={wrap("NetworkView", NetworkView)} />
                 
