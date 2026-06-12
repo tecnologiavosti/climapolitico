@@ -269,21 +269,31 @@ function coverageQuality(totalEvidence: number, distinctOutlets: number): Covera
 }
 
 // Categoria do evento para os filtros da timeline histórica.
-function categoryOf(evt: { name?: string; type?: string }): string {
-  const text = normalize(`${evt.type || ""} ${evt.name || ""}`);
-  if (/\beleicao|eleicoes|primeiro turno|segundo turno|debate|posse presidencial\b/.test(text)) {
-    if (/\bdebate\b/.test(text)) return "debate";
-    return "eleicao";
-  }
+function categoryOf(evt: { name?: string; type?: string; description?: string }): string {
+  const text = normalize(`${evt.type || ""} ${evt.name || ""} ${evt.description || ""}`);
+  if (/\bdebate\b/.test(text)) return "debate";
+  if (/\beleicao|eleicoes|primeiro turno|segundo turno|posse presidencial\b/.test(text)) return "eleicao";
   if (/\boperacao|policia federal|\bpf\b|busca e apreensao\b/.test(text)) return "operacao_pf";
   if (/\bstf|supremo tribunal\b/.test(text)) return "stf";
   if (/\btse|tribunal superior eleitoral|inelegibilidade|cassacao\b/.test(text)) return "tse";
   if (/\bcpi\b/.test(text)) return "cpi";
   if (/\bjulgamento|condenacao|absolvicao|sentenca\b/.test(text)) return "julgamento";
   if (/\bprisao|preso|detido|indiciamento\b/.test(text)) return "prisao";
-  if (/\bescandalo|denuncia|corrupcao|rachadinha|propina\b/.test(text)) return "escandalo";
-  if (/\bimpeachment\b/.test(text)) return "escandalo";
+  if (/\bescandalo|denuncia|corrupcao|rachadinha|propina|impeachment\b/.test(text)) return "escandalo";
+  if (/\beconomia|inflacao|dolar|juros|selic|\bpib\b|fiscal|tributaria|imposto|orcamento\b/.test(text)) return "economia";
+  if (/\binternacional|exterior|brics|\bonu\b|\botan\b|biden|trump|putin|china|\beua\b|argentina|venezuela|cupula\b/.test(text)) return "internacional";
+  if (/\bgoverno|ministr|planalto|reforma|politica publica|politicas publicas|saude publica|educacao\b/.test(text)) return "governo";
+  if (/\bentrevista|sabatina|roda viva|jornal nacional\b/.test(text)) return "entrevista";
+  if (/\bdiscurso|pronunciamento|coletiva|declaracao|polemic|controvers/.test(text)) return "declaracoes";
   return "outros";
+}
+
+// Score baseado em volume/anomalia SSOT (interno) — peso 80% no final.
+function ssotScoreOf(internalMentions: number, internalEngagement: number, zScore: number): number {
+  const mentionsScore = Math.min(40, Math.log10(Math.max(1, internalMentions)) * 12);
+  const engagementScore = Math.min(30, Math.log10(Math.max(1, internalEngagement)) * 7);
+  const anomalyScore = Math.min(30, Math.max(0, zScore) * 8);
+  return Math.round(mentionsScore + engagementScore + anomalyScore);
 }
 
 function relevanceFromEvidence(evt: any, pubs: ExternalPublication[], _mentions: number): number {
@@ -292,17 +302,45 @@ function relevanceFromEvidence(evt: any, pubs: ExternalPublication[], _mentions:
   const counts = countsByClass(pubs);
   const diversity = (counts.news > 0 ? 1 : 0) + (counts.videos > 0 ? 1 : 0) + (counts.posts > 0 ? 1 : 0);
   const officialBonus = pubs.some((p) => /\.(gov|jus|leg)\.br|gov\.br|tse\.jus\.br|stf\.jus\.br|senado\.leg\.br|camara\.leg\.br/i.test(hostNameOf(p.url))) ? 10 : 0;
-  const score = Math.min(36, distinctOutlets * 7)        // diversidade de veículos
-    + Math.min(22, pubs.length * 1.6)                     // volume total
-    + Math.min(12, counts.news * 2)                       // notícias
-    + Math.min(8, counts.videos * 3)                      // vídeos
-    + Math.min(8, counts.posts * 2)                       // posts
-    + Math.min(10, reach * 1.2)                           // alcance
-    + Math.min(10, coverageDurationDays(pubs) * 1.5)      // persistência temporal
-    + diversity * 4                                       // diversidade de tipos
+  const score = Math.min(36, distinctOutlets * 7)
+    + Math.min(22, pubs.length * 1.6)
+    + Math.min(12, counts.news * 2)
+    + Math.min(8, counts.videos * 3)
+    + Math.min(8, counts.posts * 2)
+    + Math.min(10, reach * 1.2)
+    + Math.min(10, coverageDurationDays(pubs) * 1.5)
+    + diversity * 4
     + politicalImpactWeight(String(evt?.type || evt?.name || ""))
     + officialBonus;
-  return Math.max(30, Math.min(100, Math.round(score)));
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+// Detecta picos estatísticos puros na série SSOT (localTimeline). z-score >= 2.5 sempre vira evento.
+function ssotPeakEvents(timeline: TimelinePoint[]): any[] {
+  const points = (timeline || []).map((p) => ({ date: String(p.date).slice(0, 10), count: Number(p.count || 0) })).filter((p) => p.date && p.count > 0);
+  if (points.length < 7) return [];
+  const counts = points.map((p) => p.count);
+  const mean = counts.reduce((s, n) => s + n, 0) / counts.length;
+  const variance = counts.reduce((s, n) => s + (n - mean) ** 2, 0) / counts.length;
+  const stdev = Math.sqrt(variance) || 1;
+  return points
+    .map((p) => ({ ...p, z: (p.count - mean) / stdev }))
+    .filter((p) => p.z >= 2.5 && p.count >= Math.max(20, mean * 1.5))
+    .sort((a, b) => b.z - a.z)
+    .slice(0, 40)
+    .map((p) => ({
+      name: `Pico de menções em ${p.date}`,
+      type: "pico_ssot",
+      start_date: p.date,
+      end_date: p.date,
+      description: `Volume anômalo detectado nas redes monitoradas em ${p.date} (z-score ${p.z.toFixed(2)}; ${p.count} menções vs média ${mean.toFixed(1)}).`,
+      motivo: "Anomalia estatística no volume de menções internas.",
+      keywords: [],
+      sourceIndices: [],
+      _ssot_z: Number(p.z.toFixed(2)),
+      _ssot_baseline: Math.round(mean),
+      _ssot_peak: p.count,
+    }));
 }
 
 function fallbackEventsFromSources(pubs: ExternalPublication[], start: Date, end: Date): any[] {
@@ -693,11 +731,27 @@ Responda APENAS JSON válido:
       }
     }
 
-    // Combina eventos da IA enriquecida + descobertos não cobertos.
+    // Combina eventos da IA enriquecida + descobertos + picos SSOT puros (z-score >= 2.5).
     const combinedByKey = new Map<string, any>();
     const keyOf = (e: any) => `${String(e.start_date || "").slice(0, 10)}|${normalize(String(e.name || "")).slice(0, 60)}`;
+    const dayKey = (e: any) => String(e.start_date || "").slice(0, 10);
     for (const e of aiEvents) combinedByKey.set(keyOf(e), e);
     for (const e of discovered) if (!combinedByKey.has(keyOf(e))) combinedByKey.set(keyOf(e), e);
+    // SSOT peaks: adiciona se nenhum evento já existir no mesmo dia (anexa metadados de z-score).
+    const existingDays = new Set([...combinedByKey.values()].map(dayKey));
+    const ssotPeaks = ssotPeakEvents(Array.isArray(localTimeline) ? localTimeline : []);
+    for (const sp of ssotPeaks) {
+      if (existingDays.has(sp.start_date)) {
+        // Anexa z-score ao evento existente naquele dia
+        for (const ev of combinedByKey.values()) {
+          if (dayKey(ev) === sp.start_date) {
+            ev._ssot_z = sp._ssot_z; ev._ssot_baseline = sp._ssot_baseline; ev._ssot_peak = sp._ssot_peak;
+          }
+        }
+      } else {
+        combinedByKey.set(keyOf(sp), sp);
+      }
+    }
     let candidateEvents: any[] = [...combinedByKey.values()];
     if (candidateEvents.length === 0) candidateEvents = fallbackEventsFromSources(pubs, start, end);
 
@@ -743,6 +797,10 @@ Responda APENAS JSON válido:
         outlet_names: outletNames,
         coverage_quality: coverageQuality(totalEvidence, distinctOutlets),
         category: categoryOf(evt),
+        ssot_z_score: typeof evt._ssot_z === "number" ? evt._ssot_z : null,
+        ssot_baseline_volume: typeof evt._ssot_baseline === "number" ? evt._ssot_baseline : null,
+        ssot_peak_volume: typeof evt._ssot_peak === "number" ? evt._ssot_peak : null,
+        external_score: Math.round(score),
         sources: evPubs.map((p) => ({ name: p.outlet, url: p.url, region: p.outletRegion, publishedAt: p.publishedAt || null, title: cleanText(p.title), kind: classifyPub(p) })),
       };
     }).filter((evt: any) => {
@@ -786,19 +844,53 @@ Responda APENAS JSON válido:
     }));
 
     // Remove fontes/URLs externas da resposta — manter usuário dentro da plataforma.
+    // Recalcula relevance_score com peso 80% SSOT + 20% externo (regra do produto).
     const sanitizedEvents = events.map((e: any, i: number) => {
       const { sources: _omit, ...rest } = e;
       const c = correlations[i].status === "fulfilled" ? (correlations[i] as any).value : null;
+      const internal_mentions = Number(c?.total_mentions ?? 0);
+      const internal_authors = Number(c?.unique_authors ?? 0);
+      const internal_engagement = Number(c?.total_engagement ?? 0);
+      const z = Number(e.ssot_z_score ?? 0);
+      const ssot_score = ssotScoreOf(internal_mentions, internal_engagement, z);
+      const external_score = Number(e.external_score ?? 0);
+      const final_score = Math.round(0.8 * ssot_score + 0.2 * external_score);
+      const ai_only = (e.publications_count ?? 0) === 0 || (e.distinct_outlets ?? 0) === 0;
+      const description = e.description && e.description.length > 0
+        ? e.description
+        : (ai_only
+            ? "Pico detectado por volume anômalo nas redes monitoradas. Não houve cobertura jornalística suficiente para identificar a causa exata."
+            : e.description);
+      // Auditoria por pico
+      console.log(JSON.stringify({
+        tag: "peak_audit",
+        name: e.name,
+        date: e.start_date,
+        z_score: z,
+        baseline_volume: e.ssot_baseline_volume,
+        peak_volume: e.ssot_peak_volume,
+        internal_mentions,
+        internal_engagement,
+        external_score,
+        ssot_score,
+        final_score,
+        coverage_quality: e.coverage_quality,
+        ai_only,
+        discard_reason: null,
+      }));
       return {
         ...rest,
+        description,
+        relevance_score: final_score,
+        ssot_score,
         sources_count: Array.isArray(_omit) ? _omit.length : 0,
-        internal_mentions:   Number(c?.total_mentions   ?? 0),
-        internal_authors:    Number(c?.unique_authors   ?? 0),
-        internal_engagement: Number(c?.total_engagement ?? 0),
+        internal_mentions,
+        internal_authors,
+        internal_engagement,
         internal_by_network: (c?.by_network ?? {}) as Record<string, number>,
         internal_window_days: 14,
       };
-    });
+    }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0));
 
     // === FASE 5: GARANTIA DE ANÁLISE — fallback IA com dados internos (SSOT) ===
     // Todo pico deve ter narrativa analítica, mesmo sem evidências externas.
