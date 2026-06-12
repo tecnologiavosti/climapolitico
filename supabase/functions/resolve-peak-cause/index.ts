@@ -327,16 +327,22 @@ Responda em JSON estrito com este schema:
     const lowConfidence = responseMode === "UNKNOWN_TRIGGER";
     const modeFallback = responseMode === "UNKNOWN_TRIGGER" ? unknownText : probableText;
     const safeTitle = responseMode === "CONFIRMED_EVENT"
-      ? (ai?.event_title || `Pico de menções em ${peakDate}`)
+      ? (ai?.title || ai?.event_title || `Pico de menções em ${peakDate}`)
       : responseMode === "PROBABLE_NARRATIVE"
-        ? `Narrativa provável: ${topicLabel}`
+        ? (ai?.title || `Narrativa provável: ${topicLabel}`)
         : "Causa indeterminada";
     const safeSummary = responseMode === "CONFIRMED_EVENT"
-      ? (ai?.event_summary || "")
+      ? (ai?.summary || ai?.event_summary || "")
       : modeFallback;
     const safeRootCause = responseMode === "CONFIRMED_EVENT"
       ? (ai?.root_cause || "")
       : `${modeFallback}${topTermsList ? ` Principais termos associados: ${topTermsList}.` : ""}`;
+    const safeCategory = responseMode === "UNKNOWN_TRIGGER"
+      ? "Indeterminado"
+      : (ai?.category || "Outros");
+    const shouldDisplayFinal = responseMode === "UNKNOWN_TRIGGER"
+      ? false
+      : (typeof ai?.shouldDisplay === "boolean" ? ai.shouldDisplay : shouldDisplay);
     const fallback_text = lowConfidence
       ? `${unknownText} Principais termos associados nas redes monitoradas: ${topTermsList || "—"}.`
       : null;
@@ -347,24 +353,32 @@ Responda em JSON estrito com este schema:
       peakDate,
       response_mode: responseMode,
       strong_sources: strongSources,
+      independent_strong_sources: independentStrongSources,
       weak_sources: weakSources,
       semantic_confidence: semanticConfidence,
       entity_confidence: entityConfidence,
       external_evidence_confidence: externalEvidenceConfidence,
       final_confidence: finalConfidence,
+      should_display: shouldDisplayFinal,
     }));
 
     const out = {
       response_mode: responseMode,
+      category: safeCategory,
+      title: safeTitle,
+      summary: safeSummary,
+      confidence: finalConfidence,
+      shouldDisplay: shouldDisplayFinal,
+      // legacy fields kept for backward compatibility with UI
       event_title: safeTitle,
       event_summary: safeSummary,
       root_cause: safeRootCause,
-      confidence: finalConfidence,
       confidence_breakdown: {
         semanticConfidence,
         entityConfidence,
         externalEvidenceConfidence,
         strongSources,
+        independentStrongSources,
         weakSources,
       },
       main_networks: ai?.main_networks || evidence.top_networks.map((n) => n.network),
