@@ -87,6 +87,36 @@ const ALIAS_MAP: Record<string, string[]> = {
   "lira": ["Arthur Lira"],
 };
 
+// Contextual role keywords — disparam match mesmo SEM o nome do candidato no título.
+// Devem ser específicos o suficiente para evitar falso positivo (ex.: "governo" sozinho não basta).
+const ROLE_MAP: Record<string, string[]> = {
+  "lula": ["planalto","palacio do planalto","palácio do planalto","governo lula","presidente da republica","presidente da república","executivo federal","presidencia da republica","presidência da república"],
+  "luiz inacio lula da silva": ["planalto","palacio do planalto","palácio do planalto","governo lula","presidente da republica","presidente da república","executivo federal"],
+  "jair bolsonaro": ["ex-presidente","clã bolsonaro","cla bolsonaro","bolsonarismo","pl de bolsonaro","inelegivel","inelegível"],
+  "bolsonaro": ["ex-presidente","clã bolsonaro","cla bolsonaro","bolsonarismo","inelegivel","inelegível"],
+  "flavio bolsonaro": ["senador flavio","senador flávio","filho de bolsonaro","rachadinha","caso queiroz","gabinete do senador"],
+  "flávio bolsonaro": ["senador flavio","senador flávio","filho de bolsonaro","rachadinha","caso queiroz"],
+  "eduardo bolsonaro": ["deputado eduardo","filho de bolsonaro","03"],
+  "tarcisio de freitas": ["governador de sao paulo","governador de são paulo","palacio dos bandeirantes","palácio dos bandeirantes","governo de sp"],
+  "tarcísio de freitas": ["governador de são paulo","palácio dos bandeirantes","governo de sp"],
+  "tarcisio": ["governador de são paulo","palácio dos bandeirantes","governo de sp"],
+  "ratinho junior": ["governador do parana","governador do paraná","palacio iguacu","palácio iguaçu"],
+  "ronaldo caiado": ["governador de goias","governador de goiás","palacio das esmeraldas","palácio das esmeraldas"],
+  "geraldo alckmin": ["vice-presidente","mdic","ministerio do desenvolvimento","ministério do desenvolvimento"],
+  "fernando haddad": ["ministro da fazenda","ministerio da fazenda","ministério da fazenda","equipe economica","equipe econômica"],
+  "simone tebet": ["ministra do planejamento","ministerio do planejamento","ministério do planejamento"],
+  "pacheco": ["presidente do senado","mesa do senado"],
+  "lira": ["presidente da camara","presidente da câmara","mesa da camara","mesa da câmara"],
+};
+
+function roleKeywordsFor(fullName: string): string[] {
+  const key = normalize(fullName);
+  if (ROLE_MAP[key]) return ROLE_MAP[key];
+  const parts = key.split(/\s+/);
+  for (const p of parts) if (ROLE_MAP[p]) return ROLE_MAP[p];
+  return [];
+}
+
 function normalize(s: string): string {
   return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 }
