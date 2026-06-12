@@ -50,6 +50,32 @@ const POLITICAL_KEYWORDS = [
   "saúde pública brasil", "segurança pública",
 ];
 
+// Official Brazilian political RSS feeds — high-authority institutional + major outlets.
+// Pulled once per run, items get attached to candidates whose name appears in title/desc.
+const OFFICIAL_POLITICAL_FEEDS: { name: string; url: string }[] = [
+  // Institutional (Tier 1)
+  { name: "STF Notícias", url: "https://www.stf.jus.br/portal/RSS/rssNoticia.asp" },
+  { name: "TSE Notícias", url: "https://www.tse.jus.br/comunicacao/noticias/rss" },
+  { name: "Câmara dos Deputados", url: "https://www.camara.leg.br/noticias/rss/ultimas" },
+  { name: "Senado Federal", url: "https://www12.senado.leg.br/noticias/ultimas/rss" },
+  { name: "Agência Brasil Política", url: "https://agenciabrasil.ebc.com.br/rss/politica/feed.xml" },
+  { name: "Gov.br Notícias", url: "https://www.gov.br/planalto/pt-br/acompanhe-o-planalto/rss" },
+  // Major media — Politics sections (Tier 2)
+  { name: "G1 Política", url: "https://g1.globo.com/rss/g1/politica/" },
+  { name: "Folha Poder", url: "https://feeds.folha.uol.com.br/poder/rss091.xml" },
+  { name: "Estadão Política", url: "https://politica.estadao.com.br/rss.xml" },
+  { name: "UOL Política", url: "https://rss.uol.com.br/feed/politica.xml" },
+  { name: "CNN Brasil Política", url: "https://www.cnnbrasil.com.br/politica/feed/" },
+  { name: "Poder360", url: "https://www.poder360.com.br/feed/" },
+  { name: "Metrópoles Política", url: "https://www.metropoles.com/politica/feed" },
+  { name: "Congresso em Foco", url: "https://congressoemfoco.uol.com.br/feed/" },
+  { name: "Carta Capital Política", url: "https://www.cartacapital.com.br/politica/feed/" },
+  { name: "Nexo Política", url: "https://www.nexojornal.com.br/rss" },
+  { name: "BBC Brasil", url: "https://feeds.bbci.co.uk/portuguese/rss.xml" },
+  { name: "Reuters Brasil", url: "https://www.reuters.com/world/americas/brazil/rss" },
+  { name: "Valor Político", url: "https://valor.globo.com/rss/politica/" },
+  { name: "Brasil de Fato Política", url: "https://www.brasildefato.com.br/rss2.xml" },
+
 function nameMatches(text: string, fullName: string): boolean {
   const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const t = norm(text);
