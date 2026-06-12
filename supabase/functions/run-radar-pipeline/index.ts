@@ -253,9 +253,10 @@ const rssCache = new Map<string, { items: NewsItem[]; expires: number }>();
 async function fetchRssFeed(name: string, url: string, tier: 1 | 2 | 3): Promise<NewsItem[]> {
   const cached = rssCache.get(url);
   if (cached && cached.expires > Date.now()) return cached.items;
+  const ttl = TIER_TTL_MS[tier];
   try {
     const res = await timeout(fetch(url, { headers: { "User-Agent": UA } }), FETCH_TIMEOUT_MS);
-    if (!res.ok) { rssCache.set(url, []); return []; }
+    if (!res.ok) { rssCache.set(url, { items: [], expires: Date.now() + ttl }); return []; }
     const xml = await res.text();
     const items: NewsItem[] = [];
     const itemRegex = /<item[\s\S]*?>([\s\S]*?)<\/item>/g;
@@ -274,16 +275,16 @@ async function fetchRssFeed(name: string, url: string, tier: 1 | 2 | 3): Promise
         domain,
       });
     }
-    rssCache.set(url, items);
+    rssCache.set(url, { items, expires: Date.now() + ttl });
     return items;
   } catch {
-    rssCache.set(url, []);
+    rssCache.set(url, { items: [], expires: Date.now() + ttl });
     return [];
   }
 }
 
 async function fetchAllRss(): Promise<NewsItem[]> {
-  const results = await Promise.all(RSS_FEEDS.map((f) => fetchRssFeed(f.name, f.url)));
+  const results = await Promise.all(RSS_FEEDS.map((f) => fetchRssFeed(f.name, f.url, f.tier)));
   return results.flat();
 }
 
