@@ -50,11 +50,10 @@ export function hostOf(url: string): string {
 export function classifySource(url: string, outlet?: string | null): SourceClassification {
   const host = hostOf(url);
   const out = String(outlet || "");
-  if (host && BLOCKED_HOSTS.test(host)) return { tier: "blocked", weight: 0, host };
+  if ((host && BLOCKED_HOSTS.test(host)) || BLOCKED_OUTLETS.test(out)) return { tier: "blocked", weight: 0, host };
   if (TIER1_HOSTS.test(host) || TIER1_OUTLETS.test(out)) return { tier: "tier1", weight: 1.0, host };
   if (TIER2_HOSTS.test(host) || TIER2_OUTLETS.test(out)) return { tier: "tier2", weight: 0.8, host };
   if (TIER3_HOSTS.test(host) || TIER3_OUTLETS.test(out)) return { tier: "tier3", weight: 0.4, host };
-  if (TIER4_HOSTS.test(host) || TIER4_OUTLETS.test(out)) return { tier: "tier4", weight: 0.1, host };
   // unknown news domain — treat as tier3 if it looks like a news host, else tier4
   if (host && /\.(com|com\.br|org|org\.br|net|gov\.br|jus\.br|leg\.br)$/i.test(host)) {
     return { tier: "tier3", weight: 0.4, host };
