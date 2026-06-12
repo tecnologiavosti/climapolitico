@@ -272,8 +272,9 @@ DATA DO PICO: ${peakDate}
 JANELA: ${wStart.toISOString().slice(0,10)} → ${wEnd.toISOString().slice(0,10)}
 PICO DE MENÇÕES: ${peakMentions ?? "n/d"}
 MODO OBRIGATÓRIO: ${responseMode}
-FONTES FORTES: ${strongSources}
-FONTES FRACAS: ${weakSources}
+FONTES FORTES (total): ${strongSources}
+FONTES FORTES INDEPENDENTES (domínios distintos): ${independentStrongSources}
+FONTES FRACAS (redes sociais): ${weakSources}
 CONFIANÇA SEMÂNTICA: ${semanticConfidence.toFixed(2)}
 CONFIANÇA DE ENTIDADES: ${entityConfidence.toFixed(2)}
 CONFIANÇA DE EVIDÊNCIA EXTERNA: ${externalEvidenceConfidence.toFixed(2)}
@@ -293,9 +294,12 @@ ${external_evidence.slice(0,15).map((e,i)=>`${i+1}. [${e.source_strength.toUpper
 
 Responda em JSON estrito com este schema:
 {
-  "event_title": "MODE A: título factual citado por fonte forte; MODE B: título probabilístico do padrão; MODE C: Causa indeterminada",
-  "event_summary": "MODE A: o que aconteceu segundo fonte forte; MODE B/C: padrão observado sem afirmar acontecimento factual",
-  "root_cause": "explicação da causa do pico, respeitando o modo obrigatório",
+  "category": "STF | TSE | Operação PF | CPI | Julgamento | Escândalo | Debate | Eleições | Outros | Indeterminado",
+  "title": "MODE A: título factual citado por >=2 fontes fortes; MODE B: título probabilístico; MODE C: 'Causa indeterminada'",
+  "summary": "MODE A: o que aconteceu segundo fontes fortes; MODE B/C: padrão observado sem afirmar acontecimento factual",
+  "confidence": 0.0,
+  "shouldDisplay": true,
+  "root_cause": "explicação respeitando o modo obrigatório",
   "main_networks": ["..."],
   "main_entities": ["pessoas, instituições ou termos mais relevantes"],
   "sentiment_summary": "resumo qualitativo do sentimento das redes"
