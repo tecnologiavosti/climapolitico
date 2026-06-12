@@ -233,9 +233,30 @@ export default function RadarPolitico() {
         </div>
       </header>
 
+      {healthSummary && (
+        <div className="flex items-center justify-between border rounded-md px-3 py-2 text-xs bg-card">
+          <div className="flex items-center gap-2">
+            <span
+              className={`px-2 py-0.5 rounded font-medium ${
+                healthSummary.status === "OK"
+                  ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                  : healthSummary.status === "WARNING"
+                  ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                  : "bg-red-500/15 text-red-700 dark:text-red-400"
+              }`}
+            >
+              Pipeline {healthSummary.status}
+            </span>
+            <span className="text-muted-foreground">
+              {healthSummary.found} / meta mínima {healthSummary.min} eventos (ano corrente)
+            </span>
+          </div>
+        </div>
+      )}
+
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <KpiCard label="Eventos" value={kpis.total} />
-        <KpiCard label="Alta relevância" value={kpis.grandes} hint=">75 importância" />
+        <KpiCard label="Alta relevância" value={kpis.grandes} hint="≥70 importância" />
         <KpiCard label="Institucional" value={kpis.institucional} hint="STF · TSE · PF" />
         <KpiCard label="Alta repercussão" value={kpis.altaRepercussao} hint="social ≥ 60" />
       </section>
