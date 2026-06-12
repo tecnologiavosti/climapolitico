@@ -269,22 +269,35 @@ function coverageQuality(totalEvidence: number, distinctOutlets: number): Covera
 }
 
 // Categoria do evento para os filtros da timeline histórica.
-function categoryOf(evt: { name?: string; type?: string; description?: string }): string {
-  const text = normalize(`${evt.type || ""} ${evt.name || ""} ${evt.description || ""}`);
-  if (/\bdebate\b/.test(text)) return "debate";
-  if (/\beleicao|eleicoes|primeiro turno|segundo turno|posse presidencial\b/.test(text)) return "eleicao";
-  if (/\boperacao|policia federal|\bpf\b|busca e apreensao\b/.test(text)) return "operacao_pf";
-  if (/\bstf|supremo tribunal\b/.test(text)) return "stf";
-  if (/\btse|tribunal superior eleitoral|inelegibilidade|cassacao\b/.test(text)) return "tse";
-  if (/\bcpi\b/.test(text)) return "cpi";
-  if (/\bjulgamento|condenacao|absolvicao|sentenca\b/.test(text)) return "julgamento";
-  if (/\bprisao|preso|detido|indiciamento\b/.test(text)) return "prisao";
-  if (/\bescandalo|denuncia|corrupcao|rachadinha|propina|impeachment\b/.test(text)) return "escandalo";
-  if (/\beconomia|inflacao|dolar|juros|selic|\bpib\b|fiscal|tributaria|imposto|orcamento\b/.test(text)) return "economia";
-  if (/\binternacional|exterior|brics|\bonu\b|\botan\b|biden|trump|putin|china|\beua\b|argentina|venezuela|cupula\b/.test(text)) return "internacional";
-  if (/\bgoverno|ministr|planalto|reforma|politica publica|politicas publicas|saude publica|educacao\b/.test(text)) return "governo";
-  if (/\bentrevista|sabatina|roda viva|jornal nacional\b/.test(text)) return "entrevista";
-  if (/\bdiscurso|pronunciamento|coletiva|declaracao|polemic|controvers/.test(text)) return "declaracoes";
+// Combina TODOS os campos textuais disponíveis (nome, tipo, descrição, motivo, what/why,
+// participantes, keywords, impacto político, títulos de fontes externas, outlets e termos frequentes)
+// para garantir que todo pico receba uma categoria — não depende só de cobertura externa.
+function categoryOf(evt: any): string {
+  const parts: string[] = [
+    evt?.name, evt?.type, evt?.description, evt?.motivo,
+    evt?.what_happened, evt?.why_happened, evt?.political_impact,
+    evt?.electoral_impact, evt?.aftermath,
+    Array.isArray(evt?.keywords) ? evt.keywords.join(" ") : "",
+    Array.isArray(evt?.participants) ? evt.participants.join(" ") : "",
+    Array.isArray(evt?.outlet_names) ? evt.outlet_names.join(" ") : "",
+    Array.isArray(evt?.top_terms) ? evt.top_terms.join(" ") : "",
+    Array.isArray(evt?.entities) ? evt.entities.join(" ") : "",
+    Array.isArray(evt?.sources)
+      ? evt.sources.map((s: any) => `${s?.title || ""} ${s?.name || ""}`).join(" ")
+      : "",
+  ];
+  const text = normalize(parts.filter(Boolean).join(" "));
+
+  // Ordem importa: categorias mais específicas primeiro.
+  if (/\bpolicia federal|\bpf\b|operacao\b|busca e apreensao|mandado de busca|deflagrou|deflagrada/.test(text)) return "operacao_pf";
+  if (/\bstf\b|supremo tribunal|alexandre de moraes|gilmar mendes|barroso|dias toffoli|fachin|carmen lucia|cristiano zanin|nunes marques/.test(text)) return "stf";
+  if (/\btse\b|tribunal superior eleitoral|registro de candidatura|inelegibilidade|cassacao de mandato|cassacao do registro/.test(text)) return "tse";
+  if (/\bcpi\b|comissao parlamentar|comissao de inquerito|senado investigando|requerimento de cpi/.test(text)) return "cpi";
+  if (/\bjulgamento|condenacao|condenado|absolvicao|absolvido|sentenca|decisao judicial|acordao|pena de \d/.test(text)) return "julgamento";
+  if (/\bprisao|preso|detido|indiciamento|indiciado|cumprimento de pena/.test(text)) return "prisao";
+  if (/\bescandalo|corrupcao|propina|desvio de|denuncia|rachadinha|caixa 2|lavagem de dinheiro|impeachment/.test(text)) return "escandalo";
+  if (/\bdebate\b|sabatina|confronto entre candidatos|debate presidencial|debate eleitoral/.test(text)) return "debate";
+  if (/\beleicao|eleicoes|campanha eleitoral|votacao|urnas|primeiro turno|segundo turno|posse presidencial|comicio/.test(text)) return "eleicao";
   return "outros";
 }
 
