@@ -313,6 +313,29 @@ const CATEGORY_RULES: Array<{ id: string; threshold: number; terms: Array<{ re: 
     { re: /\b(datafolha|ipec|ibope|quaest)\b/i, w: 2 }, { re: /\bcampanha\b/i, w: 1 },
     { re: /\b(segundo|primeiro) turno\b/i, w: 2 }, { re: /\b(candidato|candidatura)\b/i, w: 1 },
   ]},
+  { id: "congresso", threshold: 2, terms: [
+    { re: /\b(camara dos deputados|senado federal|congresso nacional)\b/i, w: 3 },
+    { re: /\b(votacao|aprovacao|sancao|veto)\b/i, w: 1 },
+    { re: /\b(projeto de lei|pec|medida provisoria|requerimento)\b/i, w: 2 },
+    { re: /\b(plenario|comissao mista|liderança do governo)\b/i, w: 1 },
+  ]},
+  { id: "executivo", threshold: 2, terms: [
+    { re: /\b(planalto|palacio do planalto|presidencia da republica)\b/i, w: 3 },
+    { re: /\b(decreto presidencial|medida provisoria|reforma ministerial|ministro de estado)\b/i, w: 2 },
+    { re: /\b(posse presidencial|pronunciamento|cadeia nacional)\b/i, w: 2 },
+    { re: /\b(governo federal|esplanada dos ministerios)\b/i, w: 1 },
+  ]},
+  { id: "economia", threshold: 2, terms: [
+    { re: /\b(pib|inflacao|ipca|igp|selic|copom|cambio|dolar|bolsa|ibovespa|fiscal|arcabouco)\b/i, w: 2 },
+    { re: /\b(banco central|fazenda|ministerio da fazenda|haddad|reforma tributaria)\b/i, w: 2 },
+    { re: /\b(juros|recessao|crescimento economico|desemprego|emprego)\b/i, w: 1 },
+  ]},
+  { id: "internacional", threshold: 2, terms: [
+    { re: /\b(g20|brics|onu|otan|mercosul|cupula)\b/i, w: 3 },
+    { re: /\b(eua|estados unidos|china|russia|ucrania|israel|argentina|venezuela|uniao europeia)\b/i, w: 1 },
+    { re: /\b(diplomacia|tratado|acordo bilateral|sancoes internacionais|embaixad)\b/i, w: 2 },
+    { re: /\b(visita oficial|reuniao bilateral|chanceler|itamaraty)\b/i, w: 2 },
+  ]},
 ];
 
 export function classifyCategory(...textParts: Array<string | null | undefined>): string {
