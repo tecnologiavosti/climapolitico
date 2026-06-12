@@ -190,6 +190,15 @@ interface PeakCause {
   event_summary: string;
   root_cause: string;
   confidence: number;
+  // Enterprise v2 fields
+  cause?: string;
+  why_peak?: string;
+  evidence_quality?: "strong" | "moderate" | "weak" | "insufficient";
+  sentiment?: number; // -1..+1
+  enterprise_score?: number;
+  enterprise_band?: "confirmado" | "provavel" | "fraco" | "indeterminado";
+  score_components?: { coverage: number; diversity: number; consensus: number; significance: number };
+  key_terms?: string[];
   main_networks: string[];
   main_entities: string[];
   top_keywords?: Array<{ term: string; count: number }>;
@@ -200,6 +209,7 @@ interface PeakCause {
   external_evidence?: Array<{ title: string; url: string; outlet: string; publishedAt?: string; source_strength?: "strong" | "weak" }>;
   fallback_text?: string | null;
 }
+
 
 export default function EventReport() {
   const { user } = useAuth();
