@@ -12,7 +12,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 import { rssNewsSearch, gdeltSearch, dedupePublications, type ExternalPublication } from "../_shared/external-collector.ts";
-import { confidenceFromSources as pipelineConfidence, classifyCategory as pipelineCategory, classifySource as pipelineClassifySource, categoryFromSources } from "../_shared/peak-pipeline.ts";
+import { confidenceFromSources as pipelineConfidence, classifyCategory as pipelineCategory, classifySource as pipelineClassifySource, categoryFromSources, computeEnterpriseConfidence, significanceFromCategory } from "../_shared/peak-pipeline.ts";
 
 const CATEGORY_LABEL: Record<string, string> = {
   stf: "STF", tse: "TSE", operacoes_pf: "Operações PF", cpi: "CPI",
