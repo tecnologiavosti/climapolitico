@@ -375,15 +375,32 @@ Responda em JSON estrito com este schema:
     const safeRootCause = responseMode === "CONFIRMED_EVENT"
       ? (ai?.root_cause || "")
       : `${modeFallback}${topTermsList ? ` Principais termos associados: ${topTermsList}.` : ""}`;
+    // Domain-forced category: when ≥3 strong sources, prefer the institution
+    // that dominates the URL list over a weak keyword guess.
+    const forcedCategoryId = strongSources >= 3
+      ? categoryFromSources(classifiedPubs.filter((p) => p.strength === "strong").map((p) => p.pub.url))
+      : null;
+    const aiCategoryRaw = ai?.category ? String(ai.category) : null;
     const safeCategory = responseMode === "UNKNOWN_TRIGGER"
       ? "Indeterminado"
-      : (ai?.category || "Outros");
+      : (forcedCategoryId ? CATEGORY_LABEL[forcedCategoryId] : (aiCategoryRaw || "Outros"));
+
+    // Deterministic fallback summary using the top-3 strong headlines when AI failed.
+    const topStrongHeadlines = classifiedPubs
+      .filter((p) => p.strength === "strong")
+      .slice(0, 3)
+      .map((p) => p.pub.title)
+      .filter(Boolean);
+    const headlineFallback = topStrongHeadlines.length
+      ? `Cobertura registrada: ${topStrongHeadlines.map((t) => `“${t}”`).join("; ")}.`
+      : "";
+
     const shouldDisplayFinal = responseMode === "UNKNOWN_TRIGGER"
       ? false
       : (typeof ai?.shouldDisplay === "boolean" ? ai.shouldDisplay : shouldDisplay);
     const fallback_text = lowConfidence
       ? `${unknownText} Principais termos associados nas redes monitoradas: ${topTermsList || "—"}.`
-      : null;
+      : (headlineFallback || null);
 
     console.log(JSON.stringify({
       tag: "resolve_peak_cause_grounding",
