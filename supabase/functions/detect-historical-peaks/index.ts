@@ -1132,14 +1132,25 @@ serve(async (req) => {
     // === FASE 5: ANÁLISE IA — DESABILITADA NA DETECÇÃO ===
     // A análise textual de cada pico é executada sob demanda (botão "Análise IA do pico"),
     // nunca dentro deste pipeline, para evitar timeouts e impedir invenção de fatos.
-    console.log("[9] ai enrichment skipped (deferred to on-demand)");
+    logStage("chamada_ia", { safe_mode: safeMode, timed_out: timedOut(), max_ai_records: MAX_AI_RECORDS });
+    console.log("[detect-historical-peaks] ai enrichment skipped (deferred to on-demand)");
     for (const ev of sanitizedEvents as any[]) {
       ev.analysis_source = ev.has_external_evidence ? "external_evidence" : "internal_ssot";
-      ev.analysis_status = cleanText(ev.what_happened) ? "success" : "pending_on_demand";
+      if (safeMode || timedOut()) {
+        ev.analysis_status = "safe_mode_keyword_summary";
+        ev.analysis = safeAnalysisFromKeywords(ev);
+      } else {
+        ev.analysis_status = cleanText(ev.what_happened) ? "success" : "pending_on_demand";
+        ev.analysis = cleanText(ev.what_happened)
+          ? { cause: safeSlice(cleanText(ev.what_happened), 240), confidence: Math.min(80, Number(ev.political_relevance ?? 0)) }
+          : { cause: "Análise indisponível", confidence: 0 };
+      }
     }
-    console.log("[10] ai enrichment finished");
+    console.log("[detect-historical-peaks] ai enrichment finished");
 
+    logStage("retorno_final", { final_peaks: sanitizedEvents.length });
     const response = new Response(JSON.stringify({
+      success: true,
       events: sanitizedEvents,
       total_detected,
       valid_peaks: sanitizedEvents.length,
@@ -1151,19 +1162,21 @@ serve(async (req) => {
       discovered_count: discovered.length,
       estimated_reach: estimatedReachOf(pubs),
       external_timeline: externalTimeline,
+      safe_mode: safeMode,
+      timed_out: timedOut(),
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    console.log("[11] response sent");
+    console.log("[detect-historical-peaks] response sent");
     console.timeEnd("detect-historical-peaks");
     return response;
 
   } catch (error) {
     const err = error as Error;
-    console.error("[detect-historical-peaks] fatal:", err?.message, err?.stack);
+    console.error("[detect-historical-peaks] fatal:", { stage, message: err?.message, stack: err?.stack });
     try { console.timeEnd("detect-historical-peaks"); } catch { /* noop */ }
     return new Response(JSON.stringify({
-      error: true,
-      message: err?.message || String(error),
-      stack: err?.stack || null,
+      success: false,
+      stage,
+      error: err?.message || String(error),
     }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
