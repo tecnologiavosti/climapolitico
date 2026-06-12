@@ -797,6 +797,10 @@ Responda APENAS JSON válido:
         outlet_names: outletNames,
         coverage_quality: coverageQuality(totalEvidence, distinctOutlets),
         category: categoryOf(evt),
+        ssot_z_score: typeof evt._ssot_z === "number" ? evt._ssot_z : null,
+        ssot_baseline_volume: typeof evt._ssot_baseline === "number" ? evt._ssot_baseline : null,
+        ssot_peak_volume: typeof evt._ssot_peak === "number" ? evt._ssot_peak : null,
+        external_score: Math.round(score),
         sources: evPubs.map((p) => ({ name: p.outlet, url: p.url, region: p.outletRegion, publishedAt: p.publishedAt || null, title: cleanText(p.title), kind: classifyPub(p) })),
       };
     }).filter((evt: any) => {
