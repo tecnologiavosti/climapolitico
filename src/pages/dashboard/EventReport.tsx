@@ -201,6 +201,7 @@ export default function EventReport() {
   const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [category, setCategory] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [causes, setCauses] = useState<Record<string, PeakCause>>({});
   const [causeLoading, setCauseLoading] = useState<Record<string, boolean>>({});
   const [causeError, setCauseError] = useState<Record<string, string>>({});
