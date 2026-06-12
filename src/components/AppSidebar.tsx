@@ -111,7 +111,7 @@ const groups: NavGroup[] = [
     defaultOpen: true,
     items: [
       { title: "Análise de Sentimento", url: "/dashboard/rejection-analysis", icon: Heart, tip: "Entenda o tom da conversa: positivo, neutro ou negativo." },
-      { title: "Picos de Menções", url: "/dashboard/pico-mencao", icon: Calendar, tip: "Momentos com volume incomum de menções." },
+      { title: "Radar Político", url: "/dashboard/radar-politico", icon: Calendar, tip: "Eventos políticos reais detectados externamente." },
       { title: "Mapa de Aceitação", url: "/dashboard/regional-analysis", icon: MapPinned, tip: "Performance por região do Brasil." },
       { title: "Comparação de Candidatos", url: "/dashboard/candidate-comparison", icon: GitCompareArrows, tip: "Compare candidatos lado a lado." },
     ],
