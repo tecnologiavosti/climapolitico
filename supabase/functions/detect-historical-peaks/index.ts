@@ -10,6 +10,8 @@ import {
   confidenceFromSources as pipelineConfidence,
   classifyCategory as pipelineCategory,
   computeRelevance as pipelineRelevance,
+  detectHybridSpikes,
+  type SpikeSignal,
 } from "../_shared/peak-pipeline.ts";
 
 const corsHeaders = {
