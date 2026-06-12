@@ -226,7 +226,7 @@ export default function EventReport() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="md:col-span-2">
               <label className="text-xs font-medium text-muted-foreground">Candidato</label>
-              <Select value={candidateId} onValueChange={setCandidateId}>
+              <Select value={candidateId} onValueChange={(v) => { setCandidateId(v); setCandidateName(candidates?.find((c)=>c.id===v)?.full_name || ""); }}>
                 <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                 <SelectContent>
                   {candidates?.map((c) => (
