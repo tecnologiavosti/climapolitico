@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const scopedUserId = isServiceRole ? (body?.user_id ?? null) : userId;
+    const scopedUserId = (isServiceRole || isCron) ? (body?.user_id ?? null) : userId;
     const candidateIds: string[] | null = Array.isArray(body?.candidate_ids) ? body.candidate_ids : null;
 
     const maxAgeHours = Math.min(Math.max(Number(body?.max_age_hours) || 72, 6), 24 * 14);
