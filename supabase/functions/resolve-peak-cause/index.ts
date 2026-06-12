@@ -369,7 +369,8 @@ Responda em JSON estrito com este schema:
       : responseMode === "PROBABLE_NARRATIVE"
         ? (ai?.title || `Narrativa provável: ${topicLabel}`)
         : "Causa indeterminada";
-    const safeSummary = responseMode === "CONFIRMED_EVENT"
+    // Will append headline fallback after it's defined below.
+    let safeSummary = responseMode === "CONFIRMED_EVENT"
       ? (ai?.summary || ai?.event_summary || "")
       : modeFallback;
     const safeRootCause = responseMode === "CONFIRMED_EVENT"
