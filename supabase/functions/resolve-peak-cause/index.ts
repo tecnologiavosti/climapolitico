@@ -386,6 +386,7 @@ Responda em JSON estrito com este schema:
 
     const out = {
       response_mode: responseMode,
+      status: pipelineStatus,
       category: safeCategory,
       title: safeTitle,
       summary: safeSummary,
