@@ -422,6 +422,11 @@ export default function EventReport() {
                             Relevância {ev.relevance_score}/100{ev.relevance_band ? ` · ${RELEVANCE_BAND_LABEL[ev.relevance_band]}` : ""}
                           </Badge>
                         ) : null}
+                        {Array.isArray(ev.signals) && ev.signals.length > 0 ? (
+                          <Badge variant="outline" className="text-[10px] font-normal border-primary/40 text-primary">
+                            Sinais: {ev.signals.map((s) => SIGNAL_LABEL[s] || s).join(" · ")}
+                          </Badge>
+                        ) : null}
                         {typeof ev.trusted_sources_count === "number" && ev.trusted_sources_count > 0 ? (
                           <Badge variant="outline" className="text-[10px] font-normal border-blue-500/40 text-blue-600 dark:text-blue-400">
                             {ev.trusted_sources_count} fonte{ev.trusted_sources_count === 1 ? "" : "s"} confiáve{ev.trusted_sources_count === 1 ? "l" : "is"}
