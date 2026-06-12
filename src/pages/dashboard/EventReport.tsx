@@ -132,6 +132,7 @@ const YEAR_PRESETS = [
 ];
 
 interface PeakCause {
+  response_mode?: "CONFIRMED_EVENT" | "PROBABLE_NARRATIVE" | "UNKNOWN_TRIGGER";
   event_title: string;
   event_summary: string;
   root_cause: string;
@@ -143,7 +144,7 @@ interface PeakCause {
   top_domains?: Array<{ domain: string; count: number }>;
   sentiment_summary: string;
   internal_mentions?: number;
-  external_evidence?: Array<{ title: string; url: string; outlet: string; publishedAt?: string }>;
+  external_evidence?: Array<{ title: string; url: string; outlet: string; publishedAt?: string; source_strength?: "strong" | "weak" }>;
   fallback_text?: string | null;
 }
 
@@ -533,11 +534,16 @@ function Section({ title, body }: { title: string; body: string }) {
 function PeakCauseView({ cause }: { cause: PeakCause }) {
   const conf = Math.round((cause.confidence || 0) * 100);
   const confColor = conf >= 60 ? "text-emerald-600 dark:text-emerald-400" : conf >= 30 ? "text-amber-600 dark:text-amber-400" : "text-zinc-500";
+  const modeLabel = cause.response_mode === "CONFIRMED_EVENT"
+    ? "Evento confirmado"
+    : cause.response_mode === "PROBABLE_NARRATIVE"
+      ? "Narrativa provável"
+      : "Causa indeterminada";
   return (
     <div className="space-y-4 rounded-md border bg-primary/5 p-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex-1 min-w-0">
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Causa provável do pico</p>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{modeLabel}</p>
           <p className="text-base font-semibold leading-snug">{cause.event_title}</p>
         </div>
         <Badge variant="outline" className={`text-xs ${confColor}`}>Confiança {conf}%</Badge>
