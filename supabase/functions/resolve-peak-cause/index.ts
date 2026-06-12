@@ -222,12 +222,21 @@ Deno.serve(async (req) => {
     const classifiedPubs = pubs.map((p) => ({ pub: p, strength: classifyExternalSource(p) }));
     const strongSources = classifiedPubs.filter((p) => p.strength === "strong").length;
     const weakSources = classifiedPubs.filter((p) => p.strength === "weak").length;
+    // Independent strong sources = distinct domains classified as strong
+    const independentStrongDomains = new Set(
+      classifiedPubs
+        .filter((p) => p.strength === "strong")
+        .map((p) => hostOf(p.pub.url || ""))
+        .filter(Boolean),
+    );
+    const independentStrongSources = independentStrongDomains.size;
     const semanticConfidence = calculateSemanticConfidence(evidence, interactions.length);
     const entityConfidence = calculateEntityConfidence(evidence, interactions.length);
-    const externalEvidenceConfidence = clamp01(Math.min(1, strongSources / 3) * 0.85 + Math.min(1, weakSources / 8) * 0.15);
-    const responseMode: ResponseMode = strongSources >= 1
+    const externalEvidenceConfidence = clamp01(Math.min(1, independentStrongSources / 3) * 0.85 + Math.min(1, weakSources / 8) * 0.15);
+    // NEW RULE: require >=2 independent strong sources to confirm an event.
+    const responseMode: ResponseMode = independentStrongSources >= 2
       ? "CONFIRMED_EVENT"
-      : semanticConfidence >= 0.75
+      : semanticConfidence >= 0.75 && independentStrongSources >= 1
         ? "PROBABLE_NARRATIVE"
         : "UNKNOWN_TRIGGER";
     const computedConfidence = Math.round(
@@ -237,24 +246,25 @@ Deno.serve(async (req) => {
         externalEvidenceConfidence * 0.35,
       ) * 100,
     ) / 100;
-    const finalConfidence = strongSources === 0 ? Math.min(computedConfidence, 0.70) : computedConfidence;
+    const finalConfidence = independentStrongSources < 2 ? Math.min(computedConfidence, 0.70) : computedConfidence;
+    const shouldDisplay = responseMode !== "UNKNOWN_TRIGGER";
 
     const external_evidence = classifiedPubs.map(({ pub, strength }) => ({
       title: pub.title, url: pub.url, outlet: pub.outlet, publishedAt: pub.publishedAt, source_strength: strength,
     }));
 
     // ---------- STAGE 3: AI explanation ----------
-    const systemMsg = `Você é um analista político brasileiro. Sua tarefa é EXPLICAR a causa de um pico de menções a um candidato.
-REGRAS CRÍTICAS:
-- Baseie-se APENAS nas evidências fornecidas (internas e externas).
-- NUNCA invente eventos, datas, prisões, operações, CPIs ou decisões judiciais que não estejam nas evidências.
-- Do not invent events.
-- If evidence is insufficient, explicitly say uncertainty.
-- Never convert correlated terms into factual claims.
-- Sem STRONG_EXTERNAL_SOURCE, é PROIBIDO afirmar fatos como reunião, decisão, operação, prisão, CPI, acordo, denúncia ou encontro. Use linguagem probabilística ou diga que a causa é indeterminada.
-- MODE A CONFIRMED_EVENT: somente se houver fonte forte; pode afirmar o evento explicitamente citado pelas fontes.
-- MODE B PROBABLE_NARRATIVE: sem fonte forte e com sinal semântico consistente; use "os dados sugerem", "parece relacionado", "não encontramos confirmação externa suficiente".
-- MODE C UNKNOWN_TRIGGER: diga que não foi possível identificar com confiança a causa exata do pico.
+    const systemMsg = `Você é um analista político factual.
+
+IMPORTANTE:
+- Nunca invente eventos.
+- Nunca infira encontros, decisões ou declarações sem evidência externa.
+- Use APENAS as evidências fornecidas.
+- Se houver menos de 2 fontes confiáveis independentes (domínios distintos de veículos jornalísticos ou órgãos oficiais), responda obrigatoriamente com category="Indeterminado", title="Causa indeterminada", shouldDisplay=false.
+- Redes sociais (Instagram, Facebook, X, TikTok, YouTube, Telegram, Threads) NÃO contam como fonte confiável.
+- MODE A CONFIRMED_EVENT (>=2 fontes fortes independentes): pode afirmar o evento citado pelas fontes.
+- MODE B PROBABLE_NARRATIVE (1 fonte forte + sinal semântico forte): use linguagem probabilística ("os dados sugerem", "parece relacionado").
+- MODE C UNKNOWN_TRIGGER: responda "Causa indeterminada".
 - Responda APENAS em JSON válido, em português brasileiro.`;
 
     const userPrompt = `CANDIDATO: ${candidateName}
@@ -262,8 +272,9 @@ DATA DO PICO: ${peakDate}
 JANELA: ${wStart.toISOString().slice(0,10)} → ${wEnd.toISOString().slice(0,10)}
 PICO DE MENÇÕES: ${peakMentions ?? "n/d"}
 MODO OBRIGATÓRIO: ${responseMode}
-FONTES FORTES: ${strongSources}
-FONTES FRACAS: ${weakSources}
+FONTES FORTES (total): ${strongSources}
+FONTES FORTES INDEPENDENTES (domínios distintos): ${independentStrongSources}
+FONTES FRACAS (redes sociais): ${weakSources}
 CONFIANÇA SEMÂNTICA: ${semanticConfidence.toFixed(2)}
 CONFIANÇA DE ENTIDADES: ${entityConfidence.toFixed(2)}
 CONFIANÇA DE EVIDÊNCIA EXTERNA: ${externalEvidenceConfidence.toFixed(2)}
@@ -283,9 +294,12 @@ ${external_evidence.slice(0,15).map((e,i)=>`${i+1}. [${e.source_strength.toUpper
 
 Responda em JSON estrito com este schema:
 {
-  "event_title": "MODE A: título factual citado por fonte forte; MODE B: título probabilístico do padrão; MODE C: Causa indeterminada",
-  "event_summary": "MODE A: o que aconteceu segundo fonte forte; MODE B/C: padrão observado sem afirmar acontecimento factual",
-  "root_cause": "explicação da causa do pico, respeitando o modo obrigatório",
+  "category": "STF | TSE | Operação PF | CPI | Julgamento | Escândalo | Debate | Eleições | Outros | Indeterminado",
+  "title": "MODE A: título factual citado por >=2 fontes fortes; MODE B: título probabilístico; MODE C: 'Causa indeterminada'",
+  "summary": "MODE A: o que aconteceu segundo fontes fortes; MODE B/C: padrão observado sem afirmar acontecimento factual",
+  "confidence": 0.0,
+  "shouldDisplay": true,
+  "root_cause": "explicação respeitando o modo obrigatório",
   "main_networks": ["..."],
   "main_entities": ["pessoas, instituições ou termos mais relevantes"],
   "sentiment_summary": "resumo qualitativo do sentimento das redes"
@@ -313,16 +327,22 @@ Responda em JSON estrito com este schema:
     const lowConfidence = responseMode === "UNKNOWN_TRIGGER";
     const modeFallback = responseMode === "UNKNOWN_TRIGGER" ? unknownText : probableText;
     const safeTitle = responseMode === "CONFIRMED_EVENT"
-      ? (ai?.event_title || `Pico de menções em ${peakDate}`)
+      ? (ai?.title || ai?.event_title || `Pico de menções em ${peakDate}`)
       : responseMode === "PROBABLE_NARRATIVE"
-        ? `Narrativa provável: ${topicLabel}`
+        ? (ai?.title || `Narrativa provável: ${topicLabel}`)
         : "Causa indeterminada";
     const safeSummary = responseMode === "CONFIRMED_EVENT"
-      ? (ai?.event_summary || "")
+      ? (ai?.summary || ai?.event_summary || "")
       : modeFallback;
     const safeRootCause = responseMode === "CONFIRMED_EVENT"
       ? (ai?.root_cause || "")
       : `${modeFallback}${topTermsList ? ` Principais termos associados: ${topTermsList}.` : ""}`;
+    const safeCategory = responseMode === "UNKNOWN_TRIGGER"
+      ? "Indeterminado"
+      : (ai?.category || "Outros");
+    const shouldDisplayFinal = responseMode === "UNKNOWN_TRIGGER"
+      ? false
+      : (typeof ai?.shouldDisplay === "boolean" ? ai.shouldDisplay : shouldDisplay);
     const fallback_text = lowConfidence
       ? `${unknownText} Principais termos associados nas redes monitoradas: ${topTermsList || "—"}.`
       : null;
@@ -333,24 +353,32 @@ Responda em JSON estrito com este schema:
       peakDate,
       response_mode: responseMode,
       strong_sources: strongSources,
+      independent_strong_sources: independentStrongSources,
       weak_sources: weakSources,
       semantic_confidence: semanticConfidence,
       entity_confidence: entityConfidence,
       external_evidence_confidence: externalEvidenceConfidence,
       final_confidence: finalConfidence,
+      should_display: shouldDisplayFinal,
     }));
 
     const out = {
       response_mode: responseMode,
+      category: safeCategory,
+      title: safeTitle,
+      summary: safeSummary,
+      confidence: finalConfidence,
+      shouldDisplay: shouldDisplayFinal,
+      // legacy fields kept for backward compatibility with UI
       event_title: safeTitle,
       event_summary: safeSummary,
       root_cause: safeRootCause,
-      confidence: finalConfidence,
       confidence_breakdown: {
         semanticConfidence,
         entityConfidence,
         externalEvidenceConfidence,
         strongSources,
+        independentStrongSources,
         weakSources,
       },
       main_networks: ai?.main_networks || evidence.top_networks.map((n) => n.network),
