@@ -432,20 +432,34 @@ async function calcSocialScore(supabase: any, candidateId: string, day: string):
   return Math.min(100, Math.round(score));
 }
 
-function computeImportance(opts: {
+// Importance v2 — fórmula aditiva com bonus institucional e cluster_size
+const INSTITUTIONAL_BONUS: { match: string; bonus: number }[] = [
+  { match: "stf.jus.br", bonus: 20 },
+  { match: "tse.jus.br", bonus: 20 },
+  { match: "pf.gov.br", bonus: 18 },
+  { match: "senado.leg.br", bonus: 15 },
+  { match: "camara.leg.br", bonus: 15 },
+  { match: "reuters.com", bonus: 12 },
+  { match: "bloomberg.com", bonus: 10 },
+];
+
+function computeImportanceV2(opts: {
   sourceCount: number;
-  institutionalCount: number;
+  clusterSize: number;
   socialScore: number;
   relevance: number;
+  domains: string[];
 }): number {
-  const sourceScore = Math.min(100, opts.sourceCount * 10);
-  const institutionalScore = Math.min(100, opts.institutionalCount * 25);
-  const importance =
-    0.30 * sourceScore +
-    0.25 * institutionalScore +
-    0.15 * opts.socialScore +
-    0.30 * opts.relevance;
-  return Math.round(Math.min(100, importance));
+  const sourceTerm = opts.sourceCount * 2;
+  const socialTerm = Math.log(opts.socialScore + 1) * 5;
+  const clusterTerm = opts.clusterSize * 1.5;
+  let institutionalBonus = 0;
+  for (const d of opts.domains) {
+    for (const ib of INSTITUTIONAL_BONUS) if (d.endsWith(ib.match)) institutionalBonus += ib.bonus;
+  }
+  const base = opts.relevance * 0.5; // ancora no julgamento da IA
+  const importance = base + sourceTerm + socialTerm + clusterTerm + institutionalBonus;
+  return Math.round(Math.min(100, Math.max(0, importance)));
 }
 
 Deno.serve(async (req) => {
