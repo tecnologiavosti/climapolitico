@@ -172,27 +172,87 @@ async function fetchGoogleNews(query: string, lookbackDays: number): Promise<New
 }
 
 // ---- RSS de grande imprensa + institucional (compartilhado entre candidatos) ----
-const RSS_FEEDS: { name: string; url: string }[] = [
-  { name: "Folha - Poder",        url: "https://feeds.folha.uol.com.br/poder/rss091.xml" },
-  { name: "Folha - Política",     url: "https://feeds.folha.uol.com.br/politica/rss091.xml" },
-  { name: "G1 - Política",        url: "https://g1.globo.com/rss/g1/politica/" },
-  { name: "UOL - Política",       url: "https://rss.uol.com.br/feed/politica.xml" },
-  { name: "CNN Brasil",           url: "https://www.cnnbrasil.com.br/feed/" },
-  { name: "Poder360",             url: "https://www.poder360.com.br/feed/" },
-  { name: "Metrópoles",           url: "https://www.metropoles.com/feed" },
-  { name: "Agência Brasil",       url: "https://agenciabrasil.ebc.com.br/rss/politica/feed.xml" },
-  { name: "CartaCapital",         url: "https://www.cartacapital.com.br/feed/" },
-  { name: "Correio Braziliense",  url: "https://www.correiobraziliense.com.br/rss/politica.xml" },
-  { name: "STF",                  url: "https://portal.stf.jus.br/RSS/?modulo=noticias" },
-  { name: "Senado",               url: "https://www12.senado.leg.br/noticias/ultimas/feed" },
-  { name: "Câmara",               url: "https://www.camara.leg.br/noticias/rss" },
-  { name: "Planalto",             url: "https://www.gov.br/planalto/pt-br/acompanhe-o-planalto/noticias/RSS" },
+// Tiers controlam TTL de cache: 1=5min, 2=20min, 3=60min
+const RSS_FEEDS: { name: string; url: string; tier: 1 | 2 | 3 }[] = [
+  // Tier 1 — Institucionais
+  { name: "STF",                  url: "https://portal.stf.jus.br/RSS/?modulo=noticias", tier: 1 },
+  { name: "TSE",                  url: "https://www.tse.jus.br/imprensa/noticias-tse/rss", tier: 1 },
+  { name: "STJ",                  url: "https://www.stj.jus.br/sites/portalp/Paginas/RSS/Noticias.aspx", tier: 1 },
+  { name: "Senado",               url: "https://www12.senado.leg.br/noticias/ultimas/feed", tier: 1 },
+  { name: "Câmara",               url: "https://www.camara.leg.br/noticias/rss", tier: 1 },
+  { name: "Planalto",             url: "https://www.gov.br/planalto/pt-br/acompanhe-o-planalto/noticias/RSS", tier: 1 },
+  { name: "Agência Brasil - Política", url: "https://agenciabrasil.ebc.com.br/rss/politica/feed.xml", tier: 1 },
+  { name: "Agência Brasil - Geral",    url: "https://agenciabrasil.ebc.com.br/rss/ultimasnoticias/feed.xml", tier: 1 },
+  { name: "Polícia Federal",      url: "https://www.gov.br/pf/pt-br/assuntos/noticias/RSS", tier: 1 },
+  { name: "CGU",                  url: "https://www.gov.br/cgu/pt-br/assuntos/noticias/RSS", tier: 1 },
+  { name: "TCU",                  url: "https://portal.tcu.gov.br/imprensa/noticias/rss.htm", tier: 1 },
+  { name: "Min. Justiça",         url: "https://www.gov.br/mj/pt-br/assuntos/noticias/RSS", tier: 1 },
+  { name: "Banco Central",        url: "https://www.bcb.gov.br/api/feed/pt-br/sitebcb/noticias", tier: 1 },
+  { name: "Receita Federal",      url: "https://www.gov.br/receitafederal/pt-br/assuntos/noticias/RSS", tier: 1 },
+  { name: "AGU",                  url: "https://www.gov.br/agu/pt-br/comunicacao/noticias/RSS", tier: 1 },
+  { name: "CNJ",                  url: "https://www.cnj.jus.br/feed/", tier: 1 },
+
+  // Tier 1 — Grandes jornais / TV
+  { name: "G1 - Política",        url: "https://g1.globo.com/rss/g1/politica/", tier: 1 },
+  { name: "G1 - Brasil",          url: "https://g1.globo.com/rss/g1/", tier: 1 },
+  { name: "O Globo - Política",   url: "https://oglobo.globo.com/rss.xml?secao=politica", tier: 1 },
+  { name: "UOL - Política",       url: "https://rss.uol.com.br/feed/politica.xml", tier: 1 },
+  { name: "UOL - Notícias",       url: "https://rss.uol.com.br/feed/noticias.xml", tier: 1 },
+  { name: "Folha - Poder",        url: "https://feeds.folha.uol.com.br/poder/rss091.xml" , tier: 1 },
+  { name: "Folha - Política",     url: "https://feeds.folha.uol.com.br/politica/rss091.xml", tier: 1 },
+  { name: "Estadão - Política",   url: "https://www.estadao.com.br/arc/outboundfeeds/rss/section/politica/", tier: 1 },
+  { name: "CNN Brasil",           url: "https://www.cnnbrasil.com.br/feed/", tier: 1 },
+  { name: "CNN Brasil - Política",url: "https://www.cnnbrasil.com.br/politica/feed/", tier: 1 },
+  { name: "Reuters Brasil",       url: "https://www.reuters.com/arc/outboundfeeds/rss/category/world/americas/?outputType=xml", tier: 1 },
+  { name: "Valor Econômico",      url: "https://valor.globo.com/rss/", tier: 1 },
+  { name: "Terra - Política",     url: "https://www.terra.com.br/rss/politica/", tier: 1 },
+  { name: "R7 - Política",        url: "https://noticias.r7.com/feed.xml", tier: 1 },
+  { name: "Band News",            url: "https://www.band.uol.com.br/rss/noticias.xml", tier: 1 },
+  { name: "SBT News",             url: "https://www.sbtnews.com.br/feed", tier: 1 },
+  { name: "Jovem Pan",            url: "https://jovempan.com.br/feed", tier: 1 },
+
+  // Tier 2 — Política / bastidores
+  { name: "Poder360",             url: "https://www.poder360.com.br/feed/", tier: 2 },
+  { name: "Metrópoles",           url: "https://www.metropoles.com/feed", tier: 2 },
+  { name: "Metrópoles - Política",url: "https://www.metropoles.com/politica/feed", tier: 2 },
+  { name: "Congresso em Foco",    url: "https://congressoemfoco.uol.com.br/feed/", tier: 2 },
+  { name: "JOTA",                 url: "https://www.jota.info/feed", tier: 2 },
+  { name: "Nexo",                 url: "https://www.nexojornal.com.br/rss", tier: 2 },
+  { name: "CartaCapital",         url: "https://www.cartacapital.com.br/feed/", tier: 2 },
+  { name: "Veja - Política",      url: "https://veja.abril.com.br/politica/feed", tier: 2 },
+  { name: "Exame",                url: "https://exame.com/feed/", tier: 2 },
+  { name: "InfoMoney",            url: "https://www.infomoney.com.br/feed/", tier: 2 },
+  { name: "Correio Braziliense",  url: "https://www.correiobraziliense.com.br/rss/politica.xml", tier: 2 },
+  { name: "Gazeta do Povo",       url: "https://www.gazetadopovo.com.br/feed/", tier: 2 },
+  { name: "IstoÉ",                url: "https://istoe.com.br/feed/", tier: 2 },
+  { name: "Brasil 247",           url: "https://www.brasil247.com/rss", tier: 2 },
+  { name: "Diário do Centro do Mundo", url: "https://www.diariodocentrodomundo.com.br/feed/", tier: 2 },
+  { name: "O Antagonista",        url: "https://oantagonista.com.br/feed/", tier: 2 },
+  { name: "Crusoé",               url: "https://crusoe.com.br/feed/", tier: 2 },
+
+  // Tier 2 — Economia / mercado
+  { name: "Money Times",          url: "https://www.moneytimes.com.br/feed/", tier: 2 },
+  { name: "Investing Brasil",     url: "https://br.investing.com/rss/news.rss", tier: 2 },
+  { name: "Suno Notícias",        url: "https://www.suno.com.br/noticias/feed/", tier: 2 },
+  { name: "NeoFeed",              url: "https://neofeed.com.br/feed/", tier: 2 },
+  { name: "Brazil Journal",       url: "https://braziljournal.com/feed/", tier: 2 },
+
+  // Tier 3 — Internacional
+  { name: "BBC Brasil",           url: "https://feeds.bbci.co.uk/portuguese/rss.xml", tier: 3 },
+  { name: "DW Brasil",            url: "https://rss.dw.com/rdf/rss-br-all", tier: 3 },
+  { name: "El País Brasil",       url: "https://brasil.elpais.com/rss/brasil/portada.xml", tier: 3 },
+  { name: "Al Jazeera",           url: "https://www.aljazeera.com/xml/rss/all.xml", tier: 3 },
+  { name: "The Guardian World",   url: "https://www.theguardian.com/world/rss", tier: 3 },
+  { name: "NYT World",            url: "https://rss.nytimes.com/services/xml/rss/nyt/World.xml", tier: 3 },
+  { name: "AP News - Politics",   url: "https://feeds.apnews.com/apf-politics", tier: 3 },
 ];
 
-const rssCache = new Map<string, NewsItem[]>();
+const TIER_TTL_MS: Record<1 | 2 | 3, number> = { 1: 5 * 60_000, 2: 20 * 60_000, 3: 60 * 60_000 };
+const rssCache = new Map<string, { items: NewsItem[]; expires: number }>();
 
-async function fetchRssFeed(name: string, url: string): Promise<NewsItem[]> {
-  if (rssCache.has(url)) return rssCache.get(url)!;
+async function fetchRssFeed(name: string, url: string, tier: 1 | 2 | 3): Promise<NewsItem[]> {
+  const cached = rssCache.get(url);
+  if (cached && cached.expires > Date.now()) return cached.items;
   try {
     const res = await timeout(fetch(url, { headers: { "User-Agent": UA } }), FETCH_TIMEOUT_MS);
     if (!res.ok) { rssCache.set(url, []); return []; }
