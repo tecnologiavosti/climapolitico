@@ -366,55 +366,41 @@ function relevanceFromEvidence(evt: any, pubs: ExternalPublication[], _mentions:
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 
-// Detecta picos estatísticos puros na série SSOT (localTimeline). z-score >= 2.5 sempre vira evento.
-// PEAK-FIRST detector: rolling 14d baseline + stddev, z>=2.5, clusters consecutive peak days.
+// Detecta picos estatísticos puros na série SSOT (localTimeline) com o detector híbrido:
+// combina z-score, momentum, burst (CUSUM) e anomaly (IQR). Picos = ≥2 sinais.
 function ssotPeakEvents(timeline: TimelinePoint[]): any[] {
   const points = (timeline || [])
-    .map((p) => ({ date: String(p.date).slice(0, 10), count: Number(p.count || 0) }))
+    .map((p) => ({ date: String(p.date).slice(0, 10), mentions: Number(p.count || 0) }))
     .filter((p) => p.date)
     .sort((a, b) => a.date.localeCompare(b.date));
   if (points.length < 5) return [];
 
-  const WINDOW = 14;
-  const Z_THRESHOLD = 2.5;
-  const counts = points.map((p) => p.count);
+  const hybrid = detectHybridSpikes(points, { minVolume: 20 });
 
-  // Marca cada dia como pico ou não, usando baseline rolling de 14 dias anteriores.
-  const flagged = points.map((p, i) => {
-    const slice = counts.slice(Math.max(0, i - WINDOW), i);
-    const base = slice.length >= 3 ? slice : counts.slice(0, Math.max(3, i)); // bootstrap inicial
-    const mean = base.length ? base.reduce((s, n) => s + n, 0) / base.length : 0;
-    const variance = base.length ? base.reduce((s, n) => s + (n - mean) ** 2, 0) / base.length : 0;
-    const stdev = Math.sqrt(variance) || Math.max(1, mean * 0.25);
-    const z = (p.count - mean) / stdev;
-    const minVolume = Math.max(10, mean + 2.5 * stdev);
-    const isPeak = (z >= Z_THRESHOLD || p.count >= minVolume) && p.count > mean;
-    return { ...p, mean, stdev, z, isPeak };
-  });
-
-  // Agrupa dias consecutivos (gap <= 1 dia) em um único evento (start..end).
-  const clusters: Array<{ start: string; end: string; peakDate: string; peakCount: number; baseline: number; z: number; days: number }> = [];
-  let cur: typeof clusters[number] | null = null;
-  for (let i = 0; i < flagged.length; i++) {
-    const f = flagged[i];
-    if (!f.isPeak) { if (cur) { clusters.push(cur); cur = null; } continue; }
-    const prevDate = cur ? new Date(`${cur.end}T00:00:00Z`).getTime() : 0;
-    const curDate = new Date(`${f.date}T00:00:00Z`).getTime();
-    const gapDays = cur ? (curDate - prevDate) / 86400000 : 0;
+  // Agrupa dias consecutivos (gap <= 2 dias) em um único evento (start..end).
+  type Cluster = { start: string; end: string; peakDate: string; peakCount: number; baseline: number; z: number; days: number; signals: Set<SpikeSignal> };
+  const clusters: Cluster[] = [];
+  let cur: Cluster | null = null;
+  for (const f of hybrid) {
+    if (!f.isSpike) { if (cur) { clusters.push(cur); cur = null; } continue; }
+    const prevTs = cur ? new Date(`${cur.end}T00:00:00Z`).getTime() : 0;
+    const curTs = new Date(`${f.date}T00:00:00Z`).getTime();
+    const gapDays = cur ? (curTs - prevTs) / 86400000 : 0;
     if (cur && gapDays <= 2) {
       cur.end = f.date;
       cur.days += 1;
-      if (f.count > cur.peakCount) { cur.peakDate = f.date; cur.peakCount = f.count; cur.z = f.z; cur.baseline = f.mean; }
+      for (const s of f.signals) cur.signals.add(s);
+      if (f.mentions > cur.peakCount) { cur.peakDate = f.date; cur.peakCount = f.mentions; cur.z = f.zscore; cur.baseline = f.baseline; }
     } else {
       if (cur) clusters.push(cur);
-      cur = { start: f.date, end: f.date, peakDate: f.date, peakCount: f.count, baseline: f.mean, z: f.z, days: 1 };
+      cur = { start: f.date, end: f.date, peakDate: f.date, peakCount: f.mentions, baseline: f.baseline, z: f.zscore, days: 1, signals: new Set(f.signals) };
     }
   }
   if (cur) clusters.push(cur);
 
   return clusters
-    .sort((a, b) => b.z - a.z || b.peakCount - a.peakCount)
-    .slice(0, 200)
+    .sort((a, b) => b.peakCount - a.peakCount || b.z - a.z)
+    .slice(0, 250)
     .map((c) => ({
       name: c.start === c.end
         ? `Pico de menções em ${c.start}`
@@ -422,8 +408,8 @@ function ssotPeakEvents(timeline: TimelinePoint[]): any[] {
       type: "pico_ssot",
       start_date: c.start,
       end_date: c.end,
-      description: `Volume anômalo detectado nas redes monitoradas (${c.days} dia(s); pico em ${c.peakDate} com ${c.peakCount} menções vs baseline ${Math.round(c.baseline)}; z-score ${c.z.toFixed(2)}).`,
-      motivo: "Anomalia estatística no volume de menções internas (baseline rolling 14d).",
+      description: `Volume anômalo detectado nas redes monitoradas (${c.days} dia(s); pico em ${c.peakDate} com ${c.peakCount} menções vs baseline ${Math.round(c.baseline)}; z-score ${c.z.toFixed(2)}; sinais: ${Array.from(c.signals).join(", ")}).`,
+      motivo: "Anomalia estatística no volume de menções internas (detector híbrido z+momentum+burst+anomaly).",
       keywords: [],
       sourceIndices: [],
       _ssot_z: Number(c.z.toFixed(2)),
@@ -431,8 +417,10 @@ function ssotPeakEvents(timeline: TimelinePoint[]): any[] {
       _ssot_peak: c.peakCount,
       _ssot_days: c.days,
       _ssot_peak_date: c.peakDate,
+      _ssot_signals: Array.from(c.signals),
     }));
 }
+
 
 // Busca a timeline SSOT direto em social_metrics_daily (servidor), agregando todas as redes.
 async function fetchSsotTimelineFromDb(
