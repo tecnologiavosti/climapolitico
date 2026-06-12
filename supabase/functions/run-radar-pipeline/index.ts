@@ -1,14 +1,13 @@
-// run-radar-pipeline
+// run-radar-pipeline (v2)
 // ============================================================================
-// Novo pipeline da aba "Radar Político" (substitui a antiga "Picos de Menções").
-//
-// Fluxo:
-//   1) Para cada candidato em escopo, buscar Google News RSS (pt-BR) com o nome
-//   2) Agrupar headlines por dia e por similaridade simples
-//   3) Pedir ao Gemini (Lovable AI Gateway) para classificar/filtrar/resumir
-//   4) Calcular social_score a partir de social_interactions (SSOT)
-//   5) Calcular importance composto e fazer upsert em political_events
-//   6) Popular sources_json (inline) + event_sources
+// Pipeline de eventos políticos reais via fontes externas.
+// Mudanças v2:
+//   - Aliases por candidato (não só full_name)
+//   - Múltiplas queries por candidato (alias + alias+contexto)
+//   - Blocklist de esporte/trivial ANTES da IA (token-saver + zero ruído)
+//   - Single-source aceito se vier de domínio institucional/grande imprensa
+//   - Filtro de relevância IA: descarta se relevance < 30
+//   - lookback até 365 dias
 // ============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -20,23 +19,74 @@ const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
 const UA = "Mozilla/5.0 (compatible; ClimaPoliticoBot/1.0; +https://climapolitico.com.br)";
 const FETCH_TIMEOUT_MS = 12_000;
-const MAX_ITEMS_PER_FEED = 80;
-const DEFAULT_LOOKBACK_DAYS = 14;
+const MAX_ITEMS_PER_FEED = 100;
+const DEFAULT_LOOKBACK_DAYS = 30;
 
 const CATEGORIES = [
-  "Eleições","STF","TSE","PF","CPI","Congresso","Economia",
+  "Eleições","STF","TSE","PF","CPI","Congresso","Executivo","Economia",
   "Escândalo","Prisão","Julgamento","Internacional","Outros",
 ];
 
 const INSTITUTIONAL_DOMAINS = [
   "stf.jus.br","tse.jus.br","senado.leg.br","camara.leg.br","gov.br",
   "pf.gov.br","cgu.gov.br","tcu.gov.br","justica.gov.br","planalto.gov.br",
+  "agenciabrasil.ebc.com.br",
 ];
 const MAJOR_NEWS_DOMAINS = [
-  "g1.globo.com","globo.com","uol.com.br","folha.uol.com.br","estadao.com.br",
-  "cnnbrasil.com.br","poder360.com.br","metropoles.com","veja.abril.com.br",
-  "reuters.com","oglobo.globo.com",
+  "g1.globo.com","globo.com","oglobo.globo.com","uol.com.br","folha.uol.com.br",
+  "estadao.com.br","cnnbrasil.com.br","poder360.com.br","metropoles.com",
+  "veja.abril.com.br","reuters.com","cartacapital.com.br","valor.globo.com",
+  "noticias.uol.com.br","band.uol.com.br","r7.com",
 ];
+
+// Blocklist (esporte / trivial)
+const BLOCK_KEYWORDS = [
+  "gol","seleção brasileira","copa","copa do mundo","libertadores","champions",
+  "ancelotti","neymar","vini jr","vinicius jr","real madrid","palmeiras","flamengo",
+  "corinthians","são paulo fc","santos fc","brasil x","jogo do brasil","placar",
+  "futebol","aniversário","parabéns","novela","bbb","big brother","cantora",
+  "morre cantor","morre ator","horóscopo","celebridade","fofoca","romance",
+];
+
+// Aliases por candidato (chave = nome normalizado lowercase sem acentos)
+const ALIAS_MAP: Record<string, string[]> = {
+  "luiz inacio lula da silva": ["Lula", "presidente Lula", "governo Lula", "Luiz Inácio Lula da Silva"],
+  "lula": ["Lula", "presidente Lula", "governo Lula"],
+  "jair bolsonaro": ["Jair Bolsonaro", "Bolsonaro", "ex-presidente Bolsonaro"],
+  "bolsonaro": ["Jair Bolsonaro", "Bolsonaro", "ex-presidente Bolsonaro"],
+  "flavio bolsonaro": ["Flávio Bolsonaro", "senador Flávio Bolsonaro"],
+  "flávio bolsonaro": ["Flávio Bolsonaro", "senador Flávio Bolsonaro"],
+  "eduardo bolsonaro": ["Eduardo Bolsonaro", "deputado Eduardo Bolsonaro"],
+  "tarcisio de freitas": ["Tarcísio de Freitas", "governador Tarcísio"],
+  "tarcísio de freitas": ["Tarcísio de Freitas", "governador Tarcísio"],
+  "tarcisio": ["Tarcísio de Freitas", "governador Tarcísio"],
+  "ratinho junior": ["Ratinho Junior", "governador do Paraná Ratinho"],
+  "ronaldo caiado": ["Ronaldo Caiado", "governador Caiado"],
+  "ciro gomes": ["Ciro Gomes"],
+  "lindbergh farias": ["Lindbergh Farias"],
+  "nikolas ferreira": ["Nikolas Ferreira"],
+  "michelle bolsonaro": ["Michelle Bolsonaro"],
+  "geraldo alckmin": ["Geraldo Alckmin", "vice-presidente Alckmin"],
+  "fernando haddad": ["Fernando Haddad", "ministro Haddad"],
+  "simone tebet": ["Simone Tebet", "ministra Tebet"],
+  "pacheco": ["Rodrigo Pacheco"],
+  "lira": ["Arthur Lira"],
+};
+
+function normalize(s: string): string {
+  return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+}
+
+function aliasesFor(fullName: string): string[] {
+  const key = normalize(fullName);
+  if (ALIAS_MAP[key]) return ALIAS_MAP[key];
+  // procura por sobrenome/última palavra
+  const parts = key.split(/\s+/);
+  for (const p of parts) if (ALIAS_MAP[p]) return ALIAS_MAP[p];
+  // fallback: nome completo + último sobrenome
+  const last = parts[parts.length - 1];
+  return [fullName, last.charAt(0).toUpperCase() + last.slice(1)];
+}
 
 interface NewsItem {
   title: string;
@@ -62,15 +112,20 @@ function classifyDomain(url: string): { domain: string; type: "institutional"|"n
     const u = new URL(url);
     const d = u.hostname.replace(/^www\./, "");
     if (INSTITUTIONAL_DOMAINS.some((id) => d.endsWith(id))) return { domain: d, type: "institutional" };
-    if (MAJOR_NEWS_DOMAINS.some((nd) => d.endsWith(nd))) return { domain: d, type: "news" };
     return { domain: d, type: "news" };
   } catch {
     return { domain: "unknown", type: "news" };
   }
 }
 
+function isBlocked(title: string): boolean {
+  const t = normalize(title);
+  return BLOCK_KEYWORDS.some((kw) => t.includes(normalize(kw)));
+}
+
 async function fetchGoogleNews(query: string, lookbackDays: number): Promise<NewsItem[]> {
-  const q = encodeURIComponent(`"${query}" when:${lookbackDays}d`);
+  const window = Math.min(lookbackDays, 365);
+  const q = encodeURIComponent(`"${query}" when:${window}d`);
   const url = `https://news.google.com/rss/search?q=${q}&hl=pt-BR&gl=BR&ceid=BR:pt-419`;
   try {
     const res = await timeout(fetch(url, { headers: { "User-Agent": UA } }), FETCH_TIMEOUT_MS);
@@ -86,6 +141,7 @@ async function fetchGoogleNews(query: string, lookbackDays: number): Promise<New
       const pub = stripTags((block.match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1]) || "");
       const src = stripTags((block.match(/<source[^>]*>([\s\S]*?)<\/source>/)?.[1]) || "");
       if (!title || !link) continue;
+      if (isBlocked(title)) continue;
       const { domain } = classifyDomain(link);
       items.push({
         title,
@@ -102,8 +158,7 @@ async function fetchGoogleNews(query: string, lookbackDays: number): Promise<New
 }
 
 function normalizeTitle(t: string): string {
-  return t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  return normalize(t).replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function clusterByDay(items: NewsItem[]): Map<string, NewsItem[]> {
@@ -111,8 +166,8 @@ function clusterByDay(items: NewsItem[]): Map<string, NewsItem[]> {
   for (const it of items) {
     const day = it.published_at.slice(0, 10);
     const normTitle = normalizeTitle(it.title);
-    const keyTokens = normTitle.split(" ").filter((w) => w.length > 4).slice(0, 4).sort().join("-");
-    const key = `${day}::${keyTokens}`;
+    const keyTokens = normTitle.split(" ").filter((w) => w.length > 4).slice(0, 3).sort().join("-");
+    const key = `${day}::${keyTokens || normTitle.slice(0, 30)}`;
     const arr = groups.get(key) ?? [];
     arr.push(it);
     groups.set(key, arr);
@@ -124,21 +179,23 @@ async function classifyCluster(headlines: string[], candidateName: string): Prom
   title: string;
   summary: string;
   category: string;
-  importance_signal: number;
-  is_relevant: boolean;
+  relevance: number;
 } | null> {
-  const prompt = `Analise estas manchetes de notícias brasileiras sobre "${candidateName}". Retorne SOMENTE um JSON com este formato:
-{"title": "...", "summary": "...", "category": "...", "importance_signal": 0-100, "is_relevant": true/false}
+  const prompt = `Notícias brasileiras sobre "${candidateName}". Determine se representa evento POLÍTICO relevante nacional.
 
-Regras:
-- title: título canônico curto (máx 90 chars)
-- summary: resumo de 1-2 frases em PT-BR
-- category: UMA de [${CATEGORIES.join(", ")}]
-- importance_signal: 0-100 (75+ para crise nacional, STF, PF, CPI, escândalo, prisão; 45-75 para decisão relevante; <45 para rotina)
-- is_relevant: false APENAS se for agenda comum, post viral sem evento, comício rotineiro
+Ignore: futebol, agenda comum, post viral, aniversário, novela, celebridade.
+
+Retorne SOMENTE JSON:
+{"title":"título canônico curto","summary":"resumo 1-2 frases PT-BR","category":"UMA de [${CATEGORIES.join(", ")}]","relevance":0-100}
+
+Relevância:
+- 75+: crise nacional, STF, PF, CPI, escândalo, prisão, decisão histórica
+- 45-74: decisão política relevante, votação importante, fala com impacto
+- 30-44: declaração política comum, agenda institucional
+- <30: trivial/irrelevante (será descartado)
 
 Manchetes:
-${headlines.slice(0, 12).map((h, i) => `${i + 1}. ${h}`).join("\n")}`;
+${headlines.slice(0, 10).map((h, i) => `${i + 1}. ${h}`).join("\n")}`;
 
   try {
     const res = await timeout(fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -161,8 +218,7 @@ ${headlines.slice(0, 12).map((h, i) => `${i + 1}. ${h}`).join("\n")}`;
       title: String(parsed.title ?? headlines[0]).slice(0, 200),
       summary: String(parsed.summary ?? ""),
       category: CATEGORIES.includes(parsed.category) ? parsed.category : "Outros",
-      importance_signal: Math.max(0, Math.min(100, Number(parsed.importance_signal) || 0)),
-      is_relevant: parsed.is_relevant !== false,
+      relevance: Math.max(0, Math.min(100, Number(parsed.relevance) || 0)),
     };
   } catch {
     return null;
@@ -173,7 +229,7 @@ async function calcSocialScore(supabase: any, candidateId: string, day: string):
   const start = new Date(day);
   start.setUTCHours(0, 0, 0, 0);
   const end = new Date(start);
-  end.setUTCDate(end.getUTCDate() + 3); // janela de 72h
+  end.setUTCDate(end.getUTCDate() + 3);
 
   const { data, error } = await supabase
     .from("social_interactions")
@@ -202,16 +258,15 @@ function computeImportance(opts: {
   sourceCount: number;
   institutionalCount: number;
   socialScore: number;
-  aiSignal: number;
+  relevance: number;
 }): number {
-  const sourceScore = Math.min(100, opts.sourceCount * 8);
+  const sourceScore = Math.min(100, opts.sourceCount * 10);
   const institutionalScore = Math.min(100, opts.institutionalCount * 25);
-  const entityWeight = opts.aiSignal;
   const importance =
-    0.35 * sourceScore +
-    0.30 * institutionalScore +
-    0.20 * opts.socialScore +
-    0.15 * entityWeight;
+    0.30 * sourceScore +
+    0.25 * institutionalScore +
+    0.15 * opts.socialScore +
+    0.30 * opts.relevance;
   return Math.round(Math.min(100, importance));
 }
 
@@ -222,7 +277,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
     const body = await req.json().catch(() => ({}));
     const targetCandidate: string | undefined = body?.candidate_id;
-    const lookback: number = Math.max(1, Math.min(60, body?.lookback_days || DEFAULT_LOOKBACK_DAYS));
+    const lookback: number = Math.max(1, Math.min(365, body?.lookback_days || DEFAULT_LOOKBACK_DAYS));
 
     let candQ = supabase.from("candidates").select("id,user_id,full_name").eq("status", "active");
     if (targetCandidate) candQ = candQ.eq("id", targetCandidate);
@@ -230,37 +285,52 @@ Deno.serve(async (req) => {
     if (candErr) throw candErr;
 
     let totalInserted = 0;
-    const perCandidate: Record<string, number> = {};
+    const perCandidate: Record<string, { inserted: number; clusters: number; items: number }> = {};
 
     for (const c of candidates ?? []) {
-      const items = await fetchGoogleNews(c.full_name, lookback);
-      if (items.length === 0) { perCandidate[c.full_name] = 0; continue; }
+      const aliases = aliasesFor(c.full_name);
+      // coleta múltiplas queries por candidato
+      const all: NewsItem[] = [];
+      for (const alias of aliases) {
+        const items = await fetchGoogleNews(alias, lookback);
+        all.push(...items);
+      }
+      // dedupe por url
+      const byUrl = new Map<string, NewsItem>();
+      for (const it of all) if (!byUrl.has(it.url)) byUrl.set(it.url, it);
+      const unique = [...byUrl.values()];
 
-      const clusters = clusterByDay(items);
+      const clusters = clusterByDay(unique);
       let inserted = 0;
 
       for (const [key, group] of clusters) {
-        if (group.length < 2) continue; // exige pelo menos 2 fontes para virar evento
         const day = key.split("::")[0];
+        // dedupe por domínio dentro do cluster
         const uniqByDomain = new Map<string, NewsItem>();
         for (const it of group) if (!uniqByDomain.has(it.domain)) uniqByDomain.set(it.domain, it);
         const uniqueSources = [...uniqByDomain.values()];
-        if (uniqueSources.length < 2) continue;
-
-        const headlines = uniqueSources.map((u) => `${u.title} (${u.domain})`);
-        const cls = await classifyCluster(headlines, c.full_name);
-        if (!cls || !cls.is_relevant) continue;
 
         const institutionalCount = uniqueSources.filter((u) =>
           INSTITUTIONAL_DOMAINS.some((id) => u.domain.endsWith(id))
         ).length;
+        const majorMediaCount = uniqueSources.filter((u) =>
+          MAJOR_NEWS_DOMAINS.some((d) => u.domain.endsWith(d))
+        ).length;
+
+        // aceita single-source SE for institucional ou grande imprensa
+        const hasQuality = institutionalCount > 0 || majorMediaCount > 0;
+        if (uniqueSources.length < 2 && !hasQuality) continue;
+
+        const headlines = uniqueSources.map((u) => `${u.title} (${u.domain})`);
+        const cls = await classifyCluster(headlines, c.full_name);
+        if (!cls || cls.relevance < 30) continue;
 
         const socialScore = await calcSocialScore(supabase, c.id, day);
         const importance = computeImportance({
           sourceCount: uniqueSources.length,
           institutionalCount,
           socialScore,
-          aiSignal: cls.importance_signal,
+          relevance: cls.relevance,
         });
 
         const sourcesJson = uniqueSources.map((u) => {
@@ -273,7 +343,6 @@ Deno.serve(async (req) => {
           };
         });
 
-        // upsert por (candidate_id, event_date::date, title_canonical-ish key)
         const eventDate = new Date(day).toISOString();
         const { data: existing } = await supabase
           .from("political_events")
@@ -339,11 +408,11 @@ Deno.serve(async (req) => {
         }
       }
 
-      perCandidate[c.full_name] = inserted;
+      perCandidate[c.full_name] = { inserted, clusters: clusters.size, items: unique.length };
     }
 
     return new Response(
-      JSON.stringify({ ok: true, totalInserted, perCandidate }),
+      JSON.stringify({ ok: true, totalInserted, perCandidate, lookback }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
