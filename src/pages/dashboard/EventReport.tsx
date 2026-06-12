@@ -306,6 +306,11 @@ export default function EventReport() {
                         {coverage ? (
                           <Badge variant="outline" className={`text-[10px] font-normal ${coverage.className}`}>{coverage.label}</Badge>
                         ) : null}
+                        {ev.detected_by === "external" ? (
+                          <Badge variant="outline" className="text-[10px] font-normal border-blue-500/40 text-blue-600 dark:text-blue-400">Detectado por fontes externas</Badge>
+                        ) : ev.detected_by === "internal_ssot" ? (
+                          <Badge variant="outline" className="text-[10px] font-normal border-emerald-500/40 text-emerald-600 dark:text-emerald-400">Detectado por redes internas</Badge>
+                        ) : null}
                       </div>
                       <CardTitle className="text-base md:text-lg leading-snug flex items-start gap-2">
                         <span className="text-primary mt-0.5">{icon}</span>
