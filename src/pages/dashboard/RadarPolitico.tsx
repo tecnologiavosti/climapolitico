@@ -211,6 +211,16 @@ export default function RadarPolitico() {
             </SelectContent>
           </Select>
 
+          <Select value={importanceFilter} onValueChange={setImportanceFilter}>
+            <SelectTrigger className="w-[130px] h-9"><SelectValue placeholder="Importância" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas</SelectItem>
+              <SelectItem value="grande">Grandes</SelectItem>
+              <SelectItem value="medio">Médios</SelectItem>
+              <SelectItem value="pequeno">Pequenos</SelectItem>
+            </SelectContent>
+          </Select>
+
           <div className="relative flex-1 min-w-[180px]">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
