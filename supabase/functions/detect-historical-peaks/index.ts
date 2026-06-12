@@ -5,6 +5,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 import { firecrawlSearch, dedupePublications, estimatedReachOf, type ExternalPublication } from "../_shared/external-collector.ts";
 import { buildContextualQueries } from "../_shared/politician-context.ts";
+import {
+  classifySource as pipelineClassifySource,
+  confidenceFromSources as pipelineConfidence,
+  classifyCategory as pipelineCategory,
+  computeRelevance as pipelineRelevance,
+} from "../_shared/peak-pipeline.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
