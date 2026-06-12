@@ -52,6 +52,7 @@ interface HistoricalEvent {
   internal_by_network?: Record<string, number>;
   internal_window_days?: number;
   coverage_quality?: "forte" | "media" | "fraca" | "ai_only";
+  detected_by?: "external" | "internal_ssot" | "none";
   category?: string;
 }
 
