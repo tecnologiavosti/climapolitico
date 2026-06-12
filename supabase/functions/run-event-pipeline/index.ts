@@ -55,9 +55,11 @@ Deno.serve(async (req) => {
   try {
     const auth = req.headers.get("Authorization") || "";
     const isServiceRole = auth.includes(SERVICE_KEY);
+    // Modo cron: requisição com apenas anon key (Bearer == ANON_KEY) → escopo global
+    const isCron = !isServiceRole && auth.includes(ANON_KEY);
 
     let userId: string | null = null;
-    if (!isServiceRole) {
+    if (!isServiceRole && !isCron) {
       if (!auth) {
         return new Response(JSON.stringify({ error: "Unauthorized" }), {
           status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
