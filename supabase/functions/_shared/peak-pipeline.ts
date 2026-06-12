@@ -131,26 +131,61 @@ function norm(text: string): string {
   return (text || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
-const CATEGORY_RULES: Array<{ id: string; patterns: RegExp[] }> = [
-  // More specific categories first
-  { id: "operacoes_pf", patterns: [/\b(operacao|policia federal|\bpf\b|busca e apreensao|mandado de busca|mandado de prisao|deflagrad)/i] },
-  { id: "stf", patterns: [/\b(stf|supremo tribunal federal|alexandre de moraes|gilmar mendes|barroso|fachin|dias toffoli|plenario do supremo|decisao monocratica|liminar)\b/i] },
-  { id: "tse", patterns: [/\b(tse|tribunal superior eleitoral|justica eleitoral|inelegibilidade|inelegivel|urna eletronica)\b/i] },
-  { id: "cpi", patterns: [/\b(cpi|comissao parlamentar( de inquerito)?|relator da cpi|depoimento na cpi|convocacao da cpi)\b/i] },
-  { id: "prisoes", patterns: [/\b(preso|presa|prisao preventiva|prisao temporaria|detido|encarcerad|cumpre pena|cadeia|penitenciaria)\b/i] },
-  { id: "julgamentos", patterns: [/\b(julgamento|condenacao|condenad|absolvicao|absolvid|sentenca|recurso|tribunal|stj|trf|primeira instancia|segunda instancia)\b/i] },
-  { id: "escandalos", patterns: [/\b(corrupcao|propina|lava jato|vazamento|delacao|denuncia|escandalo|esquema|desvio de verba|caixa dois|lavagem de dinheiro)\b/i] },
-  { id: "debates", patterns: [/\b(debate|sabatina|entrevista eleitoral|cara a cara|confronto entre candidatos)\b/i] },
-  { id: "eleicoes", patterns: [/\b(eleicao|eleicoes|pesquisa eleitoral|datafolha|ipec|ibope|quaest|campanha|urna|urnas|voto|segundo turno|primeiro turno|candidato|candidatura)\b/i] },
+// Score-based classifier: each category accumulates points from matched terms.
+// A minimum threshold avoids weak/coincidental matches (especially TSE).
+const CATEGORY_RULES: Array<{ id: string; threshold: number; terms: Array<{ re: RegExp; w: number }> }> = [
+  { id: "operacoes_pf", threshold: 2, terms: [
+    { re: /\boperacao\b/i, w: 1 }, { re: /\bpolicia federal\b/i, w: 2 }, { re: /\bpf\b/i, w: 1 },
+    { re: /\bbusca e apreensao\b/i, w: 2 }, { re: /\bmandado de (busca|prisao)\b/i, w: 2 }, { re: /\bdeflagrad/i, w: 1 },
+  ]},
+  { id: "stf", threshold: 2, terms: [
+    { re: /\bstf\b/i, w: 2 }, { re: /\bsupremo tribunal federal\b/i, w: 3 },
+    { re: /\b(alexandre de moraes|gilmar mendes|barroso|fachin|dias toffoli|carmen lucia|nunes marques|andre mendonca)\b/i, w: 1 },
+    { re: /\b(plenario do supremo|decisao monocratica|liminar do supremo)\b/i, w: 2 },
+  ]},
+  // TSE — REQUIRES explicit electoral-court terms. Generic words like "candidato" don't count here.
+  { id: "tse", threshold: 2, terms: [
+    { re: /\btse\b/i, w: 2 }, { re: /\btribunal superior eleitoral\b/i, w: 3 },
+    { re: /\bjustica eleitoral\b/i, w: 2 }, { re: /\b(inelegibilidade|inelegivel)\b/i, w: 2 },
+    { re: /\burna( eletronica)?\b/i, w: 1 }, { re: /\beleitoral\b/i, w: 1 },
+  ]},
+  { id: "cpi", threshold: 2, terms: [
+    { re: /\bcpi\b/i, w: 2 }, { re: /\bcomissao parlamentar( de inquerito)?\b/i, w: 3 },
+    { re: /\brelator da cpi\b/i, w: 2 }, { re: /\b(depoimento|convocacao) (na |da )?cpi\b/i, w: 2 },
+  ]},
+  { id: "prisoes", threshold: 2, terms: [
+    { re: /\b(preso|presa|detido)\b/i, w: 1 }, { re: /\bprisao (preventiva|temporaria|domiciliar)\b/i, w: 3 },
+    { re: /\b(encarcerad|cumpre pena|penitenciaria)\b/i, w: 2 },
+  ]},
+  { id: "julgamentos", threshold: 2, terms: [
+    { re: /\bjulgamento\b/i, w: 2 }, { re: /\b(condenacao|condenad|absolvicao|absolvid|sentenca)\b/i, w: 2 },
+    { re: /\b(stj|trf)\b/i, w: 1 }, { re: /\b(primeira|segunda) instancia\b/i, w: 1 },
+  ]},
+  { id: "escandalos", threshold: 2, terms: [
+    { re: /\b(corrupcao|propina|lava jato)\b/i, w: 2 }, { re: /\b(delacao|escandalo|esquema)\b/i, w: 2 },
+    { re: /\b(caixa dois|lavagem de dinheiro|desvio de verba|vazamento)\b/i, w: 2 },
+  ]},
+  { id: "debates", threshold: 2, terms: [
+    { re: /\bdebate( presidencial| eleitoral)?\b/i, w: 2 }, { re: /\bsabatina\b/i, w: 2 },
+    { re: /\bcara a cara\b/i, w: 1 }, { re: /\bconfronto entre candidatos\b/i, w: 2 },
+  ]},
+  { id: "eleicoes", threshold: 2, terms: [
+    { re: /\beleic(ao|oes)\b/i, w: 2 }, { re: /\bpesquisa eleitoral\b/i, w: 2 },
+    { re: /\b(datafolha|ipec|ibope|quaest)\b/i, w: 2 }, { re: /\bcampanha\b/i, w: 1 },
+    { re: /\b(segundo|primeiro) turno\b/i, w: 2 }, { re: /\b(candidato|candidatura)\b/i, w: 1 },
+  ]},
 ];
 
 export function classifyCategory(...textParts: Array<string | null | undefined>): string {
   const blob = norm(textParts.filter(Boolean).join(" "));
   if (!blob) return "outros";
+  let best = { id: "outros", score: 0 };
   for (const rule of CATEGORY_RULES) {
-    if (rule.patterns.some((re) => re.test(blob))) return rule.id;
+    let score = 0;
+    for (const t of rule.terms) if (t.re.test(blob)) score += t.w;
+    if (score >= rule.threshold && score > best.score) best = { id: rule.id, score };
   }
-  return "outros";
+  return best.id;
 }
 
 // ---------- Relevance ----------
@@ -160,27 +195,51 @@ export interface RelevanceInput {
   durationDays: number;
   independent_strong_sources: number;
   trusted_sources_count: number;
-  politicalImpact?: number; // 0..1
-  maxMentionsRef?: number; // largest known peak for normalization
+  engagement?: number;       // likes+shares+comments aggregated
+  politicalImpact?: number;  // 0..1
+  maxMentionsRef?: number;
 }
 
 export interface RelevanceResult {
   score: number;
   band: "baixa" | "media" | "alta" | "critica";
-  breakdown: { volume: number; duration: number; diversity: number; impact: number };
+  breakdown: { volume: number; engagement: number; duration: number; diversity: number; impact: number };
+}
+
+// log-scale normalization so big buzz is rewarded even without strong sources.
+function logScale(value: number, ceiling: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.min(1, Math.log10(value + 1) / Math.log10(ceiling + 1));
 }
 
 export function computeRelevance(input: RelevanceInput): RelevanceResult {
-  const ref = Math.max(input.mentions, input.maxMentionsRef || 1, 100);
-  const volume = Math.min(1, input.mentions / ref);
-  const duration = Math.min(1, input.durationDays / 7);
-  const diversity = Math.min(1, input.independent_strong_sources / 4) * 0.7 + Math.min(1, input.trusted_sources_count / 8) * 0.3;
+  const volume = logScale(input.mentions, 5000);                  // 5k mentions = full
+  const engagement = logScale(input.engagement ?? 0, 1_000_000);  // 1M eng = full
+  const duration = Math.min(1, input.durationDays / 10);
+  const diversity = Math.min(1, input.independent_strong_sources / 3) * 0.6
+                  + Math.min(1, input.trusted_sources_count / 6) * 0.4;
   const impact = Math.max(0, Math.min(1, input.politicalImpact ?? 0));
-  const raw = volume * 0.4 + duration * 0.3 + diversity * 0.2 + impact * 0.1;
-  const score = Math.round(raw * 100);
+
+  // If no engagement signal, redistribute its weight to volume.
+  const hasEng = (input.engagement ?? 0) > 0;
+  const wVol = hasEng ? 0.40 : 0.60;
+  const wEng = hasEng ? 0.20 : 0.0;
+  const raw = volume * wVol + engagement * wEng + duration * 0.15 + diversity * 0.15 + impact * 0.10;
+  const score = Math.round(Math.min(1, raw) * 100);
+
   let band: RelevanceResult["band"] = "baixa";
-  if (score >= 81) band = "critica";
-  else if (score >= 61) band = "alta";
-  else if (score >= 31) band = "media";
-  return { score, band, breakdown: { volume: Math.round(volume * 100) / 100, duration: Math.round(duration * 100) / 100, diversity: Math.round(diversity * 100) / 100, impact: Math.round(impact * 100) / 100 } };
+  if (score >= 80) band = "critica";
+  else if (score >= 55) band = "alta";
+  else if (score >= 30) band = "media";
+
+  return {
+    score, band,
+    breakdown: {
+      volume: Math.round(volume * 100) / 100,
+      engagement: Math.round(engagement * 100) / 100,
+      duration: Math.round(duration * 100) / 100,
+      diversity: Math.round(diversity * 100) / 100,
+      impact: Math.round(impact * 100) / 100,
+    },
+  };
 }
