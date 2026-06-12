@@ -395,6 +395,7 @@ Responda em JSON estrito com este schema:
     const headlineFallback = topStrongHeadlines.length
       ? `Cobertura registrada: ${topStrongHeadlines.map((t) => `“${t}”`).join("; ")}.`
       : "";
+    if (!safeSummary && headlineFallback) safeSummary = headlineFallback;
 
     const shouldDisplayFinal = responseMode === "UNKNOWN_TRIGGER"
       ? false
