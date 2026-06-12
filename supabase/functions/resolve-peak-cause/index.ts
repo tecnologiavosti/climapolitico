@@ -293,22 +293,24 @@ Responda em JSON estrito com este schema:
 
     let ai: any = null;
     let aiError: string | null = null;
-    try {
-      const res = await callAICerebrasFirst({
-        systemMsg, userPrompt, jsonMode: true,
-        maxTokens: 900, temperature: 0.2, tag: "resolve-peak-cause",
-      });
-      ai = JSON.parse(res.content);
-    } catch (e) {
-      aiError = (e as Error).message;
-      console.warn("[resolve-peak-cause] AI failed:", aiError);
+    if (responseMode !== "UNKNOWN_TRIGGER") {
+      try {
+        const res = await callAICerebrasFirst({
+          systemMsg, userPrompt, jsonMode: true,
+          maxTokens: 900, temperature: 0.2, tag: "resolve-peak-cause",
+        });
+        ai = JSON.parse(res.content);
+      } catch (e) {
+        aiError = (e as Error).message;
+        console.warn("[resolve-peak-cause] AI failed:", aiError);
+      }
     }
 
     const topTermsList = evidence.top_keywords.slice(0, 6).map((k) => k.term).join(", ");
     const topicLabel = buildTopicLabel(evidence);
     const unknownText = "Não foi possível identificar com confiança a causa exata do pico.";
     const probableText = `Os dados sugerem que o pico está relacionado a discussões sobre ${topicLabel}, porém não encontramos confirmação externa suficiente para determinar o gatilho exato.`;
-    const lowConfidence = responseMode === "UNKNOWN_TRIGGER" || !ai || finalConfidence < 0.50;
+    const lowConfidence = responseMode === "UNKNOWN_TRIGGER";
     const modeFallback = responseMode === "UNKNOWN_TRIGGER" ? unknownText : probableText;
     const safeTitle = responseMode === "CONFIRMED_EVENT"
       ? (ai?.event_title || `Pico de menções em ${peakDate}`)
