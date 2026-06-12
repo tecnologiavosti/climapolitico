@@ -448,14 +448,41 @@ Responda em JSON estrito conforme o schema definido no system message.`;
       should_display: shouldDisplayFinal,
     }));
 
+    const aiCause = ai?.cause ? String(ai.cause) : safeRootCause;
+    const aiWhyPeak = ai?.why_peak ? String(ai.why_peak) : "";
+    const aiEvidenceQuality = ((): "strong" | "moderate" | "weak" | "insufficient" => {
+      const eq = String(ai?.evidence_quality || "").toLowerCase();
+      if (eq === "strong" || eq === "moderate" || eq === "weak" || eq === "insufficient") return eq;
+      if (enterprise.score >= 85) return "strong";
+      if (enterprise.score >= 70) return "moderate";
+      if (enterprise.score >= 55) return "weak";
+      return "insufficient";
+    })();
+    const aiSentimentNum = ((): number => {
+      const s = Number(ai?.sentiment);
+      if (Number.isFinite(s)) return Math.max(-1, Math.min(1, s));
+      // Derive from sentiment counts if AI didn't return one
+      if (totalSent > 0) return Math.max(-1, Math.min(1, (pos - neg) / totalSent));
+      return 0;
+    })();
+
     const out = {
       response_mode: responseMode,
       status: pipelineStatus,
       category: safeCategory,
+      category_id: preliminaryCategoryId,
       title: safeTitle,
       summary: safeSummary,
+      cause: aiCause,
+      why_peak: aiWhyPeak,
+      evidence_quality: aiEvidenceQuality,
+      sentiment: aiSentimentNum,
       confidence: finalConfidence,
       shouldDisplay: shouldDisplayFinal,
+      // 4-component enterprise scoring (brief v2 §5)
+      enterprise_score: enterprise.score,
+      enterprise_band: enterprise.band,
+      score_components: enterprise.components,
       // legacy fields kept for backward compatibility with UI
       event_title: safeTitle,
       event_summary: safeSummary,
@@ -467,9 +494,14 @@ Responda em JSON estrito conforme o schema definido no system message.`;
         strongSources,
         independentStrongSources,
         weakSources,
+        coverage: enterprise.components.coverage,
+        diversity: enterprise.components.diversity,
+        consensus: enterprise.components.consensus,
+        significance: enterprise.components.significance,
       },
       main_networks: ai?.main_networks || evidence.top_networks.map((n) => n.network),
       main_entities: ai?.main_entities || evidence.top_bigrams.slice(0, 6).map((b) => b.term),
+      key_terms: ai?.key_terms || evidence.top_keywords.slice(0, 8).map((k) => k.term),
       top_keywords: evidence.top_keywords.slice(0, 12),
       top_hashtags: evidence.top_hashtags.slice(0, 8),
       top_domains: evidence.top_domains.slice(0, 6),
