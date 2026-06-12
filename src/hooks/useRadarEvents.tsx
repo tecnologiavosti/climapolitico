@@ -23,15 +23,24 @@ export interface RadarEvent {
 
 export interface RadarFilters {
   candidateId?: string;
-  year?: number;
+  from?: Date;
+  to?: Date;
   category?: string;
+  search?: string;
 }
 
 export function useRadarEvents(filters: RadarFilters) {
   const { user } = useAuth();
+  const key = {
+    candidateId: filters.candidateId,
+    from: filters.from?.toISOString(),
+    to: filters.to?.toISOString(),
+    category: filters.category,
+    search: filters.search,
+  };
 
   return useQuery({
-    queryKey: ["radar-events", user?.id, filters],
+    queryKey: ["radar-events", user?.id, key],
     enabled: !!user?.id,
     staleTime: 60_000,
     queryFn: async (): Promise<RadarEvent[]> => {
@@ -42,16 +51,17 @@ export function useRadarEvents(filters: RadarFilters) {
         )
         .eq("user_id", user!.id)
         .order("event_date", { ascending: false })
-        .limit(500);
+        .limit(1000);
 
       if (filters.candidateId) q = q.eq("candidate_id", filters.candidateId);
-      if (filters.year) {
-        const start = `${filters.year}-01-01`;
-        const end = `${filters.year + 1}-01-01`;
-        q = q.gte("event_date", start).lt("event_date", end);
-      }
+      if (filters.from) q = q.gte("event_date", filters.from.toISOString());
+      if (filters.to) q = q.lte("event_date", filters.to.toISOString());
       if (filters.category && filters.category !== "all") {
         q = q.or(`category.eq.${filters.category},category_v2.eq.${filters.category}`);
+      }
+      if (filters.search?.trim()) {
+        const s = filters.search.trim().replace(/[%,]/g, "");
+        q = q.or(`title.ilike.%${s}%,summary.ilike.%${s}%,ai_summary.ilike.%${s}%`);
       }
 
       const { data, error } = await q;
