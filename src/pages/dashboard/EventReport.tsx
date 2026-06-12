@@ -341,6 +341,26 @@ export default function EventReport() {
 
       {events.length > 0 ? (
         <div className="space-y-5">
+          {/* Contadores por status */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+            {([
+              { id: "all", label: "Total", emoji: "📊", value: events.length, cls: "border-primary/30 bg-primary/5" },
+              { id: "confirmed", label: "Confirmados", emoji: "🟢", value: statusCounts.confirmed, cls: "border-emerald-500/30 bg-emerald-500/5" },
+              { id: "probable", label: "Prováveis", emoji: "🟡", value: statusCounts.probable, cls: "border-amber-500/30 bg-amber-500/5" },
+              { id: "weak", label: "Fracos", emoji: "🟠", value: statusCounts.weak, cls: "border-orange-500/30 bg-orange-500/5" },
+              { id: "indeterminate", label: "Indeterminados", emoji: "🔴", value: statusCounts.indeterminate, cls: "border-rose-500/30 bg-rose-500/5" },
+            ] as const).map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setStatusFilter(s.id)}
+                className={`rounded-md border px-3 py-2 text-left transition ${s.cls} ${statusFilter === s.id ? "ring-2 ring-primary" : "opacity-90 hover:opacity-100"}`}
+              >
+                <div className="text-[11px] uppercase text-muted-foreground">{s.emoji} {s.label}</div>
+                <div className="text-2xl font-bold tabular-nums">{s.value}</div>
+              </button>
+            ))}
+          </div>
+
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-primary" /> Enciclopédia política ({filteredEvents.length}/{events.length})
