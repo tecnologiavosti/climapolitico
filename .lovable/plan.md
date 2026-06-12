@@ -1,64 +1,93 @@
-# Picos de Menções v3 — escopo realista vs. brief
+# Refatoração: Clima Político → Radar Político
 
-Você está pedindo um sistema novo do zero (500+ fontes RSS, STL, Bayesian Change Point, clustering de eventos, dedupe semântico, macroevent, heatmap, etc). Antes de escrever código preciso alinhar **o que cabe** e **o que não cabe** no projeto atual, senão vamos repetir o ciclo das últimas iterações (plano grande → entrega parcial → reclamação).
+Transformação para algo **simples, rápido e confiável**, estilo Bloomberg/Reuters.
 
-## O que já existe (não vou refazer)
+## 1. Renomear
 
-- 5 detectores estatísticos (`_shared/peak-pipeline.ts`): z-score, EWMA, CUSUM-burst, Momentum, IQR anomaly — pico = ≥2 sinais.
-- 14 categorias políticas com regras de keyword (`POLITICAL_CATEGORIES`).
-- Tiers de fonte A/B/C/D + `is_externally_validated` (≥1 institucional OU ≥3 grande mídia).
-- Confidence v2 ponderado + bandas Confirmado/Provável/Fraco/Indeterminado.
-- Migração já aplicada com 16 colunas enterprise em `political_events`.
-- `AnnualPeaksTimeline` (scatter colorido por status) + `EnterprisePeakSheet` no frontend.
-- `resolve-peak-cause` com AI summary + headlines + tags.
+- Sidebar, rotas, breadcrumbs, títulos: **Clima Político → Radar Político**
+- Manter rota acessível (alias `/dashboard/clima-politico` → redirect para `/dashboard/radar-politico`)
 
-## Gaps reais que vou fechar nesta rodada
+## 2. Backend simplificado
 
-### A. Mais picos por candidato (a queixa principal)
-1. **Baixar threshold de detecção** em `peak-pipeline.ts`:
-   - Atual: `dynamicThreshold = max(baseline·2.5, p95)` → muito restritivo
-   - Novo: `max(baseline·1.8, p90)` + janela de baseline robusta (mediana + MAD em vez de média/σ)
-   - Reduzir requisito de "≥2 sinais" para "≥1 sinal forte OU ≥2 fracos" via score combinado
-2. **Merge de picos próximos** (anti-fragmentação): se 2 picos do mesmo candidato ocorrem em ≤3 dias e compartilham ≥2 keywords → mesclar no de maior score.
-3. **Despriorizar Instagram como fonte primária**: no scoring de `source_diversity`, Instagram entra como Tier D (peso 0.25 em vez de 1.0).
+### Migration: limpeza da `political_events`
 
-### B. Reduzir "Causa indeterminada"
-1. Em `resolve-peak-cause`: se `validation_sources.length ≥ 3` (Tier A/B) **forçar categoria** baseado no domínio das fontes (stf.jus.br → `stf`, tse.jus.br → `tse`, pf.gov.br → `operacoes_pf`, camara/senado → `congresso`) antes de cair em "outros".
-2. Subir o status mínimo: com ≥3 Tier B confirmadas, banda passa de `indeterminate` para no mínimo `probable`.
-3. Quando AI summary falha, gerar fallback determinístico a partir das top 3 manchetes + categoria.
+Manter apenas colunas essenciais:
+```
+id, candidate_id, user_id, title, summary, category,
+event_date, source_count, social_score, importance, status,
+created_at, updated_at
+```
+Demais colunas (z_score, baseline, ewma, burst, anomaly, momentum, peak_score, tier_breakdown, network_distribution, etc.) são **dropadas**.
 
-### C. Expansão de fontes externas (ingestão)
-Vou **estender** `google-news-collector` (já existe) para incluir mais feeds RSS oficiais:
-- STF (`portal.stf.jus.br/RSS`), TSE, Câmara, Senado, PF press releases
-- Reuters BR, BBC Brasil, AP Brasil, G1 Política, UOL Política, Folha Poder, Estadão Política, CNN Brasil, Carta Capital, Nexo, Poder360, Metrópoles, Congresso em Foco
-Cada feed entra como `evidence` no `validation_sources` do pico mais próximo (±48h, keyword match).
+`event_sources` já existe — adequar para: `id, event_id, source_name, url, type (institutional|news|social), credibility, published_at`.
 
-### D. UI: heatmap mensal + filtro de confiança
-- Novo componente `<MonthlyPeaksHeatmap>` (12×31 grid, intensidade = #picos no dia).
-- Slider de confiança mínima (0-100) no header da aba.
-- Contador por categoria já existe — só vou destacá-lo visualmente.
+Tabelas removidas/depreciadas: `social_event_metrics` (manter só se útil internamente), nenhum uso em UI.
 
-## O que NÃO vou fazer (e por quê)
+### Classificação `importance`
+- `grande` > 25
+- `medio` 12–25
+- `pequeno` < 12
 
-| Pedido | Status | Motivo |
-|---|---|---|
-| 500+ fontes RSS independentes | **Parcial (≈25 feeds curados)** | 500 RSS pollers quebram cota de edge function (limite 60s por exec, sem fila); 25 grandes cobrem ≈95% da relevância política BR. |
-| STL decomposition + Bayesian Change Point Detection | **Pulado** | Sem libs estatísticas no Deno edge runtime; os 5 detectores atuais + thresholds ajustados resolvem o caso prático. |
-| Macroevent clustering (juntar eventos relacionados de candidatos diferentes) | **Diferido** | Mudança grande de modelo (precisa tabela `event_clusters`, embeddings); só faz sentido depois que detecção individual estiver estável. |
-| Entity extraction + clustering semântico via embeddings | **Pulado** | Custo de tokens alto (cada pico × N posts); ROI baixo vs. o keyword matching atual que já roda bem. |
-| Pipeline completo ingest→clean→entity→cluster→dedupe como serviço novo | **Pulado** | Reescrever do zero quebra coleta, Repercussão e SSOT. SSOT continua sendo `social_interactions` + `political_events`. |
-| "Lula deve gerar dezenas de eventos/ano" como meta numérica | **Indireto** | Vai aumentar com (A) thresholds mais baixos + (C) mais feeds. Não vou inflar artificialmente — sem mock data (regra Core). |
-| Reescrever queries/cache do zero | **Pulado** | `candidate_metrics_cache` já existe e funciona; refatorar agora só introduz risco. |
+### Pipeline novo (edge functions)
 
-## Entregáveis desta rodada
+Reescrever stack em **3 funções simples**:
 
-1. **`_shared/peak-pipeline.ts`** — thresholds ajustados (1.8× baseline + p90), MAD-based baseline, peso Instagram=0.25, função `mergeNearbyPeaks()`.
-2. **`detect-historical-peaks/index.ts`** — chamar `mergeNearbyPeaks` após detecção, usar nova função de baseline.
-3. **`resolve-peak-cause/index.ts`** — forçar categoria por domínio quando ≥3 fontes Tier A/B; upgrade automático de banda; fallback determinístico de summary.
-4. **`google-news-collector/index.ts`** — adicionar ≈20 feeds RSS oficiais BR (STF, TSE, PF, Câmara, Senado, grande mídia).
-5. **`src/components/events/MonthlyPeaksHeatmap.tsx`** — novo, 12×31 grid.
-6. **`src/pages/dashboard/EventReport.tsx`** — adicionar heatmap + slider de confiança mínima.
+1. **`fetch-institutional-events`** — coleta RSS/feeds STF, TSE, PF, Senado, Câmara, G1, UOL, Folha, Estadão, Reuters, Poder360.
+2. **`match-events-to-candidates`** — filtra/clusteriza eventos por candidato (nome + apelidos + cargo).
+3. **`score-social-repercussion`** — para cada evento, mede repercussão em X, YouTube, Telegram, Reddit (apenas como `social_score`, nunca como fonte do evento).
 
-Estimativa: ~400 linhas modificadas, ~200 novas, **zero migrações novas**, zero novas tabelas, zero dados mock.
+Orquestrador `run-radar-pipeline` chamado por cron (30 min).
+**Regra dura**: evento só nasce de fonte institucional/notícia. Social é apenas métrica derivada.
 
-**Aprove para eu executar.** Se quiser priorizar só A+B (mais picos + menos indeterminado) e deixar C+D para depois, me diga.
+Metas de volume: Lula ≥ 80 eventos/mês, Flávio ≥ 40.
+
+## 3. UI nova — `RadarPolitico.tsx`
+
+Substitui página atual. Layout limpo:
+
+```text
+┌─ Header ─────────────────────────────────────────┐
+│  Radar Político    [candidato ▾] [ano ▾] [filtros]│
+├─ KPIs ───────────────────────────────────────────┤
+│  [Eventos]  [Grandes]  [Médios]  [Pequenos]      │
+├─ Timeline mensal (barra simples) ────────────────┤
+│  J F M A M J J A S O N D                         │
+├─ Lista de cards compactos ───────────────────────┤
+│  • Título · data · categoria                     │
+│    n fontes · repercussão · resumo curto         │
+└──────────────────────────────────────────────────┘
+```
+
+Design: tipografia séria, alto contraste, sem gradientes, sem heatmaps, sem badges coloridos exagerados.
+
+### Componentes a **remover** (arquivar):
+- `EnterprisePeakSheet`, `MonthlyPeaksHeatmap`, `AnnualPeaksTimeline` (versão antiga complexa), score composition, network distribution, qualquer UI com z-score/ewma/burst/anomaly/momentum/baseline/cause indeterminada.
+
+### Componentes a **criar**:
+- `RadarHeader` (candidato + ano + filtros)
+- `RadarKPIs` (4 cards)
+- `RadarMonthlyTimeline` (barra simples por mês)
+- `RadarEventCard` + `RadarEventList`
+- `RadarEventDetailSheet` (versão minimalista: título, resumo, lista de fontes com link, social_score)
+
+### Hook
+- `useRadarEvents(candidateId, year, filters)` → lê `political_events` direto, ordenado por `event_date desc`.
+
+## 4. Execução
+
+Ordem:
+1. Migration (drop columns + ajuste event_sources)
+2. Edge functions novas + cron
+3. Página + componentes novos
+4. Remover/redirect rota antiga
+5. Backfill manual disparando pipeline 1x para popular volume
+
+## Detalhes técnicos
+
+- Não tocar em `social_interactions` (SSOT).
+- `social_score` = engagement normalizado (0–100) dos posts que citam o evento.
+- `importance` = `min(100, source_count*2 + log(social_score+1)*5 + institutional_bonus)`.
+- Cron `*/30 * * * *` chama `run-radar-pipeline` global.
+- Frontend usa apenas Tailwind tokens já existentes; sem cores hardcoded.
+
+Confirma para eu começar?
