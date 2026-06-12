@@ -129,13 +129,33 @@ const YEAR_PRESETS = [
   { label: "Eleição 2026", start: "2026-01-01", end: "2026-12-31" },
 ];
 
+interface PeakCause {
+  event_title: string;
+  event_summary: string;
+  root_cause: string;
+  confidence: number;
+  main_networks: string[];
+  main_entities: string[];
+  top_keywords?: Array<{ term: string; count: number }>;
+  top_hashtags?: Array<{ term: string; count: number }>;
+  top_domains?: Array<{ domain: string; count: number }>;
+  sentiment_summary: string;
+  internal_mentions?: number;
+  external_evidence?: Array<{ title: string; url: string; outlet: string; publishedAt?: string }>;
+  fallback_text?: string | null;
+}
+
 export default function EventReport() {
   const { user } = useAuth();
   const [candidateId, setCandidateId] = useState<string>("");
+  const [candidateName, setCandidateName] = useState<string>("");
   const [startDate, setStartDate] = useState("2018-01-01");
   const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [category, setCategory] = useState<string>("all");
+  const [causes, setCauses] = useState<Record<string, PeakCause>>({});
+  const [causeLoading, setCauseLoading] = useState<Record<string, boolean>>({});
+  const [causeError, setCauseError] = useState<Record<string, string>>({});
 
   const { data: candidates } = useQuery({
     queryKey: ["candidates-mine", user?.id],
@@ -206,7 +226,7 @@ export default function EventReport() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="md:col-span-2">
               <label className="text-xs font-medium text-muted-foreground">Candidato</label>
-              <Select value={candidateId} onValueChange={setCandidateId}>
+              <Select value={candidateId} onValueChange={(v) => { setCandidateId(v); setCandidateName(candidates?.find((c)=>c.id===v)?.full_name || ""); }}>
                 <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                 <SelectContent>
                   {candidates?.map((c) => (
@@ -432,33 +452,54 @@ export default function EventReport() {
                   ) : null}
 
                   <Button variant="ghost" size="sm" className="gap-2"
-                    onClick={() => setExpanded((p) => ({ ...p, [key]: !p[key] }))}>
+                    onClick={async () => {
+                      const willOpen = !isOpen;
+                      setExpanded((p) => ({ ...p, [key]: willOpen }));
+                      if (willOpen && !causes[key] && !causeLoading[key]) {
+                        setCauseLoading((p) => ({ ...p, [key]: true }));
+                        setCauseError((p) => ({ ...p, [key]: "" }));
+                        try {
+                          const { data: c, error: cErr } = await supabase.functions.invoke("resolve-peak-cause", {
+                            body: {
+                              candidateId,
+                              candidateName,
+                              peakDate: ev.start_date,
+                              windowStart: ev.start_date,
+                              windowEnd: ev.end_date || ev.start_date,
+                              peakMentions: ev.internal_mentions ?? 0,
+                            },
+                          });
+                          if (cErr) throw cErr;
+                          if ((c as any)?.error) throw new Error((c as any).error);
+                          setCauses((p) => ({ ...p, [key]: c as PeakCause }));
+                        } catch (e) {
+                          setCauseError((p) => ({ ...p, [key]: (e as Error).message }));
+                        } finally {
+                          setCauseLoading((p) => ({ ...p, [key]: false }));
+                        }
+                      }
+                    }}>
                     {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     {isOpen ? "Recolher análise IA" : "Análise IA do pico"}
                   </Button>
 
                   {isOpen ? (
                     <div className="space-y-4 pt-2 border-t">
-                      {ev.what_happened ? <Section title="O que aconteceu" body={ev.what_happened} /> : null}
-                      {ev.why_happened ? <Section title="Por que gerou repercussão" body={ev.why_happened} /> : null}
-                      {ev.participants && ev.participants.length > 0 ? (
-                        <div>
-                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 flex items-center gap-1.5"><Users className="h-3.5 w-3.5" /> Quem participou</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {ev.participants.map((p, i) => <Badge key={i} variant="secondary">{p}</Badge>)}
-                          </div>
+                      {causeLoading[key] ? (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                          <Loader2 className="h-4 w-4 animate-spin" /> Investigando causa do pico…
                         </div>
+                      ) : causeError[key] ? (
+                        <p className="text-sm text-destructive">{causeError[key]}</p>
+                      ) : causes[key] ? (
+                        <PeakCauseView cause={causes[key]} />
                       ) : null}
+
+                      {ev.what_happened ? <Section title="O que aconteceu (registro)" body={ev.what_happened} /> : null}
+                      {ev.why_happened ? <Section title="Por que gerou repercussão (registro)" body={ev.why_happened} /> : null}
                       {ev.political_impact ? <Section title="Impacto político" body={ev.political_impact} /> : null}
                       {ev.electoral_impact ? <Section title="Impacto eleitoral" body={ev.electoral_impact} /> : null}
                       {ev.aftermath ? <Section title="Desdobramentos" body={ev.aftermath} /> : null}
-
-                      <div>
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Cobertura analisada</p>
-                        <p className="text-sm text-muted-foreground">
-                          Análise produzida a partir de <span className="font-semibold text-foreground">{ev.publications_count}</span> evidência{ev.publications_count === 1 ? "" : "s"} externa{ev.publications_count === 1 ? "" : "s"} em <span className="font-semibold text-foreground">{ev.distinct_outlets}</span> veículo{ev.distinct_outlets === 1 ? "" : "s"} distintos.
-                        </p>
-                      </div>
                     </div>
                   ) : null}
                 </CardContent>
@@ -478,6 +519,89 @@ function Section({ title, body }: { title: string; body: string }) {
     <div>
       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">{title}</p>
       <p className="text-sm leading-relaxed">{body}</p>
+    </div>
+  );
+}
+
+function PeakCauseView({ cause }: { cause: PeakCause }) {
+  const conf = Math.round((cause.confidence || 0) * 100);
+  const confColor = conf >= 60 ? "text-emerald-600 dark:text-emerald-400" : conf >= 30 ? "text-amber-600 dark:text-amber-400" : "text-zinc-500";
+  return (
+    <div className="space-y-4 rounded-md border bg-primary/5 p-4">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex-1 min-w-0">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Causa provável do pico</p>
+          <p className="text-base font-semibold leading-snug">{cause.event_title}</p>
+        </div>
+        <Badge variant="outline" className={`text-xs ${confColor}`}>Confiança {conf}%</Badge>
+      </div>
+
+      {cause.fallback_text ? (
+        <p className="text-sm text-muted-foreground italic">{cause.fallback_text}</p>
+      ) : (
+        <>
+          {cause.event_summary ? <Section title="O que aconteceu" body={cause.event_summary} /> : null}
+          {cause.root_cause ? <Section title="Por que virou pico" body={cause.root_cause} /> : null}
+        </>
+      )}
+
+      {cause.main_networks?.length ? (
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">Redes onde mais repercutiu</p>
+          <div className="flex flex-wrap gap-1.5">
+            {cause.main_networks.slice(0, 8).map((n, i) => (
+              <Badge key={i} variant="secondary" className="capitalize">{n}</Badge>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {cause.main_entities?.length ? (
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5 flex items-center gap-1.5"><Users className="h-3.5 w-3.5" /> Principais entidades</p>
+          <div className="flex flex-wrap gap-1.5">
+            {cause.main_entities.slice(0, 12).map((e, i) => (
+              <Badge key={i} variant="outline">{e}</Badge>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {cause.top_keywords?.length ? (
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">Termos mais associados</p>
+          <div className="flex flex-wrap gap-1.5">
+            {cause.top_keywords.slice(0, 12).map((k, i) => (
+              <Badge key={i} variant="outline" className="font-normal">{k.term} <span className="text-muted-foreground ml-1">({k.count})</span></Badge>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {cause.sentiment_summary ? (
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Sentimento</p>
+          <p className="text-sm">{cause.sentiment_summary}</p>
+        </div>
+      ) : null}
+
+      {cause.external_evidence?.length ? (
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">Evidências externas ({cause.external_evidence.length})</p>
+          <ul className="space-y-1 text-sm">
+            {cause.external_evidence.slice(0, 8).map((e, i) => (
+              <li key={i} className="leading-snug">
+                <a href={e.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                  {e.title || e.url}
+                </a>
+                <span className="text-muted-foreground"> — {e.outlet}{e.publishedAt ? ` · ${e.publishedAt.slice(0, 10)}` : ""}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">Baseado em {cause.internal_mentions ?? 0} interações monitoradas. Nenhuma publicação externa relevante foi encontrada na janela.</p>
+      )}
     </div>
   );
 }
