@@ -61,7 +61,7 @@ interface HistoricalEvent {
   independent_strong_sources?: number;
   trusted_sources_count?: number;
   relevance_band?: "baixa" | "media" | "alta" | "critica";
-  signals?: Array<"z" | "momentum" | "burst" | "anomaly">;
+  signals?: Array<"z" | "ewma" | "momentum" | "burst" | "anomaly">;
 }
 
 const CATEGORY_FILTERS: { id: string; label: string }[] = [
@@ -75,6 +75,10 @@ const CATEGORY_FILTERS: { id: string; label: string }[] = [
   { id: "escandalos", label: "Escândalos" },
   { id: "prisoes", label: "Prisões" },
   { id: "debates", label: "Debates" },
+  { id: "congresso", label: "Congresso" },
+  { id: "executivo", label: "Executivo" },
+  { id: "economia", label: "Economia" },
+  { id: "internacional", label: "Internacional" },
   { id: "outros", label: "Outros" },
 ];
 
@@ -93,7 +97,7 @@ const STATUS_BADGE: Record<string, { label: string; className: string; emoji: st
 };
 
 const SIGNAL_LABEL: Record<string, string> = {
-  z: "Z-score", momentum: "Momentum", burst: "Burst", anomaly: "Anomaly",
+  z: "Z-score", ewma: "EWMA", momentum: "Momentum", burst: "Burst", anomaly: "Anomaly",
 };
 
 const RELEVANCE_BAND_LABEL: Record<string, string> = {
