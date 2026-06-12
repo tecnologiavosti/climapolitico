@@ -1082,21 +1082,28 @@ serve(async (req) => {
       const peakScore = politicalRelevance * Math.log10(Math.max(10, mentions));
 
       // Classificação do tipo de pico — Instagram/Facebook/TikTok sozinhos NÃO são jornalismo.
+      // Limites afrouxados para suportar figuras de alta relevância (Lula, Bolsonaro) que devem
+      // gerar dezenas de picos por ano. Picos sem evidência forte aparecem com status `weak` ou
+      // `indeterminate` — a UI decide a exibição via filtro.
       const hasStrongExternal = strongSources >= 1;
       const hasOnlyWeakExternal = !hasStrongExternal && weakSources >= 1;
       const isExternalConfirmed = hasStrongExternal;
       const isExternalSocialOnly = hasOnlyWeakExternal;
-      const meetsInternalHardFloor =
-        z >= 3.5 &&
-        mentions >= Math.max(500, baseline * 3) &&
-        authors >= 100 &&
-        engagement >= 50000 &&
-        peakVolume >= 500;
+      const meetsInternalSoftFloor =
+        z >= 2.0 &&
+        mentions >= 100 &&
+        authors >= 20 &&
+        peakVolume >= 80;
+      const meetsInternalStrongFloor =
+        z >= 3.0 &&
+        mentions >= 300 &&
+        authors >= 50 &&
+        engagement >= 10000;
 
-      return { ev, mentions, politicalRelevance, peakScore, isExternalConfirmed, isExternalSocialOnly, meetsInternalHardFloor };
+      return { ev, mentions, politicalRelevance, peakScore, isExternalConfirmed, isExternalSocialOnly, meetsInternalSoftFloor, meetsInternalStrongFloor };
     });
 
-    const sanitizedEvents = scored.filter(({ ev, mentions, politicalRelevance, peakScore, isExternalConfirmed, isExternalSocialOnly, meetsInternalHardFloor }) => {
+    const sanitizedEvents = scored.filter(({ ev, mentions, politicalRelevance, peakScore, isExternalConfirmed, isExternalSocialOnly, meetsInternalSoftFloor, meetsInternalStrongFloor }) => {
       const hasAnyEvidence = ev.external_evidence_count >= 1 || ev.internal_mentions_count >= 1 || Number(ev.ssot_z_score ?? 0) >= 2;
       if (!hasAnyEvidence) ev.is_ai_synthetic = true;
 
@@ -1108,16 +1115,23 @@ serve(async (req) => {
         valid = true;
         ev.peak_type = "external_confirmed";
         ev.detected_by = "external";
-      } else if (isExternalSocialOnly && politicalRelevance >= 40) {
+      } else if (isExternalSocialOnly && politicalRelevance >= 25) {
         valid = true;
         ev.peak_type = "external_social";
         ev.detected_by = "external_social";
-      } else if (meetsInternalHardFloor && politicalRelevance >= 60) {
+        // Status do pipeline já reflete tier4-only como `weak`/`indeterminate` — não força confirmed.
+      } else if (meetsInternalStrongFloor && politicalRelevance >= 35) {
         valid = true;
         ev.peak_type = "internal_trend";
         ev.detected_by = "internal_ssot";
+      } else if (meetsInternalSoftFloor && politicalRelevance >= 20) {
+        valid = true;
+        ev.peak_type = "internal_trend";
+        ev.detected_by = "internal_ssot";
+        // Marca como indeterminate quando vier só de SSOT sem evidência externa.
+        if (!ev.status || ev.status === "indeterminate") ev.status = "indeterminate";
       } else {
-        discard_reason = !meetsInternalHardFloor ? "below_internal_hard_floor" : "below_political_relevance";
+        discard_reason = !meetsInternalSoftFloor ? "below_internal_soft_floor" : "below_political_relevance";
       }
 
       ev.political_relevance = politicalRelevance;
@@ -1141,12 +1155,14 @@ serve(async (req) => {
         political_relevance: politicalRelevance,
         peak_score: ev.peak_score,
         peak_type: ev.peak_type ?? null,
+        status: ev.status ?? null,
+        signals: ev.signals ?? [],
         discard_reason,
       }));
 
       if (!valid) {
         if (ev.is_ai_synthetic) discarded_synthetic++;
-        else if (discard_reason === "below_political_relevance" || discard_reason === "below_internal_hard_floor") discarded_low_relevance++;
+        else if (discard_reason === "below_political_relevance" || discard_reason === "below_internal_soft_floor") discarded_low_relevance++;
         else discarded_insufficient_evidence++;
         return false;
       }
