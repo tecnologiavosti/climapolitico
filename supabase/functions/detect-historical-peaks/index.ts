@@ -901,36 +901,84 @@ serve(async (req) => {
       };
     });
 
-    // === HARD VALIDATION — proíbe picos sem evidência real ===
-    // Aceita o pico se houver: cobertura externa (≥1 publicação), correlação interna SSOT (≥1 menção),
-    // OU pico estatístico real na timeline interna (z-score ≥ 2). Picos puramente "inventados pela IA"
-    // (sem nenhuma evidência) são descartados como sintéticos.
+    // === HARD VALIDATION — apenas picos com relevância política real ===
+    // Regra (produto): suprimir microvariações estatísticas irrelevantes.
+    // - EXTERNAL_CONFIRMED: aceita com cobertura externa (≥1 publicação + ≥1 veículo).
+    // - INTERNAL_TREND: só aceita se o volume absoluto, autores únicos, engajamento
+    //   e desvio estatístico forem todos altos o suficiente para representar repercussão real.
+    // Picos sem nenhuma evidência são descartados como sintéticos.
     let discarded_synthetic = 0;
     let discarded_insufficient_evidence = 0;
+    let discarded_low_relevance = 0;
     let externalPeaks = 0;
     let ssotPeaks = 0;
     const total_detected = sanitizedEventsRaw.length;
-    const sanitizedEvents = sanitizedEventsRaw.filter((ev: any) => {
-      const hasSsotStatPeak = Number(ev.ssot_z_score ?? 0) >= 2;
-      const hasAnyEvidence =
-        ev.external_evidence_count >= 1 ||
-        ev.internal_mentions_count >= 1 ||
-        hasSsotStatPeak;
+
+    // Calcula o score de relevância política (0-100) e o tipo de pico.
+    const scored = sanitizedEventsRaw.map((ev: any) => {
+      const mentions = Number(ev.internal_mentions_count ?? 0);
+      const authors = Number(ev.internal_authors ?? 0);
+      const engagement = Number(ev.internal_engagement ?? 0);
+      const z = Number(ev.ssot_z_score ?? 0);
+      const baseline = Number(ev.ssot_baseline_volume ?? 0);
+      const peakVolume = Number(ev.ssot_peak_volume ?? mentions);
+      const externalEv = Number(ev.external_evidence_count ?? 0);
+      const networks = ev.internal_by_network ? Object.values(ev.internal_by_network).filter((v: any) => Number(v) > 0).length : 0;
+
+      // Sub-scores 0-100
+      const volumeScore = Math.min(100, Math.log10(Math.max(1, mentions)) * 33); // 1k→99
+      const engagementScore = Math.min(100, Math.log10(Math.max(1, engagement)) * 20); // 100k→100
+      const authorDiversityScore = Math.min(100, Math.log10(Math.max(1, authors)) * 33);
+      const networkDiversityScore = Math.min(100, networks * 15);
+      const externalEvidenceScore = Math.min(100, externalEv * 12);
+      const politicalRelevance = Math.round(
+        volumeScore * 0.35 +
+        engagementScore * 0.20 +
+        authorDiversityScore * 0.20 +
+        networkDiversityScore * 0.15 +
+        externalEvidenceScore * 0.10,
+      );
+      const peakScore = politicalRelevance * Math.log10(Math.max(10, mentions));
+
+      // Classificação do tipo de pico
+      const isExternalConfirmed = ev.has_external_evidence && externalEv >= 1 && Number(ev.distinct_outlets ?? 0) >= 1;
+      const meetsInternalHardFloor =
+        z >= 3.5 &&
+        mentions >= Math.max(500, baseline * 3) &&
+        authors >= 100 &&
+        engagement >= 50000 &&
+        peakVolume >= 500;
+
+      return { ev, mentions, politicalRelevance, peakScore, isExternalConfirmed, meetsInternalHardFloor };
+    });
+
+    const sanitizedEvents = scored.filter(({ ev, mentions, politicalRelevance, peakScore, isExternalConfirmed, meetsInternalHardFloor }) => {
+      const hasAnyEvidence = ev.external_evidence_count >= 1 || ev.internal_mentions_count >= 1 || Number(ev.ssot_z_score ?? 0) >= 2;
+      if (!hasAnyEvidence) ev.is_ai_synthetic = true;
+
+      let valid = false;
+      let discard_reason: string | null = null;
       if (!hasAnyEvidence) {
-        ev.is_ai_synthetic = true;
+        discard_reason = "no_evidence_ai_synthetic";
+      } else if (isExternalConfirmed) {
+        valid = true;
+        ev.peak_type = "external_confirmed";
+        ev.detected_by = "external";
+      } else if (meetsInternalHardFloor && politicalRelevance >= 60) {
+        valid = true;
+        ev.peak_type = "internal_trend";
+        ev.detected_by = "internal_ssot";
+      } else {
+        discard_reason = !meetsInternalHardFloor ? "below_internal_hard_floor" : "below_political_relevance";
       }
-      const valid = hasAnyEvidence;
-      const discard_reason = !valid
-        ? "no_evidence_ai_synthetic"
-        : null;
-      // Origem do pico (badge na UI)
-      ev.detected_by = ev.has_external_evidence
-        ? "external"
-        : (ev.has_internal_evidence || hasSsotStatPeak ? "internal_ssot" : "none");
+
+      ev.political_relevance = politicalRelevance;
+      ev.peak_score = Math.round(peakScore);
       if (valid) {
-        if (ev.detected_by === "external") externalPeaks++;
+        if (ev.peak_type === "external_confirmed") externalPeaks++;
         else ssotPeaks++;
       }
+
       console.log(JSON.stringify({
         tag: "peak_audit",
         name: ev.name,
@@ -939,21 +987,25 @@ serve(async (req) => {
         baseline_volume: ev.ssot_baseline_volume,
         peak_volume: ev.ssot_peak_volume,
         internal_mentions: ev.internal_mentions_count,
+        internal_authors: ev.internal_authors,
+        internal_engagement: ev.internal_engagement,
         external_evidence_count: ev.external_evidence_count,
-        ssot_score: ev.ssot_score,
-        final_score: ev.relevance_score,
-        coverage_quality: ev.coverage_quality,
-        detected_by: ev.detected_by,
-        is_ai_synthetic: ev.is_ai_synthetic,
+        political_relevance: politicalRelevance,
+        peak_score: ev.peak_score,
+        peak_type: ev.peak_type ?? null,
         discard_reason,
       }));
+
       if (!valid) {
         if (ev.is_ai_synthetic) discarded_synthetic++;
+        else if (discard_reason === "below_political_relevance" || discard_reason === "below_internal_hard_floor") discarded_low_relevance++;
         else discarded_insufficient_evidence++;
         return false;
       }
       return true;
-    }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0));
+    })
+    .map(({ ev }) => ev)
+    .sort((a: any, b: any) => (b.peak_score || 0) - (a.peak_score || 0));
 
     console.log(JSON.stringify({
       tag: "peak_summary",
@@ -963,6 +1015,7 @@ serve(async (req) => {
       finalPeaks: sanitizedEvents.length,
       discarded_synthetic,
       discarded_insufficient_evidence,
+      discarded_low_relevance,
     }));
 
     // === FASE 5: ANÁLISE IA — DESABILITADA NA DETECÇÃO ===
