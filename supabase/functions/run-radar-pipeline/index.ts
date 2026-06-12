@@ -318,13 +318,20 @@ async function fetchAllRss(): Promise<NewsItem[]> {
   return results.flat();
 }
 
-function filterByAliases(items: NewsItem[], aliases: string[], lookbackDays: number): NewsItem[] {
+function filterByAliases(
+  items: NewsItem[],
+  aliases: string[],
+  lookbackDays: number,
+  roleKeywords: string[] = [],
+): NewsItem[] {
   const cutoff = Date.now() - lookbackDays * 86400_000;
   const normAliases = aliases.map((a) => normalize(a)).filter((a) => a.length >= 3);
+  const normRoles = roleKeywords.map((r) => normalize(r)).filter((r) => r.length >= 4);
   return items.filter((it) => {
     if (new Date(it.published_at).getTime() < cutoff) return false;
     const t = normalize(it.title);
-    return normAliases.some((a) => t.includes(a));
+    // alias match (forte) OU role context match (institucional/cargo) — IA depois descarta ruído
+    return normAliases.some((a) => t.includes(a)) || normRoles.some((r) => t.includes(r));
   });
 }
 
