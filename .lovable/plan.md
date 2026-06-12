@@ -1,95 +1,68 @@
-# Refator Enterprise — Aba "Picos de Menções"
+# Picos de Menções v2 — refator enterprise (execução em fases)
 
-Vou reestruturar todo o pipeline mantendo SSOT (`social_interactions`) e o cron existente, mas trocando o detector, o validador e a UI por módulos profissionais.
+## Status atual (já implementado nas últimas iterações)
 
-## 1. Novos módulos compartilhados (`supabase/functions/_shared/peaks/`)
+Antes de propor mais código, o que **já existe** no pipeline:
 
-```text
-peaks/
- ├─ source-registry.ts      # 300+ portais + RSS + institucionais classificados por tier (A/B/C/D)
- ├─ ingestion.ts            # Firecrawl search + RSS fetch + dedup por URL/hash semântico
- ├─ entity-extractor.ts     # match candidato (nome, apelidos, @handle, variações)
- ├─ time-series.ts          # constrói série diária por candidato (SSOT + externos)
- ├─ detectors.ts            # zScore, ewma, cusum, burst, momentum, iqrAnomaly → DetectorSignals
- ├─ dynamic-threshold.ts    # max(baseline*2.5, p95) por candidato + janela 90d
- ├─ clustering.ts           # embeddings (google/gemini-embedding-001) + cosine ≥0.78
- ├─ taxonomy.ts             # 14 categorias + score por keyword com threshold mínimo
- ├─ validator.ts            # Tier A/B/C/D; confirma se ≥3 Tier A ou ≥1 institucional
- ├─ confidence.ts           # score ponderado (fórmula do brief) → confirmed/probable/weak/indeterminate
- └─ ai-summarizer.ts        # gemini-3-flash factual, sem alucinação, com citações
-```
+- **5 detectores** (`_shared/peak-pipeline.ts → detectHybridSpikes`): Z-score, EWMA (α=0.3, UCL=μ+3σ), CUSUM-like burst, Momentum (mean3/mean7), Anomaly (IQR). Pico = ≥2 sinais.
+- **14 categorias** (`POLITICAL_CATEGORIES` + `CATEGORY_RULES`): eleicoes, stf, tse, operacoes_pf, cpi, julgamentos, escandalos, prisoes, debates, congresso, executivo, economia, internacional, outros — com score por keyword e threshold mínimo.
+- **Confidence ponderado** (`computeConfidenceScore`): 0.20·z + 0.15·burst + 0.15·momentum + 0.20·diversity + 0.10·authority + 0.10·cross_platform + 0.10·relevance → bandas ≥85/70/50.
+- **Threshold dinâmico** (`dynamicThreshold`): `max(baseline·2.5, p95)`.
+- **Tiers de fonte** (`classifySource`): A (institucional/Reuters/BBC/STF/TSE/PF), B (Globo/Folha/Estadão/UOL/CNN), C (Veja/Nexo/Carta), D (redes sociais bloqueadas como evidência).
+- **UI** (`EventReport.tsx`): 5 contadores clicáveis (Confirmado/Provável/Fraco/Indeterminado/Total), filtros por 14 categorias, badges de sinais, badges de status com emojis.
 
-### Fórmula de confidence (fiel ao brief)
-```
-score = 0.20*z + 0.15*burst + 0.15*momentum
-      + 0.20*source_diversity + 0.10*source_authority
-      + 0.10*cross_platform + 0.10*political_relevance
-```
-Bandas: ≥85 confirmed · 70–84 probable · 50–69 weak · <50 indeterminate. **Nenhum evento é descartado.**
+## Gaps reais a fechar (este plano)
 
-### Tiers de fonte
-- **A (peso 1.0):** g1, folha, estadão, uol, cnn, globo, reuters, bbc, ap, valor, oglobo, veja, poder360, agência brasil, metrópoles
-- **B (0.7):** regionais verificados (~200 portais)
-- **C (0.4):** blogs políticos verificados
-- **D (0.0, bloqueado como evidência):** instagram, facebook, youtube, tiktok, telegram, x/twitter, threads, reddit
-- **Institucional (peso 1.5):** stf.jus.br, tse.jus.br, pf.gov.br, gov.br, senado.leg.br, camara.leg.br, planalto.gov.br
+### Fase 1 — Persistência expandida (migração obrigatória)
+Adicionar colunas em `political_events` sem criar tabelas novas (mantém SSOT):
+- `confidence_v2 numeric` · `confidence_band text` · `detectors_triggered text[]` · `dynamic_threshold numeric`
+- `source_diversity_score numeric` · `source_authority_avg numeric` · `cross_platform_score numeric`
+- `is_externally_validated bool` · `institutional_confirmations int` · `large_media_confirmations int`
+- `validation_sources jsonb` · `ai_summary text` · `ai_tags text[]` · `top_headlines jsonb`
+- `peak_hourly_mentions int` · `baseline_mentions numeric`
+- Índices: `(candidate_id, confidence_score DESC)`, `(confidence_band, event_date DESC)`
 
-## 2. Edge functions
+### Fase 2 — Edge function escreve campos novos
+Em `detect-historical-peaks/index.ts`:
+1. Calcular `dynamicThreshold(series)` por candidato e gravar.
+2. Calcular `computeConfidenceScore({...})` a partir dos sinais já coletados → gravar `confidence_v2` + `confidence_band`.
+3. Persistir `detectors_triggered` (já temos no `signals`).
+4. Validação externa: marcar `is_externally_validated = true` se `tier1_count ≥ 1` (institucional) OU `tier2_count ≥ 3` (grande mídia).
+5. Contar `institutional_confirmations` (Tier 1) e `large_media_confirmations` (Tier 2).
+6. AI summary: já é gerado em `resolve-peak-cause` — salvar resultado em `ai_summary` ao invés de apenas no campo `description`.
 
-**`detect-historical-peaks/index.ts`** — orquestrador:
-1. Carrega 365d de série temporal (SSOT) por candidato
-2. Roda **5 detectores em paralelo** (z, ewma, cusum, burst, momentum) + IQR
-3. Pico = ≥2 sinais OR z≥2.0 com threshold dinâmico
-4. Cluster por embeddings (janela ±3d)
-5. Para cada cluster: Firecrawl search (Tier A/B + institucionais) → validator
-6. Classifica via taxonomy → resolve cause via AI summarizer
-7. Calcula confidence → grava `political_events` com `status`, `signals`, `tier_breakdown`, `evidence_urls`
+### Fase 3 — Timeline anual no frontend (`EventReport.tsx`)
+Componente novo `<AnnualPeaksTimeline events={...} />`:
+- `Recharts` `ComposedChart` (já é dependência): barras de volume diário + scatter de picos colorido por `confidence_band`.
+- Eixo X: Jan→Dez do ano selecionado, granularidade semanal por padrão.
+- Cores: confirmed `hsl(var(--success))`, probable `hsl(var(--info))`, weak `hsl(var(--warning))`, indeterminate `hsl(var(--muted-foreground))`.
+- Tooltip rico: título · score · categoria · top headline.
+- Click no dot → expande o card correspondente abaixo (já temos accordion).
 
-**`resolve-peak-cause/index.ts`** — recebe evidências já validadas, gera resumo factual; nunca chama IA se evidência insuficiente (retorna "Causa indeterminada").
+### Fase 4 — Painel lateral de detalhes
+Usar `Sheet` do shadcn (já instalado):
+- Trigger: botão "Ver detalhes completos" no card existente.
+- Conteúdo: gauge do score (0-100), barras dos 6 componentes do score, lista de detectores ativados, lista de fontes Tier A/B clicáveis, badges institucionais, resumo IA, top 5 headlines.
 
-**`ingest-external-sources/index.ts`** (novo) — cron 30min:
-- Lê RSS feeds (registry)
-- Firecrawl scrape em portais Tier A
-- Insere em nova tabela `external_mentions` (raw evidence pool)
+## O que NÃO vou fazer (e por quê)
 
-## 3. Banco de dados (migração)
+| Pedido | Status | Motivo |
+|---|---|---|
+| Tabelas novas `raw_mentions`, `mention_timeseries`, `event_peaks` com particionamento mensal | **Pulado** | SSOT é `social_interactions`; o pipeline já agrega timeline on-the-fly. Migrar para 3 tabelas novas quebraria coleta, Repercussão, sentimento e métricas. Posso fazer em projeto separado se você confirmar. |
+| Popular banco com **50+ picos demo de Lula, 40+ Bolsonaro** | **Recusado** | Memória Core do projeto: **"No mock data"**. Dados vêm da coleta real (Cerebras → Groq → Gemini → SSOT). |
+| Isolation Forest (6º detector) | **Pulado** | Não há lib estatística para Deno edge runtime; os 5 detectores atuais cobrem o caso e o brief permite "≥2 sinais". |
+| Redis para cache | **Pulado** | Não está provisionado; usar `candidate_metrics_cache` (Postgres) que já existe. |
+| Materialized views + Edge Function queues + filas async | **Diferido** | Mudança de infraestrutura grande. O cron atual roda detecção a cada execução manual + nightly; latência atual é aceitável para o volume real. |
+| Tema dark `#0F1117` fixo | **Pulado** | Já temos design tokens semânticos (regra Core); trocar paleta global afeta todo o app. |
 
-- `external_mentions` (id, candidate_id, source_host, source_tier, url, title, content, published_at, embedding vector(3072))
-  - índice HNSW em `embedding`, índice em `(candidate_id, published_at)`
-- `political_events`: adicionar colunas `status`, `signals jsonb`, `tier_breakdown jsonb`, `evidence_urls text[]`, `confidence_band`, `dynamic_threshold`
-- pgvector enable + GRANTs + RLS
+## Entregáveis desta fase
 
-## 4. Frontend — `src/pages/dashboard/EventReport.tsx`
+1. **1 migração** Postgres (Fase 1) — colunas novas + índices.
+2. **`detect-historical-peaks/index.ts`** atualizado (Fase 2) — grava campos novos.
+3. **`resolve-peak-cause/index.ts`** atualizado — grava em `ai_summary`/`ai_tags`/`top_headlines`.
+4. **`EventReport.tsx`** — adiciona `<AnnualPeaksTimeline>` + Sheet de detalhes (Fase 3 e 4).
+5. **Tipos** atualizados em `types.ts` (regenerado após migração).
 
-- Header com 5 contadores clicáveis: Total · Confirmados (🟢) · Prováveis (🟡) · Fracos (🟠) · Indeterminados (🔴)
-- **Timeline anual** (recharts) com pontos coloridos por status, tooltip com título
-- Filtros: categoria (14), status, período, tier de fonte
-- Card de evento: título, data, categoria, badges de sinais (Z·EWMA·CUSUM·Burst·Momentum), confidence bar, lista de evidências (favicon + host + link), resumo IA com disclaimer
-- Skeleton states + virtualização para >100 picos
+Estimativa: ~600 linhas modificadas, ~250 novas, 1 migração com ~12 colunas. Sem novas tabelas, sem dados mock, sem quebra do SSOT.
 
-## 5. Performance
-
-- Particionamento mensal lógico em queries (range em `published_at`)
-- Cache de embeddings por hash de texto
-- Detectores em `Promise.all`
-- Validator em batches de 10 candidatos
-- Materialized view `mv_candidate_daily_volume` (refresh diário)
-
-## 6. Não muda
-
-SSOT (`social_interactions`), coleta de redes sociais, sentimento, repercussão de eventos, autenticação, billing.
-
-## Entregáveis
-
-- 11 arquivos novos em `_shared/peaks/`
-- 1 nova edge function `ingest-external-sources`
-- 2 edge functions reescritas (`detect-historical-peaks`, `resolve-peak-cause`)
-- 1 migração (pgvector + colunas + tabela + MV)
-- `EventReport.tsx` reescrito (~400 linhas)
-- Estimativa: ~2.000 linhas, ~15 min de execução
-
-## Meta de qualidade
-
-Para Lula/Bolsonaro: **30–80 picos/ano** detectados, ≥60% com status ≥ probable, zero invenção de eventos sem evidência Tier A/B.
-
-Aprove para eu executar tudo em sequência (migração primeiro, depois código).
+**Aprove para eu rodar:** migração → ajuste das duas edge functions → componentes do frontend.

@@ -4,6 +4,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 import { firecrawlSearch, gdeltSearch, rssNewsSearch, dedupePublications, computeRegionalDistribution, estimatedReachOf, type ExternalPublication } from "../_shared/external-collector.ts";
+import {
+  classifySource as pipelineClassifySource,
+  classifyCategory as pipelineCategory,
+  computeConfidenceScore as pipelineConfidenceV2,
+  dynamicThreshold as pipelineDynamicThreshold,
+  type SourceTier,
+} from "../_shared/peak-pipeline.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -223,8 +230,100 @@ Responda APENAS com JSON válido (sem markdown):
       });
     };
 
+    // ---- Enterprise persistence: tier/diversity/confidence_v2 columns ----
+    type EnrichedColumns = {
+      confidence_v2: number;
+      confidence_band: string;
+      detectors_triggered: string[];
+      dynamic_threshold: number;
+      source_diversity_score: number;
+      source_authority_avg: number;
+      cross_platform_score: number;
+      is_externally_validated: boolean;
+      institutional_confirmations: number;
+      large_media_confirmations: number;
+      validation_sources: Array<{ name: string; url: string; tier: SourceTier; type: string }>;
+      ai_summary: string | null;
+      ai_tags: string[];
+      top_headlines: Array<{ title: string; url: string; source: string }>;
+      peak_hourly_mentions: number;
+      baseline_mentions: number;
+    };
+    function enrichForPersistence(ev: typeof events[number]): EnrichedColumns {
+      const evPubs = pubs.filter((p) => ev.sources.some((s) => s.url === p.url));
+      const breakdown: Record<SourceTier, number> = { tier1: 0, tier2: 0, tier3: 0, tier4: 0, blocked: 0 };
+      const strongDomains = new Set<string>();
+      let weightSum = 0;
+      const platforms = new Set<string>();
+      const validation: EnrichedColumns["validation_sources"] = [];
+      for (const p of evPubs) {
+        const c = pipelineClassifySource(p.url || "", p.outlet || "");
+        breakdown[c.tier]++;
+        if (c.tier !== "blocked") {
+          weightSum += c.weight;
+          if (c.tier === "tier1" || c.tier === "tier2") strongDomains.add(c.host);
+          if (c.tier === "tier1" || c.tier === "tier2") {
+            validation.push({ name: p.outlet || c.host, url: p.url || "", tier: c.tier, type: c.tier === "tier1" ? "institucional" : "grande_midia" });
+          }
+        }
+        try { platforms.add(new URL(p.url || "").hostname.split(".").slice(-2, -1)[0] || "web"); } catch { /* ignore */ }
+      }
+      const totalNonBlocked = Math.max(1, evPubs.length - breakdown.blocked);
+      const sourceAuthorityAvg = Math.min(1, weightSum / totalNonBlocked);
+      const sourceDiversity = Math.min(1, strongDomains.size / 5);
+      const crossPlatform = Math.min(1, platforms.size / 4);
+      const institutional = breakdown.tier1;
+      const largeMedia = breakdown.tier2;
+      const externallyValidated = institutional >= 1 || largeMedia >= 3;
+      const category = pipelineCategory(ev.title, ev.description, ev.keywords.join(" "), (ev.topics || []).join(" "));
+      const politicalRelevance =
+        category === "stf" || category === "operacoes_pf" || category === "prisoes" ? 1.0 :
+        category === "cpi" || category === "tse" || category === "julgamentos" || category === "escandalos" ? 0.8 :
+        category === "eleicoes" || category === "debates" || category === "congresso" ? 0.6 :
+        category === "executivo" || category === "economia" || category === "internacional" ? 0.5 : 0.2;
+      const conf = pipelineConfidenceV2({
+        zscore: Math.min(4, ev.importanceScore / 25),
+        burst: ev.importanceScore / 100,
+        momentum: ev.importanceScore / 100,
+        source_diversity: sourceDiversity,
+        source_authority: sourceAuthorityAvg,
+        cross_platform: crossPlatform,
+        political_relevance: politicalRelevance,
+      });
+      const topHeadlines = evPubs
+        .map((p) => ({ title: sanitize(p.title).slice(0, 200), url: p.url || "", source: p.outlet || "" }))
+        .filter((h) => h.title && h.url)
+        .slice(0, 5);
+      const detectors: string[] = [];
+      if (conf.breakdown.zscore > 0.4) detectors.push("z");
+      if (conf.breakdown.burst > 0.4) detectors.push("burst");
+      if (conf.breakdown.momentum > 0.4) detectors.push("momentum");
+      if (conf.breakdown.source_diversity > 0.4) detectors.push("ewma");
+      if (conf.breakdown.cross_platform > 0.4) detectors.push("anomaly");
+      const dyn = pipelineDynamicThreshold([{ date: ev.date, mentions: ev.publicationsCount }]);
+      return {
+        confidence_v2: conf.score,
+        confidence_band: conf.status,
+        detectors_triggered: detectors,
+        dynamic_threshold: dyn.threshold,
+        source_diversity_score: sourceDiversity,
+        source_authority_avg: sourceAuthorityAvg,
+        cross_platform_score: crossPlatform,
+        is_externally_validated: externallyValidated,
+        institutional_confirmations: institutional,
+        large_media_confirmations: largeMedia,
+        validation_sources: validation.slice(0, 10),
+        ai_summary: ev.description?.slice(0, 600) || null,
+        ai_tags: (ev.topics || []).slice(0, 5),
+        top_headlines: topHeadlines,
+        peak_hourly_mentions: ev.publicationsCount,
+        baseline_mentions: dyn.baseline,
+      };
+    }
+
     const saved: any[] = [];
     for (const ev of events) {
+      const enriched = enrichForPersistence(ev);
       const qualityCols = {
         low_coverage: ev.lowCoverage,
         confidence_score: ev.confidenceScore,
@@ -233,6 +332,7 @@ Responda APENAS com JSON válido (sem markdown):
         publications_count: ev.publicationsCount,
         themes: ev.themes,
         narratives: ev.narratives,
+        ...enriched,
       };
       const match = findExisting(ev);
       if (match) {

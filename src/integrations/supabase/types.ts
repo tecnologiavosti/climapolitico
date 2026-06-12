@@ -1932,73 +1932,121 @@ export type Database = {
       }
       political_events: {
         Row: {
+          ai_summary: string | null
+          ai_tags: string[]
+          baseline_mentions: number
           candidate_id: string
           city: string | null
+          confidence_band: string
           confidence_score: number
+          confidence_v2: number
           created_at: string
+          cross_platform_score: number
           description: string | null
+          detectors_triggered: string[]
           distinct_outlets: number
+          dynamic_threshold: number
           event_date: string
           event_name: string
           event_type: string
           id: string
           importance_score: number
+          institutional_confirmations: number
+          is_externally_validated: boolean
           keywords: string[]
+          large_media_confirmations: number
           location: string | null
           low_coverage: boolean
           metadata: Json
           narratives: Json
+          peak_hourly_mentions: number
           publications_count: number
+          source_authority_avg: number
+          source_diversity_score: number
           state: string | null
           themes: string[]
+          top_headlines: Json
           updated_at: string
           user_id: string
+          validation_sources: Json
         }
         Insert: {
+          ai_summary?: string | null
+          ai_tags?: string[]
+          baseline_mentions?: number
           candidate_id: string
           city?: string | null
+          confidence_band?: string
           confidence_score?: number
+          confidence_v2?: number
           created_at?: string
+          cross_platform_score?: number
           description?: string | null
+          detectors_triggered?: string[]
           distinct_outlets?: number
+          dynamic_threshold?: number
           event_date: string
           event_name: string
           event_type?: string
           id?: string
           importance_score?: number
+          institutional_confirmations?: number
+          is_externally_validated?: boolean
           keywords?: string[]
+          large_media_confirmations?: number
           location?: string | null
           low_coverage?: boolean
           metadata?: Json
           narratives?: Json
+          peak_hourly_mentions?: number
           publications_count?: number
+          source_authority_avg?: number
+          source_diversity_score?: number
           state?: string | null
           themes?: string[]
+          top_headlines?: Json
           updated_at?: string
           user_id: string
+          validation_sources?: Json
         }
         Update: {
+          ai_summary?: string | null
+          ai_tags?: string[]
+          baseline_mentions?: number
           candidate_id?: string
           city?: string | null
+          confidence_band?: string
           confidence_score?: number
+          confidence_v2?: number
           created_at?: string
+          cross_platform_score?: number
           description?: string | null
+          detectors_triggered?: string[]
           distinct_outlets?: number
+          dynamic_threshold?: number
           event_date?: string
           event_name?: string
           event_type?: string
           id?: string
           importance_score?: number
+          institutional_confirmations?: number
+          is_externally_validated?: boolean
           keywords?: string[]
+          large_media_confirmations?: number
           location?: string | null
           low_coverage?: boolean
           metadata?: Json
           narratives?: Json
+          peak_hourly_mentions?: number
           publications_count?: number
+          source_authority_avg?: number
+          source_diversity_score?: number
           state?: string | null
           themes?: string[]
+          top_headlines?: Json
           updated_at?: string
           user_id?: string
+          validation_sources?: Json
         }
         Relationships: []
       }
