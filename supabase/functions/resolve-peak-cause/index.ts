@@ -4,7 +4,7 @@
 // (Google News / Bing RSS + GDELT) and asks the AI to explain the cause.
 //
 // Input:  { candidateId, candidateName, peakDate, windowStart?, windowEnd?, peakMentions? }
-// Output: { event_title, event_summary, root_cause, confidence, main_networks,
+// Output: { response_mode, event_title, event_summary, root_cause, confidence, main_networks,
 //           main_entities, top_keywords, top_hashtags, top_domains, sentiment_summary,
 //           external_evidence: [{title,url,outlet,publishedAt}], internal_mentions, fallback_text? }
 
@@ -37,6 +37,59 @@ function tokenize(text: string): string[] {
 
 function topN(map: Map<string, number>, n: number): Array<[string, number]> {
   return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, n);
+}
+
+type SourceStrength = "strong" | "weak";
+type ResponseMode = "CONFIRMED_EVENT" | "PROBABLE_NARRATIVE" | "UNKNOWN_TRIGGER";
+
+const WEAK_SOURCE_RE = /(^|\.)(instagram\.com|facebook\.com|m\.facebook\.com|fb\.com|youtube\.com|youtu\.be|tiktok\.com|threads\.net|threads\.com|x\.com|twitter\.com|t\.me|telegram\.me|reddit\.com|pinterest\.com|bsky\.app|mastodon\.|truthsocial\.com)$/i;
+const WEAK_OUTLET_RE = /\b(instagram|facebook|youtube|tiktok|threads|twitter|x\.com|telegram|reddit|pinterest|bluesky|bsky|mastodon|truth social)\b/i;
+const STRONG_OFFICIAL_RE = /(^|\.)(stf\.jus\.br|tse\.jus\.br|senado\.leg\.br|camara\.leg\.br|gov\.br|planalto\.gov\.br|mpf\.mp\.br|pf\.gov\.br|tcu\.gov\.br)$/i;
+const STRONG_NEWS_RE = /(^|\.)(g1\.globo\.com|oglobo\.globo\.com|valor\.globo\.com|folha\.uol\.com\.br|estadao\.com\.br|uol\.com\.br|poder360\.com\.br|cnnbrasil\.com\.br|metropoles\.com|reuters\.com|bbc\.com|veja\.abril\.com\.br|terra\.com\.br|r7\.com|band\.uol\.com\.br|congressoemfoco\.uol\.com\.br|cartacapital\.com\.br|nexojornal\.com\.br|brasildefato\.com\.br|agenciabrasil\.ebc\.com\.br)$/i;
+const STRONG_OUTLET_RE = /\b(g1|globo|o globo|valor|folha|estad[aã]o|uol|poder360|cnn|metropoles|m[eé]tropoles|reuters|bbc|veja|terra|r7|band|record|jovem pan|congresso em foco|carta ?capital|nexo|brasil de fato|ag[êe]ncia brasil|senado|c[aâ]mara|stf|tse|planalto|pol[ií]cia federal|pf|mpf|tcu)\b/i;
+
+function hostOf(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, "").toLowerCase(); } catch { return ""; }
+}
+
+function classifyExternalSource(pub: ExternalPublication): SourceStrength {
+  const host = hostOf(pub.url || "");
+  const outlet = String(pub.outlet || "");
+  if (WEAK_SOURCE_RE.test(host) || WEAK_OUTLET_RE.test(outlet)) return "weak";
+  if (STRONG_OFFICIAL_RE.test(host) || STRONG_NEWS_RE.test(host) || STRONG_OUTLET_RE.test(outlet)) return "strong";
+  if (pub.source === "gdelt") return "strong";
+  if (pub.source === "rss" && outlet && !WEAK_OUTLET_RE.test(outlet)) return "strong";
+  return "weak";
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+}
+
+function calculateSemanticConfidence(evidence: ReturnType<typeof extractEvidence>, interactionsCount: number): number {
+  const keywordTotal = evidence.top_keywords.reduce((acc, k) => acc + k.count, 0);
+  const topKeyword = evidence.top_keywords[0]?.count ?? 0;
+  const dominance = keywordTotal > 0 ? clamp01((topKeyword / keywordTotal) * 3) : 0;
+  const minRepeated = Math.max(3, Math.floor(interactionsCount * 0.01));
+  const keywordDepth = clamp01(evidence.top_keywords.filter((k) => k.count >= minRepeated).length / 8);
+  const bigramSignal = clamp01(evidence.top_bigrams.filter((k) => k.count >= Math.max(3, Math.floor(interactionsCount * 0.006))).length / 4);
+  const hashtagSignal = clamp01(evidence.top_hashtags.filter((k) => k.count >= Math.max(3, Math.floor(interactionsCount * 0.004))).length / 3);
+  return clamp01(dominance * 0.30 + keywordDepth * 0.30 + bigramSignal * 0.25 + hashtagSignal * 0.15);
+}
+
+function calculateEntityConfidence(evidence: ReturnType<typeof extractEvidence>, interactionsCount: number): number {
+  const minEntity = Math.max(3, Math.floor(interactionsCount * 0.005));
+  const mentionedEntities = evidence.top_mentions.filter((k) => k.count >= minEntity).length;
+  const namedBigrams = evidence.top_bigrams.filter((k) => /\b(stf|tse|senado|camara|câmara|trump|eua|pf|lula|bolsonaro|ministro|congresso)\b/i.test(k.term) || k.count >= minEntity).length;
+  return clamp01((mentionedEntities / 5) * 0.55 + (namedBigrams / 6) * 0.45);
+}
+
+function buildTopicLabel(evidence: ReturnType<typeof extractEvidence>): string {
+  const terms = [
+    ...evidence.top_bigrams.slice(0, 2).map((k) => k.term),
+    ...evidence.top_keywords.slice(0, 4).map((k) => k.term),
+  ].filter(Boolean);
+  return terms.length ? terms.slice(0, 5).join(", ") : "termos recorrentes nas redes";
 }
 
 function extractEvidence(rows: Array<{ comment_text?: string | null; post_title?: string | null; social_network?: string | null; post_url?: string | null }>) {
@@ -166,8 +219,28 @@ Deno.serve(async (req) => {
       return d >= wStartLoose && d <= wEndLoose;
     }).slice(0, 25);
 
-    const external_evidence = pubs.map((p) => ({
-      title: p.title, url: p.url, outlet: p.outlet, publishedAt: p.publishedAt,
+    const classifiedPubs = pubs.map((p) => ({ pub: p, strength: classifyExternalSource(p) }));
+    const strongSources = classifiedPubs.filter((p) => p.strength === "strong").length;
+    const weakSources = classifiedPubs.filter((p) => p.strength === "weak").length;
+    const semanticConfidence = calculateSemanticConfidence(evidence, interactions.length);
+    const entityConfidence = calculateEntityConfidence(evidence, interactions.length);
+    const externalEvidenceConfidence = clamp01(Math.min(1, strongSources / 3) * 0.85 + Math.min(1, weakSources / 8) * 0.15);
+    const responseMode: ResponseMode = strongSources >= 1
+      ? "CONFIRMED_EVENT"
+      : semanticConfidence >= 0.75
+        ? "PROBABLE_NARRATIVE"
+        : "UNKNOWN_TRIGGER";
+    const computedConfidence = Math.round(
+      clamp01(
+        semanticConfidence * 0.45 +
+        entityConfidence * 0.20 +
+        externalEvidenceConfidence * 0.35,
+      ) * 100,
+    ) / 100;
+    const finalConfidence = strongSources === 0 ? Math.min(computedConfidence, 0.70) : computedConfidence;
+
+    const external_evidence = classifiedPubs.map(({ pub, strength }) => ({
+      title: pub.title, url: pub.url, outlet: pub.outlet, publishedAt: pub.publishedAt, source_strength: strength,
     }));
 
     // ---------- STAGE 3: AI explanation ----------
@@ -175,13 +248,26 @@ Deno.serve(async (req) => {
 REGRAS CRÍTICAS:
 - Baseie-se APENAS nas evidências fornecidas (internas e externas).
 - NUNCA invente eventos, datas, prisões, operações, CPIs ou decisões judiciais que não estejam nas evidências.
-- Se as evidências forem fracas ou ambíguas, retorne confidence < 0.6 e seja honesto na explicação.
+- Do not invent events.
+- If evidence is insufficient, explicitly say uncertainty.
+- Never convert correlated terms into factual claims.
+- Sem STRONG_EXTERNAL_SOURCE, é PROIBIDO afirmar fatos como reunião, decisão, operação, prisão, CPI, acordo, denúncia ou encontro. Use linguagem probabilística ou diga que a causa é indeterminada.
+- MODE A CONFIRMED_EVENT: somente se houver fonte forte; pode afirmar o evento explicitamente citado pelas fontes.
+- MODE B PROBABLE_NARRATIVE: sem fonte forte e com sinal semântico consistente; use "os dados sugerem", "parece relacionado", "não encontramos confirmação externa suficiente".
+- MODE C UNKNOWN_TRIGGER: diga que não foi possível identificar com confiança a causa exata do pico.
 - Responda APENAS em JSON válido, em português brasileiro.`;
 
     const userPrompt = `CANDIDATO: ${candidateName}
 DATA DO PICO: ${peakDate}
 JANELA: ${wStart.toISOString().slice(0,10)} → ${wEnd.toISOString().slice(0,10)}
 PICO DE MENÇÕES: ${peakMentions ?? "n/d"}
+MODO OBRIGATÓRIO: ${responseMode}
+FONTES FORTES: ${strongSources}
+FONTES FRACAS: ${weakSources}
+CONFIANÇA SEMÂNTICA: ${semanticConfidence.toFixed(2)}
+CONFIANÇA DE ENTIDADES: ${entityConfidence.toFixed(2)}
+CONFIANÇA DE EVIDÊNCIA EXTERNA: ${externalEvidenceConfidence.toFixed(2)}
+CONFIANÇA FINAL JÁ CALCULADA PELO SISTEMA: ${finalConfidence.toFixed(2)}
 
 EVIDÊNCIA INTERNA (extraída de ${interactions.length} interações monitoradas):
 - Top palavras: ${evidence.top_keywords.slice(0,12).map(k=>`${k.term}(${k.count})`).join(", ") || "—"}
@@ -193,14 +279,13 @@ EVIDÊNCIA INTERNA (extraída de ${interactions.length} interações monitoradas
 - Sentimento: ${sentiment_summary}
 
 EVIDÊNCIA EXTERNA (${external_evidence.length} publicações encontradas):
-${external_evidence.slice(0,15).map((e,i)=>`${i+1}. [${e.outlet}] ${e.title}${e.publishedAt?` (${e.publishedAt.slice(0,10)})`:""}`).join("\n") || "Nenhuma publicação externa relevante."}
+${external_evidence.slice(0,15).map((e,i)=>`${i+1}. [${e.source_strength.toUpperCase()} · ${e.outlet}] ${e.title}${e.publishedAt?` (${e.publishedAt.slice(0,10)})`:""}`).join("\n") || "Nenhuma publicação externa relevante."}
 
 Responda em JSON estrito com este schema:
 {
-  "event_title": "título curto e factual do acontecimento (até 90 caracteres)",
-  "event_summary": "1-2 frases descrevendo o que aconteceu, baseado nas evidências",
-  "root_cause": "explicação da causa do pico de menções",
-  "confidence": 0.0,
+  "event_title": "MODE A: título factual citado por fonte forte; MODE B: título probabilístico do padrão; MODE C: Causa indeterminada",
+  "event_summary": "MODE A: o que aconteceu segundo fonte forte; MODE B/C: padrão observado sem afirmar acontecimento factual",
+  "root_cause": "explicação da causa do pico, respeitando o modo obrigatório",
   "main_networks": ["..."],
   "main_entities": ["pessoas, instituições ou termos mais relevantes"],
   "sentiment_summary": "resumo qualitativo do sentimento das redes"
@@ -208,29 +293,66 @@ Responda em JSON estrito com este schema:
 
     let ai: any = null;
     let aiError: string | null = null;
-    try {
-      const res = await callAICerebrasFirst({
-        systemMsg, userPrompt, jsonMode: true,
-        maxTokens: 900, temperature: 0.2, tag: "resolve-peak-cause",
-      });
-      ai = JSON.parse(res.content);
-    } catch (e) {
-      aiError = (e as Error).message;
-      console.warn("[resolve-peak-cause] AI failed:", aiError);
+    if (responseMode !== "UNKNOWN_TRIGGER") {
+      try {
+        const res = await callAICerebrasFirst({
+          systemMsg, userPrompt, jsonMode: true,
+          maxTokens: 900, temperature: 0.2, tag: "resolve-peak-cause",
+        });
+        ai = JSON.parse(res.content);
+      } catch (e) {
+        aiError = (e as Error).message;
+        console.warn("[resolve-peak-cause] AI failed:", aiError);
+      }
     }
 
-    const confidence = Number(ai?.confidence ?? 0);
-    const lowConfidence = !ai || confidence < 0.6;
     const topTermsList = evidence.top_keywords.slice(0, 6).map((k) => k.term).join(", ");
+    const topicLabel = buildTopicLabel(evidence);
+    const unknownText = "Não foi possível identificar com confiança a causa exata do pico.";
+    const probableText = `Os dados sugerem que o pico está relacionado a discussões sobre ${topicLabel}, porém não encontramos confirmação externa suficiente para determinar o gatilho exato.`;
+    const lowConfidence = responseMode === "UNKNOWN_TRIGGER";
+    const modeFallback = responseMode === "UNKNOWN_TRIGGER" ? unknownText : probableText;
+    const safeTitle = responseMode === "CONFIRMED_EVENT"
+      ? (ai?.event_title || `Pico de menções em ${peakDate}`)
+      : responseMode === "PROBABLE_NARRATIVE"
+        ? `Narrativa provável: ${topicLabel}`
+        : "Causa indeterminada";
+    const safeSummary = responseMode === "CONFIRMED_EVENT"
+      ? (ai?.event_summary || "")
+      : modeFallback;
+    const safeRootCause = responseMode === "CONFIRMED_EVENT"
+      ? (ai?.root_cause || "")
+      : `${modeFallback}${topTermsList ? ` Principais termos associados: ${topTermsList}.` : ""}`;
     const fallback_text = lowConfidence
-      ? `Não encontramos evidências externas suficientes para determinar com alta confiança a causa deste pico. Principais termos associados nas redes monitoradas: ${topTermsList || "—"}.`
+      ? `${unknownText} Principais termos associados nas redes monitoradas: ${topTermsList || "—"}.`
       : null;
 
+    console.log(JSON.stringify({
+      tag: "resolve_peak_cause_grounding",
+      candidateName,
+      peakDate,
+      response_mode: responseMode,
+      strong_sources: strongSources,
+      weak_sources: weakSources,
+      semantic_confidence: semanticConfidence,
+      entity_confidence: entityConfidence,
+      external_evidence_confidence: externalEvidenceConfidence,
+      final_confidence: finalConfidence,
+    }));
+
     const out = {
-      event_title: ai?.event_title || `Pico de menções em ${peakDate}`,
-      event_summary: ai?.event_summary || "",
-      root_cause: ai?.root_cause || "",
-      confidence: Number.isFinite(confidence) ? confidence : 0,
+      response_mode: responseMode,
+      event_title: safeTitle,
+      event_summary: safeSummary,
+      root_cause: safeRootCause,
+      confidence: finalConfidence,
+      confidence_breakdown: {
+        semanticConfidence,
+        entityConfidence,
+        externalEvidenceConfidence,
+        strongSources,
+        weakSources,
+      },
       main_networks: ai?.main_networks || evidence.top_networks.map((n) => n.network),
       main_entities: ai?.main_entities || evidence.top_bigrams.slice(0, 6).map((b) => b.term),
       top_keywords: evidence.top_keywords.slice(0, 12),
