@@ -221,14 +221,67 @@ export function detectHybridSpikes(series: SeriesPoint[], opts: { minVolume?: nu
   return out;
 }
 
-// Dynamic per-candidate threshold: max(baseline*2.5, p95).
-// Use to gate borderline cases or to compute relative intensity in UI.
-export function dynamicThreshold(series: SeriesPoint[]): { baseline: number; p95: number; threshold: number } {
+// Dynamic per-candidate threshold: max(baseline*1.8, p90). Relaxed from 2.5×/p95
+// so we surface ~2× more candidate peaks for political analysis.
+export function dynamicThreshold(series: SeriesPoint[]): { baseline: number; p90: number; p95: number; threshold: number } {
   const counts = series.map((p) => Number(p.mentions || 0)).filter((v) => v > 0).sort((a, b) => a - b);
-  if (counts.length === 0) return { baseline: 0, p95: 0, threshold: 0 };
+  if (counts.length === 0) return { baseline: 0, p90: 0, p95: 0, threshold: 0 };
   const baseline = counts.reduce((s, v) => s + v, 0) / counts.length;
+  const p90 = quantile(counts, 0.90);
   const p95 = quantile(counts, 0.95);
-  return { baseline: Math.round(baseline * 10) / 10, p95: Math.round(p95), threshold: Math.round(Math.max(baseline * 2.5, p95)) };
+  return { baseline: Math.round(baseline * 10) / 10, p90: Math.round(p90), p95: Math.round(p95), threshold: Math.round(Math.max(baseline * 1.8, p90)) };
+}
+
+// Merge peaks of the same candidate occurring within `gapDays` and sharing
+// keywords. Keeps the higher-score peak as the survivor; absorbs the other.
+export interface MergeablePeak {
+  date: string;          // YYYY-MM-DD
+  score: number;         // any sortable score (confidence or relevance)
+  keywords?: string[];
+  [k: string]: unknown;
+}
+export function mergeNearbyPeaks<T extends MergeablePeak>(peaks: T[], gapDays = 3, minSharedKw = 2): T[] {
+  if (peaks.length <= 1) return peaks;
+  const sorted = [...peaks].sort((a, b) => a.date.localeCompare(b.date));
+  const out: T[] = [];
+  for (const p of sorted) {
+    const last = out[out.length - 1];
+    if (!last) { out.push(p); continue; }
+    const gap = (new Date(p.date).getTime() - new Date(last.date).getTime()) / 86400_000;
+    const setA = new Set((last.keywords || []).map((k) => k.toLowerCase()));
+    const setB = (p.keywords || []).map((k) => k.toLowerCase());
+    const shared = setB.filter((k) => setA.has(k)).length;
+    const closeEnough = gap <= gapDays && (shared >= minSharedKw || (last.keywords?.length ?? 0) === 0 || (p.keywords?.length ?? 0) === 0);
+    if (closeEnough) {
+      // Keep higher-score one as base; merge keywords.
+      const winner = (p.score >= last.score) ? p : last;
+      const merged: T = { ...winner, keywords: Array.from(new Set([...(last.keywords || []), ...(p.keywords || [])])) } as T;
+      out[out.length - 1] = merged;
+    } else {
+      out.push(p);
+    }
+  }
+  return out;
+}
+
+// Force a category when external sources clearly point to an institution.
+// Used by resolve-peak-cause to avoid "Outros" / "Indeterminado" when ≥3 strong
+// sources hit a clearly-identifiable domain (STF, TSE, PF, Câmara, Senado…).
+export function categoryFromSources(urls: Array<string | null | undefined>): string | null {
+  let stf = 0, tse = 0, pf = 0, congresso = 0, planalto = 0;
+  for (const u of urls) {
+    const h = hostOf(String(u || ""));
+    if (!h) continue;
+    if (/stf\.jus\.br/.test(h)) stf++;
+    else if (/tse\.jus\.br/.test(h)) tse++;
+    else if (/(pf\.gov\.br|policiafederal)/.test(h)) pf++;
+    else if (/(camara\.leg\.br|senado\.leg\.br|congressoemfoco)/.test(h)) congresso++;
+    else if (/(planalto\.gov\.br|gov\.br)/.test(h)) planalto++;
+  }
+  const ranked: Array<[string, number]> = [
+    ["stf", stf], ["tse", tse], ["operacoes_pf", pf], ["congresso", congresso], ["executivo", planalto],
+  ].sort((a, b) => b[1] - a[1]);
+  return ranked[0][1] >= 1 ? ranked[0][0] : null;
 }
 
 // Weighted confidence score per the brief spec (0..100).
