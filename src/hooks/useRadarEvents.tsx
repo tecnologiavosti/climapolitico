@@ -48,7 +48,7 @@ export function useRadarEvents(filters: RadarFilters) {
       let q = supabase
         .from("political_events")
         .select(
-          "id,candidate_id,title,event_name,summary,ai_summary,category,category_v2,event_date,source_count,total_sources,social_score,importance,importance_score,status,sources_json"
+          "id,candidate_id,title,event_name,summary,ai_summary,category,category_v2,event_date,source_count,total_sources,social_score,importance,importance_score,cluster_size,status,sources_json"
         )
         .eq("user_id", user!.id)
         .order("event_date", { ascending: false })
@@ -78,6 +78,7 @@ export function useRadarEvents(filters: RadarFilters) {
         source_count: r.source_count || r.total_sources || 0,
         social_score: Number(r.social_score) || 0,
         importance: Number(r.importance) || Number(r.importance_score) || 0,
+        cluster_size: Number(r.cluster_size) || 1,
         status: r.status || "pending",
         sources_json: Array.isArray(r.sources_json) ? r.sources_json : [],
       }));
