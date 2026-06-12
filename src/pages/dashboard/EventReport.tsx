@@ -91,6 +91,9 @@ interface ExternalTimelinePoint {
 }
 
 interface HistoricalResponse {
+  success?: boolean;
+  stage?: string;
+  error?: string;
   events: HistoricalEvent[];
   publications_collected: number;
   estimated_reach?: number;
@@ -120,6 +123,27 @@ function formatNumber(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return String(n);
+}
+
+async function getEdgeFunctionErrorMessage(error: any, data?: any): Promise<string> {
+  const payload = data && typeof data === "object" ? data : null;
+  if (payload?.stage) return `Falha na etapa: ${payload.stage}${payload.error ? ` — ${payload.error}` : ""}`;
+  const response = error?.context;
+  if (response && typeof response.clone === "function") {
+    try {
+      const body = await response.clone().json();
+      if (body?.stage) return `Falha na etapa: ${body.stage}${body.error ? ` — ${body.error}` : ""}`;
+      if (body?.error && typeof body.error === "string") return body.error;
+      if (body?.message) return String(body.message);
+    } catch {
+      try {
+        const text = await response.clone().text();
+        if (text) return text;
+      } catch { /* noop */ }
+    }
+  }
+  const message = String(error?.message || "Erro ao detectar picos");
+  return message.includes("non-2xx") ? "Falha na etapa: retorno_final" : message;
 }
 
 const YEAR_PRESETS = [
