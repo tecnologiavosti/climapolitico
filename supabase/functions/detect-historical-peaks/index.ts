@@ -731,11 +731,27 @@ Responda APENAS JSON válido:
       }
     }
 
-    // Combina eventos da IA enriquecida + descobertos não cobertos.
+    // Combina eventos da IA enriquecida + descobertos + picos SSOT puros (z-score >= 2.5).
     const combinedByKey = new Map<string, any>();
     const keyOf = (e: any) => `${String(e.start_date || "").slice(0, 10)}|${normalize(String(e.name || "")).slice(0, 60)}`;
+    const dayKey = (e: any) => String(e.start_date || "").slice(0, 10);
     for (const e of aiEvents) combinedByKey.set(keyOf(e), e);
     for (const e of discovered) if (!combinedByKey.has(keyOf(e))) combinedByKey.set(keyOf(e), e);
+    // SSOT peaks: adiciona se nenhum evento já existir no mesmo dia (anexa metadados de z-score).
+    const existingDays = new Set([...combinedByKey.values()].map(dayKey));
+    const ssotPeaks = ssotPeakEvents(Array.isArray(localTimeline) ? localTimeline : []);
+    for (const sp of ssotPeaks) {
+      if (existingDays.has(sp.start_date)) {
+        // Anexa z-score ao evento existente naquele dia
+        for (const ev of combinedByKey.values()) {
+          if (dayKey(ev) === sp.start_date) {
+            ev._ssot_z = sp._ssot_z; ev._ssot_baseline = sp._ssot_baseline; ev._ssot_peak = sp._ssot_peak;
+          }
+        }
+      } else {
+        combinedByKey.set(keyOf(sp), sp);
+      }
+    }
     let candidateEvents: any[] = [...combinedByKey.values()];
     if (candidateEvents.length === 0) candidateEvents = fallbackEventsFromSources(pubs, start, end);
 
