@@ -1317,6 +1317,33 @@ export type Database = {
         }
         Relationships: []
       }
+      embedding_cache: {
+        Row: {
+          content_hash: string
+          created_at: string
+          embedding: string
+          hits: number
+          last_used_at: string
+          model: string
+        }
+        Insert: {
+          content_hash: string
+          created_at?: string
+          embedding: string
+          hits?: number
+          last_used_at?: string
+          model?: string
+        }
+        Update: {
+          content_hash?: string
+          created_at?: string
+          embedding?: string
+          hits?: number
+          last_used_at?: string
+          model?: string
+        }
+        Relationships: []
+      }
       event_detection_jobs: {
         Row: {
           completed_at: string | null
@@ -1352,6 +1379,38 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      event_embeddings: {
+        Row: {
+          content_hash: string
+          created_at: string
+          embedding: string
+          event_id: string
+          id: string
+        }
+        Insert: {
+          content_hash: string
+          created_at?: string
+          embedding: string
+          event_id: string
+          id?: string
+        }
+        Update: {
+          content_hash?: string
+          created_at?: string
+          embedding?: string
+          event_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_embeddings_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: true
+            referencedRelation: "political_events"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       event_sources: {
         Row: {
@@ -3938,6 +3997,17 @@ export type Database = {
           p_user_id: string
         }
         Returns: undefined
+      }
+      match_event_embeddings: {
+        Args: {
+          filter_candidate?: string
+          match_count?: number
+          query_embedding: string
+        }
+        Returns: {
+          event_id: string
+          similarity: number
+        }[]
       }
       network_view_aggregate: {
         Args: { p_candidate_id?: string; p_days?: number; p_network?: string }

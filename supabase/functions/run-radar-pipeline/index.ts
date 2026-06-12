@@ -12,6 +12,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { corsHeaders } from "../_shared/cors.ts";
+import { embedText, scoreCandidateMatch, extractEntities } from "../_shared/semantic.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -482,15 +483,22 @@ Deno.serve(async (req) => {
     // Pré-carrega todos os RSS feeds uma vez (compartilhado entre candidatos)
     const rssPool = await fetchAllRss();
 
+    const embedClient = { apiKey: LOVABLE_API_KEY, supabase };
+
     for (const c of candidates ?? []) {
       const aliases = aliasesFor(c.full_name);
       const roleKw = roleKeywordsFor(c.full_name);
+
+      // Reference embedding per candidate (alias + role context bag)
+      const refText = [c.full_name, ...aliases, ...roleKw].join(". ");
+      const refEmbedding = await embedText(embedClient, refText);
+
       const all: NewsItem[] = [];
       for (const alias of aliases) {
         const items = await fetchGoogleNews(alias, lookback);
         all.push(...items);
       }
-      // RSS pool: alias OU role context
+      // RSS pool: alias OU role context (filtro grosso); semântica refina depois
       all.push(...filterByAliases(rssPool, aliases, lookback, roleKw));
       const byUrl = new Map<string, NewsItem>();
       for (const it of all) if (!byUrl.has(it.url)) byUrl.set(it.url, it);
@@ -513,6 +521,29 @@ Deno.serve(async (req) => {
         const headlines = uniqueSources.map((u) => `${u.title} (${u.domain})`);
         const cls = await classifyCluster(headlines, c.full_name);
         if (!cls || cls.relevance < 20) continue;
+
+        // Hybrid semantic match: alias + embedding + NER + role context
+        // Aplica em clusters fracos (1 fonte, não-institucional) para reduzir falsos positivos
+        const isWeak = uniqueSources.length === 1 && institutionalCount === 0;
+        if (isWeak) {
+          const articleEmbedding = await embedText(embedClient, `${cls.title}. ${cls.summary}`);
+          const m = scoreCandidateMatch({
+            article: { title: cls.title, summary: cls.summary },
+            articleEmbedding,
+            candidate: {
+              fullName: c.full_name,
+              aliases,
+              roleKeywords: roleKw,
+              referenceEmbedding: refEmbedding,
+            },
+          });
+          if (!m.match) {
+            console.log(`[radar] semantic-reject ${c.full_name} score=${m.score.toFixed(2)} title="${cls.title.slice(0,80)}"`);
+            continue;
+          }
+        }
+        // NER snapshot para metadados (não bloqueia)
+        const ner = extractEntities(`${cls.title}. ${cls.summary}`);
 
         const socialScore = await calcSocialScore(supabase, c.id, day);
         const clusterSize = group.length; // total de artigos agrupados (inclui duplicados de domínio)
@@ -561,6 +592,7 @@ Deno.serve(async (req) => {
           cluster_size: clusterSize,
           status: "active",
           sources_json: sourcesJson,
+          metadata: { ner, detection: "radar-pipeline-v3-semantic" },
           detection_source: "radar-pipeline",
           updated_at: new Date().toISOString(),
         };
@@ -589,6 +621,18 @@ Deno.serve(async (req) => {
               };
             });
             await supabase.from("event_sources").upsert(sourceRows, { onConflict: "event_id,url" });
+
+            // Embed event content (title + summary) and persist for semantic search
+            const eventEmbedding = await embedText(embedClient, `${cls.title}. ${cls.summary}`);
+            if (eventEmbedding) {
+              const hash = `${created.id}`;
+              await supabase.from("event_embeddings").upsert({
+                event_id: created.id,
+                embedding: eventEmbedding as any,
+                content_hash: hash,
+              }, { onConflict: "event_id" });
+            }
+
             inserted++;
             totalInserted++;
           }
@@ -619,6 +663,17 @@ Deno.serve(async (req) => {
           status,
           updated_at: new Date().toISOString(),
         }, { onConflict: "candidate_id,year" });
+
+      // Auto-trigger backfill on FAIL (fire-and-forget) — respeita "PRIORIDADE: recall alto > custo"
+      if (status === "FAIL" && !targetCandidate) {
+        const start = `${year}-01-01`;
+        const end = `${year}-12-31`;
+        fetch(`${SUPABASE_URL}/functions/v1/backfill-radar-historical`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_KEY}` },
+          body: JSON.stringify({ candidate_id: c.id, start, end }),
+        }).catch((e) => console.warn("[radar] backfill trigger failed", e.message));
+      }
     }
 
     return new Response(
