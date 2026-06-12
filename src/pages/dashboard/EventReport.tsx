@@ -267,16 +267,38 @@ export default function EventReport() {
     }
     return c;
   }, [events]);
-  const filteredEvents = useMemo(
-    () => events.filter((e) => {
+  const filteredEvents = useMemo(() => {
+    const q = searchText.trim().toLowerCase();
+    let list = events.filter((e) => {
       if (category !== "all" && (e.category || "outros") !== category) return false;
       if (statusFilter !== "all" && (e.status || "indeterminate") !== statusFilter) return false;
       const score = typeof e.confidence_score === "number" ? e.confidence_score * 100 : (e.relevance_score ?? 0);
       if (score < minConfidence) return false;
+      if (onlyValidated && (e.trusted_sources_count ?? 0) < 2 && (e.independent_strong_sources ?? 0) < 2) return false;
+      if (onlyInstitutional) {
+        const hasInst = (e.outlet_names || []).some((o) => /stf|tse|senado|c[âa]mara|planalto|pf|mpf|tcu|ag[êe]ncia brasil/i.test(o));
+        if (!hasInst) return false;
+      }
+      if (q) {
+        const blob = `${e.name || ""} ${e.description || ""} ${(e.keywords || []).join(" ")}`.toLowerCase();
+        if (!blob.includes(q)) return false;
+      }
       return true;
-    }),
-    [events, category, statusFilter, minConfidence],
-  );
+    });
+    const scoreOf = (e: HistoricalEvent) => typeof e.confidence_score === "number" ? e.confidence_score * 100 : (e.relevance_score ?? 0);
+    const volOf = (e: HistoricalEvent) => e.internal_mentions || e.estimated_volume || e.publications_count || 0;
+    list = list.slice().sort((a, b) => {
+      switch (sortBy) {
+        case "date_asc": return a.start_date.localeCompare(b.start_date);
+        case "score": return scoreOf(b) - scoreOf(a);
+        case "volume": return volOf(b) - volOf(a);
+        case "date_desc":
+        default: return b.start_date.localeCompare(a.start_date);
+      }
+    });
+    return list;
+  }, [events, category, statusFilter, minConfidence, searchText, sortBy, onlyValidated, onlyInstitutional]);
+
   const eventsByYear = useMemo(() => {
     const groups = new Map<string, HistoricalEvent[]>();
     for (const ev of [...filteredEvents].sort((a, b) => a.start_date.localeCompare(b.start_date))) {
