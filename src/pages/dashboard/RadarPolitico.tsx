@@ -104,7 +104,7 @@ export default function RadarPolitico() {
         .eq("year", new Date().getFullYear());
       if (candidateId !== "all") q = q.eq("candidate_id", candidateId);
       const { data } = await q;
-      return (data ?? []) as Array<{ candidate_id: string; events_found: number; expected_min: number; status: string }>;
+      return ((data ?? []) as unknown) as Array<{ candidate_id: string; events_found: number; expected_min: number; status: string }>;
     },
   });
 
