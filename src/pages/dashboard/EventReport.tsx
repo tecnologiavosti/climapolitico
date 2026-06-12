@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AnnualPeaksTimeline } from "@/components/events/AnnualPeaksTimeline";
+import { MonthlyPeaksHeatmap } from "@/components/events/MonthlyPeaksHeatmap";
+import { Slider } from "@/components/ui/slider";
 import { EnterprisePeakSheet, type EnterprisePeakEvent } from "@/components/events/EnterprisePeakSheet";
 
 
