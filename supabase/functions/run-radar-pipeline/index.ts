@@ -591,7 +591,7 @@ Deno.serve(async (req) => {
           importance_score: importance,
           cluster_size: clusterSize,
           status: "active",
-          sources_json: sourcesJson,
+          sources_json: { sources: sourcesJson, ner },
           detection_source: "radar-pipeline",
           updated_at: new Date().toISOString(),
         };
