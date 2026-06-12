@@ -221,10 +221,15 @@ export default function EventReport() {
   const [category, setCategory] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [minConfidence, setMinConfidence] = useState<number>(0);
+  const [searchText, setSearchText] = useState<string>("");
+  const [sortBy, setSortBy] = useState<"date_desc" | "date_asc" | "score" | "volume">("date_desc");
+  const [onlyValidated, setOnlyValidated] = useState(false);
+  const [onlyInstitutional, setOnlyInstitutional] = useState(false);
   const [causes, setCauses] = useState<Record<string, PeakCause>>({});
   const [causeLoading, setCauseLoading] = useState<Record<string, boolean>>({});
   const [causeError, setCauseError] = useState<Record<string, string>>({});
   const [enterpriseEvent, setEnterpriseEvent] = useState<EnterprisePeakEvent | null>(null);
+
 
   const { data: candidates } = useQuery({
     queryKey: ["candidates-mine", user?.id],
