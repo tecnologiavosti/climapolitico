@@ -220,38 +220,46 @@ Deno.serve(async (req) => {
       return d >= wStartLoose && d <= wEndLoose;
     }).slice(0, 25);
 
-    const classifiedPubs = pubs.map((p) => ({ pub: p, strength: classifyExternalSource(p) }));
-    const strongSources = classifiedPubs.filter((p) => p.strength === "strong").length;
-    const weakSources = classifiedPubs.filter((p) => p.strength === "weak").length;
-    // Independent strong sources = distinct domains classified as strong
-    const independentStrongDomains = new Set(
-      classifiedPubs
-        .filter((p) => p.strength === "strong")
-        .map((p) => hostOf(p.pub.url || ""))
-        .filter(Boolean),
-    );
-    const independentStrongSources = independentStrongDomains.size;
+    // === NEW PIPELINE: tier-weighted source confidence ===
+    const pipelinePubs = pubs.map((p) => ({ url: p.url || "", outlet: p.outlet || "" }));
+    const pipelineConf = pipelineConfidence(pipelinePubs);
+    const strongSources = pipelineConf.trusted_sources_count; // tier1 + tier2
+    const weakSources = pipelineConf.tier_breakdown.tier4;
+    const independentStrongSources = pipelineConf.independent_strong_sources;
+    const confidenceWeightSum = pipelineConf.weight_sum;
+
+    const classifiedPubs = pubs.map((p) => {
+      const c = pipelineClassifySource(p.url || "", p.outlet || "");
+      const strength: SourceStrength = (c.tier === "tier1" || c.tier === "tier2") ? "strong" : "weak";
+      return { pub: p, strength, tier: c.tier, weight: c.weight };
+    });
+
     const semanticConfidence = calculateSemanticConfidence(evidence, interactions.length);
     const entityConfidence = calculateEntityConfidence(evidence, interactions.length);
-    const externalEvidenceConfidence = clamp01(Math.min(1, independentStrongSources / 3) * 0.85 + Math.min(1, weakSources / 8) * 0.15);
-    // NEW RULE: require >=2 independent strong sources to confirm an event.
-    const responseMode: ResponseMode = independentStrongSources >= 2
-      ? "CONFIRMED_EVENT"
-      : semanticConfidence >= 0.75 && independentStrongSources >= 1
-        ? "PROBABLE_NARRATIVE"
-        : "UNKNOWN_TRIGGER";
+    const externalEvidenceConfidence = Math.min(1, confidenceWeightSum / 3);
+
+    // Status from pipeline (hard rule: indeterminate => no AI factual claims)
+    const pipelineStatus = pipelineConf.status; // "confirmed" | "probable" | "indeterminate"
+    const responseMode: ResponseMode =
+      pipelineStatus === "confirmed" ? "CONFIRMED_EVENT" :
+      pipelineStatus === "probable" ? "PROBABLE_NARRATIVE" : "UNKNOWN_TRIGGER";
+
     const computedConfidence = Math.round(
       clamp01(
-        semanticConfidence * 0.45 +
-        entityConfidence * 0.20 +
-        externalEvidenceConfidence * 0.35,
+        semanticConfidence * 0.25 +
+        entityConfidence * 0.15 +
+        externalEvidenceConfidence * 0.60,
       ) * 100,
     ) / 100;
-    const finalConfidence = independentStrongSources < 2 ? Math.min(computedConfidence, 0.70) : computedConfidence;
-    const shouldDisplay = responseMode !== "UNKNOWN_TRIGGER";
+    const finalConfidence =
+      pipelineStatus === "confirmed" ? Math.max(0.75, computedConfidence) :
+      pipelineStatus === "probable" ? Math.min(0.74, Math.max(0.45, computedConfidence)) :
+      Math.min(0.39, computedConfidence);
+    const shouldDisplay = pipelineStatus !== "indeterminate";
 
-    const external_evidence = classifiedPubs.map(({ pub, strength }) => ({
-      title: pub.title, url: pub.url, outlet: pub.outlet, publishedAt: pub.publishedAt, source_strength: strength,
+    const external_evidence = classifiedPubs.map(({ pub, strength, tier, weight }) => ({
+      title: pub.title, url: pub.url, outlet: pub.outlet, publishedAt: pub.publishedAt,
+      source_strength: strength, tier, weight,
     }));
 
     // ---------- STAGE 3: AI explanation ----------
