@@ -24,7 +24,7 @@ export function MonthlyPeaksHeatmap({ events, year, onCellClick }: Props) {
     if (valid.length === 0) {
       return { byCell: new Map<string, number>(), displayYear: year ?? new Date().getUTCFullYear(), maxCount: 0 };
     }
-    const target = year ?? Number(valid[valid.length - 1].date.slice(0, 4)) || new Date().getUTCFullYear();
+    const target = year ?? (Number(valid[valid.length - 1].date.slice(0, 4)) || new Date().getUTCFullYear());
     const map = new Map<string, number>();
     let max = 0;
     for (const e of valid) {
