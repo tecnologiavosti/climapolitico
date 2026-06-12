@@ -895,113 +895,41 @@ serve(async (req) => {
       discarded_insufficient_evidence,
     }));
 
-    // === FASE 5: GARANTIA DE ANÁLISE — fallback IA com dados internos (SSOT) ===
-    // Todo pico deve ter narrativa analítica, mesmo sem evidências externas.
-    const needsFallback = sanitizedEvents.filter((e: any) =>
-      !cleanText(e.what_happened) && !cleanText(e.why_happened) && !cleanText(e.political_impact)
-    );
-    const FALLBACK_LIMIT = 30;
-    const targets = needsFallback.slice(0, FALLBACK_LIMIT);
-    console.log(`[detect-historical-peaks] analysis fallback: ${targets.length} de ${sanitizedEvents.length} eventos sem narrativa externa`);
-
-    await Promise.allSettled(targets.map(async (ev: any) => {
-      const totalSent = (ev.sentiment_positive || 0) + (ev.sentiment_negative || 0) + (ev.sentiment_neutral || 0);
-      const pct = (n: number) => totalSent > 0 ? Math.round((n / totalSent) * 100) : 0;
-      const netBreakdown = Object.entries(ev.internal_by_network || {})
-        .map(([k, v]) => [k, Number(v) || 0] as [string, number])
-        .sort((a, b) => b[1] - a[1])
-        .filter(([, v]) => v > 0)
-        .slice(0, 8)
-        .map(([k, v]) => `${k}: ${v.toLocaleString("pt-BR")} menções`)
-        .join("\n") || "sem distribuição relevante";
-
-      const analysisSource = ev.internal_mentions > 0 ? "internal_ssot" : "ai_only_context";
-      const prompt = `Analise o pico político abaixo.
-
-Evento: ${ev.name}
-Candidato: ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ""}
-Período: ${ev.start_date} a ${ev.end_date || ev.start_date}
-
-Menções internas observadas (janela ±7d): ${(ev.internal_mentions || 0).toLocaleString("pt-BR")}
-Autores únicos: ${(ev.internal_authors || 0).toLocaleString("pt-BR")}
-Engajamento total: ${(ev.internal_engagement || 0).toLocaleString("pt-BR")}
-Cobertura externa: ${ev.publications_count} publicações em ${ev.distinct_outlets} veículos
-
-Sentimento agregado:
-Positivo: ${pct(ev.sentiment_positive)}%
-Neutro: ${pct(ev.sentiment_neutral)}%
-Negativo: ${pct(ev.sentiment_negative)}%
-
-Redes com maior participação:
-${netBreakdown}
-
-Descrição prévia: ${ev.description || "(sem descrição)"}
-
-Explique, com base ESTRITAMENTE nos dados acima:
-1. O que provavelmente causou o aumento das menções (what_happened).
-2. Por que repercutiu (why_happened).
-3. Impacto político observado (political_impact).
-4. Impacto eleitoral, se houver (electoral_impact).
-5. Desdobramentos posteriores (aftermath).
-
-REGRAS OBRIGATÓRIAS:
-- Analise SOMENTE os dados fornecidos. Não invente fatos, datas, operações, prisões, CPIs, resultados eleitorais ou acontecimentos.
-- Se os dados forem insuficientes para análise confiável, responda EXATAMENTE: {"what_happened":"Dados insuficientes para análise confiável.","why_happened":"","political_impact":"","electoral_impact":"","aftermath":""}
-
-Responda APENAS JSON:
-{"what_happened":"...","why_happened":"...","political_impact":"...","electoral_impact":"...","aftermath":"..."}`;
-
-      try {
-        const ai = await callAICerebrasFirst({
-          systemMsg: "Você é analista político brasileiro. Use apenas os dados fornecidos. NUNCA invente fatos, datas, operações, prisões ou eleições. Responda só JSON em pt-BR.",
-          userPrompt: prompt,
-          jsonMode: true,
-          maxTokens: 2000,
-          temperature: 0.2,
-          tag: "detect-historical-peaks-fallback",
-        });
-        const content = ai.content || "";
-        let parsed: any = {};
-        try { parsed = JSON.parse(content); }
-        catch { const m = content.match(/\{[\s\S]*\}/); if (m) parsed = JSON.parse(m[0]); }
-        ev.what_happened    = safeSlice(cleanText(parsed.what_happened),    1200) || ev.what_happened;
-        ev.why_happened     = safeSlice(cleanText(parsed.why_happened),     1200) || ev.why_happened;
-        ev.political_impact = safeSlice(cleanText(parsed.political_impact), 1000) || ev.political_impact;
-        ev.electoral_impact = safeSlice(cleanText(parsed.electoral_impact), 1000) || ev.electoral_impact;
-        ev.aftermath        = safeSlice(cleanText(parsed.aftermath),        1200) || ev.aftermath;
-        ev.analysis_source  = analysisSource;
-        ev.analysis_status  = cleanText(ev.what_happened) ? "fallback_internal" : "failed";
-      } catch (error) {
-        console.error("[detect-historical-peaks] fallback AI failed", ev.name, (error as Error).message);
-        ev.analysis_source = analysisSource;
-        ev.analysis_status = "failed";
-        if (!ev.what_happened) {
-          ev.what_happened = `Pico de menções relacionado a "${ev.name}" entre ${ev.start_date} e ${ev.end_date || ev.start_date}. Foram observadas ${(ev.internal_mentions || 0).toLocaleString("pt-BR")} menções internas e ${ev.publications_count} publicações externas. Análise detalhada indisponível no momento.`;
-        }
-      }
-    }));
-
+    // === FASE 5: ANÁLISE IA — DESABILITADA NA DETECÇÃO ===
+    // A análise textual de cada pico é executada sob demanda (botão "Análise IA do pico"),
+    // nunca dentro deste pipeline, para evitar timeouts e impedir invenção de fatos.
+    console.log("[9] ai enrichment skipped (deferred to on-demand)");
     for (const ev of sanitizedEvents as any[]) {
-      if (!ev.analysis_source) {
-        ev.analysis_source = ev.publications_count > 0 ? "external_evidence" : "internal_ssot";
-        ev.analysis_status = cleanText(ev.what_happened) ? "success" : "failed";
-      }
+      ev.analysis_source = ev.has_external_evidence ? "external_evidence" : "internal_ssot";
+      ev.analysis_status = cleanText(ev.what_happened) ? "success" : "pending_on_demand";
     }
+    console.log("[10] ai enrichment finished");
 
-    return new Response(JSON.stringify({
+    const response = new Response(JSON.stringify({
       events: sanitizedEvents,
       total_detected,
       valid_peaks: sanitizedEvents.length,
       discarded_synthetic,
       discarded_insufficient_evidence,
+      externalPeaks,
+      ssotPeaks,
       publications_collected: pubs.length,
       discovered_count: discovered.length,
       estimated_reach: estimatedReachOf(pubs),
       external_timeline: externalTimeline,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    console.log("[11] response sent");
+    console.timeEnd("detect-historical-peaks");
+    return response;
 
   } catch (error) {
-    console.error("[detect-historical-peaks]", error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Erro desconhecido" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const err = error as Error;
+    console.error("[detect-historical-peaks] fatal:", err?.message, err?.stack);
+    try { console.timeEnd("detect-historical-peaks"); } catch { /* noop */ }
+    return new Response(JSON.stringify({
+      error: true,
+      message: err?.message || String(error),
+      stack: err?.stack || null,
+    }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
