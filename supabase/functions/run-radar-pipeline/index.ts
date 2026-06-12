@@ -484,15 +484,14 @@ Deno.serve(async (req) => {
 
     for (const c of candidates ?? []) {
       const aliases = aliasesFor(c.full_name);
-      // coleta múltiplas queries por candidato
+      const roleKw = roleKeywordsFor(c.full_name);
       const all: NewsItem[] = [];
       for (const alias of aliases) {
         const items = await fetchGoogleNews(alias, lookback);
         all.push(...items);
       }
-      // adiciona itens RSS que casam com aliases do candidato
-      all.push(...filterByAliases(rssPool, aliases, lookback));
-      // dedupe por url
+      // RSS pool: alias OU role context
+      all.push(...filterByAliases(rssPool, aliases, lookback, roleKw));
       const byUrl = new Map<string, NewsItem>();
       for (const it of all) if (!byUrl.has(it.url)) byUrl.set(it.url, it);
       const unique = [...byUrl.values()];
@@ -502,43 +501,32 @@ Deno.serve(async (req) => {
 
       for (const [key, group] of clusters) {
         const day = key.split("::")[0];
-        // dedupe por domínio dentro do cluster
         const uniqByDomain = new Map<string, NewsItem>();
         for (const it of group) if (!uniqByDomain.has(it.domain)) uniqByDomain.set(it.domain, it);
         const uniqueSources = [...uniqByDomain.values()];
+        if (uniqueSources.length < 1) continue;
 
         const institutionalCount = uniqueSources.filter((u) =>
           INSTITUTIONAL_DOMAINS.some((id) => u.domain.endsWith(id))
         ).length;
-        const majorMediaCount = uniqueSources.filter((u) =>
-          MAJOR_NEWS_DOMAINS.some((d) => u.domain.endsWith(d))
-        ).length;
-
-        // aceita single-source SE for institucional ou grande imprensa
-        const hasQuality = institutionalCount > 0 || majorMediaCount > 0;
-        // aceita single-source (recall maximizado); IA filtra ruído depois
-        if (uniqueSources.length < 1) continue;
 
         const headlines = uniqueSources.map((u) => `${u.title} (${u.domain})`);
         const cls = await classifyCluster(headlines, c.full_name);
         if (!cls || cls.relevance < 20) continue;
 
         const socialScore = await calcSocialScore(supabase, c.id, day);
-        const importance = computeImportance({
+        const clusterSize = group.length; // total de artigos agrupados (inclui duplicados de domínio)
+        const importance = computeImportanceV2({
           sourceCount: uniqueSources.length,
-          institutionalCount,
+          clusterSize,
           socialScore,
           relevance: cls.relevance,
+          domains: uniqueSources.map((u) => u.domain),
         });
 
         const sourcesJson = uniqueSources.map((u) => {
           const { type } = classifyDomain(u.url);
-          return {
-            source_name: u.source_name,
-            url: u.url,
-            type,
-            published_at: u.published_at,
-          };
+          return { source_name: u.source_name, url: u.url, type, published_at: u.published_at };
         });
 
         const eventDate = new Date(day).toISOString();
@@ -570,6 +558,7 @@ Deno.serve(async (req) => {
           social_score: socialScore,
           importance,
           importance_score: importance,
+          cluster_size: clusterSize,
           status: "active",
           sources_json: sourcesJson,
           detection_source: "radar-pipeline",
@@ -599,6 +588,60 @@ Deno.serve(async (req) => {
                 credibility_score: type === "institutional" ? 0.95 : 0.7,
               };
             });
+            await supabase.from("event_sources").upsert(sourceRows, { onConflict: "event_id,url" });
+            inserted++;
+            totalInserted++;
+          }
+        }
+      }
+
+      perCandidate[c.full_name] = { inserted, clusters: clusters.size, items: unique.length };
+
+      // === Health check ===
+      const year = new Date().getUTCFullYear();
+      const yearStart = `${year}-01-01T00:00:00Z`;
+      const { count: yearCount } = await supabase
+        .from("political_events")
+        .select("id", { count: "exact", head: true })
+        .eq("candidate_id", c.id)
+        .gte("event_date", yearStart);
+      const expectedMin = expectedMinFor(c.full_name);
+      const found = yearCount ?? 0;
+      const status = found >= expectedMin ? "OK" : found >= Math.floor(expectedMin / 2) ? "WARNING" : "FAIL";
+      await supabase
+        .from("radar_pipeline_health")
+        .upsert({
+          candidate_id: c.id,
+          user_id: c.user_id,
+          year,
+          events_found: found,
+          expected_min: expectedMin,
+          status,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "candidate_id,year" });
+    }
+
+    return new Response(
+      JSON.stringify({ ok: true, totalInserted, perCandidate, lookback }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  } catch (e) {
+    console.error("[run-radar-pipeline] error", e);
+    return new Response(
+      JSON.stringify({ ok: false, error: (e as Error).message }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+});
+
+// Volume mínimo anual esperado por candidato (heurística por relevância nacional)
+function expectedMinFor(fullName: string): number {
+  const k = normalize(fullName);
+  if (k.includes("lula") || k.includes("bolsonaro") && !k.includes("flavio") && !k.includes("eduardo") && !k.includes("michelle")) return 300;
+  if (k.includes("tarcisio") || k.includes("haddad") || k.includes("alckmin") || k.includes("flavio") || k.includes("flávio")) return 150;
+  if (k.includes("ciro") || k.includes("nikolas") || k.includes("eduardo bolsonaro") || k.includes("ratinho") || k.includes("caiado") || k.includes("tebet")) return 100;
+  return 50;
+}
             await supabase.from("event_sources").upsert(sourceRows, { onConflict: "event_id,url" });
             inserted++;
             totalInserted++;
