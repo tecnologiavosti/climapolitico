@@ -52,7 +52,7 @@ export function AnnualPeaksTimeline({ events, year, onPointClick }: Props) {
   const { rows, displayYear, maxMentions } = useMemo(() => {
     const validEvents = (events || []).filter((e) => e.date);
     if (validEvents.length === 0) return { rows: [], displayYear: year ?? new Date().getUTCFullYear(), maxMentions: 0 };
-    const targetYear = year ?? Number(validEvents[validEvents.length - 1].date.slice(0, 4)) || new Date().getUTCFullYear();
+    const targetYear = year ?? (Number(validEvents[validEvents.length - 1].date.slice(0, 4)) || new Date().getUTCFullYear());
     const yearEvents = validEvents.filter((e) => e.date.startsWith(String(targetYear)));
     const data = yearEvents.map((e) => ({
       day: dayOfYear(e.date),
