@@ -709,18 +709,8 @@ async function runPipeline(opts: { targetCandidate?: string; lookback: number })
       }
     }
 
-    return new Response(
-      JSON.stringify({ ok: true, totalInserted, perCandidate, lookback }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
-  } catch (e) {
-    console.error("[run-radar-pipeline] error", e);
-    return new Response(
-      JSON.stringify({ ok: false, error: (e as Error).message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
-  }
-});
+  return { totalInserted, perCandidate, lookback };
+}
 
 // Volume mínimo anual esperado por candidato (heurística por relevância nacional)
 function expectedMinFor(fullName: string): number {
