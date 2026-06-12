@@ -597,6 +597,18 @@ Deno.serve(async (req) => {
               };
             });
             await supabase.from("event_sources").upsert(sourceRows, { onConflict: "event_id,url" });
+
+            // Embed event content (title + summary) and persist for semantic search
+            const eventEmbedding = await embedText(embedClient, `${cls.title}. ${cls.summary}`);
+            if (eventEmbedding) {
+              const hash = `${created.id}`;
+              await supabase.from("event_embeddings").upsert({
+                event_id: created.id,
+                embedding: eventEmbedding as any,
+                content_hash: hash,
+              }, { onConflict: "event_id" });
+            }
+
             inserted++;
             totalInserted++;
           }
