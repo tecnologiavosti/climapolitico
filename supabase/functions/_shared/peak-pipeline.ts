@@ -160,6 +160,10 @@ export function detectHybridSpikes(series: SeriesPoint[], opts: { minVolume?: nu
   const counts = series.map((p) => Number(p.mentions || 0));
   const out: HybridSpike[] = [];
   let cusum = 0;
+  // EWMA state (alpha=0.3): smoothed mean and smoothed variance.
+  const alpha = 0.3;
+  let ewmaMean = counts[0] ?? 0;
+  let ewmaVar = 1;
   for (let i = 0; i < n; i++) {
     const c = counts[i];
     // baselines
@@ -168,6 +172,14 @@ export function detectHybridSpikes(series: SeriesPoint[], opts: { minVolume?: nu
     const var14 = win14.length ? win14.reduce((s, v) => s + (v - mean14) ** 2, 0) / win14.length : 0;
     const std14 = Math.sqrt(var14) || Math.max(1, mean14 * 0.25);
     const z = (c - mean14) / std14;
+
+    // EWMA control chart: fires if value > mean + 3*std (smoothed).
+    const ewmaStd = Math.sqrt(ewmaVar) || Math.max(1, ewmaMean * 0.25);
+    const ewmaHit = i >= 7 && c >= minVol && c > ewmaMean + 3 * ewmaStd && c > ewmaMean * 1.5;
+    // update AFTER comparison so today doesn't smooth itself away
+    const prevMean = ewmaMean;
+    ewmaMean = alpha * c + (1 - alpha) * ewmaMean;
+    ewmaVar = alpha * (c - prevMean) ** 2 + (1 - alpha) * ewmaVar;
 
     const last3 = counts.slice(Math.max(0, i - 2), i + 1);
     const mean3 = last3.length ? last3.reduce((s, v) => s + v, 0) / last3.length : 0;
@@ -188,6 +200,7 @@ export function detectHybridSpikes(series: SeriesPoint[], opts: { minVolume?: nu
 
     const signals: SpikeSignal[] = [];
     if (win14.length >= 5 && z >= 2.0 && c >= minVol) signals.push("z");
+    if (ewmaHit) signals.push("ewma");
     if (last7.length >= 5 && momentum >= 1.5 && c >= minVol) signals.push("momentum");
     if (burstHit && c >= minVol) signals.push("burst");
     if (anomalyHit) signals.push("anomaly");
@@ -203,6 +216,52 @@ export function detectHybridSpikes(series: SeriesPoint[], opts: { minVolume?: nu
     });
   }
   return out;
+}
+
+// Dynamic per-candidate threshold: max(baseline*2.5, p95).
+// Use to gate borderline cases or to compute relative intensity in UI.
+export function dynamicThreshold(series: SeriesPoint[]): { baseline: number; p95: number; threshold: number } {
+  const counts = series.map((p) => Number(p.mentions || 0)).filter((v) => v > 0).sort((a, b) => a - b);
+  if (counts.length === 0) return { baseline: 0, p95: 0, threshold: 0 };
+  const baseline = counts.reduce((s, v) => s + v, 0) / counts.length;
+  const p95 = quantile(counts, 0.95);
+  return { baseline: Math.round(baseline * 10) / 10, p95: Math.round(p95), threshold: Math.round(Math.max(baseline * 2.5, p95)) };
+}
+
+// Weighted confidence score per the brief spec (0..100).
+// score = 0.20*z + 0.15*burst + 0.15*momentum + 0.20*source_diversity
+//       + 0.10*source_authority + 0.10*cross_platform + 0.10*political_relevance
+export interface ConfidenceInput {
+  zscore: number;                  // raw z (>= 0)
+  burst: number;                   // 0..1 normalized
+  momentum: number;                // 0..1 normalized
+  source_diversity: number;        // 0..1 normalized (distinct strong outlets / 5)
+  source_authority: number;        // 0..1 normalized (tier-weighted)
+  cross_platform: number;          // 0..1 normalized (#platforms / 4)
+  political_relevance: number;     // 0..1 normalized
+}
+export type ConfidenceStatus = "confirmed" | "probable" | "weak" | "indeterminate";
+export interface ConfidenceScored {
+  score: number;
+  status: ConfidenceStatus;
+  breakdown: ConfidenceInput;
+}
+export function computeConfidenceScore(input: ConfidenceInput): ConfidenceScored {
+  const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+  const z = clamp01(input.zscore / 4); // z=4 → 1.0
+  const b = clamp01(input.burst);
+  const m = clamp01(input.momentum);
+  const sd = clamp01(input.source_diversity);
+  const sa = clamp01(input.source_authority);
+  const cp = clamp01(input.cross_platform);
+  const pr = clamp01(input.political_relevance);
+  const raw = 0.20 * z + 0.15 * b + 0.15 * m + 0.20 * sd + 0.10 * sa + 0.10 * cp + 0.10 * pr;
+  const score = Math.round(raw * 100);
+  let status: ConfidenceStatus = "indeterminate";
+  if (score >= 85) status = "confirmed";
+  else if (score >= 70) status = "probable";
+  else if (score >= 50) status = "weak";
+  return { score, status, breakdown: { zscore: z, burst: b, momentum: m, source_diversity: sd, source_authority: sa, cross_platform: cp, political_relevance: pr } };
 }
 
 
