@@ -82,15 +82,51 @@ export default function RadarPolitico() {
     from, to, category, search,
   });
 
-  const kpis = useMemo(() => {
+  // Filtro por banda de importância
+  const filteredEvents = useMemo(() => {
     const ev = events ?? [];
+    if (importanceFilter === "all") return ev;
+    if (importanceFilter === "grande") return ev.filter((e) => e.importance >= 70);
+    if (importanceFilter === "medio") return ev.filter((e) => e.importance >= 40 && e.importance < 70);
+    if (importanceFilter === "pequeno") return ev.filter((e) => e.importance >= 20 && e.importance < 40);
+    return ev;
+  }, [events, importanceFilter]);
+
+  // Pipeline health (do candidato selecionado, ou pior status entre todos)
+  const { data: health } = useQuery({
+    queryKey: ["radar-health", user?.id, candidateId],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      let q = supabase
+        .from("radar_pipeline_health" as any)
+        .select("candidate_id,year,events_found,expected_min,status")
+        .eq("user_id", user!.id)
+        .eq("year", new Date().getFullYear());
+      if (candidateId !== "all") q = q.eq("candidate_id", candidateId);
+      const { data } = await q;
+      return (data ?? []) as Array<{ candidate_id: string; events_found: number; expected_min: number; status: string }>;
+    },
+  });
+
+  const healthSummary = useMemo(() => {
+    const rows = health ?? [];
+    if (rows.length === 0) return null;
+    const order = { FAIL: 0, WARNING: 1, OK: 2 } as Record<string, number>;
+    const worst = rows.slice().sort((a, b) => order[a.status] - order[b.status])[0];
+    const totalFound = rows.reduce((s, r) => s + (r.events_found || 0), 0);
+    const totalMin = rows.reduce((s, r) => s + (r.expected_min || 0), 0);
+    return { status: worst.status, found: totalFound, min: totalMin };
+  }, [health]);
+
+  const kpis = useMemo(() => {
+    const ev = filteredEvents;
     return {
       total: ev.length,
-      grandes: ev.filter((e) => e.importance > 75).length,
+      grandes: ev.filter((e) => e.importance >= 70).length,
       institucional: ev.filter((e) => e.sources_json?.some((s) => s.type === "institutional")).length,
       altaRepercussao: ev.filter((e) => e.social_score >= 60).length,
     };
-  }, [events]);
+  }, [filteredEvents]);
 
   const timeline = useMemo(() => {
     const map = new Map<string, number>();
