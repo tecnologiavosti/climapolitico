@@ -135,7 +135,7 @@ export function detectSpikes(series: SeriesPoint[], opts: { zThreshold?: number;
 // Combines 4 independent signals; emits a spike if ANY 2 fire on the same day.
 // Signals: zscore (rolling 14d), momentum (3d avg vs 7d avg), burst (CUSUM-like
 // streak over baseline), anomaly (IQR outlier over 30d window).
-export type SpikeSignal = "z" | "momentum" | "burst" | "anomaly";
+export type SpikeSignal = "z" | "ewma" | "momentum" | "burst" | "anomaly";
 
 export interface HybridSpike {
   date: string;
