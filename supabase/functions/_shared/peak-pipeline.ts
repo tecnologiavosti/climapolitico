@@ -160,23 +160,24 @@ export function detectHybridSpikes(series: SeriesPoint[], opts: { minVolume?: nu
   const counts = series.map((p) => Number(p.mentions || 0));
   const out: HybridSpike[] = [];
   let cusum = 0;
-  // EWMA state (alpha=0.3): smoothed mean and smoothed variance.
   const alpha = 0.3;
   let ewmaMean = counts[0] ?? 0;
   let ewmaVar = 1;
   for (let i = 0; i < n; i++) {
     const c = counts[i];
-    // baselines
+    // Robust baseline: median + MAD over 14d window (resistant to outliers).
     const win14 = counts.slice(Math.max(0, i - 14), i);
+    const sorted14 = win14.slice().sort((a, b) => a - b);
+    const median14 = sorted14.length ? quantile(sorted14, 0.5) : 0;
+    const absDev = win14.map((v) => Math.abs(v - median14)).sort((a, b) => a - b);
+    const mad = absDev.length ? quantile(absDev, 0.5) : 0;
     const mean14 = win14.length ? win14.reduce((s, v) => s + v, 0) / win14.length : 0;
-    const var14 = win14.length ? win14.reduce((s, v) => s + (v - mean14) ** 2, 0) / win14.length : 0;
-    const std14 = Math.sqrt(var14) || Math.max(1, mean14 * 0.25);
-    const z = (c - mean14) / std14;
+    const std14 = Math.max(1.4826 * mad, Math.max(1, mean14 * 0.25));
+    const z = (c - median14) / std14;
 
-    // EWMA control chart: fires if value > mean + 3*std (smoothed).
+    // EWMA control chart relaxed: mean + 2.5σ (was 3σ).
     const ewmaStd = Math.sqrt(ewmaVar) || Math.max(1, ewmaMean * 0.25);
-    const ewmaHit = i >= 7 && c >= minVol && c > ewmaMean + 3 * ewmaStd && c > ewmaMean * 1.5;
-    // update AFTER comparison so today doesn't smooth itself away
+    const ewmaHit = i >= 5 && c >= minVol && c > ewmaMean + 2.5 * ewmaStd && c > ewmaMean * 1.4;
     const prevMean = ewmaMean;
     ewmaMean = alpha * c + (1 - alpha) * ewmaMean;
     ewmaVar = alpha * (c - prevMean) ** 2 + (1 - alpha) * ewmaVar;
@@ -187,10 +188,10 @@ export function detectHybridSpikes(series: SeriesPoint[], opts: { minVolume?: nu
     const mean7 = last7.length ? last7.reduce((s, v) => s + v, 0) / last7.length : 0;
     const momentum = mean7 > 0 ? mean3 / mean7 : 0;
 
-    // CUSUM-style burst: accumulate (c - 1.5*mean14)+, reset on dip.
-    if (c > mean14 * 1.5) cusum += (c - mean14 * 1.5);
+    // CUSUM-style burst relaxed: 1.3·median + lower floor.
+    if (c > median14 * 1.3) cusum += (c - median14 * 1.3);
     else cusum = Math.max(0, cusum * 0.6);
-    const burstHit = cusum >= Math.max(50, mean14 * 3);
+    const burstHit = cusum >= Math.max(30, median14 * 2);
 
     const win30 = counts.slice(Math.max(0, i - 30), i).slice().sort((a, b) => a - b);
     const q1 = quantile(win30, 0.25);
@@ -199,17 +200,19 @@ export function detectHybridSpikes(series: SeriesPoint[], opts: { minVolume?: nu
     const anomalyHit = win30.length >= 8 && c > q3 + 1.5 * iqr && c >= minVol;
 
     const signals: SpikeSignal[] = [];
-    if (win14.length >= 5 && z >= 2.0 && c >= minVol) signals.push("z");
+    if (win14.length >= 5 && z >= 1.6 && c >= minVol) signals.push("z");
     if (ewmaHit) signals.push("ewma");
-    if (last7.length >= 5 && momentum >= 1.5 && c >= minVol) signals.push("momentum");
+    if (last7.length >= 5 && momentum >= 1.4 && c >= minVol) signals.push("momentum");
     if (burstHit && c >= minVol) signals.push("burst");
     if (anomalyHit) signals.push("anomaly");
 
-    const isSpike = signals.length >= 2 && c > mean14;
+    // Relaxed gate: ≥2 signals OR (z≥2.5 alone) OR (burst+anomaly alone).
+    const strongAlone = (z >= 2.5 && c >= minVol) || (burstHit && anomalyHit);
+    const isSpike = (signals.length >= 2 || strongAlone) && c > median14;
     out.push({
       date: series[i].date,
       mentions: c,
-      baseline: Math.round(mean14 * 10) / 10,
+      baseline: Math.round(median14 * 10) / 10,
       zscore: Math.round(z * 100) / 100,
       signals,
       isSpike,
