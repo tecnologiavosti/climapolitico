@@ -202,8 +202,10 @@ export default function EventReport() {
       const { data, error } = await supabase.functions.invoke("detect-historical-peaks", {
         body: { candidateId, startDate, endDate },
       });
-      if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
+      if (error) throw new Error(await getEdgeFunctionErrorMessage(error, data));
+      if ((data as any)?.success === false || (data as any)?.error) {
+        throw new Error(await getEdgeFunctionErrorMessage(null, data));
+      }
       return data as HistoricalResponse;
     },
     enabled: false,
