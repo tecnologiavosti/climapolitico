@@ -311,13 +311,17 @@ function classifyPeakCategory(evt: any): string {
   // Ordem importa: categorias mais específicas primeiro.
   if (/\bpf\b|policia federal|\boperacao\b|busca e apreensao|mandado de busca|deflagrou|deflagrada/.test(text)) return "operacao_pf";
   if (/\bstf\b|supremo|supremo tribunal|alexandre de moraes|gilmar|gilmar mendes|barroso|dias toffoli|fachin|carmen lucia|cristiano zanin|nunes marques/.test(text)) return "stf";
-  if (/\btse\b|tribunal superior eleitoral|\beleitoral\b|registro de candidatura|inelegibilidade|cassacao de mandato|cassacao do registro/.test(text)) return "tse";
+  if (/\btse\b|tribunal superior eleitoral|registro de candidatura|inelegibilidade|cassacao de mandato|cassacao do registro/.test(text)) return "tse";
   if (/\bcpi\b|comissao parlamentar|comissao de inquerito|senado investigando|requerimento de cpi/.test(text)) return "cpi";
   if (/\bprisao\b|\bpreso\b|\bdetido\b|\bdetencao\b|indiciamento|indiciado|cumprimento de pena/.test(text)) return "prisao";
   if (/\bescandalo\b|corrupcao|vazamento|denuncia|propina|desvio de|rachadinha|caixa 2|lavagem de dinheiro|impeachment/.test(text)) return "escandalo";
-  if (/\bdebate\b|sabatina|confronto|confronto entre candidatos|debate presidencial|debate eleitoral/.test(text)) return "debate";
+  if (/\bdebate\b|sabatina|confronto entre candidatos|debate presidencial|debate eleitoral/.test(text)) return "debate";
   if (/\bjulgamento\b|sentenca|condenacao|condenado|absolvicao|absolvido|\brecurso\b|decisao judicial|acordao|pena de \d/.test(text)) return "julgamento";
-  if (/\beleicao\b|\beleicoes\b|campanha|votacao|\bvoto\b|\burna\b|urnas|candidato|primeiro turno|segundo turno|posse presidencial|comicio/.test(text)) return "eleicao";
+  if (/\b(g20|brics|onu|otan|mercosul|cupula)\b|diplomacia|tratado|acordo bilateral|sancoes internacionais|chanceler|itamaraty|visita oficial|reuniao bilateral/.test(text)) return "internacional";
+  if (/\b(pib|inflacao|ipca|igp|selic|copom|cambio|dolar|bolsa|ibovespa|fiscal|arcabouco|juros|recessao|desemprego)\b|banco central|ministerio da fazenda|reforma tributaria/.test(text)) return "economia";
+  if (/\b(camara dos deputados|senado federal|congresso nacional|plenario|votacao|aprovacao|sancao|veto|projeto de lei|pec|medida provisoria)\b/.test(text)) return "congresso";
+  if (/\bplanalto\b|palacio do planalto|presidencia da republica|decreto presidencial|reforma ministerial|posse presidencial|pronunciamento|cadeia nacional|governo federal|esplanada dos ministerios/.test(text)) return "executivo";
+  if (/\beleicao\b|\beleicoes\b|campanha|votacao|\bvoto\b|\burna\b|urnas|candidato|primeiro turno|segundo turno|comicio/.test(text)) return "eleicao";
   return "outros";
 }
 
