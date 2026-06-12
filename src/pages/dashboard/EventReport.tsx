@@ -641,6 +641,12 @@ export default function EventReport() {
           ))}
         </div>
       ) : null}
+
+      <EnterprisePeakSheet
+        open={!!enterpriseEvent}
+        onOpenChange={(v) => { if (!v) setEnterpriseEvent(null); }}
+        event={enterpriseEvent}
+      />
     </div>
   );
 }
