@@ -68,27 +68,26 @@ export function MonthlyPeaksHeatmap({ events, year, onCellClick }: Props) {
           ))}
           {MONTHS_PT.map((m, mi) => {
             const days = daysInMonth(displayYear, mi);
-            return (
-              <>
-                <div key={`m${mi}`} className="flex items-center text-muted-foreground font-medium">{m}</div>
-                {Array.from({ length: 31 }, (_, di) => {
-                  if (di >= days) return <div key={`m${mi}d${di}`} />;
-                  const key = `${displayYear}-${String(mi + 1).padStart(2, "0")}-${String(di + 1).padStart(2, "0")}`;
-                  const count = byCell.get(key) || 0;
-                  const intensity = count === 0 ? 0 : Math.max(0.15, Math.min(1, count / Math.max(1, maxCount)));
-                  return (
-                    <button
-                      key={key}
-                      title={`${key} · ${count} pico${count === 1 ? "" : "s"}`}
-                      onClick={() => count > 0 && onCellClick?.(key)}
-                      disabled={count === 0}
-                      className="aspect-square rounded-sm border border-border/40 disabled:cursor-default"
-                      style={{ background: intensity > 0 ? `hsl(var(--primary) / ${intensity})` : "hsl(var(--muted) / 0.3)" }}
-                    />
-                  );
-                })}
-              </>
-            );
+            const cells = [
+              <div key={`m${mi}`} className="flex items-center text-muted-foreground font-medium">{m}</div>,
+              ...Array.from({ length: 31 }, (_, di) => {
+                if (di >= days) return <div key={`m${mi}d${di}`} />;
+                const key = `${displayYear}-${String(mi + 1).padStart(2, "0")}-${String(di + 1).padStart(2, "0")}`;
+                const count = byCell.get(key) || 0;
+                const intensity = count === 0 ? 0 : Math.max(0.15, Math.min(1, count / Math.max(1, maxCount)));
+                return (
+                  <button
+                    key={key}
+                    title={`${key} · ${count} pico${count === 1 ? "" : "s"}`}
+                    onClick={() => count > 0 && onCellClick?.(key)}
+                    disabled={count === 0}
+                    className="aspect-square rounded-sm border border-border/40 disabled:cursor-default"
+                    style={{ background: intensity > 0 ? `hsl(var(--primary) / ${intensity})` : "hsl(var(--muted) / 0.3)" }}
+                  />
+                );
+              }),
+            ];
+            return cells;
           })}
         </div>
       </div>
