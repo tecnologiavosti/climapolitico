@@ -320,6 +320,110 @@ export function computeConfidenceScore(input: ConfidenceInput): ConfidenceScored
   return { score, status, breakdown: { zscore: z, burst: b, momentum: m, source_diversity: sd, source_authority: sa, cross_platform: cp, political_relevance: pr } };
 }
 
+// ---------- Enterprise 4-component confidence (per brief v2) ----------
+// coverage_score (0.30) + diversity_score (0.20) + consensus_score (0.25) + significance_score (0.25)
+// Each in 0..1. Returns score 0..100 and band: confirmado/provavel/fraco/indeterminado.
+
+const SIGNIFICANCE_WEIGHTS: Record<string, number> = {
+  impeachment: 1.0,
+  prisoes: 0.95,
+  operacoes_pf: 0.90,
+  escandalos: 0.85,
+  stf: 0.80,
+  tse: 0.78,
+  cpi: 0.75,
+  julgamentos: 0.70,
+  economia: 0.72,
+  congresso: 0.65,
+  debates: 0.65,
+  executivo: 0.60,
+  internacional: 0.55,
+  eleicoes: 0.55,
+  outros: 0.15,
+};
+
+export function significanceFromCategory(category: string | null | undefined): number {
+  if (!category) return 0.15;
+  const k = String(category).toLowerCase();
+  return SIGNIFICANCE_WEIGHTS[k] ?? 0.15;
+}
+
+// Brief formula: coverage = clamp(log10(unique_sources+1) / log10(50), 0, 1).
+export function coverageScore(uniqueSources: number): number {
+  if (!Number.isFinite(uniqueSources) || uniqueSources <= 0) return 0;
+  return Math.max(0, Math.min(1, Math.log10(uniqueSources + 1) / Math.log10(50)));
+}
+
+// Diversity: distinct source types / 4 (+0.15 bonus if any tier1 institutional).
+export function diversityScore(typesPresent: number, hasInstitutional: boolean): number {
+  const base = Math.max(0, Math.min(1, typesPresent / 4));
+  return Math.max(0, Math.min(1, base + (hasInstitutional ? 0.15 : 0)));
+}
+
+// Consensus: simplified Jaccard mean over headline tokens (no TF-IDF deps).
+export function consensusScoreFromHeadlines(headlines: string[]): number {
+  if (!headlines || headlines.length < 2) return 0;
+  const stop = new Set(["a","o","os","as","de","da","do","das","dos","e","ou","que","com","para","por","em","no","na","um","uma","ao","aos","ser","mais","sobre","entre","como"]);
+  const sets = headlines.slice(0, 12).map((h) =>
+    new Set(
+      String(h || "")
+        .toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter((w) => w.length >= 4 && !stop.has(w)),
+    ),
+  );
+  let sumJ = 0, pairs = 0;
+  for (let i = 0; i < sets.length; i++) {
+    for (let j = i + 1; j < sets.length; j++) {
+      const a = sets[i], b = sets[j];
+      if (a.size === 0 || b.size === 0) continue;
+      let inter = 0;
+      for (const x of a) if (b.has(x)) inter++;
+      const uni = a.size + b.size - inter;
+      if (uni > 0) { sumJ += inter / uni; pairs++; }
+    }
+  }
+  return pairs ? Math.max(0, Math.min(1, sumJ / pairs)) : 0;
+}
+
+export interface EnterpriseConfidenceInput {
+  unique_sources: number;
+  source_types_present: number;   // 1..4 (news, social, government, international)
+  has_institutional: boolean;
+  headlines: string[];            // top headlines used for consensus
+  category: string;               // canonical category id
+}
+export interface EnterpriseConfidenceResult {
+  score: number;                  // 0..100
+  band: "confirmado" | "provavel" | "fraco" | "indeterminado";
+  components: { coverage: number; diversity: number; consensus: number; significance: number };
+}
+export function computeEnterpriseConfidence(input: EnterpriseConfidenceInput): EnterpriseConfidenceResult {
+  const coverage = coverageScore(input.unique_sources);
+  const diversity = diversityScore(input.source_types_present, input.has_institutional);
+  const consensus = consensusScoreFromHeadlines(input.headlines);
+  const significance = significanceFromCategory(input.category);
+  const raw = coverage * 0.30 + diversity * 0.20 + consensus * 0.25 + significance * 0.25;
+  const score = Math.round(Math.min(1, Math.max(0, raw)) * 100);
+  let band: EnterpriseConfidenceResult["band"] = "indeterminado";
+  if (score >= 85) band = "confirmado";
+  else if (score >= 70) band = "provavel";
+  else if (score >= 55) band = "fraco";
+  return {
+    score, band,
+    components: {
+      coverage: Math.round(coverage * 100) / 100,
+      diversity: Math.round(diversity * 100) / 100,
+      consensus: Math.round(consensus * 100) / 100,
+      significance: Math.round(significance * 100) / 100,
+    },
+  };
+}
+
+
+
 
 // ---------- Category classification ----------
 function norm(text: string): string {
