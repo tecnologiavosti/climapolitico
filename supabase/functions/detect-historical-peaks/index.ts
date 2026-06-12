@@ -698,21 +698,36 @@ async function fetchCoverageForKnownEvent(
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   console.time("detect-historical-peaks");
-  console.log("[1] function started");
+  const startedAt = Date.now();
+  let stage = "inicio";
+  const elapsed = () => Date.now() - startedAt;
+  const timedOut = () => elapsed() >= FUNCTION_TIMEOUT_MS;
+  const logStage = (name: string, details: Record<string, unknown> = {}) => {
+    stage = name;
+    console.log(JSON.stringify({ tag: "detect_historical_peaks_stage", stage, elapsed_ms: elapsed(), ...details }));
+  };
+  const errorResponse = (status: number, message: string) => new Response(JSON.stringify({
+    success: false,
+    stage,
+    error: message,
+  }), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  logStage("inicio", { method: req.method });
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
     const auth = req.headers.get("Authorization");
-    if (!auth) return new Response(JSON.stringify({ error: "Não autorizado" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!auth) return errorResponse(401, "Não autorizado");
 
+    logStage("autenticacao");
     const userClient = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: auth } } });
     const { data: { user } } = await userClient.auth.getUser();
-    if (!user) return new Response(JSON.stringify({ error: "Não autorizado" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!user) return errorResponse(401, "Não autorizado");
 
+    logStage("validacao_payload");
     const { candidateId, startDate, endDate, localTimeline = [] } = await req.json();
     if (!candidateId || !startDate || !endDate) {
-      return new Response(JSON.stringify({ error: "candidateId, startDate e endDate são obrigatórios" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return errorResponse(400, "candidateId, startDate e endDate são obrigatórios");
     }
 
     const start = parseDate(startDate);
@@ -722,11 +737,28 @@ serve(async (req) => {
     const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000));
 
     const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+    logStage("busca_candidato", { candidateId });
     const { data: candidate } = await admin.from("candidates").select("id, full_name, party, user_id").eq("id", candidateId).maybeSingle();
     if (!candidate || candidate.user_id !== user.id) {
-      return new Response(JSON.stringify({ error: "Candidato não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return errorResponse(404, "Candidato não encontrado");
     }
-    console.log("[2] candidate loaded", candidate.full_name);
+    console.log("[detect-historical-peaks] candidate loaded", candidate.full_name);
+
+    logStage("busca_mencoes", { max_records: MAX_STAT_RECORDS });
+    const clientTimeline = Array.isArray(localTimeline) ? localTimeline.slice(0, MAX_STAT_RECORDS) : [];
+    const dbTimeline = await fetchSsotTimelineFromDb(admin, user.id, candidate.id, start, end);
+    const effectiveTimelineRaw: TimelinePoint[] = dbTimeline.length >= 5 ? dbTimeline : clientTimeline;
+    const effectiveTimeline: TimelinePoint[] = effectiveTimelineRaw.slice(0, MAX_STAT_RECORDS);
+    const totalMentionsForPeriod = effectiveTimeline.reduce((sum, p) => sum + Number(p.count || 0), 0);
+    const safeMode = totalMentionsForPeriod >= HIGH_VOLUME_MENTIONS || effectiveTimelineRaw.length >= MAX_STAT_RECORDS;
+    console.log(JSON.stringify({
+      tag: "mentions_loaded",
+      db_points: dbTimeline.length,
+      client_points: clientTimeline.length,
+      effective_points: effectiveTimeline.length,
+      total_mentions: totalMentionsForPeriod,
+      safe_mode: safeMode,
+    }));
 
     // === FASE 1: DESCOBERTA HISTÓRICA — DESABILITADA ===
     // IA NUNCA cria eventos. Picos vêm de evidência real: cobertura externa + timeline SSOT.
