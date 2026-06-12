@@ -1,5 +1,5 @@
 import { useEffect, lazy, Suspense } from "react";
-import { useNavigate, Routes, Route } from "react-router-dom";
+import { useNavigate, Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSessionHealthCheck } from "@/hooks/useSessionHealthCheck";
 import { Button } from "@/components/ui/button";
@@ -29,7 +29,7 @@ const CandidateSummary = lazy(() => import("./dashboard/CandidateSummary"));
 const RejectionAnalysis = lazy(() => import("./dashboard/RejectionAnalysis"));
 const NarrativeRecommendations = lazy(() => import("./dashboard/NarrativeRecommendations"));
 const CandidateComparison = lazy(() => import("./dashboard/CandidateComparison"));
-const EventReport = lazy(() => import("./dashboard/EventReport"));
+const RadarPolitico = lazy(() => import("./dashboard/RadarPolitico"));
 const Brand24Collector = lazy(() => import("./dashboard/Brand24Collector"));
 const CandidatesCatalog = lazy(() => import("./dashboard/CandidatesCatalog"));
 const Settings = lazy(() => import("./dashboard/Settings"));
@@ -126,7 +126,9 @@ const Dashboard = () => {
                 <Route path="/rejection-analysis" element={wrap("RejectionAnalysis", RejectionAnalysis)} />
                 <Route path="/narrative-recommendations" element={wrap("NarrativeRecommendations", NarrativeRecommendations)} />
                 <Route path="/candidate-comparison" element={wrap("CandidateComparison", CandidateComparison)} />
-                <Route path="/pico-mencao" element={wrap("EventReport", EventReport)} />
+                <Route path="/radar-politico" element={wrap("RadarPolitico", RadarPolitico)} />
+                <Route path="/pico-mencao" element={<Navigate to="/dashboard/radar-politico" replace />} />
+                <Route path="/picos-mencao" element={<Navigate to="/dashboard/radar-politico" replace />} />
                 <Route path="/candidates" element={wrap("Candidates", Candidates)} />
                 <Route path="/candidates-catalog" element={wrap("CandidatesCatalog", CandidatesCatalog)} />
                 <Route path="/analytics-advanced" element={wrap("Analytics", Analytics)} />
