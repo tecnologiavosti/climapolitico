@@ -1932,10 +1932,14 @@ export type Database = {
       }
       political_events: {
         Row: {
+          ai_cause: string | null
+          ai_sentiment: number | null
           ai_summary: string | null
           ai_tags: string[]
+          ai_why_peak: string | null
           baseline_mentions: number
           candidate_id: string
+          category: string | null
           city: string | null
           confidence_band: string
           confidence_score: number
@@ -1949,6 +1953,7 @@ export type Database = {
           event_date: string
           event_name: string
           event_type: string
+          evidence_quality: string | null
           id: string
           importance_score: number
           institutional_confirmations: number
@@ -1961,6 +1966,7 @@ export type Database = {
           narratives: Json
           peak_hourly_mentions: number
           publications_count: number
+          significance_score: number | null
           source_authority_avg: number
           source_diversity_score: number
           state: string | null
@@ -1971,10 +1977,14 @@ export type Database = {
           validation_sources: Json
         }
         Insert: {
+          ai_cause?: string | null
+          ai_sentiment?: number | null
           ai_summary?: string | null
           ai_tags?: string[]
+          ai_why_peak?: string | null
           baseline_mentions?: number
           candidate_id: string
+          category?: string | null
           city?: string | null
           confidence_band?: string
           confidence_score?: number
@@ -1988,6 +1998,7 @@ export type Database = {
           event_date: string
           event_name: string
           event_type?: string
+          evidence_quality?: string | null
           id?: string
           importance_score?: number
           institutional_confirmations?: number
@@ -2000,6 +2011,7 @@ export type Database = {
           narratives?: Json
           peak_hourly_mentions?: number
           publications_count?: number
+          significance_score?: number | null
           source_authority_avg?: number
           source_diversity_score?: number
           state?: string | null
@@ -2010,10 +2022,14 @@ export type Database = {
           validation_sources?: Json
         }
         Update: {
+          ai_cause?: string | null
+          ai_sentiment?: number | null
           ai_summary?: string | null
           ai_tags?: string[]
+          ai_why_peak?: string | null
           baseline_mentions?: number
           candidate_id?: string
+          category?: string | null
           city?: string | null
           confidence_band?: string
           confidence_score?: number
@@ -2027,6 +2043,7 @@ export type Database = {
           event_date?: string
           event_name?: string
           event_type?: string
+          evidence_quality?: string | null
           id?: string
           importance_score?: number
           institutional_confirmations?: number
@@ -2039,6 +2056,7 @@ export type Database = {
           narratives?: Json
           peak_hourly_mentions?: number
           publications_count?: number
+          significance_score?: number | null
           source_authority_avg?: number
           source_diversity_score?: number
           state?: string | null

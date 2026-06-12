@@ -190,6 +190,15 @@ interface PeakCause {
   event_summary: string;
   root_cause: string;
   confidence: number;
+  // Enterprise v2 fields
+  cause?: string;
+  why_peak?: string;
+  evidence_quality?: "strong" | "moderate" | "weak" | "insufficient";
+  sentiment?: number; // -1..+1
+  enterprise_score?: number;
+  enterprise_band?: "confirmado" | "provavel" | "fraco" | "indeterminado";
+  score_components?: { coverage: number; diversity: number; consensus: number; significance: number };
+  key_terms?: string[];
   main_networks: string[];
   main_entities: string[];
   top_keywords?: Array<{ term: string; count: number }>;
@@ -201,6 +210,7 @@ interface PeakCause {
   fallback_text?: string | null;
 }
 
+
 export default function EventReport() {
   const { user } = useAuth();
   const [candidateId, setCandidateId] = useState<string>("");
@@ -211,10 +221,15 @@ export default function EventReport() {
   const [category, setCategory] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [minConfidence, setMinConfidence] = useState<number>(0);
+  const [searchText, setSearchText] = useState<string>("");
+  const [sortBy, setSortBy] = useState<"date_desc" | "date_asc" | "score" | "volume">("date_desc");
+  const [onlyValidated, setOnlyValidated] = useState(false);
+  const [onlyInstitutional, setOnlyInstitutional] = useState(false);
   const [causes, setCauses] = useState<Record<string, PeakCause>>({});
   const [causeLoading, setCauseLoading] = useState<Record<string, boolean>>({});
   const [causeError, setCauseError] = useState<Record<string, string>>({});
   const [enterpriseEvent, setEnterpriseEvent] = useState<EnterprisePeakEvent | null>(null);
+
 
   const { data: candidates } = useQuery({
     queryKey: ["candidates-mine", user?.id],
@@ -252,16 +267,38 @@ export default function EventReport() {
     }
     return c;
   }, [events]);
-  const filteredEvents = useMemo(
-    () => events.filter((e) => {
+  const filteredEvents = useMemo(() => {
+    const q = searchText.trim().toLowerCase();
+    let list = events.filter((e) => {
       if (category !== "all" && (e.category || "outros") !== category) return false;
       if (statusFilter !== "all" && (e.status || "indeterminate") !== statusFilter) return false;
       const score = typeof e.confidence_score === "number" ? e.confidence_score * 100 : (e.relevance_score ?? 0);
       if (score < minConfidence) return false;
+      if (onlyValidated && (e.trusted_sources_count ?? 0) < 2 && (e.independent_strong_sources ?? 0) < 2) return false;
+      if (onlyInstitutional) {
+        const hasInst = (e.outlet_names || []).some((o) => /stf|tse|senado|c[âa]mara|planalto|pf|mpf|tcu|ag[êe]ncia brasil/i.test(o));
+        if (!hasInst) return false;
+      }
+      if (q) {
+        const blob = `${e.name || ""} ${e.description || ""} ${(e.keywords || []).join(" ")}`.toLowerCase();
+        if (!blob.includes(q)) return false;
+      }
       return true;
-    }),
-    [events, category, statusFilter, minConfidence],
-  );
+    });
+    const scoreOf = (e: HistoricalEvent) => typeof e.confidence_score === "number" ? e.confidence_score * 100 : (e.relevance_score ?? 0);
+    const volOf = (e: HistoricalEvent) => e.internal_mentions || e.estimated_volume || e.publications_count || 0;
+    list = list.slice().sort((a, b) => {
+      switch (sortBy) {
+        case "date_asc": return a.start_date.localeCompare(b.start_date);
+        case "score": return scoreOf(b) - scoreOf(a);
+        case "volume": return volOf(b) - volOf(a);
+        case "date_desc":
+        default: return b.start_date.localeCompare(a.start_date);
+      }
+    });
+    return list;
+  }, [events, category, statusFilter, minConfidence, searchText, sortBy, onlyValidated, onlyInstitutional]);
+
   const eventsByYear = useMemo(() => {
     const groups = new Map<string, HistoricalEvent[]>();
     for (const ev of [...filteredEvents].sort((a, b) => a.start_date.localeCompare(b.start_date))) {
@@ -392,12 +429,52 @@ export default function EventReport() {
             </div>
           </div>
 
-          <div className="rounded-lg border bg-card px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
-            <div className="text-xs font-medium text-muted-foreground sm:w-44">Confiança mínima: <span className="tabular-nums text-foreground">{minConfidence}</span></div>
-            <div className="flex-1">
-              <Slider value={[minConfidence]} onValueChange={(v) => setMinConfidence(v[0] ?? 0)} min={0} max={100} step={5} />
+          <div className="rounded-lg border bg-card px-4 py-3 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="text-xs font-medium text-muted-foreground sm:w-44">Confiança mínima: <span className="tabular-nums text-foreground">{minConfidence}</span></div>
+              <div className="flex-1">
+                <Slider value={[minConfidence]} onValueChange={(v) => setMinConfidence(v[0] ?? 0)} min={0} max={100} step={5} />
+              </div>
+            </div>
+            <div className="flex flex-col md:flex-row md:items-center gap-2">
+              <Input
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="🔍 Buscar evento por título, descrição ou palavra-chave..."
+                className="flex-1 h-9"
+              />
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+                <SelectTrigger className="h-9 md:w-56"><SelectValue placeholder="Ordenar por" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="date_desc">Data (mais recente)</SelectItem>
+                  <SelectItem value="date_asc">Data (mais antigo)</SelectItem>
+                  <SelectItem value="score">Score de confiança</SelectItem>
+                  <SelectItem value="volume">Volume de menções</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={onlyValidated}
+                  onChange={(e) => setOnlyValidated(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-primary"
+                />
+                Apenas validados externamente (≥2 fontes fortes)
+              </label>
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={onlyInstitutional}
+                  onChange={(e) => setOnlyInstitutional(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-primary"
+                />
+                Com fontes institucionais (STF, TSE, PF, Câmara…)
+              </label>
             </div>
           </div>
+
 
           {filteredEvents.length === 0 ? (
             <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">
@@ -704,9 +781,49 @@ function PeakCauseView({ cause }: { cause: PeakCause }) {
       ) : (
         <>
           {cause.event_summary ? <Section title="O que aconteceu" body={cause.event_summary} /> : null}
-          {cause.root_cause ? <Section title="Por que virou pico" body={cause.root_cause} /> : null}
+          {cause.cause ? <Section title="Causa identificada" body={cause.cause} /> : null}
+          {cause.why_peak ? <Section title="Por que virou pico" body={cause.why_peak} /> : (cause.root_cause ? <Section title="Por que virou pico" body={cause.root_cause} /> : null)}
         </>
       )}
+
+      {cause.score_components ? (
+        <div className="space-y-1.5">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground flex items-center justify-between">
+            <span>Composição do confidence score</span>
+            {typeof cause.enterprise_score === "number" ? (
+              <span className="font-mono text-foreground">{cause.enterprise_score}/100 · {cause.enterprise_band}</span>
+            ) : null}
+          </p>
+          <ScoreCompositionBar c={cause.score_components} />
+        </div>
+      ) : null}
+
+      {typeof cause.sentiment === "number" ? (
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5 flex items-center justify-between">
+            <span>Sentimento (−1 a +1)</span>
+            <span className="font-mono text-foreground">{cause.sentiment.toFixed(2)}</span>
+          </p>
+          <SentimentBar value={cause.sentiment} />
+        </div>
+      ) : null}
+
+      {cause.evidence_quality ? (
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-muted-foreground uppercase tracking-wide">Qualidade da evidência:</span>
+          <Badge variant="outline" className={
+            cause.evidence_quality === "strong" ? "border-emerald-500/40 text-emerald-700 dark:text-emerald-300" :
+            cause.evidence_quality === "moderate" ? "border-blue-500/40 text-blue-700 dark:text-blue-300" :
+            cause.evidence_quality === "weak" ? "border-amber-500/40 text-amber-700 dark:text-amber-300" :
+            "border-rose-500/40 text-rose-700 dark:text-rose-300"
+          }>
+            {cause.evidence_quality === "strong" ? "Forte" :
+              cause.evidence_quality === "moderate" ? "Moderada" :
+              cause.evidence_quality === "weak" ? "Fraca" : "Insuficiente"}
+          </Badge>
+        </div>
+      ) : null}
+
 
       {cause.main_networks?.length ? (
         <div>
@@ -765,6 +882,45 @@ function PeakCauseView({ cause }: { cause: PeakCause }) {
       ) : (
         <p className="text-xs text-muted-foreground">Baseado em {cause.internal_mentions ?? 0} interações monitoradas. Nenhuma publicação externa relevante foi encontrada na janela.</p>
       )}
+    </div>
+  );
+}
+
+function ScoreCompositionBar({ c }: { c: { coverage: number; diversity: number; consensus: number; significance: number } }) {
+  // Each component contributes its weighted portion to a 100% segmented bar.
+  const segs = [
+    { label: "Cobertura", v: c.coverage * 30, raw: c.coverage, cls: "bg-emerald-500" },
+    { label: "Diversidade", v: c.diversity * 20, raw: c.diversity, cls: "bg-blue-500" },
+    { label: "Consenso", v: c.consensus * 25, raw: c.consensus, cls: "bg-amber-500" },
+    { label: "Significância", v: c.significance * 25, raw: c.significance, cls: "bg-violet-500" },
+  ];
+  return (
+    <div className="space-y-1.5">
+      <div className="flex h-2.5 rounded-full overflow-hidden bg-muted">
+        {segs.map((s) => (
+          <div key={s.label} className={s.cls} style={{ width: `${Math.max(0, s.v)}%` }} title={`${s.label}: ${(s.raw * 100).toFixed(0)}%`} />
+        ))}
+      </div>
+      <div className="grid grid-cols-4 gap-1 text-[10px] text-muted-foreground">
+        {segs.map((s) => (
+          <div key={s.label} className="flex items-center gap-1">
+            <span className={`inline-block h-2 w-2 rounded-sm ${s.cls}`} />
+            <span className="truncate">{s.label} · <span className="font-mono text-foreground">{(s.raw * 100).toFixed(0)}</span></span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SentimentBar({ value }: { value: number }) {
+  const pct = Math.max(0, Math.min(100, ((value + 1) / 2) * 100));
+  return (
+    <div className="relative h-2 rounded-full bg-gradient-to-r from-rose-500 via-zinc-400 to-emerald-500">
+      <div
+        className="absolute top-1/2 -translate-y-1/2 h-3.5 w-1 bg-foreground rounded-sm shadow"
+        style={{ left: `calc(${pct}% - 2px)` }}
+      />
     </div>
   );
 }
