@@ -88,7 +88,12 @@ const COVERAGE_BADGE: Record<string, { label: string; className: string }> = {
 const STATUS_BADGE: Record<string, { label: string; className: string; emoji: string }> = {
   confirmed: { emoji: "🟢", label: "Evento confirmado", className: "bg-emerald-500/15 text-emerald-700 border-emerald-500/30 dark:text-emerald-300" },
   probable: { emoji: "🟡", label: "Evento provável", className: "bg-amber-500/15 text-amber-700 border-amber-500/30 dark:text-amber-300" },
+  weak: { emoji: "🟠", label: "Evidência fraca", className: "bg-orange-500/15 text-orange-700 border-orange-500/30 dark:text-orange-300" },
   indeterminate: { emoji: "🔴", label: "Causa indeterminada", className: "bg-rose-500/10 text-rose-700 border-rose-500/30 dark:text-rose-300" },
+};
+
+const SIGNAL_LABEL: Record<string, string> = {
+  z: "Z-score", momentum: "Momentum", burst: "Burst", anomaly: "Anomaly",
 };
 
 const RELEVANCE_BAND_LABEL: Record<string, string> = {
