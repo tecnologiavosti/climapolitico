@@ -28,15 +28,29 @@ const CATEGORIES = [
 ];
 
 const INSTITUTIONAL_DOMAINS = [
-  "stf.jus.br","tse.jus.br","senado.leg.br","camara.leg.br","gov.br",
+  "stf.jus.br","tse.jus.br","stj.jus.br","senado.leg.br","camara.leg.br","gov.br",
   "pf.gov.br","cgu.gov.br","tcu.gov.br","justica.gov.br","planalto.gov.br",
-  "agenciabrasil.ebc.com.br",
+  "agenciabrasil.ebc.com.br","bcb.gov.br","receita.fazenda.gov.br","agu.gov.br",
+  "cnj.jus.br","in.gov.br",
 ];
 const MAJOR_NEWS_DOMAINS = [
-  "g1.globo.com","globo.com","oglobo.globo.com","uol.com.br","folha.uol.com.br",
-  "estadao.com.br","cnnbrasil.com.br","poder360.com.br","metropoles.com",
-  "veja.abril.com.br","reuters.com","cartacapital.com.br","valor.globo.com",
-  "noticias.uol.com.br","band.uol.com.br","r7.com",
+  // Brasil — grandes jornais/TV
+  "g1.globo.com","globo.com","oglobo.globo.com","globonews.globo.com","valor.globo.com",
+  "uol.com.br","noticias.uol.com.br","folha.uol.com.br","band.uol.com.br",
+  "estadao.com.br","cnnbrasil.com.br","r7.com","terra.com.br","sbtnews.sbt.com.br",
+  "recordtv.r7.com","jovempan.com.br",
+  // Política / bastidores
+  "poder360.com.br","metropoles.com","congressoemfoco.uol.com.br","jota.info",
+  "nexojornal.com.br","cartacapital.com.br","veja.abril.com.br","exame.com",
+  "infomoney.com.br","correiobraziliense.com.br","gazetadopovo.com.br",
+  "istoe.com.br","brasil247.com","diariodocentrodomundo.com.br",
+  "oantagonista.com.br","crusoe.com.br",
+  // Economia / mercado
+  "moneytimes.com.br","br.investing.com","suno.com.br","neofeed.com.br",
+  "braziljournal.com","trademap.com.br",
+  // Internacional
+  "bbc.com","ft.com","bloomberg.com","apnews.com","brasil.elpais.com",
+  "dw.com","aljazeera.com","theguardian.com","nytimes.com","reuters.com",
 ];
 
 // Blocklist (esporte / trivial)
