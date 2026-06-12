@@ -846,7 +846,7 @@ Responda APENAS JSON válido:
 
     // Remove fontes/URLs externas da resposta — manter usuário dentro da plataforma.
     // Recalcula relevance_score com peso 80% SSOT + 20% externo (regra do produto).
-    const sanitizedEvents = events.map((e: any, i: number) => {
+    const sanitizedEventsRaw = events.map((e: any, i: number) => {
       const { sources: _omit, ...rest } = e;
       const c = correlations[i].status === "fulfilled" ? (correlations[i] as any).value : null;
       const internal_mentions = Number(c?.total_mentions ?? 0);
@@ -856,29 +856,16 @@ Responda APENAS JSON válido:
       const ssot_score = ssotScoreOf(internal_mentions, internal_engagement, z);
       const external_score = Number(e.external_score ?? 0);
       const final_score = Math.round(0.8 * ssot_score + 0.2 * external_score);
-      const ai_only = (e.publications_count ?? 0) === 0 || (e.distinct_outlets ?? 0) === 0;
+      const external_evidence_count = Number(e.publications_count ?? 0);
+      const has_external_evidence = external_evidence_count >= 1 && Number(e.distinct_outlets ?? 0) >= 1;
+      const has_internal_evidence = internal_mentions >= 1;
+      const has_real_evidence = has_external_evidence || has_internal_evidence;
+      const ai_only = !has_external_evidence;
       const description = e.description && e.description.length > 0
         ? e.description
         : (ai_only
             ? "Pico detectado por volume anômalo nas redes monitoradas. Não houve cobertura jornalística suficiente para identificar a causa exata."
             : e.description);
-      // Auditoria por pico
-      console.log(JSON.stringify({
-        tag: "peak_audit",
-        name: e.name,
-        date: e.start_date,
-        z_score: z,
-        baseline_volume: e.ssot_baseline_volume,
-        peak_volume: e.ssot_peak_volume,
-        internal_mentions,
-        internal_engagement,
-        external_score,
-        ssot_score,
-        final_score,
-        coverage_quality: e.coverage_quality,
-        ai_only,
-        discard_reason: null,
-      }));
       return {
         ...rest,
         description,
@@ -886,11 +873,51 @@ Responda APENAS JSON válido:
         ssot_score,
         sources_count: Array.isArray(_omit) ? _omit.length : 0,
         internal_mentions,
+        internal_mentions_count: internal_mentions,
         internal_authors,
         internal_engagement,
         internal_by_network: (c?.by_network ?? {}) as Record<string, number>,
         internal_window_days: 14,
+        has_external_evidence,
+        has_internal_evidence,
+        has_real_evidence,
+        external_evidence_count,
+        is_ai_synthetic: !has_real_evidence,
       };
+    });
+
+    // === HARD VALIDATION — proíbe picos sem evidência real ===
+    // Regra do produto: (≥3 publicações externas OU ≥500 menções internas) E has_real_evidence.
+    let discarded_synthetic = 0;
+    let discarded_insufficient_evidence = 0;
+    const total_detected = sanitizedEventsRaw.length;
+    const sanitizedEvents = sanitizedEventsRaw.filter((ev: any) => {
+      const meetsThreshold = ev.external_evidence_count >= 3 || ev.internal_mentions_count >= 500;
+      const valid = meetsThreshold && ev.has_real_evidence === true && ev.is_ai_synthetic === false;
+      const discard_reason = !valid
+        ? (ev.is_ai_synthetic ? "synthetic" : "insufficient_evidence")
+        : null;
+      console.log(JSON.stringify({
+        tag: "peak_audit",
+        name: ev.name,
+        date: ev.start_date,
+        z_score: ev.ssot_z_score,
+        baseline_volume: ev.ssot_baseline_volume,
+        peak_volume: ev.ssot_peak_volume,
+        internal_mentions: ev.internal_mentions_count,
+        external_evidence_count: ev.external_evidence_count,
+        ssot_score: ev.ssot_score,
+        final_score: ev.relevance_score,
+        coverage_quality: ev.coverage_quality,
+        is_ai_synthetic: ev.is_ai_synthetic,
+        discard_reason,
+      }));
+      if (!valid) {
+        if (ev.is_ai_synthetic) discarded_synthetic++;
+        else discarded_insufficient_evidence++;
+        return false;
+      }
+      return true;
     }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0));
 
     // === FASE 5: GARANTIA DE ANÁLISE — fallback IA com dados internos (SSOT) ===
