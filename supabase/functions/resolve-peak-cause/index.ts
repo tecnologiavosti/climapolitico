@@ -278,6 +278,30 @@ Deno.serve(async (req) => {
       source_strength: strength, tier, weight,
     }));
 
+    // ---------- 4-component Enterprise Confidence (brief v2 §5) ----------
+    // Heuristic source-type breakdown from outlet/host classification.
+    const hasInstitutional = classifiedPubs.some((p) => p.tier === "tier1");
+    const hasLargeMedia = classifiedPubs.some((p) => p.tier === "tier2");
+    const hasInternational = pubs.some((p) => /reuters|bbc|ap|bloomberg|ft\.com|financialtimes/i.test(`${p.outlet || ""} ${p.url || ""}`));
+    const hasSocial = pubs.some((p) => /instagram|tiktok|facebook|youtube|threads|twitter|x\.com|telegram|reddit|bsky/i.test(`${p.outlet || ""} ${p.url || ""}`));
+    const sourceTypesPresent = [hasInstitutional, hasLargeMedia || hasInternational, hasInternational, hasSocial].filter(Boolean).length || 1;
+    const headlinesForConsensus = classifiedPubs
+      .filter((p) => p.strength === "strong")
+      .slice(0, 12)
+      .map((p) => p.pub.title || "")
+      .filter(Boolean);
+    const preliminaryCategoryId = categoryFromSources(
+      classifiedPubs.filter((p) => p.strength === "strong").map((p) => p.pub.url),
+    ) || pipelineCategory(...headlinesForConsensus, ...evidence.top_keywords.slice(0, 8).map((k) => k.term));
+    const enterprise = computeEnterpriseConfidence({
+      unique_sources: independentStrongSources + Math.min(weakSources, 3),
+      source_types_present: sourceTypesPresent,
+      has_institutional: hasInstitutional,
+      headlines: headlinesForConsensus,
+      category: preliminaryCategoryId,
+    });
+
+
     // ---------- STAGE 3: AI explanation ----------
     const systemMsg = `Você é um analista político factual.
 
