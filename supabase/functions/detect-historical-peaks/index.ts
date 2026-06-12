@@ -859,19 +859,40 @@ serve(async (req) => {
       return data as { total_mentions: number; unique_authors: number; total_engagement: number; by_network: Record<string, number> } | null;
     }));
 
+    // Classifica fontes externas em STRONG (jornalismo / órgãos oficiais / GDELT)
+    // vs WEAK (redes sociais externas). Instagram/Facebook/TikTok/Threads sozinhos
+    // NÃO contam como evidência jornalística.
+    const WEAK_HOSTS = /(^|\.)(instagram\.com|facebook\.com|m\.facebook\.com|fb\.com|tiktok\.com|threads\.net|threads\.com|x\.com|twitter\.com|t\.me|telegram\.me|reddit\.com|pinterest\.com|bsky\.app|mastodon\.|truthsocial\.com)$/i;
+    const STRONG_OFFICIAL = /(^|\.)(stf\.jus\.br|tse\.jus\.br|senado\.leg\.br|camara\.leg\.br|gov\.br|planalto\.gov\.br|mpf\.mp\.br|pf\.gov\.br|tcu\.gov\.br)$/i;
+    function hostOf(url: string): string {
+      try { return new URL(url).hostname.replace(/^www\./, "").toLowerCase(); } catch { return ""; }
+    }
+    function classifySource(s: { url?: string; kind?: string; name?: string }): "strong" | "weak" {
+      const host = hostOf(s.url || "");
+      if (!host) return "weak";
+      if (STRONG_OFFICIAL.test(host)) return "strong";
+      if (WEAK_HOSTS.test(host)) return "weak";
+      // GDELT, identifyOutlet-tagged outlets e quaisquer veículos jornalísticos restantes → strong
+      return "strong";
+    }
+
     // Remove fontes/URLs externas da resposta — manter usuário dentro da plataforma.
-    // Recalcula relevance_score com peso 80% SSOT + 20% externo (regra do produto).
     const sanitizedEventsRaw = events.map((e: any, i: number) => {
       const { sources: _omit, ...rest } = e;
+      const srcList: any[] = Array.isArray(_omit) ? _omit : [];
+      let strong_sources = 0, weak_sources = 0;
+      const strongHosts = new Set<string>(), weakHosts = new Set<string>();
+      for (const s of srcList) {
+        const h = hostOf(s.url || "");
+        if (classifySource(s) === "strong") { strong_sources++; if (h) strongHosts.add(h); }
+        else { weak_sources++; if (h) weakHosts.add(h); }
+      }
       const c = correlations[i].status === "fulfilled" ? (correlations[i] as any).value : null;
       const internal_mentions = Number(c?.total_mentions ?? 0);
       const internal_authors = Number(c?.unique_authors ?? 0);
       const internal_engagement = Number(c?.total_engagement ?? 0);
-      const z = Number(e.ssot_z_score ?? 0);
-      const ssot_score = ssotScoreOf(internal_mentions, internal_engagement, z);
-      const external_score = Number(e.external_score ?? 0);
-      const final_score = Math.round(0.8 * ssot_score + 0.2 * external_score);
       const external_evidence_count = Number(e.publications_count ?? 0);
+      const has_strong_external = strong_sources >= 1 && strongHosts.size >= 1;
       const has_external_evidence = external_evidence_count >= 1 && Number(e.distinct_outlets ?? 0) >= 1;
       const has_internal_evidence = internal_mentions >= 1;
       const has_real_evidence = has_external_evidence || has_internal_evidence;
@@ -884,9 +905,10 @@ serve(async (req) => {
       return {
         ...rest,
         description,
-        relevance_score: final_score,
-        ssot_score,
-        sources_count: Array.isArray(_omit) ? _omit.length : 0,
+        sources_count: srcList.length,
+        strong_sources,
+        weak_sources,
+        strong_outlets: strongHosts.size,
         internal_mentions,
         internal_mentions_count: internal_mentions,
         internal_authors,
@@ -894,6 +916,7 @@ serve(async (req) => {
         internal_by_network: (c?.by_network ?? {}) as Record<string, number>,
         internal_window_days: 14,
         has_external_evidence,
+        has_strong_external,
         has_internal_evidence,
         has_real_evidence,
         external_evidence_count,
@@ -925,23 +948,28 @@ serve(async (req) => {
       const externalEv = Number(ev.external_evidence_count ?? 0);
       const networks = ev.internal_by_network ? Object.values(ev.internal_by_network).filter((v: any) => Number(v) > 0).length : 0;
 
-      // Sub-scores 0-100
-      const volumeScore = Math.min(100, Math.log10(Math.max(1, mentions)) * 33); // 1k→99
-      const engagementScore = Math.min(100, Math.log10(Math.max(1, engagement)) * 20); // 100k→100
-      const authorDiversityScore = Math.min(100, Math.log10(Math.max(1, authors)) * 33);
-      const networkDiversityScore = Math.min(100, networks * 15);
-      const externalEvidenceScore = Math.min(100, externalEv * 12);
+      const strongSources = Number(ev.strong_sources ?? 0);
+      const weakSources = Number(ev.weak_sources ?? 0);
+      const publications = Number(ev.external_evidence_count ?? 0);
+      const activeNetworks = networks;
+
+      // Novo modelo de relevância (0–100), calibrado para evitar inflação.
+      const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
+      const externalEvidenceScore = clamp(strongSources * 12 + weakSources * 2, 0, 40);
+      const coverageScore = Math.min(25, publications * 3);
+      const networkScore = Math.min(20, activeNetworks * 2);
+      const volumeScore = clamp(Math.log10(Math.max(1, mentions)) * 8, 0, 25);
+      const engagementScore = clamp(Math.log10(Math.max(1, engagement)) * 3, 0, 15);
       const politicalRelevance = Math.round(
-        volumeScore * 0.35 +
-        engagementScore * 0.20 +
-        authorDiversityScore * 0.20 +
-        networkDiversityScore * 0.15 +
-        externalEvidenceScore * 0.10,
+        clamp(externalEvidenceScore + coverageScore + networkScore + volumeScore + engagementScore, 0, 100),
       );
       const peakScore = politicalRelevance * Math.log10(Math.max(10, mentions));
 
-      // Classificação do tipo de pico
-      const isExternalConfirmed = ev.has_external_evidence && externalEv >= 1 && Number(ev.distinct_outlets ?? 0) >= 1;
+      // Classificação do tipo de pico — Instagram/Facebook/TikTok sozinhos NÃO são jornalismo.
+      const hasStrongExternal = strongSources >= 1;
+      const hasOnlyWeakExternal = !hasStrongExternal && weakSources >= 1;
+      const isExternalConfirmed = hasStrongExternal;
+      const isExternalSocialOnly = hasOnlyWeakExternal;
       const meetsInternalHardFloor =
         z >= 3.5 &&
         mentions >= Math.max(500, baseline * 3) &&
@@ -949,10 +977,10 @@ serve(async (req) => {
         engagement >= 50000 &&
         peakVolume >= 500;
 
-      return { ev, mentions, politicalRelevance, peakScore, isExternalConfirmed, meetsInternalHardFloor };
+      return { ev, mentions, politicalRelevance, peakScore, isExternalConfirmed, isExternalSocialOnly, meetsInternalHardFloor };
     });
 
-    const sanitizedEvents = scored.filter(({ ev, mentions, politicalRelevance, peakScore, isExternalConfirmed, meetsInternalHardFloor }) => {
+    const sanitizedEvents = scored.filter(({ ev, mentions, politicalRelevance, peakScore, isExternalConfirmed, isExternalSocialOnly, meetsInternalHardFloor }) => {
       const hasAnyEvidence = ev.external_evidence_count >= 1 || ev.internal_mentions_count >= 1 || Number(ev.ssot_z_score ?? 0) >= 2;
       if (!hasAnyEvidence) ev.is_ai_synthetic = true;
 
@@ -964,6 +992,10 @@ serve(async (req) => {
         valid = true;
         ev.peak_type = "external_confirmed";
         ev.detected_by = "external";
+      } else if (isExternalSocialOnly && politicalRelevance >= 40) {
+        valid = true;
+        ev.peak_type = "external_social";
+        ev.detected_by = "external_social";
       } else if (meetsInternalHardFloor && politicalRelevance >= 60) {
         valid = true;
         ev.peak_type = "internal_trend";

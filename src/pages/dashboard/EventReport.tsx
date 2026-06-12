@@ -52,8 +52,8 @@ interface HistoricalEvent {
   internal_by_network?: Record<string, number>;
   internal_window_days?: number;
   coverage_quality?: "forte" | "media" | "fraca" | "ai_only";
-  detected_by?: "external" | "internal_ssot" | "none";
-  peak_type?: "external_confirmed" | "internal_trend";
+  detected_by?: "external" | "external_social" | "internal_ssot" | "none";
+  peak_type?: "external_confirmed" | "external_social" | "internal_trend";
   political_relevance?: number;
   category?: string;
 }
@@ -330,6 +330,8 @@ export default function EventReport() {
                         ) : null}
                         {ev.peak_type === "external_confirmed" || ev.detected_by === "external" ? (
                           <Badge variant="outline" className="text-[10px] font-normal border-blue-500/40 text-blue-600 dark:text-blue-400">Detectado por fontes externas</Badge>
+                        ) : ev.peak_type === "external_social" || ev.detected_by === "external_social" ? (
+                          <Badge variant="outline" className="text-[10px] font-normal border-purple-500/40 text-purple-600 dark:text-purple-400">Detectado por redes sociais externas</Badge>
                         ) : ev.peak_type === "internal_trend" || ev.detected_by === "internal_ssot" ? (
                           <Badge variant="outline" className="text-[10px] font-normal border-emerald-500/40 text-emerald-600 dark:text-emerald-400">Detectado por comportamento anômalo nas redes</Badge>
                         ) : null}
