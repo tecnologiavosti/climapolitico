@@ -157,6 +157,72 @@ async function fetchGoogleNews(query: string, lookbackDays: number): Promise<New
   }
 }
 
+// ---- RSS de grande imprensa + institucional (compartilhado entre candidatos) ----
+const RSS_FEEDS: { name: string; url: string }[] = [
+  { name: "Folha - Poder",        url: "https://feeds.folha.uol.com.br/poder/rss091.xml" },
+  { name: "Folha - Política",     url: "https://feeds.folha.uol.com.br/politica/rss091.xml" },
+  { name: "G1 - Política",        url: "https://g1.globo.com/rss/g1/politica/" },
+  { name: "UOL - Política",       url: "https://rss.uol.com.br/feed/politica.xml" },
+  { name: "CNN Brasil",           url: "https://www.cnnbrasil.com.br/feed/" },
+  { name: "Poder360",             url: "https://www.poder360.com.br/feed/" },
+  { name: "Metrópoles",           url: "https://www.metropoles.com/feed" },
+  { name: "Agência Brasil",       url: "https://agenciabrasil.ebc.com.br/rss/politica/feed.xml" },
+  { name: "CartaCapital",         url: "https://www.cartacapital.com.br/feed/" },
+  { name: "Correio Braziliense",  url: "https://www.correiobraziliense.com.br/rss/politica.xml" },
+  { name: "STF",                  url: "https://portal.stf.jus.br/RSS/?modulo=noticias" },
+  { name: "Senado",               url: "https://www12.senado.leg.br/noticias/ultimas/feed" },
+  { name: "Câmara",               url: "https://www.camara.leg.br/noticias/rss" },
+  { name: "Planalto",             url: "https://www.gov.br/planalto/pt-br/acompanhe-o-planalto/noticias/RSS" },
+];
+
+const rssCache = new Map<string, NewsItem[]>();
+
+async function fetchRssFeed(name: string, url: string): Promise<NewsItem[]> {
+  if (rssCache.has(url)) return rssCache.get(url)!;
+  try {
+    const res = await timeout(fetch(url, { headers: { "User-Agent": UA } }), FETCH_TIMEOUT_MS);
+    if (!res.ok) { rssCache.set(url, []); return []; }
+    const xml = await res.text();
+    const items: NewsItem[] = [];
+    const itemRegex = /<item[\s\S]*?>([\s\S]*?)<\/item>/g;
+    let m: RegExpExecArray | null;
+    while ((m = itemRegex.exec(xml)) && items.length < MAX_ITEMS_PER_FEED) {
+      const block = m[1];
+      const title = stripTags((block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/)?.[1]) || "");
+      const link = stripTags((block.match(/<link>([\s\S]*?)<\/link>/)?.[1]) || "");
+      const pub = stripTags((block.match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1]) || "");
+      if (!title || !link) continue;
+      if (isBlocked(title)) continue;
+      const { domain } = classifyDomain(link);
+      items.push({
+        title, url: link, source_name: name || domain,
+        published_at: pub ? new Date(pub).toISOString() : new Date().toISOString(),
+        domain,
+      });
+    }
+    rssCache.set(url, items);
+    return items;
+  } catch {
+    rssCache.set(url, []);
+    return [];
+  }
+}
+
+async function fetchAllRss(): Promise<NewsItem[]> {
+  const results = await Promise.all(RSS_FEEDS.map((f) => fetchRssFeed(f.name, f.url)));
+  return results.flat();
+}
+
+function filterByAliases(items: NewsItem[], aliases: string[], lookbackDays: number): NewsItem[] {
+  const cutoff = Date.now() - lookbackDays * 86400_000;
+  const normAliases = aliases.map((a) => normalize(a)).filter((a) => a.length >= 3);
+  return items.filter((it) => {
+    if (new Date(it.published_at).getTime() < cutoff) return false;
+    const t = normalize(it.title);
+    return normAliases.some((a) => t.includes(a));
+  });
+}
+
 function normalizeTitle(t: string): string {
   return normalize(t).replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -287,6 +353,9 @@ Deno.serve(async (req) => {
     let totalInserted = 0;
     const perCandidate: Record<string, { inserted: number; clusters: number; items: number }> = {};
 
+    // Pré-carrega todos os RSS feeds uma vez (compartilhado entre candidatos)
+    const rssPool = await fetchAllRss();
+
     for (const c of candidates ?? []) {
       const aliases = aliasesFor(c.full_name);
       // coleta múltiplas queries por candidato
@@ -295,6 +364,8 @@ Deno.serve(async (req) => {
         const items = await fetchGoogleNews(alias, lookback);
         all.push(...items);
       }
+      // adiciona itens RSS que casam com aliases do candidato
+      all.push(...filterByAliases(rssPool, aliases, lookback));
       // dedupe por url
       const byUrl = new Map<string, NewsItem>();
       for (const it of all) if (!byUrl.has(it.url)) byUrl.set(it.url, it);
