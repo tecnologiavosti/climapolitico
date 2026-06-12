@@ -302,7 +302,7 @@ export default function EventReport() {
 
           {filteredEvents.length === 0 ? (
             <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">
-              Nenhum acontecimento nesta categoria. Selecione outro filtro.
+              Nenhum pico encontrado nesta categoria.
             </CardContent></Card>
           ) : null}
 
