@@ -2040,6 +2040,7 @@ export type Database = {
           source_authority_avg: number
           source_count: number
           source_diversity_score: number
+          sources_json: Json
           start_date: string | null
           state: string | null
           status: string
@@ -2106,6 +2107,7 @@ export type Database = {
           source_authority_avg?: number
           source_count?: number
           source_diversity_score?: number
+          sources_json?: Json
           start_date?: string | null
           state?: string | null
           status?: string
@@ -2172,6 +2174,7 @@ export type Database = {
           source_authority_avg?: number
           source_count?: number
           source_diversity_score?: number
+          sources_json?: Json
           start_date?: string | null
           state?: string | null
           status?: string
