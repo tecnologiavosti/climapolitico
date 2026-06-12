@@ -249,8 +249,8 @@ export default function EventReport() {
       {!isFetching && data && events.length === 0 ? (
         <Card><CardContent className="py-10 text-center text-muted-foreground space-y-2">
           <Newspaper className="h-10 w-10 mx-auto opacity-50" />
-          <p className="font-medium">Nenhum pico externo identificado no período.</p>
-          <p className="text-sm">Tente ampliar o intervalo ou selecionar outro candidato. A detecção exige volume real em fontes externas.</p>
+          <p className="font-medium">Nenhum pico encontrado em fontes externas.</p>
+          <p className="text-sm">Buscando correlação nas redes monitoradas… Se ainda assim nada for encontrado, amplie o intervalo ou selecione outro candidato.</p>
         </CardContent></Card>
       ) : null}
 
