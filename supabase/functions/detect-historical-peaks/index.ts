@@ -14,6 +14,17 @@ const corsHeaders = {
 
 type TimelinePoint = { date: string; count: number; isPeak?: boolean };
 
+const FUNCTION_TIMEOUT_MS = 20_000;
+const MAX_STAT_RECORDS = 3_000;
+const MAX_AI_RECORDS = 1_000;
+const HIGH_VOLUME_MENTIONS = 50_000;
+const NORMAL_CORRELATION_LIMIT = 60;
+const SAFE_CORRELATION_LIMIT = 24;
+
+const VALID_PEAK_CATEGORIES = new Set([
+  "eleicao", "operacao_pf", "stf", "tse", "cpi", "julgamento", "escandalo", "prisao", "debate", "outros",
+]);
+
 // Apenas termos de ALTA RELEVÂNCIA POLÍTICA. Comícios, agendas, visitas, caminhadas,
 // reuniões partidárias e encontros locais foram removidos por orientação do produto.
 const EVENT_TERMS = [
@@ -272,7 +283,7 @@ function coverageQuality(totalEvidence: number, distinctOutlets: number): Covera
 // Combina TODOS os campos textuais disponíveis (nome, tipo, descrição, motivo, what/why,
 // participantes, keywords, impacto político, títulos de fontes externas, outlets e termos frequentes)
 // para garantir que todo pico receba uma categoria — não depende só de cobertura externa.
-function categoryOf(evt: any): string {
+function classifyPeakCategory(evt: any): string {
   const parts: string[] = [
     evt?.name, evt?.type, evt?.description, evt?.motivo,
     evt?.what_happened, evt?.why_happened, evt?.political_impact,
@@ -289,16 +300,35 @@ function categoryOf(evt: any): string {
   const text = normalize(parts.filter(Boolean).join(" "));
 
   // Ordem importa: categorias mais específicas primeiro.
-  if (/\bpolicia federal|\bpf\b|operacao\b|busca e apreensao|mandado de busca|deflagrou|deflagrada/.test(text)) return "operacao_pf";
-  if (/\bstf\b|supremo tribunal|alexandre de moraes|gilmar mendes|barroso|dias toffoli|fachin|carmen lucia|cristiano zanin|nunes marques/.test(text)) return "stf";
-  if (/\btse\b|tribunal superior eleitoral|registro de candidatura|inelegibilidade|cassacao de mandato|cassacao do registro/.test(text)) return "tse";
+  if (/\bpf\b|policia federal|\boperacao\b|busca e apreensao|mandado de busca|deflagrou|deflagrada/.test(text)) return "operacao_pf";
+  if (/\bstf\b|supremo|supremo tribunal|alexandre de moraes|gilmar|gilmar mendes|barroso|dias toffoli|fachin|carmen lucia|cristiano zanin|nunes marques/.test(text)) return "stf";
+  if (/\btse\b|tribunal superior eleitoral|\beleitoral\b|registro de candidatura|inelegibilidade|cassacao de mandato|cassacao do registro/.test(text)) return "tse";
   if (/\bcpi\b|comissao parlamentar|comissao de inquerito|senado investigando|requerimento de cpi/.test(text)) return "cpi";
-  if (/\bjulgamento|condenacao|condenado|absolvicao|absolvido|sentenca|decisao judicial|acordao|pena de \d/.test(text)) return "julgamento";
-  if (/\bprisao|preso|detido|indiciamento|indiciado|cumprimento de pena/.test(text)) return "prisao";
-  if (/\bescandalo|corrupcao|propina|desvio de|denuncia|rachadinha|caixa 2|lavagem de dinheiro|impeachment/.test(text)) return "escandalo";
-  if (/\bdebate\b|sabatina|confronto entre candidatos|debate presidencial|debate eleitoral/.test(text)) return "debate";
-  if (/\beleicao|eleicoes|campanha eleitoral|votacao|urnas|primeiro turno|segundo turno|posse presidencial|comicio/.test(text)) return "eleicao";
+  if (/\bprisao\b|\bpreso\b|\bdetido\b|\bdetencao\b|indiciamento|indiciado|cumprimento de pena/.test(text)) return "prisao";
+  if (/\bescandalo\b|corrupcao|vazamento|denuncia|propina|desvio de|rachadinha|caixa 2|lavagem de dinheiro|impeachment/.test(text)) return "escandalo";
+  if (/\bdebate\b|sabatina|confronto|confronto entre candidatos|debate presidencial|debate eleitoral/.test(text)) return "debate";
+  if (/\bjulgamento\b|sentenca|condenacao|condenado|absolvicao|absolvido|\brecurso\b|decisao judicial|acordao|pena de \d/.test(text)) return "julgamento";
+  if (/\beleicao\b|\beleicoes\b|campanha|votacao|\bvoto\b|\burna\b|urnas|candidato|primeiro turno|segundo turno|posse presidencial|comicio/.test(text)) return "eleicao";
   return "outros";
+}
+
+function categoryOf(evt: any): string {
+  const category = classifyPeakCategory(evt);
+  return VALID_PEAK_CATEGORIES.has(category) ? category : "outros";
+}
+
+function safeAnalysisFromKeywords(evt: any): { cause: string; confidence: number } {
+  const terms = [
+    ...(Array.isArray(evt?.keywords) ? evt.keywords : []),
+    ...(Array.isArray(evt?.top_terms) ? evt.top_terms : []),
+    ...(Array.isArray(evt?.entities) ? evt.entities : []),
+  ].map(cleanText).filter(Boolean).slice(0, 8);
+  return {
+    cause: terms.length
+      ? `Análise resumida baseada nos termos associados: ${terms.join(", ")}.`
+      : "Análise indisponível",
+    confidence: terms.length ? 35 : 0,
+  };
 }
 
 // Score baseado em volume/anomalia SSOT (interno) — peso 80% no final.
@@ -410,6 +440,8 @@ async function fetchSsotTimelineFromDb(
   let from = 0;
   const pageSize = 1000;
   while (true) {
+    const currentPageSize = Math.min(pageSize, MAX_STAT_RECORDS - from);
+    if (currentPageSize <= 0) break;
     const { data, error } = await admin
       .from("social_metrics_daily")
       .select("date, mentions")
@@ -418,16 +450,16 @@ async function fetchSsotTimelineFromDb(
       .gte("date", startISO)
       .lte("date", endISO)
       .order("date", { ascending: true })
-      .range(from, from + pageSize - 1);
+      .range(from, from + currentPageSize - 1);
     if (error) { console.warn("[detect-historical-peaks] smd fetch:", error.message); break; }
     if (!data || data.length === 0) break;
     for (const row of data) {
       const d = String(row.date).slice(0, 10);
       byDay.set(d, (byDay.get(d) || 0) + Number(row.mentions || 0));
     }
-    if (data.length < pageSize) break;
+    if (data.length < currentPageSize) break;
     from += pageSize;
-    if (from > 50000) break;
+    if (from >= MAX_STAT_RECORDS) break;
   }
   return [...byDay.entries()].map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -666,21 +698,36 @@ async function fetchCoverageForKnownEvent(
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   console.time("detect-historical-peaks");
-  console.log("[1] function started");
+  const startedAt = Date.now();
+  let stage = "inicio";
+  const elapsed = () => Date.now() - startedAt;
+  const timedOut = () => elapsed() >= FUNCTION_TIMEOUT_MS;
+  const logStage = (name: string, details: Record<string, unknown> = {}) => {
+    stage = name;
+    console.log(JSON.stringify({ tag: "detect_historical_peaks_stage", stage, elapsed_ms: elapsed(), ...details }));
+  };
+  const errorResponse = (status: number, message: string) => new Response(JSON.stringify({
+    success: false,
+    stage,
+    error: message,
+  }), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  logStage("inicio", { method: req.method });
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
     const auth = req.headers.get("Authorization");
-    if (!auth) return new Response(JSON.stringify({ error: "Não autorizado" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!auth) return errorResponse(401, "Não autorizado");
 
+    logStage("autenticacao");
     const userClient = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: auth } } });
     const { data: { user } } = await userClient.auth.getUser();
-    if (!user) return new Response(JSON.stringify({ error: "Não autorizado" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!user) return errorResponse(401, "Não autorizado");
 
+    logStage("validacao_payload");
     const { candidateId, startDate, endDate, localTimeline = [] } = await req.json();
     if (!candidateId || !startDate || !endDate) {
-      return new Response(JSON.stringify({ error: "candidateId, startDate e endDate são obrigatórios" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return errorResponse(400, "candidateId, startDate e endDate são obrigatórios");
     }
 
     const start = parseDate(startDate);
@@ -690,16 +737,33 @@ serve(async (req) => {
     const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000));
 
     const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+    logStage("busca_candidato", { candidateId });
     const { data: candidate } = await admin.from("candidates").select("id, full_name, party, user_id").eq("id", candidateId).maybeSingle();
     if (!candidate || candidate.user_id !== user.id) {
-      return new Response(JSON.stringify({ error: "Candidato não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return errorResponse(404, "Candidato não encontrado");
     }
-    console.log("[2] candidate loaded", candidate.full_name);
+    console.log("[detect-historical-peaks] candidate loaded", candidate.full_name);
+
+    logStage("busca_mencoes", { max_records: MAX_STAT_RECORDS });
+    const clientTimeline = Array.isArray(localTimeline) ? localTimeline.slice(0, MAX_STAT_RECORDS) : [];
+    const dbTimeline = await fetchSsotTimelineFromDb(admin, user.id, candidate.id, start, end);
+    const effectiveTimelineRaw: TimelinePoint[] = dbTimeline.length >= 5 ? dbTimeline : clientTimeline;
+    const effectiveTimeline: TimelinePoint[] = effectiveTimelineRaw.slice(0, MAX_STAT_RECORDS);
+    const totalMentionsForPeriod = effectiveTimeline.reduce((sum, p) => sum + Number(p.count || 0), 0);
+    const safeMode = totalMentionsForPeriod >= HIGH_VOLUME_MENTIONS || effectiveTimelineRaw.length >= MAX_STAT_RECORDS;
+    console.log(JSON.stringify({
+      tag: "mentions_loaded",
+      db_points: dbTimeline.length,
+      client_points: clientTimeline.length,
+      effective_points: effectiveTimeline.length,
+      total_mentions: totalMentionsForPeriod,
+      safe_mode: safeMode,
+    }));
 
     // === FASE 1: DESCOBERTA HISTÓRICA — DESABILITADA ===
     // IA NUNCA cria eventos. Picos vêm de evidência real: cobertura externa + timeline SSOT.
     const discovered: DiscoveredEvent[] = [];
-    console.log("[3] external search started");
+    logStage("busca_fontes_externas", { safe_mode: safeMode });
 
     // === FASE 2: COBERTURA DIRECIONADA POR EVENTO CONHECIDO ===
     const focusedSettled = await Promise.allSettled(
@@ -708,7 +772,7 @@ serve(async (req) => {
     const focusedPubs = focusedSettled.flatMap((r) => r.status === "fulfilled" ? r.value : []);
 
     // === FASE 3: COLETA AMPLA (descobre eventos adicionais não previstos pela IA) ===
-    const contextual = buildContextualQueries(candidate.full_name, 6);
+    const contextual = buildContextualQueries(candidate.full_name, safeMode ? 2 : 6);
     const platformQueries = [
       `"${candidate.full_name}" site:youtube.com`,
       `"${candidate.full_name}" (site:twitter.com OR site:x.com)`,
@@ -719,13 +783,13 @@ serve(async (req) => {
       ...eventYearQueries(candidate.full_name, start, end),
       ...EVENT_TERMS.map((term) => `"${candidate.full_name}" ${term}`),
       ...platformQueries,
-    ])).slice(0, days > 370 ? 32 : 22);
+    ])).slice(0, safeMode ? 10 : (days > 370 ? 32 : 22));
 
     const tbs = days <= 31 ? "qdr:m" : "qdr:y";
     const [googleSettled, gdeltSettled, firecrawlSettled] = await Promise.all([
-      Promise.allSettled(queryRoots.map((q) => fetchGoogleHistorical(q, startShort, endShort, 15))),
-      Promise.allSettled(queryRoots.slice(0, 12).map((q) => fetchGdeltHistorical(q, start, end, 40))),
-      Promise.allSettled(queryRoots.slice(0, 8).map((q) => firecrawlSearch(`${q} ${start.getFullYear()} ${end.getFullYear()}`, { limit: 8, tbs: tbs as "qdr:m" | "qdr:y" }))),
+      Promise.allSettled(queryRoots.map((q) => fetchGoogleHistorical(q, startShort, endShort, safeMode ? 8 : 15))),
+      Promise.allSettled(queryRoots.slice(0, safeMode ? 4 : 12).map((q) => fetchGdeltHistorical(q, start, end, safeMode ? 15 : 40))),
+      timedOut() ? Promise.resolve([]) : Promise.allSettled(queryRoots.slice(0, safeMode ? 2 : 8).map((q) => firecrawlSearch(`${q} ${start.getFullYear()} ${end.getFullYear()}`, { limit: safeMode ? 4 : 8, tbs: tbs as "qdr:m" | "qdr:y" }))),
     ]);
 
     const allPubs = dedupePublications([
@@ -750,23 +814,19 @@ serve(async (req) => {
       const klass = classifyPub(p);
       const eventHit = klass !== "news" || EVENT_TERMS.some((term) => text.includes(normalize(term)));
       return (inMainWindow || inKnownWindow) && nameHit && eventHit && isOfficialOrJournalistic(p);
-    }).slice(0, 320);
-    console.log("[4] external search finished — pubs:", pubs.length);
+    }).slice(0, safeMode ? 120 : 320);
+    console.log("[detect-historical-peaks] external search finished — pubs:", pubs.length);
 
     // === DETECÇÃO PEAK-FIRST ===
     // Busca a timeline SSOT direto do banco (não confia só no que veio do cliente)
     // e detecta picos via z-score + rolling baseline 14d. Picos NÃO dependem de cobertura externa.
-    const dbTimeline = await fetchSsotTimelineFromDb(admin, user.id, candidate.id, start, end);
-    const clientTimeline = Array.isArray(localTimeline) ? localTimeline : [];
-    // Server-side wins quando tem dados; client é fallback (compatibilidade).
-    const effectiveTimeline: TimelinePoint[] = dbTimeline.length >= 5 ? dbTimeline : clientTimeline;
-    console.log("[5] ssot timeline loaded — db:", dbTimeline.length, "client:", clientTimeline.length, "effective:", effectiveTimeline.length);
+    logStage("calculo_baseline", { timeline_points: effectiveTimeline.length });
     const localCandidates = timelineCandidates(effectiveTimeline);
 
     // === FASE 4: ENRIQUECIMENTO IA — DESABILITADO ===
     const aiEvents: any[] = [];
-    console.log("[6] ssot fallback finished — localCandidates:", localCandidates.length);
-    console.log("[7] clustering started");
+    console.log("[detect-historical-peaks] ssot fallback finished — localCandidates:", localCandidates.length);
+    logStage("deteccao_picos");
 
     // Picos SSOT são a FONTE PRIMÁRIA. Cobertura externa apenas enriquece.
     const combinedByKey = new Map<string, any>();
@@ -781,7 +841,8 @@ serve(async (req) => {
     if (candidateEvents.length === 0) candidateEvents = fallbackEventsFromSources(pubs, start, end);
     // Cap generoso para suportar candidatos de alto volume (Lula, Bolsonaro) — antes era 20.
     candidateEvents = candidateEvents.slice(0, 150);
-    console.log("[8] clustering finished — candidateEvents:", candidateEvents.length, "ssotPeaks:", ssotPeakRaw.length);
+    console.log("[detect-historical-peaks] clustering finished — candidateEvents:", candidateEvents.length, "ssotPeaks:", ssotPeakRaw.length);
+    logStage("classificacao_categoria", { candidate_events: candidateEvents.length });
 
     const events = candidateEvents.map((evt: any) => {
       const evPubs = matchedSources(evt, pubs, start, end, candidate.full_name);
@@ -860,7 +921,11 @@ serve(async (req) => {
     // === FASE 4: ENRIQUECIMENTO COM SSOT (social_interactions) ===
     // Para cada pico, busca repercussão real observada nas 16 redes monitoradas,
     // em janela de ±7 dias ao redor do evento. NÃO substitui Google News/GDELT/scores externos.
-    const correlations = await Promise.allSettled(events.map(async (ev: any) => {
+    logStage("enriquecimento_ssot", { events: events.length, safe_mode: safeMode });
+    const correlationLimit = safeMode ? SAFE_CORRELATION_LIMIT : Math.min(NORMAL_CORRELATION_LIMIT, MAX_AI_RECORDS);
+    const eventsForCorrelation = timedOut() ? [] : events.slice(0, correlationLimit);
+    if (timedOut()) console.error("[detect-historical-peaks] timeout before SSOT enrichment; returning peaks without correlation");
+    const correlations = await Promise.allSettled(eventsForCorrelation.map(async (ev: any) => {
       const startMs = new Date(`${ev.start_date}T00:00:00Z`).getTime() - 7 * 86400000;
       const endMs   = new Date(`${ev.end_date || ev.start_date}T23:59:59Z`).getTime() + 7 * 86400000;
       const { data, error } = await admin.rpc("event_ssot_correlation", {
@@ -900,7 +965,7 @@ serve(async (req) => {
         if (classifySource(s) === "strong") { strong_sources++; if (h) strongHosts.add(h); }
         else { weak_sources++; if (h) weakHosts.add(h); }
       }
-      const c = correlations[i].status === "fulfilled" ? (correlations[i] as any).value : null;
+      const c = correlations[i]?.status === "fulfilled" ? (correlations[i] as any).value : null;
       const internal_mentions = Number(c?.total_mentions ?? 0);
       const internal_authors = Number(c?.unique_authors ?? 0);
       const internal_engagement = Number(c?.total_engagement ?? 0);
@@ -951,6 +1016,7 @@ serve(async (req) => {
     const total_detected = sanitizedEventsRaw.length;
 
     // Calcula o score de relevância política (0-100) e o tipo de pico.
+    logStage("scoring_relevancia", { total_detected });
     const scored = sanitizedEventsRaw.map((ev: any) => {
       const mentions = Number(ev.internal_mentions_count ?? 0);
       const authors = Number(ev.internal_authors ?? 0);
@@ -1066,14 +1132,25 @@ serve(async (req) => {
     // === FASE 5: ANÁLISE IA — DESABILITADA NA DETECÇÃO ===
     // A análise textual de cada pico é executada sob demanda (botão "Análise IA do pico"),
     // nunca dentro deste pipeline, para evitar timeouts e impedir invenção de fatos.
-    console.log("[9] ai enrichment skipped (deferred to on-demand)");
+    logStage("chamada_ia", { safe_mode: safeMode, timed_out: timedOut(), max_ai_records: MAX_AI_RECORDS });
+    console.log("[detect-historical-peaks] ai enrichment skipped (deferred to on-demand)");
     for (const ev of sanitizedEvents as any[]) {
       ev.analysis_source = ev.has_external_evidence ? "external_evidence" : "internal_ssot";
-      ev.analysis_status = cleanText(ev.what_happened) ? "success" : "pending_on_demand";
+      if (safeMode || timedOut()) {
+        ev.analysis_status = "safe_mode_keyword_summary";
+        ev.analysis = safeAnalysisFromKeywords(ev);
+      } else {
+        ev.analysis_status = cleanText(ev.what_happened) ? "success" : "pending_on_demand";
+        ev.analysis = cleanText(ev.what_happened)
+          ? { cause: safeSlice(cleanText(ev.what_happened), 240), confidence: Math.min(80, Number(ev.political_relevance ?? 0)) }
+          : { cause: "Análise indisponível", confidence: 0 };
+      }
     }
-    console.log("[10] ai enrichment finished");
+    console.log("[detect-historical-peaks] ai enrichment finished");
 
+    logStage("retorno_final", { final_peaks: sanitizedEvents.length });
     const response = new Response(JSON.stringify({
+      success: true,
       events: sanitizedEvents,
       total_detected,
       valid_peaks: sanitizedEvents.length,
@@ -1085,19 +1162,21 @@ serve(async (req) => {
       discovered_count: discovered.length,
       estimated_reach: estimatedReachOf(pubs),
       external_timeline: externalTimeline,
+      safe_mode: safeMode,
+      timed_out: timedOut(),
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    console.log("[11] response sent");
+    console.log("[detect-historical-peaks] response sent");
     console.timeEnd("detect-historical-peaks");
     return response;
 
   } catch (error) {
     const err = error as Error;
-    console.error("[detect-historical-peaks] fatal:", err?.message, err?.stack);
+    console.error("[detect-historical-peaks] fatal:", { stage, message: err?.message, stack: err?.stack });
     try { console.timeEnd("detect-historical-peaks"); } catch { /* noop */ }
     return new Response(JSON.stringify({
-      error: true,
-      message: err?.message || String(error),
-      stack: err?.stack || null,
+      success: false,
+      stage,
+      error: err?.message || String(error),
     }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
