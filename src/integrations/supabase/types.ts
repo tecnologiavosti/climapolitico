@@ -1353,6 +1353,62 @@ export type Database = {
         }
         Relationships: []
       }
+      event_sources: {
+        Row: {
+          created_at: string
+          credibility_score: number
+          event_id: string
+          id: string
+          is_institutional: boolean
+          is_major_media: boolean
+          published_at: string | null
+          raw: Json
+          snippet: string | null
+          source_name: string
+          source_type: string
+          title: string | null
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          credibility_score?: number
+          event_id: string
+          id?: string
+          is_institutional?: boolean
+          is_major_media?: boolean
+          published_at?: string | null
+          raw?: Json
+          snippet?: string | null
+          source_name: string
+          source_type: string
+          title?: string | null
+          url: string
+        }
+        Update: {
+          created_at?: string
+          credibility_score?: number
+          event_id?: string
+          id?: string
+          is_institutional?: boolean
+          is_major_media?: boolean
+          published_at?: string | null
+          raw?: Json
+          snippet?: string | null
+          source_name?: string
+          source_type?: string
+          title?: string | null
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_sources_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "political_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       export_jobs: {
         Row: {
           completed_at: string | null
@@ -1933,135 +1989,183 @@ export type Database = {
       political_events: {
         Row: {
           ai_cause: string | null
+          ai_impact: string | null
           ai_sentiment: number | null
           ai_summary: string | null
+          ai_summary_v2: string | null
           ai_tags: string[]
           ai_why_peak: string | null
           baseline_mentions: number
           candidate_id: string
           category: string | null
+          category_v2: string | null
           city: string | null
           confidence_band: string
+          confidence_level: string | null
           confidence_score: number
           confidence_v2: number
           created_at: string
           cross_platform_score: number
           description: string | null
+          detection_source: string | null
           detectors_triggered: string[]
           distinct_outlets: number
           dynamic_threshold: number
+          end_date: string | null
           event_date: string
           event_name: string
+          event_score: number | null
           event_type: string
           evidence_quality: string | null
           id: string
           importance_score: number
           institutional_confirmations: number
+          institutional_sources: number
           is_externally_validated: boolean
+          is_social_only: boolean
           keywords: string[]
           large_media_confirmations: number
           location: string | null
           low_coverage: boolean
+          major_media_sources: number
           metadata: Json
           narratives: Json
+          peak_date: string | null
           peak_hourly_mentions: number
           publications_count: number
+          relevance_score: number | null
           significance_score: number | null
+          social_score: number | null
           source_authority_avg: number
           source_diversity_score: number
+          start_date: string | null
           state: string | null
           themes: string[]
+          title_canonical: string | null
           top_headlines: Json
+          total_sources: number
           updated_at: string
           user_id: string
           validation_sources: Json
         }
         Insert: {
           ai_cause?: string | null
+          ai_impact?: string | null
           ai_sentiment?: number | null
           ai_summary?: string | null
+          ai_summary_v2?: string | null
           ai_tags?: string[]
           ai_why_peak?: string | null
           baseline_mentions?: number
           candidate_id: string
           category?: string | null
+          category_v2?: string | null
           city?: string | null
           confidence_band?: string
+          confidence_level?: string | null
           confidence_score?: number
           confidence_v2?: number
           created_at?: string
           cross_platform_score?: number
           description?: string | null
+          detection_source?: string | null
           detectors_triggered?: string[]
           distinct_outlets?: number
           dynamic_threshold?: number
+          end_date?: string | null
           event_date: string
           event_name: string
+          event_score?: number | null
           event_type?: string
           evidence_quality?: string | null
           id?: string
           importance_score?: number
           institutional_confirmations?: number
+          institutional_sources?: number
           is_externally_validated?: boolean
+          is_social_only?: boolean
           keywords?: string[]
           large_media_confirmations?: number
           location?: string | null
           low_coverage?: boolean
+          major_media_sources?: number
           metadata?: Json
           narratives?: Json
+          peak_date?: string | null
           peak_hourly_mentions?: number
           publications_count?: number
+          relevance_score?: number | null
           significance_score?: number | null
+          social_score?: number | null
           source_authority_avg?: number
           source_diversity_score?: number
+          start_date?: string | null
           state?: string | null
           themes?: string[]
+          title_canonical?: string | null
           top_headlines?: Json
+          total_sources?: number
           updated_at?: string
           user_id: string
           validation_sources?: Json
         }
         Update: {
           ai_cause?: string | null
+          ai_impact?: string | null
           ai_sentiment?: number | null
           ai_summary?: string | null
+          ai_summary_v2?: string | null
           ai_tags?: string[]
           ai_why_peak?: string | null
           baseline_mentions?: number
           candidate_id?: string
           category?: string | null
+          category_v2?: string | null
           city?: string | null
           confidence_band?: string
+          confidence_level?: string | null
           confidence_score?: number
           confidence_v2?: number
           created_at?: string
           cross_platform_score?: number
           description?: string | null
+          detection_source?: string | null
           detectors_triggered?: string[]
           distinct_outlets?: number
           dynamic_threshold?: number
+          end_date?: string | null
           event_date?: string
           event_name?: string
+          event_score?: number | null
           event_type?: string
           evidence_quality?: string | null
           id?: string
           importance_score?: number
           institutional_confirmations?: number
+          institutional_sources?: number
           is_externally_validated?: boolean
+          is_social_only?: boolean
           keywords?: string[]
           large_media_confirmations?: number
           location?: string | null
           low_coverage?: boolean
+          major_media_sources?: number
           metadata?: Json
           narratives?: Json
+          peak_date?: string | null
           peak_hourly_mentions?: number
           publications_count?: number
+          relevance_score?: number | null
           significance_score?: number | null
+          social_score?: number | null
           source_authority_avg?: number
           source_diversity_score?: number
+          start_date?: string | null
           state?: string | null
           themes?: string[]
+          title_canonical?: string | null
           top_headlines?: Json
+          total_sources?: number
           updated_at?: string
           user_id?: string
           validation_sources?: Json
@@ -2383,6 +2487,59 @@ export type Database = {
         }
         Relationships: []
       }
+      social_event_metrics: {
+        Row: {
+          computed_at: string
+          engagement: number
+          event_id: string
+          id: string
+          mentions: number
+          platform: string
+          polarization: number | null
+          sentiment_avg: number | null
+          unique_authors: number
+          velocity: number
+          window_end: string | null
+          window_start: string | null
+        }
+        Insert: {
+          computed_at?: string
+          engagement?: number
+          event_id: string
+          id?: string
+          mentions?: number
+          platform: string
+          polarization?: number | null
+          sentiment_avg?: number | null
+          unique_authors?: number
+          velocity?: number
+          window_end?: string | null
+          window_start?: string | null
+        }
+        Update: {
+          computed_at?: string
+          engagement?: number
+          event_id?: string
+          id?: string
+          mentions?: number
+          platform?: string
+          polarization?: number | null
+          sentiment_avg?: number | null
+          unique_authors?: number
+          velocity?: number
+          window_end?: string | null
+          window_start?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_event_metrics_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "political_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       social_interactions: {
         Row: {
           analysis_attempts: number
@@ -2652,6 +2809,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      source_registry: {
+        Row: {
+          created_at: string
+          credibility_weight: number
+          id: string
+          is_active: boolean
+          metadata: Json
+          rss_url: string | null
+          source_domain: string | null
+          source_name: string
+          source_type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          credibility_weight?: number
+          id?: string
+          is_active?: boolean
+          metadata?: Json
+          rss_url?: string | null
+          source_domain?: string | null
+          source_name: string
+          source_type: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          credibility_weight?: number
+          id?: string
+          is_active?: boolean
+          metadata?: Json
+          rss_url?: string | null
+          source_domain?: string | null
+          source_name?: string
+          source_type?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       speech_analyses: {
         Row: {
