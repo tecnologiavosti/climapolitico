@@ -388,7 +388,18 @@ export default function EventReport() {
             <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">
               Nenhum pico encontrado nesta categoria.
             </CardContent></Card>
-          ) : null}
+          ) : (
+            <AnnualPeaksTimeline
+              events={filteredEvents.map((e) => ({
+                date: e.start_date,
+                title: e.name,
+                category: e.category,
+                status: (e.status || "indeterminate") as "confirmed" | "probable" | "weak" | "indeterminate",
+                score: typeof e.confidence_score === "number" ? Math.round(e.confidence_score * 10) : e.relevance_score,
+                mentions: e.internal_mentions || e.estimated_volume || e.publications_count,
+              }))}
+            />
+          )}
 
           {eventsByYear.map(([year, yearEvents]) => (
             <div key={year} className="space-y-3">
