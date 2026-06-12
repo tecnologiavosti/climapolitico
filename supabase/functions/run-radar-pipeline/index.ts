@@ -522,6 +522,29 @@ Deno.serve(async (req) => {
         const cls = await classifyCluster(headlines, c.full_name);
         if (!cls || cls.relevance < 20) continue;
 
+        // Hybrid semantic match: alias + embedding + NER + role context
+        // Aplica em clusters fracos (1 fonte, não-institucional) para reduzir falsos positivos
+        const isWeak = uniqueSources.length === 1 && institutionalCount === 0;
+        if (isWeak) {
+          const articleEmbedding = await embedText(embedClient, `${cls.title}. ${cls.summary}`);
+          const m = scoreCandidateMatch({
+            article: { title: cls.title, summary: cls.summary },
+            articleEmbedding,
+            candidate: {
+              fullName: c.full_name,
+              aliases,
+              roleKeywords: roleKw,
+              referenceEmbedding: refEmbedding,
+            },
+          });
+          if (!m.match) {
+            console.log(`[radar] semantic-reject ${c.full_name} score=${m.score.toFixed(2)} title="${cls.title.slice(0,80)}"`);
+            continue;
+          }
+        }
+        // NER snapshot para metadados (não bloqueia)
+        const ner = extractEntities(`${cls.title}. ${cls.summary}`);
+
         const socialScore = await calcSocialScore(supabase, c.id, day);
         const clusterSize = group.length; // total de artigos agrupados (inclui duplicados de domínio)
         const importance = computeImportanceV2({
