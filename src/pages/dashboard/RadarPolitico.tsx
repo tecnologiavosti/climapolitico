@@ -52,6 +52,7 @@ export default function RadarPolitico() {
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const [category, setCategory] = useState<string>("all");
+  const [importanceFilter, setImportanceFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<RadarEvent | null>(null);
   const [refreshing, setRefreshing] = useState(false);
