@@ -55,9 +55,11 @@ Deno.serve(async (req) => {
   try {
     const auth = req.headers.get("Authorization") || "";
     const isServiceRole = auth.includes(SERVICE_KEY);
+    // Modo cron: requisição com apenas anon key (Bearer == ANON_KEY) → escopo global
+    const isCron = !isServiceRole && auth.includes(ANON_KEY);
 
     let userId: string | null = null;
-    if (!isServiceRole) {
+    if (!isServiceRole && !isCron) {
       if (!auth) {
         return new Response(JSON.stringify({ error: "Unauthorized" }), {
           status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -76,7 +78,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const scopedUserId = isServiceRole ? (body?.user_id ?? null) : userId;
+    const scopedUserId = (isServiceRole || isCron) ? (body?.user_id ?? null) : userId;
     const candidateIds: string[] | null = Array.isArray(body?.candidate_ids) ? body.candidate_ids : null;
 
     const maxAgeHours = Math.min(Math.max(Number(body?.max_age_hours) || 72, 6), 24 * 14);
