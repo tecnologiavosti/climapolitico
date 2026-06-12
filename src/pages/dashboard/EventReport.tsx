@@ -53,6 +53,8 @@ interface HistoricalEvent {
   internal_window_days?: number;
   coverage_quality?: "forte" | "media" | "fraca" | "ai_only";
   detected_by?: "external" | "internal_ssot" | "none";
+  peak_type?: "external_confirmed" | "internal_trend";
+  political_relevance?: number;
   category?: string;
 }
 
@@ -326,10 +328,13 @@ export default function EventReport() {
                         {coverage ? (
                           <Badge variant="outline" className={`text-[10px] font-normal ${coverage.className}`}>{coverage.label}</Badge>
                         ) : null}
-                        {ev.detected_by === "external" ? (
+                        {ev.peak_type === "external_confirmed" || ev.detected_by === "external" ? (
                           <Badge variant="outline" className="text-[10px] font-normal border-blue-500/40 text-blue-600 dark:text-blue-400">Detectado por fontes externas</Badge>
-                        ) : ev.detected_by === "internal_ssot" ? (
-                          <Badge variant="outline" className="text-[10px] font-normal border-emerald-500/40 text-emerald-600 dark:text-emerald-400">Detectado por redes internas</Badge>
+                        ) : ev.peak_type === "internal_trend" || ev.detected_by === "internal_ssot" ? (
+                          <Badge variant="outline" className="text-[10px] font-normal border-emerald-500/40 text-emerald-600 dark:text-emerald-400">Detectado por comportamento anômalo nas redes</Badge>
+                        ) : null}
+                        {typeof ev.political_relevance === "number" ? (
+                          <Badge variant="outline" className="text-[10px] font-normal">Relevância {ev.political_relevance}/100</Badge>
                         ) : null}
                       </div>
                       <CardTitle className="text-base md:text-lg leading-snug flex items-start gap-2">
