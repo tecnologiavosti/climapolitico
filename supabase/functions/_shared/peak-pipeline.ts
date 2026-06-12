@@ -38,11 +38,10 @@ const TIER2_OUTLETS = /\b(g1|o globo|globo|valor|folha|estad[aã]o|uol|cnn brasi
 const TIER3_HOSTS = /(^|\.)(veja\.abril\.com\.br|abril\.com\.br|nexojornal\.com\.br|brasildefato\.com\.br|congressoemfoco\.uol\.com\.br|piaui\.folha\.uol\.com\.br|theintercept\.com)$/i;
 const TIER3_OUTLETS = /\b(veja|nexo|brasil de fato|congresso em foco|piau[ií]|intercept|carta capital)\b/i;
 
-const TIER4_HOSTS = /(^|\.)(instagram\.com|tiktok\.com|facebook\.com|m\.facebook\.com|fb\.com|youtube\.com|youtu\.be|threads\.net|threads\.com|x\.com|twitter\.com|t\.me|telegram\.me|reddit\.com|pinterest\.com|bsky\.app|mastodon\.|truthsocial\.com)$/i;
-const TIER4_OUTLETS = /\b(instagram|tiktok|facebook|youtube|threads|twitter|x\.com|telegram|reddit|pinterest|bluesky|bsky|mastodon|truth social)\b/i;
-
-// Aggregators / SEO spam that must never validate political events.
-const BLOCKED_HOSTS = /(^|\.)(bing\.com|cn\.bing\.com|news\.bing\.com|pinterest\.[a-z]+|scribd\.com|slideshare\.net|medium\.com|substack\.com|wordpress\.com|blogspot\.com|wattpad\.com|quora\.com)$/i;
+// Social media and aggregators: NEVER count as external journalistic evidence.
+// Treated as fully BLOCKED — weight 0, do not validate events.
+const BLOCKED_HOSTS = /(^|\.)(instagram\.com|tiktok\.com|facebook\.com|m\.facebook\.com|fb\.com|youtube\.com|youtu\.be|threads\.net|threads\.com|x\.com|twitter\.com|t\.me|telegram\.me|telegram\.org|reddit\.com|pinterest\.[a-z.]+|bsky\.app|mastodon\.|truthsocial\.com|bing\.com|cn\.bing\.com|news\.bing\.com|scribd\.com|slideshare\.net|medium\.com|substack\.com|wordpress\.com|blogspot\.com|wattpad\.com|quora\.com)$/i;
+const BLOCKED_OUTLETS = /\b(instagram|tiktok|facebook|youtube|threads|twitter|x\.com|telegram|reddit|pinterest|bluesky|bsky|mastodon|truth social)\b/i;
 
 export function hostOf(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, "").toLowerCase(); } catch { return ""; }
