@@ -2018,6 +2018,7 @@ export type Database = {
           event_type: string
           evidence_quality: string | null
           id: string
+          importance: number
           importance_score: number
           institutional_confirmations: number
           institutional_sources: number
@@ -2037,10 +2038,14 @@ export type Database = {
           significance_score: number | null
           social_score: number | null
           source_authority_avg: number
+          source_count: number
           source_diversity_score: number
           start_date: string | null
           state: string | null
+          status: string
+          summary: string | null
           themes: string[]
+          title: string | null
           title_canonical: string | null
           top_headlines: Json
           total_sources: number
@@ -2079,6 +2084,7 @@ export type Database = {
           event_type?: string
           evidence_quality?: string | null
           id?: string
+          importance?: number
           importance_score?: number
           institutional_confirmations?: number
           institutional_sources?: number
@@ -2098,10 +2104,14 @@ export type Database = {
           significance_score?: number | null
           social_score?: number | null
           source_authority_avg?: number
+          source_count?: number
           source_diversity_score?: number
           start_date?: string | null
           state?: string | null
+          status?: string
+          summary?: string | null
           themes?: string[]
+          title?: string | null
           title_canonical?: string | null
           top_headlines?: Json
           total_sources?: number
@@ -2140,6 +2150,7 @@ export type Database = {
           event_type?: string
           evidence_quality?: string | null
           id?: string
+          importance?: number
           importance_score?: number
           institutional_confirmations?: number
           institutional_sources?: number
@@ -2159,10 +2170,14 @@ export type Database = {
           significance_score?: number | null
           social_score?: number | null
           source_authority_avg?: number
+          source_count?: number
           source_diversity_score?: number
           start_date?: string | null
           state?: string | null
+          status?: string
+          summary?: string | null
           themes?: string[]
+          title?: string | null
           title_canonical?: string | null
           top_headlines?: Json
           total_sources?: number
