@@ -879,13 +879,14 @@ serve(async (req) => {
         newCategory === "stf" || newCategory === "operacoes_pf" || newCategory === "prisoes" ? 1.0 :
         newCategory === "cpi" || newCategory === "tse" || newCategory === "julgamentos" || newCategory === "escandalos" ? 0.8 :
         newCategory === "eleicoes" || newCategory === "debates" ? 0.5 : 0.2;
+      const evtEngagement = Number((evt as any)?.internal_engagement ?? (evt as any)?._ssot_engagement ?? 0);
       const relevance = pipelineRelevance({
         mentions: ssotPeak || totalEvidence,
+        engagement: evtEngagement,
         durationDays: coverageDurationDays(evPubs),
         independent_strong_sources: conf.independent_strong_sources,
         trusted_sources_count: conf.trusted_sources_count,
         politicalImpact,
-        maxMentionsRef: ssotPeak * 2,
       });
 
       return {
