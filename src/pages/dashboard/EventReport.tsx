@@ -52,6 +52,7 @@ interface HistoricalEvent {
   internal_by_network?: Record<string, number>;
   internal_window_days?: number;
   coverage_quality?: "forte" | "media" | "fraca" | "ai_only";
+  detected_by?: "external" | "internal_ssot" | "none";
   category?: string;
 }
 
@@ -248,8 +249,8 @@ export default function EventReport() {
       {!isFetching && data && events.length === 0 ? (
         <Card><CardContent className="py-10 text-center text-muted-foreground space-y-2">
           <Newspaper className="h-10 w-10 mx-auto opacity-50" />
-          <p className="font-medium">Nenhum pico externo identificado no período.</p>
-          <p className="text-sm">Tente ampliar o intervalo ou selecionar outro candidato. A detecção exige volume real em fontes externas.</p>
+          <p className="font-medium">Nenhum pico encontrado em fontes externas.</p>
+          <p className="text-sm">Buscando correlação nas redes monitoradas… Se ainda assim nada for encontrado, amplie o intervalo ou selecione outro candidato.</p>
         </CardContent></Card>
       ) : null}
 
@@ -304,6 +305,11 @@ export default function EventReport() {
                         <span>{formatDate(ev.start_date)}{ev.end_date && ev.end_date !== ev.start_date ? ` → ${formatDate(ev.end_date)}` : ""}</span>
                         {coverage ? (
                           <Badge variant="outline" className={`text-[10px] font-normal ${coverage.className}`}>{coverage.label}</Badge>
+                        ) : null}
+                        {ev.detected_by === "external" ? (
+                          <Badge variant="outline" className="text-[10px] font-normal border-blue-500/40 text-blue-600 dark:text-blue-400">Detectado por fontes externas</Badge>
+                        ) : ev.detected_by === "internal_ssot" ? (
+                          <Badge variant="outline" className="text-[10px] font-normal border-emerald-500/40 text-emerald-600 dark:text-emerald-400">Detectado por redes internas</Badge>
                         ) : null}
                       </div>
                       <CardTitle className="text-base md:text-lg leading-snug flex items-start gap-2">
