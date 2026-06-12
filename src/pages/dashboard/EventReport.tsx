@@ -210,6 +210,7 @@ export default function EventReport() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [category, setCategory] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [minConfidence, setMinConfidence] = useState<number>(0);
   const [causes, setCauses] = useState<Record<string, PeakCause>>({});
   const [causeLoading, setCauseLoading] = useState<Record<string, boolean>>({});
   const [causeError, setCauseError] = useState<Record<string, string>>({});
