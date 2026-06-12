@@ -844,19 +844,53 @@ Responda APENAS JSON válido:
     }));
 
     // Remove fontes/URLs externas da resposta — manter usuário dentro da plataforma.
+    // Recalcula relevance_score com peso 80% SSOT + 20% externo (regra do produto).
     const sanitizedEvents = events.map((e: any, i: number) => {
       const { sources: _omit, ...rest } = e;
       const c = correlations[i].status === "fulfilled" ? (correlations[i] as any).value : null;
+      const internal_mentions = Number(c?.total_mentions ?? 0);
+      const internal_authors = Number(c?.unique_authors ?? 0);
+      const internal_engagement = Number(c?.total_engagement ?? 0);
+      const z = Number(e.ssot_z_score ?? 0);
+      const ssot_score = ssotScoreOf(internal_mentions, internal_engagement, z);
+      const external_score = Number(e.external_score ?? 0);
+      const final_score = Math.round(0.8 * ssot_score + 0.2 * external_score);
+      const ai_only = (e.publications_count ?? 0) === 0 || (e.distinct_outlets ?? 0) === 0;
+      const description = e.description && e.description.length > 0
+        ? e.description
+        : (ai_only
+            ? "Pico detectado por volume anômalo nas redes monitoradas. Não houve cobertura jornalística suficiente para identificar a causa exata."
+            : e.description);
+      // Auditoria por pico
+      console.log(JSON.stringify({
+        tag: "peak_audit",
+        name: e.name,
+        date: e.start_date,
+        z_score: z,
+        baseline_volume: e.ssot_baseline_volume,
+        peak_volume: e.ssot_peak_volume,
+        internal_mentions,
+        internal_engagement,
+        external_score,
+        ssot_score,
+        final_score,
+        coverage_quality: e.coverage_quality,
+        ai_only,
+        discard_reason: null,
+      }));
       return {
         ...rest,
+        description,
+        relevance_score: final_score,
+        ssot_score,
         sources_count: Array.isArray(_omit) ? _omit.length : 0,
-        internal_mentions:   Number(c?.total_mentions   ?? 0),
-        internal_authors:    Number(c?.unique_authors   ?? 0),
-        internal_engagement: Number(c?.total_engagement ?? 0),
+        internal_mentions,
+        internal_authors,
+        internal_engagement,
         internal_by_network: (c?.by_network ?? {}) as Record<string, number>,
         internal_window_days: 14,
       };
-    });
+    }).sort((a: any, b: any) => (b.relevance_score || 0) - (a.relevance_score || 0));
 
     // === FASE 5: GARANTIA DE ANÁLISE — fallback IA com dados internos (SSOT) ===
     // Todo pico deve ter narrativa analítica, mesmo sem evidências externas.
