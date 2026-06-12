@@ -639,6 +639,17 @@ Deno.serve(async (req) => {
           status,
           updated_at: new Date().toISOString(),
         }, { onConflict: "candidate_id,year" });
+
+      // Auto-trigger backfill on FAIL (fire-and-forget) — respeita "PRIORIDADE: recall alto > custo"
+      if (status === "FAIL" && !targetCandidate) {
+        const start = `${year}-01-01`;
+        const end = `${year}-12-31`;
+        fetch(`${SUPABASE_URL}/functions/v1/backfill-radar-historical`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_KEY}` },
+          body: JSON.stringify({ candidate_id: c.id, start, end }),
+        }).catch((e) => console.warn("[radar] backfill trigger failed", e.message));
+      }
     }
 
     return new Response(
