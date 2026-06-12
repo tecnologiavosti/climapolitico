@@ -14,6 +14,17 @@ const corsHeaders = {
 
 type TimelinePoint = { date: string; count: number; isPeak?: boolean };
 
+const FUNCTION_TIMEOUT_MS = 20_000;
+const MAX_STAT_RECORDS = 3_000;
+const MAX_AI_RECORDS = 1_000;
+const HIGH_VOLUME_MENTIONS = 50_000;
+const NORMAL_CORRELATION_LIMIT = 60;
+const SAFE_CORRELATION_LIMIT = 24;
+
+const VALID_PEAK_CATEGORIES = new Set([
+  "eleicao", "operacao_pf", "stf", "tse", "cpi", "julgamento", "escandalo", "prisao", "debate", "outros",
+]);
+
 // Apenas termos de ALTA RELEVÂNCIA POLÍTICA. Comícios, agendas, visitas, caminhadas,
 // reuniões partidárias e encontros locais foram removidos por orientação do produto.
 const EVENT_TERMS = [
@@ -272,7 +283,7 @@ function coverageQuality(totalEvidence: number, distinctOutlets: number): Covera
 // Combina TODOS os campos textuais disponíveis (nome, tipo, descrição, motivo, what/why,
 // participantes, keywords, impacto político, títulos de fontes externas, outlets e termos frequentes)
 // para garantir que todo pico receba uma categoria — não depende só de cobertura externa.
-function categoryOf(evt: any): string {
+function classifyPeakCategory(evt: any): string {
   const parts: string[] = [
     evt?.name, evt?.type, evt?.description, evt?.motivo,
     evt?.what_happened, evt?.why_happened, evt?.political_impact,
@@ -289,16 +300,35 @@ function categoryOf(evt: any): string {
   const text = normalize(parts.filter(Boolean).join(" "));
 
   // Ordem importa: categorias mais específicas primeiro.
-  if (/\bpolicia federal|\bpf\b|operacao\b|busca e apreensao|mandado de busca|deflagrou|deflagrada/.test(text)) return "operacao_pf";
-  if (/\bstf\b|supremo tribunal|alexandre de moraes|gilmar mendes|barroso|dias toffoli|fachin|carmen lucia|cristiano zanin|nunes marques/.test(text)) return "stf";
-  if (/\btse\b|tribunal superior eleitoral|registro de candidatura|inelegibilidade|cassacao de mandato|cassacao do registro/.test(text)) return "tse";
+  if (/\bpf\b|policia federal|\boperacao\b|busca e apreensao|mandado de busca|deflagrou|deflagrada/.test(text)) return "operacao_pf";
+  if (/\bstf\b|supremo|supremo tribunal|alexandre de moraes|gilmar|gilmar mendes|barroso|dias toffoli|fachin|carmen lucia|cristiano zanin|nunes marques/.test(text)) return "stf";
+  if (/\btse\b|tribunal superior eleitoral|\beleitoral\b|registro de candidatura|inelegibilidade|cassacao de mandato|cassacao do registro/.test(text)) return "tse";
   if (/\bcpi\b|comissao parlamentar|comissao de inquerito|senado investigando|requerimento de cpi/.test(text)) return "cpi";
-  if (/\bjulgamento|condenacao|condenado|absolvicao|absolvido|sentenca|decisao judicial|acordao|pena de \d/.test(text)) return "julgamento";
-  if (/\bprisao|preso|detido|indiciamento|indiciado|cumprimento de pena/.test(text)) return "prisao";
-  if (/\bescandalo|corrupcao|propina|desvio de|denuncia|rachadinha|caixa 2|lavagem de dinheiro|impeachment/.test(text)) return "escandalo";
-  if (/\bdebate\b|sabatina|confronto entre candidatos|debate presidencial|debate eleitoral/.test(text)) return "debate";
-  if (/\beleicao|eleicoes|campanha eleitoral|votacao|urnas|primeiro turno|segundo turno|posse presidencial|comicio/.test(text)) return "eleicao";
+  if (/\bprisao\b|\bpreso\b|\bdetido\b|\bdetencao\b|indiciamento|indiciado|cumprimento de pena/.test(text)) return "prisao";
+  if (/\bescandalo\b|corrupcao|vazamento|denuncia|propina|desvio de|rachadinha|caixa 2|lavagem de dinheiro|impeachment/.test(text)) return "escandalo";
+  if (/\bdebate\b|sabatina|confronto|confronto entre candidatos|debate presidencial|debate eleitoral/.test(text)) return "debate";
+  if (/\bjulgamento\b|sentenca|condenacao|condenado|absolvicao|absolvido|\brecurso\b|decisao judicial|acordao|pena de \d/.test(text)) return "julgamento";
+  if (/\beleicao\b|\beleicoes\b|campanha|votacao|\bvoto\b|\burna\b|urnas|candidato|primeiro turno|segundo turno|posse presidencial|comicio/.test(text)) return "eleicao";
   return "outros";
+}
+
+function categoryOf(evt: any): string {
+  const category = classifyPeakCategory(evt);
+  return VALID_PEAK_CATEGORIES.has(category) ? category : "outros";
+}
+
+function safeAnalysisFromKeywords(evt: any): { cause: string; confidence: number } {
+  const terms = [
+    ...(Array.isArray(evt?.keywords) ? evt.keywords : []),
+    ...(Array.isArray(evt?.top_terms) ? evt.top_terms : []),
+    ...(Array.isArray(evt?.entities) ? evt.entities : []),
+  ].map(cleanText).filter(Boolean).slice(0, 8);
+  return {
+    cause: terms.length
+      ? `Análise resumida baseada nos termos associados: ${terms.join(", ")}.`
+      : "Análise indisponível",
+    confidence: terms.length ? 35 : 0,
+  };
 }
 
 // Score baseado em volume/anomalia SSOT (interno) — peso 80% no final.
