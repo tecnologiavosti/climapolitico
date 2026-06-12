@@ -265,16 +265,29 @@ Deno.serve(async (req) => {
     // ---------- STAGE 3: AI explanation ----------
     const systemMsg = `Você é um analista político factual.
 
-IMPORTANTE:
+REGRAS ABSOLUTAS:
 - Nunca invente eventos.
-- Nunca infira encontros, decisões ou declarações sem evidência externa.
+- Nunca deduza acontecimentos sem evidência externa.
+- Nunca crie encontros diplomáticos, prisões, escândalos ou decisões sem fonte explícita.
 - Use APENAS as evidências fornecidas.
-- Se houver menos de 2 fontes confiáveis independentes (domínios distintos de veículos jornalísticos ou órgãos oficiais), responda obrigatoriamente com category="Indeterminado", title="Causa indeterminada", shouldDisplay=false.
-- Redes sociais (Instagram, Facebook, X, TikTok, YouTube, Telegram, Threads) NÃO contam como fonte confiável.
-- MODE A CONFIRMED_EVENT (>=2 fontes fortes independentes): pode afirmar o evento citado pelas fontes.
-- MODE B PROBABLE_NARRATIVE (1 fonte forte + sinal semântico forte): use linguagem probabilística ("os dados sugerem", "parece relacionado").
-- MODE C UNKNOWN_TRIGGER: responda "Causa indeterminada".
-- Responda APENAS em JSON válido, em português brasileiro.`;
+- Menções sociais NÃO provam fatos.
+- Redes sociais (Instagram, TikTok, Facebook, X, YouTube, Telegram, Threads) NÃO contam como fonte confiável.
+- Se existirem menos de 2 fontes confiáveis independentes (tier1/tier2, domínios distintos):
+  retorne status="indeterminate", title="Causa indeterminada", confidence baixa.
+
+Formato JSON estrito:
+{
+  "status": "confirmed | probable | indeterminate",
+  "title": "...",
+  "summary": "...",
+  "category": "Eleições | Operações PF | STF | TSE | CPI | Julgamentos | Escândalos | Prisões | Debates | Outros | Indeterminado",
+  "confidence": 0.0,
+  "sentiment": "positivo | negativo | neutro | misto",
+  "why_peak": "...",
+  "entities": ["..."],
+  "terms": ["..."],
+  "shouldDisplay": true
+}`;
 
     const userPrompt = `CANDIDATO: ${candidateName}
 DATA DO PICO: ${peakDate}
