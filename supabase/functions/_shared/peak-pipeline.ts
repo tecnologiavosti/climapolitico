@@ -62,7 +62,7 @@ export function classifySource(url: string, outlet?: string | null): SourceClass
 }
 
 export interface ConfidenceResult {
-  status: "confirmed" | "probable" | "indeterminate";
+  status: "confirmed" | "probable" | "weak" | "indeterminate";
   weight_sum: number;
   independent_strong_sources: number;
   tier_breakdown: Record<SourceTier, number>;
@@ -85,6 +85,7 @@ export function confidenceFromSources(pubs: Array<{ url?: string | null; outlet?
   let status: ConfidenceResult["status"] = "indeterminate";
   if (weight >= 1.5 && independent_strong_sources >= 2) status = "confirmed";
   else if (weight >= 0.8 && independent_strong_sources >= 1) status = "probable";
+  else if (weight >= 0.4 || breakdown.tier3 >= 1) status = "weak";
   return { status, weight_sum: Math.round(weight * 100) / 100, independent_strong_sources, tier_breakdown: breakdown, trusted_sources_count };
 }
 
