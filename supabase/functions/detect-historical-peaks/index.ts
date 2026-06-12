@@ -921,7 +921,11 @@ serve(async (req) => {
     // === FASE 4: ENRIQUECIMENTO COM SSOT (social_interactions) ===
     // Para cada pico, busca repercussão real observada nas 16 redes monitoradas,
     // em janela de ±7 dias ao redor do evento. NÃO substitui Google News/GDELT/scores externos.
-    const correlations = await Promise.allSettled(events.map(async (ev: any) => {
+    logStage("enriquecimento_ssot", { events: events.length, safe_mode: safeMode });
+    const correlationLimit = safeMode ? SAFE_CORRELATION_LIMIT : Math.min(NORMAL_CORRELATION_LIMIT, MAX_AI_RECORDS);
+    const eventsForCorrelation = timedOut() ? [] : events.slice(0, correlationLimit);
+    if (timedOut()) console.error("[detect-historical-peaks] timeout before SSOT enrichment; returning peaks without correlation");
+    const correlations = await Promise.allSettled(eventsForCorrelation.map(async (ev: any) => {
       const startMs = new Date(`${ev.start_date}T00:00:00Z`).getTime() - 7 * 86400000;
       const endMs   = new Date(`${ev.end_date || ev.start_date}T23:59:59Z`).getTime() + 7 * 86400000;
       const { data, error } = await admin.rpc("event_ssot_correlation", {
@@ -961,7 +965,7 @@ serve(async (req) => {
         if (classifySource(s) === "strong") { strong_sources++; if (h) strongHosts.add(h); }
         else { weak_sources++; if (h) weakHosts.add(h); }
       }
-      const c = correlations[i].status === "fulfilled" ? (correlations[i] as any).value : null;
+      const c = correlations[i]?.status === "fulfilled" ? (correlations[i] as any).value : null;
       const internal_mentions = Number(c?.total_mentions ?? 0);
       const internal_authors = Number(c?.unique_authors ?? 0);
       const internal_engagement = Number(c?.total_engagement ?? 0);
@@ -1012,6 +1016,7 @@ serve(async (req) => {
     const total_detected = sanitizedEventsRaw.length;
 
     // Calcula o score de relevância política (0-100) e o tipo de pico.
+    logStage("scoring_relevancia", { total_detected });
     const scored = sanitizedEventsRaw.map((ev: any) => {
       const mentions = Number(ev.internal_mentions_count ?? 0);
       const authors = Number(ev.internal_authors ?? 0);
