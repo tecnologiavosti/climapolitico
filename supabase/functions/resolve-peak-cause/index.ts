@@ -239,10 +239,11 @@ Deno.serve(async (req) => {
     const externalEvidenceConfidence = Math.min(1, confidenceWeightSum / 3);
 
     // Status from pipeline (hard rule: indeterminate => no AI factual claims)
-    const pipelineStatus = pipelineConf.status; // "confirmed" | "probable" | "indeterminate"
+    const pipelineStatus = pipelineConf.status; // "confirmed" | "probable" | "weak" | "indeterminate"
     const responseMode: ResponseMode =
       pipelineStatus === "confirmed" ? "CONFIRMED_EVENT" :
-      pipelineStatus === "probable" ? "PROBABLE_NARRATIVE" : "UNKNOWN_TRIGGER";
+      pipelineStatus === "probable" ? "PROBABLE_NARRATIVE" :
+      pipelineStatus === "weak" ? "PROBABLE_NARRATIVE" : "UNKNOWN_TRIGGER";
 
     const computedConfidence = Math.round(
       clamp01(
@@ -254,7 +255,8 @@ Deno.serve(async (req) => {
     const finalConfidence =
       pipelineStatus === "confirmed" ? Math.max(0.75, computedConfidence) :
       pipelineStatus === "probable" ? Math.min(0.74, Math.max(0.45, computedConfidence)) :
-      Math.min(0.39, computedConfidence);
+      pipelineStatus === "weak" ? Math.min(0.44, Math.max(0.25, computedConfidence)) :
+      Math.min(0.24, computedConfidence);
     const shouldDisplay = pipelineStatus !== "indeterminate";
 
     const external_evidence = classifiedPubs.map(({ pub, strength, tier, weight }) => ({

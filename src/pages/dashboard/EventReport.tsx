@@ -56,11 +56,12 @@ interface HistoricalEvent {
   peak_type?: "external_confirmed" | "external_social" | "internal_trend";
   political_relevance?: number;
   category?: string;
-  status?: "confirmed" | "probable" | "indeterminate";
+  status?: "confirmed" | "probable" | "weak" | "indeterminate";
   confidence_score?: number;
   independent_strong_sources?: number;
   trusted_sources_count?: number;
   relevance_band?: "baixa" | "media" | "alta" | "critica";
+  signals?: Array<"z" | "momentum" | "burst" | "anomaly">;
 }
 
 const CATEGORY_FILTERS: { id: string; label: string }[] = [
@@ -87,7 +88,12 @@ const COVERAGE_BADGE: Record<string, { label: string; className: string }> = {
 const STATUS_BADGE: Record<string, { label: string; className: string; emoji: string }> = {
   confirmed: { emoji: "🟢", label: "Evento confirmado", className: "bg-emerald-500/15 text-emerald-700 border-emerald-500/30 dark:text-emerald-300" },
   probable: { emoji: "🟡", label: "Evento provável", className: "bg-amber-500/15 text-amber-700 border-amber-500/30 dark:text-amber-300" },
+  weak: { emoji: "🟠", label: "Evidência fraca", className: "bg-orange-500/15 text-orange-700 border-orange-500/30 dark:text-orange-300" },
   indeterminate: { emoji: "🔴", label: "Causa indeterminada", className: "bg-rose-500/10 text-rose-700 border-rose-500/30 dark:text-rose-300" },
+};
+
+const SIGNAL_LABEL: Record<string, string> = {
+  z: "Z-score", momentum: "Momentum", burst: "Burst", anomaly: "Anomaly",
 };
 
 const RELEVANCE_BAND_LABEL: Record<string, string> = {
@@ -195,6 +201,7 @@ export default function EventReport() {
   const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [category, setCategory] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [causes, setCauses] = useState<Record<string, PeakCause>>({});
   const [causeLoading, setCauseLoading] = useState<Record<string, boolean>>({});
   const [causeError, setCauseError] = useState<Record<string, string>>({});
@@ -227,9 +234,21 @@ export default function EventReport() {
   });
 
   const events = useMemo(() => data?.events || [], [data]);
+  const statusCounts = useMemo(() => {
+    const c = { confirmed: 0, probable: 0, weak: 0, indeterminate: 0 };
+    for (const e of events) {
+      const s = (e.status || "indeterminate") as keyof typeof c;
+      if (s in c) c[s]++;
+    }
+    return c;
+  }, [events]);
   const filteredEvents = useMemo(
-    () => (category === "all" ? events : events.filter((e) => (e.category || "outros") === category)),
-    [events, category],
+    () => events.filter((e) => {
+      if (category !== "all" && (e.category || "outros") !== category) return false;
+      if (statusFilter !== "all" && (e.status || "indeterminate") !== statusFilter) return false;
+      return true;
+    }),
+    [events, category, statusFilter],
   );
   const eventsByYear = useMemo(() => {
     const groups = new Map<string, HistoricalEvent[]>();
@@ -322,6 +341,26 @@ export default function EventReport() {
 
       {events.length > 0 ? (
         <div className="space-y-5">
+          {/* Contadores por status */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+            {([
+              { id: "all", label: "Total", emoji: "📊", value: events.length, cls: "border-primary/30 bg-primary/5" },
+              { id: "confirmed", label: "Confirmados", emoji: "🟢", value: statusCounts.confirmed, cls: "border-emerald-500/30 bg-emerald-500/5" },
+              { id: "probable", label: "Prováveis", emoji: "🟡", value: statusCounts.probable, cls: "border-amber-500/30 bg-amber-500/5" },
+              { id: "weak", label: "Fracos", emoji: "🟠", value: statusCounts.weak, cls: "border-orange-500/30 bg-orange-500/5" },
+              { id: "indeterminate", label: "Indeterminados", emoji: "🔴", value: statusCounts.indeterminate, cls: "border-rose-500/30 bg-rose-500/5" },
+            ] as const).map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setStatusFilter(s.id)}
+                className={`rounded-md border px-3 py-2 text-left transition ${s.cls} ${statusFilter === s.id ? "ring-2 ring-primary" : "opacity-90 hover:opacity-100"}`}
+              >
+                <div className="text-[11px] uppercase text-muted-foreground">{s.emoji} {s.label}</div>
+                <div className="text-2xl font-bold tabular-nums">{s.value}</div>
+              </button>
+            ))}
+          </div>
+
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-primary" /> Enciclopédia política ({filteredEvents.length}/{events.length})
@@ -383,6 +422,11 @@ export default function EventReport() {
                             Relevância {ev.relevance_score}/100{ev.relevance_band ? ` · ${RELEVANCE_BAND_LABEL[ev.relevance_band]}` : ""}
                           </Badge>
                         ) : null}
+                        {Array.isArray(ev.signals) && ev.signals.length > 0 ? (
+                          <Badge variant="outline" className="text-[10px] font-normal border-primary/40 text-primary">
+                            Sinais: {ev.signals.map((s) => SIGNAL_LABEL[s] || s).join(" · ")}
+                          </Badge>
+                        ) : null}
                         {typeof ev.trusted_sources_count === "number" && ev.trusted_sources_count > 0 ? (
                           <Badge variant="outline" className="text-[10px] font-normal border-blue-500/40 text-blue-600 dark:text-blue-400">
                             {ev.trusted_sources_count} fonte{ev.trusted_sources_count === 1 ? "" : "s"} confiáve{ev.trusted_sources_count === 1 ? "l" : "is"}
@@ -391,7 +435,7 @@ export default function EventReport() {
                       </div>
                       <CardTitle className="text-base md:text-lg leading-snug flex items-start gap-2">
                         <span className="text-primary mt-0.5">{icon}</span>
-                        <span>{ev.status === "indeterminate" ? "Causa indeterminada" : ev.name}</span>
+                        <span>{ev.name}</span>
                       </CardTitle>
                       {ev.status === "indeterminate" ? (
                         <p className="text-xs text-muted-foreground italic">

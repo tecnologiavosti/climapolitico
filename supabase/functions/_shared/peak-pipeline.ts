@@ -62,7 +62,7 @@ export function classifySource(url: string, outlet?: string | null): SourceClass
 }
 
 export interface ConfidenceResult {
-  status: "confirmed" | "probable" | "indeterminate";
+  status: "confirmed" | "probable" | "weak" | "indeterminate";
   weight_sum: number;
   independent_strong_sources: number;
   tier_breakdown: Record<SourceTier, number>;
@@ -85,6 +85,7 @@ export function confidenceFromSources(pubs: Array<{ url?: string | null; outlet?
   let status: ConfidenceResult["status"] = "indeterminate";
   if (weight >= 1.5 && independent_strong_sources >= 2) status = "confirmed";
   else if (weight >= 0.8 && independent_strong_sources >= 1) status = "probable";
+  else if (weight >= 0.4 || breakdown.tier3 >= 1) status = "weak";
   return { status, weight_sum: Math.round(weight * 100) / 100, independent_strong_sources, tier_breakdown: breakdown, trusted_sources_count };
 }
 
@@ -99,10 +100,10 @@ export interface SpikeResult {
   isSpike: boolean;
 }
 
-const MIN_DAILY_VOLUME = 30;
+const MIN_DAILY_VOLUME = 20;
 
 export function detectSpikes(series: SeriesPoint[], opts: { zThreshold?: number; minVolume?: number; window?: number } = {}): SpikeResult[] {
-  const z = opts.zThreshold ?? 2.5;
+  const z = opts.zThreshold ?? 2.0;
   const minVol = opts.minVolume ?? MIN_DAILY_VOLUME;
   const win = opts.window ?? 14;
   const out: SpikeResult[] = [];
@@ -119,12 +120,87 @@ export function detectSpikes(series: SeriesPoint[], opts: { zThreshold?: number;
     const zscore = std > 0 ? (series[i].mentions - mean) / std : 0;
     const isSpike =
       series[i].mentions >= minVol &&
-      series[i].mentions > mean * 2 &&
+      series[i].mentions > mean * 1.7 &&
       zscore >= z;
     out.push({ date: series[i].date, mentions: series[i].mentions, baseline: Math.round(mean * 10) / 10, std: Math.round(std * 10) / 10, zscore: Math.round(zscore * 100) / 100, isSpike });
   }
   return out;
 }
+
+// ---------- Hybrid spike detector ----------
+// Combines 4 independent signals; emits a spike if ANY 2 fire on the same day.
+// Signals: zscore (rolling 14d), momentum (3d avg vs 7d avg), burst (CUSUM-like
+// streak over baseline), anomaly (IQR outlier over 30d window).
+export type SpikeSignal = "z" | "momentum" | "burst" | "anomaly";
+
+export interface HybridSpike {
+  date: string;
+  mentions: number;
+  baseline: number;
+  zscore: number;
+  signals: SpikeSignal[];
+  isSpike: boolean;
+}
+
+function quantile(sorted: number[], q: number): number {
+  if (sorted.length === 0) return 0;
+  const pos = (sorted.length - 1) * q;
+  const base = Math.floor(pos);
+  const rest = pos - base;
+  return sorted[base + 1] !== undefined ? sorted[base] + rest * (sorted[base + 1] - sorted[base]) : sorted[base];
+}
+
+export function detectHybridSpikes(series: SeriesPoint[], opts: { minVolume?: number } = {}): HybridSpike[] {
+  const minVol = opts.minVolume ?? MIN_DAILY_VOLUME;
+  const n = series.length;
+  const counts = series.map((p) => Number(p.mentions || 0));
+  const out: HybridSpike[] = [];
+  let cusum = 0;
+  for (let i = 0; i < n; i++) {
+    const c = counts[i];
+    // baselines
+    const win14 = counts.slice(Math.max(0, i - 14), i);
+    const mean14 = win14.length ? win14.reduce((s, v) => s + v, 0) / win14.length : 0;
+    const var14 = win14.length ? win14.reduce((s, v) => s + (v - mean14) ** 2, 0) / win14.length : 0;
+    const std14 = Math.sqrt(var14) || Math.max(1, mean14 * 0.25);
+    const z = (c - mean14) / std14;
+
+    const last3 = counts.slice(Math.max(0, i - 2), i + 1);
+    const mean3 = last3.length ? last3.reduce((s, v) => s + v, 0) / last3.length : 0;
+    const last7 = counts.slice(Math.max(0, i - 7), i);
+    const mean7 = last7.length ? last7.reduce((s, v) => s + v, 0) / last7.length : 0;
+    const momentum = mean7 > 0 ? mean3 / mean7 : 0;
+
+    // CUSUM-style burst: accumulate (c - 1.5*mean14)+, reset on dip.
+    if (c > mean14 * 1.5) cusum += (c - mean14 * 1.5);
+    else cusum = Math.max(0, cusum * 0.6);
+    const burstHit = cusum >= Math.max(50, mean14 * 3);
+
+    const win30 = counts.slice(Math.max(0, i - 30), i).slice().sort((a, b) => a - b);
+    const q1 = quantile(win30, 0.25);
+    const q3 = quantile(win30, 0.75);
+    const iqr = q3 - q1;
+    const anomalyHit = win30.length >= 8 && c > q3 + 1.5 * iqr && c >= minVol;
+
+    const signals: SpikeSignal[] = [];
+    if (win14.length >= 5 && z >= 2.0 && c >= minVol) signals.push("z");
+    if (last7.length >= 5 && momentum >= 1.5 && c >= minVol) signals.push("momentum");
+    if (burstHit && c >= minVol) signals.push("burst");
+    if (anomalyHit) signals.push("anomaly");
+
+    const isSpike = signals.length >= 2 && c > mean14;
+    out.push({
+      date: series[i].date,
+      mentions: c,
+      baseline: Math.round(mean14 * 10) / 10,
+      zscore: Math.round(z * 100) / 100,
+      signals,
+      isSpike,
+    });
+  }
+  return out;
+}
+
 
 // ---------- Category classification ----------
 function norm(text: string): string {
