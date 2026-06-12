@@ -435,7 +435,7 @@ export default function EventReport() {
                       </div>
                       <CardTitle className="text-base md:text-lg leading-snug flex items-start gap-2">
                         <span className="text-primary mt-0.5">{icon}</span>
-                        <span>{ev.status === "indeterminate" ? "Causa indeterminada" : ev.name}</span>
+                        <span>{ev.name}</span>
                       </CardTitle>
                       {ev.status === "indeterminate" ? (
                         <p className="text-xs text-muted-foreground italic">
