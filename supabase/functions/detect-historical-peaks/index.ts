@@ -576,6 +576,8 @@ async function fetchCoverageForKnownEvent(
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  console.time("detect-historical-peaks");
+  console.log("[1] function started");
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -603,12 +605,12 @@ serve(async (req) => {
     if (!candidate || candidate.user_id !== user.id) {
       return new Response(JSON.stringify({ error: "Candidato não encontrado" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+    console.log("[2] candidate loaded", candidate.full_name);
 
-    // === FASE 1: DESCOBERTA HISTÓRICA (antes de qualquer busca) ===
-    // A IA enumera os acontecimentos políticos conhecidos do candidato no período,
-    // garantindo cobertura de prisão, impeachment, debates, CPIs, decisões do STF, BRICS etc.
-    const discovered = await discoverKnownEvents(candidate.full_name, candidate.party, startShort, endShort);
-    console.log(`[detect-historical-peaks] discovered ${discovered.length} known events`);
+    // === FASE 1: DESCOBERTA HISTÓRICA — DESABILITADA ===
+    // IA NUNCA cria eventos. Picos vêm de evidência real: cobertura externa + timeline SSOT.
+    const discovered: DiscoveredEvent[] = [];
+    console.log("[3] external search started");
 
     // === FASE 2: COBERTURA DIRECIONADA POR EVENTO CONHECIDO ===
     const focusedSettled = await Promise.allSettled(
@@ -660,76 +662,16 @@ serve(async (req) => {
       const eventHit = klass !== "news" || EVENT_TERMS.some((term) => text.includes(normalize(term)));
       return (inMainWindow || inKnownWindow) && nameHit && eventHit && isOfficialOrJournalistic(p);
     }).slice(0, 320);
+    console.log("[4] external search finished — pubs:", pubs.length);
 
     const localCandidates = timelineCandidates(Array.isArray(localTimeline) ? localTimeline : []);
 
-    // === FASE 4: ENRIQUECIMENTO E DESCOBERTA COMPLEMENTAR PELA IA ===
-    let aiEvents: any[] = [];
-    if (pubs.length > 0 || discovered.length > 0) {
-      const corpus = pubs.slice(0, 110).map((p, i) =>
-        `[${i + 1}] (${p.outlet}, ${p.publishedAt?.slice(0, 10) || "?"}, ${p.source}) ${cleanText(p.title).slice(0, 180)} — ${cleanText(p.snippet).slice(0, 220)} | ${p.url}`
-      ).join("\n");
-      const localSignal = localCandidates.map((p: any) => `${p.date}: ${p.count} menções (${Math.round(p.growth || 0)}%)`).join("\n") || "sem sinal interno relevante";
-      const knownList = discovered.map((e, i) => `${i + 1}. [${e.start_date}] ${e.name} — ${cleanText(e.description || "").slice(0, 160)}`).join("\n") || "nenhum evento pré-identificado";
-
-      const prompt = `Você é um analista político histórico brasileiro. Confirme, enriqueça e COMPLEMENTE a lista de acontecimentos de ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ""} entre ${startShort} e ${endShort}.
-
-EVENTOS HISTÓRICOS PRÉ-IDENTIFICADOS (mantenha todos os reais, ajuste datas/descrições conforme as fontes, descarte apenas se forem claramente falsos):
-${knownList}
-
-PUBLICAÇÕES EXTERNAS COLETADAS:
-${corpus || "sem publicações externas"}
-
-SINAIS INTERNOS DE CRESCIMENTO:
-${localSignal}
-
-INSTRUÇÕES:
-- Retorne TODOS os eventos pré-identificados que tenham confirmação histórica, múltiplas fontes confiáveis conhecidas e data coerente, mesmo que a cobertura coletada agora seja parcial ou vazia — use seu conhecimento histórico para preencher descrição, impacto e participantes.
-- ADICIONE eventos novos encontrados nas publicações que não estavam na lista.
-- Para cada evento, indique sourceIndices (1-based) das publicações que documentam o fato. Se nenhuma publicação coletada cobrir o evento, devolva [] em sourceIndices — não invente índices.
-- Priorize relevância histórica e institucional, não volume bruto.
-- Mire em 20+ eventos quando o período cobrir um ciclo eleitoral ou mandato.
-
-Responda APENAS JSON válido:
-{
-  "events": [
-    {
-      "name": "...",
-      "type": "eleicao|debate|entrevista|discurso|coletiva|decisao_judicial|cpi|operacao|votacao|agenda|impeachment|posse|julgamento|prisao|noticia",
-      "start_date": "YYYY-MM-DD",
-      "end_date": "YYYY-MM-DD",
-      "description": "...",
-      "motivo": "...",
-      "what_happened": "...",
-      "why_happened": "...",
-      "participants": ["..."],
-      "political_impact": "...",
-      "electoral_impact": "...",
-      "aftermath": "...",
-      "keywords": ["..."],
-      "sourceIndices": [1,2],
-      "relevance_score": 0
-    }
-  ]
-}`;
-      try {
-        const ai = await callAICerebrasFirst({
-          systemMsg: "Você detecta acontecimentos políticos reais cruzando conhecimento histórico e fontes documentadas. Responda só JSON em pt-BR.",
-          userPrompt: prompt,
-          jsonMode: true,
-          maxTokens: 8000,
-          temperature: 0.15,
-          tag: "detect-historical-peaks-enrich",
-        });
-        const content = ai.content || "";
-        let parsed: any = {};
-        try { parsed = JSON.parse(content); }
-        catch { const m = content.match(/\{[\s\S]*\}/); if (m) parsed = JSON.parse(m[0]); }
-        aiEvents = Array.isArray(parsed?.events) ? parsed.events : [];
-      } catch (error) {
-        console.error("[detect-historical-peaks] enrich AI failed", (error as Error).message);
-      }
-    }
+    // === FASE 4: ENRIQUECIMENTO IA — DESABILITADO ===
+    // A IA NÃO pode criar eventos nem invocar fatos. Detecção fica 100% baseada em evidência.
+    console.log("[5] ssot fallback started");
+    const aiEvents: any[] = [];
+    console.log("[6] ssot fallback finished — localCandidates:", localCandidates.length);
+    console.log("[7] clustering started");
 
     // Combina eventos da IA enriquecida + descobertos + picos SSOT puros (z-score >= 2.5).
     const combinedByKey = new Map<string, any>();
@@ -739,8 +681,8 @@ Responda APENAS JSON válido:
     for (const e of discovered) if (!combinedByKey.has(keyOf(e))) combinedByKey.set(keyOf(e), e);
     // SSOT peaks: adiciona se nenhum evento já existir no mesmo dia (anexa metadados de z-score).
     const existingDays = new Set([...combinedByKey.values()].map(dayKey));
-    const ssotPeaks = ssotPeakEvents(Array.isArray(localTimeline) ? localTimeline : []);
-    for (const sp of ssotPeaks) {
+    const ssotPeakRaw = ssotPeakEvents(Array.isArray(localTimeline) ? localTimeline : []);
+    for (const sp of ssotPeakRaw) {
       if (existingDays.has(sp.start_date)) {
         // Anexa z-score ao evento existente naquele dia
         for (const ev of combinedByKey.values()) {
@@ -754,6 +696,9 @@ Responda APENAS JSON válido:
     }
     let candidateEvents: any[] = [...combinedByKey.values()];
     if (candidateEvents.length === 0) candidateEvents = fallbackEventsFromSources(pubs, start, end);
+    // Limite duro para evitar timeout em candidatos de altíssimo volume (Lula, Bolsonaro etc.)
+    candidateEvents = candidateEvents.slice(0, 20);
+    console.log("[8] clustering finished — candidateEvents:", candidateEvents.length);
 
     const events = candidateEvents.map((evt: any) => {
       const evPubs = matchedSources(evt, pubs, start, end, candidate.full_name);
@@ -950,113 +895,41 @@ Responda APENAS JSON válido:
       discarded_insufficient_evidence,
     }));
 
-    // === FASE 5: GARANTIA DE ANÁLISE — fallback IA com dados internos (SSOT) ===
-    // Todo pico deve ter narrativa analítica, mesmo sem evidências externas.
-    const needsFallback = sanitizedEvents.filter((e: any) =>
-      !cleanText(e.what_happened) && !cleanText(e.why_happened) && !cleanText(e.political_impact)
-    );
-    const FALLBACK_LIMIT = 30;
-    const targets = needsFallback.slice(0, FALLBACK_LIMIT);
-    console.log(`[detect-historical-peaks] analysis fallback: ${targets.length} de ${sanitizedEvents.length} eventos sem narrativa externa`);
-
-    await Promise.allSettled(targets.map(async (ev: any) => {
-      const totalSent = (ev.sentiment_positive || 0) + (ev.sentiment_negative || 0) + (ev.sentiment_neutral || 0);
-      const pct = (n: number) => totalSent > 0 ? Math.round((n / totalSent) * 100) : 0;
-      const netBreakdown = Object.entries(ev.internal_by_network || {})
-        .map(([k, v]) => [k, Number(v) || 0] as [string, number])
-        .sort((a, b) => b[1] - a[1])
-        .filter(([, v]) => v > 0)
-        .slice(0, 8)
-        .map(([k, v]) => `${k}: ${v.toLocaleString("pt-BR")} menções`)
-        .join("\n") || "sem distribuição relevante";
-
-      const analysisSource = ev.internal_mentions > 0 ? "internal_ssot" : "ai_only_context";
-      const prompt = `Analise o pico político abaixo.
-
-Evento: ${ev.name}
-Candidato: ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ""}
-Período: ${ev.start_date} a ${ev.end_date || ev.start_date}
-
-Menções internas observadas (janela ±7d): ${(ev.internal_mentions || 0).toLocaleString("pt-BR")}
-Autores únicos: ${(ev.internal_authors || 0).toLocaleString("pt-BR")}
-Engajamento total: ${(ev.internal_engagement || 0).toLocaleString("pt-BR")}
-Cobertura externa: ${ev.publications_count} publicações em ${ev.distinct_outlets} veículos
-
-Sentimento agregado:
-Positivo: ${pct(ev.sentiment_positive)}%
-Neutro: ${pct(ev.sentiment_neutral)}%
-Negativo: ${pct(ev.sentiment_negative)}%
-
-Redes com maior participação:
-${netBreakdown}
-
-Descrição prévia: ${ev.description || "(sem descrição)"}
-
-Explique, com base ESTRITAMENTE nos dados acima:
-1. O que provavelmente causou o aumento das menções (what_happened).
-2. Por que repercutiu (why_happened).
-3. Impacto político observado (political_impact).
-4. Impacto eleitoral, se houver (electoral_impact).
-5. Desdobramentos posteriores (aftermath).
-
-REGRAS OBRIGATÓRIAS:
-- Analise SOMENTE os dados fornecidos. Não invente fatos, datas, operações, prisões, CPIs, resultados eleitorais ou acontecimentos.
-- Se os dados forem insuficientes para análise confiável, responda EXATAMENTE: {"what_happened":"Dados insuficientes para análise confiável.","why_happened":"","political_impact":"","electoral_impact":"","aftermath":""}
-
-Responda APENAS JSON:
-{"what_happened":"...","why_happened":"...","political_impact":"...","electoral_impact":"...","aftermath":"..."}`;
-
-      try {
-        const ai = await callAICerebrasFirst({
-          systemMsg: "Você é analista político brasileiro. Use apenas os dados fornecidos. NUNCA invente fatos, datas, operações, prisões ou eleições. Responda só JSON em pt-BR.",
-          userPrompt: prompt,
-          jsonMode: true,
-          maxTokens: 2000,
-          temperature: 0.2,
-          tag: "detect-historical-peaks-fallback",
-        });
-        const content = ai.content || "";
-        let parsed: any = {};
-        try { parsed = JSON.parse(content); }
-        catch { const m = content.match(/\{[\s\S]*\}/); if (m) parsed = JSON.parse(m[0]); }
-        ev.what_happened    = safeSlice(cleanText(parsed.what_happened),    1200) || ev.what_happened;
-        ev.why_happened     = safeSlice(cleanText(parsed.why_happened),     1200) || ev.why_happened;
-        ev.political_impact = safeSlice(cleanText(parsed.political_impact), 1000) || ev.political_impact;
-        ev.electoral_impact = safeSlice(cleanText(parsed.electoral_impact), 1000) || ev.electoral_impact;
-        ev.aftermath        = safeSlice(cleanText(parsed.aftermath),        1200) || ev.aftermath;
-        ev.analysis_source  = analysisSource;
-        ev.analysis_status  = cleanText(ev.what_happened) ? "fallback_internal" : "failed";
-      } catch (error) {
-        console.error("[detect-historical-peaks] fallback AI failed", ev.name, (error as Error).message);
-        ev.analysis_source = analysisSource;
-        ev.analysis_status = "failed";
-        if (!ev.what_happened) {
-          ev.what_happened = `Pico de menções relacionado a "${ev.name}" entre ${ev.start_date} e ${ev.end_date || ev.start_date}. Foram observadas ${(ev.internal_mentions || 0).toLocaleString("pt-BR")} menções internas e ${ev.publications_count} publicações externas. Análise detalhada indisponível no momento.`;
-        }
-      }
-    }));
-
+    // === FASE 5: ANÁLISE IA — DESABILITADA NA DETECÇÃO ===
+    // A análise textual de cada pico é executada sob demanda (botão "Análise IA do pico"),
+    // nunca dentro deste pipeline, para evitar timeouts e impedir invenção de fatos.
+    console.log("[9] ai enrichment skipped (deferred to on-demand)");
     for (const ev of sanitizedEvents as any[]) {
-      if (!ev.analysis_source) {
-        ev.analysis_source = ev.publications_count > 0 ? "external_evidence" : "internal_ssot";
-        ev.analysis_status = cleanText(ev.what_happened) ? "success" : "failed";
-      }
+      ev.analysis_source = ev.has_external_evidence ? "external_evidence" : "internal_ssot";
+      ev.analysis_status = cleanText(ev.what_happened) ? "success" : "pending_on_demand";
     }
+    console.log("[10] ai enrichment finished");
 
-    return new Response(JSON.stringify({
+    const response = new Response(JSON.stringify({
       events: sanitizedEvents,
       total_detected,
       valid_peaks: sanitizedEvents.length,
       discarded_synthetic,
       discarded_insufficient_evidence,
+      externalPeaks,
+      ssotPeaks,
       publications_collected: pubs.length,
       discovered_count: discovered.length,
       estimated_reach: estimatedReachOf(pubs),
       external_timeline: externalTimeline,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    console.log("[11] response sent");
+    console.timeEnd("detect-historical-peaks");
+    return response;
 
   } catch (error) {
-    console.error("[detect-historical-peaks]", error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Erro desconhecido" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const err = error as Error;
+    console.error("[detect-historical-peaks] fatal:", err?.message, err?.stack);
+    try { console.timeEnd("detect-historical-peaks"); } catch { /* noop */ }
+    return new Response(JSON.stringify({
+      error: true,
+      message: err?.message || String(error),
+      stack: err?.stack || null,
+    }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
