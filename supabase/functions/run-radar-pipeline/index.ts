@@ -353,6 +353,9 @@ Deno.serve(async (req) => {
     let totalInserted = 0;
     const perCandidate: Record<string, { inserted: number; clusters: number; items: number }> = {};
 
+    // Pré-carrega todos os RSS feeds uma vez (compartilhado entre candidatos)
+    const rssPool = await fetchAllRss();
+
     for (const c of candidates ?? []) {
       const aliases = aliasesFor(c.full_name);
       // coleta múltiplas queries por candidato
@@ -361,6 +364,8 @@ Deno.serve(async (req) => {
         const items = await fetchGoogleNews(alias, lookback);
         all.push(...items);
       }
+      // adiciona itens RSS que casam com aliases do candidato
+      all.push(...filterByAliases(rssPool, aliases, lookback));
       // dedupe por url
       const byUrl = new Map<string, NewsItem>();
       for (const it of all) if (!byUrl.has(it.url)) byUrl.set(it.url, it);
