@@ -859,19 +859,40 @@ serve(async (req) => {
       return data as { total_mentions: number; unique_authors: number; total_engagement: number; by_network: Record<string, number> } | null;
     }));
 
+    // Classifica fontes externas em STRONG (jornalismo / órgãos oficiais / GDELT)
+    // vs WEAK (redes sociais externas). Instagram/Facebook/TikTok/Threads sozinhos
+    // NÃO contam como evidência jornalística.
+    const WEAK_HOSTS = /(^|\.)(instagram\.com|facebook\.com|m\.facebook\.com|fb\.com|tiktok\.com|threads\.net|threads\.com|x\.com|twitter\.com|t\.me|telegram\.me|reddit\.com|pinterest\.com|bsky\.app|mastodon\.|truthsocial\.com)$/i;
+    const STRONG_OFFICIAL = /(^|\.)(stf\.jus\.br|tse\.jus\.br|senado\.leg\.br|camara\.leg\.br|gov\.br|planalto\.gov\.br|mpf\.mp\.br|pf\.gov\.br|tcu\.gov\.br)$/i;
+    function hostOf(url: string): string {
+      try { return new URL(url).hostname.replace(/^www\./, "").toLowerCase(); } catch { return ""; }
+    }
+    function classifySource(s: { url?: string; kind?: string; name?: string }): "strong" | "weak" {
+      const host = hostOf(s.url || "");
+      if (!host) return "weak";
+      if (STRONG_OFFICIAL.test(host)) return "strong";
+      if (WEAK_HOSTS.test(host)) return "weak";
+      // GDELT, identifyOutlet-tagged outlets e quaisquer veículos jornalísticos restantes → strong
+      return "strong";
+    }
+
     // Remove fontes/URLs externas da resposta — manter usuário dentro da plataforma.
-    // Recalcula relevance_score com peso 80% SSOT + 20% externo (regra do produto).
     const sanitizedEventsRaw = events.map((e: any, i: number) => {
       const { sources: _omit, ...rest } = e;
+      const srcList: any[] = Array.isArray(_omit) ? _omit : [];
+      let strong_sources = 0, weak_sources = 0;
+      const strongHosts = new Set<string>(), weakHosts = new Set<string>();
+      for (const s of srcList) {
+        const h = hostOf(s.url || "");
+        if (classifySource(s) === "strong") { strong_sources++; if (h) strongHosts.add(h); }
+        else { weak_sources++; if (h) weakHosts.add(h); }
+      }
       const c = correlations[i].status === "fulfilled" ? (correlations[i] as any).value : null;
       const internal_mentions = Number(c?.total_mentions ?? 0);
       const internal_authors = Number(c?.unique_authors ?? 0);
       const internal_engagement = Number(c?.total_engagement ?? 0);
-      const z = Number(e.ssot_z_score ?? 0);
-      const ssot_score = ssotScoreOf(internal_mentions, internal_engagement, z);
-      const external_score = Number(e.external_score ?? 0);
-      const final_score = Math.round(0.8 * ssot_score + 0.2 * external_score);
       const external_evidence_count = Number(e.publications_count ?? 0);
+      const has_strong_external = strong_sources >= 1 && strongHosts.size >= 1;
       const has_external_evidence = external_evidence_count >= 1 && Number(e.distinct_outlets ?? 0) >= 1;
       const has_internal_evidence = internal_mentions >= 1;
       const has_real_evidence = has_external_evidence || has_internal_evidence;
@@ -884,9 +905,10 @@ serve(async (req) => {
       return {
         ...rest,
         description,
-        relevance_score: final_score,
-        ssot_score,
-        sources_count: Array.isArray(_omit) ? _omit.length : 0,
+        sources_count: srcList.length,
+        strong_sources,
+        weak_sources,
+        strong_outlets: strongHosts.size,
         internal_mentions,
         internal_mentions_count: internal_mentions,
         internal_authors,
@@ -894,6 +916,7 @@ serve(async (req) => {
         internal_by_network: (c?.by_network ?? {}) as Record<string, number>,
         internal_window_days: 14,
         has_external_evidence,
+        has_strong_external,
         has_internal_evidence,
         has_real_evidence,
         external_evidence_count,
