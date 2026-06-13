@@ -313,15 +313,15 @@ export default function RadarPolitico() {
             <Button
               size="sm"
               onClick={() => searchMutation.mutate(false)}
-              disabled={searchMutation.isPending || candidateId === "all"}
+              disabled={searchMutation.isPending || isJobRunning || candidateId === "all"}
               className="h-9"
             >
-              {searchMutation.isPending ? (
+              {searchMutation.isPending || isJobRunning ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
               ) : (
                 <Sparkles className="h-4 w-4 mr-2" />
               )}
-              Buscar com IA
+              {isJobRunning ? "Coletando..." : "Buscar com IA"}
             </Button>
           </div>
 
@@ -346,12 +346,12 @@ export default function RadarPolitico() {
             )}
             {lastFetchedAt && (
               <span className="text-[11px] text-muted-foreground self-center ml-auto">
-                {cachedFlag ? "Cache" : "IA"} · {lastFetchedAt.toLocaleTimeString("pt-BR")}
+                IA · {lastFetchedAt.toLocaleTimeString("pt-BR")}
                 {" · "}
                 <button
                   className="underline hover:no-underline"
                   onClick={() => searchMutation.mutate(true)}
-                  disabled={searchMutation.isPending}
+                  disabled={searchMutation.isPending || isJobRunning}
                 >
                   Atualizar
                 </button>
@@ -360,6 +360,27 @@ export default function RadarPolitico() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Progresso do job em background */}
+      {isJobRunning && jobStatus && (
+        <Card>
+          <CardContent className="p-4 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="flex items-center gap-2 font-medium">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Coletando eventos em background ({jobStatus.processed_chunks}/{jobStatus.total_chunks || "?"} períodos)
+              </span>
+              <span className="text-muted-foreground tabular-nums">
+                {nfBR.format(jobStatus.events_count)} eventos · {jobStatus.progress}%
+              </span>
+            </div>
+            <Progress value={jobStatus.progress} className="h-1.5" />
+            <p className="text-[11px] text-muted-foreground">
+              A janela pode ser fechada — o job continua no servidor. Volte mais tarde.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* KPIs */}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
