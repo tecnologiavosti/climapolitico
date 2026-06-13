@@ -141,7 +141,7 @@ export default function RadarPolitico() {
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const [category, setCategory] = useState<string>("Todos");
   const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<"date" | "importance" | "social">("date");
+  const [sortBy, setSortBy] = useState<"date" | "importance" | "social">("importance");
   const [selected, setSelected] = useState<RadarEvent | null>(null);
   const [events, setEvents] = useState<RadarEvent[]>([]);
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
@@ -431,8 +431,8 @@ export default function RadarPolitico() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="date">Mais recente</SelectItem>
                 <SelectItem value="importance">Maior importância</SelectItem>
+                <SelectItem value="date">Mais recente</SelectItem>
                 <SelectItem value="social">Maior repercussão</SelectItem>
               </SelectContent>
             </Select>
