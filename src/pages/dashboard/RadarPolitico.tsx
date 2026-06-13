@@ -489,7 +489,7 @@ export default function RadarPolitico() {
             <div className="flex items-center justify-between text-xs">
               <span className="flex items-center gap-2 font-medium">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Coletando eventos em background ({jobStatus.processed_chunks}/{jobStatus.total_chunks || "?"} períodos)
+                Buscando eventos históricos... lote {jobStatus.processed_chunks}/{jobStatus.total_chunks || "?"}
               </span>
               <span className="text-muted-foreground tabular-nums">
                 {nfBR.format(jobStatus.events_count)} eventos · {jobProgress}%
@@ -497,7 +497,7 @@ export default function RadarPolitico() {
             </div>
             <Progress value={jobProgress} className="h-1.5" />
             <p className="text-[11px] text-muted-foreground">
-              A janela pode ser fechada — o job continua no servidor. Volte mais tarde.
+              A janela pode ser fechada — o job continua no servidor e será recarregado do cache ao voltar.
             </p>
           </CardContent>
         </Card>
@@ -543,7 +543,7 @@ export default function RadarPolitico() {
       <section className="space-y-2">
         <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">
           {searchMutation.isPending || isJobRunning
-            ? "Coletando eventos em background..."
+            ? "Buscando eventos históricos..."
             : `${nfBR.format(filtered.length)} eventos`}
         </h2>
 
@@ -567,7 +567,7 @@ export default function RadarPolitico() {
           <div className="border rounded-md bg-card p-4 space-y-4">
             <div className="flex items-center gap-2 text-sm font-medium">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Coletando eventos em background
+              Buscando eventos históricos
               {jobStatus ? ` (${jobStatus.processed_chunks}/${jobStatus.total_chunks || "?"} períodos · ${nfBR.format(jobStatus.events_count)} eventos)` : "..."}
             </div>
             <div className="grid gap-2">
