@@ -193,7 +193,10 @@ async function scheduleContinuation(jobId: string, authHeader: string): Promise<
       if (!ok) {
         const retry = Number(txt.match(/Retry after\s+(\d+)ms/i)?.[1] ?? 0);
         console.warn(`[radar-job ${jobId}] continuation HTTP ${res.status}: ${txt.slice(0, 180)}`);
-        if (res.status === 429 && attempt < 3) await sleep(Math.max(1_500, Math.min(20_000, retry || 2_500 * (attempt + 1))));
+        if (res.status === 429 && attempt < 3) {
+          await sleep(Math.max(1_500, Math.min(20_000, retry || 2_500 * (attempt + 1))));
+          continue;
+        }
       }
     return ok;
     } catch (e) {
