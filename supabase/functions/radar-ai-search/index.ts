@@ -25,6 +25,8 @@ interface RawItem {
   type: "institutional" | "news" | "international" | "aggregator";
   pub_date?: string;
   snippet?: string;
+  bucket?: string;
+  domain?: string;
 }
 
 // ===== 50+ FONTES EXTERNAS =====
@@ -80,7 +82,7 @@ const FEEDS: Array<{ name: string; url: string; type: RawItem["type"] }> = [
 
 function hashPeriod(b: ReqBody): string {
   const cats = [...(b.categories ?? [])].sort().join(",");
-  return `${b.candidate_id ?? "all"}|${b.candidate_name}|${b.start_date}|${b.end_date}|${cats}`;
+  return `radar-v4|${b.candidate_id ?? "all"}|${b.candidate_name}|${b.start_date}|${b.end_date}|${cats}`;
 }
 
 function safeNum(v: any, def = 0, min = 0, max = 100) {
@@ -92,6 +94,13 @@ function safeNum(v: any, def = 0, min = 0, max = 100) {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const INSTITUTIONAL_RE = /\b(STF|TSE|PF|Senado|Câmara|Camara|Planalto|STJ|TCU|CGU|AGU|CNJ|Banco Central|Ministério|Ministerio)\b/i;
+const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+const POLITICAL_RELEVANCE_RE = /\b(STF|TSE|PF|Polícia Federal|operacao|operação|escandalo|escândalo|crise|CPI|investigacao|investigação|cassacao|cassação|julgamento|denuncia|denúncia|impeachment|prisao|prisão|inelegivel|inelegível|corrupcao|corrupção|votacao|votação|congresso|senado|camara|câmara|plenario|plenário|supremo|tribunal|eleicao|eleição|eleitoral|presidencial|pesquisa|Datafolha|Quaest|Ipec|PoderData|reforma tributaria|reforma fiscal|orcamento|orçamento|economia|banco central|dolar|dólar|juros|crime eleitoral|rachadinha|joias|minuta|golpe|8 de janeiro|delacao|delação|inquerito|inquérito)\b/i;
+const STRONG_IMPACT_RE = /\b(operação|operacao|PF|STF|TSE|CPI|cassação|cassacao|julgamento|denúncia|denuncia|investigação|investigacao|impeachment|prisão|prisao|corrupção|corrupcao|inelegível|inelegivel|condenação|condenacao|busca e apreensão|busca e apreensao|quebra de sigilo|réu|reu|indiciado|indiciamento|delacao|delação|golpe|8 de janeiro)\b/i;
+const CRITICAL_IMPACT_RE = /\b(prisão|prisao|condenação|condenacao|cassação|cassacao|impeachment|inelegível|inelegivel|operação PF|operação da PF|busca e apreensão|corrupção|corrupcao|golpe|8 de janeiro|STF decide|TSE condena)\b/i;
+const SPORTS_NOISE_RE = /\b(palpite|futebol|copa do mundo|copa america|copa américa|brasileirao|brasileirão|libertadores|cartola|aposta|odds|seleção brasileira|selecao brasileira|jogo de hoje)\b/i;
+const ROUTINE_NOISE_RE = /\b(agenda|visita|visita rotineira|cumpre agenda|participa de encontro|reunião protocolar|reuniao protocolar|inaugura|inauguração|inauguracao|agenda de campanha|caminhada|carreata|comício local|comicio local)\b/i;
+const BANNED_TRIVIAL_RE = /\b(entrevista exclusiva|bate-papo|podcast|live com|comentário sobre copa|comentario sobre copa|palpite de)\b/i;
 
 function sourceTypeFromName(name: string): RawItem["type"] {
   return INSTITUTIONAL_RE.test(name) ? "institutional" : "news";
@@ -106,10 +115,60 @@ function daysBetween(startDate: string, endDate: string): number {
 
 function targetRange(startDate: string, endDate: string): string {
   const days = daysBetween(startDate, endDate);
-  if (days <= 8) return "5–30 eventos";
-  if (days <= 35) return "20–80 eventos";
-  if (days <= 370) return "100–500 eventos";
-  return "500–5000 eventos";
+  if (days <= 8) return "5-30 eventos";
+  if (days <= 35) return "20-80 eventos";
+  if (days <= 370) return "300-1000 eventos por ano para nomes de alta cobertura";
+  return "300-1000 eventos por ano, distribuídos uniformemente por ano e mês";
+}
+
+function expectedMinimumEvents(candidateName: string, startDate: string, endDate: string): number {
+  const years = Math.max(daysBetween(startDate, endDate) / 365, 7 / 365);
+  const n = normalize(candidateName);
+  const yearly = n.includes("lula") || n.includes("luiz inacio") ? 300 : n.includes("jair") || (n.includes("bolsonaro") && !n.includes("flavio")) ? 400 : n.includes("flavio") ? 150 : 120;
+  return Math.max(10, Math.min(1200, Math.floor(yearly * years * 0.55)));
+}
+
+function monthBuckets(startDate: string, endDate: string): Array<{ key: string; start: string; end: string; label: string }> {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T23:59:59Z`);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return [];
+  const buckets: Array<{ key: string; start: string; end: string; label: string }> = [];
+  let cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+  while (cursor <= end && buckets.length < 120) {
+    const y = cursor.getUTCFullYear();
+    const m = cursor.getUTCMonth();
+    const bucketStart = new Date(Math.max(start.getTime(), Date.UTC(y, m, 1)));
+    const bucketEnd = new Date(Math.min(end.getTime(), Date.UTC(y, m + 1, 0, 23, 59, 59)));
+    buckets.push({
+      key: `${y}-${String(m + 1).padStart(2, "0")}`,
+      start: bucketStart.toISOString().slice(0, 10),
+      end: bucketEnd.toISOString().slice(0, 10),
+      label: `${String(m + 1).padStart(2, "0")}/${y}`,
+    });
+    cursor = new Date(Date.UTC(y, m + 1, 1));
+  }
+  return buckets;
+}
+
+function sampledBuckets(startDate: string, endDate: string): Array<{ key: string; start: string; end: string; label: string }> {
+  const buckets = monthBuckets(startDate, endDate);
+  if (buckets.length <= 18) return buckets;
+  const yearly = new Map<string, typeof buckets>();
+  for (const b of buckets) {
+    const year = b.key.slice(0, 4);
+    if (!yearly.has(year)) yearly.set(year, []);
+    yearly.get(year)!.push(b);
+  }
+  const sampled: typeof buckets = [];
+  for (const [, list] of yearly) {
+    const picks = list.length <= 4 ? list : [list[0], list[Math.floor(list.length / 3)], list[Math.floor((list.length * 2) / 3)], list[list.length - 1]];
+    for (const p of picks) if (!sampled.some((x) => x.key === p.key)) sampled.push(p);
+  }
+  return sampled.slice(0, 36).sort((a, b) => a.key.localeCompare(b.key));
+}
+
+function domainFromUrl(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; }
 }
 
 function jsonResponse(payload: Record<string, unknown>, status = 200) {
@@ -193,15 +252,15 @@ function parseFeed(xml: string, source: string, type: RawItem["type"]): RawItem[
   return items;
 }
 
-async function fetchFeed(name: string, url: string, type: RawItem["type"]): Promise<RawItem[]> {
+async function fetchFeed(name: string, url: string, type: RawItem["type"], bucket?: string): Promise<RawItem[]> {
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": "Mozilla/5.0 (compatible; ClimaPoliticoRadar/1.0)" },
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return [];
     const xml = await res.text();
-    return parseFeed(xml, name, type);
+    return parseFeed(xml, name, type).map((item) => ({ ...item, bucket, domain: domainFromUrl(item.url) }));
   } catch {
     return [];
   }
@@ -220,12 +279,13 @@ function normalize(s: string): string {
 
 function buildAliases(fullName: string): string[] {
   const norm = normalize(fullName);
-  const parts = norm.split(" ").filter((p) => p.length >= 3);
+  const weakTokens = new Set(["silva", "santos", "souza", "costa", "oliveira", "pereira", "alves", "ferreira", "lima"]);
+  const parts = norm.split(" ").filter((p) => p.length >= 3 && !weakTokens.has(p));
   const aliases = new Set<string>([norm]);
   const compact = norm.replace(/\s+/g, " ");
   if (parts.length >= 2) {
     aliases.add(`${parts[0]} ${parts[parts.length - 1]}`); // first + last
-    aliases.add(parts[parts.length - 1]); // last name
+    if (parts[parts.length - 1].length >= 6) aliases.add(parts[parts.length - 1]); // last name only when distinctive
   }
   if (parts[0]) aliases.add(parts[0]);
   if (compact.includes("flavio") && compact.includes("bolsonaro")) {
@@ -267,6 +327,89 @@ function eventMatchesCandidate(event: any, aliases: string[]): boolean {
   return aliases.some((a) => hay.includes(a) || similarity(a, hay) > 0.75);
 }
 
+function isRelevantPoliticalText(text: string): boolean {
+  const clean = sanitizeRadarText(text);
+  if (!clean || SPORTS_NOISE_RE.test(clean) || BANNED_TRIVIAL_RE.test(clean)) return false;
+  if (ROUTINE_NOISE_RE.test(clean) && !POLITICAL_RELEVANCE_RE.test(clean)) return false;
+  return POLITICAL_RELEVANCE_RE.test(clean) || STRONG_IMPACT_RE.test(clean);
+}
+
+function categoryForText(text: string, sourceTypes: string[] = []): string {
+  if (/\b(PF|Polícia Federal|operação|operacao|prisão|prisao|busca e apreensão|busca e apreensao)\b/i.test(text)) return "PF";
+  if (/\b(STF|Supremo|julgamento|inquérito|inquerito|réu|reu)\b/i.test(text)) return "STF";
+  if (/\b(TSE|eleição|eleicao|inelegível|inelegivel|cassação|cassacao|pesquisa eleitoral)\b/i.test(text)) return "TSE";
+  if (/\b(CPI|Senado|Câmara|Camara|Congresso|votação|votacao)\b/i.test(text)) return "Congresso";
+  if (/\b(economia|Banco Central|dólar|dolar|juros|inflação|inflacao|arcabouço|arcabouco)\b/i.test(text)) return "Economia";
+  if (/\b(escândalo|escandalo|denúncia|denuncia|corrupção|corrupcao|crise)\b/i.test(text)) return "Escândalos";
+  if (sourceTypes.includes("international")) return "Internacional";
+  return "Outros";
+}
+
+function sourceWeight(name: string, type?: string): number {
+  if (type === "institutional" || INSTITUTIONAL_RE.test(name)) return 1.0;
+  if (/\b(Reuters|Bloomberg|Financial Times|BBC|AP|NYT|Valor|Estadão|Folha|Globo|G1|UOL|CNN|JOTA|Poder360|Metrópoles|Agência Brasil)\b/i.test(name)) return 0.85;
+  if (type === "international") return 0.75;
+  if (type === "aggregator" || /Google News/i.test(name)) return 0.45;
+  return 0.6;
+}
+
+function scoreEvent(e: any): { importance: number; social_score: number; institutional_sources: number; source_count: number } {
+  const sources = Array.isArray(e.sources) ? e.sources : [];
+  const source_count = Math.max(1, sources.length || safeNum(e.source_count, 1, 1, 999));
+  const institutional_sources = sources.filter((s: any) => s?.type === "institutional" || INSTITUTIONAL_RE.test(String(s?.name ?? ""))).length;
+  const text = `${e.title ?? ""} ${e.summary ?? ""} ${e.political_impact ?? ""}`;
+  const mediaWeight = Math.min(10, sources.reduce((sum: number, s: any) => sum + sourceWeight(String(s?.name ?? ""), s?.type), 0));
+  const impactScore = CRITICAL_IMPACT_RE.test(text) ? 1 : STRONG_IMPACT_RE.test(text) ? 0.75 : POLITICAL_RELEVANCE_RE.test(text) ? 0.45 : 0.2;
+  const social_relevance = Math.min(100, 18 + source_count * 7 + institutional_sources * 12 + mediaWeight * 4 + impactScore * 35);
+  const raw = source_count * 2 + institutional_sources * 12 + mediaWeight * 8 + social_relevance * 0.3 + impactScore * 20;
+  return {
+    importance: safeNum(raw, 0),
+    social_score: safeNum(social_relevance, 0),
+    institutional_sources,
+    source_count,
+  };
+}
+
+function dedupeEvents(events: any[]): any[] {
+  const seen = new Set<string>();
+  const out: any[] = [];
+  for (const ev of events.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0))) {
+    const key = normalize(`${ev.event_date ?? ""} ${ev.title ?? ""}`).split(" ").filter((t) => t.length > 3).slice(0, 12).join(" ");
+    if (!key || [...seen].some((s) => similarity(s, key) > 0.78)) continue;
+    seen.add(key);
+    out.push(ev);
+  }
+  return out;
+}
+
+function clusterEvents(events: any[]): any[] {
+  const clusters: any[] = [];
+  const sorted = [...events].filter((e) => e?.event_date).sort((a, b) => Date.parse(a.event_date) - Date.parse(b.event_date));
+  for (const ev of sorted) {
+    const evKey = normalize(ev.title ?? "");
+    const evTime = Date.parse(ev.event_date);
+    const match = clusters.find((c) => {
+      const cTime = Date.parse(c.event_date);
+      return Math.abs(evTime - cTime) <= 14 * 86_400_000 && similarity(evKey, normalize(c.title ?? "")) > 0.62;
+    });
+    if (!match) {
+      clusters.push({ ...ev, sources: [...(ev.sources ?? [])] });
+      continue;
+    }
+    const sourceMap = new Map<string, any>();
+    for (const s of [...(match.sources ?? []), ...(ev.sources ?? [])]) sourceMap.set(`${s.name}|${s.url}`, s);
+    match.sources = [...sourceMap.values()].slice(0, 25);
+    if ((ev.summary ?? "").length > (match.summary ?? "").length) match.summary = ev.summary;
+    if ((ev.importance ?? 0) > (match.importance ?? 0)) match.title = ev.title;
+    const score = scoreEvent(match);
+    match.source_count = score.source_count;
+    match.institutional_sources = score.institutional_sources;
+    match.social_score = score.social_score;
+    match.importance = Math.max(score.importance, match.importance ?? 0, ev.importance ?? 0);
+  }
+  return clusters;
+}
+
 function inDateRange(item: RawItem, startMs: number, endMs: number): boolean {
   if (!item.pub_date) return true; // keep if unknown — AI will discard
   const t = Date.parse(item.pub_date);
@@ -295,22 +438,19 @@ function normalizeEvents(raw: any[]): any[] {
             })
             .filter((s: any) => s.name)
         : [];
-      const source_count = sources.length || safeNum(e.source_count, 1, 0, 999);
-      const institutional_sources = sources.filter((s: any) => s.type === "institutional").length;
-      const social_score = safeNum(e.social_score, 0);
-      const media_diversity = new Set(sources.map((s: any) => s.name)).size;
-      const computed = source_count * 2 + institutional_sources * 10 + social_score * 0.3 + media_diversity * 1.5;
-      const importance = safeNum(e.importance, Math.min(100, Math.round(computed)));
+      const event_date = e.event_date ?? e.date ?? null;
+      const score = scoreEvent({ ...e, sources });
+      const text = `${e.title ?? ""} ${e.summary ?? ""} ${e.political_impact ?? ""}`;
       return {
         id: e.id ?? `${Date.now()}-${i}`,
         title: sanitizeRadarText(e.title).slice(0, 280),
         summary: sanitizeRadarText(e.summary ?? "").slice(0, 1500),
-        category: sanitizeRadarText(e.category ?? "Outros"),
-        event_date: e.event_date ?? e.date ?? null,
-        source_count,
-        institutional_sources,
-        social_score,
-        importance,
+        category: sanitizeRadarText(e.category && e.category !== "Institucional" ? e.category : categoryForText(text, sources.map((s: any) => s.type))),
+        event_date,
+        source_count: score.source_count,
+        institutional_sources: score.institutional_sources,
+        social_score: score.social_score,
+        importance: score.importance,
         political_impact: e.political_impact ? sanitizeRadarText(e.political_impact).slice(0, 600) : "",
         entities: Array.isArray(e.entities) ? e.entities.slice(0, 10).map((x: any) => sanitizeRadarText(x).slice(0, 80)) : [],
         sources: sources.slice(0, 25).map((s: any) => ({
@@ -320,6 +460,7 @@ function normalizeEvents(raw: any[]): any[] {
         })),
       };
     })
+    .filter((e) => isRelevantPoliticalText(`${e.title} ${e.summary} ${e.category}`))
     .sort((a, b) => {
       const ta = a.event_date ? Date.parse(a.event_date) : 0;
       const tb = b.event_date ? Date.parse(b.event_date) : 0;
@@ -327,11 +468,12 @@ function normalizeEvents(raw: any[]): any[] {
     });
 }
 
-// ===== TEMPORAL DIVERSITY: cap por dia + boost meses pouco representados =====
-function applyTemporalDiversity(events: any[], maxPerDay = 3): any[] {
+// ===== TEMPORAL DIVERSITY: distribuição equilibrada por mês/ano sem inventar datas =====
+function applyTemporalDiversity(events: any[], maxPerDay = 8): any[] {
   if (events.length === 0) return events;
+  const deduped = dedupeEvents(events).filter((ev) => ev.event_date && !isNaN(Date.parse(ev.event_date)));
   const byDay = new Map<string, any[]>();
-  for (const ev of events) {
+  for (const ev of deduped) {
     const day = (ev.event_date ?? "").slice(0, 10) || "unknown";
     if (!byDay.has(day)) byDay.set(day, []);
     byDay.get(day)!.push(ev);
@@ -341,25 +483,24 @@ function applyTemporalDiversity(events: any[], maxPerDay = 3): any[] {
     list.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
     capped.push(...list.slice(0, maxPerDay));
   }
-  // Boost por mês pouco representado
-  const monthCounts = new Map<string, number>();
+  const byMonth = new Map<string, any[]>();
   for (const ev of capped) {
     const m = (ev.event_date ?? "").slice(0, 7) || "unknown";
-    monthCounts.set(m, (monthCounts.get(m) ?? 0) + 1);
+    if (!byMonth.has(m)) byMonth.set(m, []);
+    byMonth.get(m)!.push(ev);
   }
-  const maxMonth = Math.max(1, ...Array.from(monthCounts.values()));
-  for (const ev of capped) {
-    const m = (ev.event_date ?? "").slice(0, 7) || "unknown";
-    const c = monthCounts.get(m) ?? 1;
-    const diversityScore = (1 - c / maxMonth) * 100; // 0..100
-    ev._final_score = (ev.importance ?? 0) * 0.7 + diversityScore * 0.3;
+  const monthLimit = Math.max(12, Math.ceil(capped.length / Math.max(1, byMonth.size)) + 10);
+  const balanced: any[] = [];
+  for (const [, list] of [...byMonth.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    list.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
+    balanced.push(...list.slice(0, monthLimit));
   }
-  capped.sort((a, b) => {
+  balanced.sort((a, b) => {
     const ta = a.event_date ? Date.parse(a.event_date) : 0;
     const tb = b.event_date ? Date.parse(b.event_date) : 0;
     return tb - ta;
   });
-  return capped;
+  return balanced;
 }
 
 function parseAiJson(text: string): any {
@@ -387,8 +528,8 @@ function parseAiJson(text: string): any {
 }
 
 function buildRssFallbackEvents(items: RawItem[], candidateName: string, aliases: string[], startMs: number, endMs: number): any[] {
-  const primary = items.filter((it) => matchesCandidate(it, aliases) && inDateRange(it, startMs, endMs));
-  const relaxed = primary.length > 0 ? primary : items.filter((it) => matchesCandidate(it, aliases));
+  const primary = items.filter((it) => matchesCandidate(it, aliases) && inDateRange(it, startMs, endMs) && isRelevantPoliticalText(`${it.title} ${it.snippet ?? ""}`));
+  const relaxed = primary.length > 0 ? primary : items.filter((it) => matchesCandidate(it, aliases) && isRelevantPoliticalText(`${it.title} ${it.snippet ?? ""}`));
   const seen = new Set<string>();
   return relaxed
     .filter((it) => {
@@ -397,21 +538,26 @@ function buildRssFallbackEvents(items: RawItem[], candidateName: string, aliases
       seen.add(key);
       return true;
     })
-    .slice(0, 120)
-    .map((it, i) => ({
-      id: `rss-fallback-${Date.now()}-${i}`,
-      title: sanitizeRadarText(it.title),
-      summary: sanitizeRadarText(it.snippet || `Notícia pública envolvendo ${candidateName}, detectada automaticamente em fonte RSS externa.`),
-      category: it.type === "institutional" ? "Institucional" : "Outros",
-      event_date: it.pub_date && !isNaN(Date.parse(it.pub_date)) ? new Date(it.pub_date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
-      source_count: 1,
-      institutional_sources: it.type === "institutional" ? 1 : 0,
-      social_score: it.type === "institutional" ? 55 : 35,
-      importance: it.type === "institutional" ? 72 : 52,
-      political_impact: it.type === "institutional" ? "Evento institucional detectado em fonte pública." : "Evento noticioso detectado em fonte pública.",
-      entities: [candidateName, sanitizeRadarText(it.source)],
-      sources: [{ name: sanitizeRadarText(it.source), url: it.url, type: it.type }],
-    }));
+    .slice(0, 500)
+    .map((it, i) => {
+      const text = `${it.title} ${it.snippet ?? ""}`;
+      const sources = [{ name: sanitizeRadarText(it.source), url: it.url, type: it.type }];
+      const score = scoreEvent({ title: it.title, summary: it.snippet, sources });
+      return {
+        id: `rss-fallback-${Date.now()}-${i}`,
+        title: sanitizeRadarText(it.title),
+        summary: sanitizeRadarText(it.snippet || `Evento político público envolvendo ${candidateName}, detectado automaticamente em fonte externa.`),
+        category: categoryForText(text, [it.type]),
+        event_date: it.pub_date && !isNaN(Date.parse(it.pub_date)) ? new Date(it.pub_date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+        source_count: score.source_count,
+        institutional_sources: score.institutional_sources,
+        social_score: score.social_score,
+        importance: score.importance,
+        political_impact: score.importance >= 70 ? "Evento com alto impacto político detectado em fonte pública." : "Evento político detectado em fonte pública.",
+        entities: [candidateName, sanitizeRadarText(it.source)],
+        sources,
+      };
+    });
 }
 
 Deno.serve(async (req) => {
@@ -452,7 +598,7 @@ Deno.serve(async (req) => {
     console.log("LOG 1: candidate_name =", body.candidate_name);
     console.log("LOG 2: period =", { start_date: body.start_date, end_date: body.end_date, force_refresh: !!body.force_refresh });
 
-    // Cache lookup (30 min — TTL menor pra refletir realtime)
+    // Cache lookup (2h) — Atualizar sempre bypassa pelo force_refresh
     if (!body.force_refresh) {
       const { data: cached } = await admin
         .from("radar_cache")
@@ -475,25 +621,37 @@ Deno.serve(async (req) => {
       console.log("[RADAR] force_refresh=true: ignorando cache e rodando IA novamente");
     }
 
-    // ===== 1. FETCH RSS EM PARALELO =====
+    // ===== 1. FETCH RSS EM PARALELO + BUSCAS TEMPORAIS =====
     const aliases = buildAliases(body.candidate_name);
-    // Adicionar Google News query do candidato
-    const googleNewsQuery = encodeURIComponent(body.candidate_name);
+    const buckets = sampledBuckets(body.start_date, body.end_date);
+    const expectedMin = expectedMinimumEvents(body.candidate_name, body.start_date, body.end_date);
+    const relevanceTerms = `(STF OR TSE OR PF OR CPI OR investigação OR julgamento OR denúncia OR escândalo OR corrupção OR votação OR economia)`;
+    const temporalQueries = buckets.flatMap((bucket) => {
+      const after = `after:${bucket.start}`;
+      const before = `before:${bucket.end}`;
+      const base = `"${body.candidate_name}" ${after} ${before}`;
+      return [
+        { q: `${base} política ${relevanceTerms}`, label: `Google News política ${bucket.label}` },
+        { q: `${base} STF OR TSE OR PF OR Senado OR Câmara`, label: `Google News institucional ${bucket.label}` },
+        { q: `${base} escândalo OR denúncia OR investigação OR julgamento OR CPI`, label: `Google News impacto ${bucket.label}` },
+      ];
+    });
     const dynamicFeeds = [
-      ...FEEDS,
-      {
-        name: "Google News BR",
-        url: `https://news.google.com/rss/search?q=${googleNewsQuery}&hl=pt-BR&gl=BR&ceid=BR:pt-419`,
+      ...FEEDS.map((f) => ({ ...f, bucket: "live" })),
+      ...temporalQueries.slice(0, 108).map((query) => ({
+        name: query.label,
+        url: `https://news.google.com/rss/search?q=${encodeURIComponent(query.q)}&hl=pt-BR&gl=BR&ceid=BR:pt-419`,
         type: "aggregator" as const,
-      },
+        bucket: query.label.match(/(\d{2}\/\d{4})/)?.[1] ?? "temporal",
+      })),
     ];
 
     const t0 = Date.now();
-    const allItems = (await Promise.all(dynamicFeeds.map((f) => fetchFeed(f.name, f.url, f.type)))).flat();
+    const allItems = (await Promise.all(dynamicFeeds.map((f) => fetchFeed(f.name, f.url, f.type, f.bucket)))).flat();
     const fetchMs = Date.now() - t0;
 
     // Filtrar por candidato + período
-    const filtered = allItems.filter((it) => matchesCandidate(it, aliases) && inDateRange(it, startMs, endMs));
+    const filtered = allItems.filter((it) => matchesCandidate(it, aliases) && inDateRange(it, startMs, endMs) && isRelevantPoliticalText(`${it.title} ${it.snippet ?? ""}`));
 
     // Dedup por URL
     const seen = new Set<string>();
@@ -504,7 +662,7 @@ Deno.serve(async (req) => {
       return true;
     });
 
-    console.log(`[RADAR] ${body.candidate_name}: ${allItems.length} brutos, ${unique.length} filtrados em ${fetchMs}ms`);
+    console.log(`[RADAR] ${body.candidate_name}: ${allItems.length} brutos, ${unique.length} filtrados, ${buckets.length} janelas em ${fetchMs}ms`);
 
     // ===== 2. PROMPT IA =====
     const catFilter =
@@ -514,12 +672,13 @@ Deno.serve(async (req) => {
 
     const systemPrompt = `Você é um motor de political intelligence. Responda somente com JSON válido, sem markdown.`;
 
-    const sourcesPayload = unique.slice(0, 220).map((it) => ({
+    const sourcesPayload = unique.slice(0, 420).map((it) => ({
       title: it.title,
       url: it.url,
       source: it.source,
       type: it.type,
       date: it.pub_date ?? null,
+      bucket: it.bucket ?? null,
       snippet: it.snippet?.slice(0, 220) ?? "",
     }));
 
@@ -554,21 +713,20 @@ Busque em:
 * Valor
 * Exame
 
-IMPORTANTE:
-Retorne MUITOS eventos.
-Meta:
-mínimo 50 eventos para períodos grandes.
+IMPORTANTE - AI FIRST, HISTÓRICO E DISTRIBUIÇÃO TEMPORAL:
+Retorne o maior número possível de eventos RELEVANTES e verificáveis.
+Meta mínima operacional deste candidato/período: ${expectedMin} eventos.
 Faixa esperada para este período: ${targetRange(body.start_date, body.end_date)}.
+Janelas mensais amostradas para cobrir uniformemente o período:
+${JSON.stringify(buckets)}
 ${catFilter}
 
-Inclua:
+PRIORIZAR:
 
 * crises
 * escândalos
 * operações
 * julgamentos
-* falas polêmicas
-* entrevistas
 * votações
 * denúncias
 * processos
@@ -576,13 +734,25 @@ Inclua:
 * debates
 * CPIs
 * decisões judiciais
+* cassações
+* inelegibilidade
+* prisão
+* corrupção
+* economia e Banco Central quando houver impacto político
+
+IGNORAR completamente:
+* palpite esportivo, futebol, Copa, apostas
+* entrevista banal sem consequência política
+* visita rotineira, agenda comum, cerimônia protocolar
+* agenda de campanha simples
+* comentário sem impacto institucional ou eleitoral
 
 Notícias brutas coletadas via RSS em tempo real (${sourcesPayload.length} itens) para agrupar, deduplicar e usar como evidência prioritária:
 ${JSON.stringify(sourcesPayload)}
 
-Retorne JSON:
+Retorne JSON neste formato:
 
-[
+{"events":[
 {
 "title":"",
 "summary":"",
@@ -595,14 +765,19 @@ Retorne JSON:
 "political_impact":"",
 "entities":[""]
 }
-]
+]}
 
-NÃO retorne menos de 20 eventos, exceto se realmente não existirem.
+NÃO use score fixo. Calcule importância variando por impacto, fontes e gravidade:
+importance = (source_count * 2) + (institutional_sources * 12) + (media_weight * 8) + (social_relevance * 0.3) + (impact_score * 20), clamp 0-100.
+social_score deve variar conforme cobertura pública: quantidade/diversidade de fontes, presença em veículos nacionais/internacionais e impacto político. Nunca use default 35.
+
+Se as notícias brutas atuais forem insuficientes para meses antigos, complemente com seu conhecimento histórico público, mas apenas eventos reais e datados.
+NÃO retorne menos de ${Math.min(expectedMin, 350)} eventos quando o período for amplo e houver cobertura pública.
 
 DISTRIBUTE RESULTS ACROSS THE ENTIRE REQUESTED DATE RANGE.
 Avoid over-concentration in a single day/week unless historically justified.
 Para cada mês do período solicitado, inclua pelo menos alguns eventos representativos quando existirem fatos públicos.
-Evite que a maioria dos eventos caia em uma única semana — espalhe ao longo do tempo.`;
+Evite que a maioria dos eventos caia em uma única semana — espalhe ao longo do tempo por ano e mês.`;
 
     console.log("LOG 3: prompt enviado =", userPrompt);
 
@@ -692,7 +867,7 @@ Evite que a maioria dos eventos caia em uma única semana — espalhe ao longo d
           response_json: nonEmptyEvents,
           event_count: nonEmptyEvents.length,
           created_at: new Date().toISOString(),
-          expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+          expires_at: new Date(Date.now() + CACHE_TTL_MS).toISOString(),
         },
         { onConflict: "user_id,period_hash" },
       );
@@ -701,7 +876,7 @@ Evite que a maioria dos eventos caia em uma única semana — espalhe ao longo d
     async function returnRssFallback(reason: string, statusWhenEmpty = 502) {
       console.warn(`[RADAR] fallback RSS acionado: ${reason}`);
       const fallbackRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs);
-      const fallbackEvents = applyTemporalDiversity(fallbackRaw, 3);
+      const fallbackEvents = applyTemporalDiversity(fallbackRaw, 8);
       console.log("LOG 6: eventos após filtro =", { fallback: true, count: fallbackEvents.length, sample: fallbackEvents.slice(0, 3) });
       if (fallbackEvents.length === 0) {
         console.log("Skipping empty cache");
@@ -748,15 +923,20 @@ Evite que a maioria dos eventos caia em uma única semana — espalhe ao longo d
 
     const candidateFiltered = parsedEvents.filter((event) => eventMatchesCandidate(event, aliases));
     const filteredEvents = candidateFiltered.length > 0 ? candidateFiltered : parsedEvents;
-    const events = applyTemporalDiversity(filteredEvents, 3);
-    console.log("LOG 6: eventos após filtro =", { count: events.length, before_diversity: filteredEvents.length, sample: events.slice(0, 3) });
+    let events = applyTemporalDiversity(clusterEvents(filteredEvents), 8);
+    const rssFallbackRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs);
+    if (events.length < Math.min(expectedMin, 100) && rssFallbackRaw.length > 0) {
+      console.warn(`[RADAR] IA abaixo da meta (${events.length}/${expectedMin}); mesclando evidências RSS temporais`);
+      events = applyTemporalDiversity(clusterEvents([...events, ...rssFallbackRaw]), 8);
+    }
+    console.log("LOG 6: eventos após filtro =", { count: events.length, expectedMin, before_diversity: filteredEvents.length, rss_candidates: rssFallbackRaw.length, sample: events.slice(0, 3) });
 
     if (events.length === 0) {
       console.error("AI returned 0 events");
       return await returnRssFallback("AI returned 0 events after candidate filter");
     }
 
-    // Cache 30 min — nunca salvar cache vazio
+    // Cache 2h — nunca salvar cache vazio
     await saveCache(events);
 
     return jsonResponse({

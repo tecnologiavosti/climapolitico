@@ -72,8 +72,9 @@ function sanitizeRadarText(input: unknown): string {
 }
 
 function band(value: number) {
-  if (value >= 70) return { label: "Grande", tone: "bg-foreground text-background" };
-  if (value >= 40) return { label: "Médio", tone: "bg-muted text-foreground border" };
+  if (value >= 80) return { label: "Crítico", tone: "bg-destructive text-destructive-foreground" };
+  if (value >= 60) return { label: "Grande", tone: "bg-foreground text-background" };
+  if (value >= 30) return { label: "Médio", tone: "bg-muted text-foreground border" };
   return { label: "Pequeno", tone: "bg-background text-muted-foreground border" };
 }
 
@@ -206,7 +207,7 @@ export default function RadarPolitico() {
 
   const kpis = useMemo(() => ({
     total: filtered.length,
-    grandes: filtered.filter((e) => e.importance >= 70).length,
+    grandes: filtered.filter((e) => e.importance >= 60).length,
     institucionais: filtered.filter((e) =>
       e.institutional_sources > 0 || e.sources?.some((s) => /\b(STF|TSE|PF|Senado|Câmara|Camara|Planalto|STJ|TCU|CGU|AGU|CNJ)\b/i.test(s.name)),
     ).length,
@@ -222,8 +223,17 @@ export default function RadarPolitico() {
       const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       map.set(k, (map.get(k) ?? 0) + 1);
     });
-    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(-12);
-  }, [filtered]);
+    if (!from || !to) return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+    const months: Array<[string, number]> = [];
+    const cursor = new Date(from.getFullYear(), from.getMonth(), 1);
+    const end = new Date(to.getFullYear(), to.getMonth(), 1);
+    while (cursor <= end && months.length < 120) {
+      const k = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
+      months.push([k, map.get(k) ?? 0]);
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+    return months;
+  }, [filtered, from, to]);
   const maxMonth = Math.max(1, ...timeline.map(([, v]) => v));
 
   return (
@@ -332,7 +342,7 @@ export default function RadarPolitico() {
       {/* KPIs */}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Kpi label="Eventos" value={kpis.total} />
-        <Kpi label="Grandes" value={kpis.grandes} hint="importância ≥ 70" />
+        <Kpi label="Grandes" value={kpis.grandes} hint="importância ≥ 60" />
         <Kpi label="Institucionais" value={kpis.institucionais} hint="STF · TSE · PF · TCU" />
         <Kpi label="Alta repercussão" value={kpis.altaRepercussao} hint="social ≥ 60" />
       </section>
@@ -344,7 +354,8 @@ export default function RadarPolitico() {
             <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
               Distribuição mensal
             </div>
-            <div className="grid gap-2 items-end h-20" style={{ gridTemplateColumns: `repeat(${timeline.length}, minmax(0, 1fr))` }}>
+            <div className="overflow-x-auto pb-1">
+            <div className="grid gap-2 items-end h-20 min-w-full" style={{ gridTemplateColumns: `repeat(${timeline.length}, minmax(18px, 1fr))` }}>
               {timeline.map(([k, count]) => {
                 const [y, m] = k.split("-");
                 return (
@@ -358,6 +369,7 @@ export default function RadarPolitico() {
                   </div>
                 );
               })}
+            </div>
             </div>
           </CardContent>
         </Card>
