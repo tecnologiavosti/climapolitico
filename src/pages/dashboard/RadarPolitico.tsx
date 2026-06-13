@@ -333,15 +333,44 @@ export default function RadarPolitico() {
       <section className="space-y-2">
         <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">
           {searchMutation.isPending
-            ? "Buscando..."
+            ? "Buscando eventos via IA..."
             : `${nfBR.format(filtered.length)} eventos`}
         </h2>
 
+        {lastError && !searchMutation.isPending && (
+          <Card className="border-destructive/40 bg-destructive/5">
+            <CardContent className="p-4 space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-destructive">
+                <AlertTriangle className="h-4 w-4" /> Falha na busca do Radar
+              </div>
+              <p className="text-sm text-destructive/90">{lastError.message}</p>
+              {lastError.stack && (
+                <pre className="max-h-40 overflow-auto rounded border border-destructive/20 bg-background/80 p-3 text-xs whitespace-pre-wrap text-muted-foreground">
+                  {lastError.stack}
+                </pre>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {searchMutation.isPending ? (
-          <div className="grid gap-2">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="border rounded-md p-4 bg-card animate-pulse h-20" />
-            ))}
+          <div className="border rounded-md bg-card p-4 space-y-4">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Loader2 className="h-4 w-4 animate-spin" /> Buscando eventos via IA...
+            </div>
+            <div className="grid gap-2 text-xs text-muted-foreground">
+              {["Consultando IA", "Processando eventos", "Atualizando cache"].map((step, i) => (
+                <div key={step} className="flex items-center gap-2">
+                  <span className={cn("h-2 w-2 rounded-full", i === 0 ? "bg-foreground animate-pulse" : "bg-muted-foreground/40")} />
+                  {step}
+                </div>
+              ))}
+            </div>
+            <div className="grid gap-2">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="border rounded-md p-4 bg-background animate-pulse h-20" />
+              ))}
+            </div>
           </div>
         ) : events.length === 0 ? (
           <Card>
