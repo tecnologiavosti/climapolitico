@@ -73,6 +73,10 @@ async function processJob(
   const chunks = buildChunks(body.start_date, body.end_date);
   const total = chunks.length;
 
+  console.log("RADAR RANGE", body.start_date, body.end_date);
+  console.log("TOTAL CHUNKS", total);
+  console.log("CHUNK PREVIEW", chunks.slice(0, 3), "...", chunks.slice(-2));
+
   await admin.from("radar_jobs").update({
     status: "running",
     started_at: new Date().toISOString(),
