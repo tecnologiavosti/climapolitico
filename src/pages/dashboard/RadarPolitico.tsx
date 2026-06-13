@@ -107,7 +107,7 @@ export default function RadarPolitico() {
   }, [preset, customFrom, customTo]);
 
   const searchMutation = useMutation({
-    mutationFn: async (force = false) => {
+    mutationFn: async (force: boolean = false) => {
       if (candidateId === "all") throw new Error("Selecione um candidato.");
       if (!from || !to) throw new Error("Defina o período (datas inicial e final).");
       const { data, error } = await supabase.functions.invoke("radar-ai-search", {
