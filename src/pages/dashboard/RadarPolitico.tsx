@@ -311,9 +311,21 @@ export default function RadarPolitico() {
     return list;
   }, [events, category, search, sortBy]);
 
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [cacheKey, search]);
+
+  const visibleEvents = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+  const rowVirtualizer = useVirtualizer({
+    count: visibleEvents.length,
+    getScrollElement: () => listParentRef.current,
+    estimateSize: () => 108,
+    overscan: 8,
+  });
+
   const kpis = useMemo(() => ({
     total: filtered.length,
-    grandes: filtered.filter((e) => e.importance >= 60).length,
+    grandes: filtered.filter((e) => e.importance >= 70).length,
     institucionais: filtered.filter((e) =>
       e.institutional_sources > 0 || e.sources?.some((s) => /\b(STF|TSE|PF|Senado|Câmara|Camara|Planalto|STJ|TCU|CGU|AGU|CNJ)\b/i.test(s.name)),
     ).length,
@@ -469,7 +481,7 @@ export default function RadarPolitico() {
       {/* KPIs */}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Kpi label="Eventos" value={kpis.total} />
-        <Kpi label="Grandes" value={kpis.grandes} hint="importância ≥ 60" />
+        <Kpi label="Grandes" value={kpis.grandes} hint="importância ≥ 70" />
         <Kpi label="Institucionais" value={kpis.institucionais} hint="STF · TSE · PF · TCU" />
         <Kpi label="Alta repercussão" value={kpis.altaRepercussao} hint="social ≥ 60" />
       </section>
