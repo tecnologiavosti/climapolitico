@@ -700,7 +700,8 @@ Evite que a maioria dos eventos caia em uma única semana — espalhe ao longo d
 
     async function returnRssFallback(reason: string, statusWhenEmpty = 502) {
       console.warn(`[RADAR] fallback RSS acionado: ${reason}`);
-      const fallbackEvents = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs);
+      const fallbackRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs);
+      const fallbackEvents = applyTemporalDiversity(fallbackRaw, 3);
       console.log("LOG 6: eventos após filtro =", { fallback: true, count: fallbackEvents.length, sample: fallbackEvents.slice(0, 3) });
       if (fallbackEvents.length === 0) {
         console.log("Skipping empty cache");
