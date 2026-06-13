@@ -11,6 +11,7 @@ interface ReqBody {
   start_date?: string; // YYYY-MM-DD
   end_date?: string;
   categories?: string[];
+  sort?: string;
 }
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -61,7 +62,7 @@ function normalizeKey(input: unknown): string {
 
 function hashPeriod(body: Pick<ReqBody, "candidate_id" | "candidate_name" | "start_date" | "end_date" | "categories">): string {
   const cats = [...(body.categories ?? [])].sort().join(",");
-  return `radar-v8|${body.candidate_id ?? "all"}|${body.candidate_name}|${body.start_date}|${body.end_date}|${cats}|importance`;
+  return `radar-v8|${body.candidate_id ?? "all"}|${body.candidate_name}|${body.start_date}|${body.end_date}|${cats}|${body.sort ?? "importance"}`;
 }
 
 function eventHash(e: any): string {
@@ -163,13 +164,13 @@ async function readCacheFirstPage(admin: any, userId: string, periodHash: string
 }
 
 async function saveCacheSnapshot(admin: any, jobId: string, body: ReqBody & { user_id: string }) {
-  const { data: rows } = await admin
+  let query = admin
     .from("radar_job_events")
     .select("event_data")
     .eq("job_id", jobId)
-    .order("importance", { ascending: false })
-    .order("event_date", { ascending: false, nullsFirst: false })
-    .range(0, 999);
+  if (body.sort === "date") query = query.order("event_date", { ascending: false, nullsFirst: false }).order("importance", { ascending: false });
+  else query = query.order("importance", { ascending: false }).order("event_date", { ascending: false, nullsFirst: false });
+  const { data: rows } = await query.range(0, 999);
   const events = (rows ?? []).map((row: any) => row?.event_data).filter(Boolean);
   if (events.length === 0) return;
   await admin.from("radar_cache").upsert({
