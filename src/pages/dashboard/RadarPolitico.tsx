@@ -72,8 +72,9 @@ const PRESETS = [
 ];
 
 const nfBR = new Intl.NumberFormat("pt-BR");
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 500;
 const LOAD_MORE_STEP = 100;
+const BACKEND_FETCH_PAGE = 500;
 const MEMORY_CACHE_TTL_MS = 15 * 60 * 1000;
 const BROWSER_CACHE_TTL_MS = 60 * 60 * 1000;
 const radarMemoryCache = new Map<string, { expiresAt: number; events: RadarEvent[]; jobId?: string; fetchedAt: string; eventsCount?: number }>();
@@ -166,7 +167,7 @@ export default function RadarPolitico() {
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
   const [lastError, setLastError] = useState<{ message: string; stack: string } | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [visibleCount, setVisibleCount] = useState(LOAD_MORE_STEP);
   const listParentRef = useRef<HTMLDivElement | null>(null);
 
   const { data: candidates } = useQuery({
@@ -276,7 +277,7 @@ export default function RadarPolitico() {
       if (candidateId === "all") throw new Error("Selecione um candidato.");
       if (!from || !to) throw new Error("Defina o período (datas inicial e final).");
       setEvents([]);
-      setVisibleCount(PAGE_SIZE);
+      setVisibleCount(LOAD_MORE_STEP);
       setLastError(null);
       const { data, error } = await supabase.functions.invoke("radar-job-create", {
         body: {
@@ -315,7 +316,7 @@ export default function RadarPolitico() {
     mutationFn: async () => {
       if (!jobId || jobId === "cache") return [] as RadarEvent[];
       const { data, error } = await supabase.functions.invoke("radar-job-status", {
-        body: { job_id: jobId, page_size: PAGE_SIZE, offset: events.length, sort: sortBy },
+        body: { job_id: jobId, page_size: BACKEND_FETCH_PAGE, offset: events.length, sort: sortBy },
       });
       if (error) throw error;
       const payload = data as { events?: RadarEvent[] } | null;
@@ -333,10 +334,22 @@ export default function RadarPolitico() {
         setRadarCache(cacheKey, { events: merged, jobId: jobId ?? undefined, fetchedAt: new Date().toISOString(), eventsCount: jobStatus?.events_count });
         return merged;
       });
-      setVisibleCount((current) => current + PAGE_SIZE);
     },
     onError: (e: unknown) => toast.error(friendlyRadarError(e instanceof Error ? e.message : "Falha ao carregar mais eventos")),
   });
+
+  // Auto-prefetch: quando backend tem mais eventos do que carregamos localmente,
+  // baixa o restante em background para que a paginação local cubra todos os 2190+.
+  useEffect(() => {
+    const backendCount = jobStatus?.events_count ?? 0;
+    if (!jobId || jobId === "cache") return;
+    if (loadMoreMutation.isPending) return;
+    if (backendCount > events.length) {
+      const t = setTimeout(() => loadMoreMutation.mutate(), 250);
+      return () => clearTimeout(t);
+    }
+  }, [jobStatus?.events_count, events.length, jobId, loadMoreMutation.isPending]);
+
 
   // Filtros locais
   const filtered = useMemo(() => {
@@ -355,17 +368,21 @@ export default function RadarPolitico() {
   }, [events, category, search, sortBy]);
 
   useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
+    setVisibleCount(LOAD_MORE_STEP);
   }, [cacheKey, search]);
 
   const visibleEvents = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
 
   const backendTotal = jobStatus?.events_count ?? events.length;
   useEffect(() => {
-    console.log("BACKEND EVENTS:", backendTotal);
-    console.log("FILTERED EVENTS:", filtered.length);
-    console.log("VISIBLE EVENTS:", visibleEvents.length);
-  }, [backendTotal, filtered.length, visibleEvents.length]);
+    console.log("TOTAL EVENTS", events.length);
+    console.log("BACKEND TOTAL", backendTotal);
+    console.log("FILTERED EVENTS", filtered.length);
+    console.log("SORTED EVENTS", filtered.length);
+    console.log("VISIBLE EVENTS", visibleEvents.length);
+    console.log("FIRST EVENT DATE", filtered[0]?.event_date);
+    console.log("LAST EVENT DATE", filtered.at(-1)?.event_date);
+  }, [backendTotal, filtered, visibleEvents.length, events.length]);
 
   const rowVirtualizer = useVirtualizer({
     count: visibleEvents.length,
