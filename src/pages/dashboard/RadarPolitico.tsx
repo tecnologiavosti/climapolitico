@@ -375,10 +375,14 @@ export default function RadarPolitico() {
 
   const backendTotal = jobStatus?.events_count ?? events.length;
   useEffect(() => {
-    console.log("BACKEND EVENTS:", backendTotal);
-    console.log("FILTERED EVENTS:", filtered.length);
-    console.log("VISIBLE EVENTS:", visibleEvents.length);
-  }, [backendTotal, filtered.length, visibleEvents.length]);
+    console.log("TOTAL EVENTS", events.length);
+    console.log("BACKEND TOTAL", backendTotal);
+    console.log("FILTERED EVENTS", filtered.length);
+    console.log("SORTED EVENTS", filtered.length);
+    console.log("VISIBLE EVENTS", visibleEvents.length);
+    console.log("FIRST EVENT DATE", filtered[0]?.event_date);
+    console.log("LAST EVENT DATE", filtered.at(-1)?.event_date);
+  }, [backendTotal, filtered, visibleEvents.length, events.length]);
 
   const rowVirtualizer = useVirtualizer({
     count: visibleEvents.length,
