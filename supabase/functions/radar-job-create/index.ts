@@ -309,13 +309,50 @@ Deno.serve(async (req) => {
     }
 
     const body = (await req.json()) as ReqBody;
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+
+    if (body?.resume_job_id) {
+      const { data: existing, error: jobErr } = await admin
+        .from("radar_jobs")
+        .select("id,user_id,candidate_id,candidate_name,start_date,end_date,categories,processed_chunks,status")
+        .eq("id", body.resume_job_id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (jobErr || !existing) {
+        return new Response(JSON.stringify({ error: jobErr?.message ?? "job_not_found" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (existing.status === "completed" || existing.status === "failed") {
+        return new Response(JSON.stringify({ job_id: existing.id, status: existing.status }), {
+          status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // @ts-ignore EdgeRuntime existe em Supabase Edge Functions
+      EdgeRuntime.waitUntil(processJob(existing.id, {
+        user_id: user.id,
+        candidate_id: existing.candidate_id,
+        candidate_name: existing.candidate_name,
+        start_date: existing.start_date,
+        end_date: existing.end_date,
+        categories: Array.isArray(existing.categories) ? existing.categories : [],
+        processed_chunks: existing.processed_chunks,
+      } as any, authHeader));
+
+      return new Response(JSON.stringify({ job_id: existing.id, status: "running" }), {
+        status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (!body?.candidate_id || !body?.candidate_name || !body?.start_date || !body?.end_date) {
       return new Response(JSON.stringify({ error: "missing_fields" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
     const { data: job, error: insErr } = await admin.from("radar_jobs").insert({
       user_id: user.id,
       candidate_id: body.candidate_id,
