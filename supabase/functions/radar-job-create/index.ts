@@ -277,7 +277,14 @@ async function processJob(
     if (elapsed > MAX_RUNTIME || elapsed + BATCH_GUARD_MS > MAX_RUNTIME) {
       const continued = await scheduleContinuation(jobId, authHeader);
       if (!continued) {
-        await completePartial(admin, jobId, processed, total, `Resultado parcial salvo; continuação será retomada em nova busca (${Math.round(elapsed / 1000)}s)`);
+        const count = await getEventsCount(admin, jobId);
+        await admin.from("radar_jobs").update({
+          status: "running",
+          processed_chunks: processed,
+          progress: progressFor(processed, total),
+          events_count: count,
+          error: `Continuação pausada por limite temporário; será retomada no próximo polling (${Math.round(elapsed / 1000)}s)`,
+        }).eq("id", jobId);
       }
       console.timeEnd("TOTAL_RADAR");
       return;
