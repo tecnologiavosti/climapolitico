@@ -638,7 +638,7 @@ Deno.serve(async (req) => {
   console.time("TOTAL_RADAR");
   const started = Date.now();
   const watchdog = (stage: string) => {
-    if (Date.now() - started > MAX_RUNTIME) throw new Error(`RADAR_TIMEOUT:${stage}`);
+    if (Date.now() - started > MAX_RUNTIME) throw new Error(`radar_background_partial:${stage}`);
   };
   const endTotal = () => {
     try { console.timeEnd("TOTAL_RADAR"); } catch { /* noop */ }
