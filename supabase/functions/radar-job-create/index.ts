@@ -142,13 +142,12 @@ async function completePartial(admin: any, jobId: string, processed: number, tot
 async function readCacheFirstPage(admin: any, userId: string, periodHash: string, body: ReqBody) {
   const { data } = await admin
     .from("radar_cache")
-    .select("response_json,event_count,created_at")
+    .select("event_count,created_at")
     .eq("user_id", userId)
     .eq("period_hash", periodHash)
     .gt("expires_at", new Date().toISOString())
     .maybeSingle();
-  const events = Array.isArray(data?.response_json) ? data.response_json.slice(0, 50) : [];
-  if (events.length === 0) return null;
+  if (!data) return null;
   const { data: recentJob } = await admin
     .from("radar_jobs")
     .select("id,status,events_count")
@@ -159,19 +158,18 @@ async function readCacheFirstPage(admin: any, userId: string, periodHash: string
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  return { events, event_count: data?.event_count ?? recentJob?.events_count ?? events.length, cached_at: data?.created_at, job_id: recentJob?.id ?? null };
+  if (!recentJob?.id) return null;
+  let pageQuery = admin.from("radar_job_events").select("event_data").eq("job_id", recentJob.id);
+  if (body.sort === "date") pageQuery = pageQuery.order("event_date", { ascending: false, nullsFirst: false }).order("importance", { ascending: false });
+  else pageQuery = pageQuery.order("importance", { ascending: false }).order("event_date", { ascending: false, nullsFirst: false });
+  const { data: rows } = await pageQuery.range(0, 49);
+  const events = (rows ?? []).map((row: any) => row?.event_data).filter(Boolean);
+  return { events, event_count: data?.event_count ?? recentJob?.events_count ?? events.length, cached_at: data?.created_at, job_id: recentJob.id };
 }
 
 async function saveCacheSnapshot(admin: any, jobId: string, body: ReqBody & { user_id: string }) {
-  let query = admin
-    .from("radar_job_events")
-    .select("event_data")
-    .eq("job_id", jobId)
-  if (body.sort === "date") query = query.order("event_date", { ascending: false, nullsFirst: false }).order("importance", { ascending: false });
-  else query = query.order("importance", { ascending: false }).order("event_date", { ascending: false, nullsFirst: false });
-  const { data: rows } = await query.range(0, 999);
-  const events = (rows ?? []).map((row: any) => row?.event_data).filter(Boolean);
-  if (events.length === 0) return;
+  const total = await getEventsCount(admin, jobId);
+  if (total === 0) return;
   await admin.from("radar_cache").upsert({
     user_id: body.user_id,
     candidate_id: body.candidate_id ?? null,
@@ -180,8 +178,8 @@ async function saveCacheSnapshot(admin: any, jobId: string, body: ReqBody & { us
     start_date: body.start_date,
     end_date: body.end_date,
     categories: body.categories ?? [],
-    response_json: events,
-    event_count: await getEventsCount(admin, jobId),
+    response_json: { job_id: jobId, mode: "paged" },
+    event_count: total,
     created_at: new Date().toISOString(),
     expires_at: new Date(Date.now() + DB_CACHE_TTL_MS).toISOString(),
   }, { onConflict: "user_id,period_hash" });
