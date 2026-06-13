@@ -119,6 +119,29 @@ function jsonResponse(payload: Record<string, unknown>, status = 200) {
   });
 }
 
+// ===== TEXT SANITIZER (encoding + smart quotes + control chars) =====
+function sanitizeRadarText(input: unknown): string {
+  if (input == null) return "";
+  let s = String(input);
+  // Remove control characters (incl. DEL and C1)
+  s = s.replace(/[\u0000-\u001F\u007F-\u009F]/g, " ");
+  // Remove zero-width and BOM
+  s = s.replace(/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, "");
+  // Smart quotes / dashes / bullets / nbsp
+  const map: Record<string, string> = {
+    "\u2018": "'", "\u2019": "'", "\u201A": "'", "\u201B": "'",
+    "\u201C": '"', "\u201D": '"', "\u201E": '"', "\u201F": '"',
+    "\u2013": "-", "\u2014": "-", "\u2015": "-", "\u2212": "-",
+    "\u2022": "-", "\u2023": "-", "\u25E6": "-", "\u2043": "-",
+    "\u00A0": " ", "\u202F": " ", "\u2009": " ", "\u200A": " ",
+    "\u2026": "...",
+  };
+  s = s.replace(/[\u2018\u2019\u201A\u201B\u201C\u201D\u201E\u201F\u2013\u2014\u2015\u2212\u2022\u2023\u25E6\u2043\u00A0\u202F\u2009\u200A\u2026]/g, (c) => map[c] ?? c);
+  // Collapse whitespace
+  s = s.replace(/\s+/g, " ").trim();
+  return s;
+}
+
 // ===== RSS PARSING =====
 function decodeEntities(s: string): string {
   return s
