@@ -92,12 +92,17 @@ Deno.serve(async (req) => {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
     const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const LOVABLE_KEY = Deno.env.get("LOVABLE_API_KEY");
     const CEREBRAS_KEY = Deno.env.get("CEREBRAS_API_KEY");
-    if (!CEREBRAS_KEY && !LOVABLE_KEY) {
-      return new Response(JSON.stringify({ error: "Nenhuma chave de IA configurada (CEREBRAS_API_KEY ou LOVABLE_API_KEY)" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    const GROQ_KEY = Deno.env.get("GROQ_API_KEY");
+    const GEMINI_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!CEREBRAS_KEY && !GROQ_KEY && !GEMINI_KEY) {
+      return jsonResponse({
+        error: "ai_unconfigured",
+        message: "Nenhum provedor de IA está configurado para o Radar Político.",
+        fallback: true,
+        events: [],
+        cached: false,
+        count: 0,
       });
     }
 
