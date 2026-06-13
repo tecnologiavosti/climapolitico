@@ -12,6 +12,8 @@ interface ReqBody {
   end_date?: string;
   categories?: string[];
   sort?: string;
+  force_refresh?: boolean;
+  ignore_cache?: boolean;
 }
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -434,7 +436,9 @@ Deno.serve(async (req) => {
     }
 
     const periodHash = hashPeriod(body);
-    const cached = await readCacheFirstPage(admin, user.id, periodHash, body);
+    const bypassCache = body.force_refresh === true || body.ignore_cache === true;
+    console.log("FORCE REFRESH", bypassCache);
+    const cached = bypassCache ? null : await readCacheFirstPage(admin, user.id, periodHash, body);
     console.log("CACHE HIT", !!cached);
     if (cached) {
       return new Response(JSON.stringify({
@@ -447,7 +451,12 @@ Deno.serve(async (req) => {
       }), { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const { data: active } = await admin
+    if (bypassCache) {
+      // Invalida cache do período para forçar reprocessamento completo
+      await admin.from("radar_cache").delete().eq("user_id", user.id).eq("period_hash", periodHash);
+    }
+
+    const { data: active } = bypassCache ? { data: null } : await admin
       .from("radar_jobs")
       .select("id,status,events_count")
       .eq("user_id", user.id)
@@ -463,6 +472,7 @@ Deno.serve(async (req) => {
         status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
 
     const { data: job, error: insErr } = await admin.from("radar_jobs").insert({
       user_id: user.id,
