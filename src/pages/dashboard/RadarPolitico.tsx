@@ -161,7 +161,9 @@ export default function RadarPolitico() {
       const clean = (data.events ?? []).map((e) => ({
         ...e,
         title: sanitizeRadarText(e.title),
-        summary: sanitizeRadarText(e.summary),
+        summary: sanitizeRadarText(e.summary ?? e.description ?? e.content ?? ""),
+        description: sanitizeRadarText(e.description ?? ""),
+        content: sanitizeRadarText(e.content ?? ""),
         category: sanitizeRadarText(e.category),
         sources: (e.sources ?? []).map((s) => ({ ...s, name: sanitizeRadarText(s.name) })),
       }));
