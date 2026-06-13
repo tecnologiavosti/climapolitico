@@ -577,6 +577,9 @@ Deno.serve(async (req) => {
   const watchdog = (stage: string) => {
     if (Date.now() - started > MAX_RUNTIME) throw new Error(`RADAR_TIMEOUT:${stage}`);
   };
+  const endTotal = () => {
+    try { console.timeEnd("TOTAL_RADAR"); } catch { /* noop */ }
+  };
 
   try {
     const authHeader = req.headers.get("Authorization");
@@ -849,6 +852,11 @@ VALIDAÇÃO FINAL (faça antes de responder):
         console.log("Skipping empty cache");
         return;
       }
+      watchdog("CACHE_SAVE");
+      console.time("CACHE_SAVE");
+      for (let i = 0; i < nonEmptyEvents.length; i += CACHE_BATCH_SIZE) {
+        console.log("CACHE_SAVE batch", i, Math.min(i + CACHE_BATCH_SIZE, nonEmptyEvents.length), "of", nonEmptyEvents.length);
+      }
       await admin.from("radar_cache").upsert(
         {
           user_id: userId,
@@ -865,6 +873,7 @@ VALIDAÇÃO FINAL (faça antes de responder):
         },
         { onConflict: "user_id,period_hash" },
       );
+      console.timeEnd("CACHE_SAVE");
     }
 
     async function returnRssFallback(reason: string, statusWhenEmpty = 502) {
@@ -874,6 +883,7 @@ VALIDAÇÃO FINAL (faça antes de responder):
       console.log("LOG 6: eventos após filtro =", { fallback: true, count: fallbackEvents.length, sample: fallbackEvents.slice(0, 3) });
       if (fallbackEvents.length === 0) {
         console.log("Skipping empty cache");
+        endTotal();
         return jsonResponse({
           error: "AI returned 0 events",
           message: "A IA falhou e o fallback RSS não encontrou notícias públicas para este candidato/período.",
@@ -887,6 +897,7 @@ VALIDAÇÃO FINAL (faça antes de responder):
         }, statusWhenEmpty);
       }
       await saveCache(fallbackEvents);
+      endTotal();
       return jsonResponse({
         events: fallbackEvents,
         cached: false,
@@ -906,12 +917,15 @@ VALIDAÇÃO FINAL (faça antes de responder):
 
     console.log("LOG 4: resposta bruta da IA =", rawAiResponse.slice(0, 4000));
 
+    watchdog("SCORING");
+    console.time("SCORING");
     const parsed = parseAiJson(text);
 
     const parsedEvents = normalizeEvents(parsed.events ?? parsed);
     console.log("LOG 5: eventos parseados =", { count: parsedEvents.length, sample: parsedEvents.slice(0, 3) });
     if (parsedEvents.length === 0) {
       console.error("AI returned 0 events");
+      console.timeEnd("SCORING");
       return await returnRssFallback("AI returned 0 events");
     }
 
@@ -923,6 +937,7 @@ VALIDAÇÃO FINAL (faça antes de responder):
       console.warn(`[RADAR] IA abaixo da meta (${events.length}/${expectedMin}); mesclando evidências RSS temporais`);
       events = applyTemporalDiversity(clusterEvents([...events, ...rssFallbackRaw]), 30);
     }
+    console.timeEnd("SCORING");
     console.log("LOG 6: eventos após filtro =", { count: events.length, expectedMin, before_diversity: filteredEvents.length, rss_candidates: rssFallbackRaw.length, sample: events.slice(0, 3) });
 
     // Logs históricos obrigatórios
@@ -939,6 +954,7 @@ VALIDAÇÃO FINAL (faça antes de responder):
     // Cache 2h — nunca salvar cache vazio
     await saveCache(events);
 
+    endTotal();
     return jsonResponse({
       events,
       cached: false,
@@ -950,6 +966,7 @@ VALIDAÇÃO FINAL (faça antes de responder):
     });
   } catch (e) {
     console.error("[RADAR-AI] erro inesperado", e);
+    endTotal();
     return jsonResponse({
       error: "radar_failed",
       message: "O Radar Político não conseguiu concluir a busca agora. Tente novamente em instantes.",
