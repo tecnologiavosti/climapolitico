@@ -2396,6 +2396,51 @@ export type Database = {
         }
         Relationships: []
       }
+      radar_cache: {
+        Row: {
+          candidate_id: string | null
+          candidate_name: string
+          categories: string[]
+          created_at: string
+          end_date: string
+          event_count: number
+          expires_at: string
+          id: string
+          period_hash: string
+          response_json: Json
+          start_date: string
+          user_id: string
+        }
+        Insert: {
+          candidate_id?: string | null
+          candidate_name: string
+          categories?: string[]
+          created_at?: string
+          end_date: string
+          event_count?: number
+          expires_at?: string
+          id?: string
+          period_hash: string
+          response_json: Json
+          start_date: string
+          user_id: string
+        }
+        Update: {
+          candidate_id?: string | null
+          candidate_name?: string
+          categories?: string[]
+          created_at?: string
+          end_date?: string
+          event_count?: number
+          expires_at?: string
+          id?: string
+          period_hash?: string
+          response_json?: Json
+          start_date?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       radar_pipeline_health: {
         Row: {
           candidate_id: string
