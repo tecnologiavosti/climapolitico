@@ -6,6 +6,20 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 
+async function resumeIfPaused(jobId: string, authHeader: string, error?: string | null) {
+  if (!/Continuação pausada/i.test(error ?? "")) return;
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/radar-job-create`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: authHeader, apikey: ANON },
+      body: JSON.stringify({ resume_job_id: jobId }),
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch (e) {
+    console.warn(`[radar-job-status ${jobId}] resume skipped`, (e as Error)?.message ?? String(e));
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -49,6 +63,11 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "not_found" }), {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    if (data.status === "running" && /Continuação pausada/i.test(data.error ?? "")) {
+      // @ts-ignore EdgeRuntime existe em Supabase Edge Functions
+      EdgeRuntime.waitUntil(resumeIfPaused(jobId, authHeader, data.error));
     }
 
     // Paginação real: nunca retorna milhares de cards por polling.
