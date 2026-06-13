@@ -569,7 +569,7 @@ Deno.serve(async (req) => {
     console.log("LOG 1: candidate_name =", body.candidate_name);
     console.log("LOG 2: period =", { start_date: body.start_date, end_date: body.end_date, force_refresh: !!body.force_refresh });
 
-    // Cache lookup (30 min — TTL menor pra refletir realtime)
+    // Cache lookup (2h) — Atualizar sempre bypassa pelo force_refresh
     if (!body.force_refresh) {
       const { data: cached } = await admin
         .from("radar_cache")
@@ -902,7 +902,7 @@ Evite que a maioria dos eventos caia em uma única semana — espalhe ao longo d
       return await returnRssFallback("AI returned 0 events after candidate filter");
     }
 
-    // Cache 30 min — nunca salvar cache vazio
+    // Cache 2h — nunca salvar cache vazio
     await saveCache(events);
 
     return jsonResponse({
