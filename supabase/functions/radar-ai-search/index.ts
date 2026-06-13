@@ -4,9 +4,10 @@
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+const CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const MODEL = "google/gemini-2.5-flash";
-const FALLBACK_MODEL = "google/gemini-2.5-flash-lite";
+const CEREBRAS_MODEL = "llama-3.3-70b";
+const FALLBACK_MODEL = "google/gemini-2.5-flash";
 
 interface ReqBody {
   candidate_id?: string | null;
@@ -74,8 +75,9 @@ Deno.serve(async (req) => {
     const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
     const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const LOVABLE_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_KEY) {
-      return new Response(JSON.stringify({ error: "LOVABLE_API_KEY ausente" }), {
+    const CEREBRAS_KEY = Deno.env.get("CEREBRAS_API_KEY");
+    if (!CEREBRAS_KEY && !LOVABLE_KEY) {
+      return new Response(JSON.stringify({ error: "Nenhuma chave de IA configurada (CEREBRAS_API_KEY ou LOVABLE_API_KEY)" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -170,7 +172,24 @@ Formato OBRIGATÓRIO de resposta:
 Retorne entre 30 e 80 eventos quando o período for amplo, e o máximo que tiver com alta confiabilidade quando o período for curto.
 Ordene do mais recente para o mais antigo.`;
 
-    async function callModel(model: string) {
+    async function callCerebras() {
+      return await fetch(CEREBRAS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${CEREBRAS_KEY}` },
+        body: JSON.stringify({
+          model: CEREBRAS_MODEL,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.3,
+          max_tokens: 8192,
+        }),
+      });
+    }
+
+    async function callGateway(model: string) {
       return await fetch(GATEWAY_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_KEY! },
@@ -186,10 +205,22 @@ Ordene do mais recente para o mais antigo.`;
       });
     }
 
-    let aiRes = await callModel(MODEL);
-    if (aiRes.status === 429) {
-      await new Promise((r) => setTimeout(r, 1500));
-      aiRes = await callModel(FALLBACK_MODEL);
+    let aiRes: Response | null = null;
+    if (CEREBRAS_KEY) {
+      try {
+        aiRes = await callCerebras();
+      } catch (_) {
+        aiRes = null;
+      }
+    }
+    if ((!aiRes || !aiRes.ok) && LOVABLE_KEY) {
+      aiRes = await callGateway(FALLBACK_MODEL);
+    }
+    if (!aiRes) {
+      return new Response(JSON.stringify({ error: "ai_unavailable" }), {
+        status: 502,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     if (!aiRes.ok) {
