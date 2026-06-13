@@ -499,8 +499,8 @@ function parseAiJson(text: string): any {
 }
 
 function buildRssFallbackEvents(items: RawItem[], candidateName: string, aliases: string[], startMs: number, endMs: number): any[] {
-  const primary = items.filter((it) => matchesCandidate(it, aliases) && inDateRange(it, startMs, endMs));
-  const relaxed = primary.length > 0 ? primary : items.filter((it) => matchesCandidate(it, aliases));
+  const primary = items.filter((it) => matchesCandidate(it, aliases) && inDateRange(it, startMs, endMs) && isRelevantPoliticalText(`${it.title} ${it.snippet ?? ""}`));
+  const relaxed = primary.length > 0 ? primary : items.filter((it) => matchesCandidate(it, aliases) && isRelevantPoliticalText(`${it.title} ${it.snippet ?? ""}`));
   const seen = new Set<string>();
   return relaxed
     .filter((it) => {
@@ -509,21 +509,26 @@ function buildRssFallbackEvents(items: RawItem[], candidateName: string, aliases
       seen.add(key);
       return true;
     })
-    .slice(0, 120)
-    .map((it, i) => ({
-      id: `rss-fallback-${Date.now()}-${i}`,
-      title: sanitizeRadarText(it.title),
-      summary: sanitizeRadarText(it.snippet || `Notícia pública envolvendo ${candidateName}, detectada automaticamente em fonte RSS externa.`),
-      category: it.type === "institutional" ? "Institucional" : "Outros",
-      event_date: it.pub_date && !isNaN(Date.parse(it.pub_date)) ? new Date(it.pub_date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
-      source_count: 1,
-      institutional_sources: it.type === "institutional" ? 1 : 0,
-      social_score: it.type === "institutional" ? 55 : 35,
-      importance: it.type === "institutional" ? 72 : 52,
-      political_impact: it.type === "institutional" ? "Evento institucional detectado em fonte pública." : "Evento noticioso detectado em fonte pública.",
-      entities: [candidateName, sanitizeRadarText(it.source)],
-      sources: [{ name: sanitizeRadarText(it.source), url: it.url, type: it.type }],
-    }));
+    .slice(0, 500)
+    .map((it, i) => {
+      const text = `${it.title} ${it.snippet ?? ""}`;
+      const sources = [{ name: sanitizeRadarText(it.source), url: it.url, type: it.type }];
+      const score = scoreEvent({ title: it.title, summary: it.snippet, sources });
+      return {
+        id: `rss-fallback-${Date.now()}-${i}`,
+        title: sanitizeRadarText(it.title),
+        summary: sanitizeRadarText(it.snippet || `Evento político público envolvendo ${candidateName}, detectado automaticamente em fonte externa.`),
+        category: categoryForText(text, [it.type]),
+        event_date: it.pub_date && !isNaN(Date.parse(it.pub_date)) ? new Date(it.pub_date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+        source_count: score.source_count,
+        institutional_sources: score.institutional_sources,
+        social_score: score.social_score,
+        importance: score.importance,
+        political_impact: score.importance >= 70 ? "Evento com alto impacto político detectado em fonte pública." : "Evento político detectado em fonte pública.",
+        entities: [candidateName, sanitizeRadarText(it.source)],
+        sources,
+      };
+    });
 }
 
 Deno.serve(async (req) => {
