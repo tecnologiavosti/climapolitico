@@ -72,7 +72,8 @@ const PRESETS = [
 ];
 
 const nfBR = new Intl.NumberFormat("pt-BR");
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 100;
+const LOAD_MORE_STEP = 100;
 const MEMORY_CACHE_TTL_MS = 15 * 60 * 1000;
 const BROWSER_CACHE_TTL_MS = 60 * 60 * 1000;
 const radarMemoryCache = new Map<string, { expiresAt: number; events: RadarEvent[]; jobId?: string; fetchedAt: string; eventsCount?: number }>();
@@ -358,6 +359,14 @@ export default function RadarPolitico() {
   }, [cacheKey, search]);
 
   const visibleEvents = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+
+  const backendTotal = jobStatus?.events_count ?? events.length;
+  useEffect(() => {
+    console.log("BACKEND EVENTS:", backendTotal);
+    console.log("FILTERED EVENTS:", filtered.length);
+    console.log("VISIBLE EVENTS:", visibleEvents.length);
+  }, [backendTotal, filtered.length, visibleEvents.length]);
+
   const rowVirtualizer = useVirtualizer({
     count: visibleEvents.length,
     getScrollElement: () => listParentRef.current,
@@ -366,13 +375,13 @@ export default function RadarPolitico() {
   });
 
   const kpis = useMemo(() => ({
-    total: filtered.length,
+    total: Math.max(backendTotal, filtered.length),
     grandes: filtered.filter((e) => e.importance >= 70).length,
     institucionais: filtered.filter((e) =>
       e.institutional_sources > 0 || e.sources?.some((s) => /\b(STF|TSE|PF|Senado|Câmara|Camara|Planalto|STJ|TCU|CGU|AGU|CNJ)\b/i.test(s.name)),
     ).length,
     altaRepercussao: filtered.filter((e) => e.social_score >= 60).length,
-  }), [filtered]);
+  }), [filtered, backendTotal]);
 
   const timeline = useMemo(() => {
     const map = new Map<string, number>();
@@ -671,12 +680,12 @@ export default function RadarPolitico() {
                 className="w-full"
                 disabled={loadMoreMutation.isPending}
                 onClick={() => {
-                  if (visibleCount < filtered.length) setVisibleCount((v) => v + PAGE_SIZE);
+                  if (visibleCount < filtered.length) setVisibleCount((v) => v + LOAD_MORE_STEP);
                   else loadMoreMutation.mutate();
                 }}
               >
                 {loadMoreMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                Carregar mais 50
+                Carregar mais {LOAD_MORE_STEP}
               </Button>
             )}
           </div>
