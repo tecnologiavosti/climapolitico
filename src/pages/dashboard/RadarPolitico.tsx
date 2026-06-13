@@ -283,12 +283,12 @@ export default function RadarPolitico() {
         const errorBody = ctx?.clone ? await ctx.clone().json().catch(() => null) : null;
         throw new Error(errorBody?.error ?? error.message);
       }
-      return data as { job_id: string; status: string; events?: RadarEvent[]; cached?: boolean; events_count?: number };
+      return data as { job_id?: string | null; status: string; events?: RadarEvent[]; cached?: boolean; events_count?: number };
     },
     onSuccess: (data) => {
       if (Array.isArray(data.events) && data.events.length > 0) {
         setEvents(data.events);
-        setRadarCache(cacheKey, { events: data.events, jobId: data.job_id, fetchedAt: new Date().toISOString(), eventsCount: data.events_count });
+        setRadarCache(cacheKey, { events: data.events, jobId: data.job_id ?? undefined, fetchedAt: new Date().toISOString(), eventsCount: data.events_count });
       }
       if (data.status === "cached") {
         setLastFetchedAt(new Date());
@@ -302,7 +302,7 @@ export default function RadarPolitico() {
         toast.success("Resultado carregado do cache do Radar.");
         return;
       }
-      setJobId(data.job_id);
+      setJobId(data.job_id ?? null);
       toast.info("Busca histórica iniciada em background. Primeiros eventos aparecerão automaticamente.");
     },
     onError: (e: any) => {
