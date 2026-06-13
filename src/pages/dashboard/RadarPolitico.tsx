@@ -1,5 +1,6 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -38,6 +39,21 @@ interface RadarEvent {
   sources: Array<{ name: string; url: string; type?: string }>;
 }
 
+interface RadarJobStatus {
+  id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  progress: number;
+  total_chunks: number;
+  processed_chunks: number;
+  events_count: number;
+  events: RadarEvent[];
+  error: string | null;
+  partial?: boolean;
+  page_size?: number;
+  offset?: number;
+  has_more?: boolean;
+}
+
 const CATEGORIES = [
   "Todos","Eleições","STF","TSE","PF","CPI","Congresso","Executivo","Economia",
   "Escândalos","Prisões","Julgamentos","Internacional","Outros",
@@ -56,11 +72,52 @@ const PRESETS = [
 ];
 
 const nfBR = new Intl.NumberFormat("pt-BR");
+const PAGE_SIZE = 50;
+const MEMORY_CACHE_TTL_MS = 15 * 60 * 1000;
+const BROWSER_CACHE_TTL_MS = 60 * 60 * 1000;
+const radarMemoryCache = new Map<string, { expiresAt: number; events: RadarEvent[]; jobId?: string; fetchedAt: string; eventsCount?: number }>();
+
+function radarCacheKey(candidateId: string, from?: Date, to?: Date, category = "Todos", sortBy = "importance") {
+  return ["radar-v8", candidateId, from?.toISOString().slice(0, 10), to?.toISOString().slice(0, 10), category, sortBy].join("|");
+}
+
+function getRadarCache(key: string) {
+  const now = Date.now();
+  const mem = radarMemoryCache.get(key);
+  if (mem && mem.expiresAt > now) return mem;
+  if (mem) radarMemoryCache.delete(key);
+  try {
+    const raw = localStorage.getItem(`radar-cache:${key}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.expiresAt || parsed.expiresAt <= now || !Array.isArray(parsed.events)) {
+      localStorage.removeItem(`radar-cache:${key}`);
+      return null;
+    }
+    radarMemoryCache.set(key, { ...parsed, expiresAt: now + MEMORY_CACHE_TTL_MS });
+    return parsed as { expiresAt: number; events: RadarEvent[]; jobId?: string; fetchedAt: string; eventsCount?: number };
+  } catch {
+    return null;
+  }
+}
+
+function setRadarCache(key: string, entry: { events: RadarEvent[]; jobId?: string; fetchedAt: string; eventsCount?: number }) {
+  const memEntry = { ...entry, expiresAt: Date.now() + MEMORY_CACHE_TTL_MS };
+  radarMemoryCache.set(key, memEntry);
+  try {
+    localStorage.setItem(`radar-cache:${key}`, JSON.stringify({ ...entry, expiresAt: Date.now() + BROWSER_CACHE_TTL_MS }));
+  } catch {
+    // cache local é best-effort; evita travar a UI por quota do navegador
+  }
+}
 
 function sanitizeRadarText(input: unknown): string {
   if (input == null) return "";
   let s = String(input);
-  s = s.replace(/[\u0000-\u001F\u007F-\u009F]/g, " ");
+  s = Array.from(s).map((ch) => {
+    const code = ch.charCodeAt(0);
+    return (code <= 31 || (code >= 127 && code <= 159)) ? " " : ch;
+  }).join("");
   s = s.replace(/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, "");
   const map: Record<string, string> = {
     "\u2018": "'", "\u2019": "'", "\u201A": "'", "\u201B": "'",
@@ -75,10 +132,16 @@ function sanitizeRadarText(input: unknown): string {
 }
 
 function band(value: number) {
-  if (value >= 80) return { label: "Crítico", tone: "bg-destructive text-destructive-foreground" };
-  if (value >= 60) return { label: "Grande", tone: "bg-foreground text-background" };
-  if (value >= 30) return { label: "Médio", tone: "bg-muted text-foreground border" };
+  if (value >= 70) return { label: "Grande", tone: "bg-foreground text-background" };
+  if (value >= 40) return { label: "Médio", tone: "bg-muted text-foreground border" };
   return { label: "Pequeno", tone: "bg-background text-muted-foreground border" };
+}
+
+function friendlyRadarError(message?: string | null) {
+  const msg = message ?? "";
+  if (/RADAR_TIMEOUT/i.test(msg)) return "Busca histórica retornou resultado parcial. O processamento continuará em background.";
+  if (/Rate limit/i.test(msg)) return "Algumas fontes limitaram requisições temporariamente. Eventos parciais foram preservados.";
+  return msg || "Falha temporária no Radar Político.";
 }
 
 function fmtDate(d: string) {
@@ -96,12 +159,14 @@ export default function RadarPolitico() {
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const [category, setCategory] = useState<string>("Todos");
   const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<"date" | "importance" | "social">("date");
+  const [sortBy, setSortBy] = useState<"date" | "importance" | "social">("importance");
   const [selected, setSelected] = useState<RadarEvent | null>(null);
   const [events, setEvents] = useState<RadarEvent[]>([]);
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
   const [lastError, setLastError] = useState<{ message: string; stack: string } | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const listParentRef = useRef<HTMLDivElement | null>(null);
 
   const { data: candidates } = useQuery({
     queryKey: ["candidates-min", user?.id],
@@ -128,31 +193,22 @@ export default function RadarPolitico() {
     return { from: f, to: t };
   }, [preset, customFrom, customTo]);
 
+  const cacheKey = useMemo(() => radarCacheKey(candidateId, from, to, category, sortBy), [candidateId, from, to, category, sortBy]);
+
   // Polling do job em background
   const { data: jobStatus } = useQuery({
     queryKey: ["radar-job", jobId],
     enabled: !!jobId,
     refetchInterval: (q) => {
-      const s = (q.state.data as any)?.status;
+      const s = (q.state.data as RadarJobStatus | undefined)?.status;
       return s === "completed" || s === "failed" ? false : 3000;
     },
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("radar-job-status", {
-        body: { job_id: jobId },
+        body: { job_id: jobId, page_size: PAGE_SIZE, offset: 0, sort: sortBy },
       });
       if (error) throw error;
-      return data as {
-        id: string;
-        status: "queued" | "running" | "completed" | "failed";
-        progress: number;
-        total_chunks: number;
-        processed_chunks: number;
-        events_count: number;
-        events: RadarEvent[];
-        error: string | null;
-        partial?: boolean;
-        events_limit?: number;
-      };
+      return data as RadarJobStatus;
     },
   });
 
@@ -174,28 +230,48 @@ export default function RadarPolitico() {
         category: sanitizeRadarText(e.category),
         sources: (e.sources ?? []).map((s) => ({ ...s, name: sanitizeRadarText(s.name) })),
       }));
-      setEvents(clean);
+      setEvents((prev) => {
+        const source = prev.length > clean.length ? prev : clean;
+        const seen = new Set(source.map((e) => e.id || `${e.event_date}|${e.title}`));
+        const merged = [...source];
+        for (const e of clean) {
+          const key = e.id || `${e.event_date}|${e.title}`;
+          if (!seen.has(key)) merged.push(e);
+        }
+        setRadarCache(cacheKey, { events: merged, jobId: jobStatus.id, fetchedAt: new Date().toISOString(), eventsCount: jobStatus.events_count });
+        return merged;
+      });
       if (jobStatus.status === "completed") {
         setLastFetchedAt(new Date());
         if (jobStatus.error) {
-          setLastError({ message: jobStatus.error, stack: "" });
-          toast.warning(`${clean.length} eventos retornados com aviso do processamento`);
+          setLastError({ message: friendlyRadarError(jobStatus.error), stack: "" });
+          toast.warning(`${nfBR.format(jobStatus.events_count ?? clean.length)} eventos retornados com aviso do processamento`);
         } else {
           setLastError(null);
-          toast.success(`${clean.length} eventos coletados pela IA`);
+          toast.success(`${nfBR.format(jobStatus.events_count ?? clean.length)} eventos coletados`);
         }
       }
     } else if (jobStatus.status === "failed") {
       setLastError({ message: jobStatus.error ?? "Job falhou", stack: "" });
       toast.error(jobStatus.error ?? "Job falhou");
     }
-  }, [jobStatus?.status, jobStatus?.events_count]);
+  }, [jobStatus, cacheKey]);
 
   const searchMutation = useMutation({
     mutationFn: async (_force: boolean = false) => {
+      const cacheHit = !_force ? getRadarCache(cacheKey) : null;
+      console.log("CACHE HIT", !!cacheHit);
+      if (cacheHit) {
+        setEvents(cacheHit.events);
+        setJobId(cacheHit.jobId ?? null);
+        setLastFetchedAt(new Date(cacheHit.fetchedAt));
+        setLastError(null);
+        return { job_id: cacheHit.jobId ?? "cache", status: "cached" };
+      }
       if (candidateId === "all") throw new Error("Selecione um candidato.");
       if (!from || !to) throw new Error("Defina o período (datas inicial e final).");
       setEvents([]);
+      setVisibleCount(PAGE_SIZE);
       setLastError(null);
       const { data, error } = await supabase.functions.invoke("radar-job-create", {
         body: {
@@ -204,23 +280,68 @@ export default function RadarPolitico() {
           start_date: from.toISOString().slice(0, 10),
           end_date: to.toISOString().slice(0, 10),
           categories: category === "Todos" ? [] : [category],
+          sort: sortBy,
         },
       });
       if (error) {
-        const ctx = (error as any)?.context;
-        const errorBody = ctx?.clone ? await ctx.clone().json().catch(() => null) : null;
+        const ctx = (error as { context?: Response })?.context;
+        const errorBody = ctx?.clone ? await ctx.clone().json().catch(() => null) as { error?: string } | null : null;
         throw new Error(errorBody?.error ?? error.message);
       }
-      return data as { job_id: string; status: string };
+      return data as { job_id?: string | null; status: string; events?: RadarEvent[]; cached?: boolean; events_count?: number };
     },
     onSuccess: (data) => {
-      setJobId(data.job_id);
-      toast.info("Coleta iniciada em background. O resultado aparecerá em alguns minutos.");
+      if (Array.isArray(data.events) && data.events.length > 0) {
+        setEvents(data.events);
+        setRadarCache(cacheKey, { events: data.events, jobId: data.job_id ?? undefined, fetchedAt: new Date().toISOString(), eventsCount: data.events_count });
+      }
+      if (data.status === "cached") {
+        setLastFetchedAt(new Date());
+        setLastError(null);
+        toast.success(data.cached ? "Resultado carregado do cache do Radar." : "Resultado carregado do cache local.");
+        return;
+      }
+      if (data.cached) {
+        setLastFetchedAt(new Date());
+        setLastError(null);
+        toast.success("Resultado carregado do cache do Radar.");
+        return;
+      }
+      setJobId(data.job_id ?? null);
+      toast.info("Busca histórica iniciada em background. Primeiros eventos aparecerão automaticamente.");
     },
-    onError: (e: any) => {
-      setLastError({ message: e?.message ?? "Falha ao iniciar job", stack: "" });
-      toast.error(e?.message ?? "Falha ao iniciar job");
+    onError: (e: unknown) => {
+      const msg = friendlyRadarError(e instanceof Error ? e.message : "Falha ao iniciar job");
+      setLastError({ message: msg, stack: "" });
+      toast.error(msg);
     },
+  });
+
+  const loadMoreMutation = useMutation({
+    mutationFn: async () => {
+      if (!jobId || jobId === "cache") return [] as RadarEvent[];
+      const { data, error } = await supabase.functions.invoke("radar-job-status", {
+        body: { job_id: jobId, page_size: PAGE_SIZE, offset: events.length, sort: sortBy },
+      });
+      if (error) throw error;
+      const payload = data as { events?: RadarEvent[] } | null;
+      return Array.isArray(payload?.events) ? payload.events : [];
+    },
+    onSuccess: (next) => {
+      if (next.length === 0) return;
+      setEvents((prev) => {
+        const seen = new Set(prev.map((e) => e.id || `${e.event_date}|${e.title}`));
+        const merged = [...prev];
+        for (const e of next) {
+          const key = e.id || `${e.event_date}|${e.title}`;
+          if (!seen.has(key)) merged.push(e);
+        }
+        setRadarCache(cacheKey, { events: merged, jobId: jobId ?? undefined, fetchedAt: new Date().toISOString(), eventsCount: jobStatus?.events_count });
+        return merged;
+      });
+      setVisibleCount((current) => current + PAGE_SIZE);
+    },
+    onError: (e: unknown) => toast.error(friendlyRadarError(e instanceof Error ? e.message : "Falha ao carregar mais eventos")),
   });
 
   // Filtros locais
@@ -239,9 +360,21 @@ export default function RadarPolitico() {
     return list;
   }, [events, category, search, sortBy]);
 
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [cacheKey, search]);
+
+  const visibleEvents = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+  const rowVirtualizer = useVirtualizer({
+    count: visibleEvents.length,
+    getScrollElement: () => listParentRef.current,
+    estimateSize: () => 108,
+    overscan: 8,
+  });
+
   const kpis = useMemo(() => ({
     total: filtered.length,
-    grandes: filtered.filter((e) => e.importance >= 60).length,
+    grandes: filtered.filter((e) => e.importance >= 70).length,
     institucionais: filtered.filter((e) =>
       e.institutional_sources > 0 || e.sources?.some((s) => /\b(STF|TSE|PF|Senado|Câmara|Camara|Planalto|STJ|TCU|CGU|AGU|CNJ)\b/i.test(s.name)),
     ).length,
@@ -300,14 +433,14 @@ export default function RadarPolitico() {
               </SelectContent>
             </Select>
 
-            <Select value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
+            <Select value={sortBy} onValueChange={(v) => setSortBy(v as "date" | "importance" | "social")}>
               <SelectTrigger className="w-[170px] h-9">
                 <ArrowUpDown className="h-3.5 w-3.5 mr-1" />
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="date">Mais recente</SelectItem>
                 <SelectItem value="importance">Maior importância</SelectItem>
+                <SelectItem value="date">Mais recente</SelectItem>
                 <SelectItem value="social">Maior repercussão</SelectItem>
               </SelectContent>
             </Select>
@@ -333,7 +466,7 @@ export default function RadarPolitico() {
               ) : (
                 <Sparkles className="h-4 w-4 mr-2" />
               )}
-              {isJobRunning ? "Coletando..." : "Buscar com IA"}
+              {isJobRunning ? "Buscando..." : "Buscar Radar"}
             </Button>
           </div>
 
@@ -358,7 +491,7 @@ export default function RadarPolitico() {
             )}
             {lastFetchedAt && (
               <span className="text-[11px] text-muted-foreground self-center ml-auto">
-                IA · {lastFetchedAt.toLocaleTimeString("pt-BR")}
+                Radar · {lastFetchedAt.toLocaleTimeString("pt-BR")}
                 {" · "}
                 <button
                   className="underline hover:no-underline"
@@ -380,7 +513,7 @@ export default function RadarPolitico() {
             <div className="flex items-center justify-between text-xs">
               <span className="flex items-center gap-2 font-medium">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Coletando eventos em background ({jobStatus.processed_chunks}/{jobStatus.total_chunks || "?"} períodos)
+                Buscando eventos históricos... lote {jobStatus.processed_chunks}/{jobStatus.total_chunks || "?"}
               </span>
               <span className="text-muted-foreground tabular-nums">
                 {nfBR.format(jobStatus.events_count)} eventos · {jobProgress}%
@@ -388,7 +521,7 @@ export default function RadarPolitico() {
             </div>
             <Progress value={jobProgress} className="h-1.5" />
             <p className="text-[11px] text-muted-foreground">
-              A janela pode ser fechada — o job continua no servidor. Volte mais tarde.
+              A janela pode ser fechada — o job continua no servidor e será recarregado do cache ao voltar.
             </p>
           </CardContent>
         </Card>
@@ -397,7 +530,7 @@ export default function RadarPolitico() {
       {/* KPIs */}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Kpi label="Eventos" value={kpis.total} />
-        <Kpi label="Grandes" value={kpis.grandes} hint="importância ≥ 60" />
+        <Kpi label="Grandes" value={kpis.grandes} hint="importância ≥ 70" />
         <Kpi label="Institucionais" value={kpis.institucionais} hint="STF · TSE · PF · TCU" />
         <Kpi label="Alta repercussão" value={kpis.altaRepercussao} hint="social ≥ 60" />
       </section>
@@ -434,7 +567,7 @@ export default function RadarPolitico() {
       <section className="space-y-2">
         <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">
           {searchMutation.isPending || isJobRunning
-            ? "Coletando eventos em background..."
+            ? "Buscando eventos históricos..."
             : `${nfBR.format(filtered.length)} eventos`}
         </h2>
 
@@ -458,7 +591,7 @@ export default function RadarPolitico() {
           <div className="border rounded-md bg-card p-4 space-y-4">
             <div className="flex items-center gap-2 text-sm font-medium">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Coletando eventos em background
+              Buscando eventos históricos
               {jobStatus ? ` (${jobStatus.processed_chunks}/${jobStatus.total_chunks || "?"} períodos · ${nfBR.format(jobStatus.events_count)} eventos)` : "..."}
             </div>
             <div className="grid gap-2">
@@ -472,10 +605,10 @@ export default function RadarPolitico() {
             <CardContent className="py-16 text-center space-y-2">
               <Sparkles className="h-8 w-8 text-muted-foreground mx-auto" />
               <p className="text-sm text-muted-foreground">
-                Selecione um candidato e período, depois clique em <strong>Buscar com IA</strong>.
+                Selecione um candidato e período, depois clique em <strong>Buscar Radar</strong>.
               </p>
               <p className="text-xs text-muted-foreground">
-                A IA consulta fontes externas (STF, TSE, PF, grande imprensa) em tempo real.
+                O Radar coleta fontes externas e processa lotes históricos em background.
               </p>
             </CardContent>
           </Card>
@@ -486,46 +619,73 @@ export default function RadarPolitico() {
             </CardContent>
           </Card>
         ) : (
-          <div className="divide-y border rounded-md bg-card max-h-[70vh] overflow-y-auto">
-            {filtered.map((e) => {
+          <div className="space-y-2">
+            <div ref={listParentRef} className="border rounded-md bg-card h-[70vh] overflow-y-auto">
+              <div className="relative w-full" style={{ height: rowVirtualizer.getTotalSize() }}>
+                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                  const e = visibleEvents[virtualRow.index];
+                  if (!e) return null;
               const b = band(e.importance);
               return (
-                <button
-                  key={e.id}
-                  onClick={() => setSelected(e)}
-                  className="w-full text-left px-4 py-3 hover:bg-accent/40 transition-colors"
+                <div
+                  key={e.id || `${e.event_date}-${virtualRow.index}`}
+                  data-index={virtualRow.index}
+                  ref={rowVirtualizer.measureElement}
+                  className="absolute left-0 top-0 w-full border-b last:border-b-0"
+                  style={{ transform: `translateY(${virtualRow.start}px)` }}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-1 flex-wrap">
-                        <span className="font-mono">{fmtDate(e.event_date)}</span>
-                        <span>·</span>
-                        <span className="font-medium text-foreground/80">{e.category}</span>
-                        <span>·</span>
-                        <span>{nfBR.format(e.source_count)} fontes</span>
-                        {e.institutional_sources > 0 && (
-                          <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-blue-500/40 text-blue-600 dark:text-blue-400">
-                            Institucional
-                          </Badge>
+                  <button
+                    onClick={() => setSelected(e)}
+                    className="w-full text-left px-4 py-3 hover:bg-accent/40 transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-1 flex-wrap">
+                          <span className="font-mono">{fmtDate(e.event_date)}</span>
+                          <span>·</span>
+                          <span className="font-medium text-foreground/80">{e.category}</span>
+                          <span>·</span>
+                          <span>{nfBR.format(e.source_count)} fontes</span>
+                          {e.institutional_sources > 0 && (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-blue-500/40 text-blue-600 dark:text-blue-400">
+                              Institucional
+                            </Badge>
+                          )}
+                        </div>
+                        <h3 className="text-sm font-medium leading-snug break-words [overflow-wrap:anywhere]">{e.title}</h3>
+                        {e.summary && (
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2 break-words [overflow-wrap:anywhere]">{e.summary}</p>
                         )}
                       </div>
-                      <h3 className="text-sm font-medium leading-snug break-words [overflow-wrap:anywhere]">{e.title}</h3>
-                      {e.summary && (
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2 break-words [overflow-wrap:anywhere]">{e.summary}</p>
-                      )}
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${b.tone}`}>
+                          {b.label} · {e.importance}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground font-mono">
+                          social {e.social_score}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${b.tone}`}>
-                        {b.label} · {e.importance}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground font-mono">
-                        social {e.social_score}
-                      </span>
-                    </div>
-                  </div>
-                </button>
+                  </button>
+                </div>
               );
-            })}
+                })}
+              </div>
+            </div>
+            {(visibleCount < filtered.length || ((jobStatus?.events_count ?? 0) > events.length && !!jobId && jobId !== "cache")) && (
+              <Button
+                variant="outline"
+                className="w-full"
+                disabled={loadMoreMutation.isPending}
+                onClick={() => {
+                  if (visibleCount < filtered.length) setVisibleCount((v) => v + PAGE_SIZE);
+                  else loadMoreMutation.mutate();
+                }}
+              >
+                {loadMoreMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                Carregar mais 50
+              </Button>
+            )}
           </div>
         )}
       </section>

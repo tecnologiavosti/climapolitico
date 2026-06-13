@@ -11,6 +11,7 @@ interface ReqBody {
   start_date?: string; // YYYY-MM-DD
   end_date?: string;
   categories?: string[];
+  sort?: string;
 }
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -18,13 +19,15 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 // Max chunks por job (mensal): 96 = 8 anos. Aumentar = mais volume, mais tempo.
 const MAX_CHUNKS = 96;
-// Quantos chunks rodam em paralelo. 3-4 evita estourar limites do RSS/IA.
-const CONCURRENCY = 3;
+// Quantos chunks rodam por lote. Sem IA por chunk, 6 acelera sem estourar CPU/rede.
+const CONCURRENCY = 6;
 // Janela máxima por chunk (em dias).
 const CHUNK_DAYS = 30;
 const BATCH_SIZE = 200;
-const MAX_RUNTIME = 120_000;
-const BATCH_GUARD_MS = 70_000;
+const MAX_RUNTIME = 130_000;
+const BATCH_GUARD_MS = 20_000;
+const DB_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -55,6 +58,11 @@ function normalizeKey(input: unknown): string {
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function hashPeriod(body: Pick<ReqBody, "candidate_id" | "candidate_name" | "start_date" | "end_date" | "categories" | "sort">): string {
+  const cats = [...(body.categories ?? [])].sort().join(",");
+  return `radar-v8|${body.candidate_id ?? "all"}|${body.candidate_name}|${body.start_date}|${body.end_date}|${cats}|${body.sort ?? "importance"}`;
 }
 
 function eventHash(e: any): string {
@@ -132,8 +140,57 @@ async function completePartial(admin: any, jobId: string, processed: number, tot
   }).eq("id", jobId);
 }
 
+async function readCacheFirstPage(admin: any, userId: string, periodHash: string, body: ReqBody) {
+  const { data } = await admin
+    .from("radar_cache")
+    .select("response_json,event_count,created_at")
+    .eq("user_id", userId)
+    .eq("period_hash", periodHash)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  const events = Array.isArray(data?.response_json) ? data.response_json.slice(0, 50) : [];
+  if (events.length === 0) return null;
+  const { data: recentJob } = await admin
+    .from("radar_jobs")
+    .select("id,status,events_count")
+    .eq("user_id", userId)
+    .eq("candidate_id", body.candidate_id)
+    .eq("start_date", body.start_date)
+    .eq("end_date", body.end_date)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return { events, event_count: data?.event_count ?? recentJob?.events_count ?? events.length, cached_at: data?.created_at, job_id: recentJob?.id ?? null };
+}
+
+async function saveCacheSnapshot(admin: any, jobId: string, body: ReqBody & { user_id: string }) {
+  let query = admin
+    .from("radar_job_events")
+    .select("event_data")
+    .eq("job_id", jobId)
+  if (body.sort === "date") query = query.order("event_date", { ascending: false, nullsFirst: false }).order("importance", { ascending: false });
+  else query = query.order("importance", { ascending: false }).order("event_date", { ascending: false, nullsFirst: false });
+  const { data: rows } = await query.range(0, 999);
+  const events = (rows ?? []).map((row: any) => row?.event_data).filter(Boolean);
+  if (events.length === 0) return;
+  await admin.from("radar_cache").upsert({
+    user_id: body.user_id,
+    candidate_id: body.candidate_id ?? null,
+    candidate_name: body.candidate_name,
+    period_hash: hashPeriod(body),
+    start_date: body.start_date,
+    end_date: body.end_date,
+    categories: body.categories ?? [],
+    response_json: events,
+    event_count: await getEventsCount(admin, jobId),
+    created_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + DB_CACHE_TTL_MS).toISOString(),
+  }, { onConflict: "user_id,period_hash" });
+}
+
 async function scheduleContinuation(jobId: string, authHeader: string): Promise<boolean> {
-  try {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/radar-job-create`, {
       method: "POST",
       headers: {
@@ -145,13 +202,24 @@ async function scheduleContinuation(jobId: string, authHeader: string): Promise<
       signal: AbortSignal.timeout(5_000),
     });
     const ok = res.ok;
-    await res.text().catch(() => "");
-    if (!ok) console.warn(`[radar-job ${jobId}] continuation HTTP ${res.status}`);
+      const txt = await res.text().catch(() => "");
+      if (!ok) {
+        const retry = Number(txt.match(/Retry after\s+(\d+)ms/i)?.[1] ?? 0);
+        console.warn(`[radar-job ${jobId}] continuation HTTP ${res.status}: ${txt.slice(0, 180)}`);
+        if (res.status === 429 && attempt < 3) {
+          await sleep(Math.max(1_500, Math.min(20_000, retry || 2_500 * (attempt + 1))));
+          continue;
+        }
+      }
     return ok;
-  } catch (e) {
-    console.warn(`[radar-job ${jobId}] continuation failed`, (e as Error)?.message ?? String(e));
-    return false;
+    } catch (e) {
+      const msg = (e as Error)?.message ?? String(e);
+      console.warn(`[radar-job ${jobId}] continuation failed`, msg);
+      const retry = Number(msg.match(/Retry after\s+(\d+)ms/i)?.[1] ?? 0);
+      if (attempt < 3) await sleep(Math.max(1_500, Math.min(20_000, retry || 2_500 * (attempt + 1))));
+    }
   }
+  return false;
 }
 
 async function processJob(
@@ -217,23 +285,38 @@ async function processJob(
 
   // Processa em lotes de CONCURRENCY
   for (let i = processed; i < chunks.length; i += CONCURRENCY) {
+    const batchIndex = Math.floor(i / CONCURRENCY) + 1;
     const elapsed = Date.now() - started;
     if (elapsed > MAX_RUNTIME || elapsed + BATCH_GUARD_MS > MAX_RUNTIME) {
       const continued = await scheduleContinuation(jobId, authHeader);
       if (!continued) {
-        await completePartial(admin, jobId, processed, total, `RADAR_TIMEOUT: resultado parcial retornado após ${Math.round(elapsed / 1000)}s`);
+        const count = await getEventsCount(admin, jobId);
+        await admin.from("radar_jobs").update({
+          status: "running",
+          processed_chunks: processed,
+          progress: progressFor(processed, total),
+          events_count: count,
+          error: `Continuação pausada por limite temporário; será retomada no próximo polling (${Math.round(elapsed / 1000)}s)`,
+        }).eq("id", jobId);
       }
       console.timeEnd("TOTAL_RADAR");
       return;
     }
 
     const batch = chunks.slice(i, i + CONCURRENCY);
+    console.log("BATCH", batchIndex);
     console.time("FETCH");
-    const results = await Promise.all(batch.map(fetchOne));
+    const results = [];
+    for (const chunk of batch) {
+      results.push(await fetchOne(chunk));
+      await sleep(250);
+    }
     console.timeEnd("FETCH");
 
     console.time("CHUNK_PROCESSING");
     const batchEvents = results.flat();
+    console.log("EVENTS PARTIAL", batchEvents.length);
+    console.log("IA CALL COUNT", 0);
     processed += batch.length;
     console.timeEnd("CHUNK_PROCESSING");
 
@@ -254,6 +337,7 @@ async function processJob(
       progress,
       events_count: count,
     }).eq("id", jobId);
+    await saveCacheSnapshot(admin, jobId, body);
     console.timeEnd("CACHE_SAVE");
     console.log("progress", progress);
   }
@@ -269,6 +353,7 @@ async function processJob(
     error: firstError,
     completed_at: new Date().toISOString(),
   }).eq("id", jobId);
+  await saveCacheSnapshot(admin, jobId, body);
 
   const { data: oldest } = await admin.from("radar_job_events").select("event_date").eq("job_id", jobId).not("event_date", "is", null).order("event_date", { ascending: true }).limit(1).maybeSingle();
   const { data: newest } = await admin.from("radar_job_events").select("event_date").eq("job_id", jobId).not("event_date", "is", null).order("event_date", { ascending: false }).limit(1).maybeSingle();
@@ -341,6 +426,37 @@ Deno.serve(async (req) => {
     if (!body?.candidate_id || !body?.candidate_name || !body?.start_date || !body?.end_date) {
       return new Response(JSON.stringify({ error: "missing_fields" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const periodHash = hashPeriod(body);
+    const cached = await readCacheFirstPage(admin, user.id, periodHash, body);
+    console.log("CACHE HIT", !!cached);
+    if (cached) {
+      return new Response(JSON.stringify({
+        status: "cached",
+        cached: true,
+        job_id: cached.job_id,
+        events: cached.events,
+        events_count: cached.event_count,
+        cached_at: cached.cached_at,
+      }), { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const { data: active } = await admin
+      .from("radar_jobs")
+      .select("id,status,events_count")
+      .eq("user_id", user.id)
+      .eq("candidate_id", body.candidate_id)
+      .eq("start_date", body.start_date)
+      .eq("end_date", body.end_date)
+      .in("status", ["queued", "running"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (active?.id) {
+      return new Response(JSON.stringify({ job_id: active.id, status: active.status, events_count: active.events_count ?? 0 }), {
+        status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 

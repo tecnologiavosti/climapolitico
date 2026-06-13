@@ -6,6 +6,20 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 
+async function resumeIfPaused(jobId: string, authHeader: string, error?: string | null) {
+  if (!/Continuação pausada/i.test(error ?? "")) return;
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/radar-job-create`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: authHeader, apikey: ANON },
+      body: JSON.stringify({ resume_job_id: jobId }),
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch (e) {
+    console.warn(`[radar-job-status ${jobId}] resume skipped`, (e as Error)?.message ?? String(e));
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -18,11 +32,11 @@ Deno.serve(async (req) => {
     }
 
     const url = new URL(req.url);
-    let jobId = url.searchParams.get("job_id");
-    if (!jobId && (req.method === "POST")) {
-      const body = await req.json().catch(() => ({}));
-      jobId = body?.job_id;
-    }
+    const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
+    let jobId = url.searchParams.get("job_id") || body?.job_id;
+    const pageSize = Math.max(1, Math.min(50, Number(url.searchParams.get("page_size") ?? body?.page_size ?? 50) || 50));
+    const offset = Math.max(0, Number(url.searchParams.get("offset") ?? body?.offset ?? 0) || 0);
+    const sort = String(url.searchParams.get("sort") ?? body?.sort ?? "importance");
     if (!jobId) {
       return new Response(JSON.stringify({ error: "missing_job_id" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -51,32 +65,29 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Suportar 10k+ eventos: PostgREST limita 1000 por request → paginação manual.
-    const eventLimit = data.status === "completed" ? 15_000 : 2_000;
-    const PAGE = 1000;
-    const collected: any[] = [];
-    for (let offset = 0; offset < eventLimit; offset += PAGE) {
-      const { data: page, error: eventsError } = await client
-        .from("radar_job_events")
-        .select("event_data")
-        .eq("job_id", jobId)
-        .order("event_date", { ascending: false, nullsFirst: false })
-        .order("importance", { ascending: false })
-        .range(offset, offset + PAGE - 1);
-      if (eventsError) {
-        return new Response(JSON.stringify({ error: eventsError.message }), {
-          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (!page || page.length === 0) break;
-      for (const row of page) if (row?.event_data) collected.push(row.event_data);
-      if (page.length < PAGE) break;
+    if (data.status === "running" && /Continuação pausada/i.test(data.error ?? "")) {
+      // @ts-ignore EdgeRuntime existe em Supabase Edge Functions
+      EdgeRuntime.waitUntil(resumeIfPaused(jobId, authHeader, data.error));
     }
+
+    // Paginação real: nunca retorna milhares de cards por polling.
+    let query = client.from("radar_job_events").select("event_data").eq("job_id", jobId);
+    if (sort === "date") query = query.order("event_date", { ascending: false, nullsFirst: false }).order("importance", { ascending: false });
+    else query = query.order("importance", { ascending: false }).order("event_date", { ascending: false, nullsFirst: false });
+    const { data: page, error: eventsError } = await query.range(offset, offset + pageSize - 1);
+    if (eventsError) {
+      return new Response(JSON.stringify({ error: eventsError.message }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const collected = (page ?? []).map((row: any) => row?.event_data).filter(Boolean);
 
     const payload: any = { ...data };
     payload.events = collected;
     payload.partial = data.status !== "completed";
-    payload.events_limit = eventLimit;
+    payload.page_size = pageSize;
+    payload.offset = offset;
+    payload.has_more = offset + collected.length < (data.events_count ?? 0);
 
     return new Response(JSON.stringify(payload), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
