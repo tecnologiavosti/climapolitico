@@ -84,8 +84,8 @@ const FEEDS: Array<{ name: string; url: string; type: RawItem["type"] }> = [
 
 function hashPeriod(b: ReqBody): string {
   const cats = [...(b.categories ?? [])].sort().join(",");
-  // v7: nova fórmula de importance + paginação 10k+
-  return `radar-v7|${b.candidate_id ?? "all"}|${b.candidate_name}|${b.start_date}|${b.end_date}|${cats}`;
+  // v8: score temporal sem recência dominante + bandas 40/70 + cache 24h
+  return `radar-v8|${b.candidate_id ?? "all"}|${b.candidate_name}|${b.start_date}|${b.end_date}|${cats}`;
 }
 
 function safeNum(v: any, def = 0, min = 0, max = 100) {
@@ -97,7 +97,7 @@ function safeNum(v: any, def = 0, min = 0, max = 100) {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const INSTITUTIONAL_RE = /\b(STF|TSE|PF|Senado|Câmara|Camara|Planalto|STJ|TCU|CGU|AGU|CNJ|Banco Central|Ministério|Ministerio)\b/i;
-const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_RUNTIME = 120_000;
 const CACHE_BATCH_SIZE = 200;
 const POLITICAL_RELEVANCE_RE = /\b(STF|TSE|PF|Polícia Federal|operacao|operação|escandalo|escândalo|crise|CPI|investigacao|investigação|cassacao|cassação|julgamento|denuncia|denúncia|impeachment|prisao|prisão|inelegivel|inelegível|corrupcao|corrupção|votacao|votação|congresso|senado|camara|câmara|plenario|plenário|supremo|tribunal|eleicao|eleição|eleitoral|presidencial|pesquisa|Datafolha|Quaest|Ipec|PoderData|reforma tributaria|reforma fiscal|orcamento|orçamento|economia|banco central|dolar|dólar|juros|crime eleitoral|rachadinha|joias|minuta|golpe|8 de janeiro|delacao|delação|inquerito|inquérito)\b/i;
