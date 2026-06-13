@@ -15,7 +15,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  Loader2, ExternalLink, Search, Radio, CalendarIcon, Sparkles, ArrowUpDown,
+  Loader2, ExternalLink, Search, Radio, CalendarIcon, Sparkles, ArrowUpDown, AlertTriangle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -80,6 +80,7 @@ export default function RadarPolitico() {
   const [events, setEvents] = useState<RadarEvent[]>([]);
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
   const [cachedFlag, setCachedFlag] = useState(false);
+  const [lastError, setLastError] = useState<{ message: string; stack: string } | null>(null);
 
   const { data: candidates } = useQuery({
     queryKey: ["candidates-min", user?.id],
@@ -121,9 +122,14 @@ export default function RadarPolitico() {
         },
       });
       if (error) throw error;
-      return data as { events: RadarEvent[]; cached: boolean; cached_at?: string; fallback?: boolean; message?: string; provider?: string };
+      const payload = data as { events: RadarEvent[]; cached: boolean; cached_at?: string; fallback?: boolean; message?: string; provider?: string; error?: string; detail?: string; stack?: string };
+      if (payload?.error && (!payload.events || payload.events.length === 0)) {
+        throw Object.assign(new Error(payload.message ?? payload.error), { detail: payload.detail, stack: payload.stack });
+      }
+      return payload;
     },
     onSuccess: (data) => {
+      setLastError(null);
       setEvents(data.events ?? []);
       setCachedFlag(!!data.cached);
       setLastFetchedAt(new Date());
@@ -140,6 +146,10 @@ export default function RadarPolitico() {
     onError: (e: any) => {
       const ctx = e?.context;
       const status = ctx?.status ?? 0;
+      setLastError({
+        message: e?.message ?? "Falha na busca",
+        stack: [status ? `HTTP ${status}` : null, e?.detail, e?.stack].filter(Boolean).join("\n").slice(0, 900),
+      });
       if (status === 429) toast.error("IA temporariamente sem capacidade. Aguarde ~30s e tente novamente.");
       else if (status === 402) toast.error("Créditos de IA esgotados.");
       else toast.error(e?.message ?? "Falha na busca");
