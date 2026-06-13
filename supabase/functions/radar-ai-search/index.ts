@@ -643,12 +643,13 @@ Deno.serve(async (req) => {
 
     const systemPrompt = `Você é um motor de political intelligence. Responda somente com JSON válido, sem markdown.`;
 
-    const sourcesPayload = unique.slice(0, 220).map((it) => ({
+    const sourcesPayload = unique.slice(0, 420).map((it) => ({
       title: it.title,
       url: it.url,
       source: it.source,
       type: it.type,
       date: it.pub_date ?? null,
+      bucket: it.bucket ?? null,
       snippet: it.snippet?.slice(0, 220) ?? "",
     }));
 
@@ -683,21 +684,20 @@ Busque em:
 * Valor
 * Exame
 
-IMPORTANTE:
-Retorne MUITOS eventos.
-Meta:
-mínimo 50 eventos para períodos grandes.
+IMPORTANTE - AI FIRST, HISTÓRICO E DISTRIBUIÇÃO TEMPORAL:
+Retorne o maior número possível de eventos RELEVANTES e verificáveis.
+Meta mínima operacional deste candidato/período: ${expectedMin} eventos.
 Faixa esperada para este período: ${targetRange(body.start_date, body.end_date)}.
+Janelas mensais amostradas para cobrir uniformemente o período:
+${JSON.stringify(buckets)}
 ${catFilter}
 
-Inclua:
+PRIORIZAR:
 
 * crises
 * escândalos
 * operações
 * julgamentos
-* falas polêmicas
-* entrevistas
 * votações
 * denúncias
 * processos
@@ -705,6 +705,18 @@ Inclua:
 * debates
 * CPIs
 * decisões judiciais
+* cassações
+* inelegibilidade
+* prisão
+* corrupção
+* economia e Banco Central quando houver impacto político
+
+IGNORAR completamente:
+* palpite esportivo, futebol, Copa, apostas
+* entrevista banal sem consequência política
+* visita rotineira, agenda comum, cerimônia protocolar
+* agenda de campanha simples
+* comentário sem impacto institucional ou eleitoral
 
 Notícias brutas coletadas via RSS em tempo real (${sourcesPayload.length} itens) para agrupar, deduplicar e usar como evidência prioritária:
 ${JSON.stringify(sourcesPayload)}
@@ -726,12 +738,17 @@ Retorne JSON:
 }
 ]
 
-NÃO retorne menos de 20 eventos, exceto se realmente não existirem.
+NÃO use score fixo. Calcule importância variando por impacto, fontes e gravidade:
+importance = (source_count * 2) + (institutional_sources * 12) + (media_weight * 8) + (social_relevance * 0.3) + (impact_score * 20), clamp 0-100.
+social_score deve variar conforme cobertura pública: quantidade/diversidade de fontes, presença em veículos nacionais/internacionais e impacto político. Nunca use default 35.
+
+Se as notícias brutas atuais forem insuficientes para meses antigos, complemente com seu conhecimento histórico público, mas apenas eventos reais e datados.
+NÃO retorne menos de ${Math.min(expectedMin, 350)} eventos quando o período for amplo e houver cobertura pública.
 
 DISTRIBUTE RESULTS ACROSS THE ENTIRE REQUESTED DATE RANGE.
 Avoid over-concentration in a single day/week unless historically justified.
 Para cada mês do período solicitado, inclua pelo menos alguns eventos representativos quando existirem fatos públicos.
-Evite que a maioria dos eventos caia em uma única semana — espalhe ao longo do tempo.`;
+Evite que a maioria dos eventos caia em uma única semana — espalhe ao longo do tempo por ano e mês.`;
 
     console.log("LOG 3: prompt enviado =", userPrompt);
 
