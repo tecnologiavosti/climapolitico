@@ -121,16 +121,20 @@ export default function RadarPolitico() {
         },
       });
       if (error) throw error;
-      return data as { events: RadarEvent[]; cached: boolean; cached_at?: string };
+      return data as { events: RadarEvent[]; cached: boolean; cached_at?: string; fallback?: boolean; message?: string; provider?: string };
     },
     onSuccess: (data) => {
       setEvents(data.events ?? []);
       setCachedFlag(!!data.cached);
       setLastFetchedAt(new Date());
+      if (data.fallback) {
+        toast.warning(data.message ?? "IA temporariamente indisponível. Tente novamente em instantes.");
+        return;
+      }
       toast.success(
         data.cached
           ? `${data.events?.length ?? 0} eventos (cache)`
-          : `${data.events?.length ?? 0} eventos buscados pela IA`,
+          : `${data.events?.length ?? 0} eventos buscados pela IA${data.provider ? ` · ${data.provider}` : ""}`,
       );
     },
     onError: (e: any) => {
