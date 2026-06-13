@@ -39,6 +39,21 @@ interface RadarEvent {
   sources: Array<{ name: string; url: string; type?: string }>;
 }
 
+interface RadarJobStatus {
+  id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  progress: number;
+  total_chunks: number;
+  processed_chunks: number;
+  events_count: number;
+  events: RadarEvent[];
+  error: string | null;
+  partial?: boolean;
+  page_size?: number;
+  offset?: number;
+  has_more?: boolean;
+}
+
 const CATEGORIES = [
   "Todos","Eleições","STF","TSE","PF","CPI","Congresso","Executivo","Economia",
   "Escândalos","Prisões","Julgamentos","Internacional","Outros",
@@ -99,7 +114,7 @@ function setRadarCache(key: string, entry: { events: RadarEvent[]; jobId?: strin
 function sanitizeRadarText(input: unknown): string {
   if (input == null) return "";
   let s = String(input);
-  s = s.replace(/[\u0000-\u001F\u007F-\u009F]/g, " ");
+  s = s.replace(new RegExp("[\\u0000-\\u001F\\u007F-\\u009F]", "g"), " ");
   s = s.replace(/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, "");
   const map: Record<string, string> = {
     "\u2018": "'", "\u2019": "'", "\u201A": "'", "\u201B": "'",
@@ -182,7 +197,7 @@ export default function RadarPolitico() {
     queryKey: ["radar-job", jobId],
     enabled: !!jobId,
     refetchInterval: (q) => {
-      const s = (q.state.data as any)?.status;
+      const s = (q.state.data as RadarJobStatus | undefined)?.status;
       return s === "completed" || s === "failed" ? false : 3000;
     },
     queryFn: async () => {
@@ -190,20 +205,7 @@ export default function RadarPolitico() {
         body: { job_id: jobId, page_size: PAGE_SIZE, offset: 0, sort: sortBy },
       });
       if (error) throw error;
-      return data as {
-        id: string;
-        status: "queued" | "running" | "completed" | "failed";
-        progress: number;
-        total_chunks: number;
-        processed_chunks: number;
-        events_count: number;
-        events: RadarEvent[];
-        error: string | null;
-        partial?: boolean;
-        page_size?: number;
-        offset?: number;
-        has_more?: boolean;
-      };
+      return data as RadarJobStatus;
     },
   });
 
@@ -250,7 +252,7 @@ export default function RadarPolitico() {
       setLastError({ message: jobStatus.error ?? "Job falhou", stack: "" });
       toast.error(jobStatus.error ?? "Job falhou");
     }
-  }, [jobStatus?.status, jobStatus?.events_count]);
+  }, [jobStatus, cacheKey]);
 
   const searchMutation = useMutation({
     mutationFn: async (_force: boolean = false) => {
