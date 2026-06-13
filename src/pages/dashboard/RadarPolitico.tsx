@@ -167,7 +167,7 @@ export default function RadarPolitico() {
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
   const [lastError, setLastError] = useState<{ message: string; stack: string } | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [visibleCount, setVisibleCount] = useState(LOAD_MORE_STEP);
   const listParentRef = useRef<HTMLDivElement | null>(null);
 
   const { data: candidates } = useQuery({
