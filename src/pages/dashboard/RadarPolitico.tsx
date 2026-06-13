@@ -223,8 +223,17 @@ export default function RadarPolitico() {
       const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       map.set(k, (map.get(k) ?? 0) + 1);
     });
-    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(-12);
-  }, [filtered]);
+    if (!from || !to) return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+    const months: Array<[string, number]> = [];
+    const cursor = new Date(from.getFullYear(), from.getMonth(), 1);
+    const end = new Date(to.getFullYear(), to.getMonth(), 1);
+    while (cursor <= end && months.length < 120) {
+      const k = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
+      months.push([k, map.get(k) ?? 0]);
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+    return months;
+  }, [filtered, from, to]);
   const maxMonth = Math.max(1, ...timeline.map(([, v]) => v));
 
   return (
@@ -345,7 +354,8 @@ export default function RadarPolitico() {
             <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
               Distribuição mensal
             </div>
-            <div className="grid gap-2 items-end h-20" style={{ gridTemplateColumns: `repeat(${timeline.length}, minmax(0, 1fr))` }}>
+            <div className="overflow-x-auto pb-1">
+            <div className="grid gap-2 items-end h-20 min-w-full" style={{ gridTemplateColumns: `repeat(${timeline.length}, minmax(18px, 1fr))` }}>
               {timeline.map(([k, count]) => {
                 const [y, m] = k.split("-");
                 return (
@@ -359,6 +369,7 @@ export default function RadarPolitico() {
                   </div>
                 );
               })}
+            </div>
             </div>
           </CardContent>
         </Card>
