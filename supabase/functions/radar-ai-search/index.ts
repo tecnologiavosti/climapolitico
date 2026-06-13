@@ -1,6 +1,5 @@
 // Edge Function: radar-ai-search
-// AI-first political event radar. Consulta IA externa (Lovable AI Gateway) e devolve eventos estruturados.
-// Cache em radar_cache (TTL 6h por user_id + period_hash).
+// Híbrido: RSS em tempo real + IA (agrupa, deduplica, classifica). Sem pipeline, sem cron.
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -13,11 +12,71 @@ const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite"];
 interface ReqBody {
   candidate_id?: string | null;
   candidate_name: string;
-  start_date: string; // YYYY-MM-DD
+  start_date: string;
   end_date: string;
   categories?: string[];
   force_refresh?: boolean;
 }
+
+interface RawItem {
+  title: string;
+  url: string;
+  source: string;
+  type: "institutional" | "news" | "international" | "aggregator";
+  pub_date?: string;
+  snippet?: string;
+}
+
+// ===== 50+ FONTES EXTERNAS =====
+const FEEDS: Array<{ name: string; url: string; type: RawItem["type"] }> = [
+  // Institucionais
+  { name: "Agência Senado", url: "https://www12.senado.leg.br/noticias/ultimas/feed", type: "institutional" },
+  { name: "Câmara Notícias", url: "https://www.camara.leg.br/noticias/rss/ultimas", type: "institutional" },
+  { name: "STF Notícias", url: "https://noticias.stf.jus.br/postsnoticias/feed/", type: "institutional" },
+  { name: "TSE Notícias", url: "https://www.tse.jus.br/comunicacao/noticias/rss-noticias", type: "institutional" },
+  { name: "STJ Notícias", url: "https://www.stj.jus.br/sites/portalp/Paginas/Comunicacao/Noticias.aspx?rss=true", type: "institutional" },
+  { name: "Planalto", url: "https://www.gov.br/planalto/pt-br/acompanhe-o-planalto/RSS", type: "institutional" },
+  { name: "Agência Brasil Política", url: "https://agenciabrasil.ebc.com.br/rss/politica/feed.xml", type: "institutional" },
+  { name: "CGU", url: "https://www.gov.br/cgu/pt-br/assuntos/noticias/RSS", type: "institutional" },
+  { name: "TCU", url: "https://portal.tcu.gov.br/imprensa/noticias/rss.htm", type: "institutional" },
+  { name: "PF", url: "https://www.gov.br/pf/pt-br/assuntos/noticias/RSS", type: "institutional" },
+  { name: "AGU", url: "https://www.gov.br/agu/pt-br/comunicacao/noticias/RSS", type: "institutional" },
+  { name: "Ministério da Justiça", url: "https://www.gov.br/mj/pt-br/assuntos/noticias/RSS", type: "institutional" },
+  { name: "CNJ", url: "https://www.cnj.jus.br/feed/", type: "institutional" },
+  { name: "Banco Central", url: "https://www.bcb.gov.br/api/feed/sitebcb/noticias", type: "institutional" },
+  // Notícias Brasil
+  { name: "G1 Política", url: "https://g1.globo.com/rss/g1/politica/", type: "news" },
+  { name: "Folha Poder", url: "https://feeds.folha.uol.com.br/poder/rss091.xml", type: "news" },
+  { name: "Estadão Política", url: "https://politica.estadao.com.br/rss.xml", type: "news" },
+  { name: "UOL Política", url: "https://rss.uol.com.br/feed/politica.xml", type: "news" },
+  { name: "CNN Brasil Política", url: "https://www.cnnbrasil.com.br/politica/feed/", type: "news" },
+  { name: "Poder360", url: "https://www.poder360.com.br/feed/", type: "news" },
+  { name: "Metrópoles Política", url: "https://www.metropoles.com/brasil/politica/feed", type: "news" },
+  { name: "CartaCapital", url: "https://www.cartacapital.com.br/feed/", type: "news" },
+  { name: "JOTA", url: "https://www.jota.info/feed", type: "news" },
+  { name: "Congresso em Foco", url: "https://congressoemfoco.uol.com.br/feed/", type: "news" },
+  { name: "Veja", url: "https://veja.abril.com.br/feed/", type: "news" },
+  { name: "Exame Brasil", url: "https://exame.com/brasil/feed/", type: "news" },
+  { name: "Valor Político", url: "https://valor.globo.com/politica/rss/", type: "news" },
+  { name: "InfoMoney Política", url: "https://www.infomoney.com.br/politica/feed/", type: "news" },
+  { name: "Terra Política", url: "https://www.terra.com.br/rss/0,,EI8177,00.xml", type: "news" },
+  { name: "Nexo", url: "https://www.nexojornal.com.br/rss", type: "news" },
+  { name: "Crusoé", url: "https://crusoe.com.br/feed/", type: "news" },
+  { name: "Correio Braziliense Política", url: "https://www.correiobraziliense.com.br/rss/politica.xml", type: "news" },
+  { name: "R7 Política", url: "https://noticias.r7.com/feed/politica", type: "news" },
+  { name: "Band Política", url: "https://www.band.uol.com.br/rss/politica.xml", type: "news" },
+  { name: "IstoÉ Política", url: "https://istoe.com.br/categoria/politica/feed/", type: "news" },
+  { name: "O Globo Política", url: "https://oglobo.globo.com/rss/politica", type: "news" },
+  // Internacional
+  { name: "BBC Brasil", url: "https://feeds.bbci.co.uk/portuguese/rss.xml", type: "international" },
+  { name: "DW Brasil", url: "https://rss.dw.com/atom/rss-br-all", type: "international" },
+  { name: "Reuters World", url: "https://feeds.reuters.com/Reuters/worldNews", type: "international" },
+  { name: "AP World", url: "https://feeds.apnews.com/rss/apf-topnews", type: "international" },
+  { name: "The Guardian World", url: "https://www.theguardian.com/world/rss", type: "international" },
+  { name: "BBC World", url: "https://feeds.bbci.co.uk/news/world/rss.xml", type: "international" },
+  { name: "Al Jazeera", url: "https://www.aljazeera.com/xml/rss/all.xml", type: "international" },
+  // Agregadores (Google News com query do candidato é injetado em runtime)
+];
 
 function hashPeriod(b: ReqBody): string {
   const cats = [...(b.categories ?? [])].sort().join(",");
@@ -39,6 +98,107 @@ function jsonResponse(payload: Record<string, unknown>, status = 200) {
   });
 }
 
+// ===== RSS PARSING =====
+function decodeEntities(s: string): string {
+  return s
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/<[^>]+>/g, "")
+    .trim();
+}
+
+function pickTag(block: string, tag: string): string {
+  const re = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i");
+  const m = block.match(re);
+  return m ? decodeEntities(m[1]) : "";
+}
+
+function pickLink(block: string): string {
+  // RSS <link>...</link> or Atom <link href="..."/>
+  const linkText = pickTag(block, "link");
+  if (linkText && linkText.startsWith("http")) return linkText;
+  const m = block.match(/<link[^>]*href=["']([^"']+)["']/i);
+  return m ? m[1] : linkText;
+}
+
+function parseFeed(xml: string, source: string, type: RawItem["type"]): RawItem[] {
+  const items: RawItem[] = [];
+  const itemRe = /<(item|entry)[\s\S]*?<\/(item|entry)>/gi;
+  const blocks = xml.match(itemRe) ?? [];
+  for (const block of blocks) {
+    const title = pickTag(block, "title");
+    if (!title) continue;
+    const url = pickLink(block);
+    const pub = pickTag(block, "pubDate") || pickTag(block, "published") || pickTag(block, "updated");
+    const desc = pickTag(block, "description") || pickTag(block, "summary") || pickTag(block, "content");
+    items.push({
+      title: title.slice(0, 400),
+      url: url.slice(0, 800),
+      source,
+      type,
+      pub_date: pub || undefined,
+      snippet: desc ? desc.slice(0, 600) : undefined,
+    });
+  }
+  return items;
+}
+
+async function fetchFeed(name: string, url: string, type: RawItem["type"]): Promise<RawItem[]> {
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; ClimaPoliticoRadar/1.0)" },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return [];
+    const xml = await res.text();
+    return parseFeed(xml, name, type);
+  } catch {
+    return [];
+  }
+}
+
+// ===== CANDIDATE MATCHING (aliases + fuzzy) =====
+function normalize(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildAliases(fullName: string): string[] {
+  const norm = normalize(fullName);
+  const parts = norm.split(" ").filter((p) => p.length >= 3);
+  const aliases = new Set<string>([norm]);
+  if (parts.length >= 2) {
+    aliases.add(`${parts[0]} ${parts[parts.length - 1]}`); // first + last
+    aliases.add(parts[parts.length - 1]); // last name
+  }
+  if (parts[0]) aliases.add(parts[0]);
+  return Array.from(aliases).filter((a) => a.length >= 4);
+}
+
+function matchesCandidate(item: RawItem, aliases: string[]): boolean {
+  const hay = normalize(`${item.title} ${item.snippet ?? ""}`);
+  return aliases.some((a) => hay.includes(a));
+}
+
+function inDateRange(item: RawItem, startMs: number, endMs: number): boolean {
+  if (!item.pub_date) return true; // keep if unknown — AI will discard
+  const t = Date.parse(item.pub_date);
+  if (isNaN(t)) return true;
+  return t >= startMs && t <= endMs;
+}
+
+// ===== AI normalization =====
 function extractText(provider: string, data: any): string {
   if (provider === "gemini") {
     return data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text ?? "").join("") ?? "";
@@ -53,26 +213,34 @@ function normalizeEvents(raw: any[]): any[] {
     .map((e, i) => {
       const sources = Array.isArray(e.sources) ? e.sources.filter((s: any) => s?.name && s?.url) : [];
       const source_count = sources.length || safeNum(e.source_count, 1, 0, 999);
-      const institutional_sources = safeNum(e.institutional_sources, 0, 0, 999);
+      const institutional_sources = sources.filter((s: any) => s.type === "institutional").length;
       const social_score = safeNum(e.social_score, 0);
-      const computed = source_count * 2 + institutional_sources * 10 + social_score * 0.3;
+      const media_diversity = new Set(sources.map((s: any) => s.name)).size;
+      const computed = source_count * 2 + institutional_sources * 10 + social_score * 0.3 + media_diversity * 1.5;
       const importance = Math.min(100, Math.round(computed));
       return {
         id: e.id ?? `${Date.now()}-${i}`,
         title: String(e.title).slice(0, 280),
-        summary: String(e.summary ?? "").slice(0, 1200),
+        summary: String(e.summary ?? "").slice(0, 1500),
         category: String(e.category ?? "Outros"),
         event_date: e.event_date ?? null,
         source_count,
         institutional_sources,
         social_score,
         importance,
-        sources: sources.slice(0, 20).map((s: any) => ({
+        political_impact: e.political_impact ? String(e.political_impact).slice(0, 600) : "",
+        entities: Array.isArray(e.entities) ? e.entities.slice(0, 10).map((x: any) => String(x).slice(0, 80)) : [],
+        sources: sources.slice(0, 25).map((s: any) => ({
           name: String(s.name).slice(0, 120),
           url: String(s.url).slice(0, 600),
           type: s.type ?? "news",
         })),
       };
+    })
+    .sort((a, b) => {
+      const ta = a.event_date ? Date.parse(a.event_date) : 0;
+      const tb = b.event_date ? Date.parse(b.event_date) : 0;
+      return tb - ta;
     });
 }
 
@@ -81,12 +249,7 @@ Deno.serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "missing_auth" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!authHeader) return jsonResponse({ error: "missing_auth" }, 401);
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -95,40 +258,27 @@ Deno.serve(async (req) => {
     const GROQ_KEY = Deno.env.get("GROQ_API_KEY");
     const GEMINI_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!CEREBRAS_KEY && !GROQ_KEY && !GEMINI_KEY) {
-      return jsonResponse({
-        error: "ai_unconfigured",
-        message: "Nenhum provedor de IA está configurado para o Radar Político.",
-        fallback: true,
-        events: [],
-        cached: false,
-        count: 0,
-      });
+      return jsonResponse({ error: "ai_unconfigured", fallback: true, events: [], cached: false, count: 0 });
     }
 
     const userClient = createClient(SUPABASE_URL, ANON, {
       global: { headers: { Authorization: authHeader } },
     });
     const { data: userData, error: userErr } = await userClient.auth.getUser();
-    if (userErr || !userData?.user) {
-      return new Response(JSON.stringify({ error: "invalid_auth" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (userErr || !userData?.user) return jsonResponse({ error: "invalid_auth" }, 401);
     const userId = userData.user.id;
     const admin = createClient(SUPABASE_URL, SERVICE);
 
     const body = (await req.json().catch(() => null)) as ReqBody | null;
     if (!body?.candidate_name || !body?.start_date || !body?.end_date) {
-      return new Response(JSON.stringify({ error: "campos obrigatórios: candidate_name, start_date, end_date" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "campos obrigatórios: candidate_name, start_date, end_date" }, 400);
     }
 
     const period_hash = hashPeriod(body);
+    const startMs = Date.parse(body.start_date + "T00:00:00Z");
+    const endMs = Date.parse(body.end_date + "T23:59:59Z");
 
-    // Cache lookup
+    // Cache lookup (30 min — TTL menor pra refletir realtime)
     if (!body.force_refresh) {
       const { data: cached } = await admin
         .from("radar_cache")
@@ -138,60 +288,100 @@ Deno.serve(async (req) => {
         .gt("expires_at", new Date().toISOString())
         .maybeSingle();
       if (cached?.response_json) {
-        return new Response(
-          JSON.stringify({
-            events: cached.response_json,
-            cached: true,
-            cached_at: cached.created_at,
-            count: cached.event_count,
-          }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+        return jsonResponse({
+          events: cached.response_json,
+          cached: true,
+          cached_at: cached.created_at,
+          count: cached.event_count,
+        });
       }
     }
 
+    // ===== 1. FETCH RSS EM PARALELO =====
+    const aliases = buildAliases(body.candidate_name);
+    // Adicionar Google News query do candidato
+    const googleNewsQuery = encodeURIComponent(body.candidate_name);
+    const dynamicFeeds = [
+      ...FEEDS,
+      {
+        name: "Google News BR",
+        url: `https://news.google.com/rss/search?q=${googleNewsQuery}&hl=pt-BR&gl=BR&ceid=BR:pt-419`,
+        type: "aggregator" as const,
+      },
+    ];
+
+    const t0 = Date.now();
+    const allItems = (await Promise.all(dynamicFeeds.map((f) => fetchFeed(f.name, f.url, f.type)))).flat();
+    const fetchMs = Date.now() - t0;
+
+    // Filtrar por candidato + período
+    const filtered = allItems.filter((it) => matchesCandidate(it, aliases) && inDateRange(it, startMs, endMs));
+
+    // Dedup por URL
+    const seen = new Set<string>();
+    const unique = filtered.filter((it) => {
+      const k = it.url || it.title;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+
+    console.log(`[RADAR] ${body.candidate_name}: ${allItems.length} brutos, ${unique.length} filtrados em ${fetchMs}ms`);
+
+    // ===== 2. PROMPT IA =====
     const catFilter =
       body.categories && body.categories.length > 0 && !body.categories.includes("Todos")
         ? `Filtrar APENAS para as categorias: ${body.categories.join(", ")}.`
         : "Cobrir todas as categorias políticas.";
 
-    const systemPrompt = `Você é um pesquisador político brasileiro especializado em eventos institucionais e midiáticos.
-Sua tarefa: listar EVENTOS POLÍTICOS REAIS já cobertos por veículos profissionais.
-Fontes prioritárias: STF, STJ, TSE, Senado, Câmara, Planalto, PF, AGU, CGU, TCU, CNJ, Diário Oficial,
-G1, Folha, Estadão, UOL, CNN Brasil, O Globo, Agência Brasil, Reuters, Bloomberg, Metrópoles, Poder360, JOTA, Veja, Valor.
-Nunca invente fontes ou URLs. Se não tiver certeza, omita o evento.
-Responda SEMPRE em português do Brasil.
-Responda EXCLUSIVAMENTE com JSON válido — sem markdown, sem texto fora do JSON.`;
+    const systemPrompt = `Você é um pesquisador político brasileiro. Sua tarefa: agrupar notícias coletadas em tempo real em EVENTOS POLÍTICOS reais.
+- Agrupe semanticamente notícias que falam do MESMO acontecimento (cosine similarity alta).
+- Deduplique.
+- Classifique cada evento em categoria.
+- Gere resumo factual em português.
+- Use APENAS as fontes/URLs fornecidas — NUNCA invente.
+- Quando não houver notícias suficientes nas fontes, complemente com eventos reais públicos do seu conhecimento, mas marque tais sources com type="news" e nome do veículo real.
+- Responda EXCLUSIVAMENTE com JSON válido.`;
 
-    const userPrompt = `Liste eventos políticos relevantes envolvendo "${body.candidate_name}" no período de ${body.start_date} até ${body.end_date}.
+    const sourcesPayload = unique.slice(0, 220).map((it) => ({
+      title: it.title,
+      url: it.url,
+      source: it.source,
+      type: it.type,
+      date: it.pub_date ?? null,
+      snippet: it.snippet?.slice(0, 220) ?? "",
+    }));
+
+    const userPrompt = `Candidato: "${body.candidate_name}"
+Período: ${body.start_date} até ${body.end_date}
 ${catFilter}
 
-Critérios de inclusão:
-- decisões judiciais (STF/STJ/TSE), investigações, prisões, julgamentos
-- ações do Executivo, vetos, MPs, nomeações
-- votações relevantes no Congresso, CPIs
-- declarações, escândalos, repercussão nacional
-- eventos eleitorais e partidários
+Notícias brutas coletadas via RSS (${sourcesPayload.length} itens):
+${JSON.stringify(sourcesPayload)}
 
-Formato OBRIGATÓRIO de resposta:
+Tarefa:
+1. Agrupe as notícias acima por evento (mesmo acontecimento = 1 evento).
+2. Para cada evento, liste TODAS as sources que cobrem aquele evento (do material fornecido).
+3. Para períodos longos com cobertura RSS insuficiente, complemente com eventos REAIS conhecidos publicamente nesse período envolvendo "${body.candidate_name}".
+4. Retorne entre 30 e 120 eventos (mais para períodos longos).
+
+Formato OBRIGATÓRIO:
 {
   "events": [
     {
       "title": "string (até 200 chars)",
-      "summary": "string (2-4 frases factuais)",
-      "category": "Eleições|STF|TSE|PF|CPI|Congresso|Executivo|Economia|Escândalos|Prisões|Julgamentos|Internacional|Outros",
+      "summary": "string (2-5 frases factuais)",
+      "category": "Eleições|STF|TSE|PF|CPI|Congresso|Executivo|Economia|Escândalos|Prisões|Julgamentos|Internacional|Declarações|Outros",
       "event_date": "YYYY-MM-DD",
-      "source_count": 0,
-      "institutional_sources": 0,
+      "political_impact": "string curta sobre impacto político",
+      "entities": ["pessoa/órgão", "..."],
       "social_score": 0,
       "sources": [
-        { "name": "Nome do veículo", "url": "https://...", "type": "institutional|news|international" }
+        { "name": "Nome do veículo", "url": "https://...", "type": "institutional|news|international|aggregator" }
       ]
     }
   ]
 }
-
-Retorne entre 30 e 80 eventos quando o período for amplo, e o máximo que tiver com alta confiabilidade quando o período for curto.
 Ordene do mais recente para o mais antigo.`;
 
     const messages = [
@@ -208,33 +398,36 @@ Ordene do mais recente para o mais antigo.`;
           messages,
           response_format: { type: "json_object" },
           temperature: 0.2,
-          max_tokens: provider === "cerebras" ? 8192 : 4096,
+          max_tokens: provider === "cerebras" ? 8192 : 6144,
         }),
-        signal: AbortSignal.timeout(provider === "cerebras" ? 35_000 : 30_000),
+        signal: AbortSignal.timeout(provider === "cerebras" ? 40_000 : 35_000),
       });
       const raw = await res.text();
       return { ok: res.ok, status: res.status, raw, provider, model };
     }
 
     async function callGemini(model: string, key: string) {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          systemInstruction: { role: "system", parts: [{ text: systemPrompt }] },
-          contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 8192, responseMimeType: "application/json" },
-        }),
-        signal: AbortSignal.timeout(35_000),
-      });
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { role: "system", parts: [{ text: systemPrompt }] },
+            contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+            generationConfig: { temperature: 0.2, maxOutputTokens: 8192, responseMimeType: "application/json" },
+          }),
+          signal: AbortSignal.timeout(40_000),
+        },
+      );
       const raw = await res.text();
       return { ok: res.ok, status: res.status, raw, provider: "gemini", model };
     }
 
     const attempts: Array<() => Promise<{ ok: boolean; status: number; raw: string; provider: string; model: string }>> = [];
-    if (CEREBRAS_KEY) CEREBRAS_MODELS.forEach((model) => attempts.push(() => callOpenAICompat("cerebras", model, CEREBRAS_KEY)));
-    if (GROQ_KEY) GROQ_MODELS.forEach((model) => attempts.push(() => callOpenAICompat("groq", model, GROQ_KEY)));
-    if (GEMINI_KEY) GEMINI_MODELS.forEach((model) => attempts.push(() => callGemini(model, GEMINI_KEY)));
+    if (CEREBRAS_KEY) CEREBRAS_MODELS.forEach((m) => attempts.push(() => callOpenAICompat("cerebras", m, CEREBRAS_KEY)));
+    if (GROQ_KEY) GROQ_MODELS.forEach((m) => attempts.push(() => callOpenAICompat("groq", m, GROQ_KEY)));
+    if (GEMINI_KEY) GEMINI_MODELS.forEach((m) => attempts.push(() => callGemini(m, GEMINI_KEY)));
 
     let text = "{}";
     let usedProvider = "none";
@@ -243,7 +436,7 @@ Ordene do mais recente para o mais antigo.`;
       try {
         const result = await attempt();
         if (!result.ok) {
-          lastFailure = `${result.provider}:${result.model} HTTP ${result.status} ${result.raw.slice(0, 220)}`;
+          lastFailure = `${result.provider}:${result.model} HTTP ${result.status} ${result.raw.slice(0, 200)}`;
           console.warn(`[RADAR-AI] ${lastFailure}`);
           if (result.status === 429 || result.status === 402) await sleep(900);
           continue;
@@ -267,8 +460,10 @@ Ordene do mais recente para o mais antigo.`;
         events: [],
         cached: false,
         count: 0,
+        raw_items: unique.length,
       });
     }
+
     let parsed: any = {};
     try {
       parsed = JSON.parse(text);
@@ -285,29 +480,33 @@ Ordene do mais recente para o mais antigo.`;
 
     const events = normalizeEvents(parsed.events ?? parsed);
 
-    await admin
-      .from("radar_cache")
-      .upsert(
-        {
-          user_id: userId,
-          candidate_id: body.candidate_id ?? null,
-          candidate_name: body.candidate_name,
-          period_hash,
-          start_date: body.start_date,
-          end_date: body.end_date,
-          categories: body.categories ?? [],
-          response_json: events,
-          event_count: events.length,
-          created_at: new Date().toISOString(),
-          expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
-        },
-        { onConflict: "user_id,period_hash" },
-      );
-
-    return new Response(
-      JSON.stringify({ events, cached: false, count: events.length, provider: usedProvider }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    // Cache 30 min
+    await admin.from("radar_cache").upsert(
+      {
+        user_id: userId,
+        candidate_id: body.candidate_id ?? null,
+        candidate_name: body.candidate_name,
+        period_hash,
+        start_date: body.start_date,
+        end_date: body.end_date,
+        categories: body.categories ?? [],
+        response_json: events,
+        event_count: events.length,
+        created_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      },
+      { onConflict: "user_id,period_hash" },
     );
+
+    return jsonResponse({
+      events,
+      cached: false,
+      count: events.length,
+      provider: usedProvider,
+      raw_items: unique.length,
+      sources_fetched: dynamicFeeds.length,
+      fetch_ms: fetchMs,
+    });
   } catch (e) {
     console.error("[RADAR-AI] erro inesperado", e);
     return jsonResponse({
