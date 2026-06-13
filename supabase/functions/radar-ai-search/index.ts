@@ -5,9 +5,11 @@ import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
-const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const CEREBRAS_MODEL = "llama-3.3-70b";
-const FALLBACK_MODEL = "google/gemini-2.5-flash";
+const CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const CEREBRAS_MODELS = ["llama-3.3-70b", "llama3.1-8b", "qwen-3-235b-a22b-instruct-2507"];
+const GROQ_MODELS = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
+const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite"];
 
 interface ReqBody {
   candidate_id?: string | null;
@@ -27,6 +29,22 @@ function safeNum(v: any, def = 0, min = 0, max = 100) {
   const n = Number(v);
   if (isNaN(n)) return def;
   return Math.max(min, Math.min(max, Math.round(n)));
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function jsonResponse(payload: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+function extractText(provider: string, data: any): string {
+  if (provider === "gemini") {
+    return data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text ?? "").join("") ?? "";
+  }
+  return data?.choices?.[0]?.message?.content ?? "";
 }
 
 function normalizeEvents(raw: any[]): any[] {
