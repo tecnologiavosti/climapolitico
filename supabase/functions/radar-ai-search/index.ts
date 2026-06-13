@@ -384,7 +384,7 @@ Deno.serve(async (req) => {
         return jsonResponse({
           events: cachedEvents,
           cached: true,
-          cached_at: cached.created_at,
+          cached_at: cached?.created_at,
           count: cachedEvents.length,
         });
       }
@@ -596,12 +596,12 @@ NÃO retorne menos de 20 eventos, exceto se realmente não existirem.`;
       await admin.from("radar_cache").upsert(
         {
           user_id: userId,
-          candidate_id: body.candidate_id ?? null,
-          candidate_name: body.candidate_name,
+          candidate_id: safeBody.candidate_id ?? null,
+          candidate_name: safeBody.candidate_name,
           period_hash,
-          start_date: body.start_date,
-          end_date: body.end_date,
-          categories: body.categories ?? [],
+          start_date: safeBody.start_date,
+          end_date: safeBody.end_date,
+          categories: safeBody.categories ?? [],
           response_json: nonEmptyEvents,
           event_count: nonEmptyEvents.length,
           created_at: new Date().toISOString(),
@@ -613,7 +613,7 @@ NÃO retorne menos de 20 eventos, exceto se realmente não existirem.`;
 
     async function returnRssFallback(reason: string, statusWhenEmpty = 502) {
       console.warn(`[RADAR] fallback RSS acionado: ${reason}`);
-      const fallbackEvents = buildRssFallbackEvents(allItems, body.candidate_name, aliases, startMs, endMs);
+      const fallbackEvents = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs);
       console.log("LOG 6: eventos após filtro =", { fallback: true, count: fallbackEvents.length, sample: fallbackEvents.slice(0, 3) });
       if (fallbackEvents.length === 0) {
         console.log("Skipping empty cache");
