@@ -326,6 +326,61 @@ function eventMatchesCandidate(event: any, aliases: string[]): boolean {
   return aliases.some((a) => hay.includes(a) || similarity(a, hay) > 0.75);
 }
 
+function isRelevantPoliticalText(text: string): boolean {
+  const clean = sanitizeRadarText(text);
+  if (!clean || SPORTS_NOISE_RE.test(clean) || BANNED_TRIVIAL_RE.test(clean)) return false;
+  if (ROUTINE_NOISE_RE.test(clean) && !POLITICAL_RELEVANCE_RE.test(clean)) return false;
+  return POLITICAL_RELEVANCE_RE.test(clean) || STRONG_IMPACT_RE.test(clean);
+}
+
+function categoryForText(text: string, sourceTypes: string[] = []): string {
+  if (/\b(PF|Polícia Federal|operação|operacao|prisão|prisao|busca e apreensão|busca e apreensao)\b/i.test(text)) return "PF";
+  if (/\b(STF|Supremo|julgamento|inquérito|inquerito|réu|reu)\b/i.test(text)) return "STF";
+  if (/\b(TSE|eleição|eleicao|inelegível|inelegivel|cassação|cassacao|pesquisa eleitoral)\b/i.test(text)) return "TSE";
+  if (/\b(CPI|Senado|Câmara|Camara|Congresso|votação|votacao)\b/i.test(text)) return "Congresso";
+  if (/\b(economia|Banco Central|dólar|dolar|juros|inflação|inflacao|arcabouço|arcabouco)\b/i.test(text)) return "Economia";
+  if (/\b(escândalo|escandalo|denúncia|denuncia|corrupção|corrupcao|crise)\b/i.test(text)) return "Escândalos";
+  if (sourceTypes.includes("international")) return "Internacional";
+  return "Outros";
+}
+
+function sourceWeight(name: string, type?: string): number {
+  if (type === "institutional" || INSTITUTIONAL_RE.test(name)) return 1.0;
+  if (/\b(Reuters|Bloomberg|Financial Times|BBC|AP|NYT|Valor|Estadão|Folha|Globo|G1|UOL|CNN|JOTA|Poder360|Metrópoles|Agência Brasil)\b/i.test(name)) return 0.85;
+  if (type === "international") return 0.75;
+  if (type === "aggregator" || /Google News/i.test(name)) return 0.45;
+  return 0.6;
+}
+
+function scoreEvent(e: any): { importance: number; social_score: number; institutional_sources: number; source_count: number } {
+  const sources = Array.isArray(e.sources) ? e.sources : [];
+  const source_count = Math.max(1, sources.length || safeNum(e.source_count, 1, 1, 999));
+  const institutional_sources = sources.filter((s: any) => s?.type === "institutional" || INSTITUTIONAL_RE.test(String(s?.name ?? ""))).length;
+  const text = `${e.title ?? ""} ${e.summary ?? ""} ${e.political_impact ?? ""}`;
+  const mediaWeight = Math.min(10, sources.reduce((sum: number, s: any) => sum + sourceWeight(String(s?.name ?? ""), s?.type), 0));
+  const impactScore = CRITICAL_IMPACT_RE.test(text) ? 1 : STRONG_IMPACT_RE.test(text) ? 0.75 : POLITICAL_RELEVANCE_RE.test(text) ? 0.45 : 0.2;
+  const social_relevance = Math.min(100, 18 + source_count * 7 + institutional_sources * 12 + mediaWeight * 4 + impactScore * 35);
+  const raw = source_count * 2 + institutional_sources * 12 + mediaWeight * 8 + social_relevance * 0.3 + impactScore * 20;
+  return {
+    importance: safeNum(raw, 0),
+    social_score: safeNum(social_relevance, 0),
+    institutional_sources,
+    source_count,
+  };
+}
+
+function dedupeEvents(events: any[]): any[] {
+  const seen = new Set<string>();
+  const out: any[] = [];
+  for (const ev of events.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0))) {
+    const key = normalize(`${ev.event_date ?? ""} ${ev.title ?? ""}`).split(" ").filter((t) => t.length > 3).slice(0, 12).join(" ");
+    if (!key || [...seen].some((s) => similarity(s, key) > 0.78)) continue;
+    seen.add(key);
+    out.push(ev);
+  }
+  return out;
+}
+
 function inDateRange(item: RawItem, startMs: number, endMs: number): boolean {
   if (!item.pub_date) return true; // keep if unknown — AI will discard
   const t = Date.parse(item.pub_date);
