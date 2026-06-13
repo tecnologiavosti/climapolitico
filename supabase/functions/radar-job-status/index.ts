@@ -51,23 +51,30 @@ Deno.serve(async (req) => {
       });
     }
 
-    const eventLimit = data.status === "completed" ? 15_000 : 1_000;
-    const { data: eventRows, error: eventsError } = await client
-      .from("radar_job_events")
-      .select("event_data")
-      .eq("job_id", jobId)
-      .order("event_date", { ascending: false, nullsFirst: false })
-      .order("importance", { ascending: false })
-      .limit(eventLimit);
-
-    if (eventsError) {
-      return new Response(JSON.stringify({ error: eventsError.message }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // Suportar 10k+ eventos: PostgREST limita 1000 por request → paginação manual.
+    const eventLimit = data.status === "completed" ? 15_000 : 2_000;
+    const PAGE = 1000;
+    const collected: any[] = [];
+    for (let offset = 0; offset < eventLimit; offset += PAGE) {
+      const { data: page, error: eventsError } = await client
+        .from("radar_job_events")
+        .select("event_data")
+        .eq("job_id", jobId)
+        .order("event_date", { ascending: false, nullsFirst: false })
+        .order("importance", { ascending: false })
+        .range(offset, offset + PAGE - 1);
+      if (eventsError) {
+        return new Response(JSON.stringify({ error: eventsError.message }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (!page || page.length === 0) break;
+      for (const row of page) if (row?.event_data) collected.push(row.event_data);
+      if (page.length < PAGE) break;
     }
 
     const payload: any = { ...data };
-    payload.events = (eventRows ?? []).map((row: any) => row.event_data).filter(Boolean);
+    payload.events = collected;
     payload.partial = data.status !== "completed";
     payload.events_limit = eventLimit;
 
