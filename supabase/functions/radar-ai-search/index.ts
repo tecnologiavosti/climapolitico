@@ -4,9 +4,10 @@
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+const CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const MODEL = "google/gemini-2.5-flash";
-const FALLBACK_MODEL = "google/gemini-2.5-flash-lite";
+const CEREBRAS_MODEL = "llama-3.3-70b";
+const FALLBACK_MODEL = "google/gemini-2.5-flash";
 
 interface ReqBody {
   candidate_id?: string | null;
