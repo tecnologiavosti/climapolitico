@@ -445,15 +445,9 @@ export default function RadarPolitico() {
         {(searchMutation.isPending || isJobRunning) && events.length === 0 ? (
           <div className="border rounded-md bg-card p-4 space-y-4">
             <div className="flex items-center gap-2 text-sm font-medium">
-              <Loader2 className="h-4 w-4 animate-spin" /> Buscando eventos via IA...
-            </div>
-            <div className="grid gap-2 text-xs text-muted-foreground">
-              {["Consultando IA", "Processando eventos", "Atualizando cache"].map((step, i) => (
-                <div key={step} className="flex items-center gap-2">
-                  <span className={cn("h-2 w-2 rounded-full", i === 0 ? "bg-foreground animate-pulse" : "bg-muted-foreground/40")} />
-                  {step}
-                </div>
-              ))}
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Coletando eventos em background
+              {jobStatus ? ` (${jobStatus.processed_chunks}/${jobStatus.total_chunks || "?"} períodos · ${nfBR.format(jobStatus.events_count)} eventos)` : "..."}
             </div>
             <div className="grid gap-2">
               {[0, 1, 2].map((i) => (
