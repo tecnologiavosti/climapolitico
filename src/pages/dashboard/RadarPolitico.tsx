@@ -421,12 +421,12 @@ export default function RadarPolitico() {
       {/* Lista */}
       <section className="space-y-2">
         <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">
-          {searchMutation.isPending
-            ? "Buscando eventos via IA..."
+          {searchMutation.isPending || isJobRunning
+            ? "Coletando eventos em background..."
             : `${nfBR.format(filtered.length)} eventos`}
         </h2>
 
-        {lastError && !searchMutation.isPending && (
+        {lastError && !searchMutation.isPending && !isJobRunning && (
           <Card className="border-destructive/40 bg-destructive/5">
             <CardContent className="p-4 space-y-2">
               <div className="flex items-center gap-2 text-sm font-medium text-destructive">
@@ -442,7 +442,7 @@ export default function RadarPolitico() {
           </Card>
         )}
 
-        {searchMutation.isPending ? (
+        {(searchMutation.isPending || isJobRunning) && events.length === 0 ? (
           <div className="border rounded-md bg-card p-4 space-y-4">
             <div className="flex items-center gap-2 text-sm font-medium">
               <Loader2 className="h-4 w-4 animate-spin" /> Buscando eventos via IA...
