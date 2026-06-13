@@ -409,22 +409,19 @@ function normalizeEvents(raw: any[]): any[] {
             })
             .filter((s: any) => s.name)
         : [];
-      const source_count = sources.length || safeNum(e.source_count, 1, 0, 999);
-      const institutional_sources = sources.filter((s: any) => s.type === "institutional").length;
-      const social_score = safeNum(e.social_score, 0);
-      const media_diversity = new Set(sources.map((s: any) => s.name)).size;
-      const computed = source_count * 2 + institutional_sources * 10 + social_score * 0.3 + media_diversity * 1.5;
-      const importance = safeNum(e.importance, Math.min(100, Math.round(computed)));
+      const event_date = e.event_date ?? e.date ?? null;
+      const score = scoreEvent({ ...e, sources });
+      const text = `${e.title ?? ""} ${e.summary ?? ""} ${e.political_impact ?? ""}`;
       return {
         id: e.id ?? `${Date.now()}-${i}`,
         title: sanitizeRadarText(e.title).slice(0, 280),
         summary: sanitizeRadarText(e.summary ?? "").slice(0, 1500),
-        category: sanitizeRadarText(e.category ?? "Outros"),
-        event_date: e.event_date ?? e.date ?? null,
-        source_count,
-        institutional_sources,
-        social_score,
-        importance,
+        category: sanitizeRadarText(e.category && e.category !== "Institucional" ? e.category : categoryForText(text, sources.map((s: any) => s.type))),
+        event_date,
+        source_count: score.source_count,
+        institutional_sources: score.institutional_sources,
+        social_score: score.social_score,
+        importance: score.importance,
         political_impact: e.political_impact ? sanitizeRadarText(e.political_impact).slice(0, 600) : "",
         entities: Array.isArray(e.entities) ? e.entities.slice(0, 10).map((x: any) => sanitizeRadarText(x).slice(0, 80)) : [],
         sources: sources.slice(0, 25).map((s: any) => ({
@@ -434,6 +431,7 @@ function normalizeEvents(raw: any[]): any[] {
         })),
       };
     })
+    .filter((e) => isRelevantPoliticalText(`${e.title} ${e.summary} ${e.category}`))
     .sort((a, b) => {
       const ta = a.event_date ? Date.parse(a.event_date) : 0;
       const tb = b.event_date ? Date.parse(b.event_date) : 0;
