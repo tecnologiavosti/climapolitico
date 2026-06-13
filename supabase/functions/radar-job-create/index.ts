@@ -12,6 +12,8 @@ interface ReqBody {
   end_date?: string;
   categories?: string[];
   sort?: string;
+  force_refresh?: boolean;
+  ignore_cache?: boolean;
 }
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
