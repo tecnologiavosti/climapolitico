@@ -5,7 +5,8 @@ import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const MODEL = "google/gemini-2.5-pro";
+const MODEL = "google/gemini-2.5-flash";
+const FALLBACK_MODEL = "google/gemini-2.5-flash-lite";
 
 interface ReqBody {
   candidate_id?: string | null;
@@ -169,26 +170,37 @@ Formato OBRIGATÓRIO de resposta:
 Retorne entre 30 e 80 eventos quando o período for amplo, e o máximo que tiver com alta confiabilidade quando o período for curto.
 Ordene do mais recente para o mais antigo.`;
 
-    const aiRes = await fetch(GATEWAY_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Lovable-API-Key": LOVABLE_KEY,
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.3,
-      }),
-    });
+    async function callModel(model: string) {
+      return await fetch(GATEWAY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_KEY! },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.3,
+        }),
+      });
+    }
+
+    let aiRes = await callModel(MODEL);
+    if (aiRes.status === 429) {
+      await new Promise((r) => setTimeout(r, 1500));
+      aiRes = await callModel(FALLBACK_MODEL);
+    }
 
     if (!aiRes.ok) {
       const t = await aiRes.text();
-      return new Response(JSON.stringify({ error: `ai_${aiRes.status}`, detail: t.slice(0, 500) }), {
+      const friendly =
+        aiRes.status === 429
+          ? "A IA está com limite excedido no momento (muitos usuários gratuitos). Tente novamente em 30s ou faça upgrade do plano."
+          : aiRes.status === 402
+          ? "Créditos de IA esgotados. Adicione créditos para continuar."
+          : `Falha na IA (${aiRes.status}).`;
+      return new Response(JSON.stringify({ error: `ai_${aiRes.status}`, message: friendly, detail: t.slice(0, 300) }), {
         status: aiRes.status === 429 || aiRes.status === 402 ? aiRes.status : 502,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

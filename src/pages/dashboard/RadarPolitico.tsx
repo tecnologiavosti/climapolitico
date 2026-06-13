@@ -133,7 +133,13 @@ export default function RadarPolitico() {
           : `${data.events?.length ?? 0} eventos buscados pela IA`,
       );
     },
-    onError: (e: any) => toast.error(e?.message ?? "Falha na busca"),
+    onError: (e: any) => {
+      const ctx = e?.context;
+      const status = ctx?.status ?? 0;
+      if (status === 429) toast.error("IA temporariamente sem capacidade. Aguarde ~30s e tente novamente.");
+      else if (status === 402) toast.error("Créditos de IA esgotados.");
+      else toast.error(e?.message ?? "Falha na busca");
+    },
   });
 
   // Filtros locais
