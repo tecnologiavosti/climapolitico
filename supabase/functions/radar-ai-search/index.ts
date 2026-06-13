@@ -346,7 +346,7 @@ Deno.serve(async (req) => {
     const GROQ_KEY = Deno.env.get("GROQ_API_KEY");
     const GEMINI_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!CEREBRAS_KEY && !GROQ_KEY && !GEMINI_KEY) {
-      return jsonResponse({ error: "ai_unconfigured", fallback: true, events: [], cached: false, count: 0 });
+      console.warn("[RADAR-AI] nenhum provedor de IA configurado; fallback RSS será usado");
     }
 
     const userClient = createClient(SUPABASE_URL, ANON, {
