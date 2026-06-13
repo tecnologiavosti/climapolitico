@@ -597,7 +597,12 @@ Retorne JSON:
 }
 ]
 
-NÃO retorne menos de 20 eventos, exceto se realmente não existirem.`;
+NÃO retorne menos de 20 eventos, exceto se realmente não existirem.
+
+DISTRIBUTE RESULTS ACROSS THE ENTIRE REQUESTED DATE RANGE.
+Avoid over-concentration in a single day/week unless historically justified.
+Para cada mês do período solicitado, inclua pelo menos alguns eventos representativos quando existirem fatos públicos.
+Evite que a maioria dos eventos caia em uma única semana — espalhe ao longo do tempo.`;
 
     console.log("LOG 3: prompt enviado =", userPrompt);
 
