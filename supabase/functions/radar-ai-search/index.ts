@@ -84,8 +84,8 @@ const FEEDS: Array<{ name: string; url: string; type: RawItem["type"] }> = [
 
 function hashPeriod(b: ReqBody): string {
   const cats = [...(b.categories ?? [])].sort().join(",");
-  // v5: bumped to invalidate any cache built with the 2024+ historical bug.
-  return `radar-v5|${b.candidate_id ?? "all"}|${b.candidate_name}|${b.start_date}|${b.end_date}|${cats}`;
+  // v6: invalidação após negative aliases + mojibake fix
+  return `radar-v6|${b.candidate_id ?? "all"}|${b.candidate_name}|${b.start_date}|${b.end_date}|${cats}`;
 }
 
 function safeNum(v: any, def = 0, min = 0, max = 100) {
