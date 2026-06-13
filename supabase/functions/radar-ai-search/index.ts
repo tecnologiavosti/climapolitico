@@ -760,7 +760,10 @@ Deno.serve(async (req) => {
     if (safeBody.skip_ai) {
       const heuristicRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs, negativeAliases, fullNameNorm);
       const heuristic = applyTemporalDiversity(clusterEvents(heuristicRaw), 30);
-      console.log(`[RADAR] skip_ai=true → ${heuristic.length} eventos heurísticos`);
+      const maxImp = heuristic.reduce((m, e) => Math.max(m, e.importance ?? 0), 0);
+      const grandes = heuristic.filter((e) => (e.importance ?? 0) >= 60).length;
+      const medios = heuristic.filter((e) => (e.importance ?? 0) >= 30 && (e.importance ?? 0) < 60).length;
+      console.log("RAW EVENTS", allItems.length, "| AFTER MATCH", heuristicRaw.length, "| AFTER DEDUPE", heuristic.length, "| MAX IMPORTANCE", maxImp, "| grandes", grandes, "medios", medios);
       endTotal();
       return jsonResponse({
         events: heuristic,
