@@ -2441,6 +2441,69 @@ export type Database = {
         }
         Relationships: []
       }
+      radar_jobs: {
+        Row: {
+          candidate_id: string | null
+          candidate_name: string
+          categories: Json
+          completed_at: string | null
+          created_at: string
+          end_date: string
+          error: string | null
+          events: Json | null
+          events_count: number
+          id: string
+          processed_chunks: number
+          progress: number
+          start_date: string
+          started_at: string | null
+          status: string
+          total_chunks: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          candidate_id?: string | null
+          candidate_name: string
+          categories?: Json
+          completed_at?: string | null
+          created_at?: string
+          end_date: string
+          error?: string | null
+          events?: Json | null
+          events_count?: number
+          id?: string
+          processed_chunks?: number
+          progress?: number
+          start_date: string
+          started_at?: string | null
+          status?: string
+          total_chunks?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          candidate_id?: string | null
+          candidate_name?: string
+          categories?: Json
+          completed_at?: string | null
+          created_at?: string
+          end_date?: string
+          error?: string | null
+          events?: Json | null
+          events_count?: number
+          id?: string
+          processed_chunks?: number
+          progress?: number
+          start_date?: string
+          started_at?: string | null
+          status?: string
+          total_chunks?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       radar_pipeline_health: {
         Row: {
           candidate_id: string
