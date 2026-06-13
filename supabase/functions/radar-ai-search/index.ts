@@ -945,7 +945,7 @@ Evite que a maioria dos eventos caia em uma única semana — espalhe ao longo d
     const rssFallbackRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs);
     if (events.length < Math.min(expectedMin, 100) && rssFallbackRaw.length > 0) {
       console.warn(`[RADAR] IA abaixo da meta (${events.length}/${expectedMin}); mesclando evidências RSS temporais`);
-      events = applyTemporalDiversity(clusterEvents([...events, ...rssFallbackRaw]), 8);
+      events = applyTemporalDiversity(clusterEvents([...events, ...rssFallbackRaw]), 30);
     }
     console.log("LOG 6: eventos após filtro =", { count: events.length, expectedMin, before_diversity: filteredEvents.length, rss_candidates: rssFallbackRaw.length, sample: events.slice(0, 3) });
 
