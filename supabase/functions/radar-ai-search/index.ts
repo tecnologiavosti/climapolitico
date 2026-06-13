@@ -991,10 +991,13 @@ VALIDAÇÃO FINAL (faça antes de responder):
       return await returnRssFallback("AI returned 0 events");
     }
 
-    const candidateFiltered = parsedEvents.filter((event) => eventMatchesCandidate(event, aliases));
+    const beforeFilter = parsedEvents.length;
+    const candidateFiltered = parsedEvents.filter((event) => eventMatchesCandidate(event, aliases, negativeAliases, fullNameNorm));
+    console.log("AFTER MATCH (AI)", candidateFiltered.length, "| REJECTED FALSE POSITIVES", beforeFilter - candidateFiltered.length);
     const filteredEvents = candidateFiltered.length > 0 ? candidateFiltered : parsedEvents;
     let events = applyTemporalDiversity(clusterEvents(filteredEvents), 30);
-    const rssFallbackRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs);
+    console.log("AFTER DEDUPE", events.length, "| AI REQUESTS", 1);
+    const rssFallbackRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs, negativeAliases, fullNameNorm);
     if (events.length < Math.min(expectedMin, 100) && rssFallbackRaw.length > 0) {
       console.warn(`[RADAR] IA abaixo da meta (${events.length}/${expectedMin}); mesclando evidências RSS temporais`);
       events = applyTemporalDiversity(clusterEvents([...events, ...rssFallbackRaw]), 30);
