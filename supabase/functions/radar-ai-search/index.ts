@@ -361,10 +361,11 @@ Deno.serve(async (req) => {
     if (!body?.candidate_name || !body?.start_date || !body?.end_date) {
       return jsonResponse({ error: "campos obrigatórios: candidate_name, start_date, end_date" }, 400);
     }
+    const safeBody = body;
 
-    const period_hash = hashPeriod(body);
-    const startMs = Date.parse(body.start_date + "T00:00:00Z");
-    const endMs = Date.parse(body.end_date + "T23:59:59Z");
+    const period_hash = hashPeriod(safeBody);
+    const startMs = Date.parse(safeBody.start_date + "T00:00:00Z");
+    const endMs = Date.parse(safeBody.end_date + "T23:59:59Z");
 
     console.log("LOG 1: candidate_name =", body.candidate_name);
     console.log("LOG 2: period =", { start_date: body.start_date, end_date: body.end_date, force_refresh: !!body.force_refresh });
