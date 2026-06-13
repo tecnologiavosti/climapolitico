@@ -16,6 +16,8 @@ interface ReqBody {
   end_date: string;
   categories?: string[];
   force_refresh?: boolean;
+  /** Pular IA por chunk (modo heurístico). Usado pelo job em background para evitar rate-limit. */
+  skip_ai?: boolean;
 }
 
 interface RawItem {
