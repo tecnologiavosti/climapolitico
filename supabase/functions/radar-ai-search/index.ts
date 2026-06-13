@@ -5,7 +5,6 @@ import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
-const CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const CEREBRAS_MODELS = ["llama-3.3-70b", "llama3.1-8b", "qwen-3-235b-a22b-instruct-2507"];
 const GROQ_MODELS = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
