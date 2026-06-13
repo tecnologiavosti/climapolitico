@@ -294,6 +294,12 @@ export default function RadarPolitico() {
         setEvents(data.events);
         setRadarCache(cacheKey, { events: data.events, jobId: data.job_id, fetchedAt: new Date().toISOString(), eventsCount: data.events_count });
       }
+      if (data.cached) {
+        setLastFetchedAt(new Date());
+        setLastError(null);
+        toast.success("Resultado carregado do cache do Radar.");
+        return;
+      }
       setJobId(data.job_id);
       toast.info("Busca histórica iniciada em background. Primeiros eventos aparecerão automaticamente.");
     },
