@@ -258,16 +258,20 @@ export default function RadarPolitico() {
   }, [jobStatus, cacheKey]);
 
   const searchMutation = useMutation({
-    mutationFn: async (_force: boolean = false) => {
-      const cacheHit = !_force ? getRadarCache(cacheKey) : null;
-      console.log("CACHE HIT", !!cacheHit);
-      if (cacheHit) {
-        setEvents(cacheHit.events);
-        setJobId(cacheHit.jobId ?? null);
-        setLastFetchedAt(new Date(cacheHit.fetchedAt));
-        setLastError(null);
-        return { job_id: cacheHit.jobId ?? "cache", status: "cached" };
-      }
+    mutationFn: async (_force: boolean = true) => {
+      // Busca manual SEMPRE força refresh — nunca retorna cache antigo
+      const forceRefresh = true;
+      console.log("FORCE REFRESH", forceRefresh);
+      console.log("CACHE HIT", false);
+      console.log("RUNNING NEW SEARCH");
+
+      // Limpa qualquer cache local antes de buscar
+      try {
+        radarMemoryCache.clear();
+        Object.keys(localStorage).filter((k) => /radar|cache|events/i.test(k)).forEach((k) => localStorage.removeItem(k));
+        Object.keys(sessionStorage).filter((k) => /radar|cache|events/i.test(k)).forEach((k) => sessionStorage.removeItem(k));
+      } catch { /* ignore */ }
+
       if (candidateId === "all") throw new Error("Selecione um candidato.");
       if (!from || !to) throw new Error("Defina o período (datas inicial e final).");
       setEvents([]);
@@ -281,6 +285,8 @@ export default function RadarPolitico() {
           end_date: to.toISOString().slice(0, 10),
           categories: category === "Todos" ? [] : [category],
           sort: sortBy,
+          force_refresh: true,
+          ignore_cache: true,
         },
       });
       if (error) {
@@ -293,22 +299,9 @@ export default function RadarPolitico() {
     onSuccess: (data) => {
       if (Array.isArray(data.events) && data.events.length > 0) {
         setEvents(data.events);
-        setRadarCache(cacheKey, { events: data.events, jobId: data.job_id ?? undefined, fetchedAt: new Date().toISOString(), eventsCount: data.events_count });
-      }
-      if (data.status === "cached") {
-        setLastFetchedAt(new Date());
-        setLastError(null);
-        toast.success(data.cached ? "Resultado carregado do cache do Radar." : "Resultado carregado do cache local.");
-        return;
-      }
-      if (data.cached) {
-        setLastFetchedAt(new Date());
-        setLastError(null);
-        toast.success("Resultado carregado do cache do Radar.");
-        return;
       }
       setJobId(data.job_id ?? null);
-      toast.info("Busca histórica iniciada em background. Primeiros eventos aparecerão automaticamente.");
+      toast.info("Buscando fontes externas...");
     },
     onError: (e: unknown) => {
       const msg = friendlyRadarError(e instanceof Error ? e.message : "Falha ao iniciar job");
