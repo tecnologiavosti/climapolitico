@@ -564,9 +564,9 @@ function parseAiJson(text: string): any {
   }
 }
 
-function buildRssFallbackEvents(items: RawItem[], candidateName: string, aliases: string[], startMs: number, endMs: number): any[] {
-  const primary = items.filter((it) => matchesCandidate(it, aliases) && inDateRange(it, startMs, endMs) && isRelevantPoliticalText(`${it.title} ${it.snippet ?? ""}`));
-  const relaxed = primary.length > 0 ? primary : items.filter((it) => matchesCandidate(it, aliases) && isRelevantPoliticalText(`${it.title} ${it.snippet ?? ""}`));
+function buildRssFallbackEvents(items: RawItem[], candidateName: string, aliases: string[], startMs: number, endMs: number, negativeAliases: string[] = [], fullNameNorm = ""): any[] {
+  const primary = items.filter((it) => matchesCandidate(it, aliases, negativeAliases, fullNameNorm) && inDateRange(it, startMs, endMs) && isRelevantPoliticalText(`${it.title} ${it.snippet ?? ""}`));
+  const relaxed = primary.length > 0 ? primary : items.filter((it) => matchesCandidate(it, aliases, negativeAliases, fullNameNorm) && isRelevantPoliticalText(`${it.title} ${it.snippet ?? ""}`));
   const seen = new Set<string>();
   return relaxed
     .filter((it) => {
