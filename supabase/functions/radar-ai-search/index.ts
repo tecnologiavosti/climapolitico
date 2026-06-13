@@ -264,19 +264,26 @@ function normalizeEvents(raw: any[]): any[] {
   return list
     .filter((e) => e && typeof e.title === "string" && e.title.length > 3)
     .map((e, i) => {
-      const sources = Array.isArray(e.sources) ? e.sources.filter((s: any) => s?.name && s?.url) : [];
+      const sources = Array.isArray(e.sources)
+        ? e.sources
+            .map((s: any) => {
+              if (typeof s === "string") return { name: s, url: "", type: sourceTypeFromName(s) };
+              return { name: String(s?.name ?? s?.source ?? "Fonte"), url: String(s?.url ?? ""), type: s?.type ?? sourceTypeFromName(String(s?.name ?? "")) };
+            })
+            .filter((s: any) => s.name)
+        : [];
       const source_count = sources.length || safeNum(e.source_count, 1, 0, 999);
       const institutional_sources = sources.filter((s: any) => s.type === "institutional").length;
       const social_score = safeNum(e.social_score, 0);
       const media_diversity = new Set(sources.map((s: any) => s.name)).size;
       const computed = source_count * 2 + institutional_sources * 10 + social_score * 0.3 + media_diversity * 1.5;
-      const importance = Math.min(100, Math.round(computed));
+      const importance = safeNum(e.importance, Math.min(100, Math.round(computed)));
       return {
         id: e.id ?? `${Date.now()}-${i}`,
         title: String(e.title).slice(0, 280),
         summary: String(e.summary ?? "").slice(0, 1500),
         category: String(e.category ?? "Outros"),
-        event_date: e.event_date ?? null,
+        event_date: e.event_date ?? e.date ?? null,
         source_count,
         institutional_sources,
         social_score,
@@ -285,7 +292,7 @@ function normalizeEvents(raw: any[]): any[] {
         entities: Array.isArray(e.entities) ? e.entities.slice(0, 10).map((x: any) => String(x).slice(0, 80)) : [],
         sources: sources.slice(0, 25).map((s: any) => ({
           name: String(s.name).slice(0, 120),
-          url: String(s.url).slice(0, 600),
+          url: String(s.url ?? "").slice(0, 600),
           type: s.type ?? "news",
         })),
       };
