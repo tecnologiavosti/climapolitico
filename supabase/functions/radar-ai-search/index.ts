@@ -305,13 +305,19 @@ Ordene do mais recente para o mais antigo.`;
       );
 
     return new Response(
-      JSON.stringify({ events, cached: false, count: events.length }),
+      JSON.stringify({ events, cached: false, count: events.length, provider: usedProvider }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
-    return new Response(JSON.stringify({ error: (e as Error).message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    console.error("[RADAR-AI] erro inesperado", e);
+    return jsonResponse({
+      error: "radar_failed",
+      message: "O Radar Político não conseguiu concluir a busca agora. Tente novamente em instantes.",
+      detail: (e as Error).message,
+      fallback: true,
+      events: [],
+      cached: false,
+      count: 0,
     });
   }
 });
