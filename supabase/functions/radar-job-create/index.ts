@@ -26,6 +26,7 @@ const BATCH_SIZE = 200;
 const MAX_RUNTIME = 130_000;
 const BATCH_GUARD_MS = 20_000;
 const DB_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
