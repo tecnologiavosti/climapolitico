@@ -289,8 +289,8 @@ function buildAliases(fullName: string): string[] {
   const aliases = new Set<string>([norm]);
   const compact = norm.replace(/\s+/g, " ");
   if (parts.length >= 2) {
-    aliases.add(`${parts[0]} ${parts[parts.length - 1]}`); // first + last
-    if (parts[parts.length - 1].length >= 6) aliases.add(parts[parts.length - 1]); // last name only when distinctive
+    aliases.add(`${parts[0]} ${parts[parts.length - 1]}`);
+    if (parts[parts.length - 1].length >= 6) aliases.add(parts[parts.length - 1]);
   }
   if (parts[0]) aliases.add(parts[0]);
   if (compact.includes("flavio") && compact.includes("bolsonaro")) {
@@ -305,31 +305,40 @@ function buildAliases(fullName: string): string[] {
   return Array.from(aliases).filter((a) => a.length >= 4);
 }
 
-function similarity(a: string, b: string): number {
-  const aa = normalize(a);
-  const bb = normalize(b);
-  if (!aa || !bb) return 0;
-  if (aa.includes(bb) || bb.includes(aa)) return 1;
-  const aTokens = new Set(aa.split(" ").filter((x) => x.length >= 3));
-  const bTokens = new Set(bb.split(" ").filter((x) => x.length >= 3));
-  const intersection = [...aTokens].filter((x) => bTokens.has(x)).length;
-  const union = new Set([...aTokens, ...bTokens]).size || 1;
-  const tokenScore = intersection / union;
-  let prefixMatches = 0;
-  for (const at of aTokens) {
-    if ([...bTokens].some((bt) => at.startsWith(bt) || bt.startsWith(at))) prefixMatches++;
+// Aliases negativos: termos cuja simples presença gera falso positivo (homônimos).
+// Quando aparecem isoladamente (sem o nome completo do candidato), o evento é descartado.
+function buildNegativeAliases(fullName: string): string[] {
+  const n = normalize(fullName);
+  const neg = new Set<string>();
+  if (n.includes("flavio") && n.includes("bolsonaro")) {
+    ["flavio dino", "flávio dino", "flavio rocha", "flávio rocha", "flavio arns", "flávio arns"].forEach((a) => neg.add(normalize(a)));
   }
-  return Math.max(tokenScore, prefixMatches / Math.max(1, aTokens.size));
+  if (n.includes("eduardo") && n.includes("bolsonaro")) {
+    ["eduardo paes", "eduardo leite", "eduardo suplicy", "eduardo cunha"].forEach((a) => neg.add(normalize(a)));
+  }
+  if (n.includes("jair") && n.includes("bolsonaro")) {
+    ["flavio bolsonaro", "flávio bolsonaro", "eduardo bolsonaro", "carlos bolsonaro", "michelle bolsonaro"].forEach((a) => neg.add(normalize(a)));
+  }
+  return [...neg];
 }
 
-function matchesCandidate(item: RawItem, aliases: string[]): boolean {
-  const hay = normalize(`${item.title} ${item.snippet ?? ""}`);
-  return aliases.some((a) => hay.includes(a) || similarity(a, hay) > 0.75);
+// Match com aliases positivos E rejeição por aliases negativos.
+// Regra: se hay contém alias negativo E não contém o nome cheio normalizado → rejeita.
+function entityMatches(text: string, aliases: string[], negativeAliases: string[], fullNameNorm: string): boolean {
+  const hay = normalize(text);
+  if (!hay) return false;
+  for (const neg of negativeAliases) {
+    if (hay.includes(neg) && !hay.includes(fullNameNorm)) return false;
+  }
+  return aliases.some((a) => hay.includes(a) || similarity(a, hay) > 0.78);
 }
 
-function eventMatchesCandidate(event: any, aliases: string[]): boolean {
-  const hay = normalize(`${event.title ?? ""} ${event.summary ?? ""} ${(event.entities ?? []).join(" ")}`);
-  return aliases.some((a) => hay.includes(a) || similarity(a, hay) > 0.75);
+function matchesCandidate(item: RawItem, aliases: string[], negativeAliases: string[] = [], fullNameNorm = ""): boolean {
+  return entityMatches(`${item.title} ${item.snippet ?? ""}`, aliases, negativeAliases, fullNameNorm);
+}
+
+function eventMatchesCandidate(event: any, aliases: string[], negativeAliases: string[] = [], fullNameNorm = ""): boolean {
+  return entityMatches(`${event.title ?? ""} ${event.summary ?? ""} ${(event.entities ?? []).join(" ")}`, aliases, negativeAliases, fullNameNorm);
 }
 
 function isRelevantPoliticalText(text: string): boolean {
