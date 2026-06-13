@@ -680,12 +680,12 @@ export default function RadarPolitico() {
                 className="w-full"
                 disabled={loadMoreMutation.isPending}
                 onClick={() => {
-                  if (visibleCount < filtered.length) setVisibleCount((v) => v + PAGE_SIZE);
+                  if (visibleCount < filtered.length) setVisibleCount((v) => v + LOAD_MORE_STEP);
                   else loadMoreMutation.mutate();
                 }}
               >
                 {loadMoreMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                Carregar mais 50
+                Carregar mais {LOAD_MORE_STEP}
               </Button>
             )}
           </div>
