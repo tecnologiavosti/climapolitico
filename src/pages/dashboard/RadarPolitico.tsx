@@ -286,13 +286,15 @@ export default function RadarPolitico() {
       return data as { job_id: string; status: string; events?: RadarEvent[]; cached?: boolean; events_count?: number };
     },
     onSuccess: (data) => {
-      if (data.status === "cached") {
-        toast.success("Resultado carregado do cache local.");
-        return;
-      }
       if (Array.isArray(data.events) && data.events.length > 0) {
         setEvents(data.events);
         setRadarCache(cacheKey, { events: data.events, jobId: data.job_id, fetchedAt: new Date().toISOString(), eventsCount: data.events_count });
+      }
+      if (data.status === "cached") {
+        setLastFetchedAt(new Date());
+        setLastError(null);
+        toast.success(data.cached ? "Resultado carregado do cache do Radar." : "Resultado carregado do cache local.");
+        return;
       }
       if (data.cached) {
         setLastFetchedAt(new Date());
