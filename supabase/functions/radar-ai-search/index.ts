@@ -194,73 +194,81 @@ Formato OBRIGATÓRIO de resposta:
 Retorne entre 30 e 80 eventos quando o período for amplo, e o máximo que tiver com alta confiabilidade quando o período for curto.
 Ordene do mais recente para o mais antigo.`;
 
-    async function callCerebras() {
-      return await fetch(CEREBRAS_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${CEREBRAS_KEY}` },
-        body: JSON.stringify({
-          model: CEREBRAS_MODEL,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          response_format: { type: "json_object" },
-          temperature: 0.3,
-          max_tokens: 8192,
-        }),
-      });
-    }
+    const messages = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ];
 
-    async function callGateway(model: string) {
-      return await fetch(GATEWAY_URL, {
+    async function callOpenAICompat(provider: "cerebras" | "groq", model: string, key: string) {
+      const res = await fetch(provider === "cerebras" ? CEREBRAS_URL : GROQ_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_KEY! },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
         body: JSON.stringify({
           model,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
+          messages,
           response_format: { type: "json_object" },
-          temperature: 0.3,
+          temperature: 0.2,
+          max_tokens: provider === "cerebras" ? 8192 : 4096,
         }),
+        signal: AbortSignal.timeout(provider === "cerebras" ? 35_000 : 30_000),
       });
+      const raw = await res.text();
+      return { ok: res.ok, status: res.status, raw, provider, model };
     }
 
-    let aiRes: Response | null = null;
-    if (CEREBRAS_KEY) {
+    async function callGemini(model: string, key: string) {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { role: "system", parts: [{ text: systemPrompt }] },
+          contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 8192, responseMimeType: "application/json" },
+        }),
+        signal: AbortSignal.timeout(35_000),
+      });
+      const raw = await res.text();
+      return { ok: res.ok, status: res.status, raw, provider: "gemini", model };
+    }
+
+    const attempts: Array<() => Promise<{ ok: boolean; status: number; raw: string; provider: string; model: string }>> = [];
+    if (CEREBRAS_KEY) CEREBRAS_MODELS.forEach((model) => attempts.push(() => callOpenAICompat("cerebras", model, CEREBRAS_KEY)));
+    if (GROQ_KEY) GROQ_MODELS.forEach((model) => attempts.push(() => callOpenAICompat("groq", model, GROQ_KEY)));
+    if (GEMINI_KEY) GEMINI_MODELS.forEach((model) => attempts.push(() => callGemini(model, GEMINI_KEY)));
+
+    let text = "{}";
+    let usedProvider = "none";
+    let lastFailure = "";
+    for (const attempt of attempts) {
       try {
-        aiRes = await callCerebras();
-      } catch (_) {
-        aiRes = null;
+        const result = await attempt();
+        if (!result.ok) {
+          lastFailure = `${result.provider}:${result.model} HTTP ${result.status} ${result.raw.slice(0, 220)}`;
+          console.warn(`[RADAR-AI] ${lastFailure}`);
+          if (result.status === 429 || result.status === 402) await sleep(900);
+          continue;
+        }
+        const data = JSON.parse(result.raw);
+        text = extractText(result.provider, data) || "{}";
+        usedProvider = `${result.provider}:${result.model}`;
+        break;
+      } catch (error) {
+        lastFailure = error instanceof Error ? error.message : String(error);
+        console.warn(`[RADAR-AI] provider failed: ${lastFailure}`);
       }
     }
-    if ((!aiRes || !aiRes.ok) && LOVABLE_KEY) {
-      aiRes = await callGateway(FALLBACK_MODEL);
-    }
-    if (!aiRes) {
-      return new Response(JSON.stringify({ error: "ai_unavailable" }), {
-        status: 502,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+
+    if (usedProvider === "none") {
+      return jsonResponse({
+        error: "ai_unavailable",
+        message: "Todos os provedores de IA estão temporariamente indisponíveis. Tente novamente em instantes.",
+        detail: lastFailure.slice(0, 300),
+        fallback: true,
+        events: [],
+        cached: false,
+        count: 0,
       });
     }
-
-    if (!aiRes.ok) {
-      const t = await aiRes.text();
-      const friendly =
-        aiRes.status === 429
-          ? "A IA está com limite excedido no momento (muitos usuários gratuitos). Tente novamente em 30s ou faça upgrade do plano."
-          : aiRes.status === 402
-          ? "Créditos de IA esgotados. Adicione créditos para continuar."
-          : `Falha na IA (${aiRes.status}).`;
-      return new Response(JSON.stringify({ error: `ai_${aiRes.status}`, message: friendly, detail: t.slice(0, 300) }), {
-        status: aiRes.status === 429 || aiRes.status === 402 ? aiRes.status : 502,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const aiData = await aiRes.json();
-    const text = aiData?.choices?.[0]?.message?.content ?? "{}";
     let parsed: any = {};
     try {
       parsed = JSON.parse(text);
