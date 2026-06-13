@@ -405,6 +405,36 @@ Deno.serve(async (req) => {
       });
     }
 
+    const periodHash = hashPeriod(body);
+    const cached = await readCacheFirstPage(admin, user.id, periodHash);
+    console.log("CACHE HIT", !!cached);
+    if (cached) {
+      return new Response(JSON.stringify({
+        status: "cached",
+        cached: true,
+        events: cached.events,
+        events_count: cached.event_count,
+        cached_at: cached.cached_at,
+      }), { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const { data: active } = await admin
+      .from("radar_jobs")
+      .select("id,status,events_count")
+      .eq("user_id", user.id)
+      .eq("candidate_id", body.candidate_id)
+      .eq("start_date", body.start_date)
+      .eq("end_date", body.end_date)
+      .in("status", ["queued", "running"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (active?.id) {
+      return new Response(JSON.stringify({ job_id: active.id, status: active.status, events_count: active.events_count ?? 0 }), {
+        status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { data: job, error: insErr } = await admin.from("radar_jobs").insert({
       user_id: user.id,
       candidate_id: body.candidate_id,
