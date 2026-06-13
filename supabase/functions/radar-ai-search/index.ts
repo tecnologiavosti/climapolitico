@@ -84,8 +84,8 @@ const FEEDS: Array<{ name: string; url: string; type: RawItem["type"] }> = [
 
 function hashPeriod(b: ReqBody): string {
   const cats = [...(b.categories ?? [])].sort().join(",");
-  // v5: bumped to invalidate any cache built with the 2024+ historical bug.
-  return `radar-v5|${b.candidate_id ?? "all"}|${b.candidate_name}|${b.start_date}|${b.end_date}|${cats}`;
+  // v6: invalidação após negative aliases + mojibake fix
+  return `radar-v6|${b.candidate_id ?? "all"}|${b.candidate_name}|${b.start_date}|${b.end_date}|${cats}`;
 }
 
 function safeNum(v: any, def = 0, min = 0, max = 100) {
@@ -183,10 +183,31 @@ function jsonResponse(payload: Record<string, unknown>, status = 200) {
   });
 }
 
-// ===== TEXT SANITIZER (encoding + smart quotes + control chars) =====
+// ===== TEXT SANITIZER (encoding + smart quotes + control chars + mojibake) =====
+const MOJIBAKE_MAP: Record<string, string> = {
+  "Ã¡": "á", "Ã ": "à", "Ã£": "ã", "Ã¢": "â", "Ã¤": "ä",
+  "Ã©": "é", "Ã¨": "è", "Ãª": "ê", "Ã«": "ë",
+  "Ã­": "í", "Ã®": "î", "Ã¯": "ï",
+  "Ã³": "ó", "Ã²": "ò", "Ãµ": "õ", "Ã´": "ô", "Ã¶": "ö",
+  "Ãº": "ú", "Ã¹": "ù", "Ã»": "û", "Ã¼": "ü",
+  "Ã§": "ç", "Ã±": "ñ",
+  "Ã": "Á", "Ã‰": "É", "Ã": "Í", "Ã“": "Ó", "Ãš": "Ú", "Ã‡": "Ç",
+  "Â´": "'", "Â¨": '"', "Â°": "°", "Â§": "§", "Â®": "®", "Â©": "©",
+  "â€™": "'", "â€˜": "'", "â€œ": '"', "â€": '"', "â€“": "-", "â€”": "-", "â€¦": "...",
+};
+function fixMojibake(s: string): string {
+  let out = s;
+  for (const [bad, good] of Object.entries(MOJIBAKE_MAP)) {
+    if (out.includes(bad)) out = out.split(bad).join(good);
+  }
+  // Replacement char (U+FFFD) → remove para evitar "exibi��o"
+  out = out.replace(/\uFFFD/g, "");
+  return out;
+}
 function sanitizeRadarText(input: unknown): string {
   if (input == null) return "";
   let s = String(input);
+  s = fixMojibake(s);
   // Remove control characters (incl. DEL and C1)
   s = s.replace(/[\u0000-\u001F\u007F-\u009F]/g, " ");
   // Remove zero-width and BOM
@@ -282,29 +303,6 @@ function normalize(s: string): string {
     .trim();
 }
 
-function buildAliases(fullName: string): string[] {
-  const norm = normalize(fullName);
-  const weakTokens = new Set(["silva", "santos", "souza", "costa", "oliveira", "pereira", "alves", "ferreira", "lima"]);
-  const parts = norm.split(" ").filter((p) => p.length >= 3 && !weakTokens.has(p));
-  const aliases = new Set<string>([norm]);
-  const compact = norm.replace(/\s+/g, " ");
-  if (parts.length >= 2) {
-    aliases.add(`${parts[0]} ${parts[parts.length - 1]}`); // first + last
-    if (parts[parts.length - 1].length >= 6) aliases.add(parts[parts.length - 1]); // last name only when distinctive
-  }
-  if (parts[0]) aliases.add(parts[0]);
-  if (compact.includes("flavio") && compact.includes("bolsonaro")) {
-    ["flavio bolsonaro", "flávio bolsonaro", "senador flavio bolsonaro", "senador flávio bolsonaro", "flavio nantes bolsonaro", "flávio nantes bolsonaro"].forEach((a) => aliases.add(normalize(a)));
-  }
-  if (compact.includes("lula") || compact.includes("luiz inacio")) {
-    ["lula", "luiz inacio lula da silva", "luiz inácio lula da silva", "presidente lula"].forEach((a) => aliases.add(normalize(a)));
-  }
-  if (compact.includes("bolsonaro") && !compact.includes("flavio")) {
-    ["jair bolsonaro", "ex presidente bolsonaro", "presidente bolsonaro", "bolsonaro"].forEach((a) => aliases.add(normalize(a)));
-  }
-  return Array.from(aliases).filter((a) => a.length >= 4);
-}
-
 function similarity(a: string, b: string): number {
   const aa = normalize(a);
   const bb = normalize(b);
@@ -322,14 +320,63 @@ function similarity(a: string, b: string): number {
   return Math.max(tokenScore, prefixMatches / Math.max(1, aTokens.size));
 }
 
-function matchesCandidate(item: RawItem, aliases: string[]): boolean {
-  const hay = normalize(`${item.title} ${item.snippet ?? ""}`);
-  return aliases.some((a) => hay.includes(a) || similarity(a, hay) > 0.75);
+function buildAliases(fullName: string): string[] {
+  const norm = normalize(fullName);
+  const weakTokens = new Set(["silva", "santos", "souza", "costa", "oliveira", "pereira", "alves", "ferreira", "lima"]);
+  const parts = norm.split(" ").filter((p) => p.length >= 3 && !weakTokens.has(p));
+  const aliases = new Set<string>([norm]);
+  const compact = norm.replace(/\s+/g, " ");
+  if (parts.length >= 2) {
+    aliases.add(`${parts[0]} ${parts[parts.length - 1]}`);
+    if (parts[parts.length - 1].length >= 6) aliases.add(parts[parts.length - 1]);
+  }
+  if (parts[0]) aliases.add(parts[0]);
+  if (compact.includes("flavio") && compact.includes("bolsonaro")) {
+    ["flavio bolsonaro", "flávio bolsonaro", "senador flavio bolsonaro", "senador flávio bolsonaro", "flavio nantes bolsonaro", "flávio nantes bolsonaro"].forEach((a) => aliases.add(normalize(a)));
+  }
+  if (compact.includes("lula") || compact.includes("luiz inacio")) {
+    ["lula", "luiz inacio lula da silva", "luiz inácio lula da silva", "presidente lula"].forEach((a) => aliases.add(normalize(a)));
+  }
+  if (compact.includes("bolsonaro") && !compact.includes("flavio")) {
+    ["jair bolsonaro", "ex presidente bolsonaro", "presidente bolsonaro", "bolsonaro"].forEach((a) => aliases.add(normalize(a)));
+  }
+  return Array.from(aliases).filter((a) => a.length >= 4);
 }
 
-function eventMatchesCandidate(event: any, aliases: string[]): boolean {
-  const hay = normalize(`${event.title ?? ""} ${event.summary ?? ""} ${(event.entities ?? []).join(" ")}`);
-  return aliases.some((a) => hay.includes(a) || similarity(a, hay) > 0.75);
+// Aliases negativos: termos cuja simples presença gera falso positivo (homônimos).
+// Quando aparecem isoladamente (sem o nome completo do candidato), o evento é descartado.
+function buildNegativeAliases(fullName: string): string[] {
+  const n = normalize(fullName);
+  const neg = new Set<string>();
+  if (n.includes("flavio") && n.includes("bolsonaro")) {
+    ["flavio dino", "flávio dino", "flavio rocha", "flávio rocha", "flavio arns", "flávio arns"].forEach((a) => neg.add(normalize(a)));
+  }
+  if (n.includes("eduardo") && n.includes("bolsonaro")) {
+    ["eduardo paes", "eduardo leite", "eduardo suplicy", "eduardo cunha"].forEach((a) => neg.add(normalize(a)));
+  }
+  if (n.includes("jair") && n.includes("bolsonaro")) {
+    ["flavio bolsonaro", "flávio bolsonaro", "eduardo bolsonaro", "carlos bolsonaro", "michelle bolsonaro"].forEach((a) => neg.add(normalize(a)));
+  }
+  return [...neg];
+}
+
+// Match com aliases positivos E rejeição por aliases negativos.
+// Regra: se hay contém alias negativo E não contém o nome cheio normalizado → rejeita.
+function entityMatches(text: string, aliases: string[], negativeAliases: string[], fullNameNorm: string): boolean {
+  const hay = normalize(text);
+  if (!hay) return false;
+  for (const neg of negativeAliases) {
+    if (hay.includes(neg) && !hay.includes(fullNameNorm)) return false;
+  }
+  return aliases.some((a) => hay.includes(a) || similarity(a, hay) > 0.78);
+}
+
+function matchesCandidate(item: RawItem, aliases: string[], negativeAliases: string[] = [], fullNameNorm = ""): boolean {
+  return entityMatches(`${item.title} ${item.snippet ?? ""}`, aliases, negativeAliases, fullNameNorm);
+}
+
+function eventMatchesCandidate(event: any, aliases: string[], negativeAliases: string[] = [], fullNameNorm = ""): boolean {
+  return entityMatches(`${event.title ?? ""} ${event.summary ?? ""} ${(event.entities ?? []).join(" ")}`, aliases, negativeAliases, fullNameNorm);
 }
 
 function isRelevantPoliticalText(text: string): boolean {
@@ -538,9 +585,9 @@ function parseAiJson(text: string): any {
   }
 }
 
-function buildRssFallbackEvents(items: RawItem[], candidateName: string, aliases: string[], startMs: number, endMs: number): any[] {
-  const primary = items.filter((it) => matchesCandidate(it, aliases) && inDateRange(it, startMs, endMs) && isRelevantPoliticalText(`${it.title} ${it.snippet ?? ""}`));
-  const relaxed = primary.length > 0 ? primary : items.filter((it) => matchesCandidate(it, aliases) && isRelevantPoliticalText(`${it.title} ${it.snippet ?? ""}`));
+function buildRssFallbackEvents(items: RawItem[], candidateName: string, aliases: string[], startMs: number, endMs: number, negativeAliases: string[] = [], fullNameNorm = ""): any[] {
+  const primary = items.filter((it) => matchesCandidate(it, aliases, negativeAliases, fullNameNorm) && inDateRange(it, startMs, endMs) && isRelevantPoliticalText(`${it.title} ${it.snippet ?? ""}`));
+  const relaxed = primary.length > 0 ? primary : items.filter((it) => matchesCandidate(it, aliases, negativeAliases, fullNameNorm) && isRelevantPoliticalText(`${it.title} ${it.snippet ?? ""}`));
   const seen = new Set<string>();
   return relaxed
     .filter((it) => {
@@ -645,6 +692,8 @@ Deno.serve(async (req) => {
 
     // ===== 1. FETCH RSS EM PARALELO + BUSCAS TEMPORAIS =====
     const aliases = buildAliases(body.candidate_name);
+    const negativeAliases = buildNegativeAliases(body.candidate_name);
+    const fullNameNorm = normalize(body.candidate_name);
     const buckets = sampledBuckets(body.start_date, body.end_date);
     const expectedMin = expectedMinimumEvents(body.candidate_name, body.start_date, body.end_date);
     const relevanceTerms = `(STF OR TSE OR PF OR CPI OR investigação OR julgamento OR denúncia OR escândalo OR corrupção OR votação OR economia)`;
@@ -685,7 +734,9 @@ Deno.serve(async (req) => {
     watchdog("CHUNK_PROCESSING");
     console.time("CHUNK_PROCESSING");
     // Filtrar por candidato + período
-    const filtered = allItems.filter((it) => matchesCandidate(it, aliases) && inDateRange(it, startMs, endMs) && isRelevantPoliticalText(`${it.title} ${it.snippet ?? ""}`));
+    const beforeMatch = allItems.length;
+    const filtered = allItems.filter((it) => matchesCandidate(it, aliases, negativeAliases, fullNameNorm) && inDateRange(it, startMs, endMs) && isRelevantPoliticalText(`${it.title} ${it.snippet ?? ""}`));
+    console.log("RAW EVENTS", beforeMatch, "| AFTER MATCH", filtered.length, "| REJECTED FALSE POSITIVES", beforeMatch - filtered.length);
     console.timeEnd("CHUNK_PROCESSING");
 
     watchdog("DEDUPE");
@@ -706,7 +757,7 @@ Deno.serve(async (req) => {
     // Quando chamado pelo job de chunks (radar-job-create), NÃO chamamos IA por chunk
     // para evitar rate-limit. O caminho IA fica reservado a chamadas únicas de alto valor.
     if (safeBody.skip_ai) {
-      const heuristicRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs);
+      const heuristicRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs, negativeAliases, fullNameNorm);
       const heuristic = applyTemporalDiversity(clusterEvents(heuristicRaw), 30);
       console.log(`[RADAR] skip_ai=true → ${heuristic.length} eventos heurísticos`);
       endTotal();
@@ -910,7 +961,7 @@ VALIDAÇÃO FINAL (faça antes de responder):
 
     async function returnRssFallback(reason: string, statusWhenEmpty = 502) {
       console.warn(`[RADAR] fallback RSS acionado: ${reason}`);
-      const fallbackRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs);
+      const fallbackRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs, negativeAliases, fullNameNorm);
       const fallbackEvents = applyTemporalDiversity(fallbackRaw, 30);
       console.log("LOG 6: eventos após filtro =", { fallback: true, count: fallbackEvents.length, sample: fallbackEvents.slice(0, 3) });
       if (fallbackEvents.length === 0) {
@@ -961,10 +1012,13 @@ VALIDAÇÃO FINAL (faça antes de responder):
       return await returnRssFallback("AI returned 0 events");
     }
 
-    const candidateFiltered = parsedEvents.filter((event) => eventMatchesCandidate(event, aliases));
+    const beforeFilter = parsedEvents.length;
+    const candidateFiltered = parsedEvents.filter((event) => eventMatchesCandidate(event, aliases, negativeAliases, fullNameNorm));
+    console.log("AFTER MATCH (AI)", candidateFiltered.length, "| REJECTED FALSE POSITIVES", beforeFilter - candidateFiltered.length);
     const filteredEvents = candidateFiltered.length > 0 ? candidateFiltered : parsedEvents;
     let events = applyTemporalDiversity(clusterEvents(filteredEvents), 30);
-    const rssFallbackRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs);
+    console.log("AFTER DEDUPE", events.length, "| AI REQUESTS", 1);
+    const rssFallbackRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs, negativeAliases, fullNameNorm);
     if (events.length < Math.min(expectedMin, 100) && rssFallbackRaw.length > 0) {
       console.warn(`[RADAR] IA abaixo da meta (${events.length}/${expectedMin}); mesclando evidências RSS temporais`);
       events = applyTemporalDiversity(clusterEvents([...events, ...rssFallbackRaw]), 30);
