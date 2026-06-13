@@ -605,46 +605,73 @@ export default function RadarPolitico() {
             </CardContent>
           </Card>
         ) : (
-          <div className="divide-y border rounded-md bg-card max-h-[70vh] overflow-y-auto">
-            {filtered.map((e) => {
+          <div className="space-y-2">
+            <div ref={listParentRef} className="border rounded-md bg-card h-[70vh] overflow-y-auto">
+              <div className="relative w-full" style={{ height: rowVirtualizer.getTotalSize() }}>
+                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                  const e = visibleEvents[virtualRow.index];
+                  if (!e) return null;
               const b = band(e.importance);
               return (
-                <button
-                  key={e.id}
-                  onClick={() => setSelected(e)}
-                  className="w-full text-left px-4 py-3 hover:bg-accent/40 transition-colors"
+                <div
+                  key={e.id || `${e.event_date}-${virtualRow.index}`}
+                  data-index={virtualRow.index}
+                  ref={rowVirtualizer.measureElement}
+                  className="absolute left-0 top-0 w-full border-b last:border-b-0"
+                  style={{ transform: `translateY(${virtualRow.start}px)` }}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-1 flex-wrap">
-                        <span className="font-mono">{fmtDate(e.event_date)}</span>
-                        <span>·</span>
-                        <span className="font-medium text-foreground/80">{e.category}</span>
-                        <span>·</span>
-                        <span>{nfBR.format(e.source_count)} fontes</span>
-                        {e.institutional_sources > 0 && (
-                          <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-blue-500/40 text-blue-600 dark:text-blue-400">
-                            Institucional
-                          </Badge>
+                  <button
+                    onClick={() => setSelected(e)}
+                    className="w-full text-left px-4 py-3 hover:bg-accent/40 transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-1 flex-wrap">
+                          <span className="font-mono">{fmtDate(e.event_date)}</span>
+                          <span>·</span>
+                          <span className="font-medium text-foreground/80">{e.category}</span>
+                          <span>·</span>
+                          <span>{nfBR.format(e.source_count)} fontes</span>
+                          {e.institutional_sources > 0 && (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-blue-500/40 text-blue-600 dark:text-blue-400">
+                              Institucional
+                            </Badge>
+                          )}
+                        </div>
+                        <h3 className="text-sm font-medium leading-snug break-words [overflow-wrap:anywhere]">{e.title}</h3>
+                        {e.summary && (
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2 break-words [overflow-wrap:anywhere]">{e.summary}</p>
                         )}
                       </div>
-                      <h3 className="text-sm font-medium leading-snug break-words [overflow-wrap:anywhere]">{e.title}</h3>
-                      {e.summary && (
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2 break-words [overflow-wrap:anywhere]">{e.summary}</p>
-                      )}
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${b.tone}`}>
+                          {b.label} · {e.importance}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground font-mono">
+                          social {e.social_score}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${b.tone}`}>
-                        {b.label} · {e.importance}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground font-mono">
-                        social {e.social_score}
-                      </span>
-                    </div>
-                  </div>
-                </button>
+                  </button>
+                </div>
               );
-            })}
+                })}
+              </div>
+            </div>
+            {(visibleCount < filtered.length || ((jobStatus?.events_count ?? 0) > events.length && !!jobId && jobId !== "cache")) && (
+              <Button
+                variant="outline"
+                className="w-full"
+                disabled={loadMoreMutation.isPending}
+                onClick={() => {
+                  if (visibleCount < filtered.length) setVisibleCount((v) => v + PAGE_SIZE);
+                  else loadMoreMutation.mutate();
+                }}
+              >
+                {loadMoreMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                Carregar mais 50
+              </Button>
+            )}
           </div>
         )}
       </section>
