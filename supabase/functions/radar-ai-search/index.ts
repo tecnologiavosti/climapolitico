@@ -592,25 +592,37 @@ Deno.serve(async (req) => {
       console.log("[RADAR] force_refresh=true: ignorando cache e rodando IA novamente");
     }
 
-    // ===== 1. FETCH RSS EM PARALELO =====
+    // ===== 1. FETCH RSS EM PARALELO + BUSCAS TEMPORAIS =====
     const aliases = buildAliases(body.candidate_name);
-    // Adicionar Google News query do candidato
-    const googleNewsQuery = encodeURIComponent(body.candidate_name);
+    const buckets = sampledBuckets(body.start_date, body.end_date);
+    const expectedMin = expectedMinimumEvents(body.candidate_name, body.start_date, body.end_date);
+    const relevanceTerms = `(STF OR TSE OR PF OR CPI OR investigação OR julgamento OR denúncia OR escândalo OR corrupção OR votação OR economia)`;
+    const temporalQueries = buckets.flatMap((bucket) => {
+      const after = `after:${bucket.start}`;
+      const before = `before:${bucket.end}`;
+      const base = `"${body.candidate_name}" ${after} ${before}`;
+      return [
+        { q: `${base} política ${relevanceTerms}`, label: `Google News política ${bucket.label}` },
+        { q: `${base} STF OR TSE OR PF OR Senado OR Câmara`, label: `Google News institucional ${bucket.label}` },
+        { q: `${base} escândalo OR denúncia OR investigação OR julgamento OR CPI`, label: `Google News impacto ${bucket.label}` },
+      ];
+    });
     const dynamicFeeds = [
-      ...FEEDS,
-      {
-        name: "Google News BR",
-        url: `https://news.google.com/rss/search?q=${googleNewsQuery}&hl=pt-BR&gl=BR&ceid=BR:pt-419`,
+      ...FEEDS.map((f) => ({ ...f, bucket: "live" })),
+      ...temporalQueries.slice(0, 108).map((query) => ({
+        name: query.label,
+        url: `https://news.google.com/rss/search?q=${encodeURIComponent(query.q)}&hl=pt-BR&gl=BR&ceid=BR:pt-419`,
         type: "aggregator" as const,
-      },
+        bucket: query.label.match(/(\d{2}\/\d{4})/)?.[1] ?? "temporal",
+      })),
     ];
 
     const t0 = Date.now();
-    const allItems = (await Promise.all(dynamicFeeds.map((f) => fetchFeed(f.name, f.url, f.type)))).flat();
+    const allItems = (await Promise.all(dynamicFeeds.map((f) => fetchFeed(f.name, f.url, f.type, f.bucket)))).flat();
     const fetchMs = Date.now() - t0;
 
     // Filtrar por candidato + período
-    const filtered = allItems.filter((it) => matchesCandidate(it, aliases) && inDateRange(it, startMs, endMs));
+    const filtered = allItems.filter((it) => matchesCandidate(it, aliases) && inDateRange(it, startMs, endMs) && isRelevantPoliticalText(`${it.title} ${it.snippet ?? ""}`));
 
     // Dedup por URL
     const seen = new Set<string>();
@@ -621,7 +633,7 @@ Deno.serve(async (req) => {
       return true;
     });
 
-    console.log(`[RADAR] ${body.candidate_name}: ${allItems.length} brutos, ${unique.length} filtrados em ${fetchMs}ms`);
+    console.log(`[RADAR] ${body.candidate_name}: ${allItems.length} brutos, ${unique.length} filtrados, ${buckets.length} janelas em ${fetchMs}ms`);
 
     // ===== 2. PROMPT IA =====
     const catFilter =
