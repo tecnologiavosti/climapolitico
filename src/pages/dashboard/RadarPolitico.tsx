@@ -316,6 +316,7 @@ export default function RadarPolitico() {
         setRadarCache(cacheKey, { events: merged, jobId: jobId ?? undefined, fetchedAt: new Date().toISOString(), eventsCount: jobStatus?.events_count });
         return merged;
       });
+      setVisibleCount((current) => current + PAGE_SIZE);
     },
     onError: (e: any) => toast.error(friendlyRadarError(e?.message ?? "Falha ao carregar mais eventos")),
   });
