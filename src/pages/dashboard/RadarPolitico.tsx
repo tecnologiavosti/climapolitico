@@ -177,9 +177,9 @@ export default function RadarPolitico() {
       setEvents(clean);
       if (jobStatus.status === "completed") {
         setLastFetchedAt(new Date());
-        if (jobStatus.error?.startsWith("RADAR_TIMEOUT")) {
+        if (jobStatus.error) {
           setLastError({ message: jobStatus.error, stack: "" });
-          toast.warning(`${clean.length} eventos parciais retornados após limite de processamento`);
+          toast.warning(`${clean.length} eventos retornados com aviso do processamento`);
         } else {
           setLastError(null);
           toast.success(`${clean.length} eventos coletados pela IA`);
