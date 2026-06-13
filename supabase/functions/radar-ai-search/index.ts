@@ -97,7 +97,6 @@ function safeNum(v: any, def = 0, min = 0, max = 100) {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const INSTITUTIONAL_RE = /\b(STF|TSE|PF|Senado|Câmara|Camara|Planalto|STJ|TCU|CGU|AGU|CNJ|Banco Central|Ministério|Ministerio)\b/i;
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_RUNTIME = 120_000;
 const CACHE_BATCH_SIZE = 200;
 const POLITICAL_RELEVANCE_RE = /\b(STF|TSE|PF|Polícia Federal|operacao|operação|escandalo|escândalo|crise|CPI|investigacao|investigação|cassacao|cassação|julgamento|denuncia|denúncia|impeachment|prisao|prisão|inelegivel|inelegível|corrupcao|corrupção|votacao|votação|congresso|senado|camara|câmara|plenario|plenário|supremo|tribunal|eleicao|eleição|eleitoral|presidencial|pesquisa|Datafolha|Quaest|Ipec|PoderData|reforma tributaria|reforma fiscal|orcamento|orçamento|economia|banco central|dolar|dólar|juros|crime eleitoral|rachadinha|joias|minuta|golpe|8 de janeiro|delacao|delação|inquerito|inquérito)\b/i;
@@ -124,6 +123,12 @@ function targetRange(startDate: string, endDate: string): string {
   if (days <= 35) return "20-80 eventos";
   if (days <= 370) return "300-1000 eventos por ano para nomes de alta cobertura";
   return "300-1000 eventos por ano, distribuídos uniformemente por ano e mês";
+}
+
+function cacheTtlForPeriod(endDate: string): number {
+  const end = Date.parse(`${endDate}T23:59:59Z`);
+  const ageDays = isNaN(end) ? 0 : (Date.now() - end) / 86_400_000;
+  return ageDays <= 90 ? 6 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
 }
 
 function expectedMinimumEvents(candidateName: string, startDate: string, endDate: string): number {
