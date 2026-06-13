@@ -911,6 +911,12 @@ VALIDAÇÃO FINAL (faça antes de responder):
     }
     console.log("LOG 6: eventos após filtro =", { count: events.length, expectedMin, before_diversity: filteredEvents.length, rss_candidates: rssFallbackRaw.length, sample: events.slice(0, 3) });
 
+    // Logs históricos obrigatórios
+    const dateList = events.map((e: any) => e.event_date).filter((d: string) => d && !isNaN(Date.parse(d))).sort();
+    console.log("RADAR RANGE", safeBody.start_date, safeBody.end_date);
+    console.log("EVENTS FOUND", events.length);
+    console.log("OLDEST EVENT", dateList[0] ?? "n/a", "| NEWEST EVENT", dateList[dateList.length - 1] ?? "n/a");
+
     if (events.length === 0) {
       console.error("AI returned 0 events");
       return await returnRssFallback("AI returned 0 events after candidate filter");
