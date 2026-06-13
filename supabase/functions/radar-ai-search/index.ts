@@ -400,8 +400,8 @@ function buildRssFallbackEvents(items: RawItem[], candidateName: string, aliases
     .slice(0, 120)
     .map((it, i) => ({
       id: `rss-fallback-${Date.now()}-${i}`,
-      title: it.title,
-      summary: it.snippet || `Notícia pública envolvendo ${candidateName}, detectada automaticamente em fonte RSS externa.`,
+      title: sanitizeRadarText(it.title),
+      summary: sanitizeRadarText(it.snippet || `Notícia pública envolvendo ${candidateName}, detectada automaticamente em fonte RSS externa.`),
       category: it.type === "institutional" ? "Institucional" : "Outros",
       event_date: it.pub_date && !isNaN(Date.parse(it.pub_date)) ? new Date(it.pub_date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
       source_count: 1,
@@ -409,8 +409,8 @@ function buildRssFallbackEvents(items: RawItem[], candidateName: string, aliases
       social_score: it.type === "institutional" ? 55 : 35,
       importance: it.type === "institutional" ? 72 : 52,
       political_impact: it.type === "institutional" ? "Evento institucional detectado em fonte pública." : "Evento noticioso detectado em fonte pública.",
-      entities: [candidateName, it.source],
-      sources: [{ name: it.source, url: it.url, type: it.type }],
+      entities: [candidateName, sanitizeRadarText(it.source)],
+      sources: [{ name: sanitizeRadarText(it.source), url: it.url, type: it.type }],
     }));
 }
 
