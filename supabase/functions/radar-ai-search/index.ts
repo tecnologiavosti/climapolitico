@@ -75,8 +75,9 @@ Deno.serve(async (req) => {
     const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
     const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const LOVABLE_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_KEY) {
-      return new Response(JSON.stringify({ error: "LOVABLE_API_KEY ausente" }), {
+    const CEREBRAS_KEY = Deno.env.get("CEREBRAS_API_KEY");
+    if (!CEREBRAS_KEY && !LOVABLE_KEY) {
+      return new Response(JSON.stringify({ error: "Nenhuma chave de IA configurada (CEREBRAS_API_KEY ou LOVABLE_API_KEY)" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
