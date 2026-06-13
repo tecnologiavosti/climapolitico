@@ -91,6 +91,27 @@ function safeNum(v: any, def = 0, min = 0, max = 100) {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const INSTITUTIONAL_RE = /\b(STF|TSE|PF|Senado|Câmara|Camara|Planalto|STJ|TCU|CGU|AGU|CNJ|Banco Central|Ministério|Ministerio)\b/i;
+
+function sourceTypeFromName(name: string): RawItem["type"] {
+  return INSTITUTIONAL_RE.test(name) ? "institutional" : "news";
+}
+
+function daysBetween(startDate: string, endDate: string): number {
+  const start = Date.parse(`${startDate}T00:00:00Z`);
+  const end = Date.parse(`${endDate}T23:59:59Z`);
+  if (isNaN(start) || isNaN(end)) return 30;
+  return Math.max(1, Math.ceil((end - start) / 86_400_000));
+}
+
+function targetRange(startDate: string, endDate: string): string {
+  const days = daysBetween(startDate, endDate);
+  if (days <= 8) return "5–30 eventos";
+  if (days <= 35) return "20–80 eventos";
+  if (days <= 370) return "100–500 eventos";
+  return "500–5000 eventos";
+}
+
 function jsonResponse(payload: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
