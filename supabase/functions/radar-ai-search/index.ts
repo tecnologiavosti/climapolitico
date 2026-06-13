@@ -252,15 +252,15 @@ function parseFeed(xml: string, source: string, type: RawItem["type"]): RawItem[
   return items;
 }
 
-async function fetchFeed(name: string, url: string, type: RawItem["type"]): Promise<RawItem[]> {
+async function fetchFeed(name: string, url: string, type: RawItem["type"], bucket?: string): Promise<RawItem[]> {
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": "Mozilla/5.0 (compatible; ClimaPoliticoRadar/1.0)" },
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return [];
     const xml = await res.text();
-    return parseFeed(xml, name, type);
+    return parseFeed(xml, name, type).map((item) => ({ ...item, bucket, domain: domainFromUrl(item.url) }));
   } catch {
     return [];
   }
