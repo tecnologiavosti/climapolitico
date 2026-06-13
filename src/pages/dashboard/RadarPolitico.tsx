@@ -175,7 +175,9 @@ export default function RadarPolitico() {
   const kpis = useMemo(() => ({
     total: filtered.length,
     grandes: filtered.filter((e) => e.importance >= 70).length,
-    institucionais: filtered.filter((e) => e.institutional_sources > 0).length,
+    institucionais: filtered.filter((e) =>
+      e.institutional_sources > 0 || e.sources?.some((s) => /\b(STF|TSE|PF|Senado|Câmara|Camara|Planalto|STJ|TCU|CGU|AGU|CNJ)\b/i.test(s.name)),
+    ).length,
     altaRepercussao: filtered.filter((e) => e.social_score >= 60).length,
   }), [filtered]);
 
