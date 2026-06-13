@@ -370,27 +370,38 @@ function scoreEvent(e: any): { importance: number; social_score: number; institu
   };
 }
 
+// Dedupe MUITO mais conservador: só remove duplicatas quase idênticas no MESMO mês.
+// Threshold 0.93 + bucketização por mês para evitar O(n²) global e preservar volume.
 function dedupeEvents(events: any[]): any[] {
-  const seen = new Set<string>();
+  const byMonth = new Map<string, string[]>();
   const out: any[] = [];
   for (const ev of events.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0))) {
-    const key = normalize(`${ev.event_date ?? ""} ${ev.title ?? ""}`).split(" ").filter((t) => t.length > 3).slice(0, 12).join(" ");
-    if (!key || [...seen].some((s) => similarity(s, key) > 0.78)) continue;
-    seen.add(key);
+    const month = (ev.event_date ?? "").slice(0, 7) || "unknown";
+    const key = normalize(`${ev.title ?? ""}`).split(" ").filter((t) => t.length > 3).slice(0, 10).join(" ");
+    if (!key) continue;
+    const bucket = byMonth.get(month) ?? [];
+    // Só descarta se for praticamente idêntico no mesmo mês
+    if (bucket.some((s) => similarity(s, key) > 0.93)) continue;
+    bucket.push(key);
+    byMonth.set(month, bucket);
     out.push(ev);
   }
   return out;
 }
 
+// Cluster restrito: ±2 dias E similarity > 0.90 — não junta eventos de meses diferentes.
 function clusterEvents(events: any[]): any[] {
   const clusters: any[] = [];
   const sorted = [...events].filter((e) => e?.event_date).sort((a, b) => Date.parse(a.event_date) - Date.parse(b.event_date));
   for (const ev of sorted) {
     const evKey = normalize(ev.title ?? "");
     const evTime = Date.parse(ev.event_date);
+    const evMonth = (ev.event_date ?? "").slice(0, 7);
     const match = clusters.find((c) => {
       const cTime = Date.parse(c.event_date);
-      return Math.abs(evTime - cTime) <= 14 * 86_400_000 && similarity(evKey, normalize(c.title ?? "")) > 0.62;
+      const cMonth = (c.event_date ?? "").slice(0, 7);
+      if (cMonth !== evMonth) return false; // nunca juntar meses diferentes
+      return Math.abs(evTime - cTime) <= 2 * 86_400_000 && similarity(evKey, normalize(c.title ?? "")) > 0.90;
     });
     if (!match) {
       clusters.push({ ...ev, sources: [...(ev.sources ?? [])] });
