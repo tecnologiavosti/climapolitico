@@ -25,6 +25,8 @@ interface RawItem {
   type: "institutional" | "news" | "international" | "aggregator";
   pub_date?: string;
   snippet?: string;
+  bucket?: string;
+  domain?: string;
 }
 
 // ===== 50+ FONTES EXTERNAS =====
@@ -80,7 +82,7 @@ const FEEDS: Array<{ name: string; url: string; type: RawItem["type"] }> = [
 
 function hashPeriod(b: ReqBody): string {
   const cats = [...(b.categories ?? [])].sort().join(",");
-  return `${b.candidate_id ?? "all"}|${b.candidate_name}|${b.start_date}|${b.end_date}|${cats}`;
+  return `radar-v4|${b.candidate_id ?? "all"}|${b.candidate_name}|${b.start_date}|${b.end_date}|${cats}`;
 }
 
 function safeNum(v: any, def = 0, min = 0, max = 100) {
@@ -92,6 +94,13 @@ function safeNum(v: any, def = 0, min = 0, max = 100) {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const INSTITUTIONAL_RE = /\b(STF|TSE|PF|Senado|Câmara|Camara|Planalto|STJ|TCU|CGU|AGU|CNJ|Banco Central|Ministério|Ministerio)\b/i;
+const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+const POLITICAL_RELEVANCE_RE = /\b(STF|TSE|PF|Polícia Federal|operacao|operação|escandalo|escândalo|crise|CPI|investigacao|investigação|cassacao|cassação|julgamento|denuncia|denúncia|impeachment|prisao|prisão|inelegivel|inelegível|corrupcao|corrupção|votacao|votação|congresso|senado|camara|câmara|plenario|plenário|supremo|tribunal|eleicao|eleição|pesquisa eleitoral|reforma tributaria|reforma fiscal|orcamento|orçamento|economia|banco central|dolar|dólar|juros|crime eleitoral|rachadinha|joias|minuta|golpe|8 de janeiro|delacao|delação|inquerito|inquérito)\b/i;
+const STRONG_IMPACT_RE = /\b(operação|operacao|PF|STF|TSE|CPI|cassação|cassacao|julgamento|denúncia|denuncia|investigação|investigacao|impeachment|prisão|prisao|corrupção|corrupcao|inelegível|inelegivel|condenação|condenacao|busca e apreensão|busca e apreensao|quebra de sigilo|réu|reu|indiciado|indiciamento|delacao|delação|golpe|8 de janeiro)\b/i;
+const CRITICAL_IMPACT_RE = /\b(prisão|prisao|condenação|condenacao|cassação|cassacao|impeachment|inelegível|inelegivel|operação PF|operação da PF|busca e apreensão|corrupção|corrupcao|golpe|8 de janeiro|STF decide|TSE condena)\b/i;
+const SPORTS_NOISE_RE = /\b(palpite|futebol|copa do mundo|copa america|copa américa|brasileirao|brasileirão|libertadores|cartola|aposta|odds|seleção brasileira|selecao brasileira|jogo de hoje)\b/i;
+const ROUTINE_NOISE_RE = /\b(agenda|visita|visita rotineira|cumpre agenda|participa de encontro|reunião protocolar|reuniao protocolar|inaugura|inauguração|inauguracao|agenda de campanha|caminhada|carreata|comício local|comicio local)\b/i;
+const BANNED_TRIVIAL_RE = /\b(entrevista exclusiva|bate-papo|podcast|live com|comentário sobre copa|comentario sobre copa|palpite de)\b/i;
 
 function sourceTypeFromName(name: string): RawItem["type"] {
   return INSTITUTIONAL_RE.test(name) ? "institutional" : "news";
