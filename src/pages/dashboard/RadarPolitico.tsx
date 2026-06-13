@@ -199,7 +199,7 @@ export default function RadarPolitico() {
     if (category !== "Todos") list = list.filter((e) => e.category === category);
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter((e) => e.title.toLowerCase().includes(q) || e.summary.toLowerCase().includes(q));
+      list = list.filter((e) => e.title.toLowerCase().includes(q) || (e.summary ?? "").toLowerCase().includes(q));
     }
     list = [...list].sort((a, b) => {
       if (sortBy === "importance") return b.importance - a.importance;
