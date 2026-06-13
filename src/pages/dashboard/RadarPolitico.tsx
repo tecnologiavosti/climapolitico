@@ -226,8 +226,17 @@ export default function RadarPolitico() {
         category: sanitizeRadarText(e.category),
         sources: (e.sources ?? []).map((s) => ({ ...s, name: sanitizeRadarText(s.name) })),
       }));
-      setEvents(clean);
-      setRadarCache(cacheKey, { events: clean, jobId: jobStatus.id, fetchedAt: new Date().toISOString(), eventsCount: jobStatus.events_count });
+      setEvents((prev) => {
+        const source = prev.length > clean.length ? prev : clean;
+        const seen = new Set(source.map((e) => e.id || `${e.event_date}|${e.title}`));
+        const merged = [...source];
+        for (const e of clean) {
+          const key = e.id || `${e.event_date}|${e.title}`;
+          if (!seen.has(key)) merged.push(e);
+        }
+        setRadarCache(cacheKey, { events: merged, jobId: jobStatus.id, fetchedAt: new Date().toISOString(), eventsCount: jobStatus.events_count });
+        return merged;
+      });
       if (jobStatus.status === "completed") {
         setLastFetchedAt(new Date());
         if (jobStatus.error) {
