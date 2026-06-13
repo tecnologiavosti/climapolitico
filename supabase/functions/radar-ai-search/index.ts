@@ -429,14 +429,7 @@ Deno.serve(async (req) => {
         ? `Filtrar APENAS para as categorias: ${body.categories.join(", ")}.`
         : "Cobrir todas as categorias políticas.";
 
-    const systemPrompt = `Você é um pesquisador político brasileiro. Sua tarefa: agrupar notícias coletadas em tempo real em EVENTOS POLÍTICOS reais.
-- Agrupe semanticamente notícias que falam do MESMO acontecimento (cosine similarity alta).
-- Deduplique.
-- Classifique cada evento em categoria.
-- Gere resumo factual em português.
-- Use APENAS as fontes/URLs fornecidas — NUNCA invente.
-- Quando não houver notícias suficientes nas fontes, complemente com eventos reais públicos do seu conhecimento, mas marque tais sources com type="news" e nome do veículo real.
-- Responda EXCLUSIVAMENTE com JSON válido.`;
+    const systemPrompt = `Você é um motor de political intelligence. Responda somente com JSON válido, sem markdown.`;
 
     const sourcesPayload = unique.slice(0, 220).map((it) => ({
       title: it.title,
@@ -447,37 +440,83 @@ Deno.serve(async (req) => {
       snippet: it.snippet?.slice(0, 220) ?? "",
     }));
 
-    const userPrompt = `Candidato: "${body.candidate_name}"
-Período: ${body.start_date} até ${body.end_date}
+    const userPrompt = `Você é um motor de political intelligence.
+
+Busque eventos políticos REAIS envolvendo:
+${body.candidate_name}
+
+Período:
+${body.start_date} até ${body.end_date}
+
+Busque em:
+
+* STF
+* TSE
+* PF
+* Senado
+* Câmara
+* Planalto
+* G1
+* UOL
+* Folha
+* Estadão
+* CNN Brasil
+* Reuters
+* Poder360
+* Metrópoles
+* BBC Brasil
+* JOTA
+* Congresso em Foco
+* O Globo
+* Valor
+* Exame
+
+IMPORTANTE:
+Retorne MUITOS eventos.
+Meta:
+mínimo 50 eventos para períodos grandes.
+Faixa esperada para este período: ${targetRange(body.start_date, body.end_date)}.
 ${catFilter}
 
-Notícias brutas coletadas via RSS (${sourcesPayload.length} itens):
+Inclua:
+
+* crises
+* escândalos
+* operações
+* julgamentos
+* falas polêmicas
+* entrevistas
+* votações
+* denúncias
+* processos
+* investigações
+* debates
+* CPIs
+* decisões judiciais
+
+Notícias brutas coletadas via RSS em tempo real (${sourcesPayload.length} itens) para agrupar, deduplicar e usar como evidência prioritária:
 ${JSON.stringify(sourcesPayload)}
 
-Tarefa:
-1. Agrupe as notícias acima por evento (mesmo acontecimento = 1 evento).
-2. Para cada evento, liste TODAS as sources que cobrem aquele evento (do material fornecido).
-3. Para períodos longos com cobertura RSS insuficiente, complemente com eventos REAIS conhecidos publicamente nesse período envolvendo "${body.candidate_name}".
-4. Retorne entre 30 e 120 eventos (mais para períodos longos).
+Retorne JSON:
 
-Formato OBRIGATÓRIO:
+[
 {
-  "events": [
-    {
-      "title": "string (até 200 chars)",
-      "summary": "string (2-5 frases factuais)",
-      "category": "Eleições|STF|TSE|PF|CPI|Congresso|Executivo|Economia|Escândalos|Prisões|Julgamentos|Internacional|Declarações|Outros",
-      "event_date": "YYYY-MM-DD",
-      "political_impact": "string curta sobre impacto político",
-      "entities": ["pessoa/órgão", "..."],
-      "social_score": 0,
-      "sources": [
-        { "name": "Nome do veículo", "url": "https://...", "type": "institutional|news|international|aggregator" }
-      ]
-    }
-  ]
+"title":"",
+"summary":"",
+"date":"YYYY-MM-DD",
+"event_date":"YYYY-MM-DD",
+"category":"",
+"sources":[{"name":"","url":"","type":"institutional|news|international|aggregator"}],
+"importance":0,
+"social_score":0,
+"political_impact":"",
+"entities":[""]
 }
-Ordene do mais recente para o mais antigo.`;
+]
+
+NÃO retorne menos de 20 eventos, exceto se realmente não existirem.`;
+
+    console.log("LOG 3: prompt enviado =", userPrompt);
 
     const messages = [
       { role: "system", content: systemPrompt },
