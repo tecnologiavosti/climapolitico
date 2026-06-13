@@ -199,17 +199,49 @@ function buildAliases(fullName: string): string[] {
   const norm = normalize(fullName);
   const parts = norm.split(" ").filter((p) => p.length >= 3);
   const aliases = new Set<string>([norm]);
+  const compact = norm.replace(/\s+/g, " ");
   if (parts.length >= 2) {
     aliases.add(`${parts[0]} ${parts[parts.length - 1]}`); // first + last
     aliases.add(parts[parts.length - 1]); // last name
   }
   if (parts[0]) aliases.add(parts[0]);
+  if (compact.includes("flavio") && compact.includes("bolsonaro")) {
+    ["flavio bolsonaro", "flávio bolsonaro", "senador flavio bolsonaro", "senador flávio bolsonaro", "flavio nantes bolsonaro", "flávio nantes bolsonaro"].forEach((a) => aliases.add(normalize(a)));
+  }
+  if (compact.includes("lula") || compact.includes("luiz inacio")) {
+    ["lula", "luiz inacio lula da silva", "luiz inácio lula da silva", "presidente lula"].forEach((a) => aliases.add(normalize(a)));
+  }
+  if (compact.includes("bolsonaro") && !compact.includes("flavio")) {
+    ["jair bolsonaro", "ex presidente bolsonaro", "presidente bolsonaro", "bolsonaro"].forEach((a) => aliases.add(normalize(a)));
+  }
   return Array.from(aliases).filter((a) => a.length >= 4);
+}
+
+function similarity(a: string, b: string): number {
+  const aa = normalize(a);
+  const bb = normalize(b);
+  if (!aa || !bb) return 0;
+  if (aa.includes(bb) || bb.includes(aa)) return 1;
+  const aTokens = new Set(aa.split(" ").filter((x) => x.length >= 3));
+  const bTokens = new Set(bb.split(" ").filter((x) => x.length >= 3));
+  const intersection = [...aTokens].filter((x) => bTokens.has(x)).length;
+  const union = new Set([...aTokens, ...bTokens]).size || 1;
+  const tokenScore = intersection / union;
+  let prefixMatches = 0;
+  for (const at of aTokens) {
+    if ([...bTokens].some((bt) => at.startsWith(bt) || bt.startsWith(at))) prefixMatches++;
+  }
+  return Math.max(tokenScore, prefixMatches / Math.max(1, aTokens.size));
 }
 
 function matchesCandidate(item: RawItem, aliases: string[]): boolean {
   const hay = normalize(`${item.title} ${item.snippet ?? ""}`);
-  return aliases.some((a) => hay.includes(a));
+  return aliases.some((a) => hay.includes(a) || similarity(a, hay) > 0.75);
+}
+
+function eventMatchesCandidate(event: any, aliases: string[]): boolean {
+  const hay = normalize(`${event.title ?? ""} ${event.summary ?? ""} ${(event.entities ?? []).join(" ")}`);
+  return aliases.some((a) => hay.includes(a) || similarity(a, hay) > 0.75);
 }
 
 function inDateRange(item: RawItem, startMs: number, endMs: number): boolean {
