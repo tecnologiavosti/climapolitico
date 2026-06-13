@@ -2441,6 +2441,50 @@ export type Database = {
         }
         Relationships: []
       }
+      radar_job_events: {
+        Row: {
+          created_at: string
+          event_data: Json
+          event_date: string | null
+          event_hash: string
+          event_index: number
+          id: string
+          importance: number
+          job_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_data: Json
+          event_date?: string | null
+          event_hash: string
+          event_index?: number
+          id?: string
+          importance?: number
+          job_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          event_data?: Json
+          event_date?: string | null
+          event_hash?: string
+          event_index?: number
+          id?: string
+          importance?: number
+          job_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "radar_job_events_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "radar_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       radar_jobs: {
         Row: {
           candidate_id: string | null
