@@ -922,8 +922,13 @@ Evite que a maioria dos eventos caia em uma única semana — espalhe ao longo d
 
     const candidateFiltered = parsedEvents.filter((event) => eventMatchesCandidate(event, aliases));
     const filteredEvents = candidateFiltered.length > 0 ? candidateFiltered : parsedEvents;
-    const events = applyTemporalDiversity(filteredEvents, 3);
-    console.log("LOG 6: eventos após filtro =", { count: events.length, before_diversity: filteredEvents.length, sample: events.slice(0, 3) });
+    let events = applyTemporalDiversity(clusterEvents(filteredEvents), 8);
+    const rssFallbackRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs);
+    if (events.length < Math.min(expectedMin, 100) && rssFallbackRaw.length > 0) {
+      console.warn(`[RADAR] IA abaixo da meta (${events.length}/${expectedMin}); mesclando evidências RSS temporais`);
+      events = applyTemporalDiversity(clusterEvents([...events, ...rssFallbackRaw]), 8);
+    }
+    console.log("LOG 6: eventos após filtro =", { count: events.length, expectedMin, before_diversity: filteredEvents.length, rss_candidates: rssFallbackRaw.length, sample: events.slice(0, 3) });
 
     if (events.length === 0) {
       console.error("AI returned 0 events");
