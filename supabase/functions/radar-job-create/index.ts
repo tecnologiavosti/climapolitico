@@ -176,7 +176,8 @@ async function saveCacheSnapshot(admin: any, jobId: string, body: ReqBody & { us
 }
 
 async function scheduleContinuation(jobId: string, authHeader: string): Promise<boolean> {
-  try {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/radar-job-create`, {
       method: "POST",
       headers: {
@@ -188,13 +189,21 @@ async function scheduleContinuation(jobId: string, authHeader: string): Promise<
       signal: AbortSignal.timeout(5_000),
     });
     const ok = res.ok;
-    await res.text().catch(() => "");
-    if (!ok) console.warn(`[radar-job ${jobId}] continuation HTTP ${res.status}`);
+      const txt = await res.text().catch(() => "");
+      if (!ok) {
+        const retry = Number(txt.match(/Retry after\s+(\d+)ms/i)?.[1] ?? 0);
+        console.warn(`[radar-job ${jobId}] continuation HTTP ${res.status}: ${txt.slice(0, 180)}`);
+        if (res.status === 429 && attempt < 3) await sleep(Math.max(1_500, Math.min(20_000, retry || 2_500 * (attempt + 1))));
+      }
     return ok;
-  } catch (e) {
-    console.warn(`[radar-job ${jobId}] continuation failed`, (e as Error)?.message ?? String(e));
-    return false;
+    } catch (e) {
+      const msg = (e as Error)?.message ?? String(e);
+      console.warn(`[radar-job ${jobId}] continuation failed`, msg);
+      const retry = Number(msg.match(/Retry after\s+(\d+)ms/i)?.[1] ?? 0);
+      if (attempt < 3) await sleep(Math.max(1_500, Math.min(20_000, retry || 2_500 * (attempt + 1))));
+    }
   }
+  return false;
 }
 
 async function processJob(
