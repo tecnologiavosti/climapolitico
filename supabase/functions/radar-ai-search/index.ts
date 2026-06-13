@@ -303,18 +303,18 @@ function normalizeEvents(raw: any[]): any[] {
       const importance = safeNum(e.importance, Math.min(100, Math.round(computed)));
       return {
         id: e.id ?? `${Date.now()}-${i}`,
-        title: String(e.title).slice(0, 280),
-        summary: String(e.summary ?? "").slice(0, 1500),
-        category: String(e.category ?? "Outros"),
+        title: sanitizeRadarText(e.title).slice(0, 280),
+        summary: sanitizeRadarText(e.summary ?? "").slice(0, 1500),
+        category: sanitizeRadarText(e.category ?? "Outros"),
         event_date: e.event_date ?? e.date ?? null,
         source_count,
         institutional_sources,
         social_score,
         importance,
-        political_impact: e.political_impact ? String(e.political_impact).slice(0, 600) : "",
-        entities: Array.isArray(e.entities) ? e.entities.slice(0, 10).map((x: any) => String(x).slice(0, 80)) : [],
+        political_impact: e.political_impact ? sanitizeRadarText(e.political_impact).slice(0, 600) : "",
+        entities: Array.isArray(e.entities) ? e.entities.slice(0, 10).map((x: any) => sanitizeRadarText(x).slice(0, 80)) : [],
         sources: sources.slice(0, 25).map((s: any) => ({
-          name: String(s.name).slice(0, 120),
+          name: sanitizeRadarText(s.name).slice(0, 120),
           url: String(s.url ?? "").slice(0, 600),
           type: s.type ?? "news",
         })),
@@ -325,6 +325,41 @@ function normalizeEvents(raw: any[]): any[] {
       const tb = b.event_date ? Date.parse(b.event_date) : 0;
       return tb - ta;
     });
+}
+
+// ===== TEMPORAL DIVERSITY: cap por dia + boost meses pouco representados =====
+function applyTemporalDiversity(events: any[], maxPerDay = 3): any[] {
+  if (events.length === 0) return events;
+  const byDay = new Map<string, any[]>();
+  for (const ev of events) {
+    const day = (ev.event_date ?? "").slice(0, 10) || "unknown";
+    if (!byDay.has(day)) byDay.set(day, []);
+    byDay.get(day)!.push(ev);
+  }
+  const capped: any[] = [];
+  for (const [, list] of byDay) {
+    list.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
+    capped.push(...list.slice(0, maxPerDay));
+  }
+  // Boost por mês pouco representado
+  const monthCounts = new Map<string, number>();
+  for (const ev of capped) {
+    const m = (ev.event_date ?? "").slice(0, 7) || "unknown";
+    monthCounts.set(m, (monthCounts.get(m) ?? 0) + 1);
+  }
+  const maxMonth = Math.max(1, ...Array.from(monthCounts.values()));
+  for (const ev of capped) {
+    const m = (ev.event_date ?? "").slice(0, 7) || "unknown";
+    const c = monthCounts.get(m) ?? 1;
+    const diversityScore = (1 - c / maxMonth) * 100; // 0..100
+    ev._final_score = (ev.importance ?? 0) * 0.7 + diversityScore * 0.3;
+  }
+  capped.sort((a, b) => {
+    const ta = a.event_date ? Date.parse(a.event_date) : 0;
+    const tb = b.event_date ? Date.parse(b.event_date) : 0;
+    return tb - ta;
+  });
+  return capped;
 }
 
 function parseAiJson(text: string): any {
