@@ -480,7 +480,7 @@ function normalizeEvents(raw: any[]): any[] {
 }
 
 // ===== TEMPORAL DIVERSITY: distribuição equilibrada por mês/ano sem inventar datas =====
-function applyTemporalDiversity(events: any[], maxPerDay = 8): any[] {
+function applyTemporalDiversity(events: any[], maxPerDay = 30): any[] {
   if (events.length === 0) return events;
   const deduped = dedupeEvents(events).filter((ev) => ev.event_date && !isNaN(Date.parse(ev.event_date)));
   const byDay = new Map<string, any[]>();
@@ -894,7 +894,7 @@ Evite que a maioria dos eventos caia em uma única semana — espalhe ao longo d
     async function returnRssFallback(reason: string, statusWhenEmpty = 502) {
       console.warn(`[RADAR] fallback RSS acionado: ${reason}`);
       const fallbackRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs);
-      const fallbackEvents = applyTemporalDiversity(fallbackRaw, 8);
+      const fallbackEvents = applyTemporalDiversity(fallbackRaw, 30);
       console.log("LOG 6: eventos após filtro =", { fallback: true, count: fallbackEvents.length, sample: fallbackEvents.slice(0, 3) });
       if (fallbackEvents.length === 0) {
         console.log("Skipping empty cache");
@@ -941,7 +941,7 @@ Evite que a maioria dos eventos caia em uma única semana — espalhe ao longo d
 
     const candidateFiltered = parsedEvents.filter((event) => eventMatchesCandidate(event, aliases));
     const filteredEvents = candidateFiltered.length > 0 ? candidateFiltered : parsedEvents;
-    let events = applyTemporalDiversity(clusterEvents(filteredEvents), 8);
+    let events = applyTemporalDiversity(clusterEvents(filteredEvents), 30);
     const rssFallbackRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs);
     if (events.length < Math.min(expectedMin, 100) && rssFallbackRaw.length > 0) {
       console.warn(`[RADAR] IA abaixo da meta (${events.length}/${expectedMin}); mesclando evidências RSS temporais`);
