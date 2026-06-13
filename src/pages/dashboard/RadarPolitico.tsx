@@ -25,7 +25,9 @@ import { toast } from "sonner";
 interface RadarEvent {
   id: string;
   title: string;
-  summary: string;
+  summary?: string;
+  description?: string;
+  content?: string;
   category: string;
   event_date: string;
   source_count: number;
