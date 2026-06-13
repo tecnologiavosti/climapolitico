@@ -72,8 +72,9 @@ function sanitizeRadarText(input: unknown): string {
 }
 
 function band(value: number) {
-  if (value >= 70) return { label: "Grande", tone: "bg-foreground text-background" };
-  if (value >= 40) return { label: "Médio", tone: "bg-muted text-foreground border" };
+  if (value >= 80) return { label: "Crítico", tone: "bg-destructive text-destructive-foreground" };
+  if (value >= 60) return { label: "Grande", tone: "bg-foreground text-background" };
+  if (value >= 30) return { label: "Médio", tone: "bg-muted text-foreground border" };
   return { label: "Pequeno", tone: "bg-background text-muted-foreground border" };
 }
 
@@ -206,7 +207,7 @@ export default function RadarPolitico() {
 
   const kpis = useMemo(() => ({
     total: filtered.length,
-    grandes: filtered.filter((e) => e.importance >= 70).length,
+    grandes: filtered.filter((e) => e.importance >= 60).length,
     institucionais: filtered.filter((e) =>
       e.institutional_sources > 0 || e.sources?.some((s) => /\b(STF|TSE|PF|Senado|Câmara|Camara|Planalto|STJ|TCU|CGU|AGU|CNJ)\b/i.test(s.name)),
     ).length,
@@ -332,7 +333,7 @@ export default function RadarPolitico() {
       {/* KPIs */}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Kpi label="Eventos" value={kpis.total} />
-        <Kpi label="Grandes" value={kpis.grandes} hint="importância ≥ 70" />
+        <Kpi label="Grandes" value={kpis.grandes} hint="importância ≥ 60" />
         <Kpi label="Institucionais" value={kpis.institucionais} hint="STF · TSE · PF · TCU" />
         <Kpi label="Alta repercussão" value={kpis.altaRepercussao} hint="social ≥ 60" />
       </section>
