@@ -279,12 +279,13 @@ function normalize(s: string): string {
 
 function buildAliases(fullName: string): string[] {
   const norm = normalize(fullName);
-  const parts = norm.split(" ").filter((p) => p.length >= 3);
+  const weakTokens = new Set(["silva", "santos", "souza", "costa", "oliveira", "pereira", "alves", "ferreira", "lima"]);
+  const parts = norm.split(" ").filter((p) => p.length >= 3 && !weakTokens.has(p));
   const aliases = new Set<string>([norm]);
   const compact = norm.replace(/\s+/g, " ");
   if (parts.length >= 2) {
     aliases.add(`${parts[0]} ${parts[parts.length - 1]}`); // first + last
-    aliases.add(parts[parts.length - 1]); // last name
+    if (parts[parts.length - 1].length >= 6) aliases.add(parts[parts.length - 1]); // last name only when distinctive
   }
   if (parts[0]) aliases.add(parts[0]);
   if (compact.includes("flavio") && compact.includes("bolsonaro")) {
