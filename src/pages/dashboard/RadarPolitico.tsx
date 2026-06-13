@@ -491,7 +491,7 @@ export default function RadarPolitico() {
                 {selected.summary && (
                   <div>
                     <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Resumo</h4>
-                    <p className="text-sm leading-relaxed">{selected.summary}</p>
+                    <p className="text-sm leading-relaxed break-words [overflow-wrap:anywhere] whitespace-normal">{selected.summary}</p>
                   </div>
                 )}
                 {selected.sources?.length > 0 && (
