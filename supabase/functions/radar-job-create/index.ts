@@ -272,23 +272,27 @@ async function processJob(
 
   // Processa em lotes de CONCURRENCY
   for (let i = processed; i < chunks.length; i += CONCURRENCY) {
+    const batchIndex = Math.floor(i / CONCURRENCY) + 1;
     const elapsed = Date.now() - started;
     if (elapsed > MAX_RUNTIME || elapsed + BATCH_GUARD_MS > MAX_RUNTIME) {
       const continued = await scheduleContinuation(jobId, authHeader);
       if (!continued) {
-        await completePartial(admin, jobId, processed, total, `RADAR_TIMEOUT: resultado parcial retornado após ${Math.round(elapsed / 1000)}s`);
+        await completePartial(admin, jobId, processed, total, `Resultado parcial salvo; continuação será retomada em nova busca (${Math.round(elapsed / 1000)}s)`);
       }
       console.timeEnd("TOTAL_RADAR");
       return;
     }
 
     const batch = chunks.slice(i, i + CONCURRENCY);
+    console.log("BATCH", batchIndex);
     console.time("FETCH");
     const results = await Promise.all(batch.map(fetchOne));
     console.timeEnd("FETCH");
 
     console.time("CHUNK_PROCESSING");
     const batchEvents = results.flat();
+    console.log("EVENTS PARTIAL", batchEvents.length);
+    console.log("IA CALL COUNT", 0);
     processed += batch.length;
     console.timeEnd("CHUNK_PROCESSING");
 
@@ -309,6 +313,7 @@ async function processJob(
       progress,
       events_count: count,
     }).eq("id", jobId);
+    await saveCacheSnapshot(admin, jobId, body);
     console.timeEnd("CACHE_SAVE");
     console.log("progress", progress);
   }
@@ -324,6 +329,7 @@ async function processJob(
     error: firstError,
     completed_at: new Date().toISOString(),
   }).eq("id", jobId);
+  await saveCacheSnapshot(admin, jobId, body);
 
   const { data: oldest } = await admin.from("radar_job_events").select("event_date").eq("job_id", jobId).not("event_date", "is", null).order("event_date", { ascending: true }).limit(1).maybeSingle();
   const { data: newest } = await admin.from("radar_job_events").select("event_date").eq("job_id", jobId).not("event_date", "is", null).order("event_date", { ascending: false }).limit(1).maybeSingle();
