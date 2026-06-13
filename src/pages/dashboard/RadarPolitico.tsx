@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
+import { Progress } from "@/components/ui/progress";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -99,8 +100,8 @@ export default function RadarPolitico() {
   const [selected, setSelected] = useState<RadarEvent | null>(null);
   const [events, setEvents] = useState<RadarEvent[]>([]);
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
-  const [cachedFlag, setCachedFlag] = useState(false);
   const [lastError, setLastError] = useState<{ message: string; stack: string } | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
 
   const { data: candidates } = useQuery({
     queryKey: ["candidates-min", user?.id],
@@ -127,38 +128,39 @@ export default function RadarPolitico() {
     return { from: f, to: t };
   }, [preset, customFrom, customTo]);
 
-  const searchMutation = useMutation({
-    mutationFn: async (force: boolean = false) => {
-      if (candidateId === "all") throw new Error("Selecione um candidato.");
-      if (!from || !to) throw new Error("Defina o período (datas inicial e final).");
-      const { data, error } = await supabase.functions.invoke("radar-ai-search", {
-        body: {
-          candidate_id: candidateId === "all" ? null : candidateId,
-          candidate_name: candidateName,
-          start_date: from.toISOString().slice(0, 10),
-          end_date: to.toISOString().slice(0, 10),
-          categories: category === "Todos" ? [] : [category],
-          force_refresh: force,
-        },
-      });
-      if (error) {
-        const ctx = (error as any)?.context;
-        const errorBody = ctx?.clone ? await ctx.clone().json().catch(() => null) : null;
-        throw Object.assign(error, {
-          detail: errorBody?.detail ?? errorBody?.error,
-          stack: errorBody?.stack ?? errorBody?.detail,
-          message: errorBody?.message ?? error.message,
-        });
-      }
-      const payload = data as { events: RadarEvent[]; cached: boolean; cached_at?: string; fallback?: boolean; message?: string; provider?: string; error?: string; detail?: string; stack?: string };
-      if (payload?.error && (!payload.events || payload.events.length === 0)) {
-        throw Object.assign(new Error(payload.message ?? payload.error), { detail: payload.detail, stack: payload.stack });
-      }
-      return payload;
+  // Polling do job em background
+  const { data: jobStatus } = useQuery({
+    queryKey: ["radar-job", jobId],
+    enabled: !!jobId,
+    refetchInterval: (q) => {
+      const s = (q.state.data as any)?.status;
+      return s === "completed" || s === "failed" ? false : 3000;
     },
-    onSuccess: (data) => {
-      setLastError(null);
-      const clean = (data.events ?? []).map((e) => ({
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("radar-job-status", {
+        body: { job_id: jobId },
+      });
+      if (error) throw error;
+      return data as {
+        id: string;
+        status: "queued" | "running" | "completed" | "failed";
+        progress: number;
+        total_chunks: number;
+        processed_chunks: number;
+        events_count: number;
+        events: RadarEvent[] | null;
+        error: string | null;
+      };
+    },
+  });
+
+  const isJobRunning = jobStatus?.status === "queued" || jobStatus?.status === "running";
+
+  // Quando job conclui, popular events
+  useEffect(() => {
+    if (!jobStatus) return;
+    if (jobStatus.status === "completed" && jobStatus.events) {
+      const clean = (jobStatus.events ?? []).map((e) => ({
         ...e,
         title: sanitizeRadarText(e.title),
         summary: sanitizeRadarText(e.summary ?? e.description ?? e.content ?? ""),
@@ -168,28 +170,44 @@ export default function RadarPolitico() {
         sources: (e.sources ?? []).map((s) => ({ ...s, name: sanitizeRadarText(s.name) })),
       }));
       setEvents(clean);
-      setCachedFlag(!!data.cached);
       setLastFetchedAt(new Date());
-      if (data.fallback) {
-        toast.warning(data.message ?? "IA temporariamente indisponível. Tente novamente em instantes.");
-        return;
+      setLastError(null);
+      toast.success(`${clean.length} eventos coletados pela IA`);
+    } else if (jobStatus.status === "failed") {
+      setLastError({ message: jobStatus.error ?? "Job falhou", stack: "" });
+      toast.error(jobStatus.error ?? "Job falhou");
+    }
+  }, [jobStatus?.status, jobStatus?.events_count]);
+
+  const searchMutation = useMutation({
+    mutationFn: async (_force: boolean = false) => {
+      if (candidateId === "all") throw new Error("Selecione um candidato.");
+      if (!from || !to) throw new Error("Defina o período (datas inicial e final).");
+      setEvents([]);
+      setLastError(null);
+      const { data, error } = await supabase.functions.invoke("radar-job-create", {
+        body: {
+          candidate_id: candidateId,
+          candidate_name: candidateName,
+          start_date: from.toISOString().slice(0, 10),
+          end_date: to.toISOString().slice(0, 10),
+          categories: category === "Todos" ? [] : [category],
+        },
+      });
+      if (error) {
+        const ctx = (error as any)?.context;
+        const errorBody = ctx?.clone ? await ctx.clone().json().catch(() => null) : null;
+        throw new Error(errorBody?.error ?? error.message);
       }
-      toast.success(
-        data.cached
-          ? `${data.events?.length ?? 0} eventos (cache)`
-          : `${data.events?.length ?? 0} eventos buscados pela IA${data.provider ? ` · ${data.provider}` : ""}`,
-      );
+      return data as { job_id: string; status: string };
+    },
+    onSuccess: (data) => {
+      setJobId(data.job_id);
+      toast.info("Coleta iniciada em background. O resultado aparecerá em alguns minutos.");
     },
     onError: (e: any) => {
-      const ctx = e?.context;
-      const status = ctx?.status ?? 0;
-      setLastError({
-        message: e?.message ?? "Falha na busca",
-        stack: [status ? `HTTP ${status}` : null, e?.detail, e?.stack].filter(Boolean).join("\n").slice(0, 900),
-      });
-      if (status === 429) toast.error("IA temporariamente sem capacidade. Aguarde ~30s e tente novamente.");
-      else if (status === 402) toast.error("Créditos de IA esgotados.");
-      else toast.error(e?.message ?? "Falha na busca");
+      setLastError({ message: e?.message ?? "Falha ao iniciar job", stack: "" });
+      toast.error(e?.message ?? "Falha ao iniciar job");
     },
   });
 
