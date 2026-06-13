@@ -18,13 +18,14 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 // Max chunks por job (mensal): 96 = 8 anos. Aumentar = mais volume, mais tempo.
 const MAX_CHUNKS = 96;
-// Quantos chunks rodam em paralelo. 3-4 evita estourar limites do RSS/IA.
-const CONCURRENCY = 3;
+// Quantos chunks rodam por lote. Sem IA por chunk, 6 acelera sem estourar CPU/rede.
+const CONCURRENCY = 6;
 // Janela máxima por chunk (em dias).
 const CHUNK_DAYS = 30;
 const BATCH_SIZE = 200;
-const MAX_RUNTIME = 120_000;
-const BATCH_GUARD_MS = 70_000;
+const MAX_RUNTIME = 130_000;
+const BATCH_GUARD_MS = 20_000;
+const DB_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
