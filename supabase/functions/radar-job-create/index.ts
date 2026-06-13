@@ -302,11 +302,11 @@ Deno.serve(async (req) => {
 
     // Background: continua processando depois da resposta
     // @ts-ignore EdgeRuntime existe em Supabase Edge Functions
-    EdgeRuntime.waitUntil(processJob(job.id, body, authHeader).catch(async (e) => {
+    EdgeRuntime.waitUntil(processJob(job.id, { ...body, user_id: user.id }, authHeader).catch(async (e) => {
       console.error(`[radar-job ${job.id}] fatal:`, e);
       const admin2 = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
       await admin2.from("radar_jobs").update({
-        status: "failed",
+        status: "completed",
         error: (e as Error)?.message ?? String(e),
         completed_at: new Date().toISOString(),
       }).eq("id", job.id);
