@@ -849,23 +849,34 @@ VALIDAÇÃO FINAL (faça antes de responder):
     let lastFailure = "";
     let rawAiResponse = "";
     for (const attempt of attempts) {
-      try {
-        const result = await attempt();
-        rawAiResponse = result.raw;
-        if (!result.ok) {
-          lastFailure = `${result.provider}:${result.model} HTTP ${result.status} ${result.raw.slice(0, 200)}`;
-          console.warn(`[RADAR-AI] ${lastFailure}`);
-          if (result.status === 429 || result.status === 402) await sleep(900);
-          continue;
+      let backoff = 5000;
+      let attemptOk = false;
+      for (let tries = 0; tries < 3 && !attemptOk; tries++) {
+        try {
+          const result = await attempt();
+          rawAiResponse = result.raw;
+          if (!result.ok) {
+            lastFailure = `${result.provider}:${result.model} HTTP ${result.status} ${result.raw.slice(0, 200)}`;
+            console.warn(`[RADAR-AI] ${lastFailure}`);
+            if (result.status === 429 || result.status === 402 || result.status >= 500) {
+              await sleep(backoff);
+              backoff = Math.min(backoff * 3, 30_000);
+              continue; // retry same provider
+            }
+            break; // outro erro → próximo provider
+          }
+          const data = JSON.parse(result.raw);
+          text = extractText(result.provider, data) || "{}";
+          usedProvider = `${result.provider}:${result.model}`;
+          attemptOk = true;
+          break;
+        } catch (error) {
+          lastFailure = error instanceof Error ? error.message : String(error);
+          console.warn(`[RADAR-AI] provider failed: ${lastFailure}`);
+          break;
         }
-        const data = JSON.parse(result.raw);
-        text = extractText(result.provider, data) || "{}";
-        usedProvider = `${result.provider}:${result.model}`;
-        break;
-      } catch (error) {
-        lastFailure = error instanceof Error ? error.message : String(error);
-        console.warn(`[RADAR-AI] provider failed: ${lastFailure}`);
       }
+      if (attemptOk) break;
     }
 
     async function saveCache(nonEmptyEvents: any[]) {
