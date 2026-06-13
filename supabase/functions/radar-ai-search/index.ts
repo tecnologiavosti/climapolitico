@@ -673,19 +673,7 @@ NÃO retorne menos de 20 eventos, exceto se realmente não existirem.`;
 
     console.log("LOG 4: resposta bruta da IA =", rawAiResponse.slice(0, 4000));
 
-    let parsed: any = {};
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      const m = text.match(/\{[\s\S]*\}/);
-      if (m) {
-        try {
-          parsed = JSON.parse(m[0]);
-        } catch {
-          parsed = { events: [] };
-        }
-      }
-    }
+    const parsed = parseAiJson(text);
 
     const parsedEvents = normalizeEvents(parsed.events ?? parsed);
     console.log("LOG 5: eventos parseados =", { count: parsedEvents.length, sample: parsedEvents.slice(0, 3) });
