@@ -183,10 +183,31 @@ function jsonResponse(payload: Record<string, unknown>, status = 200) {
   });
 }
 
-// ===== TEXT SANITIZER (encoding + smart quotes + control chars) =====
+// ===== TEXT SANITIZER (encoding + smart quotes + control chars + mojibake) =====
+const MOJIBAKE_MAP: Record<string, string> = {
+  "Ã¡": "á", "Ã ": "à", "Ã£": "ã", "Ã¢": "â", "Ã¤": "ä",
+  "Ã©": "é", "Ã¨": "è", "Ãª": "ê", "Ã«": "ë",
+  "Ã­": "í", "Ã®": "î", "Ã¯": "ï",
+  "Ã³": "ó", "Ã²": "ò", "Ãµ": "õ", "Ã´": "ô", "Ã¶": "ö",
+  "Ãº": "ú", "Ã¹": "ù", "Ã»": "û", "Ã¼": "ü",
+  "Ã§": "ç", "Ã±": "ñ",
+  "Ã": "Á", "Ã‰": "É", "Ã": "Í", "Ã“": "Ó", "Ãš": "Ú", "Ã‡": "Ç",
+  "Â´": "'", "Â¨": '"', "Â°": "°", "Â§": "§", "Â®": "®", "Â©": "©",
+  "â€™": "'", "â€˜": "'", "â€œ": '"', "â€": '"', "â€“": "-", "â€”": "-", "â€¦": "...",
+};
+function fixMojibake(s: string): string {
+  let out = s;
+  for (const [bad, good] of Object.entries(MOJIBAKE_MAP)) {
+    if (out.includes(bad)) out = out.split(bad).join(good);
+  }
+  // Replacement char (U+FFFD) → remove para evitar "exibi��o"
+  out = out.replace(/\uFFFD/g, "");
+  return out;
+}
 function sanitizeRadarText(input: unknown): string {
   if (input == null) return "";
   let s = String(input);
+  s = fixMojibake(s);
   // Remove control characters (incl. DEL and C1)
   s = s.replace(/[\u0000-\u001F\u007F-\u009F]/g, " ");
   // Remove zero-width and BOM
