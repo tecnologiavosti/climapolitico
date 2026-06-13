@@ -82,7 +82,8 @@ const FEEDS: Array<{ name: string; url: string; type: RawItem["type"] }> = [
 
 function hashPeriod(b: ReqBody): string {
   const cats = [...(b.categories ?? [])].sort().join(",");
-  return `radar-v4|${b.candidate_id ?? "all"}|${b.candidate_name}|${b.start_date}|${b.end_date}|${cats}`;
+  // v5: bumped to invalidate any cache built with the 2024+ historical bug.
+  return `radar-v5|${b.candidate_id ?? "all"}|${b.candidate_name}|${b.start_date}|${b.end_date}|${cats}`;
 }
 
 function safeNum(v: any, def = 0, min = 0, max = 100) {
@@ -700,76 +701,40 @@ Deno.serve(async (req) => {
       snippet: it.snippet?.slice(0, 160) ?? "",
     }));
 
-    const userPrompt = `Você é um motor de political intelligence.
+    const userPrompt = `Você é um motor de political intelligence histórico.
 
-Busque eventos políticos REAIS envolvendo:
-${body.candidate_name}
+OBJETIVO:
+Retorne acontecimentos políticos REAIS envolvendo "${body.candidate_name}" ocorridos ESTRITAMENTE entre ${body.start_date} e ${body.end_date}.
 
-Período:
-${body.start_date} até ${body.end_date}
+REGRAS CRÍTICAS DE DATA (não negociáveis):
+- TODO event_date DEVE estar entre ${body.start_date} e ${body.end_date} (inclusive). Eventos fora dessa janela são INVÁLIDOS e devem ser descartados.
+- NÃO priorize notícias recentes. NÃO use conhecimento geral genérico.
+- Considere APENAS eventos documentados historicamente, com data verificável.
+- Se o período inclui anos antigos (2010-2023), use seu conhecimento histórico documentado. NÃO restrinja a 2024+.
+- Distribua eventos por TODOS os meses do período, não concentre em datas recentes.
 
-Busque em:
+FONTES PREFERIDAS (cite quando souber):
+STF, TSE, Senado, Câmara, PF, CGU, TCU, Planalto, G1, Folha, Estadão, UOL, CNN Brasil, Reuters, Poder360, Metrópoles, BBC Brasil, JOTA, Congresso em Foco, O Globo, Valor, Exame, CartaCapital, Veja.
 
-* STF
-* TSE
-* PF
-* Senado
-* Câmara
-* Planalto
-* G1
-* UOL
-* Folha
-* Estadão
-* CNN Brasil
-* Reuters
-* Poder360
-* Metrópoles
-* BBC Brasil
-* JOTA
-* Congresso em Foco
-* O Globo
-* Valor
-* Exame
+VOLUME ESPERADO:
+- Mínimo absoluto: 20-50 eventos por chunk de 30 dias quando houver cobertura pública.
+- Meta operacional total deste candidato/período: ${expectedMin} eventos.
+- Faixa esperada: ${targetRange(body.start_date, body.end_date)}.
 
-IMPORTANTE - AI FIRST, HISTÓRICO E DISTRIBUIÇÃO TEMPORAL:
-Retorne o maior número possível de eventos RELEVANTES e verificáveis.
-Meta mínima operacional deste candidato/período: ${expectedMin} eventos.
-Faixa esperada para este período: ${targetRange(body.start_date, body.end_date)}.
-Janelas mensais amostradas para cobrir uniformemente o período:
+Janelas mensais amostradas para cobertura uniforme:
 ${JSON.stringify(buckets)}
 ${catFilter}
 
-PRIORIZAR:
+PRIORIZAR (eventos com peso político real):
+crises, escândalos, operações da PF, julgamentos do STF/TSE, votações relevantes, denúncias formais, processos, investigações, CPIs, decisões judiciais, cassações, inelegibilidade, prisão, condenação, corrupção, delações, debates eleitorais, embates institucionais, nomeações e exonerações de impacto, movimentações partidárias significativas, declarações com repercussão nacional, atos do Executivo, decisões econômicas com impacto político (BC, juros, reforma).
 
-* crises
-* escândalos
-* operações
-* julgamentos
-* votações
-* denúncias
-* processos
-* investigações
-* debates
-* CPIs
-* decisões judiciais
-* cassações
-* inelegibilidade
-* prisão
-* corrupção
-* economia e Banco Central quando houver impacto político
+IGNORAR:
+palpite esportivo, futebol, Copa, apostas; entrevista banal sem consequência política; visita rotineira, agenda comum, cerimônia protocolar; comentário sem impacto institucional ou eleitoral.
 
-IGNORAR completamente:
-* palpite esportivo, futebol, Copa, apostas
-* entrevista banal sem consequência política
-* visita rotineira, agenda comum, cerimônia protocolar
-* agenda de campanha simples
-* comentário sem impacto institucional ou eleitoral
-
-Notícias brutas coletadas via RSS em tempo real (${sourcesPayload.length} itens) para agrupar, deduplicar e usar como evidência prioritária:
+Notícias brutas coletadas via RSS (${sourcesPayload.length} itens — pode estar vazio para períodos antigos; nesse caso USE conhecimento histórico documentado):
 ${JSON.stringify(sourcesPayload)}
 
 Retorne JSON neste formato:
-
 {"events":[
 {
 "title":"",
@@ -785,17 +750,14 @@ Retorne JSON neste formato:
 }
 ]}
 
-NÃO use score fixo. Calcule importância variando por impacto, fontes e gravidade:
-importance = (source_count * 2) + (institutional_sources * 12) + (media_weight * 8) + (social_relevance * 0.3) + (impact_score * 20), clamp 0-100.
-social_score deve variar conforme cobertura pública: quantidade/diversidade de fontes, presença em veículos nacionais/internacionais e impacto político. Nunca use default 35.
+SCORING:
+importance = (source_count * 2) + (institutional_sources * 12) + (media_weight * 8) + (social_relevance * 0.3) + (impact_score * 20), clamp 0-100. NUNCA use valor fixo.
+social_score deve variar conforme cobertura pública real. Nunca use default 35.
 
-Se as notícias brutas atuais forem insuficientes para meses antigos, complemente com seu conhecimento histórico público, mas apenas eventos reais e datados.
-NÃO retorne menos de ${Math.min(expectedMin, 1000)} eventos quando o período for amplo e houver cobertura pública. Aceite entrevistas, declarações, votações, discursos, embates, decisões judiciais, movimentações partidárias, nomeações, exonerações e bastidores políticos — não apenas grandes escândalos.
-
-DISTRIBUTE RESULTS ACROSS THE ENTIRE REQUESTED DATE RANGE.
-Avoid over-concentration in a single day/week unless historically justified.
-Para cada mês do período solicitado, inclua pelo menos alguns eventos representativos quando existirem fatos públicos.
-Evite que a maioria dos eventos caia em uma única semana — espalhe ao longo do tempo por ano e mês.`;
+VALIDAÇÃO FINAL (faça antes de responder):
+1. Cada event_date está entre ${body.start_date} e ${body.end_date}? Se não, REMOVA.
+2. Cobriu múltiplos meses do período? Se o período tem >1 mês e tudo caiu em 1 mês, REVISE.
+3. Para períodos antigos (anteriores a 2024), você retornou eventos históricos REAIS daquele ano?`;
 
     console.log("LOG 3: prompt enviado =", userPrompt);
 
@@ -948,6 +910,12 @@ Evite que a maioria dos eventos caia em uma única semana — espalhe ao longo d
       events = applyTemporalDiversity(clusterEvents([...events, ...rssFallbackRaw]), 30);
     }
     console.log("LOG 6: eventos após filtro =", { count: events.length, expectedMin, before_diversity: filteredEvents.length, rss_candidates: rssFallbackRaw.length, sample: events.slice(0, 3) });
+
+    // Logs históricos obrigatórios
+    const dateList = events.map((e: any) => e.event_date).filter((d: string) => d && !isNaN(Date.parse(d))).sort();
+    console.log("RADAR RANGE", safeBody.start_date, safeBody.end_date);
+    console.log("EVENTS FOUND", events.length);
+    console.log("OLDEST EVENT", dateList[0] ?? "n/a", "| NEWEST EVENT", dateList[dateList.length - 1] ?? "n/a");
 
     if (events.length === 0) {
       console.error("AI returned 0 events");
