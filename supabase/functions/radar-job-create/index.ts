@@ -60,7 +60,7 @@ function normalizeKey(input: unknown): string {
     .trim();
 }
 
-function hashPeriod(body: Pick<ReqBody, "candidate_id" | "candidate_name" | "start_date" | "end_date" | "categories">): string {
+function hashPeriod(body: Pick<ReqBody, "candidate_id" | "candidate_name" | "start_date" | "end_date" | "categories" | "sort">): string {
   const cats = [...(body.categories ?? [])].sort().join(",");
   return `radar-v8|${body.candidate_id ?? "all"}|${body.candidate_name}|${body.start_date}|${body.end_date}|${cats}|${body.sort ?? "importance"}`;
 }
