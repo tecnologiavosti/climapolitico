@@ -370,27 +370,38 @@ function scoreEvent(e: any): { importance: number; social_score: number; institu
   };
 }
 
+// Dedupe MUITO mais conservador: só remove duplicatas quase idênticas no MESMO mês.
+// Threshold 0.93 + bucketização por mês para evitar O(n²) global e preservar volume.
 function dedupeEvents(events: any[]): any[] {
-  const seen = new Set<string>();
+  const byMonth = new Map<string, string[]>();
   const out: any[] = [];
   for (const ev of events.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0))) {
-    const key = normalize(`${ev.event_date ?? ""} ${ev.title ?? ""}`).split(" ").filter((t) => t.length > 3).slice(0, 12).join(" ");
-    if (!key || [...seen].some((s) => similarity(s, key) > 0.78)) continue;
-    seen.add(key);
+    const month = (ev.event_date ?? "").slice(0, 7) || "unknown";
+    const key = normalize(`${ev.title ?? ""}`).split(" ").filter((t) => t.length > 3).slice(0, 10).join(" ");
+    if (!key) continue;
+    const bucket = byMonth.get(month) ?? [];
+    // Só descarta se for praticamente idêntico no mesmo mês
+    if (bucket.some((s) => similarity(s, key) > 0.93)) continue;
+    bucket.push(key);
+    byMonth.set(month, bucket);
     out.push(ev);
   }
   return out;
 }
 
+// Cluster restrito: ±2 dias E similarity > 0.90 — não junta eventos de meses diferentes.
 function clusterEvents(events: any[]): any[] {
   const clusters: any[] = [];
   const sorted = [...events].filter((e) => e?.event_date).sort((a, b) => Date.parse(a.event_date) - Date.parse(b.event_date));
   for (const ev of sorted) {
     const evKey = normalize(ev.title ?? "");
     const evTime = Date.parse(ev.event_date);
+    const evMonth = (ev.event_date ?? "").slice(0, 7);
     const match = clusters.find((c) => {
       const cTime = Date.parse(c.event_date);
-      return Math.abs(evTime - cTime) <= 14 * 86_400_000 && similarity(evKey, normalize(c.title ?? "")) > 0.62;
+      const cMonth = (c.event_date ?? "").slice(0, 7);
+      if (cMonth !== evMonth) return false; // nunca juntar meses diferentes
+      return Math.abs(evTime - cTime) <= 2 * 86_400_000 && similarity(evKey, normalize(c.title ?? "")) > 0.90;
     });
     if (!match) {
       clusters.push({ ...ev, sources: [...(ev.sources ?? [])] });
@@ -469,7 +480,7 @@ function normalizeEvents(raw: any[]): any[] {
 }
 
 // ===== TEMPORAL DIVERSITY: distribuição equilibrada por mês/ano sem inventar datas =====
-function applyTemporalDiversity(events: any[], maxPerDay = 8): any[] {
+function applyTemporalDiversity(events: any[], maxPerDay = 30): any[] {
   if (events.length === 0) return events;
   const deduped = dedupeEvents(events).filter((ev) => ev.event_date && !isNaN(Date.parse(ev.event_date)));
   const byDay = new Map<string, any[]>();
@@ -489,7 +500,7 @@ function applyTemporalDiversity(events: any[], maxPerDay = 8): any[] {
     if (!byMonth.has(m)) byMonth.set(m, []);
     byMonth.get(m)!.push(ev);
   }
-  const monthLimit = Math.max(12, Math.ceil(capped.length / Math.max(1, byMonth.size)) + 10);
+  const monthLimit = Math.max(80, Math.ceil(capped.length / Math.max(1, byMonth.size)) + 40);
   const balanced: any[] = [];
   for (const [, list] of [...byMonth.entries()].sort(([a], [b]) => a.localeCompare(b))) {
     list.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
@@ -679,14 +690,14 @@ Deno.serve(async (req) => {
 
     const systemPrompt = `Você é um motor de political intelligence. Responda somente com JSON válido, sem markdown.`;
 
-    const sourcesPayload = unique.slice(0, 150).map((it) => ({
+    const sourcesPayload = unique.slice(0, 220).map((it) => ({
       title: it.title,
       url: it.url,
       source: it.source,
       type: it.type,
       date: it.pub_date ?? null,
       bucket: it.bucket ?? null,
-      snippet: it.snippet?.slice(0, 180) ?? "",
+      snippet: it.snippet?.slice(0, 160) ?? "",
     }));
 
     const userPrompt = `Você é um motor de political intelligence.
@@ -779,7 +790,7 @@ importance = (source_count * 2) + (institutional_sources * 12) + (media_weight *
 social_score deve variar conforme cobertura pública: quantidade/diversidade de fontes, presença em veículos nacionais/internacionais e impacto político. Nunca use default 35.
 
 Se as notícias brutas atuais forem insuficientes para meses antigos, complemente com seu conhecimento histórico público, mas apenas eventos reais e datados.
-NÃO retorne menos de ${Math.min(expectedMin, 350)} eventos quando o período for amplo e houver cobertura pública.
+NÃO retorne menos de ${Math.min(expectedMin, 1000)} eventos quando o período for amplo e houver cobertura pública. Aceite entrevistas, declarações, votações, discursos, embates, decisões judiciais, movimentações partidárias, nomeações, exonerações e bastidores políticos — não apenas grandes escândalos.
 
 DISTRIBUTE RESULTS ACROSS THE ENTIRE REQUESTED DATE RANGE.
 Avoid over-concentration in a single day/week unless historically justified.
@@ -883,7 +894,7 @@ Evite que a maioria dos eventos caia em uma única semana — espalhe ao longo d
     async function returnRssFallback(reason: string, statusWhenEmpty = 502) {
       console.warn(`[RADAR] fallback RSS acionado: ${reason}`);
       const fallbackRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs);
-      const fallbackEvents = applyTemporalDiversity(fallbackRaw, 8);
+      const fallbackEvents = applyTemporalDiversity(fallbackRaw, 30);
       console.log("LOG 6: eventos após filtro =", { fallback: true, count: fallbackEvents.length, sample: fallbackEvents.slice(0, 3) });
       if (fallbackEvents.length === 0) {
         console.log("Skipping empty cache");
@@ -930,11 +941,11 @@ Evite que a maioria dos eventos caia em uma única semana — espalhe ao longo d
 
     const candidateFiltered = parsedEvents.filter((event) => eventMatchesCandidate(event, aliases));
     const filteredEvents = candidateFiltered.length > 0 ? candidateFiltered : parsedEvents;
-    let events = applyTemporalDiversity(clusterEvents(filteredEvents), 8);
+    let events = applyTemporalDiversity(clusterEvents(filteredEvents), 30);
     const rssFallbackRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs);
     if (events.length < Math.min(expectedMin, 100) && rssFallbackRaw.length > 0) {
       console.warn(`[RADAR] IA abaixo da meta (${events.length}/${expectedMin}); mesclando evidências RSS temporais`);
-      events = applyTemporalDiversity(clusterEvents([...events, ...rssFallbackRaw]), 8);
+      events = applyTemporalDiversity(clusterEvents([...events, ...rssFallbackRaw]), 30);
     }
     console.log("LOG 6: eventos após filtro =", { count: events.length, expectedMin, before_diversity: filteredEvents.length, rss_candidates: rssFallbackRaw.length, sample: events.slice(0, 3) });
 
