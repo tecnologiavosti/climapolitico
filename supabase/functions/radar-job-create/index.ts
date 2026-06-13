@@ -17,15 +17,14 @@ interface ReqBody {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-// Max chunks por job (mensal): 96 = 8 anos. Aumentar = mais volume, mais tempo.
-const MAX_CHUNKS = 96;
-// Quantos chunks rodam por lote. Sem IA por chunk, 6 acelera sem estourar CPU/rede.
-const CONCURRENCY = 6;
+// Suporta 2010→hoje com folga. A paginação segura 10k–50k eventos sem truncar backend.
+const MAX_CHUNKS = 600;
+const MAX_EVENTS = 50_000;
+// Cada invocação processa um lote pequeno e retorna; polling/continuação retoma o próximo lote.
+const CHUNKS_PER_RUN = 6;
 // Janela máxima por chunk (em dias).
 const CHUNK_DAYS = 30;
 const BATCH_SIZE = 200;
-const MAX_RUNTIME = 130_000;
-const BATCH_GUARD_MS = 20_000;
 const DB_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -37,15 +36,15 @@ function buildChunks(start: string, end: string): Array<{ start_date: string; en
   const startD = new Date(`${start}T00:00:00Z`);
   const endD = new Date(`${end}T23:59:59Z`);
   const out: Array<{ start_date: string; end_date: string }> = [];
-  // Avançamos de trás para frente (mais recente primeiro): UX melhor.
-  let cursorEnd = new Date(endD);
-  while (cursorEnd >= startD && out.length < MAX_CHUNKS) {
-    const cursorStart = new Date(cursorEnd);
-    cursorStart.setUTCDate(cursorStart.getUTCDate() - (CHUNK_DAYS - 1));
-    const realStart = cursorStart < startD ? startD : cursorStart;
-    out.push({ start_date: ymd(realStart), end_date: ymd(cursorEnd) });
-    cursorEnd = new Date(realStart);
-    cursorEnd.setUTCDate(cursorEnd.getUTCDate() - 1);
+  // Cronológico para não privilegiar 2025/2026 na coleta incremental.
+  let cursorStart = new Date(startD);
+  while (cursorStart <= endD && out.length < MAX_CHUNKS) {
+    const cursorEnd = new Date(cursorStart);
+    cursorEnd.setUTCDate(cursorEnd.getUTCDate() + (CHUNK_DAYS - 1));
+    const realEnd = cursorEnd > endD ? endD : cursorEnd;
+    out.push({ start_date: ymd(cursorStart), end_date: ymd(realEnd) });
+    cursorStart = new Date(realEnd);
+    cursorStart.setUTCDate(cursorStart.getUTCDate() + 1);
   }
   return out;
 }
