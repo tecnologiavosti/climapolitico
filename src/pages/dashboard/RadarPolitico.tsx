@@ -25,7 +25,9 @@ import { toast } from "sonner";
 interface RadarEvent {
   id: string;
   title: string;
-  summary: string;
+  summary?: string;
+  description?: string;
+  content?: string;
   category: string;
   event_date: string;
   source_count: number;
@@ -159,7 +161,9 @@ export default function RadarPolitico() {
       const clean = (data.events ?? []).map((e) => ({
         ...e,
         title: sanitizeRadarText(e.title),
-        summary: sanitizeRadarText(e.summary),
+        summary: sanitizeRadarText(e.summary ?? e.description ?? e.content ?? ""),
+        description: sanitizeRadarText(e.description ?? ""),
+        content: sanitizeRadarText(e.content ?? ""),
         category: sanitizeRadarText(e.category),
         sources: (e.sources ?? []).map((s) => ({ ...s, name: sanitizeRadarText(s.name) })),
       }));
@@ -195,7 +199,7 @@ export default function RadarPolitico() {
     if (category !== "Todos") list = list.filter((e) => e.category === category);
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter((e) => e.title.toLowerCase().includes(q) || e.summary.toLowerCase().includes(q));
+      list = list.filter((e) => e.title.toLowerCase().includes(q) || (e.summary ?? "").toLowerCase().includes(q));
     }
     list = [...list].sort((a, b) => {
       if (sortBy === "importance") return b.importance - a.importance;
@@ -500,12 +504,19 @@ export default function RadarPolitico() {
                   <Stat label="Fontes" value={selected.source_count} />
                   <Stat label="Social" value={selected.social_score} />
                 </div>
-                {selected.summary && (
-                  <div>
-                    <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Resumo</h4>
-                    <p className="text-sm leading-relaxed break-words [overflow-wrap:anywhere] whitespace-normal">{selected.summary}</p>
-                  </div>
-                )}
+                {(() => {
+                  const description =
+                    (selected.summary && selected.summary.trim()) ||
+                    (selected.description && selected.description.trim()) ||
+                    (selected.content && selected.content.trim()) ||
+                    "Descrição não disponível";
+                  return (
+                    <div>
+                      <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Resumo</h4>
+                      <p className="text-sm leading-6 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{description}</p>
+                    </div>
+                  );
+                })()}
                 {selected.sources?.length > 0 && (
                   <div>
                     <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
