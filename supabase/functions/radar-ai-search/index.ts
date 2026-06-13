@@ -690,14 +690,14 @@ Deno.serve(async (req) => {
 
     const systemPrompt = `Você é um motor de political intelligence. Responda somente com JSON válido, sem markdown.`;
 
-    const sourcesPayload = unique.slice(0, 150).map((it) => ({
+    const sourcesPayload = unique.slice(0, 220).map((it) => ({
       title: it.title,
       url: it.url,
       source: it.source,
       type: it.type,
       date: it.pub_date ?? null,
       bucket: it.bucket ?? null,
-      snippet: it.snippet?.slice(0, 180) ?? "",
+      snippet: it.snippet?.slice(0, 160) ?? "",
     }));
 
     const userPrompt = `Você é um motor de political intelligence.
