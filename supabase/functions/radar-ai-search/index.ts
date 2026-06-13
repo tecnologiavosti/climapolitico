@@ -412,9 +412,22 @@ function scoreEvent(e: any): { importance: number; social_score: number; institu
   const text = `${e.title ?? ""} ${e.summary ?? ""} ${e.political_impact ?? ""}`;
   const mediaWeight = Math.min(10, sources.reduce((sum: number, s: any) => sum + sourceWeight(String(s?.name ?? ""), s?.type), 0));
   const impactScore = CRITICAL_IMPACT_RE.test(text) ? 1 : STRONG_IMPACT_RE.test(text) ? 0.75 : POLITICAL_RELEVANCE_RE.test(text) ? 0.45 : 0.2;
-  const social_relevance = Math.min(100, 18 + source_count * 7 + institutional_sources * 12 + mediaWeight * 4 + impactScore * 35);
-  // Nova fórmula (user spec): peso forte em fontes + impacto crítico para escalar até 60-100
-  const raw = source_count * 10 + institutional_sources * 20 + social_relevance * 0.35 + impactScore * 25;
+  const institutional_bonus = sources.reduce((sum: number, s: any) => {
+    const name = String(s?.name ?? "");
+    if (/\bSTF\b|Supremo/i.test(name)) return sum + 25;
+    if (/\bTSE\b|Eleitoral/i.test(name)) return sum + 20;
+    if (/\bPF\b|Polícia Federal|Policia Federal/i.test(name)) return sum + 20;
+    if (/\bTCU\b/i.test(name)) return sum + 15;
+    if (/Senado/i.test(name)) return sum + 10;
+    if (/Câmara|Camara/i.test(name)) return sum + 10;
+    return sum;
+  }, 0);
+  const social_relevance = Math.min(100, 15 + source_count * 7 + institutional_sources * 10 + mediaWeight * 4 + impactScore * 35);
+  const baseImportance = Math.min(100, source_count * 10 + institutional_bonus + impactScore * 45);
+  const institutionalSignal = Math.min(100, institutional_bonus * 3 + institutional_sources * 15);
+  const eventMs = e?.event_date ? Date.parse(e.event_date) : NaN;
+  const recencyBoost = isNaN(eventMs) ? 0 : Math.max(0, Math.min(5, 5 - ((Date.now() - eventMs) / 86_400_000 / 365) * 0.8));
+  const raw = baseImportance * 0.7 + social_relevance * 0.2 + institutionalSignal * 0.1 + recencyBoost;
   return {
     importance: safeNum(raw, 0),
     social_score: safeNum(social_relevance, 0),
