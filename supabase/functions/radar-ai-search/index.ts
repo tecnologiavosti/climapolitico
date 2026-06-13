@@ -572,6 +572,12 @@ function buildRssFallbackEvents(items: RawItem[], candidateName: string, aliases
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  console.time("TOTAL_RADAR");
+  const started = Date.now();
+  const watchdog = (stage: string) => {
+    if (Date.now() - started > MAX_RUNTIME) throw new Error(`RADAR_TIMEOUT:${stage}`);
+  };
+
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return jsonResponse({ error: "missing_auth" }, 401);
@@ -608,6 +614,7 @@ Deno.serve(async (req) => {
     console.log("LOG 2: period =", { start_date: body.start_date, end_date: body.end_date, force_refresh: !!body.force_refresh });
 
     // Cache lookup (2h) — Atualizar sempre bypassa pelo force_refresh
+    watchdog("CACHE_LOOKUP");
     if (!body.force_refresh) {
       const { data: cached } = await admin
         .from("radar_cache")
@@ -618,6 +625,7 @@ Deno.serve(async (req) => {
         .maybeSingle();
       const cachedEvents = Array.isArray(cached?.response_json) ? cached.response_json : [];
       if (cachedEvents.length > 0) {
+        console.timeEnd("TOTAL_RADAR");
         return jsonResponse({
           events: cachedEvents,
           cached: true,
@@ -659,16 +667,24 @@ Deno.serve(async (req) => {
     const t0 = Date.now();
     // Batched fetches (max 10 concurrent) to limit memory peak.
     const allItems: RawItem[] = [];
+    watchdog("FETCH");
+    console.time("FETCH");
     for (let i = 0; i < dynamicFeeds.length; i += 10) {
       const batch = dynamicFeeds.slice(i, i + 10);
       const results = await Promise.all(batch.map((f) => fetchFeed(f.name, f.url, f.type, f.bucket)));
       for (const arr of results) allItems.push(...arr);
     }
+    console.timeEnd("FETCH");
     const fetchMs = Date.now() - t0;
 
+    watchdog("CHUNK_PROCESSING");
+    console.time("CHUNK_PROCESSING");
     // Filtrar por candidato + período
     const filtered = allItems.filter((it) => matchesCandidate(it, aliases) && inDateRange(it, startMs, endMs) && isRelevantPoliticalText(`${it.title} ${it.snippet ?? ""}`));
+    console.timeEnd("CHUNK_PROCESSING");
 
+    watchdog("DEDUPE");
+    console.time("DEDUPE");
     // Dedup por URL
     const seen = new Set<string>();
     const unique = filtered.filter((it) => {
@@ -677,6 +693,7 @@ Deno.serve(async (req) => {
       seen.add(k);
       return true;
     });
+    console.timeEnd("DEDUPE");
 
     console.log(`[RADAR] ${body.candidate_name}: ${allItems.length} brutos, ${unique.length} filtrados, ${buckets.length} janelas em ${fetchMs}ms`);
 
