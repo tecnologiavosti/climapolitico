@@ -304,6 +304,30 @@ function normalizeEvents(raw: any[]): any[] {
     });
 }
 
+function parseAiJson(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch {
+    const arrayMatch = text.match(/\[[\s\S]*\]/);
+    if (arrayMatch) {
+      try {
+        return JSON.parse(arrayMatch[0]);
+      } catch {
+        // continua para tentar objeto
+      }
+    }
+    const objectMatch = text.match(/\{[\s\S]*\}/);
+    if (objectMatch) {
+      try {
+        return JSON.parse(objectMatch[0]);
+      } catch {
+        return { events: [] };
+      }
+    }
+    return { events: [] };
+  }
+}
+
 function buildRssFallbackEvents(items: RawItem[], candidateName: string, aliases: string[], startMs: number, endMs: number): any[] {
   const primary = items.filter((it) => matchesCandidate(it, aliases) && inDateRange(it, startMs, endMs));
   const relaxed = primary.length > 0 ? primary : items.filter((it) => matchesCandidate(it, aliases));
