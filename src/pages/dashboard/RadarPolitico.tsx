@@ -54,6 +54,23 @@ const PRESETS = [
 
 const nfBR = new Intl.NumberFormat("pt-BR");
 
+function sanitizeRadarText(input: unknown): string {
+  if (input == null) return "";
+  let s = String(input);
+  s = s.replace(/[\u0000-\u001F\u007F-\u009F]/g, " ");
+  s = s.replace(/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, "");
+  const map: Record<string, string> = {
+    "\u2018": "'", "\u2019": "'", "\u201A": "'", "\u201B": "'",
+    "\u201C": '"', "\u201D": '"', "\u201E": '"', "\u201F": '"',
+    "\u2013": "-", "\u2014": "-", "\u2015": "-", "\u2212": "-",
+    "\u2022": "-", "\u2023": "-", "\u25E6": "-", "\u2043": "-",
+    "\u00A0": " ", "\u202F": " ", "\u2009": " ", "\u200A": " ",
+    "\u2026": "...",
+  };
+  s = s.replace(/[\u2018\u2019\u201A\u201B\u201C\u201D\u201E\u201F\u2013\u2014\u2015\u2212\u2022\u2023\u25E6\u2043\u00A0\u202F\u2009\u200A\u2026]/g, (c) => map[c] ?? c);
+  return s.replace(/\s+/g, " ").trim();
+}
+
 function band(value: number) {
   if (value >= 70) return { label: "Grande", tone: "bg-foreground text-background" };
   if (value >= 40) return { label: "Médio", tone: "bg-muted text-foreground border" };
@@ -138,7 +155,14 @@ export default function RadarPolitico() {
     },
     onSuccess: (data) => {
       setLastError(null);
-      setEvents(data.events ?? []);
+      const clean = (data.events ?? []).map((e) => ({
+        ...e,
+        title: sanitizeRadarText(e.title),
+        summary: sanitizeRadarText(e.summary),
+        category: sanitizeRadarText(e.category),
+        sources: (e.sources ?? []).map((s) => ({ ...s, name: sanitizeRadarText(s.name) })),
+      }));
+      setEvents(clean);
       setCachedFlag(!!data.cached);
       setLastFetchedAt(new Date());
       if (data.fallback) {
@@ -424,9 +448,9 @@ export default function RadarPolitico() {
                           </Badge>
                         )}
                       </div>
-                      <h3 className="text-sm font-medium leading-snug">{e.title}</h3>
+                      <h3 className="text-sm font-medium leading-snug break-words [overflow-wrap:anywhere]">{e.title}</h3>
                       {e.summary && (
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{e.summary}</p>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2 break-words [overflow-wrap:anywhere]">{e.summary}</p>
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
@@ -451,7 +475,7 @@ export default function RadarPolitico() {
           {selected && (
             <>
               <DialogHeader>
-                <DialogTitle className="text-base leading-snug">{selected.title}</DialogTitle>
+                <DialogTitle className="text-base leading-snug break-words [overflow-wrap:anywhere]">{selected.title}</DialogTitle>
                 <DialogDescription className="flex items-center gap-2 text-xs flex-wrap">
                   <span>{fmtDate(selected.event_date)}</span>
                   <span>·</span>
@@ -467,7 +491,7 @@ export default function RadarPolitico() {
                 {selected.summary && (
                   <div>
                     <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Resumo</h4>
-                    <p className="text-sm leading-relaxed">{selected.summary}</p>
+                    <p className="text-sm leading-relaxed break-words [overflow-wrap:anywhere] whitespace-normal">{selected.summary}</p>
                   </div>
                 )}
                 {selected.sources?.length > 0 && (

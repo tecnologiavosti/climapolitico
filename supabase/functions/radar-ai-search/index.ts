@@ -119,6 +119,29 @@ function jsonResponse(payload: Record<string, unknown>, status = 200) {
   });
 }
 
+// ===== TEXT SANITIZER (encoding + smart quotes + control chars) =====
+function sanitizeRadarText(input: unknown): string {
+  if (input == null) return "";
+  let s = String(input);
+  // Remove control characters (incl. DEL and C1)
+  s = s.replace(/[\u0000-\u001F\u007F-\u009F]/g, " ");
+  // Remove zero-width and BOM
+  s = s.replace(/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, "");
+  // Smart quotes / dashes / bullets / nbsp
+  const map: Record<string, string> = {
+    "\u2018": "'", "\u2019": "'", "\u201A": "'", "\u201B": "'",
+    "\u201C": '"', "\u201D": '"', "\u201E": '"', "\u201F": '"',
+    "\u2013": "-", "\u2014": "-", "\u2015": "-", "\u2212": "-",
+    "\u2022": "-", "\u2023": "-", "\u25E6": "-", "\u2043": "-",
+    "\u00A0": " ", "\u202F": " ", "\u2009": " ", "\u200A": " ",
+    "\u2026": "...",
+  };
+  s = s.replace(/[\u2018\u2019\u201A\u201B\u201C\u201D\u201E\u201F\u2013\u2014\u2015\u2212\u2022\u2023\u25E6\u2043\u00A0\u202F\u2009\u200A\u2026]/g, (c) => map[c] ?? c);
+  // Collapse whitespace
+  s = s.replace(/\s+/g, " ").trim();
+  return s;
+}
+
 // ===== RSS PARSING =====
 function decodeEntities(s: string): string {
   return s
@@ -280,18 +303,18 @@ function normalizeEvents(raw: any[]): any[] {
       const importance = safeNum(e.importance, Math.min(100, Math.round(computed)));
       return {
         id: e.id ?? `${Date.now()}-${i}`,
-        title: String(e.title).slice(0, 280),
-        summary: String(e.summary ?? "").slice(0, 1500),
-        category: String(e.category ?? "Outros"),
+        title: sanitizeRadarText(e.title).slice(0, 280),
+        summary: sanitizeRadarText(e.summary ?? "").slice(0, 1500),
+        category: sanitizeRadarText(e.category ?? "Outros"),
         event_date: e.event_date ?? e.date ?? null,
         source_count,
         institutional_sources,
         social_score,
         importance,
-        political_impact: e.political_impact ? String(e.political_impact).slice(0, 600) : "",
-        entities: Array.isArray(e.entities) ? e.entities.slice(0, 10).map((x: any) => String(x).slice(0, 80)) : [],
+        political_impact: e.political_impact ? sanitizeRadarText(e.political_impact).slice(0, 600) : "",
+        entities: Array.isArray(e.entities) ? e.entities.slice(0, 10).map((x: any) => sanitizeRadarText(x).slice(0, 80)) : [],
         sources: sources.slice(0, 25).map((s: any) => ({
-          name: String(s.name).slice(0, 120),
+          name: sanitizeRadarText(s.name).slice(0, 120),
           url: String(s.url ?? "").slice(0, 600),
           type: s.type ?? "news",
         })),
@@ -302,6 +325,41 @@ function normalizeEvents(raw: any[]): any[] {
       const tb = b.event_date ? Date.parse(b.event_date) : 0;
       return tb - ta;
     });
+}
+
+// ===== TEMPORAL DIVERSITY: cap por dia + boost meses pouco representados =====
+function applyTemporalDiversity(events: any[], maxPerDay = 3): any[] {
+  if (events.length === 0) return events;
+  const byDay = new Map<string, any[]>();
+  for (const ev of events) {
+    const day = (ev.event_date ?? "").slice(0, 10) || "unknown";
+    if (!byDay.has(day)) byDay.set(day, []);
+    byDay.get(day)!.push(ev);
+  }
+  const capped: any[] = [];
+  for (const [, list] of byDay) {
+    list.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
+    capped.push(...list.slice(0, maxPerDay));
+  }
+  // Boost por mês pouco representado
+  const monthCounts = new Map<string, number>();
+  for (const ev of capped) {
+    const m = (ev.event_date ?? "").slice(0, 7) || "unknown";
+    monthCounts.set(m, (monthCounts.get(m) ?? 0) + 1);
+  }
+  const maxMonth = Math.max(1, ...Array.from(monthCounts.values()));
+  for (const ev of capped) {
+    const m = (ev.event_date ?? "").slice(0, 7) || "unknown";
+    const c = monthCounts.get(m) ?? 1;
+    const diversityScore = (1 - c / maxMonth) * 100; // 0..100
+    ev._final_score = (ev.importance ?? 0) * 0.7 + diversityScore * 0.3;
+  }
+  capped.sort((a, b) => {
+    const ta = a.event_date ? Date.parse(a.event_date) : 0;
+    const tb = b.event_date ? Date.parse(b.event_date) : 0;
+    return tb - ta;
+  });
+  return capped;
 }
 
 function parseAiJson(text: string): any {
@@ -342,8 +400,8 @@ function buildRssFallbackEvents(items: RawItem[], candidateName: string, aliases
     .slice(0, 120)
     .map((it, i) => ({
       id: `rss-fallback-${Date.now()}-${i}`,
-      title: it.title,
-      summary: it.snippet || `Notícia pública envolvendo ${candidateName}, detectada automaticamente em fonte RSS externa.`,
+      title: sanitizeRadarText(it.title),
+      summary: sanitizeRadarText(it.snippet || `Notícia pública envolvendo ${candidateName}, detectada automaticamente em fonte RSS externa.`),
       category: it.type === "institutional" ? "Institucional" : "Outros",
       event_date: it.pub_date && !isNaN(Date.parse(it.pub_date)) ? new Date(it.pub_date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
       source_count: 1,
@@ -351,8 +409,8 @@ function buildRssFallbackEvents(items: RawItem[], candidateName: string, aliases
       social_score: it.type === "institutional" ? 55 : 35,
       importance: it.type === "institutional" ? 72 : 52,
       political_impact: it.type === "institutional" ? "Evento institucional detectado em fonte pública." : "Evento noticioso detectado em fonte pública.",
-      entities: [candidateName, it.source],
-      sources: [{ name: it.source, url: it.url, type: it.type }],
+      entities: [candidateName, sanitizeRadarText(it.source)],
+      sources: [{ name: sanitizeRadarText(it.source), url: it.url, type: it.type }],
     }));
 }
 
@@ -539,7 +597,12 @@ Retorne JSON:
 }
 ]
 
-NÃO retorne menos de 20 eventos, exceto se realmente não existirem.`;
+NÃO retorne menos de 20 eventos, exceto se realmente não existirem.
+
+DISTRIBUTE RESULTS ACROSS THE ENTIRE REQUESTED DATE RANGE.
+Avoid over-concentration in a single day/week unless historically justified.
+Para cada mês do período solicitado, inclua pelo menos alguns eventos representativos quando existirem fatos públicos.
+Evite que a maioria dos eventos caia em uma única semana — espalhe ao longo do tempo.`;
 
     console.log("LOG 3: prompt enviado =", userPrompt);
 
@@ -637,7 +700,8 @@ NÃO retorne menos de 20 eventos, exceto se realmente não existirem.`;
 
     async function returnRssFallback(reason: string, statusWhenEmpty = 502) {
       console.warn(`[RADAR] fallback RSS acionado: ${reason}`);
-      const fallbackEvents = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs);
+      const fallbackRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs);
+      const fallbackEvents = applyTemporalDiversity(fallbackRaw, 3);
       console.log("LOG 6: eventos após filtro =", { fallback: true, count: fallbackEvents.length, sample: fallbackEvents.slice(0, 3) });
       if (fallbackEvents.length === 0) {
         console.log("Skipping empty cache");
@@ -683,8 +747,9 @@ NÃO retorne menos de 20 eventos, exceto se realmente não existirem.`;
     }
 
     const candidateFiltered = parsedEvents.filter((event) => eventMatchesCandidate(event, aliases));
-    const events = candidateFiltered.length > 0 ? candidateFiltered : parsedEvents;
-    console.log("LOG 6: eventos após filtro =", { count: events.length, sample: events.slice(0, 3) });
+    const filteredEvents = candidateFiltered.length > 0 ? candidateFiltered : parsedEvents;
+    const events = applyTemporalDiversity(filteredEvents, 3);
+    console.log("LOG 6: eventos após filtro =", { count: events.length, before_diversity: filteredEvents.length, sample: events.slice(0, 3) });
 
     if (events.length === 0) {
       console.error("AI returned 0 events");
