@@ -72,7 +72,8 @@ const PRESETS = [
 ];
 
 const nfBR = new Intl.NumberFormat("pt-BR");
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 100;
+const LOAD_MORE_STEP = 100;
 const MEMORY_CACHE_TTL_MS = 15 * 60 * 1000;
 const BROWSER_CACHE_TTL_MS = 60 * 60 * 1000;
 const radarMemoryCache = new Map<string, { expiresAt: number; events: RadarEvent[]; jobId?: string; fetchedAt: string; eventsCount?: number }>();
