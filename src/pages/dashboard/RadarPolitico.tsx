@@ -504,12 +504,19 @@ export default function RadarPolitico() {
                   <Stat label="Fontes" value={selected.source_count} />
                   <Stat label="Social" value={selected.social_score} />
                 </div>
-                {selected.summary && (
-                  <div>
-                    <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Resumo</h4>
-                    <p className="text-sm leading-relaxed break-words [overflow-wrap:anywhere] whitespace-normal">{selected.summary}</p>
-                  </div>
-                )}
+                {(() => {
+                  const description =
+                    (selected.summary && selected.summary.trim()) ||
+                    (selected.description && selected.description.trim()) ||
+                    (selected.content && selected.content.trim()) ||
+                    "Descrição não disponível";
+                  return (
+                    <div>
+                      <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Resumo</h4>
+                      <p className="text-sm leading-6 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{description}</p>
+                    </div>
+                  );
+                })()}
                 {selected.sources?.length > 0 && (
                   <div>
                     <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
