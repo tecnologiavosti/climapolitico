@@ -84,8 +84,8 @@ const FEEDS: Array<{ name: string; url: string; type: RawItem["type"] }> = [
 
 function hashPeriod(b: ReqBody): string {
   const cats = [...(b.categories ?? [])].sort().join(",");
-  // v6: invalidação após negative aliases + mojibake fix
-  return `radar-v6|${b.candidate_id ?? "all"}|${b.candidate_name}|${b.start_date}|${b.end_date}|${cats}`;
+  // v7: nova fórmula de importance + paginação 10k+
+  return `radar-v7|${b.candidate_id ?? "all"}|${b.candidate_name}|${b.start_date}|${b.end_date}|${cats}`;
 }
 
 function safeNum(v: any, def = 0, min = 0, max = 100) {
@@ -413,7 +413,8 @@ function scoreEvent(e: any): { importance: number; social_score: number; institu
   const mediaWeight = Math.min(10, sources.reduce((sum: number, s: any) => sum + sourceWeight(String(s?.name ?? ""), s?.type), 0));
   const impactScore = CRITICAL_IMPACT_RE.test(text) ? 1 : STRONG_IMPACT_RE.test(text) ? 0.75 : POLITICAL_RELEVANCE_RE.test(text) ? 0.45 : 0.2;
   const social_relevance = Math.min(100, 18 + source_count * 7 + institutional_sources * 12 + mediaWeight * 4 + impactScore * 35);
-  const raw = source_count * 2 + institutional_sources * 12 + mediaWeight * 8 + social_relevance * 0.3 + impactScore * 20;
+  // Nova fórmula (user spec): peso forte em fontes + impacto crítico para escalar até 60-100
+  const raw = source_count * 10 + institutional_sources * 20 + social_relevance * 0.35 + impactScore * 25;
   return {
     importance: safeNum(raw, 0),
     social_score: safeNum(social_relevance, 0),
@@ -596,7 +597,7 @@ function buildRssFallbackEvents(items: RawItem[], candidateName: string, aliases
       seen.add(key);
       return true;
     })
-    .slice(0, 200)
+    .slice(0, 2000)
     .map((it, i) => {
       const text = `${it.title} ${it.snippet ?? ""}`;
       const sources = [{ name: sanitizeRadarText(it.source), url: it.url, type: it.type }];
@@ -759,7 +760,10 @@ Deno.serve(async (req) => {
     if (safeBody.skip_ai) {
       const heuristicRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs, negativeAliases, fullNameNorm);
       const heuristic = applyTemporalDiversity(clusterEvents(heuristicRaw), 30);
-      console.log(`[RADAR] skip_ai=true → ${heuristic.length} eventos heurísticos`);
+      const maxImp = heuristic.reduce((m, e) => Math.max(m, e.importance ?? 0), 0);
+      const grandes = heuristic.filter((e) => (e.importance ?? 0) >= 60).length;
+      const medios = heuristic.filter((e) => (e.importance ?? 0) >= 30 && (e.importance ?? 0) < 60).length;
+      console.log("RAW EVENTS", allItems.length, "| AFTER MATCH", heuristicRaw.length, "| AFTER DEDUPE", heuristic.length, "| MAX IMPORTANCE", maxImp, "| grandes", grandes, "medios", medios);
       endTotal();
       return jsonResponse({
         events: heuristic,
