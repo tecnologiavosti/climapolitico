@@ -475,7 +475,7 @@ export default function RadarPolitico() {
           {selected && (
             <>
               <DialogHeader>
-                <DialogTitle className="text-base leading-snug">{selected.title}</DialogTitle>
+                <DialogTitle className="text-base leading-snug break-words [overflow-wrap:anywhere]">{selected.title}</DialogTitle>
                 <DialogDescription className="flex items-center gap-2 text-xs flex-wrap">
                   <span>{fmtDate(selected.event_date)}</span>
                   <span>·</span>
