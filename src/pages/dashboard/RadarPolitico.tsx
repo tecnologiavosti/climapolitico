@@ -1,5 +1,6 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -56,6 +57,44 @@ const PRESETS = [
 ];
 
 const nfBR = new Intl.NumberFormat("pt-BR");
+const PAGE_SIZE = 50;
+const MEMORY_CACHE_TTL_MS = 15 * 60 * 1000;
+const BROWSER_CACHE_TTL_MS = 60 * 60 * 1000;
+const radarMemoryCache = new Map<string, { expiresAt: number; events: RadarEvent[]; jobId?: string; fetchedAt: string; eventsCount?: number }>();
+
+function radarCacheKey(candidateId: string, from?: Date, to?: Date, category = "Todos", sortBy = "importance") {
+  return ["radar-v8", candidateId, from?.toISOString().slice(0, 10), to?.toISOString().slice(0, 10), category, sortBy].join("|");
+}
+
+function getRadarCache(key: string) {
+  const now = Date.now();
+  const mem = radarMemoryCache.get(key);
+  if (mem && mem.expiresAt > now) return mem;
+  if (mem) radarMemoryCache.delete(key);
+  try {
+    const raw = localStorage.getItem(`radar-cache:${key}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.expiresAt || parsed.expiresAt <= now || !Array.isArray(parsed.events)) {
+      localStorage.removeItem(`radar-cache:${key}`);
+      return null;
+    }
+    radarMemoryCache.set(key, { ...parsed, expiresAt: now + MEMORY_CACHE_TTL_MS });
+    return parsed as { expiresAt: number; events: RadarEvent[]; jobId?: string; fetchedAt: string; eventsCount?: number };
+  } catch {
+    return null;
+  }
+}
+
+function setRadarCache(key: string, entry: { events: RadarEvent[]; jobId?: string; fetchedAt: string; eventsCount?: number }) {
+  const memEntry = { ...entry, expiresAt: Date.now() + MEMORY_CACHE_TTL_MS };
+  radarMemoryCache.set(key, memEntry);
+  try {
+    localStorage.setItem(`radar-cache:${key}`, JSON.stringify({ ...entry, expiresAt: Date.now() + BROWSER_CACHE_TTL_MS }));
+  } catch {
+    // cache local é best-effort; evita travar a UI por quota do navegador
+  }
+}
 
 function sanitizeRadarText(input: unknown): string {
   if (input == null) return "";
@@ -75,10 +114,16 @@ function sanitizeRadarText(input: unknown): string {
 }
 
 function band(value: number) {
-  if (value >= 80) return { label: "Crítico", tone: "bg-destructive text-destructive-foreground" };
-  if (value >= 60) return { label: "Grande", tone: "bg-foreground text-background" };
-  if (value >= 30) return { label: "Médio", tone: "bg-muted text-foreground border" };
+  if (value >= 70) return { label: "Grande", tone: "bg-foreground text-background" };
+  if (value >= 40) return { label: "Médio", tone: "bg-muted text-foreground border" };
   return { label: "Pequeno", tone: "bg-background text-muted-foreground border" };
+}
+
+function friendlyRadarError(message?: string | null) {
+  const msg = message ?? "";
+  if (/RADAR_TIMEOUT/i.test(msg)) return "Busca histórica retornou resultado parcial. O processamento continuará em background.";
+  if (/Rate limit/i.test(msg)) return "Algumas fontes limitaram requisições temporariamente. Eventos parciais foram preservados.";
+  return msg || "Falha temporária no Radar Político.";
 }
 
 function fmtDate(d: string) {
