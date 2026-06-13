@@ -115,10 +115,60 @@ function daysBetween(startDate: string, endDate: string): number {
 
 function targetRange(startDate: string, endDate: string): string {
   const days = daysBetween(startDate, endDate);
-  if (days <= 8) return "5–30 eventos";
-  if (days <= 35) return "20–80 eventos";
-  if (days <= 370) return "100–500 eventos";
-  return "500–5000 eventos";
+  if (days <= 8) return "5-30 eventos";
+  if (days <= 35) return "20-80 eventos";
+  if (days <= 370) return "300-1000 eventos por ano para nomes de alta cobertura";
+  return "300-1000 eventos por ano, distribuídos uniformemente por ano e mês";
+}
+
+function expectedMinimumEvents(candidateName: string, startDate: string, endDate: string): number {
+  const years = Math.max(daysBetween(startDate, endDate) / 365, 7 / 365);
+  const n = normalize(candidateName);
+  const yearly = n.includes("lula") || n.includes("luiz inacio") ? 300 : n.includes("jair") || (n.includes("bolsonaro") && !n.includes("flavio")) ? 400 : n.includes("flavio") ? 150 : 120;
+  return Math.max(10, Math.min(1200, Math.floor(yearly * years * 0.55)));
+}
+
+function monthBuckets(startDate: string, endDate: string): Array<{ key: string; start: string; end: string; label: string }> {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T23:59:59Z`);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return [];
+  const buckets: Array<{ key: string; start: string; end: string; label: string }> = [];
+  let cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+  while (cursor <= end && buckets.length < 120) {
+    const y = cursor.getUTCFullYear();
+    const m = cursor.getUTCMonth();
+    const bucketStart = new Date(Math.max(start.getTime(), Date.UTC(y, m, 1)));
+    const bucketEnd = new Date(Math.min(end.getTime(), Date.UTC(y, m + 1, 0, 23, 59, 59)));
+    buckets.push({
+      key: `${y}-${String(m + 1).padStart(2, "0")}`,
+      start: bucketStart.toISOString().slice(0, 10),
+      end: bucketEnd.toISOString().slice(0, 10),
+      label: `${String(m + 1).padStart(2, "0")}/${y}`,
+    });
+    cursor = new Date(Date.UTC(y, m + 1, 1));
+  }
+  return buckets;
+}
+
+function sampledBuckets(startDate: string, endDate: string): Array<{ key: string; start: string; end: string; label: string }> {
+  const buckets = monthBuckets(startDate, endDate);
+  if (buckets.length <= 18) return buckets;
+  const yearly = new Map<string, typeof buckets>();
+  for (const b of buckets) {
+    const year = b.key.slice(0, 4);
+    if (!yearly.has(year)) yearly.set(year, []);
+    yearly.get(year)!.push(b);
+  }
+  const sampled: typeof buckets = [];
+  for (const [, list] of yearly) {
+    const picks = list.length <= 4 ? list : [list[0], list[Math.floor(list.length / 3)], list[Math.floor((list.length * 2) / 3)], list[list.length - 1]];
+    for (const p of picks) if (!sampled.some((x) => x.key === p.key)) sampled.push(p);
+  }
+  return sampled.slice(0, 36).sort((a, b) => a.key.localeCompare(b.key));
+}
+
+function domainFromUrl(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; }
 }
 
 function jsonResponse(payload: Record<string, unknown>, status = 200) {
