@@ -14,6 +14,8 @@ export interface RadarEvent {
   importance: number;
   cluster_size: number;
   status: string;
+  sentiment: "positivo" | "negativo" | "neutro";
+  ai_tags: string[];
   sources_json: Array<{
     source_name: string;
     url: string;
@@ -48,7 +50,7 @@ export function useRadarEvents(filters: RadarFilters) {
       let q = supabase
         .from("political_events")
         .select(
-          "id,candidate_id,title,event_name,summary,ai_summary,category,category_v2,event_date,source_count,total_sources,social_score,importance,importance_score,cluster_size,status,sources_json"
+          "id,candidate_id,title,event_name,summary,ai_summary,category,category_v2,event_date,source_count,total_sources,social_score,importance,importance_score,cluster_size,status,sources_json,ai_sentiment,ai_tags"
         )
         .eq("user_id", user!.id)
         .order("event_date", { ascending: false })
@@ -68,20 +70,27 @@ export function useRadarEvents(filters: RadarFilters) {
       const { data, error } = await q;
       if (error) throw error;
 
-      return (data ?? []).map((r: any) => ({
-        id: r.id,
-        candidate_id: r.candidate_id,
-        title: r.title || r.event_name || "Evento",
-        summary: r.summary || r.ai_summary || "",
-        category: r.category || r.category_v2 || "Outros",
-        event_date: r.event_date,
-        source_count: r.source_count || r.total_sources || 0,
-        social_score: Number(r.social_score) || 0,
-        importance: Number(r.importance) || Number(r.importance_score) || 0,
-        cluster_size: Number(r.cluster_size) || 1,
-        status: r.status || "pending",
-        sources_json: Array.isArray(r.sources_json) ? r.sources_json : [],
-      }));
+      return (data ?? []).map((r: any) => {
+        const s = Number(r.ai_sentiment);
+        const sentiment: RadarEvent["sentiment"] =
+          isNaN(s) ? "neutro" : s > 15 ? "positivo" : s < -15 ? "negativo" : "neutro";
+        return {
+          id: r.id,
+          candidate_id: r.candidate_id,
+          title: r.title || r.event_name || "Evento",
+          summary: r.summary || r.ai_summary || "",
+          category: r.category || r.category_v2 || "Outros",
+          event_date: r.event_date,
+          source_count: r.source_count || r.total_sources || 0,
+          social_score: Number(r.social_score) || 0,
+          importance: Number(r.importance) || Number(r.importance_score) || 0,
+          cluster_size: Number(r.cluster_size) || 1,
+          status: r.status || "pending",
+          sources_json: Array.isArray(r.sources_json) ? r.sources_json : [],
+          sentiment,
+          ai_tags: Array.isArray(r.ai_tags) ? r.ai_tags : [],
+        };
+      });
     },
   });
 }
