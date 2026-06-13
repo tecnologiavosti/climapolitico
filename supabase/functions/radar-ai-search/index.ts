@@ -538,7 +538,7 @@ function buildRssFallbackEvents(items: RawItem[], candidateName: string, aliases
       seen.add(key);
       return true;
     })
-    .slice(0, 500)
+    .slice(0, 200)
     .map((it, i) => {
       const text = `${it.title} ${it.snippet ?? ""}`;
       const sources = [{ name: sanitizeRadarText(it.source), url: it.url, type: it.type }];
