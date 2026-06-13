@@ -304,6 +304,34 @@ function normalizeEvents(raw: any[]): any[] {
     });
 }
 
+function buildRssFallbackEvents(items: RawItem[], candidateName: string, aliases: string[], startMs: number, endMs: number): any[] {
+  const primary = items.filter((it) => matchesCandidate(it, aliases) && inDateRange(it, startMs, endMs));
+  const relaxed = primary.length > 0 ? primary : items.filter((it) => matchesCandidate(it, aliases));
+  const seen = new Set<string>();
+  return relaxed
+    .filter((it) => {
+      const key = normalize(it.url || it.title);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 120)
+    .map((it, i) => ({
+      id: `rss-fallback-${Date.now()}-${i}`,
+      title: it.title,
+      summary: it.snippet || `Notícia pública envolvendo ${candidateName}, detectada automaticamente em fonte RSS externa.`,
+      category: it.type === "institutional" ? "Institucional" : "Outros",
+      event_date: it.pub_date && !isNaN(Date.parse(it.pub_date)) ? new Date(it.pub_date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+      source_count: 1,
+      institutional_sources: it.type === "institutional" ? 1 : 0,
+      social_score: it.type === "institutional" ? 55 : 35,
+      importance: it.type === "institutional" ? 72 : 52,
+      political_impact: it.type === "institutional" ? "Evento institucional detectado em fonte pública." : "Evento noticioso detectado em fonte pública.",
+      entities: [candidateName, it.source],
+      sources: [{ name: it.source, url: it.url, type: it.type }],
+    }));
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
