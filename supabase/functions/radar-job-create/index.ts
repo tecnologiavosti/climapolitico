@@ -13,17 +13,6 @@ interface ReqBody {
   categories?: string[];
 }
 
-interface RadarJobRow {
-  id: string;
-  user_id: string;
-  candidate_id: string;
-  candidate_name: string;
-  start_date: string;
-  end_date: string;
-  categories: string[];
-  processed_chunks: number;
-}
-
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -187,6 +176,7 @@ async function processJob(
     total_chunks: total,
     progress: progressFor(processed, total),
   }).eq("id", jobId);
+  console.log("progress", progressFor(processed, total));
 
   let firstError: string | null = null;
 
