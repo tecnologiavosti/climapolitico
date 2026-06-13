@@ -219,13 +219,23 @@ async function scheduleContinuation(jobId: string, authHeader: string): Promise<
   return false;
 }
 
+async function pauseForNextPoll(admin: any, jobId: string, processed: number, total: number, note: string) {
+  const count = await getEventsCount(admin, jobId);
+  await admin.from("radar_jobs").update({
+    status: "running",
+    processed_chunks: processed,
+    progress: progressFor(processed, total),
+    events_count: count,
+    error: note,
+  }).eq("id", jobId);
+}
+
 async function processJob(
   jobId: string,
   body: ReqBody & { user_id: string },
   authHeader: string,
 ) {
   console.time("TOTAL_RADAR");
-  const started = Date.now();
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
   const chunks = buildChunks(body.start_date!, body.end_date!);
   const total = chunks.length;
@@ -280,27 +290,17 @@ async function processJob(
     }
   };
 
-  // Processa em lotes de CONCURRENCY
-  for (let i = processed; i < chunks.length; i += CONCURRENCY) {
-    const batchIndex = Math.floor(i / CONCURRENCY) + 1;
-    const elapsed = Date.now() - started;
-    if (elapsed > MAX_RUNTIME || elapsed + BATCH_GUARD_MS > MAX_RUNTIME) {
-      const continued = await scheduleContinuation(jobId, authHeader);
-      if (!continued) {
-        const count = await getEventsCount(admin, jobId);
-        await admin.from("radar_jobs").update({
-          status: "running",
-          processed_chunks: processed,
-          progress: progressFor(processed, total),
-          events_count: count,
-          error: `Continuação pausada por limite temporário; será retomada no próximo polling (${Math.round(elapsed / 1000)}s)`,
-        }).eq("id", jobId);
-      }
+  const endIndex = Math.min(chunks.length, processed + CHUNKS_PER_RUN);
+  for (let i = processed; i < endIndex; i += CHUNKS_PER_RUN) {
+    const batchIndex = Math.floor(i / CHUNKS_PER_RUN) + 1;
+    const existingCount = await getEventsCount(admin, jobId);
+    if (existingCount >= MAX_EVENTS) {
+      await pauseForNextPoll(admin, jobId, total, total, "Limite operacional de 50.000 eventos atingido.");
       console.timeEnd("TOTAL_RADAR");
       return;
     }
 
-    const batch = chunks.slice(i, i + CONCURRENCY);
+    const batch = chunks.slice(i, Math.min(i + CHUNKS_PER_RUN, endIndex));
     console.log("BATCH", batchIndex);
     console.time("FETCH");
     const results = [];
