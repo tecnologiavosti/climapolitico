@@ -114,7 +114,10 @@ function setRadarCache(key: string, entry: { events: RadarEvent[]; jobId?: strin
 function sanitizeRadarText(input: unknown): string {
   if (input == null) return "";
   let s = String(input);
-  s = s.replace(new RegExp("[\\u0000-\\u001F\\u007F-\\u009F]", "g"), " ");
+  s = Array.from(s).map((ch) => {
+    const code = ch.charCodeAt(0);
+    return (code <= 31 || (code >= 127 && code <= 159)) ? " " : ch;
+  }).join("");
   s = s.replace(/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, "");
   const map: Record<string, string> = {
     "\u2018": "'", "\u2019": "'", "\u201A": "'", "\u201B": "'",
@@ -281,7 +284,7 @@ export default function RadarPolitico() {
         },
       });
       if (error) {
-        const ctx = (error as any)?.context;
+        const ctx = (error as { context?: Response })?.context;
         const errorBody = ctx?.clone ? await ctx.clone().json().catch(() => null) as { error?: string } | null : null;
         throw new Error(errorBody?.error ?? error.message);
       }
