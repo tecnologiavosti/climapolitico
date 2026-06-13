@@ -276,6 +276,7 @@ export default function RadarPolitico() {
           start_date: from.toISOString().slice(0, 10),
           end_date: to.toISOString().slice(0, 10),
           categories: category === "Todos" ? [] : [category],
+          sort: sortBy,
         },
       });
       if (error) {
