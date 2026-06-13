@@ -196,6 +196,7 @@ async function processJob(
           end_date: chunk.end_date,
           categories: body.categories ?? [],
           force_refresh: false,
+          skip_ai: true, // chunks usam modo heurístico para não estourar rate limit da IA
         }),
         signal: AbortSignal.timeout(65_000),
       });

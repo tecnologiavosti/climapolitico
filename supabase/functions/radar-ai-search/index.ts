@@ -16,6 +16,8 @@ interface ReqBody {
   end_date: string;
   categories?: string[];
   force_refresh?: boolean;
+  /** Pular IA por chunk (modo heurístico). Usado pelo job em background para evitar rate-limit. */
+  skip_ai?: boolean;
 }
 
 interface RawItem {
@@ -700,6 +702,25 @@ Deno.serve(async (req) => {
 
     console.log(`[RADAR] ${body.candidate_name}: ${allItems.length} brutos, ${unique.length} filtrados, ${buckets.length} janelas em ${fetchMs}ms`);
 
+    // ===== MODO HEURÍSTICO (skip_ai) =====
+    // Quando chamado pelo job de chunks (radar-job-create), NÃO chamamos IA por chunk
+    // para evitar rate-limit. O caminho IA fica reservado a chamadas únicas de alto valor.
+    if (safeBody.skip_ai) {
+      const heuristicRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs);
+      const heuristic = applyTemporalDiversity(clusterEvents(heuristicRaw), 30);
+      console.log(`[RADAR] skip_ai=true → ${heuristic.length} eventos heurísticos`);
+      endTotal();
+      return jsonResponse({
+        events: heuristic,
+        cached: false,
+        count: heuristic.length,
+        provider: "heuristic",
+        raw_items: unique.length,
+        sources_fetched: dynamicFeeds.length,
+        fetch_ms: fetchMs,
+      });
+    }
+
     // ===== 2. PROMPT IA =====
     const catFilter =
       body.categories && body.categories.length > 0 && !body.categories.includes("Todos")
@@ -828,23 +849,34 @@ VALIDAÇÃO FINAL (faça antes de responder):
     let lastFailure = "";
     let rawAiResponse = "";
     for (const attempt of attempts) {
-      try {
-        const result = await attempt();
-        rawAiResponse = result.raw;
-        if (!result.ok) {
-          lastFailure = `${result.provider}:${result.model} HTTP ${result.status} ${result.raw.slice(0, 200)}`;
-          console.warn(`[RADAR-AI] ${lastFailure}`);
-          if (result.status === 429 || result.status === 402) await sleep(900);
-          continue;
+      let backoff = 5000;
+      let attemptOk = false;
+      for (let tries = 0; tries < 3 && !attemptOk; tries++) {
+        try {
+          const result = await attempt();
+          rawAiResponse = result.raw;
+          if (!result.ok) {
+            lastFailure = `${result.provider}:${result.model} HTTP ${result.status} ${result.raw.slice(0, 200)}`;
+            console.warn(`[RADAR-AI] ${lastFailure}`);
+            if (result.status === 429 || result.status === 402 || result.status >= 500) {
+              await sleep(backoff);
+              backoff = Math.min(backoff * 3, 30_000);
+              continue; // retry same provider
+            }
+            break; // outro erro → próximo provider
+          }
+          const data = JSON.parse(result.raw);
+          text = extractText(result.provider, data) || "{}";
+          usedProvider = `${result.provider}:${result.model}`;
+          attemptOk = true;
+          break;
+        } catch (error) {
+          lastFailure = error instanceof Error ? error.message : String(error);
+          console.warn(`[RADAR-AI] provider failed: ${lastFailure}`);
+          break;
         }
-        const data = JSON.parse(result.raw);
-        text = extractText(result.provider, data) || "{}";
-        usedProvider = `${result.provider}:${result.model}`;
-        break;
-      } catch (error) {
-        lastFailure = error instanceof Error ? error.message : String(error);
-        console.warn(`[RADAR-AI] provider failed: ${lastFailure}`);
       }
+      if (attemptOk) break;
     }
 
     async function saveCache(nonEmptyEvents: any[]) {
