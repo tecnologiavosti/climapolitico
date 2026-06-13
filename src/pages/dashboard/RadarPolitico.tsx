@@ -121,7 +121,15 @@ export default function RadarPolitico() {
           force_refresh: force,
         },
       });
-      if (error) throw error;
+      if (error) {
+        const ctx = (error as any)?.context;
+        const errorBody = ctx?.clone ? await ctx.clone().json().catch(() => null) : null;
+        throw Object.assign(error, {
+          detail: errorBody?.detail ?? errorBody?.error,
+          stack: errorBody?.stack ?? errorBody?.detail,
+          message: errorBody?.message ?? error.message,
+        });
+      }
       const payload = data as { events: RadarEvent[]; cached: boolean; cached_at?: string; fallback?: boolean; message?: string; provider?: string; error?: string; detail?: string; stack?: string };
       if (payload?.error && (!payload.events || payload.events.length === 0)) {
         throw Object.assign(new Error(payload.message ?? payload.error), { detail: payload.detail, stack: payload.stack });
