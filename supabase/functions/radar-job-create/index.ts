@@ -306,7 +306,11 @@ async function processJob(
     const batch = chunks.slice(i, i + CONCURRENCY);
     console.log("BATCH", batchIndex);
     console.time("FETCH");
-    const results = await Promise.all(batch.map(fetchOne));
+    const results = [];
+    for (const chunk of batch) {
+      results.push(await fetchOne(chunk));
+      await sleep(250);
+    }
     console.timeEnd("FETCH");
 
     console.time("CHUNK_PROCESSING");
