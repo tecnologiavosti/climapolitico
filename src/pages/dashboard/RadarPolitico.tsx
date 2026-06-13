@@ -155,7 +155,14 @@ export default function RadarPolitico() {
     },
     onSuccess: (data) => {
       setLastError(null);
-      setEvents(data.events ?? []);
+      const clean = (data.events ?? []).map((e) => ({
+        ...e,
+        title: sanitizeRadarText(e.title),
+        summary: sanitizeRadarText(e.summary),
+        category: sanitizeRadarText(e.category),
+        sources: (e.sources ?? []).map((s) => ({ ...s, name: sanitizeRadarText(s.name) })),
+      }));
+      setEvents(clean);
       setCachedFlag(!!data.cached);
       setLastFetchedAt(new Date());
       if (data.fallback) {
