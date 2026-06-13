@@ -58,6 +58,11 @@ function normalizeKey(input: unknown): string {
     .trim();
 }
 
+function hashPeriod(body: Pick<ReqBody, "candidate_id" | "candidate_name" | "start_date" | "end_date" | "categories">): string {
+  const cats = [...(body.categories ?? [])].sort().join(",");
+  return `radar-v8|${body.candidate_id ?? "all"}|${body.candidate_name}|${body.start_date}|${body.end_date}|${cats}|importance`;
+}
+
 function eventHash(e: any): string {
   const month = String(e?.event_date ?? "").slice(0, 7) || "unknown";
   const title = normalizeKey(e?.title).split(" ").filter((t) => t.length > 2).slice(0, 14).join(" ");
@@ -131,6 +136,43 @@ async function completePartial(admin: any, jobId: string, processed: number, tot
     error: reason,
     completed_at: new Date().toISOString(),
   }).eq("id", jobId);
+}
+
+async function readCacheFirstPage(admin: any, userId: string, periodHash: string) {
+  const { data } = await admin
+    .from("radar_cache")
+    .select("response_json,event_count,created_at")
+    .eq("user_id", userId)
+    .eq("period_hash", periodHash)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  const events = Array.isArray(data?.response_json) ? data.response_json.slice(0, 50) : [];
+  return events.length > 0 ? { events, event_count: data?.event_count ?? events.length, cached_at: data?.created_at } : null;
+}
+
+async function saveCacheSnapshot(admin: any, jobId: string, body: ReqBody & { user_id: string }) {
+  const { data: rows } = await admin
+    .from("radar_job_events")
+    .select("event_data")
+    .eq("job_id", jobId)
+    .order("importance", { ascending: false })
+    .order("event_date", { ascending: false, nullsFirst: false })
+    .range(0, 999);
+  const events = (rows ?? []).map((row: any) => row?.event_data).filter(Boolean);
+  if (events.length === 0) return;
+  await admin.from("radar_cache").upsert({
+    user_id: body.user_id,
+    candidate_id: body.candidate_id ?? null,
+    candidate_name: body.candidate_name,
+    period_hash: hashPeriod(body),
+    start_date: body.start_date,
+    end_date: body.end_date,
+    categories: body.categories ?? [],
+    response_json: events,
+    event_count: await getEventsCount(admin, jobId),
+    created_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + DB_CACHE_TTL_MS).toISOString(),
+  }, { onConflict: "user_id,period_hash" });
 }
 
 async function scheduleContinuation(jobId: string, authHeader: string): Promise<boolean> {
