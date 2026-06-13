@@ -713,7 +713,9 @@ Deno.serve(async (req) => {
     watchdog("CHUNK_PROCESSING");
     console.time("CHUNK_PROCESSING");
     // Filtrar por candidato + período
-    const filtered = allItems.filter((it) => matchesCandidate(it, aliases) && inDateRange(it, startMs, endMs) && isRelevantPoliticalText(`${it.title} ${it.snippet ?? ""}`));
+    const beforeMatch = allItems.length;
+    const filtered = allItems.filter((it) => matchesCandidate(it, aliases, negativeAliases, fullNameNorm) && inDateRange(it, startMs, endMs) && isRelevantPoliticalText(`${it.title} ${it.snippet ?? ""}`));
+    console.log("RAW EVENTS", beforeMatch, "| AFTER MATCH", filtered.length, "| REJECTED FALSE POSITIVES", beforeMatch - filtered.length);
     console.timeEnd("CHUNK_PROCESSING");
 
     watchdog("DEDUPE");
