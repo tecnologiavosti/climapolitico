@@ -381,6 +381,34 @@ function dedupeEvents(events: any[]): any[] {
   return out;
 }
 
+function clusterEvents(events: any[]): any[] {
+  const clusters: any[] = [];
+  const sorted = [...events].filter((e) => e?.event_date).sort((a, b) => Date.parse(a.event_date) - Date.parse(b.event_date));
+  for (const ev of sorted) {
+    const evKey = normalize(ev.title ?? "");
+    const evTime = Date.parse(ev.event_date);
+    const match = clusters.find((c) => {
+      const cTime = Date.parse(c.event_date);
+      return Math.abs(evTime - cTime) <= 14 * 86_400_000 && similarity(evKey, normalize(c.title ?? "")) > 0.62;
+    });
+    if (!match) {
+      clusters.push({ ...ev, sources: [...(ev.sources ?? [])] });
+      continue;
+    }
+    const sourceMap = new Map<string, any>();
+    for (const s of [...(match.sources ?? []), ...(ev.sources ?? [])]) sourceMap.set(`${s.name}|${s.url}`, s);
+    match.sources = [...sourceMap.values()].slice(0, 25);
+    if ((ev.summary ?? "").length > (match.summary ?? "").length) match.summary = ev.summary;
+    if ((ev.importance ?? 0) > (match.importance ?? 0)) match.title = ev.title;
+    const score = scoreEvent(match);
+    match.source_count = score.source_count;
+    match.institutional_sources = score.institutional_sources;
+    match.social_score = score.social_score;
+    match.importance = Math.max(score.importance, match.importance ?? 0, ev.importance ?? 0);
+  }
+  return clusters;
+}
+
 function inDateRange(item: RawItem, startMs: number, endMs: number): boolean {
   if (!item.pub_date) return true; // keep if unknown — AI will discard
   const t = Date.parse(item.pub_date);
