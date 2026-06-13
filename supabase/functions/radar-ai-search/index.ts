@@ -721,9 +721,9 @@ IGNORAR completamente:
 Notícias brutas coletadas via RSS em tempo real (${sourcesPayload.length} itens) para agrupar, deduplicar e usar como evidência prioritária:
 ${JSON.stringify(sourcesPayload)}
 
-Retorne JSON:
+Retorne JSON neste formato:
 
-[
+{"events":[
 {
 "title":"",
 "summary":"",
@@ -736,7 +736,7 @@ Retorne JSON:
 "political_impact":"",
 "entities":[""]
 }
-]
+]}
 
 NÃO use score fixo. Calcule importância variando por impacto, fontes e gravidade:
 importance = (source_count * 2) + (institutional_sources * 12) + (media_weight * 8) + (social_relevance * 0.3) + (impact_score * 20), clamp 0-100.
