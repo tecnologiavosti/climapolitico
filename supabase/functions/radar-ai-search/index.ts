@@ -6,7 +6,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-const CEREBRAS_MODELS = ["llama-3.3-70b", "llama3.1-8b", "qwen-3-235b-a22b-instruct-2507"];
+const CEREBRAS_MODELS = ["gpt-oss-120b", "qwen-3-32b", "llama-4-scout-17b-16e-instruct"];
 const GROQ_MODELS = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
 const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite"];
 
