@@ -448,9 +448,9 @@ export default function RadarPolitico() {
                           </Badge>
                         )}
                       </div>
-                      <h3 className="text-sm font-medium leading-snug">{e.title}</h3>
+                      <h3 className="text-sm font-medium leading-snug break-words [overflow-wrap:anywhere]">{e.title}</h3>
                       {e.summary && (
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{e.summary}</p>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2 break-words [overflow-wrap:anywhere]">{e.summary}</p>
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
