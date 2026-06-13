@@ -200,7 +200,6 @@ export default function RadarPolitico() {
         events: RadarEvent[];
         error: string | null;
         partial?: boolean;
-        events_limit?: number;
         page_size?: number;
         offset?: number;
         has_more?: boolean;
@@ -461,7 +460,7 @@ export default function RadarPolitico() {
               ) : (
                 <Sparkles className="h-4 w-4 mr-2" />
               )}
-              {isJobRunning ? "Coletando..." : "Buscar com IA"}
+              {isJobRunning ? "Buscando..." : "Buscar Radar"}
             </Button>
           </div>
 
@@ -486,7 +485,7 @@ export default function RadarPolitico() {
             )}
             {lastFetchedAt && (
               <span className="text-[11px] text-muted-foreground self-center ml-auto">
-                IA · {lastFetchedAt.toLocaleTimeString("pt-BR")}
+                Radar · {lastFetchedAt.toLocaleTimeString("pt-BR")}
                 {" · "}
                 <button
                   className="underline hover:no-underline"
@@ -600,10 +599,10 @@ export default function RadarPolitico() {
             <CardContent className="py-16 text-center space-y-2">
               <Sparkles className="h-8 w-8 text-muted-foreground mx-auto" />
               <p className="text-sm text-muted-foreground">
-                Selecione um candidato e período, depois clique em <strong>Buscar com IA</strong>.
+                Selecione um candidato e período, depois clique em <strong>Buscar Radar</strong>.
               </p>
               <p className="text-xs text-muted-foreground">
-                A IA consulta fontes externas (STF, TSE, PF, grande imprensa) em tempo real.
+                O Radar coleta fontes externas e processa lotes históricos em background.
               </p>
             </CardContent>
           </Card>
