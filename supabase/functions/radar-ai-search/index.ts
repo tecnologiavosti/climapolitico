@@ -428,11 +428,10 @@ function scoreEvent(e: any): { importance: number; social_score: number; institu
     return sum;
   }, 0);
   const social_relevance = Math.min(100, 15 + source_count * 7 + institutional_sources * 10 + mediaWeight * 4 + impactScore * 35);
-  const baseImportance = Math.min(100, source_count * 10 + institutional_bonus + impactScore * 45);
+  const relevance = Math.min(100, impactScore * 100 + mediaWeight * 3);
+  const sourceScore = Math.min(100, source_count * 12);
   const institutionalSignal = Math.min(100, institutional_bonus * 3 + institutional_sources * 15);
-  const eventMs = e?.event_date ? Date.parse(e.event_date) : NaN;
-  const recencyBoost = isNaN(eventMs) ? 0 : Math.max(0, Math.min(5, 5 - ((Date.now() - eventMs) / 86_400_000 / 365) * 0.8));
-  const raw = baseImportance * 0.7 + social_relevance * 0.2 + institutionalSignal * 0.1 + recencyBoost;
+  const raw = relevance * 0.45 + sourceScore * 0.25 + institutionalSignal * 0.20 + social_relevance * 0.10;
   return {
     importance: safeNum(raw, 0),
     social_score: safeNum(social_relevance, 0),
