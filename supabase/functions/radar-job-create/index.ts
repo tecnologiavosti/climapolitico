@@ -152,7 +152,9 @@ async function processJob(
     completed_at: new Date().toISOString(),
   }).eq("id", jobId);
 
-  console.log(`[radar-job ${jobId}] done. chunks=${total} events=${finalEvents.length}`);
+  const dateList = finalEvents.map((e: any) => e.event_date).filter((d: string) => d && !isNaN(Date.parse(d))).sort();
+  console.log(`[radar-job ${jobId}] done. chunks=${total} EVENTS FOUND ${finalEvents.length}`);
+  console.log(`[radar-job ${jobId}] OLDEST EVENT`, dateList[0] ?? "n/a", "| NEWEST EVENT", dateList[dateList.length - 1] ?? "n/a");
 }
 
 Deno.serve(async (req) => {
