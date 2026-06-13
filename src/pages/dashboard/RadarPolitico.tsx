@@ -316,7 +316,7 @@ export default function RadarPolitico() {
     mutationFn: async () => {
       if (!jobId || jobId === "cache") return [] as RadarEvent[];
       const { data, error } = await supabase.functions.invoke("radar-job-status", {
-        body: { job_id: jobId, page_size: PAGE_SIZE, offset: events.length, sort: sortBy },
+        body: { job_id: jobId, page_size: BACKEND_FETCH_PAGE, offset: events.length, sort: sortBy },
       });
       if (error) throw error;
       const payload = data as { events?: RadarEvent[] } | null;
@@ -334,10 +334,22 @@ export default function RadarPolitico() {
         setRadarCache(cacheKey, { events: merged, jobId: jobId ?? undefined, fetchedAt: new Date().toISOString(), eventsCount: jobStatus?.events_count });
         return merged;
       });
-      setVisibleCount((current) => current + PAGE_SIZE);
     },
     onError: (e: unknown) => toast.error(friendlyRadarError(e instanceof Error ? e.message : "Falha ao carregar mais eventos")),
   });
+
+  // Auto-prefetch: quando backend tem mais eventos do que carregamos localmente,
+  // baixa o restante em background para que a paginação local cubra todos os 2190+.
+  useEffect(() => {
+    const backendCount = jobStatus?.events_count ?? 0;
+    if (!jobId || jobId === "cache") return;
+    if (loadMoreMutation.isPending) return;
+    if (backendCount > events.length) {
+      const t = setTimeout(() => loadMoreMutation.mutate(), 250);
+      return () => clearTimeout(t);
+    }
+  }, [jobStatus?.events_count, events.length, jobId, loadMoreMutation.isPending]);
+
 
   // Filtros locais
   const filtered = useMemo(() => {
