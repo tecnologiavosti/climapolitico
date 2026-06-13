@@ -5,9 +5,10 @@ import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
-const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const CEREBRAS_MODEL = "llama-3.3-70b";
-const FALLBACK_MODEL = "google/gemini-2.5-flash";
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const CEREBRAS_MODELS = ["gpt-oss-120b", "zai-glm-4.7"];
+const GROQ_MODELS = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
+const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite"];
 
 interface ReqBody {
   candidate_id?: string | null;
@@ -27,6 +28,22 @@ function safeNum(v: any, def = 0, min = 0, max = 100) {
   const n = Number(v);
   if (isNaN(n)) return def;
   return Math.max(min, Math.min(max, Math.round(n)));
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function jsonResponse(payload: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+function extractText(provider: string, data: any): string {
+  if (provider === "gemini") {
+    return data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text ?? "").join("") ?? "";
+  }
+  return data?.choices?.[0]?.message?.content ?? "";
 }
 
 function normalizeEvents(raw: any[]): any[] {
@@ -74,12 +91,17 @@ Deno.serve(async (req) => {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
     const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const LOVABLE_KEY = Deno.env.get("LOVABLE_API_KEY");
     const CEREBRAS_KEY = Deno.env.get("CEREBRAS_API_KEY");
-    if (!CEREBRAS_KEY && !LOVABLE_KEY) {
-      return new Response(JSON.stringify({ error: "Nenhuma chave de IA configurada (CEREBRAS_API_KEY ou LOVABLE_API_KEY)" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    const GROQ_KEY = Deno.env.get("GROQ_API_KEY");
+    const GEMINI_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!CEREBRAS_KEY && !GROQ_KEY && !GEMINI_KEY) {
+      return jsonResponse({
+        error: "ai_unconfigured",
+        message: "Nenhum provedor de IA está configurado para o Radar Político.",
+        fallback: true,
+        events: [],
+        cached: false,
+        count: 0,
       });
     }
 
@@ -172,73 +194,81 @@ Formato OBRIGATÓRIO de resposta:
 Retorne entre 30 e 80 eventos quando o período for amplo, e o máximo que tiver com alta confiabilidade quando o período for curto.
 Ordene do mais recente para o mais antigo.`;
 
-    async function callCerebras() {
-      return await fetch(CEREBRAS_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${CEREBRAS_KEY}` },
-        body: JSON.stringify({
-          model: CEREBRAS_MODEL,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          response_format: { type: "json_object" },
-          temperature: 0.3,
-          max_tokens: 8192,
-        }),
-      });
-    }
+    const messages = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ];
 
-    async function callGateway(model: string) {
-      return await fetch(GATEWAY_URL, {
+    async function callOpenAICompat(provider: "cerebras" | "groq", model: string, key: string) {
+      const res = await fetch(provider === "cerebras" ? CEREBRAS_URL : GROQ_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_KEY! },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
         body: JSON.stringify({
           model,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
+          messages,
           response_format: { type: "json_object" },
-          temperature: 0.3,
+          temperature: 0.2,
+          max_tokens: provider === "cerebras" ? 8192 : 4096,
         }),
+        signal: AbortSignal.timeout(provider === "cerebras" ? 35_000 : 30_000),
       });
+      const raw = await res.text();
+      return { ok: res.ok, status: res.status, raw, provider, model };
     }
 
-    let aiRes: Response | null = null;
-    if (CEREBRAS_KEY) {
+    async function callGemini(model: string, key: string) {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { role: "system", parts: [{ text: systemPrompt }] },
+          contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 8192, responseMimeType: "application/json" },
+        }),
+        signal: AbortSignal.timeout(35_000),
+      });
+      const raw = await res.text();
+      return { ok: res.ok, status: res.status, raw, provider: "gemini", model };
+    }
+
+    const attempts: Array<() => Promise<{ ok: boolean; status: number; raw: string; provider: string; model: string }>> = [];
+    if (CEREBRAS_KEY) CEREBRAS_MODELS.forEach((model) => attempts.push(() => callOpenAICompat("cerebras", model, CEREBRAS_KEY)));
+    if (GROQ_KEY) GROQ_MODELS.forEach((model) => attempts.push(() => callOpenAICompat("groq", model, GROQ_KEY)));
+    if (GEMINI_KEY) GEMINI_MODELS.forEach((model) => attempts.push(() => callGemini(model, GEMINI_KEY)));
+
+    let text = "{}";
+    let usedProvider = "none";
+    let lastFailure = "";
+    for (const attempt of attempts) {
       try {
-        aiRes = await callCerebras();
-      } catch (_) {
-        aiRes = null;
+        const result = await attempt();
+        if (!result.ok) {
+          lastFailure = `${result.provider}:${result.model} HTTP ${result.status} ${result.raw.slice(0, 220)}`;
+          console.warn(`[RADAR-AI] ${lastFailure}`);
+          if (result.status === 429 || result.status === 402) await sleep(900);
+          continue;
+        }
+        const data = JSON.parse(result.raw);
+        text = extractText(result.provider, data) || "{}";
+        usedProvider = `${result.provider}:${result.model}`;
+        break;
+      } catch (error) {
+        lastFailure = error instanceof Error ? error.message : String(error);
+        console.warn(`[RADAR-AI] provider failed: ${lastFailure}`);
       }
     }
-    if ((!aiRes || !aiRes.ok) && LOVABLE_KEY) {
-      aiRes = await callGateway(FALLBACK_MODEL);
-    }
-    if (!aiRes) {
-      return new Response(JSON.stringify({ error: "ai_unavailable" }), {
-        status: 502,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+
+    if (usedProvider === "none") {
+      return jsonResponse({
+        error: "ai_unavailable",
+        message: "Todos os provedores de IA estão temporariamente indisponíveis. Tente novamente em instantes.",
+        detail: lastFailure.slice(0, 300),
+        fallback: true,
+        events: [],
+        cached: false,
+        count: 0,
       });
     }
-
-    if (!aiRes.ok) {
-      const t = await aiRes.text();
-      const friendly =
-        aiRes.status === 429
-          ? "A IA está com limite excedido no momento (muitos usuários gratuitos). Tente novamente em 30s ou faça upgrade do plano."
-          : aiRes.status === 402
-          ? "Créditos de IA esgotados. Adicione créditos para continuar."
-          : `Falha na IA (${aiRes.status}).`;
-      return new Response(JSON.stringify({ error: `ai_${aiRes.status}`, message: friendly, detail: t.slice(0, 300) }), {
-        status: aiRes.status === 429 || aiRes.status === 402 ? aiRes.status : 502,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const aiData = await aiRes.json();
-    const text = aiData?.choices?.[0]?.message?.content ?? "{}";
     let parsed: any = {};
     try {
       parsed = JSON.parse(text);
@@ -275,13 +305,19 @@ Ordene do mais recente para o mais antigo.`;
       );
 
     return new Response(
-      JSON.stringify({ events, cached: false, count: events.length }),
+      JSON.stringify({ events, cached: false, count: events.length, provider: usedProvider }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
-    return new Response(JSON.stringify({ error: (e as Error).message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    console.error("[RADAR-AI] erro inesperado", e);
+    return jsonResponse({
+      error: "radar_failed",
+      message: "O Radar Político não conseguiu concluir a busca agora. Tente novamente em instantes.",
+      detail: (e as Error).message,
+      fallback: true,
+      events: [],
+      cached: false,
+      count: 0,
     });
   }
 });
