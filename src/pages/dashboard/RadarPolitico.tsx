@@ -295,6 +295,31 @@ export default function RadarPolitico() {
     },
   });
 
+  const loadMoreMutation = useMutation({
+    mutationFn: async () => {
+      if (!jobId || jobId === "cache") return [] as RadarEvent[];
+      const { data, error } = await supabase.functions.invoke("radar-job-status", {
+        body: { job_id: jobId, page_size: PAGE_SIZE, offset: events.length, sort: sortBy },
+      });
+      if (error) throw error;
+      return Array.isArray((data as any)?.events) ? ((data as any).events as RadarEvent[]) : [];
+    },
+    onSuccess: (next) => {
+      if (next.length === 0) return;
+      setEvents((prev) => {
+        const seen = new Set(prev.map((e) => e.id || `${e.event_date}|${e.title}`));
+        const merged = [...prev];
+        for (const e of next) {
+          const key = e.id || `${e.event_date}|${e.title}`;
+          if (!seen.has(key)) merged.push(e);
+        }
+        setRadarCache(cacheKey, { events: merged, jobId: jobId ?? undefined, fetchedAt: new Date().toISOString(), eventsCount: jobStatus?.events_count });
+        return merged;
+      });
+    },
+    onError: (e: any) => toast.error(friendlyRadarError(e?.message ?? "Falha ao carregar mais eventos")),
+  });
+
   // Filtros locais
   const filtered = useMemo(() => {
     let list = events;
