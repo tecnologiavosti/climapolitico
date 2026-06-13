@@ -736,7 +736,7 @@ Deno.serve(async (req) => {
     // Quando chamado pelo job de chunks (radar-job-create), NÃO chamamos IA por chunk
     // para evitar rate-limit. O caminho IA fica reservado a chamadas únicas de alto valor.
     if (safeBody.skip_ai) {
-      const heuristicRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs);
+      const heuristicRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs, negativeAliases, fullNameNorm);
       const heuristic = applyTemporalDiversity(clusterEvents(heuristicRaw), 30);
       console.log(`[RADAR] skip_ai=true → ${heuristic.length} eventos heurísticos`);
       endTotal();
