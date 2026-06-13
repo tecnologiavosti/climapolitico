@@ -671,6 +671,8 @@ Deno.serve(async (req) => {
 
     // ===== 1. FETCH RSS EM PARALELO + BUSCAS TEMPORAIS =====
     const aliases = buildAliases(body.candidate_name);
+    const negativeAliases = buildNegativeAliases(body.candidate_name);
+    const fullNameNorm = normalize(body.candidate_name);
     const buckets = sampledBuckets(body.start_date, body.end_date);
     const expectedMin = expectedMinimumEvents(body.candidate_name, body.start_date, body.end_date);
     const relevanceTerms = `(STF OR TSE OR PF OR CPI OR investigação OR julgamento OR denúncia OR escândalo OR corrupção OR votação OR economia)`;
