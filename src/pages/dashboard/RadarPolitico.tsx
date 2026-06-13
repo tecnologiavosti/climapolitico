@@ -383,10 +383,10 @@ export default function RadarPolitico() {
                 Coletando eventos em background ({jobStatus.processed_chunks}/{jobStatus.total_chunks || "?"} períodos)
               </span>
               <span className="text-muted-foreground tabular-nums">
-                {nfBR.format(jobStatus.events_count)} eventos · {jobStatus.progress}%
+                {nfBR.format(jobStatus.events_count)} eventos · {jobProgress}%
               </span>
             </div>
-            <Progress value={jobStatus.progress} className="h-1.5" />
+            <Progress value={jobProgress} className="h-1.5" />
             <p className="text-[11px] text-muted-foreground">
               A janela pode ser fechada — o job continua no servidor. Volte mais tarde.
             </p>
