@@ -282,6 +282,23 @@ function normalize(s: string): string {
     .trim();
 }
 
+function similarity(a: string, b: string): number {
+  const aa = normalize(a);
+  const bb = normalize(b);
+  if (!aa || !bb) return 0;
+  if (aa.includes(bb) || bb.includes(aa)) return 1;
+  const aTokens = new Set(aa.split(" ").filter((x) => x.length >= 3));
+  const bTokens = new Set(bb.split(" ").filter((x) => x.length >= 3));
+  const intersection = [...aTokens].filter((x) => bTokens.has(x)).length;
+  const union = new Set([...aTokens, ...bTokens]).size || 1;
+  const tokenScore = intersection / union;
+  let prefixMatches = 0;
+  for (const at of aTokens) {
+    if ([...bTokens].some((bt) => at.startsWith(bt) || bt.startsWith(at))) prefixMatches++;
+  }
+  return Math.max(tokenScore, prefixMatches / Math.max(1, aTokens.size));
+}
+
 function buildAliases(fullName: string): string[] {
   const norm = normalize(fullName);
   const weakTokens = new Set(["silva", "santos", "souza", "costa", "oliveira", "pereira", "alves", "ferreira", "lima"]);
