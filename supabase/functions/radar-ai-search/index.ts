@@ -500,7 +500,7 @@ function applyTemporalDiversity(events: any[], maxPerDay = 8): any[] {
     if (!byMonth.has(m)) byMonth.set(m, []);
     byMonth.get(m)!.push(ev);
   }
-  const monthLimit = Math.max(12, Math.ceil(capped.length / Math.max(1, byMonth.size)) + 10);
+  const monthLimit = Math.max(80, Math.ceil(capped.length / Math.max(1, byMonth.size)) + 40);
   const balanced: any[] = [];
   for (const [, list] of [...byMonth.entries()].sort(([a], [b]) => a.localeCompare(b))) {
     list.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
