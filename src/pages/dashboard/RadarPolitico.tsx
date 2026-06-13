@@ -147,6 +147,8 @@ export default function RadarPolitico() {
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
   const [lastError, setLastError] = useState<{ message: string; stack: string } | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const listParentRef = useRef<HTMLDivElement | null>(null);
 
   const { data: candidates } = useQuery({
     queryKey: ["candidates-min", user?.id],
@@ -173,6 +175,8 @@ export default function RadarPolitico() {
     return { from: f, to: t };
   }, [preset, customFrom, customTo]);
 
+  const cacheKey = useMemo(() => radarCacheKey(candidateId, from, to, category, sortBy), [candidateId, from, to, category, sortBy]);
+
   // Polling do job em background
   const { data: jobStatus } = useQuery({
     queryKey: ["radar-job", jobId],
@@ -183,7 +187,7 @@ export default function RadarPolitico() {
     },
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("radar-job-status", {
-        body: { job_id: jobId },
+        body: { job_id: jobId, page_size: PAGE_SIZE, offset: 0, sort: sortBy },
       });
       if (error) throw error;
       return data as {
@@ -197,6 +201,9 @@ export default function RadarPolitico() {
         error: string | null;
         partial?: boolean;
         events_limit?: number;
+        page_size?: number;
+        offset?: number;
+        has_more?: boolean;
       };
     },
   });
@@ -220,14 +227,15 @@ export default function RadarPolitico() {
         sources: (e.sources ?? []).map((s) => ({ ...s, name: sanitizeRadarText(s.name) })),
       }));
       setEvents(clean);
+      setRadarCache(cacheKey, { events: clean, jobId: jobStatus.id, fetchedAt: new Date().toISOString(), eventsCount: jobStatus.events_count });
       if (jobStatus.status === "completed") {
         setLastFetchedAt(new Date());
         if (jobStatus.error) {
-          setLastError({ message: jobStatus.error, stack: "" });
-          toast.warning(`${clean.length} eventos retornados com aviso do processamento`);
+          setLastError({ message: friendlyRadarError(jobStatus.error), stack: "" });
+          toast.warning(`${nfBR.format(jobStatus.events_count ?? clean.length)} eventos retornados com aviso do processamento`);
         } else {
           setLastError(null);
-          toast.success(`${clean.length} eventos coletados pela IA`);
+          toast.success(`${nfBR.format(jobStatus.events_count ?? clean.length)} eventos coletados`);
         }
       }
     } else if (jobStatus.status === "failed") {
@@ -238,9 +246,19 @@ export default function RadarPolitico() {
 
   const searchMutation = useMutation({
     mutationFn: async (_force: boolean = false) => {
+      const cacheHit = !_force ? getRadarCache(cacheKey) : null;
+      console.log("CACHE HIT", !!cacheHit);
+      if (cacheHit) {
+        setEvents(cacheHit.events);
+        setJobId(cacheHit.jobId ?? null);
+        setLastFetchedAt(new Date(cacheHit.fetchedAt));
+        setLastError(null);
+        return { job_id: cacheHit.jobId ?? "cache", status: "cached" };
+      }
       if (candidateId === "all") throw new Error("Selecione um candidato.");
       if (!from || !to) throw new Error("Defina o período (datas inicial e final).");
       setEvents([]);
+      setVisibleCount(PAGE_SIZE);
       setLastError(null);
       const { data, error } = await supabase.functions.invoke("radar-job-create", {
         body: {
@@ -256,15 +274,24 @@ export default function RadarPolitico() {
         const errorBody = ctx?.clone ? await ctx.clone().json().catch(() => null) : null;
         throw new Error(errorBody?.error ?? error.message);
       }
-      return data as { job_id: string; status: string };
+      return data as { job_id: string; status: string; events?: RadarEvent[]; cached?: boolean; events_count?: number };
     },
     onSuccess: (data) => {
+      if (data.status === "cached") {
+        toast.success("Resultado carregado do cache local.");
+        return;
+      }
+      if (Array.isArray(data.events) && data.events.length > 0) {
+        setEvents(data.events);
+        setRadarCache(cacheKey, { events: data.events, jobId: data.job_id, fetchedAt: new Date().toISOString(), eventsCount: data.events_count });
+      }
       setJobId(data.job_id);
-      toast.info("Coleta iniciada em background. O resultado aparecerá em alguns minutos.");
+      toast.info("Busca histórica iniciada em background. Primeiros eventos aparecerão automaticamente.");
     },
     onError: (e: any) => {
-      setLastError({ message: e?.message ?? "Falha ao iniciar job", stack: "" });
-      toast.error(e?.message ?? "Falha ao iniciar job");
+      const msg = friendlyRadarError(e?.message ?? "Falha ao iniciar job");
+      setLastError({ message: msg, stack: "" });
+      toast.error(msg);
     },
   });
 
