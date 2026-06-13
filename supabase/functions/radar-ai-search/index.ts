@@ -702,6 +702,25 @@ Deno.serve(async (req) => {
 
     console.log(`[RADAR] ${body.candidate_name}: ${allItems.length} brutos, ${unique.length} filtrados, ${buckets.length} janelas em ${fetchMs}ms`);
 
+    // ===== MODO HEURÍSTICO (skip_ai) =====
+    // Quando chamado pelo job de chunks (radar-job-create), NÃO chamamos IA por chunk
+    // para evitar rate-limit. O caminho IA fica reservado a chamadas únicas de alto valor.
+    if (safeBody.skip_ai) {
+      const heuristicRaw = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs);
+      const heuristic = applyTemporalDiversity(clusterEvents(heuristicRaw), 30);
+      console.log(`[RADAR] skip_ai=true → ${heuristic.length} eventos heurísticos`);
+      endTotal();
+      return jsonResponse({
+        events: heuristic,
+        cached: false,
+        count: heuristic.length,
+        provider: "heuristic",
+        raw_items: unique.length,
+        sources_fetched: dynamicFeeds.length,
+        fetch_ms: fetchMs,
+      });
+    }
+
     // ===== 2. PROMPT IA =====
     const catFilter =
       body.categories && body.categories.length > 0 && !body.categories.includes("Todos")
