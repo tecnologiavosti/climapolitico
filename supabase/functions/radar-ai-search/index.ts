@@ -790,7 +790,7 @@ importance = (source_count * 2) + (institutional_sources * 12) + (media_weight *
 social_score deve variar conforme cobertura pública: quantidade/diversidade de fontes, presença em veículos nacionais/internacionais e impacto político. Nunca use default 35.
 
 Se as notícias brutas atuais forem insuficientes para meses antigos, complemente com seu conhecimento histórico público, mas apenas eventos reais e datados.
-NÃO retorne menos de ${Math.min(expectedMin, 350)} eventos quando o período for amplo e houver cobertura pública.
+NÃO retorne menos de ${Math.min(expectedMin, 1000)} eventos quando o período for amplo e houver cobertura pública. Aceite entrevistas, declarações, votações, discursos, embates, decisões judiciais, movimentações partidárias, nomeações, exonerações e bastidores políticos — não apenas grandes escândalos.
 
 DISTRIBUTE RESULTS ACROSS THE ENTIRE REQUESTED DATE RANGE.
 Avoid over-concentration in a single day/week unless historically justified.
