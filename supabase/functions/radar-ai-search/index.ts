@@ -439,11 +439,12 @@ function normalizeEvents(raw: any[]): any[] {
     });
 }
 
-// ===== TEMPORAL DIVERSITY: cap por dia + boost meses pouco representados =====
-function applyTemporalDiversity(events: any[], maxPerDay = 3): any[] {
+// ===== TEMPORAL DIVERSITY: distribuição equilibrada por mês/ano sem inventar datas =====
+function applyTemporalDiversity(events: any[], maxPerDay = 8): any[] {
   if (events.length === 0) return events;
+  const deduped = dedupeEvents(events).filter((ev) => ev.event_date && !isNaN(Date.parse(ev.event_date)));
   const byDay = new Map<string, any[]>();
-  for (const ev of events) {
+  for (const ev of deduped) {
     const day = (ev.event_date ?? "").slice(0, 10) || "unknown";
     if (!byDay.has(day)) byDay.set(day, []);
     byDay.get(day)!.push(ev);
@@ -453,25 +454,24 @@ function applyTemporalDiversity(events: any[], maxPerDay = 3): any[] {
     list.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
     capped.push(...list.slice(0, maxPerDay));
   }
-  // Boost por mês pouco representado
-  const monthCounts = new Map<string, number>();
+  const byMonth = new Map<string, any[]>();
   for (const ev of capped) {
     const m = (ev.event_date ?? "").slice(0, 7) || "unknown";
-    monthCounts.set(m, (monthCounts.get(m) ?? 0) + 1);
+    if (!byMonth.has(m)) byMonth.set(m, []);
+    byMonth.get(m)!.push(ev);
   }
-  const maxMonth = Math.max(1, ...Array.from(monthCounts.values()));
-  for (const ev of capped) {
-    const m = (ev.event_date ?? "").slice(0, 7) || "unknown";
-    const c = monthCounts.get(m) ?? 1;
-    const diversityScore = (1 - c / maxMonth) * 100; // 0..100
-    ev._final_score = (ev.importance ?? 0) * 0.7 + diversityScore * 0.3;
+  const monthLimit = Math.max(12, Math.ceil(capped.length / Math.max(1, byMonth.size)) + 10);
+  const balanced: any[] = [];
+  for (const [, list] of [...byMonth.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    list.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
+    balanced.push(...list.slice(0, monthLimit));
   }
-  capped.sort((a, b) => {
+  balanced.sort((a, b) => {
     const ta = a.event_date ? Date.parse(a.event_date) : 0;
     const tb = b.event_date ? Date.parse(b.event_date) : 0;
     return tb - ta;
   });
-  return capped;
+  return balanced;
 }
 
 function parseAiJson(text: string): any {
