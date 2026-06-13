@@ -282,7 +282,7 @@ export default function RadarPolitico() {
       });
       if (error) {
         const ctx = (error as any)?.context;
-        const errorBody = ctx?.clone ? await ctx.clone().json().catch(() => null) : null;
+        const errorBody = ctx?.clone ? await ctx.clone().json().catch(() => null) as { error?: string } | null : null;
         throw new Error(errorBody?.error ?? error.message);
       }
       return data as { job_id?: string | null; status: string; events?: RadarEvent[]; cached?: boolean; events_count?: number };
@@ -307,8 +307,8 @@ export default function RadarPolitico() {
       setJobId(data.job_id ?? null);
       toast.info("Busca histórica iniciada em background. Primeiros eventos aparecerão automaticamente.");
     },
-    onError: (e: any) => {
-      const msg = friendlyRadarError(e?.message ?? "Falha ao iniciar job");
+    onError: (e: unknown) => {
+      const msg = friendlyRadarError(e instanceof Error ? e.message : "Falha ao iniciar job");
       setLastError({ message: msg, stack: "" });
       toast.error(msg);
     },
@@ -321,7 +321,8 @@ export default function RadarPolitico() {
         body: { job_id: jobId, page_size: PAGE_SIZE, offset: events.length, sort: sortBy },
       });
       if (error) throw error;
-      return Array.isArray((data as any)?.events) ? ((data as any).events as RadarEvent[]) : [];
+      const payload = data as { events?: RadarEvent[] } | null;
+      return Array.isArray(payload?.events) ? payload.events : [];
     },
     onSuccess: (next) => {
       if (next.length === 0) return;
@@ -337,7 +338,7 @@ export default function RadarPolitico() {
       });
       setVisibleCount((current) => current + PAGE_SIZE);
     },
-    onError: (e: any) => toast.error(friendlyRadarError(e?.message ?? "Falha ao carregar mais eventos")),
+    onError: (e: unknown) => toast.error(friendlyRadarError(e instanceof Error ? e.message : "Falha ao carregar mais eventos")),
   });
 
   // Filtros locais
@@ -429,7 +430,7 @@ export default function RadarPolitico() {
               </SelectContent>
             </Select>
 
-            <Select value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
+            <Select value={sortBy} onValueChange={(v) => setSortBy(v as "date" | "importance" | "social")}>
               <SelectTrigger className="w-[170px] h-9">
                 <ArrowUpDown className="h-3.5 w-3.5 mr-1" />
                 <SelectValue />
