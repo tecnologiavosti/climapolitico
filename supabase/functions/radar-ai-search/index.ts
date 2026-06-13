@@ -97,7 +97,6 @@ function safeNum(v: any, def = 0, min = 0, max = 100) {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const INSTITUTIONAL_RE = /\b(STF|TSE|PF|Senado|Câmara|Camara|Planalto|STJ|TCU|CGU|AGU|CNJ|Banco Central|Ministério|Ministerio)\b/i;
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_RUNTIME = 120_000;
 const CACHE_BATCH_SIZE = 200;
 const POLITICAL_RELEVANCE_RE = /\b(STF|TSE|PF|Polícia Federal|operacao|operação|escandalo|escândalo|crise|CPI|investigacao|investigação|cassacao|cassação|julgamento|denuncia|denúncia|impeachment|prisao|prisão|inelegivel|inelegível|corrupcao|corrupção|votacao|votação|congresso|senado|camara|câmara|plenario|plenário|supremo|tribunal|eleicao|eleição|eleitoral|presidencial|pesquisa|Datafolha|Quaest|Ipec|PoderData|reforma tributaria|reforma fiscal|orcamento|orçamento|economia|banco central|dolar|dólar|juros|crime eleitoral|rachadinha|joias|minuta|golpe|8 de janeiro|delacao|delação|inquerito|inquérito)\b/i;
@@ -124,6 +123,12 @@ function targetRange(startDate: string, endDate: string): string {
   if (days <= 35) return "20-80 eventos";
   if (days <= 370) return "300-1000 eventos por ano para nomes de alta cobertura";
   return "300-1000 eventos por ano, distribuídos uniformemente por ano e mês";
+}
+
+function cacheTtlForPeriod(endDate: string): number {
+  const end = Date.parse(`${endDate}T23:59:59Z`);
+  const ageDays = isNaN(end) ? 0 : (Date.now() - end) / 86_400_000;
+  return ageDays <= 90 ? 6 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
 }
 
 function expectedMinimumEvents(candidateName: string, startDate: string, endDate: string): number {
@@ -423,11 +428,10 @@ function scoreEvent(e: any): { importance: number; social_score: number; institu
     return sum;
   }, 0);
   const social_relevance = Math.min(100, 15 + source_count * 7 + institutional_sources * 10 + mediaWeight * 4 + impactScore * 35);
-  const baseImportance = Math.min(100, source_count * 10 + institutional_bonus + impactScore * 45);
+  const relevance = Math.min(100, impactScore * 100 + mediaWeight * 3);
+  const sourceScore = Math.min(100, source_count * 12);
   const institutionalSignal = Math.min(100, institutional_bonus * 3 + institutional_sources * 15);
-  const eventMs = e?.event_date ? Date.parse(e.event_date) : NaN;
-  const recencyBoost = isNaN(eventMs) ? 0 : Math.max(0, Math.min(5, 5 - ((Date.now() - eventMs) / 86_400_000 / 365) * 0.8));
-  const raw = baseImportance * 0.7 + social_relevance * 0.2 + institutionalSignal * 0.1 + recencyBoost;
+  const raw = relevance * 0.45 + sourceScore * 0.25 + institutionalSignal * 0.20 + social_relevance * 0.10;
   return {
     importance: safeNum(raw, 0),
     social_score: safeNum(social_relevance, 0),

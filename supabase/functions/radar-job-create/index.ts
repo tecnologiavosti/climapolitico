@@ -17,15 +17,14 @@ interface ReqBody {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-// Max chunks por job (mensal): 96 = 8 anos. Aumentar = mais volume, mais tempo.
-const MAX_CHUNKS = 96;
-// Quantos chunks rodam por lote. Sem IA por chunk, 6 acelera sem estourar CPU/rede.
-const CONCURRENCY = 6;
+// Suporta 2010→hoje com folga. A paginação segura 10k–50k eventos sem truncar backend.
+const MAX_CHUNKS = 600;
+const MAX_EVENTS = 50_000;
+// Cada invocação processa um lote pequeno e retorna; polling/continuação retoma o próximo lote.
+const CHUNKS_PER_RUN = 6;
 // Janela máxima por chunk (em dias).
 const CHUNK_DAYS = 30;
 const BATCH_SIZE = 200;
-const MAX_RUNTIME = 130_000;
-const BATCH_GUARD_MS = 20_000;
 const DB_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -37,15 +36,15 @@ function buildChunks(start: string, end: string): Array<{ start_date: string; en
   const startD = new Date(`${start}T00:00:00Z`);
   const endD = new Date(`${end}T23:59:59Z`);
   const out: Array<{ start_date: string; end_date: string }> = [];
-  // Avançamos de trás para frente (mais recente primeiro): UX melhor.
-  let cursorEnd = new Date(endD);
-  while (cursorEnd >= startD && out.length < MAX_CHUNKS) {
-    const cursorStart = new Date(cursorEnd);
-    cursorStart.setUTCDate(cursorStart.getUTCDate() - (CHUNK_DAYS - 1));
-    const realStart = cursorStart < startD ? startD : cursorStart;
-    out.push({ start_date: ymd(realStart), end_date: ymd(cursorEnd) });
-    cursorEnd = new Date(realStart);
-    cursorEnd.setUTCDate(cursorEnd.getUTCDate() - 1);
+  // Cronológico para não privilegiar 2025/2026 na coleta incremental.
+  let cursorStart = new Date(startD);
+  while (cursorStart <= endD && out.length < MAX_CHUNKS) {
+    const cursorEnd = new Date(cursorStart);
+    cursorEnd.setUTCDate(cursorEnd.getUTCDate() + (CHUNK_DAYS - 1));
+    const realEnd = cursorEnd > endD ? endD : cursorEnd;
+    out.push({ start_date: ymd(cursorStart), end_date: ymd(realEnd) });
+    cursorStart = new Date(realEnd);
+    cursorStart.setUTCDate(cursorStart.getUTCDate() + 1);
   }
   return out;
 }
@@ -143,13 +142,12 @@ async function completePartial(admin: any, jobId: string, processed: number, tot
 async function readCacheFirstPage(admin: any, userId: string, periodHash: string, body: ReqBody) {
   const { data } = await admin
     .from("radar_cache")
-    .select("response_json,event_count,created_at")
+    .select("event_count,created_at")
     .eq("user_id", userId)
     .eq("period_hash", periodHash)
     .gt("expires_at", new Date().toISOString())
     .maybeSingle();
-  const events = Array.isArray(data?.response_json) ? data.response_json.slice(0, 50) : [];
-  if (events.length === 0) return null;
+  if (!data) return null;
   const { data: recentJob } = await admin
     .from("radar_jobs")
     .select("id,status,events_count")
@@ -160,19 +158,18 @@ async function readCacheFirstPage(admin: any, userId: string, periodHash: string
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  return { events, event_count: data?.event_count ?? recentJob?.events_count ?? events.length, cached_at: data?.created_at, job_id: recentJob?.id ?? null };
+  if (!recentJob?.id) return null;
+  let pageQuery = admin.from("radar_job_events").select("event_data").eq("job_id", recentJob.id);
+  if (body.sort === "date") pageQuery = pageQuery.order("event_date", { ascending: false, nullsFirst: false }).order("importance", { ascending: false });
+  else pageQuery = pageQuery.order("importance", { ascending: false }).order("event_date", { ascending: false, nullsFirst: false });
+  const { data: rows } = await pageQuery.range(0, 49);
+  const events = (rows ?? []).map((row: any) => row?.event_data).filter(Boolean);
+  return { events, event_count: data?.event_count ?? recentJob?.events_count ?? events.length, cached_at: data?.created_at, job_id: recentJob.id };
 }
 
 async function saveCacheSnapshot(admin: any, jobId: string, body: ReqBody & { user_id: string }) {
-  let query = admin
-    .from("radar_job_events")
-    .select("event_data")
-    .eq("job_id", jobId)
-  if (body.sort === "date") query = query.order("event_date", { ascending: false, nullsFirst: false }).order("importance", { ascending: false });
-  else query = query.order("importance", { ascending: false }).order("event_date", { ascending: false, nullsFirst: false });
-  const { data: rows } = await query.range(0, 999);
-  const events = (rows ?? []).map((row: any) => row?.event_data).filter(Boolean);
-  if (events.length === 0) return;
+  const total = await getEventsCount(admin, jobId);
+  if (total === 0) return;
   await admin.from("radar_cache").upsert({
     user_id: body.user_id,
     candidate_id: body.candidate_id ?? null,
@@ -181,8 +178,8 @@ async function saveCacheSnapshot(admin: any, jobId: string, body: ReqBody & { us
     start_date: body.start_date,
     end_date: body.end_date,
     categories: body.categories ?? [],
-    response_json: events,
-    event_count: await getEventsCount(admin, jobId),
+    response_json: { job_id: jobId, mode: "paged" },
+    event_count: total,
     created_at: new Date().toISOString(),
     expires_at: new Date(Date.now() + DB_CACHE_TTL_MS).toISOString(),
   }, { onConflict: "user_id,period_hash" });
@@ -222,13 +219,23 @@ async function scheduleContinuation(jobId: string, authHeader: string): Promise<
   return false;
 }
 
+async function pauseForNextPoll(admin: any, jobId: string, processed: number, total: number, note: string) {
+  const count = await getEventsCount(admin, jobId);
+  await admin.from("radar_jobs").update({
+    status: "running",
+    processed_chunks: processed,
+    progress: progressFor(processed, total),
+    events_count: count,
+    error: note,
+  }).eq("id", jobId);
+}
+
 async function processJob(
   jobId: string,
   body: ReqBody & { user_id: string },
   authHeader: string,
 ) {
   console.time("TOTAL_RADAR");
-  const started = Date.now();
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
   const chunks = buildChunks(body.start_date!, body.end_date!);
   const total = chunks.length;
@@ -283,27 +290,17 @@ async function processJob(
     }
   };
 
-  // Processa em lotes de CONCURRENCY
-  for (let i = processed; i < chunks.length; i += CONCURRENCY) {
-    const batchIndex = Math.floor(i / CONCURRENCY) + 1;
-    const elapsed = Date.now() - started;
-    if (elapsed > MAX_RUNTIME || elapsed + BATCH_GUARD_MS > MAX_RUNTIME) {
-      const continued = await scheduleContinuation(jobId, authHeader);
-      if (!continued) {
-        const count = await getEventsCount(admin, jobId);
-        await admin.from("radar_jobs").update({
-          status: "running",
-          processed_chunks: processed,
-          progress: progressFor(processed, total),
-          events_count: count,
-          error: `Continuação pausada por limite temporário; será retomada no próximo polling (${Math.round(elapsed / 1000)}s)`,
-        }).eq("id", jobId);
-      }
+  const endIndex = Math.min(chunks.length, processed + CHUNKS_PER_RUN);
+  for (let i = processed; i < endIndex; i += CHUNKS_PER_RUN) {
+    const batchIndex = Math.floor(i / CHUNKS_PER_RUN) + 1;
+    const existingCount = await getEventsCount(admin, jobId);
+    if (existingCount >= MAX_EVENTS) {
+      await pauseForNextPoll(admin, jobId, total, total, "Limite operacional de 50.000 eventos atingido.");
       console.timeEnd("TOTAL_RADAR");
       return;
     }
 
-    const batch = chunks.slice(i, i + CONCURRENCY);
+    const batch = chunks.slice(i, Math.min(i + CHUNKS_PER_RUN, endIndex));
     console.log("BATCH", batchIndex);
     console.time("FETCH");
     const results = [];
@@ -340,6 +337,13 @@ async function processJob(
     await saveCacheSnapshot(admin, jobId, body);
     console.timeEnd("CACHE_SAVE");
     console.log("progress", progress);
+  }
+
+  if (processed < total) {
+    await saveCacheSnapshot(admin, jobId, body);
+    await pauseForNextPoll(admin, jobId, processed, total, "Continuação pausada: próximo lote será retomado pelo polling.");
+    console.timeEnd("TOTAL_RADAR");
+    return;
   }
 
   const finalCount = await getEventsCount(admin, jobId);
