@@ -34,6 +34,7 @@ const CONCURRENCY = 3;
 const CHUNK_DAYS = 30;
 const BATCH_SIZE = 200;
 const MAX_RUNTIME = 120_000;
+const BATCH_GUARD_MS = 70_000;
 
 function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -126,6 +127,21 @@ function progressFor(processed: number, total: number) {
   return Math.max(0, Math.min(100, Math.round((processed / total) * 100)));
 }
 
+async function completePartial(admin: any, jobId: string, processed: number, total: number, reason: string) {
+  const count = await getEventsCount(admin, jobId);
+  const progress = progressFor(processed, total);
+  console.log("progress", progress);
+  await admin.from("radar_jobs").update({
+    status: "completed",
+    progress,
+    processed_chunks: processed,
+    events_count: count,
+    events: null,
+    error: reason,
+    completed_at: new Date().toISOString(),
+  }).eq("id", jobId);
+}
+
 async function processJob(
   jobId: string,
   body: ReqBody & { user_id: string },
@@ -187,19 +203,9 @@ async function processJob(
 
   // Processa em lotes de CONCURRENCY
   for (let i = processed; i < chunks.length; i += CONCURRENCY) {
-    if (Date.now() - started > MAX_RUNTIME) {
-      const count = await getEventsCount(admin, jobId);
-      const progress = progressFor(processed, total);
-      console.log("progress", progress);
-      await admin.from("radar_jobs").update({
-        status: "completed",
-        progress,
-        processed_chunks: processed,
-        events_count: count,
-        events: null,
-        error: `RADAR_TIMEOUT: resultado parcial retornado após ${Math.round((Date.now() - started) / 1000)}s`,
-        completed_at: new Date().toISOString(),
-      }).eq("id", jobId);
+    const elapsed = Date.now() - started;
+    if (elapsed > MAX_RUNTIME || elapsed + BATCH_GUARD_MS > MAX_RUNTIME) {
+      await completePartial(admin, jobId, processed, total, `RADAR_TIMEOUT: resultado parcial retornado após ${Math.round(elapsed / 1000)}s`);
       console.timeEnd("TOTAL_RADAR");
       return;
     }
