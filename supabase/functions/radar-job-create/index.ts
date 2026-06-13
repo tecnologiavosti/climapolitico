@@ -139,7 +139,7 @@ async function completePartial(admin: any, jobId: string, processed: number, tot
   }).eq("id", jobId);
 }
 
-async function readCacheFirstPage(admin: any, userId: string, periodHash: string) {
+async function readCacheFirstPage(admin: any, userId: string, periodHash: string, body: ReqBody) {
   const { data } = await admin
     .from("radar_cache")
     .select("response_json,event_count,created_at")
@@ -148,7 +148,18 @@ async function readCacheFirstPage(admin: any, userId: string, periodHash: string
     .gt("expires_at", new Date().toISOString())
     .maybeSingle();
   const events = Array.isArray(data?.response_json) ? data.response_json.slice(0, 50) : [];
-  return events.length > 0 ? { events, event_count: data?.event_count ?? events.length, cached_at: data?.created_at } : null;
+  if (events.length === 0) return null;
+  const { data: recentJob } = await admin
+    .from("radar_jobs")
+    .select("id,status,events_count")
+    .eq("user_id", userId)
+    .eq("candidate_id", body.candidate_id)
+    .eq("start_date", body.start_date)
+    .eq("end_date", body.end_date)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return { events, event_count: data?.event_count ?? recentJob?.events_count ?? events.length, cached_at: data?.created_at, job_id: recentJob?.id ?? null };
 }
 
 async function saveCacheSnapshot(admin: any, jobId: string, body: ReqBody & { user_id: string }) {
@@ -414,12 +425,13 @@ Deno.serve(async (req) => {
     }
 
     const periodHash = hashPeriod(body);
-    const cached = await readCacheFirstPage(admin, user.id, periodHash);
+    const cached = await readCacheFirstPage(admin, user.id, periodHash, body);
     console.log("CACHE HIT", !!cached);
     if (cached) {
       return new Response(JSON.stringify({
         status: "cached",
         cached: true,
+        job_id: cached.job_id,
         events: cached.events,
         events_count: cached.event_count,
         cached_at: cached.cached_at,
