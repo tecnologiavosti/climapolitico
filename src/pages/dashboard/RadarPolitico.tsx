@@ -359,6 +359,14 @@ export default function RadarPolitico() {
   }, [cacheKey, search]);
 
   const visibleEvents = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+
+  const backendTotal = jobStatus?.events_count ?? events.length;
+  useEffect(() => {
+    console.log("BACKEND EVENTS:", backendTotal);
+    console.log("FILTERED EVENTS:", filtered.length);
+    console.log("VISIBLE EVENTS:", visibleEvents.length);
+  }, [backendTotal, filtered.length, visibleEvents.length]);
+
   const rowVirtualizer = useVirtualizer({
     count: visibleEvents.length,
     getScrollElement: () => listParentRef.current,
@@ -367,13 +375,13 @@ export default function RadarPolitico() {
   });
 
   const kpis = useMemo(() => ({
-    total: filtered.length,
+    total: Math.max(backendTotal, filtered.length),
     grandes: filtered.filter((e) => e.importance >= 70).length,
     institucionais: filtered.filter((e) =>
       e.institutional_sources > 0 || e.sources?.some((s) => /\b(STF|TSE|PF|Senado|Câmara|Camara|Planalto|STJ|TCU|CGU|AGU|CNJ)\b/i.test(s.name)),
     ).length,
     altaRepercussao: filtered.filter((e) => e.social_score >= 60).length,
-  }), [filtered]);
+  }), [filtered, backendTotal]);
 
   const timeline = useMemo(() => {
     const map = new Map<string, number>();
