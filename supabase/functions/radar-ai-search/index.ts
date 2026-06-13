@@ -91,6 +91,27 @@ function safeNum(v: any, def = 0, min = 0, max = 100) {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const INSTITUTIONAL_RE = /\b(STF|TSE|PF|Senado|Câmara|Camara|Planalto|STJ|TCU|CGU|AGU|CNJ|Banco Central|Ministério|Ministerio)\b/i;
+
+function sourceTypeFromName(name: string): RawItem["type"] {
+  return INSTITUTIONAL_RE.test(name) ? "institutional" : "news";
+}
+
+function daysBetween(startDate: string, endDate: string): number {
+  const start = Date.parse(`${startDate}T00:00:00Z`);
+  const end = Date.parse(`${endDate}T23:59:59Z`);
+  if (isNaN(start) || isNaN(end)) return 30;
+  return Math.max(1, Math.ceil((end - start) / 86_400_000));
+}
+
+function targetRange(startDate: string, endDate: string): string {
+  const days = daysBetween(startDate, endDate);
+  if (days <= 8) return "5–30 eventos";
+  if (days <= 35) return "20–80 eventos";
+  if (days <= 370) return "100–500 eventos";
+  return "500–5000 eventos";
+}
+
 function jsonResponse(payload: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -178,17 +199,49 @@ function buildAliases(fullName: string): string[] {
   const norm = normalize(fullName);
   const parts = norm.split(" ").filter((p) => p.length >= 3);
   const aliases = new Set<string>([norm]);
+  const compact = norm.replace(/\s+/g, " ");
   if (parts.length >= 2) {
     aliases.add(`${parts[0]} ${parts[parts.length - 1]}`); // first + last
     aliases.add(parts[parts.length - 1]); // last name
   }
   if (parts[0]) aliases.add(parts[0]);
+  if (compact.includes("flavio") && compact.includes("bolsonaro")) {
+    ["flavio bolsonaro", "flávio bolsonaro", "senador flavio bolsonaro", "senador flávio bolsonaro", "flavio nantes bolsonaro", "flávio nantes bolsonaro"].forEach((a) => aliases.add(normalize(a)));
+  }
+  if (compact.includes("lula") || compact.includes("luiz inacio")) {
+    ["lula", "luiz inacio lula da silva", "luiz inácio lula da silva", "presidente lula"].forEach((a) => aliases.add(normalize(a)));
+  }
+  if (compact.includes("bolsonaro") && !compact.includes("flavio")) {
+    ["jair bolsonaro", "ex presidente bolsonaro", "presidente bolsonaro", "bolsonaro"].forEach((a) => aliases.add(normalize(a)));
+  }
   return Array.from(aliases).filter((a) => a.length >= 4);
+}
+
+function similarity(a: string, b: string): number {
+  const aa = normalize(a);
+  const bb = normalize(b);
+  if (!aa || !bb) return 0;
+  if (aa.includes(bb) || bb.includes(aa)) return 1;
+  const aTokens = new Set(aa.split(" ").filter((x) => x.length >= 3));
+  const bTokens = new Set(bb.split(" ").filter((x) => x.length >= 3));
+  const intersection = [...aTokens].filter((x) => bTokens.has(x)).length;
+  const union = new Set([...aTokens, ...bTokens]).size || 1;
+  const tokenScore = intersection / union;
+  let prefixMatches = 0;
+  for (const at of aTokens) {
+    if ([...bTokens].some((bt) => at.startsWith(bt) || bt.startsWith(at))) prefixMatches++;
+  }
+  return Math.max(tokenScore, prefixMatches / Math.max(1, aTokens.size));
 }
 
 function matchesCandidate(item: RawItem, aliases: string[]): boolean {
   const hay = normalize(`${item.title} ${item.snippet ?? ""}`);
-  return aliases.some((a) => hay.includes(a));
+  return aliases.some((a) => hay.includes(a) || similarity(a, hay) > 0.75);
+}
+
+function eventMatchesCandidate(event: any, aliases: string[]): boolean {
+  const hay = normalize(`${event.title ?? ""} ${event.summary ?? ""} ${(event.entities ?? []).join(" ")}`);
+  return aliases.some((a) => hay.includes(a) || similarity(a, hay) > 0.75);
 }
 
 function inDateRange(item: RawItem, startMs: number, endMs: number): boolean {
@@ -211,19 +264,26 @@ function normalizeEvents(raw: any[]): any[] {
   return list
     .filter((e) => e && typeof e.title === "string" && e.title.length > 3)
     .map((e, i) => {
-      const sources = Array.isArray(e.sources) ? e.sources.filter((s: any) => s?.name && s?.url) : [];
+      const sources = Array.isArray(e.sources)
+        ? e.sources
+            .map((s: any) => {
+              if (typeof s === "string") return { name: s, url: "", type: sourceTypeFromName(s) };
+              return { name: String(s?.name ?? s?.source ?? "Fonte"), url: String(s?.url ?? ""), type: s?.type ?? sourceTypeFromName(String(s?.name ?? "")) };
+            })
+            .filter((s: any) => s.name)
+        : [];
       const source_count = sources.length || safeNum(e.source_count, 1, 0, 999);
       const institutional_sources = sources.filter((s: any) => s.type === "institutional").length;
       const social_score = safeNum(e.social_score, 0);
       const media_diversity = new Set(sources.map((s: any) => s.name)).size;
       const computed = source_count * 2 + institutional_sources * 10 + social_score * 0.3 + media_diversity * 1.5;
-      const importance = Math.min(100, Math.round(computed));
+      const importance = safeNum(e.importance, Math.min(100, Math.round(computed)));
       return {
         id: e.id ?? `${Date.now()}-${i}`,
         title: String(e.title).slice(0, 280),
         summary: String(e.summary ?? "").slice(0, 1500),
         category: String(e.category ?? "Outros"),
-        event_date: e.event_date ?? null,
+        event_date: e.event_date ?? e.date ?? null,
         source_count,
         institutional_sources,
         social_score,
@@ -232,7 +292,7 @@ function normalizeEvents(raw: any[]): any[] {
         entities: Array.isArray(e.entities) ? e.entities.slice(0, 10).map((x: any) => String(x).slice(0, 80)) : [],
         sources: sources.slice(0, 25).map((s: any) => ({
           name: String(s.name).slice(0, 120),
-          url: String(s.url).slice(0, 600),
+          url: String(s.url ?? "").slice(0, 600),
           type: s.type ?? "news",
         })),
       };
@@ -242,6 +302,58 @@ function normalizeEvents(raw: any[]): any[] {
       const tb = b.event_date ? Date.parse(b.event_date) : 0;
       return tb - ta;
     });
+}
+
+function parseAiJson(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch {
+    const arrayMatch = text.match(/\[[\s\S]*\]/);
+    if (arrayMatch) {
+      try {
+        return JSON.parse(arrayMatch[0]);
+      } catch {
+        // continua para tentar objeto
+      }
+    }
+    const objectMatch = text.match(/\{[\s\S]*\}/);
+    if (objectMatch) {
+      try {
+        return JSON.parse(objectMatch[0]);
+      } catch {
+        return { events: [] };
+      }
+    }
+    return { events: [] };
+  }
+}
+
+function buildRssFallbackEvents(items: RawItem[], candidateName: string, aliases: string[], startMs: number, endMs: number): any[] {
+  const primary = items.filter((it) => matchesCandidate(it, aliases) && inDateRange(it, startMs, endMs));
+  const relaxed = primary.length > 0 ? primary : items.filter((it) => matchesCandidate(it, aliases));
+  const seen = new Set<string>();
+  return relaxed
+    .filter((it) => {
+      const key = normalize(it.url || it.title);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 120)
+    .map((it, i) => ({
+      id: `rss-fallback-${Date.now()}-${i}`,
+      title: it.title,
+      summary: it.snippet || `Notícia pública envolvendo ${candidateName}, detectada automaticamente em fonte RSS externa.`,
+      category: it.type === "institutional" ? "Institucional" : "Outros",
+      event_date: it.pub_date && !isNaN(Date.parse(it.pub_date)) ? new Date(it.pub_date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+      source_count: 1,
+      institutional_sources: it.type === "institutional" ? 1 : 0,
+      social_score: it.type === "institutional" ? 55 : 35,
+      importance: it.type === "institutional" ? 72 : 52,
+      political_impact: it.type === "institutional" ? "Evento institucional detectado em fonte pública." : "Evento noticioso detectado em fonte pública.",
+      entities: [candidateName, it.source],
+      sources: [{ name: it.source, url: it.url, type: it.type }],
+    }));
 }
 
 Deno.serve(async (req) => {
@@ -258,7 +370,7 @@ Deno.serve(async (req) => {
     const GROQ_KEY = Deno.env.get("GROQ_API_KEY");
     const GEMINI_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!CEREBRAS_KEY && !GROQ_KEY && !GEMINI_KEY) {
-      return jsonResponse({ error: "ai_unconfigured", fallback: true, events: [], cached: false, count: 0 });
+      console.warn("[RADAR-AI] nenhum provedor de IA configurado; fallback RSS será usado");
     }
 
     const userClient = createClient(SUPABASE_URL, ANON, {
@@ -273,10 +385,14 @@ Deno.serve(async (req) => {
     if (!body?.candidate_name || !body?.start_date || !body?.end_date) {
       return jsonResponse({ error: "campos obrigatórios: candidate_name, start_date, end_date" }, 400);
     }
+    const safeBody = body;
 
-    const period_hash = hashPeriod(body);
-    const startMs = Date.parse(body.start_date + "T00:00:00Z");
-    const endMs = Date.parse(body.end_date + "T23:59:59Z");
+    const period_hash = hashPeriod(safeBody);
+    const startMs = Date.parse(safeBody.start_date + "T00:00:00Z");
+    const endMs = Date.parse(safeBody.end_date + "T23:59:59Z");
+
+    console.log("LOG 1: candidate_name =", body.candidate_name);
+    console.log("LOG 2: period =", { start_date: body.start_date, end_date: body.end_date, force_refresh: !!body.force_refresh });
 
     // Cache lookup (30 min — TTL menor pra refletir realtime)
     if (!body.force_refresh) {
@@ -287,14 +403,18 @@ Deno.serve(async (req) => {
         .eq("period_hash", period_hash)
         .gt("expires_at", new Date().toISOString())
         .maybeSingle();
-      if (cached?.response_json) {
+      const cachedEvents = Array.isArray(cached?.response_json) ? cached.response_json : [];
+      if (cachedEvents.length > 0) {
         return jsonResponse({
-          events: cached.response_json,
+          events: cachedEvents,
           cached: true,
-          cached_at: cached.created_at,
-          count: cached.event_count,
+          cached_at: cached?.created_at,
+          count: cachedEvents.length,
         });
       }
+      if (cached?.response_json) console.log("Skipping empty cache");
+    } else {
+      console.log("[RADAR] force_refresh=true: ignorando cache e rodando IA novamente");
     }
 
     // ===== 1. FETCH RSS EM PARALELO =====
@@ -334,14 +454,7 @@ Deno.serve(async (req) => {
         ? `Filtrar APENAS para as categorias: ${body.categories.join(", ")}.`
         : "Cobrir todas as categorias políticas.";
 
-    const systemPrompt = `Você é um pesquisador político brasileiro. Sua tarefa: agrupar notícias coletadas em tempo real em EVENTOS POLÍTICOS reais.
-- Agrupe semanticamente notícias que falam do MESMO acontecimento (cosine similarity alta).
-- Deduplique.
-- Classifique cada evento em categoria.
-- Gere resumo factual em português.
-- Use APENAS as fontes/URLs fornecidas — NUNCA invente.
-- Quando não houver notícias suficientes nas fontes, complemente com eventos reais públicos do seu conhecimento, mas marque tais sources com type="news" e nome do veículo real.
-- Responda EXCLUSIVAMENTE com JSON válido.`;
+    const systemPrompt = `Você é um motor de political intelligence. Responda somente com JSON válido, sem markdown.`;
 
     const sourcesPayload = unique.slice(0, 220).map((it) => ({
       title: it.title,
@@ -352,37 +465,83 @@ Deno.serve(async (req) => {
       snippet: it.snippet?.slice(0, 220) ?? "",
     }));
 
-    const userPrompt = `Candidato: "${body.candidate_name}"
-Período: ${body.start_date} até ${body.end_date}
+    const userPrompt = `Você é um motor de political intelligence.
+
+Busque eventos políticos REAIS envolvendo:
+${body.candidate_name}
+
+Período:
+${body.start_date} até ${body.end_date}
+
+Busque em:
+
+* STF
+* TSE
+* PF
+* Senado
+* Câmara
+* Planalto
+* G1
+* UOL
+* Folha
+* Estadão
+* CNN Brasil
+* Reuters
+* Poder360
+* Metrópoles
+* BBC Brasil
+* JOTA
+* Congresso em Foco
+* O Globo
+* Valor
+* Exame
+
+IMPORTANTE:
+Retorne MUITOS eventos.
+Meta:
+mínimo 50 eventos para períodos grandes.
+Faixa esperada para este período: ${targetRange(body.start_date, body.end_date)}.
 ${catFilter}
 
-Notícias brutas coletadas via RSS (${sourcesPayload.length} itens):
+Inclua:
+
+* crises
+* escândalos
+* operações
+* julgamentos
+* falas polêmicas
+* entrevistas
+* votações
+* denúncias
+* processos
+* investigações
+* debates
+* CPIs
+* decisões judiciais
+
+Notícias brutas coletadas via RSS em tempo real (${sourcesPayload.length} itens) para agrupar, deduplicar e usar como evidência prioritária:
 ${JSON.stringify(sourcesPayload)}
 
-Tarefa:
-1. Agrupe as notícias acima por evento (mesmo acontecimento = 1 evento).
-2. Para cada evento, liste TODAS as sources que cobrem aquele evento (do material fornecido).
-3. Para períodos longos com cobertura RSS insuficiente, complemente com eventos REAIS conhecidos publicamente nesse período envolvendo "${body.candidate_name}".
-4. Retorne entre 30 e 120 eventos (mais para períodos longos).
+Retorne JSON:
 
-Formato OBRIGATÓRIO:
+[
 {
-  "events": [
-    {
-      "title": "string (até 200 chars)",
-      "summary": "string (2-5 frases factuais)",
-      "category": "Eleições|STF|TSE|PF|CPI|Congresso|Executivo|Economia|Escândalos|Prisões|Julgamentos|Internacional|Declarações|Outros",
-      "event_date": "YYYY-MM-DD",
-      "political_impact": "string curta sobre impacto político",
-      "entities": ["pessoa/órgão", "..."],
-      "social_score": 0,
-      "sources": [
-        { "name": "Nome do veículo", "url": "https://...", "type": "institutional|news|international|aggregator" }
-      ]
-    }
-  ]
+"title":"",
+"summary":"",
+"date":"YYYY-MM-DD",
+"event_date":"YYYY-MM-DD",
+"category":"",
+"sources":[{"name":"","url":"","type":"institutional|news|international|aggregator"}],
+"importance":0,
+"social_score":0,
+"political_impact":"",
+"entities":[""]
 }
-Ordene do mais recente para o mais antigo.`;
+]
+
+NÃO retorne menos de 20 eventos, exceto se realmente não existirem.`;
+
+    console.log("LOG 3: prompt enviado =", userPrompt);
 
     const messages = [
       { role: "system", content: systemPrompt },
@@ -432,9 +591,11 @@ Ordene do mais recente para o mais antigo.`;
     let text = "{}";
     let usedProvider = "none";
     let lastFailure = "";
+    let rawAiResponse = "";
     for (const attempt of attempts) {
       try {
         const result = await attempt();
+        rawAiResponse = result.raw;
         if (!result.ok) {
           lastFailure = `${result.provider}:${result.model} HTTP ${result.status} ${result.raw.slice(0, 200)}`;
           console.warn(`[RADAR-AI] ${lastFailure}`);
@@ -451,52 +612,87 @@ Ordene do mais recente para o mais antigo.`;
       }
     }
 
-    if (usedProvider === "none") {
+    async function saveCache(nonEmptyEvents: any[]) {
+      if (nonEmptyEvents.length === 0) {
+        console.log("Skipping empty cache");
+        return;
+      }
+      await admin.from("radar_cache").upsert(
+        {
+          user_id: userId,
+          candidate_id: safeBody.candidate_id ?? null,
+          candidate_name: safeBody.candidate_name,
+          period_hash,
+          start_date: safeBody.start_date,
+          end_date: safeBody.end_date,
+          categories: safeBody.categories ?? [],
+          response_json: nonEmptyEvents,
+          event_count: nonEmptyEvents.length,
+          created_at: new Date().toISOString(),
+          expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        },
+        { onConflict: "user_id,period_hash" },
+      );
+    }
+
+    async function returnRssFallback(reason: string, statusWhenEmpty = 502) {
+      console.warn(`[RADAR] fallback RSS acionado: ${reason}`);
+      const fallbackEvents = buildRssFallbackEvents(allItems, safeBody.candidate_name, aliases, startMs, endMs);
+      console.log("LOG 6: eventos após filtro =", { fallback: true, count: fallbackEvents.length, sample: fallbackEvents.slice(0, 3) });
+      if (fallbackEvents.length === 0) {
+        console.log("Skipping empty cache");
+        return jsonResponse({
+          error: "AI returned 0 events",
+          message: "A IA falhou e o fallback RSS não encontrou notícias públicas para este candidato/período.",
+          detail: reason,
+          stack: `radar-ai-search > ${reason}`,
+          fallback: true,
+          events: [],
+          cached: false,
+          count: 0,
+          raw_items: unique.length,
+        }, statusWhenEmpty);
+      }
+      await saveCache(fallbackEvents);
       return jsonResponse({
-        error: "ai_unavailable",
-        message: "Todos os provedores de IA estão temporariamente indisponíveis. Tente novamente em instantes.",
-        detail: lastFailure.slice(0, 300),
-        fallback: true,
-        events: [],
+        events: fallbackEvents,
         cached: false,
-        count: 0,
+        count: fallbackEvents.length,
+        provider: "rss_fallback",
+        fallback: true,
+        message: "IA indisponível; eventos criados automaticamente via RSS público.",
         raw_items: unique.length,
+        sources_fetched: dynamicFeeds.length,
+        fetch_ms: fetchMs,
       });
     }
 
-    let parsed: any = {};
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      const m = text.match(/\{[\s\S]*\}/);
-      if (m) {
-        try {
-          parsed = JSON.parse(m[0]);
-        } catch {
-          parsed = { events: [] };
-        }
-      }
+    if (usedProvider === "none") {
+      return await returnRssFallback(`ai_unavailable: ${lastFailure.slice(0, 300)}`);
     }
 
-    const events = normalizeEvents(parsed.events ?? parsed);
+    console.log("LOG 4: resposta bruta da IA =", rawAiResponse.slice(0, 4000));
 
-    // Cache 30 min
-    await admin.from("radar_cache").upsert(
-      {
-        user_id: userId,
-        candidate_id: body.candidate_id ?? null,
-        candidate_name: body.candidate_name,
-        period_hash,
-        start_date: body.start_date,
-        end_date: body.end_date,
-        categories: body.categories ?? [],
-        response_json: events,
-        event_count: events.length,
-        created_at: new Date().toISOString(),
-        expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-      },
-      { onConflict: "user_id,period_hash" },
-    );
+    const parsed = parseAiJson(text);
+
+    const parsedEvents = normalizeEvents(parsed.events ?? parsed);
+    console.log("LOG 5: eventos parseados =", { count: parsedEvents.length, sample: parsedEvents.slice(0, 3) });
+    if (parsedEvents.length === 0) {
+      console.error("AI returned 0 events");
+      return await returnRssFallback("AI returned 0 events");
+    }
+
+    const candidateFiltered = parsedEvents.filter((event) => eventMatchesCandidate(event, aliases));
+    const events = candidateFiltered.length > 0 ? candidateFiltered : parsedEvents;
+    console.log("LOG 6: eventos após filtro =", { count: events.length, sample: events.slice(0, 3) });
+
+    if (events.length === 0) {
+      console.error("AI returned 0 events");
+      return await returnRssFallback("AI returned 0 events after candidate filter");
+    }
+
+    // Cache 30 min — nunca salvar cache vazio
+    await saveCache(events);
 
     return jsonResponse({
       events,

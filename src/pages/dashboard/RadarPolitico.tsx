@@ -15,7 +15,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  Loader2, ExternalLink, Search, Radio, CalendarIcon, Sparkles, ArrowUpDown,
+  Loader2, ExternalLink, Search, Radio, CalendarIcon, Sparkles, ArrowUpDown, AlertTriangle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -80,6 +80,7 @@ export default function RadarPolitico() {
   const [events, setEvents] = useState<RadarEvent[]>([]);
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
   const [cachedFlag, setCachedFlag] = useState(false);
+  const [lastError, setLastError] = useState<{ message: string; stack: string } | null>(null);
 
   const { data: candidates } = useQuery({
     queryKey: ["candidates-min", user?.id],
@@ -120,10 +121,23 @@ export default function RadarPolitico() {
           force_refresh: force,
         },
       });
-      if (error) throw error;
-      return data as { events: RadarEvent[]; cached: boolean; cached_at?: string; fallback?: boolean; message?: string; provider?: string };
+      if (error) {
+        const ctx = (error as any)?.context;
+        const errorBody = ctx?.clone ? await ctx.clone().json().catch(() => null) : null;
+        throw Object.assign(error, {
+          detail: errorBody?.detail ?? errorBody?.error,
+          stack: errorBody?.stack ?? errorBody?.detail,
+          message: errorBody?.message ?? error.message,
+        });
+      }
+      const payload = data as { events: RadarEvent[]; cached: boolean; cached_at?: string; fallback?: boolean; message?: string; provider?: string; error?: string; detail?: string; stack?: string };
+      if (payload?.error && (!payload.events || payload.events.length === 0)) {
+        throw Object.assign(new Error(payload.message ?? payload.error), { detail: payload.detail, stack: payload.stack });
+      }
+      return payload;
     },
     onSuccess: (data) => {
+      setLastError(null);
       setEvents(data.events ?? []);
       setCachedFlag(!!data.cached);
       setLastFetchedAt(new Date());
@@ -140,6 +154,10 @@ export default function RadarPolitico() {
     onError: (e: any) => {
       const ctx = e?.context;
       const status = ctx?.status ?? 0;
+      setLastError({
+        message: e?.message ?? "Falha na busca",
+        stack: [status ? `HTTP ${status}` : null, e?.detail, e?.stack].filter(Boolean).join("\n").slice(0, 900),
+      });
       if (status === 429) toast.error("IA temporariamente sem capacidade. Aguarde ~30s e tente novamente.");
       else if (status === 402) toast.error("Créditos de IA esgotados.");
       else toast.error(e?.message ?? "Falha na busca");
@@ -165,7 +183,9 @@ export default function RadarPolitico() {
   const kpis = useMemo(() => ({
     total: filtered.length,
     grandes: filtered.filter((e) => e.importance >= 70).length,
-    institucionais: filtered.filter((e) => e.institutional_sources > 0).length,
+    institucionais: filtered.filter((e) =>
+      e.institutional_sources > 0 || e.sources?.some((s) => /\b(STF|TSE|PF|Senado|Câmara|Camara|Planalto|STJ|TCU|CGU|AGU|CNJ)\b/i.test(s.name)),
+    ).length,
     altaRepercussao: filtered.filter((e) => e.social_score >= 60).length,
   }), [filtered]);
 
@@ -323,15 +343,44 @@ export default function RadarPolitico() {
       <section className="space-y-2">
         <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">
           {searchMutation.isPending
-            ? "Buscando..."
+            ? "Buscando eventos via IA..."
             : `${nfBR.format(filtered.length)} eventos`}
         </h2>
 
+        {lastError && !searchMutation.isPending && (
+          <Card className="border-destructive/40 bg-destructive/5">
+            <CardContent className="p-4 space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-destructive">
+                <AlertTriangle className="h-4 w-4" /> Falha na busca do Radar
+              </div>
+              <p className="text-sm text-destructive/90">{lastError.message}</p>
+              {lastError.stack && (
+                <pre className="max-h-40 overflow-auto rounded border border-destructive/20 bg-background/80 p-3 text-xs whitespace-pre-wrap text-muted-foreground">
+                  {lastError.stack}
+                </pre>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {searchMutation.isPending ? (
-          <div className="grid gap-2">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="border rounded-md p-4 bg-card animate-pulse h-20" />
-            ))}
+          <div className="border rounded-md bg-card p-4 space-y-4">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Loader2 className="h-4 w-4 animate-spin" /> Buscando eventos via IA...
+            </div>
+            <div className="grid gap-2 text-xs text-muted-foreground">
+              {["Consultando IA", "Processando eventos", "Atualizando cache"].map((step, i) => (
+                <div key={step} className="flex items-center gap-2">
+                  <span className={cn("h-2 w-2 rounded-full", i === 0 ? "bg-foreground animate-pulse" : "bg-muted-foreground/40")} />
+                  {step}
+                </div>
+              ))}
+            </div>
+            <div className="grid gap-2">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="border rounded-md p-4 bg-background animate-pulse h-20" />
+              ))}
+            </div>
           </div>
         ) : events.length === 0 ? (
           <Card>
