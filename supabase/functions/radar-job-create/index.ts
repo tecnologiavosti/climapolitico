@@ -5,6 +5,7 @@ import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 interface ReqBody {
+  resume_job_id?: string;
   candidate_id?: string;
   candidate_name?: string;
   start_date?: string; // YYYY-MM-DD
@@ -142,6 +143,28 @@ async function completePartial(admin: any, jobId: string, processed: number, tot
   }).eq("id", jobId);
 }
 
+async function scheduleContinuation(jobId: string, authHeader: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/radar-job-create`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": authHeader,
+        "apikey": SERVICE_ROLE,
+      },
+      body: JSON.stringify({ resume_job_id: jobId }),
+      signal: AbortSignal.timeout(5_000),
+    });
+    const ok = res.ok;
+    await res.text().catch(() => "");
+    if (!ok) console.warn(`[radar-job ${jobId}] continuation HTTP ${res.status}`);
+    return ok;
+  } catch (e) {
+    console.warn(`[radar-job ${jobId}] continuation failed`, (e as Error)?.message ?? String(e));
+    return false;
+  }
+}
+
 async function processJob(
   jobId: string,
   body: ReqBody & { user_id: string },
@@ -205,7 +228,10 @@ async function processJob(
   for (let i = processed; i < chunks.length; i += CONCURRENCY) {
     const elapsed = Date.now() - started;
     if (elapsed > MAX_RUNTIME || elapsed + BATCH_GUARD_MS > MAX_RUNTIME) {
-      await completePartial(admin, jobId, processed, total, `RADAR_TIMEOUT: resultado parcial retornado após ${Math.round(elapsed / 1000)}s`);
+      const continued = await scheduleContinuation(jobId, authHeader);
+      if (!continued) {
+        await completePartial(admin, jobId, processed, total, `RADAR_TIMEOUT: resultado parcial retornado após ${Math.round(elapsed / 1000)}s`);
+      }
       console.timeEnd("TOTAL_RADAR");
       return;
     }
