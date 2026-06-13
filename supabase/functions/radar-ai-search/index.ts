@@ -566,9 +566,11 @@ NÃO retorne menos de 20 eventos, exceto se realmente não existirem.`;
     let text = "{}";
     let usedProvider = "none";
     let lastFailure = "";
+    let rawAiResponse = "";
     for (const attempt of attempts) {
       try {
         const result = await attempt();
+        rawAiResponse = result.raw;
         if (!result.ok) {
           lastFailure = `${result.provider}:${result.model} HTTP ${result.status} ${result.raw.slice(0, 200)}`;
           console.warn(`[RADAR-AI] ${lastFailure}`);
@@ -585,18 +587,66 @@ NÃO retorne menos de 20 eventos, exceto se realmente não existirem.`;
       }
     }
 
-    if (usedProvider === "none") {
+    async function saveCache(nonEmptyEvents: any[]) {
+      if (nonEmptyEvents.length === 0) {
+        console.log("Skipping empty cache");
+        return;
+      }
+      await admin.from("radar_cache").upsert(
+        {
+          user_id: userId,
+          candidate_id: body.candidate_id ?? null,
+          candidate_name: body.candidate_name,
+          period_hash,
+          start_date: body.start_date,
+          end_date: body.end_date,
+          categories: body.categories ?? [],
+          response_json: nonEmptyEvents,
+          event_count: nonEmptyEvents.length,
+          created_at: new Date().toISOString(),
+          expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        },
+        { onConflict: "user_id,period_hash" },
+      );
+    }
+
+    async function returnRssFallback(reason: string, statusWhenEmpty = 502) {
+      console.warn(`[RADAR] fallback RSS acionado: ${reason}`);
+      const fallbackEvents = buildRssFallbackEvents(allItems, body.candidate_name, aliases, startMs, endMs);
+      console.log("LOG 6: eventos após filtro =", { fallback: true, count: fallbackEvents.length, sample: fallbackEvents.slice(0, 3) });
+      if (fallbackEvents.length === 0) {
+        console.log("Skipping empty cache");
+        return jsonResponse({
+          error: "AI returned 0 events",
+          message: "A IA falhou e o fallback RSS não encontrou notícias públicas para este candidato/período.",
+          detail: reason,
+          stack: `radar-ai-search > ${reason}`,
+          fallback: true,
+          events: [],
+          cached: false,
+          count: 0,
+          raw_items: unique.length,
+        }, statusWhenEmpty);
+      }
+      await saveCache(fallbackEvents);
       return jsonResponse({
-        error: "ai_unavailable",
-        message: "Todos os provedores de IA estão temporariamente indisponíveis. Tente novamente em instantes.",
-        detail: lastFailure.slice(0, 300),
-        fallback: true,
-        events: [],
+        events: fallbackEvents,
         cached: false,
-        count: 0,
+        count: fallbackEvents.length,
+        provider: "rss_fallback",
+        fallback: true,
+        message: "IA indisponível; eventos criados automaticamente via RSS público.",
         raw_items: unique.length,
+        sources_fetched: dynamicFeeds.length,
+        fetch_ms: fetchMs,
       });
     }
+
+    if (usedProvider === "none") {
+      return await returnRssFallback(`ai_unavailable: ${lastFailure.slice(0, 300)}`);
+    }
+
+    console.log("LOG 4: resposta bruta da IA =", rawAiResponse.slice(0, 4000));
 
     let parsed: any = {};
     try {
@@ -612,25 +662,24 @@ NÃO retorne menos de 20 eventos, exceto se realmente não existirem.`;
       }
     }
 
-    const events = normalizeEvents(parsed.events ?? parsed);
+    const parsedEvents = normalizeEvents(parsed.events ?? parsed);
+    console.log("LOG 5: eventos parseados =", { count: parsedEvents.length, sample: parsedEvents.slice(0, 3) });
+    if (parsedEvents.length === 0) {
+      console.error("AI returned 0 events");
+      return await returnRssFallback("AI returned 0 events");
+    }
 
-    // Cache 30 min
-    await admin.from("radar_cache").upsert(
-      {
-        user_id: userId,
-        candidate_id: body.candidate_id ?? null,
-        candidate_name: body.candidate_name,
-        period_hash,
-        start_date: body.start_date,
-        end_date: body.end_date,
-        categories: body.categories ?? [],
-        response_json: events,
-        event_count: events.length,
-        created_at: new Date().toISOString(),
-        expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-      },
-      { onConflict: "user_id,period_hash" },
-    );
+    const candidateFiltered = parsedEvents.filter((event) => eventMatchesCandidate(event, aliases));
+    const events = candidateFiltered.length > 0 ? candidateFiltered : parsedEvents;
+    console.log("LOG 6: eventos após filtro =", { count: events.length, sample: events.slice(0, 3) });
+
+    if (events.length === 0) {
+      console.error("AI returned 0 events");
+      return await returnRssFallback("AI returned 0 events after candidate filter");
+    }
+
+    // Cache 30 min — nunca salvar cache vazio
+    await saveCache(events);
 
     return jsonResponse({
       events,
