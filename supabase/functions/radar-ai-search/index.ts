@@ -366,6 +366,9 @@ Deno.serve(async (req) => {
     const startMs = Date.parse(body.start_date + "T00:00:00Z");
     const endMs = Date.parse(body.end_date + "T23:59:59Z");
 
+    console.log("LOG 1: candidate_name =", body.candidate_name);
+    console.log("LOG 2: period =", { start_date: body.start_date, end_date: body.end_date, force_refresh: !!body.force_refresh });
+
     // Cache lookup (30 min — TTL menor pra refletir realtime)
     if (!body.force_refresh) {
       const { data: cached } = await admin
@@ -375,14 +378,18 @@ Deno.serve(async (req) => {
         .eq("period_hash", period_hash)
         .gt("expires_at", new Date().toISOString())
         .maybeSingle();
-      if (cached?.response_json) {
+      const cachedEvents = Array.isArray(cached?.response_json) ? cached.response_json : [];
+      if (cachedEvents.length > 0) {
         return jsonResponse({
-          events: cached.response_json,
+          events: cachedEvents,
           cached: true,
           cached_at: cached.created_at,
-          count: cached.event_count,
+          count: cachedEvents.length,
         });
       }
+      if (cached?.response_json) console.log("Skipping empty cache");
+    } else {
+      console.log("[RADAR] force_refresh=true: ignorando cache e rodando IA novamente");
     }
 
     // ===== 1. FETCH RSS EM PARALELO =====
