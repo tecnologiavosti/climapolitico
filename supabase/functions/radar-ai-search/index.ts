@@ -172,7 +172,24 @@ Formato OBRIGATÓRIO de resposta:
 Retorne entre 30 e 80 eventos quando o período for amplo, e o máximo que tiver com alta confiabilidade quando o período for curto.
 Ordene do mais recente para o mais antigo.`;
 
-    async function callModel(model: string) {
+    async function callCerebras() {
+      return await fetch(CEREBRAS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${CEREBRAS_KEY}` },
+        body: JSON.stringify({
+          model: CEREBRAS_MODEL,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.3,
+          max_tokens: 8192,
+        }),
+      });
+    }
+
+    async function callGateway(model: string) {
       return await fetch(GATEWAY_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_KEY! },
@@ -188,10 +205,22 @@ Ordene do mais recente para o mais antigo.`;
       });
     }
 
-    let aiRes = await callModel(MODEL);
-    if (aiRes.status === 429) {
-      await new Promise((r) => setTimeout(r, 1500));
-      aiRes = await callModel(FALLBACK_MODEL);
+    let aiRes: Response | null = null;
+    if (CEREBRAS_KEY) {
+      try {
+        aiRes = await callCerebras();
+      } catch (_) {
+        aiRes = null;
+      }
+    }
+    if ((!aiRes || !aiRes.ok) && LOVABLE_KEY) {
+      aiRes = await callGateway(FALLBACK_MODEL);
+    }
+    if (!aiRes) {
+      return new Response(JSON.stringify({ error: "ai_unavailable" }), {
+        status: 502,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     if (!aiRes.ok) {
