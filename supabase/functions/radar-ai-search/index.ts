@@ -96,6 +96,8 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const INSTITUTIONAL_RE = /\b(STF|TSE|PF|Senado|Câmara|Camara|Planalto|STJ|TCU|CGU|AGU|CNJ|Banco Central|Ministério|Ministerio)\b/i;
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+const MAX_RUNTIME = 120_000;
+const CACHE_BATCH_SIZE = 200;
 const POLITICAL_RELEVANCE_RE = /\b(STF|TSE|PF|Polícia Federal|operacao|operação|escandalo|escândalo|crise|CPI|investigacao|investigação|cassacao|cassação|julgamento|denuncia|denúncia|impeachment|prisao|prisão|inelegivel|inelegível|corrupcao|corrupção|votacao|votação|congresso|senado|camara|câmara|plenario|plenário|supremo|tribunal|eleicao|eleição|eleitoral|presidencial|pesquisa|Datafolha|Quaest|Ipec|PoderData|reforma tributaria|reforma fiscal|orcamento|orçamento|economia|banco central|dolar|dólar|juros|crime eleitoral|rachadinha|joias|minuta|golpe|8 de janeiro|delacao|delação|inquerito|inquérito)\b/i;
 const STRONG_IMPACT_RE = /\b(operação|operacao|PF|STF|TSE|CPI|cassação|cassacao|julgamento|denúncia|denuncia|investigação|investigacao|impeachment|prisão|prisao|corrupção|corrupcao|inelegível|inelegivel|condenação|condenacao|busca e apreensão|busca e apreensao|quebra de sigilo|réu|reu|indiciado|indiciamento|delacao|delação|golpe|8 de janeiro)\b/i;
 const CRITICAL_IMPACT_RE = /\b(prisão|prisao|condenação|condenacao|cassação|cassacao|impeachment|inelegível|inelegivel|operação PF|operação da PF|busca e apreensão|corrupção|corrupcao|golpe|8 de janeiro|STF decide|TSE condena)\b/i;
@@ -372,40 +374,35 @@ function scoreEvent(e: any): { importance: number; social_score: number; institu
 }
 
 // Dedupe MUITO mais conservador: só remove duplicatas quase idênticas no MESMO mês.
-// Threshold 0.93 + bucketização por mês para evitar O(n²) global e preservar volume.
+// O(n): Map por mês + título normalizado para evitar travar em alto volume.
 function dedupeEvents(events: any[]): any[] {
-  const byMonth = new Map<string, string[]>();
-  const out: any[] = [];
-  for (const ev of events.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0))) {
+  const seen = new Map<string, any>();
+  for (const ev of events) {
     const month = (ev.event_date ?? "").slice(0, 7) || "unknown";
     const key = normalize(`${ev.title ?? ""}`).split(" ").filter((t) => t.length > 3).slice(0, 10).join(" ");
     if (!key) continue;
-    const bucket = byMonth.get(month) ?? [];
-    // Só descarta se for praticamente idêntico no mesmo mês
-    if (bucket.some((s) => similarity(s, key) > 0.93)) continue;
-    bucket.push(key);
-    byMonth.set(month, bucket);
-    out.push(ev);
+    const mapKey = `${month}|${key}`;
+    const prev = seen.get(mapKey);
+    if (!prev || (ev.importance ?? 0) > (prev.importance ?? 0)) {
+      if (prev) ev.sources = [...(ev.sources ?? []), ...(prev.sources ?? [])].slice(0, 25);
+      seen.set(mapKey, ev);
+    }
   }
-  return out;
+  return [...seen.values()].sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
 }
 
-// Cluster restrito: ±2 dias E similarity > 0.90 — não junta eventos de meses diferentes.
+// Cluster O(n): buckets por mês/dia/título. Nunca compara todos com todos.
 function clusterEvents(events: any[]): any[] {
-  const clusters: any[] = [];
+  const clusters = new Map<string, any>();
   const sorted = [...events].filter((e) => e?.event_date).sort((a, b) => Date.parse(a.event_date) - Date.parse(b.event_date));
   for (const ev of sorted) {
-    const evKey = normalize(ev.title ?? "");
-    const evTime = Date.parse(ev.event_date);
     const evMonth = (ev.event_date ?? "").slice(0, 7);
-    const match = clusters.find((c) => {
-      const cTime = Date.parse(c.event_date);
-      const cMonth = (c.event_date ?? "").slice(0, 7);
-      if (cMonth !== evMonth) return false; // nunca juntar meses diferentes
-      return Math.abs(evTime - cTime) <= 2 * 86_400_000 && similarity(evKey, normalize(c.title ?? "")) > 0.90;
-    });
+    const dayBucket = Math.floor(Date.parse(ev.event_date) / (2 * 86_400_000));
+    const titleKey = normalize(ev.title ?? "").split(" ").filter((t) => t.length > 3).slice(0, 8).join(" ");
+    const key = `${evMonth}|${dayBucket}|${titleKey}`;
+    const match = clusters.get(key);
     if (!match) {
-      clusters.push({ ...ev, sources: [...(ev.sources ?? [])] });
+      clusters.set(key, { ...ev, sources: [...(ev.sources ?? [])] });
       continue;
     }
     const sourceMap = new Map<string, any>();
@@ -419,7 +416,7 @@ function clusterEvents(events: any[]): any[] {
     match.social_score = score.social_score;
     match.importance = Math.max(score.importance, match.importance ?? 0, ev.importance ?? 0);
   }
-  return clusters;
+  return [...clusters.values()];
 }
 
 function inDateRange(item: RawItem, startMs: number, endMs: number): boolean {
