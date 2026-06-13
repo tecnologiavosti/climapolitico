@@ -277,7 +277,7 @@ export default function RadarPolitico() {
       if (candidateId === "all") throw new Error("Selecione um candidato.");
       if (!from || !to) throw new Error("Defina o período (datas inicial e final).");
       setEvents([]);
-      setVisibleCount(PAGE_SIZE);
+      setVisibleCount(LOAD_MORE_STEP);
       setLastError(null);
       const { data, error } = await supabase.functions.invoke("radar-job-create", {
         body: {
@@ -368,7 +368,7 @@ export default function RadarPolitico() {
   }, [events, category, search, sortBy]);
 
   useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
+    setVisibleCount(LOAD_MORE_STEP);
   }, [cacheKey, search]);
 
   const visibleEvents = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
