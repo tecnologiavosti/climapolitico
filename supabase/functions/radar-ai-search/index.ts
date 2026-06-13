@@ -164,7 +164,7 @@ function sampledBuckets(startDate: string, endDate: string): Array<{ key: string
     const picks = list.length <= 4 ? list : [list[0], list[Math.floor(list.length / 3)], list[Math.floor((list.length * 2) / 3)], list[list.length - 1]];
     for (const p of picks) if (!sampled.some((x) => x.key === p.key)) sampled.push(p);
   }
-  return sampled.slice(0, 36).sort((a, b) => a.key.localeCompare(b.key));
+  return sampled.slice(0, 12).sort((a, b) => a.key.localeCompare(b.key));
 }
 
 function domainFromUrl(url: string): string {
