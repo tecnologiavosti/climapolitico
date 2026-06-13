@@ -339,6 +339,13 @@ async function processJob(
     console.log("progress", progress);
   }
 
+  if (processed < total) {
+    await saveCacheSnapshot(admin, jobId, body);
+    await pauseForNextPoll(admin, jobId, processed, total, "Continuação pausada: próximo lote será retomado pelo polling.");
+    console.timeEnd("TOTAL_RADAR");
+    return;
+  }
+
   const finalCount = await getEventsCount(admin, jobId);
 
   await admin.from("radar_jobs").update({
