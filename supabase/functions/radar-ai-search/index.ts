@@ -164,7 +164,7 @@ function sampledBuckets(startDate: string, endDate: string): Array<{ key: string
     const picks = list.length <= 4 ? list : [list[0], list[Math.floor(list.length / 3)], list[Math.floor((list.length * 2) / 3)], list[list.length - 1]];
     for (const p of picks) if (!sampled.some((x) => x.key === p.key)) sampled.push(p);
   }
-  return sampled.slice(0, 36).sort((a, b) => a.key.localeCompare(b.key));
+  return sampled.slice(0, 12).sort((a, b) => a.key.localeCompare(b.key));
 }
 
 function domainFromUrl(url: string): string {
@@ -538,7 +538,7 @@ function buildRssFallbackEvents(items: RawItem[], candidateName: string, aliases
       seen.add(key);
       return true;
     })
-    .slice(0, 500)
+    .slice(0, 200)
     .map((it, i) => {
       const text = `${it.title} ${it.snippet ?? ""}`;
       const sources = [{ name: sanitizeRadarText(it.source), url: it.url, type: it.type }];
@@ -632,13 +632,14 @@ Deno.serve(async (req) => {
       const base = `"${body.candidate_name}" ${after} ${before}`;
       return [
         { q: `${base} política ${relevanceTerms}`, label: `Google News política ${bucket.label}` },
-        { q: `${base} STF OR TSE OR PF OR Senado OR Câmara`, label: `Google News institucional ${bucket.label}` },
-        { q: `${base} escândalo OR denúncia OR investigação OR julgamento OR CPI`, label: `Google News impacto ${bucket.label}` },
       ];
     });
+    // Cap total feeds aggressively to stay within edge-runtime CPU/memory limits.
+    // Top institutional + top news feeds only (first ~18), plus up to 12 temporal queries.
+    const baseFeeds = FEEDS.slice(0, 18).map((f) => ({ ...f, bucket: "live" }));
     const dynamicFeeds = [
-      ...FEEDS.map((f) => ({ ...f, bucket: "live" })),
-      ...temporalQueries.slice(0, 108).map((query) => ({
+      ...baseFeeds,
+      ...temporalQueries.slice(0, 12).map((query) => ({
         name: query.label,
         url: `https://news.google.com/rss/search?q=${encodeURIComponent(query.q)}&hl=pt-BR&gl=BR&ceid=BR:pt-419`,
         type: "aggregator" as const,
@@ -647,7 +648,13 @@ Deno.serve(async (req) => {
     ];
 
     const t0 = Date.now();
-    const allItems = (await Promise.all(dynamicFeeds.map((f) => fetchFeed(f.name, f.url, f.type, f.bucket)))).flat();
+    // Batched fetches (max 10 concurrent) to limit memory peak.
+    const allItems: RawItem[] = [];
+    for (let i = 0; i < dynamicFeeds.length; i += 10) {
+      const batch = dynamicFeeds.slice(i, i + 10);
+      const results = await Promise.all(batch.map((f) => fetchFeed(f.name, f.url, f.type, f.bucket)));
+      for (const arr of results) allItems.push(...arr);
+    }
     const fetchMs = Date.now() - t0;
 
     // Filtrar por candidato + período
@@ -672,14 +679,14 @@ Deno.serve(async (req) => {
 
     const systemPrompt = `Você é um motor de political intelligence. Responda somente com JSON válido, sem markdown.`;
 
-    const sourcesPayload = unique.slice(0, 420).map((it) => ({
+    const sourcesPayload = unique.slice(0, 150).map((it) => ({
       title: it.title,
       url: it.url,
       source: it.source,
       type: it.type,
       date: it.pub_date ?? null,
       bucket: it.bucket ?? null,
-      snippet: it.snippet?.slice(0, 220) ?? "",
+      snippet: it.snippet?.slice(0, 180) ?? "",
     }));
 
     const userPrompt = `Você é um motor de political intelligence.
