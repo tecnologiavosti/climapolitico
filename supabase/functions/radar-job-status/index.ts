@@ -51,9 +51,25 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Só devolve events quando completed (payload grande)
+    const eventLimit = data.status === "completed" ? 15_000 : 1_000;
+    const { data: eventRows, error: eventsError } = await client
+      .from("radar_job_events")
+      .select("event_data")
+      .eq("job_id", jobId)
+      .order("event_date", { ascending: false, nullsFirst: false })
+      .order("importance", { ascending: false })
+      .limit(eventLimit);
+
+    if (eventsError) {
+      return new Response(JSON.stringify({ error: eventsError.message }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const payload: any = { ...data };
-    if (data.status !== "completed") payload.events = null;
+    payload.events = (eventRows ?? []).map((row: any) => row.event_data).filter(Boolean);
+    payload.partial = data.status !== "completed";
+    payload.events_limit = eventLimit;
 
     return new Response(JSON.stringify(payload), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },

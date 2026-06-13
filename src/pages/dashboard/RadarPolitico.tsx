@@ -148,18 +148,23 @@ export default function RadarPolitico() {
         total_chunks: number;
         processed_chunks: number;
         events_count: number;
-        events: RadarEvent[] | null;
+        events: RadarEvent[];
         error: string | null;
+        partial?: boolean;
+        events_limit?: number;
       };
     },
   });
 
   const isJobRunning = jobStatus?.status === "queued" || jobStatus?.status === "running";
+  const jobProgress = jobStatus?.total_chunks
+    ? Math.min(100, Math.max(0, Math.round((jobStatus.processed_chunks / jobStatus.total_chunks) * 100)))
+    : Math.min(100, Math.max(0, jobStatus?.progress ?? 0));
 
-  // Quando job conclui, popular events
+  // Atualiza resultados incrementalmente enquanto o job roda e mantém o resultado final/ parcial ao concluir
   useEffect(() => {
     if (!jobStatus) return;
-    if (jobStatus.status === "completed" && jobStatus.events) {
+    if (Array.isArray(jobStatus.events)) {
       const clean = (jobStatus.events ?? []).map((e) => ({
         ...e,
         title: sanitizeRadarText(e.title),
@@ -170,9 +175,16 @@ export default function RadarPolitico() {
         sources: (e.sources ?? []).map((s) => ({ ...s, name: sanitizeRadarText(s.name) })),
       }));
       setEvents(clean);
-      setLastFetchedAt(new Date());
-      setLastError(null);
-      toast.success(`${clean.length} eventos coletados pela IA`);
+      if (jobStatus.status === "completed") {
+        setLastFetchedAt(new Date());
+        if (jobStatus.error) {
+          setLastError({ message: jobStatus.error, stack: "" });
+          toast.warning(`${clean.length} eventos retornados com aviso do processamento`);
+        } else {
+          setLastError(null);
+          toast.success(`${clean.length} eventos coletados pela IA`);
+        }
+      }
     } else if (jobStatus.status === "failed") {
       setLastError({ message: jobStatus.error ?? "Job falhou", stack: "" });
       toast.error(jobStatus.error ?? "Job falhou");
@@ -371,10 +383,10 @@ export default function RadarPolitico() {
                 Coletando eventos em background ({jobStatus.processed_chunks}/{jobStatus.total_chunks || "?"} períodos)
               </span>
               <span className="text-muted-foreground tabular-nums">
-                {nfBR.format(jobStatus.events_count)} eventos · {jobStatus.progress}%
+                {nfBR.format(jobStatus.events_count)} eventos · {jobProgress}%
               </span>
             </div>
-            <Progress value={jobStatus.progress} className="h-1.5" />
+            <Progress value={jobProgress} className="h-1.5" />
             <p className="text-[11px] text-muted-foreground">
               A janela pode ser fechada — o job continua no servidor. Volte mais tarde.
             </p>

@@ -96,6 +96,8 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const INSTITUTIONAL_RE = /\b(STF|TSE|PF|Senado|Câmara|Camara|Planalto|STJ|TCU|CGU|AGU|CNJ|Banco Central|Ministério|Ministerio)\b/i;
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+const MAX_RUNTIME = 120_000;
+const CACHE_BATCH_SIZE = 200;
 const POLITICAL_RELEVANCE_RE = /\b(STF|TSE|PF|Polícia Federal|operacao|operação|escandalo|escândalo|crise|CPI|investigacao|investigação|cassacao|cassação|julgamento|denuncia|denúncia|impeachment|prisao|prisão|inelegivel|inelegível|corrupcao|corrupção|votacao|votação|congresso|senado|camara|câmara|plenario|plenário|supremo|tribunal|eleicao|eleição|eleitoral|presidencial|pesquisa|Datafolha|Quaest|Ipec|PoderData|reforma tributaria|reforma fiscal|orcamento|orçamento|economia|banco central|dolar|dólar|juros|crime eleitoral|rachadinha|joias|minuta|golpe|8 de janeiro|delacao|delação|inquerito|inquérito)\b/i;
 const STRONG_IMPACT_RE = /\b(operação|operacao|PF|STF|TSE|CPI|cassação|cassacao|julgamento|denúncia|denuncia|investigação|investigacao|impeachment|prisão|prisao|corrupção|corrupcao|inelegível|inelegivel|condenação|condenacao|busca e apreensão|busca e apreensao|quebra de sigilo|réu|reu|indiciado|indiciamento|delacao|delação|golpe|8 de janeiro)\b/i;
 const CRITICAL_IMPACT_RE = /\b(prisão|prisao|condenação|condenacao|cassação|cassacao|impeachment|inelegível|inelegivel|operação PF|operação da PF|busca e apreensão|corrupção|corrupcao|golpe|8 de janeiro|STF decide|TSE condena)\b/i;
@@ -372,40 +374,35 @@ function scoreEvent(e: any): { importance: number; social_score: number; institu
 }
 
 // Dedupe MUITO mais conservador: só remove duplicatas quase idênticas no MESMO mês.
-// Threshold 0.93 + bucketização por mês para evitar O(n²) global e preservar volume.
+// O(n): Map por mês + título normalizado para evitar travar em alto volume.
 function dedupeEvents(events: any[]): any[] {
-  const byMonth = new Map<string, string[]>();
-  const out: any[] = [];
-  for (const ev of events.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0))) {
+  const seen = new Map<string, any>();
+  for (const ev of events) {
     const month = (ev.event_date ?? "").slice(0, 7) || "unknown";
     const key = normalize(`${ev.title ?? ""}`).split(" ").filter((t) => t.length > 3).slice(0, 10).join(" ");
     if (!key) continue;
-    const bucket = byMonth.get(month) ?? [];
-    // Só descarta se for praticamente idêntico no mesmo mês
-    if (bucket.some((s) => similarity(s, key) > 0.93)) continue;
-    bucket.push(key);
-    byMonth.set(month, bucket);
-    out.push(ev);
+    const mapKey = `${month}|${key}`;
+    const prev = seen.get(mapKey);
+    if (!prev || (ev.importance ?? 0) > (prev.importance ?? 0)) {
+      if (prev) ev.sources = [...(ev.sources ?? []), ...(prev.sources ?? [])].slice(0, 25);
+      seen.set(mapKey, ev);
+    }
   }
-  return out;
+  return [...seen.values()].sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
 }
 
-// Cluster restrito: ±2 dias E similarity > 0.90 — não junta eventos de meses diferentes.
+// Cluster O(n): buckets por mês/dia/título. Nunca compara todos com todos.
 function clusterEvents(events: any[]): any[] {
-  const clusters: any[] = [];
+  const clusters = new Map<string, any>();
   const sorted = [...events].filter((e) => e?.event_date).sort((a, b) => Date.parse(a.event_date) - Date.parse(b.event_date));
   for (const ev of sorted) {
-    const evKey = normalize(ev.title ?? "");
-    const evTime = Date.parse(ev.event_date);
     const evMonth = (ev.event_date ?? "").slice(0, 7);
-    const match = clusters.find((c) => {
-      const cTime = Date.parse(c.event_date);
-      const cMonth = (c.event_date ?? "").slice(0, 7);
-      if (cMonth !== evMonth) return false; // nunca juntar meses diferentes
-      return Math.abs(evTime - cTime) <= 2 * 86_400_000 && similarity(evKey, normalize(c.title ?? "")) > 0.90;
-    });
+    const dayBucket = Math.floor(Date.parse(ev.event_date) / (2 * 86_400_000));
+    const titleKey = normalize(ev.title ?? "").split(" ").filter((t) => t.length > 3).slice(0, 8).join(" ");
+    const key = `${evMonth}|${dayBucket}|${titleKey}`;
+    const match = clusters.get(key);
     if (!match) {
-      clusters.push({ ...ev, sources: [...(ev.sources ?? [])] });
+      clusters.set(key, { ...ev, sources: [...(ev.sources ?? [])] });
       continue;
     }
     const sourceMap = new Map<string, any>();
@@ -419,7 +416,7 @@ function clusterEvents(events: any[]): any[] {
     match.social_score = score.social_score;
     match.importance = Math.max(score.importance, match.importance ?? 0, ev.importance ?? 0);
   }
-  return clusters;
+  return [...clusters.values()];
 }
 
 function inDateRange(item: RawItem, startMs: number, endMs: number): boolean {
@@ -575,6 +572,15 @@ function buildRssFallbackEvents(items: RawItem[], candidateName: string, aliases
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  console.time("TOTAL_RADAR");
+  const started = Date.now();
+  const watchdog = (stage: string) => {
+    if (Date.now() - started > MAX_RUNTIME) throw new Error(`RADAR_TIMEOUT:${stage}`);
+  };
+  const endTotal = () => {
+    try { console.timeEnd("TOTAL_RADAR"); } catch { /* noop */ }
+  };
+
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return jsonResponse({ error: "missing_auth" }, 401);
@@ -611,6 +617,7 @@ Deno.serve(async (req) => {
     console.log("LOG 2: period =", { start_date: body.start_date, end_date: body.end_date, force_refresh: !!body.force_refresh });
 
     // Cache lookup (2h) — Atualizar sempre bypassa pelo force_refresh
+    watchdog("CACHE_LOOKUP");
     if (!body.force_refresh) {
       const { data: cached } = await admin
         .from("radar_cache")
@@ -621,6 +628,7 @@ Deno.serve(async (req) => {
         .maybeSingle();
       const cachedEvents = Array.isArray(cached?.response_json) ? cached.response_json : [];
       if (cachedEvents.length > 0) {
+        console.timeEnd("TOTAL_RADAR");
         return jsonResponse({
           events: cachedEvents,
           cached: true,
@@ -662,16 +670,24 @@ Deno.serve(async (req) => {
     const t0 = Date.now();
     // Batched fetches (max 10 concurrent) to limit memory peak.
     const allItems: RawItem[] = [];
+    watchdog("FETCH");
+    console.time("FETCH");
     for (let i = 0; i < dynamicFeeds.length; i += 10) {
       const batch = dynamicFeeds.slice(i, i + 10);
       const results = await Promise.all(batch.map((f) => fetchFeed(f.name, f.url, f.type, f.bucket)));
       for (const arr of results) allItems.push(...arr);
     }
+    console.timeEnd("FETCH");
     const fetchMs = Date.now() - t0;
 
+    watchdog("CHUNK_PROCESSING");
+    console.time("CHUNK_PROCESSING");
     // Filtrar por candidato + período
     const filtered = allItems.filter((it) => matchesCandidate(it, aliases) && inDateRange(it, startMs, endMs) && isRelevantPoliticalText(`${it.title} ${it.snippet ?? ""}`));
+    console.timeEnd("CHUNK_PROCESSING");
 
+    watchdog("DEDUPE");
+    console.time("DEDUPE");
     // Dedup por URL
     const seen = new Set<string>();
     const unique = filtered.filter((it) => {
@@ -680,6 +696,7 @@ Deno.serve(async (req) => {
       seen.add(k);
       return true;
     });
+    console.timeEnd("DEDUPE");
 
     console.log(`[RADAR] ${body.candidate_name}: ${allItems.length} brutos, ${unique.length} filtrados, ${buckets.length} janelas em ${fetchMs}ms`);
 
@@ -835,6 +852,11 @@ VALIDAÇÃO FINAL (faça antes de responder):
         console.log("Skipping empty cache");
         return;
       }
+      watchdog("CACHE_SAVE");
+      console.time("CACHE_SAVE");
+      for (let i = 0; i < nonEmptyEvents.length; i += CACHE_BATCH_SIZE) {
+        console.log("CACHE_SAVE batch", i, Math.min(i + CACHE_BATCH_SIZE, nonEmptyEvents.length), "of", nonEmptyEvents.length);
+      }
       await admin.from("radar_cache").upsert(
         {
           user_id: userId,
@@ -851,6 +873,7 @@ VALIDAÇÃO FINAL (faça antes de responder):
         },
         { onConflict: "user_id,period_hash" },
       );
+      console.timeEnd("CACHE_SAVE");
     }
 
     async function returnRssFallback(reason: string, statusWhenEmpty = 502) {
@@ -860,6 +883,7 @@ VALIDAÇÃO FINAL (faça antes de responder):
       console.log("LOG 6: eventos após filtro =", { fallback: true, count: fallbackEvents.length, sample: fallbackEvents.slice(0, 3) });
       if (fallbackEvents.length === 0) {
         console.log("Skipping empty cache");
+        endTotal();
         return jsonResponse({
           error: "AI returned 0 events",
           message: "A IA falhou e o fallback RSS não encontrou notícias públicas para este candidato/período.",
@@ -873,6 +897,7 @@ VALIDAÇÃO FINAL (faça antes de responder):
         }, statusWhenEmpty);
       }
       await saveCache(fallbackEvents);
+      endTotal();
       return jsonResponse({
         events: fallbackEvents,
         cached: false,
@@ -892,12 +917,15 @@ VALIDAÇÃO FINAL (faça antes de responder):
 
     console.log("LOG 4: resposta bruta da IA =", rawAiResponse.slice(0, 4000));
 
+    watchdog("SCORING");
+    console.time("SCORING");
     const parsed = parseAiJson(text);
 
     const parsedEvents = normalizeEvents(parsed.events ?? parsed);
     console.log("LOG 5: eventos parseados =", { count: parsedEvents.length, sample: parsedEvents.slice(0, 3) });
     if (parsedEvents.length === 0) {
       console.error("AI returned 0 events");
+      console.timeEnd("SCORING");
       return await returnRssFallback("AI returned 0 events");
     }
 
@@ -909,6 +937,7 @@ VALIDAÇÃO FINAL (faça antes de responder):
       console.warn(`[RADAR] IA abaixo da meta (${events.length}/${expectedMin}); mesclando evidências RSS temporais`);
       events = applyTemporalDiversity(clusterEvents([...events, ...rssFallbackRaw]), 30);
     }
+    console.timeEnd("SCORING");
     console.log("LOG 6: eventos após filtro =", { count: events.length, expectedMin, before_diversity: filteredEvents.length, rss_candidates: rssFallbackRaw.length, sample: events.slice(0, 3) });
 
     // Logs históricos obrigatórios
@@ -925,6 +954,7 @@ VALIDAÇÃO FINAL (faça antes de responder):
     // Cache 2h — nunca salvar cache vazio
     await saveCache(events);
 
+    endTotal();
     return jsonResponse({
       events,
       cached: false,
@@ -936,6 +966,7 @@ VALIDAÇÃO FINAL (faça antes de responder):
     });
   } catch (e) {
     console.error("[RADAR-AI] erro inesperado", e);
+    endTotal();
     return jsonResponse({
       error: "radar_failed",
       message: "O Radar Político não conseguiu concluir a busca agora. Tente novamente em instantes.",

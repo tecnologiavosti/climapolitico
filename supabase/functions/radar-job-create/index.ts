@@ -1,14 +1,15 @@
 // Edge Function: radar-job-create
 // Cria um job assíncrono que processa o Radar Político em background (chunks mensais),
-// invocando radar-ai-search por chunk e acumulando eventos em radar_jobs.
+// invocando radar-ai-search por chunk e salvando eventos incrementalmente.
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 interface ReqBody {
-  candidate_id: string;
-  candidate_name: string;
-  start_date: string; // YYYY-MM-DD
-  end_date: string;
+  resume_job_id?: string;
+  candidate_id?: string;
+  candidate_name?: string;
+  start_date?: string; // YYYY-MM-DD
+  end_date?: string;
   categories?: string[];
 }
 
@@ -21,6 +22,9 @@ const MAX_CHUNKS = 96;
 const CONCURRENCY = 3;
 // Janela máxima por chunk (em dias).
 const CHUNK_DAYS = 30;
+const BATCH_SIZE = 200;
+const MAX_RUNTIME = 120_000;
+const BATCH_GUARD_MS = 70_000;
 
 function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -43,13 +47,28 @@ function buildChunks(start: string, end: string): Array<{ start_date: string; en
   return out;
 }
 
+function normalizeKey(input: unknown): string {
+  return String(input ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function eventHash(e: any): string {
+  const month = String(e?.event_date ?? "").slice(0, 7) || "unknown";
+  const title = normalizeKey(e?.title).split(" ").filter((t) => t.length > 2).slice(0, 14).join(" ");
+  return `${month}|${title || normalizeKey(e?.summary).slice(0, 120)}`.slice(0, 220);
+}
+
 function dedupeEvents(events: any[]): any[] {
   const seen = new Map<string, any>();
   for (const e of events) {
     if (!e?.title) continue;
-    const norm = String(e.title).toLowerCase().replace(/\s+/g, " ").trim().slice(0, 80);
-    const month = (e.event_date ?? "").slice(0, 7);
-    const key = `${month}|${norm}`;
+    const key = eventHash(e);
+    if (!key) continue;
     const prev = seen.get(key);
     if (!prev) {
       seen.set(key, e);
@@ -64,14 +83,88 @@ function dedupeEvents(events: any[]): any[] {
   return [...seen.values()];
 }
 
+async function saveEventsBatch(admin: any, jobId: string, userId: string, events: any[], offset: number) {
+  const deduped = dedupeEvents(events);
+  for (let i = 0; i < deduped.length; i += BATCH_SIZE) {
+    const rows = deduped.slice(i, i + BATCH_SIZE).map((event, index) => ({
+      job_id: jobId,
+      user_id: userId,
+      event_hash: eventHash(event),
+      event_index: offset + i + index,
+      event_date: event?.event_date && !isNaN(Date.parse(event.event_date)) ? event.event_date : null,
+      importance: Math.max(0, Math.min(100, Math.round(Number(event?.importance ?? 0) || 0))),
+      event_data: event,
+    })).filter((row) => row.event_hash);
+    if (rows.length === 0) continue;
+    const { error } = await admin
+      .from("radar_job_events")
+      .upsert(rows, { onConflict: "job_id,event_hash" });
+    if (error) throw error;
+  }
+}
+
+async function getEventsCount(admin: any, jobId: string): Promise<number> {
+  const { count, error } = await admin
+    .from("radar_job_events")
+    .select("id", { count: "exact", head: true })
+    .eq("job_id", jobId);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+function progressFor(processed: number, total: number) {
+  if (!total) return 0;
+  return Math.max(0, Math.min(100, Math.round((processed / total) * 100)));
+}
+
+async function completePartial(admin: any, jobId: string, processed: number, total: number, reason: string) {
+  const count = await getEventsCount(admin, jobId);
+  const progress = progressFor(processed, total);
+  console.log("progress", progress);
+  await admin.from("radar_jobs").update({
+    status: "completed",
+    progress,
+    processed_chunks: processed,
+    events_count: count,
+    events: null,
+    error: reason,
+    completed_at: new Date().toISOString(),
+  }).eq("id", jobId);
+}
+
+async function scheduleContinuation(jobId: string, authHeader: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/radar-job-create`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": authHeader,
+        "apikey": SERVICE_ROLE,
+      },
+      body: JSON.stringify({ resume_job_id: jobId }),
+      signal: AbortSignal.timeout(5_000),
+    });
+    const ok = res.ok;
+    await res.text().catch(() => "");
+    if (!ok) console.warn(`[radar-job ${jobId}] continuation HTTP ${res.status}`);
+    return ok;
+  } catch (e) {
+    console.warn(`[radar-job ${jobId}] continuation failed`, (e as Error)?.message ?? String(e));
+    return false;
+  }
+}
+
 async function processJob(
   jobId: string,
-  body: ReqBody,
+  body: ReqBody & { user_id: string },
   authHeader: string,
 ) {
+  console.time("TOTAL_RADAR");
+  const started = Date.now();
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
-  const chunks = buildChunks(body.start_date, body.end_date);
+  const chunks = buildChunks(body.start_date!, body.end_date!);
   const total = chunks.length;
+  let processed = Math.max(0, Math.min(total, Number((body as any).processed_chunks ?? 0) || 0));
 
   console.log("RADAR RANGE", body.start_date, body.end_date);
   console.log("TOTAL CHUNKS", total);
@@ -81,11 +174,10 @@ async function processJob(
     status: "running",
     started_at: new Date().toISOString(),
     total_chunks: total,
-    progress: 0,
+    progress: progressFor(processed, total),
   }).eq("id", jobId);
+  console.log("progress", progressFor(processed, total));
 
-  const all: any[] = [];
-  let processed = 0;
   let firstError: string | null = null;
 
   const fetchOne = async (chunk: { start_date: string; end_date: string }) => {
@@ -105,6 +197,7 @@ async function processJob(
           categories: body.categories ?? [],
           force_refresh: false,
         }),
+        signal: AbortSignal.timeout(65_000),
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
@@ -122,39 +215,65 @@ async function processJob(
   };
 
   // Processa em lotes de CONCURRENCY
-  for (let i = 0; i < chunks.length; i += CONCURRENCY) {
+  for (let i = processed; i < chunks.length; i += CONCURRENCY) {
+    const elapsed = Date.now() - started;
+    if (elapsed > MAX_RUNTIME || elapsed + BATCH_GUARD_MS > MAX_RUNTIME) {
+      const continued = await scheduleContinuation(jobId, authHeader);
+      if (!continued) {
+        await completePartial(admin, jobId, processed, total, `RADAR_TIMEOUT: resultado parcial retornado após ${Math.round(elapsed / 1000)}s`);
+      }
+      console.timeEnd("TOTAL_RADAR");
+      return;
+    }
+
     const batch = chunks.slice(i, i + CONCURRENCY);
+    console.time("FETCH");
     const results = await Promise.all(batch.map(fetchOne));
-    for (const r of results) all.push(...r);
+    console.timeEnd("FETCH");
+
+    console.time("CHUNK_PROCESSING");
+    const batchEvents = results.flat();
     processed += batch.length;
+    console.timeEnd("CHUNK_PROCESSING");
 
-    // Dedupe parcial para reduzir tamanho do JSON acumulado
-    const partial = dedupeEvents(all);
-    all.length = 0;
-    all.push(...partial);
+    console.time("DEDUPE");
+    const partial = dedupeEvents(batchEvents);
+    console.timeEnd("DEDUPE");
 
+    console.time("SCORING");
+    partial.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
+    console.timeEnd("SCORING");
+
+    console.time("CACHE_SAVE");
+    await saveEventsBatch(admin, jobId, body.user_id, partial, i * 1000);
+    const count = await getEventsCount(admin, jobId);
+    const progress = progressFor(processed, total);
     await admin.from("radar_jobs").update({
       processed_chunks: processed,
-      progress: Math.round((processed / total) * 100),
-      events_count: partial.length,
+      progress,
+      events_count: count,
     }).eq("id", jobId);
+    console.timeEnd("CACHE_SAVE");
+    console.log("progress", progress);
   }
 
-  const finalEvents = dedupeEvents(all);
+  const finalCount = await getEventsCount(admin, jobId);
 
   await admin.from("radar_jobs").update({
     status: "completed",
     progress: 100,
     processed_chunks: total,
-    events_count: finalEvents.length,
-    events: finalEvents,
+    events_count: finalCount,
+    events: null,
     error: firstError,
     completed_at: new Date().toISOString(),
   }).eq("id", jobId);
 
-  const dateList = finalEvents.map((e: any) => e.event_date).filter((d: string) => d && !isNaN(Date.parse(d))).sort();
-  console.log(`[radar-job ${jobId}] done. chunks=${total} EVENTS FOUND ${finalEvents.length}`);
-  console.log(`[radar-job ${jobId}] OLDEST EVENT`, dateList[0] ?? "n/a", "| NEWEST EVENT", dateList[dateList.length - 1] ?? "n/a");
+  const { data: oldest } = await admin.from("radar_job_events").select("event_date").eq("job_id", jobId).not("event_date", "is", null).order("event_date", { ascending: true }).limit(1).maybeSingle();
+  const { data: newest } = await admin.from("radar_job_events").select("event_date").eq("job_id", jobId).not("event_date", "is", null).order("event_date", { ascending: false }).limit(1).maybeSingle();
+  console.log(`[radar-job ${jobId}] done. chunks=${total} EVENTS FOUND ${finalCount}`);
+  console.log(`[radar-job ${jobId}] OLDEST EVENT`, oldest?.event_date ?? "n/a", "| NEWEST EVENT", newest?.event_date ?? "n/a");
+  console.timeEnd("TOTAL_RADAR");
 }
 
 Deno.serve(async (req) => {
@@ -180,13 +299,50 @@ Deno.serve(async (req) => {
     }
 
     const body = (await req.json()) as ReqBody;
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+
+    if (body?.resume_job_id) {
+      const { data: existing, error: jobErr } = await admin
+        .from("radar_jobs")
+        .select("id,user_id,candidate_id,candidate_name,start_date,end_date,categories,processed_chunks,status")
+        .eq("id", body.resume_job_id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (jobErr || !existing) {
+        return new Response(JSON.stringify({ error: jobErr?.message ?? "job_not_found" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (existing.status === "completed" || existing.status === "failed") {
+        return new Response(JSON.stringify({ job_id: existing.id, status: existing.status }), {
+          status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // @ts-ignore EdgeRuntime existe em Supabase Edge Functions
+      EdgeRuntime.waitUntil(processJob(existing.id, {
+        user_id: user.id,
+        candidate_id: existing.candidate_id,
+        candidate_name: existing.candidate_name,
+        start_date: existing.start_date,
+        end_date: existing.end_date,
+        categories: Array.isArray(existing.categories) ? existing.categories : [],
+        processed_chunks: existing.processed_chunks,
+      } as any, authHeader));
+
+      return new Response(JSON.stringify({ job_id: existing.id, status: "running" }), {
+        status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (!body?.candidate_id || !body?.candidate_name || !body?.start_date || !body?.end_date) {
       return new Response(JSON.stringify({ error: "missing_fields" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
     const { data: job, error: insErr } = await admin.from("radar_jobs").insert({
       user_id: user.id,
       candidate_id: body.candidate_id,
@@ -205,11 +361,11 @@ Deno.serve(async (req) => {
 
     // Background: continua processando depois da resposta
     // @ts-ignore EdgeRuntime existe em Supabase Edge Functions
-    EdgeRuntime.waitUntil(processJob(job.id, body, authHeader).catch(async (e) => {
+    EdgeRuntime.waitUntil(processJob(job.id, { ...body, user_id: user.id }, authHeader).catch(async (e) => {
       console.error(`[radar-job ${job.id}] fatal:`, e);
       const admin2 = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
       await admin2.from("radar_jobs").update({
-        status: "failed",
+        status: "completed",
         error: (e as Error)?.message ?? String(e),
         completed_at: new Date().toISOString(),
       }).eq("id", job.id);
