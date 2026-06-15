@@ -9,11 +9,12 @@ import { useNavigate } from "react-router-dom";
 
 const WHATSAPP_LINKS = {
   basico:
-    "https://web.whatsapp.com/send?phone=556198117983&text=Ol%C3%A1!%20Tenho%20interesse%20no%20plano%20B%C3%A1sico%20(R%24%20299%2Fm%C3%AAs)",
-  pro: "https://web.whatsapp.com/send?phone=556198117983&text=Ol%C3%A1!%20Tenho%20interesse%20no%20plano%20Pro%20(R%24%20899%2Fm%C3%AAs)",
+    "https://wa.me/556198117983?text=Ol%C3%A1!%20Tenho%20interesse%20no%20plano%20B%C3%A1sico%20(R%24%20299%2Fm%C3%AAs)",
+  pro: "https://wa.me/556198117983?text=Ol%C3%A1!%20Tenho%20interesse%20no%20plano%20Pro%20(R%24%20899%2Fm%C3%AAs)",
   enterprise:
-    "https://web.whatsapp.com/send?phone=556198117983&text=Ol%C3%A1!%20Tenho%20interesse%20no%20plano%20Enterprise",
+    "https://wa.me/556198117983?text=Ol%C3%A1!%20Tenho%20interesse%20no%20plano%20Enterprise",
 } as const;
+
 
 
 const Index = () => {
