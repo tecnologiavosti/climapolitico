@@ -27,12 +27,11 @@ export function CookieConsent() {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-fade-in"
+      className="fixed bottom-4 right-4 left-4 sm:left-auto z-[100] w-auto sm:w-full sm:max-w-md animate-fade-in-up pointer-events-none"
       role="dialog"
-      aria-modal="true"
       aria-labelledby="cookie-title"
     >
-      <div className="relative w-full max-w-md rounded-2xl border border-primary/30 bg-card text-card-foreground shadow-2xl">
+      <div className="relative rounded-2xl border border-primary/30 bg-card text-card-foreground shadow-2xl pointer-events-auto">
         <div className="absolute -top-5 -left-5 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg">
           <Cookie className="h-6 w-6" />
         </div>
