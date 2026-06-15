@@ -21,12 +21,13 @@ type TrendingItem = {
   search_score: number;
 };
 
-const ROLES_PLURAL: Array<{ key: string; label: string }> = [
+const ROLES_PLURAL: Array<{ key: string; label: string; emptyMessage?: string }> = [
   { key: "Presidente", label: "Presidentes" },
   { key: "Senador", label: "Senadores" },
   { key: "Deputado Federal", label: "Deputados Federais" },
   { key: "Deputado Estadual", label: "Deputados Estaduais" },
   { key: "Prefeito", label: "Prefeitos" },
+  { key: "Vereador", label: "Vereadores", emptyMessage: "Nenhum vereador disponível no momento." },
 ];
 
 function initials(name: string) {
