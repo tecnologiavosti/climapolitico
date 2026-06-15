@@ -74,7 +74,41 @@ async function fetchAllSources(candidateName: string): Promise<RawItem[]> {
   });
   // sort newest first, cap
   unique.sort((a, b) => +new Date(b.published_at) - +new Date(a.published_at));
-  return unique.slice(0, 60);
+  return unique.slice(0, 100);
+}
+
+// Filter by age. Tries 24h first; falls back to 48h if too few hits.
+function filterRealtime(items: RawItem[]): { items: RawItem[]; windowHours: number } {
+  const now = Date.now();
+  const ageHours = (it: RawItem) => (now - new Date(it.published_at).getTime()) / 3600000;
+  const last24 = items.filter((i) => ageHours(i) <= 24 && ageHours(i) >= 0);
+  if (last24.length >= 5) return { items: last24, windowHours: 24 };
+  const last48 = items.filter((i) => ageHours(i) <= 48 && ageHours(i) >= 0);
+  return { items: last48, windowHours: 48 };
+}
+
+// Public-movement intensity (0-100): volume 6h + 24h growth + freshness weighting.
+function computeIntensity(items: RawItem[]): { score: number; label: string; volume6h: number; volume24h: number; growthPct: number } {
+  const now = Date.now();
+  const ageHours = (it: RawItem) => (now - new Date(it.published_at).getTime()) / 3600000;
+  const v6 = items.filter((i) => ageHours(i) <= 6).length;
+  const v24 = items.filter((i) => ageHours(i) <= 24).length;
+  const v6Prev = items.filter((i) => ageHours(i) > 6 && ageHours(i) <= 12).length;
+  // Volume component: 6h count, log-scaled, anchored so 30 itens em 6h ≈ 100.
+  const volScore = Math.min(100, Math.log2(v6 + 1) * 22);
+  // Growth component: comparison to previous 6h window.
+  const growthPct = v6Prev === 0 ? (v6 > 0 ? 100 : 0) : ((v6 - v6Prev) / v6Prev) * 100;
+  const growthScore = Math.max(0, Math.min(100, 50 + growthPct / 2));
+  // Source diversity (proxy de engajamento público).
+  const sources = new Set(items.filter((i) => ageHours(i) <= 24).map((i) => i.source)).size;
+  const diversityScore = Math.min(100, sources * 12);
+  const score = Math.round(volScore * 0.5 + growthScore * 0.3 + diversityScore * 0.2);
+  let label = "Muito baixa";
+  if (score > 80) label = "Explosiva";
+  else if (score > 60) label = "Alta";
+  else if (score > 40) label = "Moderada";
+  else if (score > 20) label = "Baixa";
+  return { score, label, volume6h: v6, volume24h: v24, growthPct: Math.round(growthPct) };
 }
 
 const SYSTEM = `Você é um analista político sênior brasileiro. Analise notícias REAIS recentes sobre o político informado e produza um briefing estratégico em JSON ESTRITO. Responda SEMPRE em português do Brasil. Seja factual: use APENAS o que está nas notícias fornecidas. Não invente eventos. Se faltar evidência, declare incerteza nos campos.`;
