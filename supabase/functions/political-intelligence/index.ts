@@ -306,6 +306,8 @@ ${corpus}
 
 INSTRUÇÕES:
 - Use APENAS as ${items.length} fontes acima. Toda data em key_events DEVE estar dentro das últimas 24h.
+- Para cada key_event, resuma o evento em 2 a 4 linhas: explique o que aconteceu, por que importa politicamente e qual o impacto no candidato.
+- Use somente o conteúdo fornecido. Não invente fatos. Nunca use HTML, href, XML/RSS bruto ou mensagens de indisponibilidade.
 - Produza JSON ESTRITO (sem markdown, sem texto fora):
 
 {
@@ -314,7 +316,7 @@ INSTRUÇÕES:
   "election_strength": "fraca" | "moderada" | "forte" | "dominante",
   "dominant_narrative": "frase curta (máx 140 chars), baseada APENAS nas fontes das últimas 24h",
   "key_events": [
-    { "title": "título curto", "date": "AAAA-MM-DD", "impact": "positivo|negativo|neutro", "summary": "1-2 frases", "source": "fonte", "url": "url" }
+    { "title": "título curto", "date": "AAAA-MM-DD", "impact": "positivo|negativo|neutro", "summary": "2-4 linhas analíticas em texto limpo", "source": "fonte", "url": "url" }
   ],
   "narrative_shifts": ["mudanças observadas SOMENTE nas fontes acima"],
   "emerging_risks": ["riscos extraídos APENAS das fontes acima"],
