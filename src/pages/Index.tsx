@@ -26,6 +26,9 @@ const WHATSAPP_LINKS = {
 const Index = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const trialStart = user ? getTrialStart(user.id) : null;
+  const daysLeft = user ? getDaysLeft(user.id) : null;
+  const hasActiveTrial = !!trialStart && (daysLeft ?? 0) > 0;
 
   const handleFreeTrial = () => {
     if (!user) {
@@ -34,23 +37,22 @@ const Index = () => {
       return;
     }
 
-    const start = getTrialStart(user.id);
-
-    if (!start) {
+    if (!trialStart) {
       startTrial(user.id);
       toast.success("Seu teste gratuito de 7 dias foi ativado!", {
         description: "Aproveite o acesso completo em climapolitico.com.br",
       });
+      navigate("/dashboard");
       return;
     }
 
-    const daysLeft = getDaysLeft(user.id) ?? 0;
-    if (daysLeft > 0) {
+    if ((daysLeft ?? 0) > 0) {
       toast.info(`Você ainda tem ${daysLeft} ${daysLeft === 1 ? "dia" : "dias"} de teste gratuito.`);
     } else {
       toast.error("Seu período de teste gratuito expirou. Escolha um plano para continuar.");
     }
   };
+
 
   return (
 
@@ -71,41 +73,65 @@ const Index = () => {
 
       {/* Pricing Section */}
       <section className="container mx-auto px-4 py-20">
-        {/* Free Trial Highlight */}
-        <div className="max-w-3xl mx-auto mb-14 animate-fade-in-up">
-          <Card className="relative overflow-hidden border-2 border-primary/30 bg-gradient-to-br from-primary/10 via-background to-accent/10 p-8 md:p-10 shadow-xl">
-            <div className="absolute -top-16 -right-16 h-48 w-48 rounded-full bg-primary/20 blur-3xl" />
-            <div className="absolute -bottom-16 -left-16 h-48 w-48 rounded-full bg-accent/20 blur-3xl" />
-            <div className="relative z-10 flex flex-col md:flex-row items-center gap-6 text-center md:text-left">
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary shadow-lg">
-                <Gift className="h-8 w-8 text-primary-foreground" />
-              </div>
-              <div className="flex-1 space-y-2">
-                <Badge className="bg-gradient-primary text-primary-foreground">
-                  <Sparkles className="h-3 w-3 mr-1" /> Oferta de lançamento
-                </Badge>
-                <h3 className="text-2xl md:text-3xl font-bold">
-                  Teste grátis por <span className="gradient-text">7 dias</span>
-                </h3>
-                <p className="text-muted-foreground text-sm md:text-base">
-                  Acesso completo ao <strong>climapolitico.com.br</strong> sem cartão de crédito.
-                  Ative em segundos com sua conta.
-                </p>
-                <div className="flex items-center justify-center md:justify-start gap-1.5 text-xs text-muted-foreground pt-1">
-                  <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-                  Cancele quando quiser • Sem cobrança automática
+        {/* Free Trial Highlight — escondido se já houver teste ativo */}
+        {!hasActiveTrial && (
+          <div className="max-w-3xl mx-auto mb-14 animate-fade-in-up">
+            <Card className="relative overflow-hidden border-2 border-primary/30 bg-gradient-to-br from-primary/10 via-background to-accent/10 p-6 sm:p-8 md:p-10 shadow-xl">
+              <div className="absolute -top-16 -right-16 h-48 w-48 rounded-full bg-primary/20 blur-3xl" />
+              <div className="absolute -bottom-16 -left-16 h-48 w-48 rounded-full bg-accent/20 blur-3xl" />
+              <div className="relative z-10 flex flex-col md:flex-row items-center gap-5 md:gap-6 text-center md:text-left">
+                <div className="flex h-14 w-14 md:h-16 md:w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary shadow-lg">
+                  <Gift className="h-7 w-7 md:h-8 md:w-8 text-primary-foreground" />
                 </div>
+                <div className="flex-1 space-y-2">
+                  <Badge className="bg-gradient-primary text-primary-foreground">
+                    <Sparkles className="h-3 w-3 mr-1" /> Oferta de lançamento
+                  </Badge>
+                  <h3 className="text-xl sm:text-2xl md:text-3xl font-bold">
+                    Teste grátis por <span className="gradient-text">7 dias</span>
+                  </h3>
+                  <p className="text-muted-foreground text-sm md:text-base">
+                    Acesso completo ao <strong>climapolitico.com.br</strong> sem cartão de crédito.
+                    Ative em segundos com sua conta.
+                  </p>
+                  <div className="flex items-center justify-center md:justify-start gap-1.5 text-xs text-muted-foreground pt-1">
+                    <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+                    Cancele quando quiser • Sem cobrança automática
+                  </div>
+                </div>
+                <Button
+                  size="lg"
+                  className="w-full md:w-auto bg-gradient-primary hover-glow shadow-lg h-12 px-6 md:px-8 text-base font-semibold whitespace-nowrap"
+                  onClick={handleFreeTrial}
+                >
+                  {user ? "Ativar 7 dias grátis" : "Entrar e ativar"}
+                </Button>
               </div>
-              <Button
-                size="lg"
-                className="bg-gradient-primary hover-glow shadow-lg h-12 px-8 text-base font-semibold whitespace-nowrap"
-                onClick={handleFreeTrial}
-              >
-                {user ? "Ativar 7 dias grátis" : "Entrar e ativar"}
+            </Card>
+          </div>
+        )}
+
+        {/* Status do teste ativo */}
+        {hasActiveTrial && (
+          <div className="max-w-3xl mx-auto mb-14 animate-fade-in-up">
+            <Card className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 border border-primary/30 bg-primary/5 p-4 sm:p-5 text-center sm:text-left">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/15">
+                <ShieldCheck className="h-5 w-5 text-primary" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold">Seu teste gratuito está ativo</p>
+                <p className="text-xs text-muted-foreground">
+                  Restam {daysLeft} {daysLeft === 1 ? "dia" : "dias"} de acesso completo.
+                </p>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => navigate("/dashboard")}>
+                Ir para o painel
               </Button>
-            </div>
-          </Card>
-        </div>
+            </Card>
+          </div>
+        )}
+
+
 
 
         <div className="text-center mb-12 animate-fade-in-up">
