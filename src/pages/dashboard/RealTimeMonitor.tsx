@@ -487,7 +487,7 @@ const RealTimeMonitor = () => {
                               {ev.source && <span>· {ev.source}</span>}
                             </div>
                           </div>
-                          <p className="text-xs text-muted-foreground leading-relaxed">{ev.summary}</p>
+                          <p className="text-xs text-muted-foreground leading-relaxed">{isBrokenSummary(ev.summary) ? "Resumo indisponível. IA não encontrou conteúdo textual suficiente nesta fonte." : ev.summary}</p>
 
 
                         </div>
