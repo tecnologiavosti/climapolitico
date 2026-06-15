@@ -626,13 +626,33 @@ export default function Settings() {
                         {subscription.updates_used_this_month} / {subscription.max_updates_per_month}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-muted-foreground">Período atual</p>
-                      <p className="font-medium">
-                        {new Date(subscription.current_period_start).toLocaleDateString("pt-BR")} —{" "}
-                        {new Date(subscription.current_period_end).toLocaleDateString("pt-BR")}
-                      </p>
-                    </div>
+                    {(() => {
+                      const trialStart = user ? getTrialStart(user.id) : null;
+                      const daysLeft = user ? getDaysLeft(user.id) : null;
+                      const onTrial = !!trialStart && (daysLeft ?? 0) > 0;
+                      const start = onTrial
+                        ? new Date(trialStart as number)
+                        : new Date(subscription.current_period_start);
+                      const end = onTrial
+                        ? new Date((trialStart as number) + TRIAL_DURATION_MS)
+                        : new Date(subscription.current_period_end);
+                      const label = onTrial
+                        ? "Período de teste (7 dias)"
+                        : "Período atual";
+                      return (
+                        <div>
+                          <p className="text-muted-foreground">{label}</p>
+                          <p className="font-medium">
+                            {start.toLocaleDateString("pt-BR")} — {end.toLocaleDateString("pt-BR")}
+                          </p>
+                          {onTrial && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {daysLeft} {daysLeft === 1 ? "dia restante" : "dias restantes"}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </>
               ) : (
