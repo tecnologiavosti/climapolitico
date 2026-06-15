@@ -401,6 +401,14 @@ export default function RadarPolitico() {
   // Filtros locais
   const filtered = useMemo(() => {
     let list = events;
+    // Entity resolution: garante que notícias do Jair não vazem para Flávio (e vice-versa)
+    if (candidateId !== "all" && candidateName) {
+      const before = list.length;
+      list = list.filter((e) => isEventRelevantForCandidate(e, candidateName));
+      if (before !== list.length) {
+        console.log(`[Radar] Entity filter '${candidateName}': ${before} → ${list.length} eventos`);
+      }
+    }
     if (category !== "Todos") list = list.filter((e) => e.category === category);
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -412,7 +420,8 @@ export default function RadarPolitico() {
       return new Date(b.event_date).getTime() - new Date(a.event_date).getTime();
     });
     return list;
-  }, [events, category, search, sortBy]);
+  }, [events, candidateId, candidateName, category, search, sortBy]);
+
 
   useEffect(() => {
     setVisibleCount(LOAD_MORE_STEP);
