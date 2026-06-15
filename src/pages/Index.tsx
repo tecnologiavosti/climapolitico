@@ -290,6 +290,7 @@ const Index = () => {
         </section>
       )}
 
+      <Footer />
     </div>
   );
 };
