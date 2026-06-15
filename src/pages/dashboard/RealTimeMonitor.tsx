@@ -61,17 +61,37 @@ const CACHE_PREFIX = "pol-intel-v1:";
 
 function cleanFeedContent(text?: string | null): string {
   if (!text) return "";
-  return String(text)
-    .replace(/<[^>]+>/g, " ")
+  let s = String(text);
+  // Decodifica entidades primeiro para revelar tags escapadas
+  s = s
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "")
-    .replace(/&gt;/gi, "")
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
-    .replace(/https?:\/\/\S+/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+  // Remove anchor tags (abertura, fechamento, mesmo se truncadas)
+  s = s.replace(/<\s*a\b[^>]*>?/gi, "");
+  s = s.replace(/<\s*\/\s*a\s*>?/gi, "");
+  // Remove qualquer outra tag (mesmo truncada no fim)
+  s = s.replace(/<\/?[a-z][^>]*>?/gi, "");
+  // Remove atributos órfãos que sobram quando o '<' foi removido antes
+  s = s.replace(/\b(?:href|target|rel|src|alt|title|class|style)\s*=\s*"[^"]*"/gi, "");
+  s = s.replace(/\b(?:href|target|rel|src|alt|title|class|style)\s*=\s*'[^']*'/gi, "");
+  s = s.replace(/\b(?:href|target|rel)\s*=\s*\S+/gi, "");
+  // Remove URLs cruas
+  s = s.replace(/https?:\/\/\S+/gi, "");
+  // Remove restos de "a " ou "/a" no começo
+  s = s.replace(/^\s*\/?\s*a\b\s*/i, "");
+  return s.replace(/\s+/g, " ").trim();
+}
+
+function isBrokenSummary(s: string): boolean {
+  if (!s) return true;
+  if (s.length < 20) return true;
+  if (/href\s*=|<\s*a\b|target\s*=|rel\s*=/i.test(s)) return true;
+  return false;
 }
 
 const statusTone = (s: string) => {
@@ -467,7 +487,7 @@ const RealTimeMonitor = () => {
                               {ev.source && <span>· {ev.source}</span>}
                             </div>
                           </div>
-                          <p className="text-xs text-muted-foreground leading-relaxed">{ev.summary}</p>
+                          <p className="text-xs text-muted-foreground leading-relaxed">{isBrokenSummary(ev.summary) ? "Resumo indisponível. IA não encontrou conteúdo textual suficiente nesta fonte." : ev.summary}</p>
 
 
                         </div>
