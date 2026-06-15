@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 
-const STORAGE_KEY = "cookies_accepted";
+const STORAGE_KEY = "cookies_accepted_v2";
 
 export function CookieConsent() {
   const [open, setOpen] = useState(false);
