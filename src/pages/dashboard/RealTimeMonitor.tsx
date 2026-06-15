@@ -59,6 +59,21 @@ interface Brief {
 const REFRESH_MS = 5 * 60 * 1000; // 5 min
 const CACHE_PREFIX = "pol-intel-v1:";
 
+function cleanFeedContent(text?: string | null): string {
+  if (!text) return "";
+  return String(text)
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "")
+    .replace(/&gt;/gi, "")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 const statusTone = (s: string) => {
   const k = (s || "").toLowerCase();
   if (k.includes("crise")) return { ring: "border-destructive/40", bg: "bg-destructive/10", text: "text-destructive", label: "Crise" };
@@ -171,22 +186,43 @@ const RealTimeMonitor = () => {
   const risk = riskTone(analysis?.reputation_risk || "");
   const strength = strengthTone(analysis?.election_strength || "");
 
-  // Sanity check: bloqueia eventos fora das últimas 24h.
+  // Sanity check: bloqueia eventos fora das últimas 24h + sanitiza HTML/URLs + filtra irrelevantes.
   const visibleEvents = useMemo(() => {
     if (!analysis?.key_events) return [];
     const now = Date.now();
-    return analysis.key_events.filter((ev) => {
-      if (!ev?.date) return false;
-      const t = new Date(ev.date).getTime();
-      if (Number.isNaN(t)) return false;
-      const ageHours = (now - t) / 3600000;
-      if (ageHours > 24) {
-        console.warn("OLD EVENT BLOCKED", ev);
-        return false;
-      }
-      return true;
-    });
-  }, [analysis?.key_events]);
+    const candidateName = (selectedCandidate?.full_name || "").toLowerCase().trim();
+    const candidateTokens = candidateName
+      .split(/\s+/)
+      .filter((t) => t.length >= 4);
+    return analysis.key_events
+      .map((ev) => ({
+        ...ev,
+        title: cleanFeedContent(ev.title),
+        summary: cleanFeedContent(ev.summary),
+        source: cleanFeedContent(ev.source),
+      }))
+      .filter((ev) => {
+        if (!ev?.date) return false;
+        const t = new Date(ev.date).getTime();
+        if (Number.isNaN(t)) return false;
+        const ageHours = (now - t) / 3600000;
+        if (ageHours > 24) {
+          console.warn("OLD EVENT BLOCKED", ev);
+          return false;
+        }
+        if (!ev.title && !ev.summary) return false;
+        if (candidateTokens.length > 0) {
+          const haystack = `${ev.title} ${ev.summary}`.toLowerCase();
+          const hits = candidateTokens.some((tok) => haystack.includes(tok));
+          if (!hits) {
+            console.warn("IRRELEVANT EVENT BLOCKED", ev);
+            return false;
+          }
+        }
+        return true;
+      });
+  }, [analysis?.key_events, selectedCandidate?.full_name]);
+
 
   const intensityTone =
     !intensity ? { text: "text-muted-foreground", bg: "bg-muted/40" }
