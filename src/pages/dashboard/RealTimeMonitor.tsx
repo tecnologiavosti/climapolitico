@@ -320,23 +320,12 @@ const RealTimeMonitor = () => {
             </div>
           )}
 
-          {insufficient ? (
-            <Card className="border-amber-500/40 bg-amber-500/5">
-              <CardContent className="p-8 text-center space-y-2">
-                <AlertTriangle className="h-8 w-8 text-amber-500 mx-auto" />
-                <h3 className="text-base font-semibold">Dados insuficientes para análise em tempo real</h3>
-                <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                  {brief.message || "Não há evidências suficientes para análise estratégica confiável."}
-                  {" "}Janela atual: últimas {brief.window_hours}h · {brief.sources_count} fontes válidas (mínimo 5).
-                </p>
-              </CardContent>
-            </Card>
-          ) : analysis ? (
+          {analysis ? (
             <>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <KpiCard
               icon={<Trophy className="h-4 w-4" />}
-              label="Força eleitoral"
+              label="Força Política Atual"
               valueNode={
                 <div className="space-y-1">
                   <div className={cn("text-lg font-bold", strength.text)}>{strength.label}</div>
@@ -349,7 +338,7 @@ const RealTimeMonitor = () => {
             />
             <KpiCard
               icon={<Megaphone className="h-4 w-4" />}
-              label="Narrativa dominante"
+              label="Principal Narrativa nas Últimas 24h"
               valueNode={<p className="text-xs leading-snug font-medium line-clamp-4">{analysis.dominant_narrative}</p>}
               tone={{ text: "text-primary", bg: "bg-primary/10" }}
             />
@@ -361,7 +350,7 @@ const RealTimeMonitor = () => {
             <Card className="lg:col-span-2 border-primary/20">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-primary" /> Análise executiva (IA)
+                  <Sparkles className="h-4 w-4 text-primary" /> Leitura Estratégica de Curto Prazo
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -411,15 +400,15 @@ const RealTimeMonitor = () => {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
-                <Activity className="h-4 w-4 text-primary" /> Timeline · eventos críticos detectados pela IA
+                <Activity className="h-4 w-4 text-primary" /> Timeline · eventos críticos nas últimas 24h
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {analysis.key_events?.length === 0 ? (
-                <p className="text-sm text-muted-foreground p-4 text-center">Nenhum evento crítico identificado na janela atual.</p>
+              {visibleEvents.length === 0 ? (
+                <p className="text-sm text-muted-foreground p-4 text-center">Nenhum evento crítico identificado nas últimas 24h.</p>
               ) : (
                 <ol className="relative border-l border-border/60 ml-2 space-y-4">
-                  {analysis.key_events.map((ev, i) => {
+                  {visibleEvents.map((ev, i) => {
                     const tone = impactTone(ev.impact);
                     return (
                       <motion.li
