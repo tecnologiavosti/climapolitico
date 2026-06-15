@@ -9,6 +9,8 @@ import { useNavigate } from "react-router-dom";
 import { Sparkles, Gift, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { getTrialStart, startTrial, getDaysLeft, hasMachineTrialStarted, requestTrialAfterLogin, queueTrialCelebration } from "@/lib/trial";
 
 
