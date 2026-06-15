@@ -26,8 +26,74 @@ const RSS_FEEDS = (q: string) => [
   { src: "YouTube", url: `https://news.google.com/rss/search?q=${encodeURIComponent(q + " site:youtube.com")}&hl=pt-BR&gl=BR&ceid=BR:pt-419` },
 ];
 
-const stripHtml = (s: string) =>
-  s.replace(/<!\[CDATA\[|\]\]>/g, "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+const FETCH_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (compatible; ClimaPoliticoBot/1.0; +https://climapolitico.com.br)",
+  "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+};
+
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", ndash: "–", mdash: "—",
+  hellip: "…", laquo: "«", raquo: "»", ldquo: "“", rdquo: "”", lsquo: "‘", rsquo: "’", bull: "•", middot: "·",
+};
+
+function decodeEntities(input: string): string {
+  return String(input || "").replace(/&(#x?[0-9a-f]+|[a-z][a-z0-9]*);/gi, (_m, raw: string) => {
+    if (raw[0] === "#") {
+      const isHex = raw[1]?.toLowerCase() === "x";
+      const code = parseInt(raw.slice(isHex ? 2 : 1), isHex ? 16 : 10);
+      if (Number.isFinite(code) && code > 0 && code < 0x110000) {
+        try { return String.fromCodePoint(code); } catch { return ""; }
+      }
+      return "";
+    }
+    return NAMED_ENTITIES[raw.toLowerCase()] ?? "";
+  });
+}
+
+function cleanText(value: unknown): string {
+  let s = decodeEntities(String(value || ""));
+  s = s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1");
+  s = s.replace(/<\s*a\b[^>]*>/gi, " ").replace(/<\s*\/\s*a\s*>/gi, " ");
+  s = s.replace(/<[^>]+>/g, " ");
+  s = s.replace(/\b(?:href|target|rel|src|class|style)\s*=\s*"[^"]*"/gi, " ");
+  s = s.replace(/\b(?:href|target|rel|src|class|style)\s*=\s*'[^']*'/gi, " ");
+  s = s.replace(/https?:\/\/\S+/gi, " ");
+  return s.replace(/\s+/g, " ").trim();
+}
+
+function cleanUrl(value: unknown): string {
+  const s = decodeEntities(String(value || ""))
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return /^https?:\/\//i.test(s) ? s : "";
+}
+
+function cleanHtml(html: string): string {
+  let s = decodeEntities(html || "");
+  s = s.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ");
+  s = s.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ");
+  s = s.replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ");
+  s = s.replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, " ");
+  s = s.replace(/<(nav|footer|header|aside|form)\b[^>]*>[\s\S]*?<\/\1>/gi, " ");
+  s = s.replace(/<[^>]+(?:cookie|banner|advert|publicidade|tracking|analytics|share|social)[^>]*>[\s\S]*?<\/[a-z0-9]+>/gi, " ");
+  s = s.replace(/<!--([\s\S]*?)-->/g, " ");
+  s = s.replace(/<[^>]+>/g, " ");
+  s = s.replace(/https?:\/\/\S+/gi, " ");
+  return s.replace(/\s+/g, " ").trim();
+}
+
+function buildFallbackSummary(title: string, candidateName?: string): string {
+  const cleanTitle = cleanText(title) || "movimentação política recente";
+  const subject = cleanText(candidateName || "o candidato monitorado") || "o candidato monitorado";
+  return `Evento detectado envolvendo ${subject}: ${cleanTitle}. A cobertura recente indica movimentação política nas últimas 24h e pode influenciar a leitura pública sobre a candidatura.`;
+}
+
+function isBrokenText(s: string): boolean {
+  return !s || s.length < 30 || /href\s*=|<\s*a\b|target\s*=|rel\s*=|rss\/articles|news\.google\.com|resumo indisponível|ia não encontrou|content unavailable|null summary/i.test(s);
+}
 
 // Parser robusto — só retorna ISO se data realmente válida (não inventa "agora").
 function parsePubDate(raw: string): string | null {
@@ -43,14 +109,15 @@ function parseRss(xml: string, sourceLabel: string): RawItem[] {
   for (const block of blocks) {
     const end = block.indexOf("</item>");
     const body = end >= 0 ? block.slice(0, end) : block;
-    const title = stripHtml((body.match(/<title>([\s\S]*?)<\/title>/i)?.[1]) || "");
-    const link = stripHtml((body.match(/<link>([\s\S]*?)<\/link>/i)?.[1]) || "");
-    const desc = stripHtml((body.match(/<description>([\s\S]*?)<\/description>/i)?.[1]) || "");
-    const pub = stripHtml((body.match(/<pubDate>([\s\S]*?)<\/pubDate>/i)?.[1]) || "");
+    const title = cleanText((body.match(/<title>([\s\S]*?)<\/title>/i)?.[1]) || "");
+    const link = cleanUrl((body.match(/<link>([\s\S]*?)<\/link>/i)?.[1]) || "");
+    const desc = cleanText((body.match(/<description>([\s\S]*?)<\/description>/i)?.[1]) || "");
+    const pub = cleanText((body.match(/<pubDate>([\s\S]*?)<\/pubDate>/i)?.[1]) || "");
+    const source = cleanText((body.match(/<source[^>]*>([\s\S]*?)<\/source>/i)?.[1]) || sourceLabel);
     const iso = parsePubDate(pub);
     if (!title || !iso) continue; // descarta sem título OU sem timestamp confiável
     items.push({
-      source: sourceLabel,
+      source: source || sourceLabel,
       title: title.slice(0, 300),
       summary: desc.slice(0, 500),
       url: link,
@@ -60,11 +127,105 @@ function parseRss(xml: string, sourceLabel: string): RawItem[] {
   return items;
 }
 
+function isGoogleNewsUrl(url: string): boolean {
+  return /news\.google\.com\/(rss\/)?articles/i.test(url || "");
+}
+
+async function resolveNewsUrl(url: string): Promise<string> {
+  if (!url) return "";
+  try {
+    const response = await fetch(url, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(7000),
+      headers: FETCH_HEADERS,
+    });
+    return response.url || url;
+  } catch (e) {
+    console.warn(`[political-intelligence] URL resolve failed ${url}: ${(e as Error).message}`);
+    return url;
+  }
+}
+
+function extractMeta(html: string, names: string[]): string {
+  for (const name of names) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re1 = new RegExp(`<meta[^>]+(?:name|property)=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>`, "i");
+    const re2 = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:name|property)=["']${escaped}["'][^>]*>`, "i");
+    const value = html.match(re1)?.[1] || html.match(re2)?.[1];
+    if (value) return cleanText(value);
+  }
+  return "";
+}
+
+function isYoutubeUrl(url: string): boolean {
+  return /(?:youtube\.com|youtu\.be)/i.test(url || "");
+}
+
+async function extractYoutubeContent(url: string, item: RawItem): Promise<string> {
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000), headers: FETCH_HEADERS });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const html = await r.text();
+    const title = extractMeta(html, ["og:title", "twitter:title"]) || item.title;
+    const description = extractMeta(html, ["description", "og:description", "twitter:description"]);
+    const transcript = html.match(/"transcript"\s*:\s*"([\s\S]{80,3000}?)"/)?.[1] || "";
+    return cleanText([transcript, description, title].filter(Boolean).join(". "));
+  } catch (e) {
+    console.warn(`[political-intelligence] YouTube extraction failed ${url}: ${(e as Error).message}`);
+    return cleanText(`${item.summary || ""} ${item.title}`);
+  }
+}
+
+async function extractReadableContent(url: string): Promise<string> {
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(9000), headers: FETCH_HEADERS });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const html = await r.text();
+    const meta = extractMeta(html, ["description", "og:description", "twitter:description"]);
+    const text = cleanHtml(html);
+    return cleanText([meta, text].filter(Boolean).join(". ")).slice(0, 3500);
+  } catch (e) {
+    console.warn(`[political-intelligence] content extraction failed ${url}: ${(e as Error).message}`);
+    return "";
+  }
+}
+
+function compactContentSummary(content: string, title: string, candidateName: string): string {
+  const clean = cleanText(content);
+  if (isBrokenText(clean)) return buildFallbackSummary(title, candidateName);
+  const sentences = clean
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => cleanText(s))
+    .filter((s) => s.length >= 45 && !/cookies|assine|newsletter|publicidade|javascript|google news/i.test(s));
+  const selected = sentences.slice(0, 3).join(" ");
+  return cleanText(selected || clean.slice(0, 520)).slice(0, 700) || buildFallbackSummary(title, candidateName);
+}
+
+async function enrichRealtimeItems(items: RawItem[], candidateName: string): Promise<RawItem[]> {
+  const top = items.slice(0, 35);
+  const enriched = await Promise.all(top.map(async (item) => {
+    const initialUrl = item.url || "";
+    const finalUrl = isGoogleNewsUrl(initialUrl) ? await resolveNewsUrl(initialUrl) : initialUrl;
+    const sourceContent = isYoutubeUrl(finalUrl) || /youtube/i.test(item.source)
+      ? await extractYoutubeContent(finalUrl || initialUrl, item)
+      : await extractReadableContent(finalUrl || initialUrl);
+    const summary = compactContentSummary(sourceContent || item.summary, item.title, candidateName);
+    return {
+      ...item,
+      url: finalUrl || initialUrl,
+      title: cleanText(item.title).slice(0, 300),
+      summary,
+      source: cleanText(item.source) || "Fonte externa",
+    };
+  }));
+  return enriched.filter((item) => item.title && item.summary).concat(items.slice(35));
+}
+
 async function fetchAllSources(candidateName: string): Promise<RawItem[]> {
   const feeds = RSS_FEEDS(`"${candidateName}"`);
   const results = await Promise.allSettled(
     feeds.map(async (f) => {
-      const r = await fetch(f.url, { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0 ClimaPolitico/1.0" } });
+      const r = await fetch(f.url, { signal: AbortSignal.timeout(8000), headers: FETCH_HEADERS });
       if (!r.ok) return [];
       const xml = await r.text();
       return parseRss(xml, f.src);
@@ -154,6 +315,8 @@ ${corpus}
 
 INSTRUÇÕES:
 - Use APENAS as ${items.length} fontes acima. Toda data em key_events DEVE estar dentro das últimas 24h.
+- Para cada key_event, resuma o evento em 2 a 4 linhas: explique o que aconteceu, por que importa politicamente e qual o impacto no candidato.
+- Use somente o conteúdo fornecido. Não invente fatos. Nunca use HTML, href, XML/RSS bruto ou mensagens de indisponibilidade.
 - Produza JSON ESTRITO (sem markdown, sem texto fora):
 
 {
@@ -162,7 +325,7 @@ INSTRUÇÕES:
   "election_strength": "fraca" | "moderada" | "forte" | "dominante",
   "dominant_narrative": "frase curta (máx 140 chars), baseada APENAS nas fontes das últimas 24h",
   "key_events": [
-    { "title": "título curto", "date": "AAAA-MM-DD", "impact": "positivo|negativo|neutro", "summary": "1-2 frases", "source": "fonte", "url": "url" }
+    { "title": "título curto", "date": "AAAA-MM-DD", "impact": "positivo|negativo|neutro", "summary": "2-4 linhas analíticas em texto limpo", "source": "fonte", "url": "url" }
   ],
   "narrative_shifts": ["mudanças observadas SOMENTE nas fontes acima"],
   "emerging_risks": ["riscos extraídos APENAS das fontes acima"],
@@ -191,15 +354,15 @@ function safeJsonParse(s: string): any | null {
   try { return JSON.parse(body); } catch { return null; }
 }
 
-function fallbackAnalysis(items: RawItem[], confidence: string) {
+function fallbackAnalysis(items: RawItem[], confidence: string, candidateName: string) {
   const top = items.slice(0, 8);
   const narrative = top[0]?.title?.slice(0, 140) || "Sem narrativa dominante clara nas últimas 24h.";
   const key_events = top.slice(0, 6).map((it) => ({
-    title: it.title.slice(0, 120),
+    title: cleanText(it.title).slice(0, 120),
     date: it.published_at.slice(0, 10),
     impact: "neutro",
-    summary: it.summary?.slice(0, 200) || it.title.slice(0, 200),
-    source: it.source,
+    summary: isBrokenText(cleanText(it.summary)) ? buildFallbackSummary(it.title, candidateName) : cleanText(it.summary).slice(0, 700),
+    source: cleanText(it.source),
     url: it.url,
   }));
   return {
@@ -230,7 +393,8 @@ Deno.serve(async (req) => {
 
     console.log(`[political-intelligence] candidate=${candidate_name}`);
     const allItems = await fetchAllSources(candidate_name);
-    const realtimeItems = filterRealtime(allItems);
+    const realtimeBase = filterRealtime(allItems);
+    const realtimeItems = await enrichRealtimeItems(realtimeBase, candidate_name);
     const oldest = realtimeItems.length
       ? realtimeItems.reduce((o, i) => (new Date(i.published_at) < new Date(o.published_at) ? i : o)).published_at
       : null;
@@ -265,14 +429,25 @@ Deno.serve(async (req) => {
     }
 
     if (!parsed) {
-      parsed = fallbackAnalysis(realtimeItems, confidence);
+      parsed = fallbackAnalysis(realtimeItems, confidence, candidate_name);
     }
 
-    // Sanity: descarta key_events fora das últimas 24h.
+    // Sanity: texto limpo, resumo sempre útil e eventos fora das últimas 24h descartados.
     if (Array.isArray(parsed.key_events)) {
       const now = Date.now();
       const cutoffMs = 24 * 3600000;
-      parsed.key_events = parsed.key_events.filter((ev: any) => {
+      parsed.key_events = parsed.key_events.map((ev: any) => {
+        const title = cleanText(ev?.title || "");
+        const summary = cleanText(ev?.summary || "");
+        return {
+          ...ev,
+          title,
+          impact: cleanText(ev?.impact || "neutro") || "neutro",
+          summary: isBrokenText(summary) ? buildFallbackSummary(title, candidate_name) : summary,
+          source: cleanText(ev?.source || "Fonte externa") || "Fonte externa",
+          url: cleanText(ev?.url || ""),
+        };
+      }).filter((ev: any) => {
         if (!ev?.date) return false;
         const t = new Date(ev.date).getTime();
         if (Number.isNaN(t)) return false;
