@@ -60,7 +60,7 @@ const Auth = () => {
     }
 
     navigate("/dashboard");
-  }, [user, authLoading, navigate]);
+  }, [user, authLoading, navigate, toast]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
