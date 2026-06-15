@@ -37,12 +37,22 @@ const Index = () => {
 
       {/* Pricing Section */}
       <section className="container mx-auto px-4 py-20">
+        <div className="text-center mb-8 animate-fade-in-up">
+          <Button
+            size="lg"
+            className="bg-accent text-accent-foreground hover:bg-accent/90 hover-scale shadow-lg h-12 px-8 text-base font-semibold"
+            onClick={handleFreeTrial}
+          >
+            Teste grátis por 7 dias
+          </Button>
+        </div>
         <div className="text-center mb-12 animate-fade-in-up">
           <h2 className="text-3xl md:text-5xl font-bold mb-4">
             Planos <span className="gradient-text">Flexíveis</span>
           </h2>
           <p className="text-muted-foreground text-lg">Escolha o plano ideal para suas necessidades</p>
         </div>
+
 
         <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
           {/* Basic Plan */}
