@@ -167,11 +167,18 @@ const RealTimeMonitor = () => {
   }, [selectedCandidate?.id, fetchBrief]);
 
   const analysis = brief?.analysis;
+  const intensity = brief?.intensity;
+  const insufficient = !!brief?.insufficient;
   const st = statusTone(analysis?.status || "");
   const risk = riskTone(analysis?.reputation_risk || "");
   const strength = strengthTone(analysis?.election_strength || "");
-  const momentum = analysis?.momentum_score ?? 0;
-  const momentumPos = momentum >= 0;
+  const intensityTone =
+    !intensity ? { text: "text-muted-foreground", bg: "bg-muted/40" }
+    : intensity.score > 80 ? { text: "text-destructive", bg: "bg-destructive/10" }
+    : intensity.score > 60 ? { text: "text-red-500", bg: "bg-red-500/10" }
+    : intensity.score > 40 ? { text: "text-amber-500", bg: "bg-amber-500/10" }
+    : intensity.score > 20 ? { text: "text-sky-500", bg: "bg-sky-500/10" }
+    : { text: "text-muted-foreground", bg: "bg-muted/40" };
 
   return (
     <div className="space-y-5 pb-8">
