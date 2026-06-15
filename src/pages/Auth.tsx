@@ -123,25 +123,20 @@ const Auth = () => {
   const handleGoogle = async () => {
     setLoading(true);
     try {
-      const { lovable } = await import("@/integrations/lovable/index");
-      const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: getAuthOrigin(),
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: `${getAuthOrigin()}/` },
       });
-      if (result.error) {
-        toast({ title: "Erro Google", description: String(result.error), variant: "destructive" });
+      if (error) {
+        toast({ title: "Erro Google", description: error.message, variant: "destructive" });
         setLoading(false);
-        return;
-      }
-      if (result.redirected) return;
-      if (result.tokens) {
-        await supabase.auth.setSession(result.tokens);
-        navigate("/dashboard");
       }
     } catch (e: unknown) {
       toast({ title: "Erro Google", description: e instanceof Error ? e.message : "Falha", variant: "destructive" });
       setLoading(false);
     }
   };
+
 
   const handleForgot = async (e: React.FormEvent) => {
     e.preventDefault();
