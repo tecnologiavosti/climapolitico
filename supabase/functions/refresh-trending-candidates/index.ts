@@ -187,8 +187,7 @@ Deno.serve(async (req) => {
       if (role === "Vereador") {
         const ext = (meta?.extract ?? "").toLowerCase();
         const isVereador = /\bvereador(a|es|as)?\b/.test(ext);
-        const hasOtherOffice = /\b(deputad[oa]|senador|prefeit[oa]|governador|ministro|presidente da rep)/.test(ext);
-        if (!isVereador || hasOtherOffice) {
+        if (!isVereador) {
           await sleep(120);
           continue;
         }
