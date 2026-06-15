@@ -9,7 +9,7 @@ import { useNavigate } from "react-router-dom";
 import { Sparkles, Gift, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
-import { getTrialStart, startTrial, getDaysLeft, TRIAL_DURATION_MS } from "@/lib/trial";
+import { getTrialStart, startTrial, getDaysLeft, hasMachineTrialStarted, requestTrialAfterLogin, queueTrialCelebration } from "@/lib/trial";
 
 
 const WHATSAPP_LINKS = {
@@ -29,25 +29,33 @@ const Index = () => {
   const trialStart = user ? getTrialStart(user.id) : null;
   const daysLeft = user ? getDaysLeft(user.id) : null;
   const hasActiveTrial = !!trialStart && (daysLeft ?? 0) > 0;
+  const machineTrialStarted = hasMachineTrialStarted();
 
   const handleFreeTrial = () => {
     if (!user) {
+      requestTrialAfterLogin();
       toast.info("Faça login para ativar seu teste gratuito de 7 dias.");
       navigate("/auth");
       return;
     }
 
     if (!trialStart) {
-      startTrial(user.id);
+      const startedAt = startTrial(user.id);
+      if (!startedAt) {
+        toast.error("Este dispositivo já ativou um teste gratuito. Escolha um plano para continuar.");
+        return;
+      }
+      queueTrialCelebration(user.id);
       toast.success("Seu teste gratuito de 7 dias foi ativado!", {
         description: "Aproveite o acesso completo em climapolitico.com.br",
       });
-      navigate("/dashboard");
+      navigate("/dashboard/settings");
       return;
     }
 
     if ((daysLeft ?? 0) > 0) {
       toast.info(`Você ainda tem ${daysLeft} ${daysLeft === 1 ? "dia" : "dias"} de teste gratuito.`);
+      navigate("/dashboard/settings");
     } else {
       toast.error("Seu período de teste gratuito expirou. Escolha um plano para continuar.");
     }
@@ -74,7 +82,7 @@ const Index = () => {
       {/* Pricing Section */}
       <section className="container mx-auto px-4 py-20">
         {/* Free Trial Highlight — escondido se já houver teste ativo */}
-        {!hasActiveTrial && (
+        {!hasActiveTrial && !machineTrialStarted && (
           <div className="max-w-3xl mx-auto mb-14 animate-fade-in-up">
             <Card className="relative overflow-hidden border-2 border-primary/30 bg-gradient-to-br from-primary/10 via-background to-accent/10 p-6 sm:p-8 md:p-10 shadow-xl">
               <div className="absolute -top-16 -right-16 h-48 w-48 rounded-full bg-primary/20 blur-3xl" />
