@@ -597,10 +597,7 @@ export default function Settings() {
         <TabsContent value="subscription" className="space-y-4">
           <Card>
             <CardHeader>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <CardTitle>Plano atual</CardTitle>
-                <TrialCountdown />
-              </div>
+              <CardTitle>Plano atual</CardTitle>
               <CardDescription>Informações da sua assinatura</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
