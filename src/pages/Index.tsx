@@ -9,6 +9,8 @@ import { useNavigate } from "react-router-dom";
 import { Sparkles, Gift, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { getTrialStart, startTrial, getDaysLeft, hasMachineTrialStarted, requestTrialAfterLogin, queueTrialCelebration } from "@/lib/trial";
 
 
@@ -30,6 +32,21 @@ const Index = () => {
   const daysLeft = user ? getDaysLeft(user.id) : null;
   const hasActiveTrial = !!trialStart && (daysLeft ?? 0) > 0;
   const machineTrialStarted = hasMachineTrialStarted();
+
+  const { data: subscription } = useQuery({
+    queryKey: ["subscription-active", user?.id],
+    enabled: !!user,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("subscriptions")
+        .select("status")
+        .eq("user_id", user!.id)
+        .maybeSingle();
+      return data;
+    },
+  });
+  const hasActivePlan = subscription?.status === "active";
+  const hideTrialCta = hasActiveTrial || machineTrialStarted || hasActivePlan;
 
   const handleFreeTrial = () => {
     if (!user) {
@@ -82,7 +99,7 @@ const Index = () => {
       {/* Pricing Section */}
       <section className="container mx-auto px-4 py-20">
         {/* Free Trial Highlight — escondido se já houver teste ativo */}
-        {!hasActiveTrial && !machineTrialStarted && (
+        {!hideTrialCta && (
           <div className="max-w-3xl mx-auto mb-14 animate-fade-in-up">
             <Card className="relative overflow-hidden border-2 border-primary/30 bg-gradient-to-br from-primary/10 via-background to-accent/10 p-6 sm:p-8 md:p-10 shadow-xl">
               <div className="absolute -top-16 -right-16 h-48 w-48 rounded-full bg-primary/20 blur-3xl" />
@@ -257,26 +274,28 @@ const Index = () => {
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="container mx-auto px-4 py-20">
-        <Card className="p-12 md:p-16 bg-gradient-hero text-white text-center relative overflow-hidden animate-fade-in-up">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.1),transparent_70%)]" />
-          <div className="relative z-10 space-y-6">
-            <h2 className="text-3xl md:text-5xl font-bold mb-4">Pronto para transformar sua estratégia política?</h2>
-            <p className="text-xl md:text-2xl mb-8 opacity-90 max-w-2xl mx-auto">
-              Comece hoje e tenha acesso a insights que fazem a diferença
-            </p>
-            <Button
-              size="lg"
-              variant="secondary"
-              className="hover-scale text-base h-12 px-8"
-              onClick={() => navigate("/auth")}
-            >
-              Iniciar Teste Gratuito
-            </Button>
-          </div>
-        </Card>
-      </section>
+      {/* CTA Section — escondida se já houver teste/plano ativo */}
+      {!hideTrialCta && (
+        <section className="container mx-auto px-4 py-20">
+          <Card className="p-12 md:p-16 bg-gradient-hero text-white text-center relative overflow-hidden animate-fade-in-up">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.1),transparent_70%)]" />
+            <div className="relative z-10 space-y-6">
+              <h2 className="text-3xl md:text-5xl font-bold mb-4">Pronto para transformar sua estratégia política?</h2>
+              <p className="text-xl md:text-2xl mb-8 opacity-90 max-w-2xl mx-auto">
+                Comece hoje e tenha acesso a insights que fazem a diferença
+              </p>
+              <Button
+                size="lg"
+                variant="secondary"
+                className="hover-scale text-base h-12 px-8"
+                onClick={() => navigate("/auth")}
+              >
+                Iniciar Teste Gratuito
+              </Button>
+            </div>
+          </Card>
+        </section>
+      )}
 
     </div>
   );
