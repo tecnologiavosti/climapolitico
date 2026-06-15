@@ -6,39 +6,37 @@ import { SocialProof } from "@/components/landing/SocialProof";
 import { BentoFeatures } from "@/components/landing/BentoFeatures";
 import { TrendingCandidates } from "@/components/landing/TrendingCandidates";
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
 
-const WHATSAPP_PHONE = "+55 61 9811-7983";
 const WHATSAPP_URL =
-  "https://wa.me/556198117983?text=Ol%C3%A1!%20Tenho%20interesse%20nos%20planos%20do%20Clima%20Pol%C3%ADtico%20e%20gostaria%20de%20receber%20mais%20informa%C3%A7%C3%B5es.";
+  "https://wa.me/556198117983?text=Ol%C3%A1!%20Tenho%20interesse%20nos%20planos%20do%20Clima%20Pol%C3%ADtico.";
+const WHATSAPP_WEB_URL =
+  "https://web.whatsapp.com/send?phone=556198117983&text=Ol%C3%A1!%20Tenho%20interesse%20nos%20planos%20do%20Clima%20Pol%C3%ADtico.";
+const WHATSAPP_DEEP_LINK =
+  "whatsapp://send?phone=556198117983&text=Ol%C3%A1!%20Tenho%20interesse%20nos%20planos%20do%20Clima%20Pol%C3%ADtico.";
 
 const Index = () => {
   const navigate = useNavigate();
-  const [showWhatsappFallback, setShowWhatsappFallback] = useState(false);
 
   const openWhatsapp = () => {
-    console.log("Opening whatsapp...");
-    const isInsideIframe = window.self !== window.top;
-    console.log(isInsideIframe ? "INSIDE IFRAME" : "NORMAL WINDOW");
+    console.log("iframe?", window.self !== window.top);
 
-    if (isInsideIframe) {
-      setShowWhatsappFallback(true);
+    try {
+      window.location.assign(WHATSAPP_URL);
       return;
+    } catch (assignError) {
+      console.error("WhatsApp assign failed", assignError);
     }
 
     try {
-      window.location.href = WHATSAPP_URL;
-    } catch {
-      window.open(
-        "https://web.whatsapp.com/send?phone=556198117983&text=Ol%C3%A1!%20Tenho%20interesse%20nos%20planos.",
-        "_blank",
-        "noopener,noreferrer",
-      );
+      window.open(WHATSAPP_URL, "_blank", "noopener,noreferrer");
+      return;
+    } catch (openError) {
+      console.error("WhatsApp window.open failed", openError);
     }
-  };
 
-  const copyWhatsappPhone = async () => {
-    await navigator.clipboard.writeText(WHATSAPP_PHONE);
+    window.location.href = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+      ? WHATSAPP_DEEP_LINK
+      : WHATSAPP_WEB_URL;
   };
 
   return (
@@ -193,29 +191,6 @@ const Index = () => {
         </Card>
       </section>
 
-      {showWhatsappFallback && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 backdrop-blur-sm">
-          <Card className="w-full max-w-md p-6 text-center shadow-xl">
-            <div className="space-y-5">
-              <div>
-                <h3 className="text-2xl font-bold">WhatsApp</h3>
-                <p className="mt-2 text-lg font-semibold">{WHATSAPP_PHONE}</p>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Seu navegador bloqueou a abertura automática do WhatsApp.
-              </p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Button variant="outline" onClick={() => setShowWhatsappFallback(false)}>
-                  Fechar
-                </Button>
-                <Button className="bg-gradient-primary hover-glow" onClick={copyWhatsappPhone}>
-                  Copiar número
-                </Button>
-              </div>
-            </div>
-          </Card>
-        </div>
-      )}
     </div>
   );
 };
