@@ -805,11 +805,11 @@ export default function RadarPolitico() {
           {selected && (
             <>
               <DialogHeader>
-                <DialogTitle className="text-base leading-snug break-words [overflow-wrap:anywhere]">{selected.title}</DialogTitle>
+                <DialogTitle className="text-base leading-snug break-words [overflow-wrap:anywhere]">{sanitizeRadarText(selected.title)}</DialogTitle>
                 <DialogDescription className="flex items-center gap-2 text-xs flex-wrap">
                   <span>{fmtDate(selected.event_date)}</span>
                   <span>·</span>
-                  <Badge variant="outline" className="text-[10px]">{selected.category}</Badge>
+                  <Badge variant="outline" className="text-[10px]">{sanitizeRadarText(selected.category)}</Badge>
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 mt-2">
@@ -820,9 +820,9 @@ export default function RadarPolitico() {
                 </div>
                 {(() => {
                   const description =
-                    (selected.summary && selected.summary.trim()) ||
-                    (selected.description && selected.description.trim()) ||
-                    (selected.content && selected.content.trim()) ||
+                    sanitizeRadarText(selected.summary) ||
+                    sanitizeRadarText(selected.description) ||
+                    sanitizeRadarText(selected.content) ||
                     "Descrição não disponível";
                   return (
                     <div>
