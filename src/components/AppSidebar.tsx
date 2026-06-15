@@ -163,6 +163,7 @@ const adminGroup: NavGroup = {
   items: [
     { title: "Administração", url: "/dashboard/admin", icon: Shield },
     { title: "APIs & Integrações", url: "/dashboard/admin/api-settings", icon: Key },
+    { title: "Blog IA", url: "/dashboard/admin/blog", icon: FileText },
     { title: "Observabilidade", url: "/dashboard/observability", icon: Shield },
     { title: "Operations Console", url: "/dashboard/operations", icon: Shield },
     { title: "SLO & SLA", url: "/dashboard/slo", icon: Shield },
