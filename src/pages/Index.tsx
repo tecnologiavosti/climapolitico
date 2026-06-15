@@ -148,9 +148,12 @@ const Index = () => {
                   Múltiplos usuários
                 </li>
               </ul>
-              <Button className="w-full bg-gradient-primary hover-glow" onClick={openWhatsapp}>
-                Saiba mais
+              <Button className="w-full bg-gradient-primary hover-glow" asChild>
+                <a href={WHATSAPP_LINKS.enterprise} target="_blank" rel="noopener noreferrer">
+                  Saiba mais
+                </a>
               </Button>
+
             </div>
           </Card>
         </div>
