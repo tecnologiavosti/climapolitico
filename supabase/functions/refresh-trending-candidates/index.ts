@@ -16,7 +16,7 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const ROLES = ["Presidente", "Senador", "Deputado Federal", "Deputado Estadual", "Prefeito"] as const;
+const ROLES = ["Presidente", "Senador", "Deputado Federal", "Deputado Estadual", "Prefeito", "Vereador"] as const;
 type Role = (typeof ROLES)[number];
 
 // Pool of currently relevant Brazilian politicians per role. Names come
@@ -54,6 +54,15 @@ const POOL: Record<Role, string[]> = {
     "Cícero Lucena", "Topázio Neto", "Edinho Silva", "José Sarto", "Carlos Brandão",
     "Rafael Greca", "Fuad Noman", "João Henrique Caldas", "Adriane Lopes", "David Almeida",
     "Eduardo Pimentel", "Álvaro Dias", "Daniel Sucupira",
+  ],
+  Vereador: [
+    "Carlos Bolsonaro", "Milton Leite", "Rubinho Nunes", "Gabriel Monteiro", "Thammy Miranda",
+    "Sonaira Fernandes", "Amanda Vettorazzo", "Cris Monteiro", "Eli Corrêa Filho",
+    "Adilson Amadeu", "Senival Moura", "Marlon Luz", "Lucas Pavanato",
+    "Tânia Bandeira", "Luna Zarattini", "Silvia da Bancada Feminista", "Erika Hilton",
+    "Rinaldi Digilio", "Eduardo Suplicy", "Sandra Tadeu",
+    "Tarcísio Motta", "Carlo Caiado", "Vera Lins", "Inaldo Silva", "Pedro Duarte",
+    "Chico Alencar", "Reimont", "Monica Benicio", "Thais Ferreira",
   ],
 };
 
