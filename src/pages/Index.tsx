@@ -116,9 +116,6 @@ const Index = () => {
             <div className="space-y-6">
               <div>
                 <h3 className="text-2xl font-bold mb-2">Enterprise</h3>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-bold">Custom</span>
-                </div>
               </div>
               <ul className="space-y-3 text-sm">
                 <li className="flex items-center gap-2">
@@ -138,9 +135,14 @@ const Index = () => {
                   Múltiplos usuários
                 </li>
               </ul>
-              <a href="https://wa.me/5561998117985" target="_blank" rel="noopener noreferrer" className="block w-full">
-                <Button className="w-full" variant="outline">
-                  Falar com Vendas
+              <a
+                href="https://wa.me/556198117983?text=Ol%C3%A1!%20Tenho%20interesse%20nos%20planos%20do%20Clima%20Pol%C3%ADtico%20e%20gostaria%20de%20receber%20mais%20informa%C3%A7%C3%B5es."
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block w-full"
+              >
+                <Button className="w-full bg-gradient-primary hover-glow">
+                  Saiba mais
                 </Button>
               </a>
             </div>
