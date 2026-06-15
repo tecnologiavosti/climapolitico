@@ -27,7 +27,6 @@ interface KeyEvent {
 }
 interface Analysis {
   status: string;
-  momentum_score: number;
   reputation_risk: string;
   election_strength: string;
   dominant_narrative: string;
@@ -38,12 +37,23 @@ interface Analysis {
   confidence: string;
   evidence_count: number;
 }
+interface Intensity {
+  score: number;
+  label: string;
+  volume6h: number;
+  volume24h: number;
+  growthPct: number;
+}
 interface Brief {
   candidate_name: string;
   fetched_at: string;
+  window_hours: number;
   sources_count: number;
   provider?: string;
-  analysis: Analysis;
+  intensity: Intensity;
+  insufficient?: boolean;
+  message?: string;
+  analysis?: Analysis;
   raw_items: { source: string; title: string; url: string; published_at: string }[];
 }
 
