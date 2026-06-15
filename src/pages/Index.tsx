@@ -144,21 +144,17 @@ const Index = () => {
         </div>
 
 
-        <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+        <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto items-stretch">
           {/* Basic Plan */}
           <Card
-            className="p-8 hover-lift hover-glow transition-all duration-300 border-2 animate-fade-in-up"
+            className="p-8 hover-lift hover-glow transition-all duration-300 border-2 animate-fade-in-up flex flex-col h-full"
             style={{ animationDelay: "0ms" }}
           >
-            <div className="space-y-6">
+            <div className="flex flex-col flex-1 space-y-6">
               <div>
                 <h3 className="text-2xl font-bold mb-2">Básico</h3>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-bold">R$ 299</span>
-                  <span className="text-muted-foreground">/mês</span>
-                </div>
               </div>
-              <ul className="space-y-3 text-sm">
+              <ul className="space-y-3 text-sm flex-1">
                 <li className="flex items-center gap-2">
                   <div className="h-1.5 w-1.5 rounded-full bg-primary" />
                   Até 3 candidatos
@@ -171,37 +167,33 @@ const Index = () => {
                   Dashboard padrão
                 </li>
               </ul>
-              <Button
-                className="w-full"
-                variant="outline"
-                onClick={() => {
-                  window.location.href = WHATSAPP_LINKS.basico;
-                }}
-              >
-                Saiba mais
-              </Button>
-
-
+              <div className="flex gap-3 mt-auto">
+                <Button
+                  className="flex-1"
+                  variant="outline"
+                  onClick={() => {
+                    window.location.href = WHATSAPP_LINKS.basico;
+                  }}
+                >
+                  Saiba mais
+                </Button>
+              </div>
             </div>
           </Card>
 
           {/* Pro Plan */}
           <Card
-            className="p-8 hover-lift hover-glow transition-all duration-300 border-2 border-primary relative animate-fade-in-up"
+            className="p-8 hover-lift hover-glow transition-all duration-300 border-2 border-primary relative animate-fade-in-up flex flex-col h-full"
             style={{ animationDelay: "100ms" }}
           >
             <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-primary animate-glow-pulse">
               Mais Popular
             </Badge>
-            <div className="space-y-6">
+            <div className="flex flex-col flex-1 space-y-6">
               <div>
                 <h3 className="text-2xl font-bold mb-2">Pro</h3>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-bold">R$ 899</span>
-                  <span className="text-muted-foreground">/mês</span>
-                </div>
               </div>
-              <ul className="space-y-3 text-sm">
+              <ul className="space-y-3 text-sm flex-1">
                 <li className="flex items-center gap-2">
                   <div className="h-1.5 w-1.5 rounded-full bg-primary" />
                   Até 10 candidatos
@@ -219,29 +211,29 @@ const Index = () => {
                   Alertas por email/SMS
                 </li>
               </ul>
-              <Button
-                className="w-full bg-gradient-primary hover-glow"
-                onClick={() => {
-                  window.location.href = WHATSAPP_LINKS.pro;
-                }}
-              >
-                Saiba mais
-              </Button>
-
-
+              <div className="flex gap-3 mt-auto">
+                <Button
+                  className="flex-1 bg-gradient-primary hover-glow"
+                  onClick={() => {
+                    window.location.href = WHATSAPP_LINKS.pro;
+                  }}
+                >
+                  Saiba mais
+                </Button>
+              </div>
             </div>
           </Card>
 
           {/* Enterprise Plan */}
           <Card
-            className="p-8 hover-lift hover-glow transition-all duration-300 border-2 animate-fade-in-up"
+            className="p-8 hover-lift hover-glow transition-all duration-300 border-2 animate-fade-in-up flex flex-col h-full"
             style={{ animationDelay: "200ms" }}
           >
-            <div className="space-y-6">
+            <div className="flex flex-col flex-1 space-y-6">
               <div>
                 <h3 className="text-2xl font-bold mb-2">Enterprise</h3>
               </div>
-              <ul className="space-y-3 text-sm">
+              <ul className="space-y-3 text-sm flex-1">
                 <li className="flex items-center gap-2">
                   <div className="h-1.5 w-1.5 rounded-full bg-primary" />
                   Candidatos ilimitados
@@ -259,16 +251,16 @@ const Index = () => {
                   Múltiplos usuários
                 </li>
               </ul>
-              <Button
-                className="w-full bg-gradient-primary hover-glow"
-                onClick={() => {
-                  window.location.href = WHATSAPP_LINKS.enterprise;
-                }}
-              >
-                Saiba mais
-              </Button>
-
-
+              <div className="flex gap-3 mt-auto">
+                <Button
+                  className="flex-1 bg-gradient-primary hover-glow"
+                  onClick={() => {
+                    window.location.href = WHATSAPP_LINKS.enterprise;
+                  }}
+                >
+                  Saiba mais
+                </Button>
+              </div>
             </div>
           </Card>
         </div>
