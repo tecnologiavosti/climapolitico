@@ -445,6 +445,8 @@ const RealTimeMonitor = () => {
               )}
             </CardContent>
           </Card>
+            </>
+          ) : null}
 
           {/* Sources fed to AI */}
           {brief && brief.raw_items.length > 0 && (
