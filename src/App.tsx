@@ -12,6 +12,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import TestAI from "./pages/TestAI";
 import NotFound from "./pages/NotFound";
+import { CookieConsent } from "@/components/CookieConsent";
 
 const queryClient = new QueryClient({
   defaultOptions: {
