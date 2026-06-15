@@ -20,7 +20,29 @@ const WHATSAPP_LINKS = {
 const Index = () => {
   const navigate = useNavigate();
 
+  const handleFreeTrial = () => {
+    const TRIAL_MS = 604800000;
+    const stored = localStorage.getItem("trial_start");
+
+    if (!stored) {
+      localStorage.setItem("trial_start", Date.now().toString());
+      alert("Seu teste gratuito de 7 dias foi ativado!");
+      return;
+    }
+
+    const start = parseInt(stored, 10);
+    const elapsed = Date.now() - start;
+
+    if (elapsed < TRIAL_MS) {
+      const daysLeft = Math.ceil((TRIAL_MS - elapsed) / 86400000);
+      alert(`Você ainda tem ${daysLeft} ${daysLeft === 1 ? "dia" : "dias"} de teste gratuito.`);
+    } else {
+      alert("Seu período de teste gratuito expirou. Escolha um plano para continuar.");
+    }
+  };
+
   return (
+
 
     <div className="min-h-screen bg-gradient-secondary">
       {/* Hero Section */}
