@@ -55,7 +55,16 @@ const POOL: Record<Role, string[]> = {
     "Rafael Greca", "Fuad Noman", "João Henrique Caldas", "Adriane Lopes", "David Almeida",
     "Eduardo Pimentel", "Álvaro Dias", "Daniel Sucupira",
   ],
-};
+  Vereador: [
+    "Carlos Bolsonaro", "Milton Leite", "Rubinho Nunes", "Gabriel Monteiro", "Thammy Miranda",
+    "Sonaira Fernandes", "Amanda Vettorazzo", "Cris Monteiro", "Eli Corrêa Filho",
+    "Adilson Amadeu", "Senival Moura", "Marlon Luz", "Lucas Pavanato",
+    "Tânia Bandeira", "Luna Zarattini", "Silvia da Bancada Feminista", "Erika Hilton",
+    "Rinaldi Digilio", "Eduardo Suplicy", "Sandra Tadeu",
+    "Tarcísio Motta", "Carlo Caiado", "Vera Lins", "Inaldo Silva", "Pedro Duarte",
+    "Chico Alencar", "Reimont", "Monica Benicio", "Thais Ferreira",
+  ],
+},
 
 const WIKI_HEADERS = {
   "User-Agent": "ClimaPolitico/1.0 (https://climapolitico.lovable.app; admin@climapolitico.app)",
