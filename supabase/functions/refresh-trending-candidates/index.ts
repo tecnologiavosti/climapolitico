@@ -132,6 +132,7 @@ async function fetchSummary(article: string): Promise<{
   party: string | null;
   region: string | null;
   title: string;
+  extract: string;
 } | null> {
   try {
     const r = await fetch(
@@ -143,7 +144,7 @@ async function fetchSummary(article: string): Promise<{
     const photo = j?.originalimage?.source ?? j?.thumbnail?.source ?? null;
     const extract = `${j?.description ?? ""} ${j?.extract ?? ""}`;
     const meta = parseMeta(extract);
-    return { photo, party: meta.party, region: meta.region, title: j?.title ?? article };
+    return { photo, party: meta.party, region: meta.region, title: j?.title ?? article, extract };
   } catch {
     return null;
   }
