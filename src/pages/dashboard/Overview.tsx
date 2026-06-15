@@ -18,6 +18,7 @@ import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { NetworkLegendWithTooltips } from "@/components/dashboard/NetworkLegendWithTooltips";
 import { isHiddenNetwork } from "@/lib/networkVisibility";
 import { ReactionsPerPost } from "@/components/dashboard/ReactionsPerPost";
+import { BlogIASection } from "@/components/dashboard/BlogIASection";
 
 import { ChartDebugFrame } from "@/components/dashboard/ChartDebugFrame";
 
