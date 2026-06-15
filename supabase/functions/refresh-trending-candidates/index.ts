@@ -177,11 +177,22 @@ Deno.serve(async (req) => {
     }
     scores.sort((a, b) => b.score - a.score);
 
-    // 2. Enrich top 5 with photo + party + region
-    const top = scores.filter((s) => s.score > 0).slice(0, 5);
+    // 2. Enrich top candidates with photo + party + region.
+    // For Vereador, validate against Wikipedia extract to exclude non-vereadores.
+    const candidates = scores.filter((s) => s.score > 0).slice(0, role === "Vereador" ? 12 : 5);
     let rank = 1;
-    for (const t of top) {
+    for (const t of candidates) {
+      if (rank > 5) break;
       const meta = await fetchSummary(t.name);
+      if (role === "Vereador") {
+        const ext = (meta?.extract ?? "").toLowerCase();
+        const isVereador = /\bvereador(a|es|as)?\b/.test(ext);
+        const hasOtherOffice = /\b(deputad[oa]|senador|prefeit[oa]|governador|ministro|presidente da rep)/.test(ext);
+        if (!isVereador || hasOtherOffice) {
+          await sleep(120);
+          continue;
+        }
+      }
       allUpserts.push({
         role,
         rank,
