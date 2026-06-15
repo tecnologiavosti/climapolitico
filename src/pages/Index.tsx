@@ -119,11 +119,15 @@ const Index = () => {
                   Alertas por email/SMS
                 </li>
               </ul>
-              <Button className="w-full bg-gradient-primary hover-glow" asChild>
-                <a href={WHATSAPP_LINKS.pro} target="_blank" rel="noopener noreferrer">
-                  Saiba mais
-                </a>
+              <Button
+                className="w-full bg-gradient-primary hover-glow"
+                onClick={() => {
+                  window.location.href = WHATSAPP_LINKS.pro;
+                }}
+              >
+                Saiba mais
               </Button>
+
 
             </div>
           </Card>
