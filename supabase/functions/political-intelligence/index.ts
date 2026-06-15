@@ -345,15 +345,15 @@ function safeJsonParse(s: string): any | null {
   try { return JSON.parse(body); } catch { return null; }
 }
 
-function fallbackAnalysis(items: RawItem[], confidence: string) {
+function fallbackAnalysis(items: RawItem[], confidence: string, candidateName: string) {
   const top = items.slice(0, 8);
   const narrative = top[0]?.title?.slice(0, 140) || "Sem narrativa dominante clara nas últimas 24h.";
   const key_events = top.slice(0, 6).map((it) => ({
-    title: it.title.slice(0, 120),
+    title: cleanText(it.title).slice(0, 120),
     date: it.published_at.slice(0, 10),
     impact: "neutro",
-    summary: it.summary?.slice(0, 200) || it.title.slice(0, 200),
-    source: it.source,
+    summary: isBrokenText(cleanText(it.summary)) ? buildFallbackSummary(it.title, candidateName) : cleanText(it.summary).slice(0, 700),
+    source: cleanText(it.source),
     url: it.url,
   }));
   return {
@@ -384,7 +384,8 @@ Deno.serve(async (req) => {
 
     console.log(`[political-intelligence] candidate=${candidate_name}`);
     const allItems = await fetchAllSources(candidate_name);
-    const realtimeItems = filterRealtime(allItems);
+    const realtimeBase = filterRealtime(allItems);
+    const realtimeItems = await enrichRealtimeItems(realtimeBase, candidate_name);
     const oldest = realtimeItems.length
       ? realtimeItems.reduce((o, i) => (new Date(i.published_at) < new Date(o.published_at) ? i : o)).published_at
       : null;
@@ -419,14 +420,25 @@ Deno.serve(async (req) => {
     }
 
     if (!parsed) {
-      parsed = fallbackAnalysis(realtimeItems, confidence);
+      parsed = fallbackAnalysis(realtimeItems, confidence, candidate_name);
     }
 
-    // Sanity: descarta key_events fora das últimas 24h.
+    // Sanity: texto limpo, resumo sempre útil e eventos fora das últimas 24h descartados.
     if (Array.isArray(parsed.key_events)) {
       const now = Date.now();
       const cutoffMs = 24 * 3600000;
-      parsed.key_events = parsed.key_events.filter((ev: any) => {
+      parsed.key_events = parsed.key_events.map((ev: any) => {
+        const title = cleanText(ev?.title || "");
+        const summary = cleanText(ev?.summary || "");
+        return {
+          ...ev,
+          title,
+          impact: cleanText(ev?.impact || "neutro") || "neutro",
+          summary: isBrokenText(summary) ? buildFallbackSummary(title, candidate_name) : summary,
+          source: cleanText(ev?.source || "Fonte externa") || "Fonte externa",
+          url: cleanText(ev?.url || ""),
+        };
+      }).filter((ev: any) => {
         if (!ev?.date) return false;
         const t = new Date(ev.date).getTime();
         if (Number.isNaN(t)) return false;
