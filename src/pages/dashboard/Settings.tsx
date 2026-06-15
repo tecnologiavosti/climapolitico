@@ -22,6 +22,7 @@ import { useTheme } from "next-themes";
 import { Loader2, User, Settings as SettingsIcon, Shield, CreditCard, Camera, Eye, EyeOff, KeyRound, Mail } from "lucide-react";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { TrialCountdown } from "@/components/TrialCountdown";
+import { getTrialStart, getDaysLeft, TRIAL_DURATION_MS } from "@/lib/trial";
 
 export default function Settings() {
   const { user } = useAuth();
