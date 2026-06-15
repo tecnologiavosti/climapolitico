@@ -432,16 +432,8 @@ const RealTimeMonitor = () => {
                             </div>
                           </div>
                           <p className="text-xs text-muted-foreground leading-relaxed">{ev.summary}</p>
-                          {ev.url && (
-                            <a
-                              href={ev.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                            >
-                              <ExternalLink className="h-3 w-3" /> Ver fonte original
-                            </a>
-                          )}
+
+
                         </div>
                       </motion.li>
                     );
