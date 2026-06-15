@@ -38,24 +38,28 @@ function initials(name: string) {
     .join("");
 }
 
-const Card = ({ item, role }: { item: TrendingItem; role: string }) => (
+const Card = ({ item, role }: { item: TrendingItem; role: string }) => {
+  const [failed, setFailed] = useState(false);
+  const showImage = !!item.photo_url && !failed;
+  return (
   <div className="group relative h-full rounded-xl bg-card border border-border/50 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(0,0,0,0.12)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_2px_4px_rgba(0,0,0,0.06),0_16px_40px_-16px_rgba(0,0,0,0.18)]">
     <div className="flex h-full flex-col items-center px-6 pt-8 pb-7 text-center">
       <span className="absolute top-3 right-3 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground/70">
         #{item.rank}
       </span>
       <div className="relative mb-5">
-        <div className="h-28 w-28 rounded-full bg-background ring-1 ring-border/60 shadow-[0_4px_14px_-4px_rgba(0,0,0,0.18)] overflow-hidden">
-          {item.photo_url ? (
+        <div className="h-28 w-28 rounded-full bg-gradient-to-br from-muted to-background ring-1 ring-border/60 shadow-[0_4px_14px_-4px_rgba(0,0,0,0.18)] overflow-hidden">
+          {showImage ? (
             <img
-              src={item.photo_url}
+              src={item.photo_url!}
               alt={item.full_name}
               loading="lazy"
               referrerPolicy="no-referrer"
+              onError={() => setFailed(true)}
               className="h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-[1.04]"
             />
           ) : (
-            <div className="h-full w-full flex items-center justify-center bg-muted text-muted-foreground text-2xl font-semibold">
+            <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-primary/15 to-primary/5 text-foreground/80 text-2xl font-semibold tracking-wide">
               {initials(item.full_name) || <User className="h-8 w-8" />}
             </div>
           )}
@@ -81,7 +85,8 @@ const Card = ({ item, role }: { item: TrendingItem; role: string }) => (
       </div>
     </div>
   </div>
-);
+  );
+};
 
 const CardSkeleton = () => (
   <div className="h-full rounded-xl bg-card border border-border/50 shadow-sm">
@@ -180,11 +185,11 @@ export const TrendingCandidates = () => {
   // Fallback: presidenciáveis com viabilidade política real no ciclo atual.
   // Fotos de domínio público / Wikimedia Commons (URLs estáveis).
   const PRESIDENTIAL_FALLBACK: TrendingItem[] = [
-    { role: "Presidente", rank: 1, full_name: "Luiz Inácio Lula da Silva", party: "PT", region: "Nacional", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Lula_-_foto_oficial05012007.jpg/256px-Lula_-_foto_oficial05012007.jpg", search_score: 0 },
-    { role: "Presidente", rank: 2, full_name: "Flávio Bolsonaro", party: "PL", region: "RJ", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Senador_Fl%C3%A1vio_Bolsonaro.jpg/256px-Senador_Fl%C3%A1vio_Bolsonaro.jpg", search_score: 0 },
-    { role: "Presidente", rank: 3, full_name: "Tarcísio de Freitas", party: "Republicanos", region: "SP", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/Tarc%C3%ADsio_de_Freitas_em_2023.jpg/256px-Tarc%C3%ADsio_de_Freitas_em_2023.jpg", search_score: 0 },
-    { role: "Presidente", rank: 4, full_name: "Romeu Zema", party: "Novo", region: "MG", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Romeu_Zema_em_2019.jpg/256px-Romeu_Zema_em_2019.jpg", search_score: 0 },
-    { role: "Presidente", rank: 5, full_name: "Ronaldo Caiado", party: "União Brasil", region: "GO", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/Ronaldo_Caiado_em_2019.jpg/256px-Ronaldo_Caiado_em_2019.jpg", search_score: 0 },
+    { role: "Presidente", rank: 1, full_name: "Luiz Inácio Lula da Silva", party: "PT", region: "Nacional", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Foto_oficial_de_Luiz_In%C3%A1cio_Lula_da_Silva_%28ombros%29_denoise.jpg/330px-Foto_oficial_de_Luiz_In%C3%A1cio_Lula_da_Silva_%28ombros%29_denoise.jpg", search_score: 0 },
+    { role: "Presidente", rank: 2, full_name: "Flávio Bolsonaro", party: "PL", region: "RJ", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b3/Foto_oficial_do_senador_Fl%C3%A1vio_Bolsonaro_%28v._AgSen%29_%283x4%29.jpg/330px-Foto_oficial_do_senador_Fl%C3%A1vio_Bolsonaro_%28v._AgSen%29_%283x4%29.jpg", search_score: 0 },
+    { role: "Presidente", rank: 3, full_name: "Tarcísio de Freitas", party: "Republicanos", region: "SP", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/74/Governador_do_Estado_de_S%C3%A3o_Paulo%2C_Tarc%C3%ADsio_de_Freitas_-_Foto_Oficial_%28cropped%29.jpg/330px-Governador_do_Estado_de_S%C3%A3o_Paulo%2C_Tarc%C3%ADsio_de_Freitas_-_Foto_Oficial_%28cropped%29.jpg", search_score: 0 },
+    { role: "Presidente", rank: 4, full_name: "Romeu Zema", party: "Novo", region: "MG", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/bd/Romeu_Zema%2C_December_2024_%28cropped%29.jpg/330px-Romeu_Zema%2C_December_2024_%28cropped%29.jpg", search_score: 0 },
+    { role: "Presidente", rank: 5, full_name: "Ronaldo Caiado", party: "União Brasil", region: "GO", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f5/Foto_oficial_do_governador_de_Goi%C3%A1s%2C_Ronaldo_Caiado_em_2023_%28ombros%29.jpg/330px-Foto_oficial_do_governador_de_Goi%C3%A1s%2C_Ronaldo_Caiado_em_2023_%28ombros%29.jpg", search_score: 0 },
   ];
 
   const normalize = (s: string) =>
