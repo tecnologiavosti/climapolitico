@@ -167,10 +167,27 @@ const RealTimeMonitor = () => {
 
   const analysis = brief?.analysis;
   const intensity = brief?.intensity;
-  const insufficient = !!brief?.insufficient;
   const st = statusTone(analysis?.status || "");
   const risk = riskTone(analysis?.reputation_risk || "");
   const strength = strengthTone(analysis?.election_strength || "");
+
+  // Sanity check: bloqueia eventos fora das últimas 24h.
+  const visibleEvents = useMemo(() => {
+    if (!analysis?.key_events) return [];
+    const now = Date.now();
+    return analysis.key_events.filter((ev) => {
+      if (!ev?.date) return false;
+      const t = new Date(ev.date).getTime();
+      if (Number.isNaN(t)) return false;
+      const ageHours = (now - t) / 3600000;
+      if (ageHours > 24) {
+        console.warn("OLD EVENT BLOCKED", ev);
+        return false;
+      }
+      return true;
+    });
+  }, [analysis?.key_events]);
+
   const intensityTone =
     !intensity ? { text: "text-muted-foreground", bg: "bg-muted/40" }
     : intensity.score > 80 ? { text: "text-destructive", bg: "bg-destructive/10" }
