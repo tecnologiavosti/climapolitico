@@ -9,8 +9,16 @@ const PENDING_TRIAL_KEY = "trial_activation_pending";
 const storage = () => (typeof window === "undefined" ? null : window.localStorage);
 
 export function getTrialStart(userId: string): number | null {
-  const v = storage()?.getItem(keyFor(userId));
-  return v ? parseInt(v, 10) : null;
+  const store = storage();
+  const v = store?.getItem(keyFor(userId));
+  if (v) return parseInt(v, 10);
+
+  const legacy = store?.getItem(LEGACY_TRIAL_KEY);
+  if (!legacy) return null;
+
+  store?.setItem(keyFor(userId), legacy);
+  store?.setItem(MACHINE_TRIAL_KEY, legacy);
+  return parseInt(legacy, 10);
 }
 
 export function hasMachineTrialStarted(): boolean {
