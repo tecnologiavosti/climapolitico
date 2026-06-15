@@ -125,7 +125,7 @@ const Auth = () => {
     try {
       const { lovable } = await import("@/integrations/lovable/index");
       const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: window.location.origin,
+        redirect_uri: getAuthOrigin(),
       });
       if (result.error) {
         toast({ title: "Erro Google", description: String(result.error), variant: "destructive" });
