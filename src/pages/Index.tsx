@@ -22,8 +22,6 @@ const WHATSAPP_LINKS = {
 
 
 
-const Index = () => {
-  const navigate = useNavigate();
 
 const Index = () => {
   const navigate = useNavigate();
