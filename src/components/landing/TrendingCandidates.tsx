@@ -21,12 +21,13 @@ type TrendingItem = {
   search_score: number;
 };
 
-const ROLES_PLURAL: Array<{ key: string; label: string }> = [
+const ROLES_PLURAL: Array<{ key: string; label: string; emptyMessage?: string }> = [
   { key: "Presidente", label: "Presidentes" },
   { key: "Senador", label: "Senadores" },
   { key: "Deputado Federal", label: "Deputados Federais" },
   { key: "Deputado Estadual", label: "Deputados Estaduais" },
   { key: "Prefeito", label: "Prefeitos" },
+  { key: "Vereador", label: "Vereadores", emptyMessage: "Nenhum vereador disponível no momento." },
 ];
 
 function initials(name: string) {
@@ -103,12 +104,15 @@ const RoleCarousel = ({
   label,
   role,
   items,
+  emptyMessage,
 }: {
   label: string;
   role: string;
   items: TrendingItem[] | null;
+  emptyMessage?: string;
 }) => {
   const list = items ?? [];
+  const isEmpty = items !== null && list.length === 0;
   return (
     <div className="space-y-4">
       <div className="flex items-baseline justify-between gap-4 px-1">
@@ -119,20 +123,26 @@ const RoleCarousel = ({
           Top 5 mais pesquisados
         </span>
       </div>
-      <Carousel opts={{ align: "start", loop: false, dragFree: true, containScroll: "trimSnaps" }} className="relative">
-        <CarouselContent className="-ml-3">
-          {(items === null ? Array.from({ length: 5 }) : list).map((entry, idx) => (
-            <CarouselItem
-              key={idx}
-              className="pl-3 basis-[75%] xs:basis-[60%] sm:basis-1/2 md:basis-1/3 lg:basis-1/4 xl:basis-1/5"
-            >
-              {entry ? <Card item={entry as TrendingItem} role={role} /> : <CardSkeleton />}
-            </CarouselItem>
-          ))}
-        </CarouselContent>
-        <CarouselPrevious className="flex left-1 md:-left-4 h-8 w-8 md:h-9 md:w-9 bg-card/90 backdrop-blur border-border/60 text-muted-foreground hover:text-foreground shadow-md z-10" />
-        <CarouselNext className="flex right-1 md:-right-4 h-8 w-8 md:h-9 md:w-9 bg-card/90 backdrop-blur border-border/60 text-muted-foreground hover:text-foreground shadow-md z-10" />
-      </Carousel>
+      {isEmpty ? (
+        <div className="rounded-xl border border-dashed border-border/60 bg-card/40 px-6 py-10 text-center text-sm text-muted-foreground">
+          {emptyMessage ?? "Nenhum dado disponível no momento."}
+        </div>
+      ) : (
+        <Carousel opts={{ align: "start", loop: false, dragFree: true, containScroll: "trimSnaps" }} className="relative">
+          <CarouselContent className="-ml-3">
+            {(items === null ? Array.from({ length: 5 }) : list).map((entry, idx) => (
+              <CarouselItem
+                key={idx}
+                className="pl-3 basis-[75%] xs:basis-[60%] sm:basis-1/2 md:basis-1/3 lg:basis-1/4 xl:basis-1/5"
+              >
+                {entry ? <Card item={entry as TrendingItem} role={role} /> : <CardSkeleton />}
+              </CarouselItem>
+            ))}
+          </CarouselContent>
+          <CarouselPrevious className="flex left-1 md:-left-4 h-8 w-8 md:h-9 md:w-9 bg-card/90 backdrop-blur border-border/60 text-muted-foreground hover:text-foreground shadow-md z-10" />
+          <CarouselNext className="flex right-1 md:-right-4 h-8 w-8 md:h-9 md:w-9 bg-card/90 backdrop-blur border-border/60 text-muted-foreground hover:text-foreground shadow-md z-10" />
+        </Carousel>
+      )}
     </div>
   );
 };
@@ -239,7 +249,7 @@ export const TrendingCandidates = () => {
 
       <div className="max-w-7xl mx-auto space-y-12">
         {ROLES_PLURAL.map((r) => (
-          <RoleCarousel key={r.key} label={r.label} role={r.key} items={byRole(r.key)} />
+          <RoleCarousel key={r.key} label={r.label} role={r.key} items={byRole(r.key)} emptyMessage={r.emptyMessage} />
         ))}
       </div>
     </section>
