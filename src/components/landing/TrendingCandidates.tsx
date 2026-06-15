@@ -249,7 +249,7 @@ export const TrendingCandidates = () => {
 
       <div className="max-w-7xl mx-auto space-y-12">
         {ROLES_PLURAL.map((r) => (
-          <RoleCarousel key={r.key} label={r.label} role={r.key} items={byRole(r.key)} />
+          <RoleCarousel key={r.key} label={r.label} role={r.key} items={byRole(r.key)} emptyMessage={r.emptyMessage} />
         ))}
       </div>
     </section>
