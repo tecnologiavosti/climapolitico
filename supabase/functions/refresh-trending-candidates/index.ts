@@ -64,7 +64,7 @@ const POOL: Record<Role, string[]> = {
     "Tarcísio Motta", "Carlo Caiado", "Vera Lins", "Inaldo Silva", "Pedro Duarte",
     "Chico Alencar", "Reimont", "Monica Benicio", "Thais Ferreira",
   ],
-},
+};
 
 const WIKI_HEADERS = {
   "User-Agent": "ClimaPolitico/1.0 (https://climapolitico.lovable.app; admin@climapolitico.app)",
