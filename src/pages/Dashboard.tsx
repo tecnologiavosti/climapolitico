@@ -22,6 +22,7 @@ const Analytics = lazy(() => import("./dashboard/Analytics"));
 const CandidateRanking = lazy(() => import("./dashboard/CandidateRanking"));
 const Admin = lazy(() => import("./dashboard/Admin"));
 const AdminApiSettings = lazy(() => import("./dashboard/AdminApiSettings"));
+const BlogAdmin = lazy(() => import("./dashboard/BlogAdmin"));
 const AIInsights = lazy(() => import("./dashboard/AIInsights"));
 const CollectionStatus = lazy(() => import("./dashboard/CollectionStatus"));
 const RealTimeMonitor = lazy(() => import("./dashboard/RealTimeMonitor"));
