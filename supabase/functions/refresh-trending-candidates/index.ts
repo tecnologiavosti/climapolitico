@@ -16,7 +16,7 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const ROLES = ["Presidente", "Senador", "Deputado Federal", "Deputado Estadual", "Prefeito"] as const;
+const ROLES = ["Presidente", "Senador", "Deputado Federal", "Deputado Estadual", "Prefeito", "Vereador"] as const;
 type Role = (typeof ROLES)[number];
 
 // Pool of currently relevant Brazilian politicians per role. Names come
