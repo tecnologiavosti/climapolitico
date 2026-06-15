@@ -40,6 +40,7 @@ interface Analysis {
 interface Intensity {
   score: number;
   label: string;
+  volume1h?: number;
   volume6h: number;
   volume24h: number;
   growthPct: number;
@@ -51,8 +52,6 @@ interface Brief {
   sources_count: number;
   provider?: string;
   intensity: Intensity;
-  insufficient?: boolean;
-  message?: string;
   analysis?: Analysis;
   raw_items: { source: string; title: string; url: string; published_at: string }[];
 }
