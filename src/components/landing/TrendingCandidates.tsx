@@ -38,24 +38,28 @@ function initials(name: string) {
     .join("");
 }
 
-const Card = ({ item, role }: { item: TrendingItem; role: string }) => (
+const Card = ({ item, role }: { item: TrendingItem; role: string }) => {
+  const [failed, setFailed] = useState(false);
+  const showImage = !!item.photo_url && !failed;
+  return (
   <div className="group relative h-full rounded-xl bg-card border border-border/50 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(0,0,0,0.12)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_2px_4px_rgba(0,0,0,0.06),0_16px_40px_-16px_rgba(0,0,0,0.18)]">
     <div className="flex h-full flex-col items-center px-6 pt-8 pb-7 text-center">
       <span className="absolute top-3 right-3 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground/70">
         #{item.rank}
       </span>
       <div className="relative mb-5">
-        <div className="h-28 w-28 rounded-full bg-background ring-1 ring-border/60 shadow-[0_4px_14px_-4px_rgba(0,0,0,0.18)] overflow-hidden">
-          {item.photo_url ? (
+        <div className="h-28 w-28 rounded-full bg-gradient-to-br from-muted to-background ring-1 ring-border/60 shadow-[0_4px_14px_-4px_rgba(0,0,0,0.18)] overflow-hidden">
+          {showImage ? (
             <img
-              src={item.photo_url}
+              src={item.photo_url!}
               alt={item.full_name}
               loading="lazy"
               referrerPolicy="no-referrer"
+              onError={() => setFailed(true)}
               className="h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-[1.04]"
             />
           ) : (
-            <div className="h-full w-full flex items-center justify-center bg-muted text-muted-foreground text-2xl font-semibold">
+            <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-primary/15 to-primary/5 text-foreground/80 text-2xl font-semibold tracking-wide">
               {initials(item.full_name) || <User className="h-8 w-8" />}
             </div>
           )}
@@ -81,7 +85,8 @@ const Card = ({ item, role }: { item: TrendingItem; role: string }) => (
       </div>
     </div>
   </div>
-);
+  );
+};
 
 const CardSkeleton = () => (
   <div className="h-full rounded-xl bg-card border border-border/50 shadow-sm">
