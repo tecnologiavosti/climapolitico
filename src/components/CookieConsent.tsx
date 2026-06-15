@@ -1,26 +1,35 @@
 import { useEffect, useState } from "react";
 import { Cookie, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useLocation } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
 
 const STORAGE_KEY = "cookies_accepted";
 
 export function CookieConsent() {
   const [open, setOpen] = useState(false);
+  const { user, loading } = useAuth();
+  const location = useLocation();
+  const storageKey = user?.id ? `${STORAGE_KEY}:${user.id}` : STORAGE_KEY;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const v = window.localStorage.getItem(STORAGE_KEY);
-    if (v === null) setOpen(true);
-  }, []);
+    if (location.pathname !== "/" || loading) {
+      setOpen(false);
+      return;
+    }
+    const v = window.localStorage.getItem(storageKey);
+    setOpen(v === null);
+  }, [location.pathname, loading, storageKey]);
 
   if (!open) return null;
 
   const accept = () => {
-    window.localStorage.setItem(STORAGE_KEY, "true");
+    window.localStorage.setItem(storageKey, "true");
     setOpen(false);
   };
   const decline = () => {
-    window.localStorage.setItem(STORAGE_KEY, "false");
+    window.localStorage.setItem(storageKey, "false");
     setOpen(false);
   };
   const dismiss = () => setOpen(false);
