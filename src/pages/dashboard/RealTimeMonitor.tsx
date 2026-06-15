@@ -139,7 +139,7 @@ const RealTimeMonitor = () => {
         body: { candidate_name: name },
       });
       if (fnError) throw fnError;
-      if (!data || !data.analysis) throw new Error("Resposta inválida da IA");
+      if (!data) throw new Error("Resposta inválida do servidor");
       setBrief(data as Brief);
       try { localStorage.setItem(cacheKey, JSON.stringify(data)); } catch { /* ignore */ }
     } catch (e: any) {
