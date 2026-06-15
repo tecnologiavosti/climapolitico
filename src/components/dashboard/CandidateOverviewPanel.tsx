@@ -77,35 +77,19 @@ export function CandidateOverviewPanel({ candidateId, candidateName }: Candidate
 
   return (
     <div className="space-y-6">
-      {/* Data Source Banner */}
-      <Card className="border-l-4 border-l-destructive bg-destructive/5">
-        <CardContent className="py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Youtube className="h-5 w-5 text-destructive" />
-              <span className="font-medium">Fonte: {primarySource}</span>
-              <span className="text-sm text-muted-foreground">
-                • Última atualização: {
-                  metrics.lastCalculatedAt 
-                    ? new Date(metrics.lastCalculatedAt).toLocaleDateString('pt-BR', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })
-                    : 'N/A'
-                }
-              </span>
-            </div>
-            {candidateName && (
+      {/* Cabeçalho do candidato (sem fonte / timestamp) */}
+      {candidateName && (
+        <Card className="border-l-4 border-l-destructive bg-destructive/5">
+          <CardContent className="py-3">
+            <div className="flex items-center justify-end">
               <span className="text-sm text-muted-foreground">
                 Palavras-chave: <strong>{candidateName}</strong>
               </span>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
 
       {/* Main KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
