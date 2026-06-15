@@ -155,7 +155,8 @@ export const TrendingCandidates = () => {
   }, []);
 
   // Blocklist: nomes que aparecem no cache de buscas mas NÃO são presidenciáveis
-  // reais (ex-presidentes sem articulação, figuras históricas, familiares).
+  // reais (ex-presidentes sem articulação, figuras históricas, familiares,
+  // ou inelegíveis no ciclo atual).
   const PRESIDENTIAL_BLOCKLIST = new Set(
     [
       "dilma rousseff",
@@ -170,17 +171,20 @@ export const TrendingCandidates = () => {
       "josé sarney",
       "collor",
       "fernando collor",
+      // Jair Bolsonaro está inelegível; quem representa o grupo é Flávio Bolsonaro.
+      "jair bolsonaro",
+      "jair messias bolsonaro",
     ].map((n) => n.toLowerCase())
   );
 
   // Fallback: presidenciáveis com viabilidade política real no ciclo atual.
-  // Usado para completar até 5 quando o cache de buscas não cobrir o cenário.
+  // Fotos de domínio público / Wikimedia Commons (URLs estáveis).
   const PRESIDENTIAL_FALLBACK: TrendingItem[] = [
-    { role: "Presidente", rank: 1, full_name: "Luiz Inácio Lula da Silva", party: "PT", region: "Nacional", photo_url: null, search_score: 0 },
-    { role: "Presidente", rank: 2, full_name: "Jair Bolsonaro", party: "PL", region: "Nacional", photo_url: null, search_score: 0 },
-    { role: "Presidente", rank: 3, full_name: "Tarcísio de Freitas", party: "Republicanos", region: "SP", photo_url: null, search_score: 0 },
-    { role: "Presidente", rank: 4, full_name: "Romeu Zema", party: "Novo", region: "MG", photo_url: null, search_score: 0 },
-    { role: "Presidente", rank: 5, full_name: "Ronaldo Caiado", party: "União Brasil", region: "GO", photo_url: null, search_score: 0 },
+    { role: "Presidente", rank: 1, full_name: "Luiz Inácio Lula da Silva", party: "PT", region: "Nacional", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Lula_-_foto_oficial05012007.jpg/256px-Lula_-_foto_oficial05012007.jpg", search_score: 0 },
+    { role: "Presidente", rank: 2, full_name: "Flávio Bolsonaro", party: "PL", region: "RJ", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Senador_Fl%C3%A1vio_Bolsonaro.jpg/256px-Senador_Fl%C3%A1vio_Bolsonaro.jpg", search_score: 0 },
+    { role: "Presidente", rank: 3, full_name: "Tarcísio de Freitas", party: "Republicanos", region: "SP", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/Tarc%C3%ADsio_de_Freitas_em_2023.jpg/256px-Tarc%C3%ADsio_de_Freitas_em_2023.jpg", search_score: 0 },
+    { role: "Presidente", rank: 4, full_name: "Romeu Zema", party: "Novo", region: "MG", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Romeu_Zema_em_2019.jpg/256px-Romeu_Zema_em_2019.jpg", search_score: 0 },
+    { role: "Presidente", rank: 5, full_name: "Ronaldo Caiado", party: "União Brasil", region: "GO", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/Ronaldo_Caiado_em_2019.jpg/256px-Ronaldo_Caiado_em_2019.jpg", search_score: 0 },
   ];
 
   const normalize = (s: string) =>
