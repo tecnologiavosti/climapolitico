@@ -383,6 +383,69 @@ export type Database = {
           },
         ]
       }
+      blog_posts: {
+        Row: {
+          content: string
+          cover_image: string | null
+          created_at: string
+          created_by: string | null
+          excerpt: string | null
+          id: string
+          published: boolean
+          slug: string
+          tags: string[]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          content: string
+          cover_image?: string | null
+          created_at?: string
+          created_by?: string | null
+          excerpt?: string | null
+          id?: string
+          published?: boolean
+          slug: string
+          tags?: string[]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          content?: string
+          cover_image?: string | null
+          created_at?: string
+          created_by?: string | null
+          excerpt?: string | null
+          id?: string
+          published?: boolean
+          slug?: string
+          tags?: string[]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      blog_settings: {
+        Row: {
+          id: number
+          subtheme: string
+          theme: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          subtheme?: string
+          theme?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          subtheme?: string
+          theme?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       candidate_analyses: {
         Row: {
           age_distribution: Json | null
