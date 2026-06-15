@@ -69,9 +69,12 @@ const Index = () => {
                   Dashboard padrão
                 </li>
               </ul>
-              <Button className="w-full" variant="outline" onClick={openWhatsapp}>
-                Saiba mais
+              <Button className="w-full" variant="outline" asChild>
+                <a href={WHATSAPP_LINKS.basico} target="_blank" rel="noopener noreferrer">
+                  Saiba mais
+                </a>
               </Button>
+
             </div>
           </Card>
 
