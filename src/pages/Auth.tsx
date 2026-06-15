@@ -123,13 +123,9 @@ const Auth = () => {
   const handleGoogle = async () => {
     setLoading(true);
     try {
-      const oauth = createLovableAuth({ oauthBrokerUrl: "https://oauth.lovable.app/initiate" });
-      const redirectTo = `${getAuthOrigin()}/auth/callback`;
-      console.log("Current origin:", window.location.origin);
-      console.log("OAuth redirect:", redirectTo);
-      const result = await oauth.signInWithOAuth("google", {
-        redirect_uri: redirectTo,
-        extraParams: { project_id: LOVABLE_PROJECT_ID },
+      const { lovable } = await import("@/integrations/lovable/index");
+      const result = await lovable.auth.signInWithOAuth("google", {
+        redirect_uri: window.location.origin,
       });
       if (result.error) {
         toast({ title: "Erro Google", description: String(result.error), variant: "destructive" });
