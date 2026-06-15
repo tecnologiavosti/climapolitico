@@ -1,6 +1,6 @@
-// Political Intelligence — AI-first analysis from external sources only.
-// Fetches Google News + political RSS, hands raw items to AI, returns a
-// structured strategic briefing. Does NOT consult social_interactions.
+// Political Intelligence — AI-first realtime analysis (últimas 24h).
+// Coleta apenas fontes externas recentes (<=24h) e entrega à IA, que deve
+// analisar SOMENTE essas fontes — sem conhecimento pré-treinado, sem inventar.
 import { corsHeaders, handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { tryVerifyJwt } from "../_shared/auth.ts";
 import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
@@ -10,13 +10,11 @@ interface RawItem {
   title: string;
   summary: string;
   url: string;
-  published_at: string;
+  published_at: string; // ISO
 }
 
 const RSS_FEEDS = (q: string) => [
-  // Google News (BR-PT)
   { src: "Google News", url: `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=pt-BR&gl=BR&ceid=BR:pt-419` },
-  // Portais políticos
   { src: "Poder360", url: `https://news.google.com/rss/search?q=${encodeURIComponent(q + " site:poder360.com.br")}&hl=pt-BR&gl=BR&ceid=BR:pt-419` },
   { src: "Congresso em Foco", url: `https://news.google.com/rss/search?q=${encodeURIComponent(q + " site:congressoemfoco.uol.com.br")}&hl=pt-BR&gl=BR&ceid=BR:pt-419` },
   { src: "Metrópoles", url: `https://news.google.com/rss/search?q=${encodeURIComponent(q + " site:metropoles.com")}&hl=pt-BR&gl=BR&ceid=BR:pt-419` },
@@ -28,7 +26,16 @@ const RSS_FEEDS = (q: string) => [
   { src: "YouTube", url: `https://news.google.com/rss/search?q=${encodeURIComponent(q + " site:youtube.com")}&hl=pt-BR&gl=BR&ceid=BR:pt-419` },
 ];
 
-const stripHtml = (s: string) => s.replace(/<!\[CDATA\[|\]\]>/g, "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+const stripHtml = (s: string) =>
+  s.replace(/<!\[CDATA\[|\]\]>/g, "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+
+// Parser robusto — só retorna ISO se data realmente válida (não inventa "agora").
+function parsePubDate(raw: string): string | null {
+  if (!raw) return null;
+  const t = new Date(raw).getTime();
+  if (Number.isNaN(t)) return null;
+  return new Date(t).toISOString();
+}
 
 function parseRss(xml: string, sourceLabel: string): RawItem[] {
   const items: RawItem[] = [];
@@ -40,13 +47,14 @@ function parseRss(xml: string, sourceLabel: string): RawItem[] {
     const link = stripHtml((body.match(/<link>([\s\S]*?)<\/link>/i)?.[1]) || "");
     const desc = stripHtml((body.match(/<description>([\s\S]*?)<\/description>/i)?.[1]) || "");
     const pub = stripHtml((body.match(/<pubDate>([\s\S]*?)<\/pubDate>/i)?.[1]) || "");
-    if (!title) continue;
+    const iso = parsePubDate(pub);
+    if (!title || !iso) continue; // descarta sem título OU sem timestamp confiável
     items.push({
       source: sourceLabel,
       title: title.slice(0, 300),
       summary: desc.slice(0, 500),
       url: link,
-      published_at: pub ? new Date(pub).toISOString() : new Date().toISOString(),
+      published_at: iso,
     });
   }
   return items;
@@ -64,7 +72,6 @@ async function fetchAllSources(candidateName: string): Promise<RawItem[]> {
   );
   const all: RawItem[] = [];
   for (const r of results) if (r.status === "fulfilled") all.push(...r.value);
-  // dedupe by title
   const seen = new Set<string>();
   const unique = all.filter((i) => {
     const k = i.title.toLowerCase().slice(0, 80);
@@ -72,90 +79,101 @@ async function fetchAllSources(candidateName: string): Promise<RawItem[]> {
     seen.add(k);
     return true;
   });
-  // sort newest first, cap
   unique.sort((a, b) => +new Date(b.published_at) - +new Date(a.published_at));
-  return unique.slice(0, 100);
+  return unique.slice(0, 150);
 }
 
-// Filter by age. Tries 24h first; falls back to 48h if too few hits.
-function filterRealtime(items: RawItem[]): { items: RawItem[]; windowHours: number } {
+// Janela ESTRITA: somente últimas 24h. Sem fallback.
+function filterRealtime(items: RawItem[]): RawItem[] {
   const now = Date.now();
-  const ageHours = (it: RawItem) => (now - new Date(it.published_at).getTime()) / 3600000;
-  const last24 = items.filter((i) => ageHours(i) <= 24 && ageHours(i) >= 0);
-  if (last24.length >= 5) return { items: last24, windowHours: 24 };
-  const last48 = items.filter((i) => ageHours(i) <= 48 && ageHours(i) >= 0);
-  return { items: last48, windowHours: 48 };
+  return items.filter((i) => {
+    const t = new Date(i.published_at).getTime();
+    if (Number.isNaN(t)) return false;
+    const ageHours = (now - t) / 3600000;
+    return ageHours >= 0 && ageHours <= 24;
+  });
 }
 
-// Public-movement intensity (0-100): volume 6h + 24h growth + freshness weighting.
-function computeIntensity(items: RawItem[]): { score: number; label: string; volume6h: number; volume24h: number; growthPct: number } {
+// Intensidade 0-100 = volume_1h*0.4 + crescimento_6h*0.35 + diversidade*0.25.
+function computeIntensity(items: RawItem[]): { score: number; label: string; volume1h: number; volume6h: number; volume24h: number; growthPct: number } {
   const now = Date.now();
   const ageHours = (it: RawItem) => (now - new Date(it.published_at).getTime()) / 3600000;
+  const v1 = items.filter((i) => ageHours(i) <= 1).length;
   const v6 = items.filter((i) => ageHours(i) <= 6).length;
   const v24 = items.filter((i) => ageHours(i) <= 24).length;
   const v6Prev = items.filter((i) => ageHours(i) > 6 && ageHours(i) <= 12).length;
-  // Volume component: 6h count, log-scaled, anchored so 30 itens em 6h ≈ 100.
-  const volScore = Math.min(100, Math.log2(v6 + 1) * 22);
-  // Growth component: comparison to previous 6h window.
+
+  // 1h volume — 10 itens/h ~= 100
+  const volScore = Math.min(100, Math.log2(v1 + 1) * 30);
+  // 6h growth vs prev 6h
   const growthPct = v6Prev === 0 ? (v6 > 0 ? 100 : 0) : ((v6 - v6Prev) / v6Prev) * 100;
   const growthScore = Math.max(0, Math.min(100, 50 + growthPct / 2));
-  // Source diversity (proxy de engajamento público).
-  const sources = new Set(items.filter((i) => ageHours(i) <= 24).map((i) => i.source)).size;
-  const diversityScore = Math.min(100, sources * 12);
-  const score = Math.round(volScore * 0.5 + growthScore * 0.3 + diversityScore * 0.2);
+  // Engajamento proxy = diversidade de fontes em 24h
+  const sources = new Set(items.map((i) => i.source)).size;
+  const engagementScore = Math.min(100, sources * 14);
+
+  const score = Math.round(volScore * 0.4 + growthScore * 0.35 + engagementScore * 0.25);
   let label = "Muito baixa";
-  if (score > 80) label = "Explosiva";
-  else if (score > 60) label = "Alta";
-  else if (score > 40) label = "Moderada";
-  else if (score > 20) label = "Baixa";
-  return { score, label, volume6h: v6, volume24h: v24, growthPct: Math.round(growthPct) };
+  if (score >= 81) label = "Explosiva";
+  else if (score >= 61) label = "Alta";
+  else if (score >= 41) label = "Moderada";
+  else if (score >= 21) label = "Baixa";
+  return { score, label, volume1h: v1, volume6h: v6, volume24h: v24, growthPct: Math.round(growthPct) };
+}
+
+function confidenceFromCount(n: number): "baixa" | "média" | "alta" {
+  if (n >= 16) return "alta";
+  if (n >= 6) return "média";
+  return "baixa";
 }
 
 const SYSTEM = `Você é um analista político sênior brasileiro de monitoramento em TEMPO REAL.
 
 REGRAS ABSOLUTAS:
-- Analise SOMENTE as fontes fornecidas no prompt.
+- Analise SOMENTE as fontes JSON fornecidas no prompt.
 - NUNCA use conhecimento pré-treinado, contexto histórico ou eventos passados não citados nas fontes.
-- NUNCA invente eventos, datas, citações ou narrativas.
-- NUNCA mencione eventos fora da janela de tempo informada (24h ou 48h).
-- Se as fontes forem insuficientes/irrelevantes, retorne APENAS a string: INSUFFICIENT_REALTIME_DATA (sem JSON, sem aspas).
-- Responda em português do Brasil.`;
+- NUNCA invente fatos, datas, citações ou narrativas.
+- NUNCA mencione eventos fora das últimas 24 horas.
+- Ignore qualquer contexto político histórico que não esteja nas fontes.
+- Mesmo com poucas fontes, produza análise proporcional. Reduza a confiança, mas NÃO invente.
+- Responda em português do Brasil, em JSON estrito.`;
 
-function buildPrompt(name: string, items: RawItem[], windowHours: number) {
-  const corpus = items
-    .map((it, i) => `[${i + 1}] (${it.source} · ${it.published_at}) ${it.title}${it.summary ? " — " + it.summary : ""}`)
-    .join("\n");
+function buildPrompt(name: string, items: RawItem[], confidence: string) {
+  const corpus = items.length === 0
+    ? "(nenhuma fonte na janela)"
+    : items
+        .map((it, i) => `[${i + 1}] (${it.source} · ${it.published_at}) ${it.title}${it.summary ? " — " + it.summary : ""}`)
+        .join("\n");
   return `POLÍTICO: ${name}
 AGORA: ${new Date().toISOString()}
-JANELA: últimas ${windowHours} horas.
+JANELA: últimas 24 horas (estrito).
+CONFIANÇA SUGERIDA: ${confidence} (baseada no volume de fontes).
 
-FONTES COLETADAS NESSA JANELA (${items.length}):
+FONTES COLETADAS (${items.length}):
 ${corpus}
 
 INSTRUÇÕES:
-- Use APENAS as ${items.length} fontes acima. Toda data em key_events DEVE estar dentro das últimas ${windowHours}h.
-- Se as fontes não permitirem análise estratégica confiável (irrelevantes ao político ou em volume insuficiente), responda APENAS: INSUFFICIENT_REALTIME_DATA
-- Caso contrário, produza JSON ESTRITO (sem markdown, sem texto fora):
+- Use APENAS as ${items.length} fontes acima. Toda data em key_events DEVE estar dentro das últimas 24h.
+- Produza JSON ESTRITO (sem markdown, sem texto fora):
 
 {
   "status": "estável" | "em alta" | "em queda" | "crise" | "neutro",
   "reputation_risk": "baixo" | "moderado" | "alto" | "crítico",
   "election_strength": "fraca" | "moderada" | "forte" | "dominante",
-  "dominant_narrative": "frase curta (máx 140 chars), baseada APENAS nas fontes",
+  "dominant_narrative": "frase curta (máx 140 chars), baseada APENAS nas fontes das últimas 24h",
   "key_events": [
     { "title": "título curto", "date": "AAAA-MM-DD", "impact": "positivo|negativo|neutro", "summary": "1-2 frases", "source": "fonte", "url": "url" }
   ],
   "narrative_shifts": ["mudanças observadas SOMENTE nas fontes acima"],
   "emerging_risks": ["riscos extraídos APENAS das fontes acima"],
   "strategic_analysis": "parágrafo (3-6 frases) baseado SOMENTE nas fontes",
-  "confidence": "baixa" | "média" | "alta",
+  "confidence": "${confidence}",
   "evidence_count": ${items.length}
 }`;
 }
 
 function safeJsonParse(s: string): any | null {
   const t = (s || "").trim();
-  if (/INSUFFICIENT_REALTIME_DATA/i.test(t)) return { __insufficient: true };
   try { return JSON.parse(t); } catch { /* try strip */ }
   const m = t.match(/\{[\s\S]*\}/);
   if (m) { try { return JSON.parse(m[0]); } catch { /* ignore */ } }
@@ -166,7 +184,7 @@ Deno.serve(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
   try {
-    await tryVerifyJwt(req); // optional, usage tracking only
+    await tryVerifyJwt(req);
     const { candidate_name } = await req.json().catch(() => ({}));
     if (!candidate_name || typeof candidate_name !== "string") {
       return jsonResponse({ error: "candidate_name required" }, 400);
@@ -174,27 +192,21 @@ Deno.serve(async (req) => {
 
     console.log(`[political-intelligence] candidate=${candidate_name}`);
     const allItems = await fetchAllSources(candidate_name);
-    const { items, windowHours } = filterRealtime(allItems);
-    const intensity = computeIntensity(allItems);
-    console.log(`[political-intelligence] fetched=${allItems.length} recent(${windowHours}h)=${items.length} intensity=${intensity.score}`);
+    const realtimeItems = filterRealtime(allItems);
+    const oldest = realtimeItems.length
+      ? realtimeItems.reduce((o, i) => (new Date(i.published_at) < new Date(o.published_at) ? i : o)).published_at
+      : null;
 
-    // < 5 fontes recentes → curto-circuito: nada vai pra IA.
-    if (items.length < 5) {
-      return jsonResponse({
-        candidate_name,
-        fetched_at: new Date().toISOString(),
-        window_hours: windowHours,
-        sources_count: items.length,
-        intensity,
-        insufficient: true,
-        message: "Dados insuficientes para análise em tempo real.",
-        raw_items: items,
-      });
-    }
+    console.log("TOTAL SOURCES", allItems.length);
+    console.log("REALTIME SOURCES", realtimeItems.length);
+    console.log("OLDEST SOURCE", oldest);
+
+    const intensity = computeIntensity(realtimeItems);
+    const confidence = confidenceFromCount(realtimeItems.length);
 
     const ai = await callAICerebrasFirst({
       systemMsg: SYSTEM,
-      userPrompt: buildPrompt(candidate_name, items, windowHours),
+      userPrompt: buildPrompt(candidate_name, realtimeItems, confidence),
       jsonMode: true,
       maxTokens: 2200,
       temperature: 0.2,
@@ -202,29 +214,15 @@ Deno.serve(async (req) => {
     });
 
     const parsed = safeJsonParse(ai.content);
-
     if (!parsed) {
       console.error("[political-intelligence] JSON parse failed", ai.content?.slice(0, 200));
       return jsonResponse({ error: "ai_invalid_json", provider: ai.provider }, 502);
     }
 
-    if (parsed.__insufficient) {
-      return jsonResponse({
-        candidate_name,
-        fetched_at: new Date().toISOString(),
-        window_hours: windowHours,
-        sources_count: items.length,
-        intensity,
-        insufficient: true,
-        message: "Não há evidências suficientes para análise estratégica confiável.",
-        raw_items: items,
-      });
-    }
-
-    // Saneamento de datas: descarta key_events fora da janela.
+    // Sanity: descarta key_events fora das últimas 24h.
     if (Array.isArray(parsed.key_events)) {
       const now = Date.now();
-      const cutoffMs = windowHours * 3600000;
+      const cutoffMs = 24 * 3600000;
       parsed.key_events = parsed.key_events.filter((ev: any) => {
         if (!ev?.date) return false;
         const t = new Date(ev.date).getTime();
@@ -233,16 +231,20 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Garante confiança sincronizada com o volume real.
+    parsed.confidence = confidence;
+    parsed.evidence_count = realtimeItems.length;
+
     return jsonResponse({
       candidate_name,
       fetched_at: new Date().toISOString(),
-      window_hours: windowHours,
-      sources_count: items.length,
+      window_hours: 24,
+      sources_count: realtimeItems.length,
       provider: ai.provider,
       model: ai.model,
       intensity,
       analysis: parsed,
-      raw_items: items.slice(0, 30),
+      raw_items: realtimeItems.slice(0, 30),
     });
   } catch (e) {
     console.error("[political-intelligence] error", e);
