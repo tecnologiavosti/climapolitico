@@ -745,10 +745,13 @@ export default function RadarPolitico() {
                             </Badge>
                           )}
                         </div>
-                        <h3 className="text-sm font-medium leading-snug break-words [overflow-wrap:anywhere]">{e.title}</h3>
-                        {e.summary && (
-                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2 break-words [overflow-wrap:anywhere]">{e.summary}</p>
-                        )}
+                        <h3 className="text-sm font-medium leading-snug break-words [overflow-wrap:anywhere]">{sanitizeRadarText(e.title)}</h3>
+                        {(() => {
+                          const s = sanitizeRadarText(e.summary);
+                          return s ? (
+                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2 break-words [overflow-wrap:anywhere]">{s}</p>
+                          ) : null;
+                        })()}
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${b.tone}`}>
@@ -802,11 +805,11 @@ export default function RadarPolitico() {
           {selected && (
             <>
               <DialogHeader>
-                <DialogTitle className="text-base leading-snug break-words [overflow-wrap:anywhere]">{selected.title}</DialogTitle>
+                <DialogTitle className="text-base leading-snug break-words [overflow-wrap:anywhere]">{sanitizeRadarText(selected.title)}</DialogTitle>
                 <DialogDescription className="flex items-center gap-2 text-xs flex-wrap">
                   <span>{fmtDate(selected.event_date)}</span>
                   <span>·</span>
-                  <Badge variant="outline" className="text-[10px]">{selected.category}</Badge>
+                  <Badge variant="outline" className="text-[10px]">{sanitizeRadarText(selected.category)}</Badge>
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 mt-2">
@@ -817,9 +820,9 @@ export default function RadarPolitico() {
                 </div>
                 {(() => {
                   const description =
-                    (selected.summary && selected.summary.trim()) ||
-                    (selected.description && selected.description.trim()) ||
-                    (selected.content && selected.content.trim()) ||
+                    sanitizeRadarText(selected.summary) ||
+                    sanitizeRadarText(selected.description) ||
+                    sanitizeRadarText(selected.content) ||
                     "Descrição não disponível";
                   return (
                     <div>
