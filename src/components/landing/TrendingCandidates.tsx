@@ -180,11 +180,11 @@ export const TrendingCandidates = () => {
   // Fallback: presidenciáveis com viabilidade política real no ciclo atual.
   // Fotos de domínio público / Wikimedia Commons (URLs estáveis).
   const PRESIDENTIAL_FALLBACK: TrendingItem[] = [
-    { role: "Presidente", rank: 1, full_name: "Luiz Inácio Lula da Silva", party: "PT", region: "Nacional", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Lula_-_foto_oficial05012007.jpg/256px-Lula_-_foto_oficial05012007.jpg", search_score: 0 },
-    { role: "Presidente", rank: 2, full_name: "Flávio Bolsonaro", party: "PL", region: "RJ", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Senador_Fl%C3%A1vio_Bolsonaro.jpg/256px-Senador_Fl%C3%A1vio_Bolsonaro.jpg", search_score: 0 },
-    { role: "Presidente", rank: 3, full_name: "Tarcísio de Freitas", party: "Republicanos", region: "SP", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/Tarc%C3%ADsio_de_Freitas_em_2023.jpg/256px-Tarc%C3%ADsio_de_Freitas_em_2023.jpg", search_score: 0 },
-    { role: "Presidente", rank: 4, full_name: "Romeu Zema", party: "Novo", region: "MG", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Romeu_Zema_em_2019.jpg/256px-Romeu_Zema_em_2019.jpg", search_score: 0 },
-    { role: "Presidente", rank: 5, full_name: "Ronaldo Caiado", party: "União Brasil", region: "GO", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/Ronaldo_Caiado_em_2019.jpg/256px-Ronaldo_Caiado_em_2019.jpg", search_score: 0 },
+    { role: "Presidente", rank: 1, full_name: "Luiz Inácio Lula da Silva", party: "PT", region: "Nacional", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Foto_oficial_de_Luiz_In%C3%A1cio_Lula_da_Silva_%28ombros%29_denoise.jpg/330px-Foto_oficial_de_Luiz_In%C3%A1cio_Lula_da_Silva_%28ombros%29_denoise.jpg", search_score: 0 },
+    { role: "Presidente", rank: 2, full_name: "Flávio Bolsonaro", party: "PL", region: "RJ", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b3/Foto_oficial_do_senador_Fl%C3%A1vio_Bolsonaro_%28v._AgSen%29_%283x4%29.jpg/330px-Foto_oficial_do_senador_Fl%C3%A1vio_Bolsonaro_%28v._AgSen%29_%283x4%29.jpg", search_score: 0 },
+    { role: "Presidente", rank: 3, full_name: "Tarcísio de Freitas", party: "Republicanos", region: "SP", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/74/Governador_do_Estado_de_S%C3%A3o_Paulo%2C_Tarc%C3%ADsio_de_Freitas_-_Foto_Oficial_%28cropped%29.jpg/330px-Governador_do_Estado_de_S%C3%A3o_Paulo%2C_Tarc%C3%ADsio_de_Freitas_-_Foto_Oficial_%28cropped%29.jpg", search_score: 0 },
+    { role: "Presidente", rank: 4, full_name: "Romeu Zema", party: "Novo", region: "MG", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/bd/Romeu_Zema%2C_December_2024_%28cropped%29.jpg/330px-Romeu_Zema%2C_December_2024_%28cropped%29.jpg", search_score: 0 },
+    { role: "Presidente", rank: 5, full_name: "Ronaldo Caiado", party: "União Brasil", region: "GO", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f5/Foto_oficial_do_governador_de_Goi%C3%A1s%2C_Ronaldo_Caiado_em_2023_%28ombros%29.jpg/330px-Foto_oficial_do_governador_de_Goi%C3%A1s%2C_Ronaldo_Caiado_em_2023_%28ombros%29.jpg", search_score: 0 },
   ];
 
   const normalize = (s: string) =>
