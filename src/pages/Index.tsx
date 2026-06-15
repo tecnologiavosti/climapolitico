@@ -119,29 +119,6 @@ const Index = () => {
           </div>
         )}
 
-        {/* Status do teste ativo */}
-        {hasActiveTrial && (
-          <div className="max-w-3xl mx-auto mb-14 animate-fade-in-up">
-            <Card className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 border border-primary/30 bg-primary/5 p-4 sm:p-5 text-center sm:text-left">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/15">
-                <ShieldCheck className="h-5 w-5 text-primary" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold">Seu teste gratuito está ativo</p>
-                <p className="text-xs text-muted-foreground">
-                  Restam {daysLeft} {daysLeft === 1 ? "dia" : "dias"} de acesso completo.
-                </p>
-              </div>
-              <Button size="sm" variant="outline" onClick={() => navigate("/dashboard")}>
-                Ir para o painel
-              </Button>
-            </Card>
-          </div>
-        )}
-
-
-
-
         <div className="text-center mb-12 animate-fade-in-up">
           <h2 className="text-3xl md:text-5xl font-bold mb-4">
             Planos <span className="gradient-text">Flexíveis</span>
