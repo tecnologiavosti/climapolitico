@@ -6,6 +6,11 @@ import { SocialProof } from "@/components/landing/SocialProof";
 import { BentoFeatures } from "@/components/landing/BentoFeatures";
 import { TrendingCandidates } from "@/components/landing/TrendingCandidates";
 import { useNavigate } from "react-router-dom";
+import { Sparkles, Gift, ShieldCheck } from "lucide-react";
+import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import { getTrialStart, startTrial, getDaysLeft, TRIAL_DURATION_MS } from "@/lib/trial";
+
 
 const WHATSAPP_LINKS = {
   basico:
@@ -17,31 +22,38 @@ const WHATSAPP_LINKS = {
 
 
 
+
 const Index = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const handleFreeTrial = () => {
-    const TRIAL_MS = 604800000;
-    const stored = localStorage.getItem("trial_start");
-
-    if (!stored) {
-      localStorage.setItem("trial_start", Date.now().toString());
-      alert("Seu teste gratuito de 7 dias foi ativado!");
+    if (!user) {
+      toast.info("Faça login para ativar seu teste gratuito de 7 dias.");
+      navigate("/auth");
       return;
     }
 
-    const start = parseInt(stored, 10);
-    const elapsed = Date.now() - start;
+    const start = getTrialStart(user.id);
 
-    if (elapsed < TRIAL_MS) {
-      const daysLeft = Math.ceil((TRIAL_MS - elapsed) / 86400000);
-      alert(`Você ainda tem ${daysLeft} ${daysLeft === 1 ? "dia" : "dias"} de teste gratuito.`);
+    if (!start) {
+      startTrial(user.id);
+      toast.success("Seu teste gratuito de 7 dias foi ativado!", {
+        description: "Aproveite o acesso completo em climapolitico.com.br",
+      });
+      return;
+    }
+
+    const daysLeft = getDaysLeft(user.id) ?? 0;
+    if (daysLeft > 0) {
+      toast.info(`Você ainda tem ${daysLeft} ${daysLeft === 1 ? "dia" : "dias"} de teste gratuito.`);
     } else {
-      alert("Seu período de teste gratuito expirou. Escolha um plano para continuar.");
+      toast.error("Seu período de teste gratuito expirou. Escolha um plano para continuar.");
     }
   };
 
   return (
+
 
 
     <div className="min-h-screen bg-gradient-secondary">
@@ -59,15 +71,43 @@ const Index = () => {
 
       {/* Pricing Section */}
       <section className="container mx-auto px-4 py-20">
-        <div className="text-center mb-8 animate-fade-in-up">
-          <Button
-            size="lg"
-            className="bg-accent text-accent-foreground hover:bg-accent/90 hover-scale shadow-lg h-12 px-8 text-base font-semibold"
-            onClick={handleFreeTrial}
-          >
-            Teste grátis por 7 dias
-          </Button>
+        {/* Free Trial Highlight */}
+        <div className="max-w-3xl mx-auto mb-14 animate-fade-in-up">
+          <Card className="relative overflow-hidden border-2 border-primary/30 bg-gradient-to-br from-primary/10 via-background to-accent/10 p-8 md:p-10 shadow-xl">
+            <div className="absolute -top-16 -right-16 h-48 w-48 rounded-full bg-primary/20 blur-3xl" />
+            <div className="absolute -bottom-16 -left-16 h-48 w-48 rounded-full bg-accent/20 blur-3xl" />
+            <div className="relative z-10 flex flex-col md:flex-row items-center gap-6 text-center md:text-left">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-primary shadow-lg">
+                <Gift className="h-8 w-8 text-primary-foreground" />
+              </div>
+              <div className="flex-1 space-y-2">
+                <Badge className="bg-gradient-primary text-primary-foreground">
+                  <Sparkles className="h-3 w-3 mr-1" /> Oferta de lançamento
+                </Badge>
+                <h3 className="text-2xl md:text-3xl font-bold">
+                  Teste grátis por <span className="gradient-text">7 dias</span>
+                </h3>
+                <p className="text-muted-foreground text-sm md:text-base">
+                  Acesso completo ao <strong>climapolitico.com.br</strong> sem cartão de crédito.
+                  Ative em segundos com sua conta.
+                </p>
+                <div className="flex items-center justify-center md:justify-start gap-1.5 text-xs text-muted-foreground pt-1">
+                  <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+                  Cancele quando quiser • Sem cobrança automática
+                </div>
+              </div>
+              <Button
+                size="lg"
+                className="bg-gradient-primary hover-glow shadow-lg h-12 px-8 text-base font-semibold whitespace-nowrap"
+                onClick={handleFreeTrial}
+              >
+                {user ? "Ativar 7 dias grátis" : "Entrar e ativar"}
+              </Button>
+            </div>
+          </Card>
         </div>
+
+
         <div className="text-center mb-12 animate-fade-in-up">
           <h2 className="text-3xl md:text-5xl font-bold mb-4">
             Planos <span className="gradient-text">Flexíveis</span>
