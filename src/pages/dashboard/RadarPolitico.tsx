@@ -828,28 +828,27 @@ export default function RadarPolitico() {
                     </div>
                   );
                 })()}
-                {selected.sources?.length > 0 && (
-                  <div>
-                    <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
-                      Fontes ({selected.sources.length})
-                    </h4>
-                    <ul className="space-y-1.5">
-                      {selected.sources.map((s, i) => (
-                        <li key={i}>
-                          <a
-                            href={s.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm hover:underline flex items-center gap-1.5"
-                          >
-                            <ExternalLink className="h-3 w-3 shrink-0" />
-                            <span className="truncate">{s.name}</span>
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                {selected.sources?.length > 0 && (() => {
+                  const names = Array.from(
+                    new Set(
+                      selected.sources
+                        .map((s) => sanitizeRadarText(s.name))
+                        .filter((n) => n && !/^https?:/i.test(n))
+                    )
+                  );
+                  if (names.length === 0) return null;
+                  return (
+                    <div>
+                      <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
+                        Fontes ({names.length})
+                      </h4>
+                      <p className="text-sm text-muted-foreground leading-6 break-words">
+                        {names.join(" · ")}
+                      </p>
+                    </div>
+                  );
+                })()}
+
               </div>
             </>
           )}
