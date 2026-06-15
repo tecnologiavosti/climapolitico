@@ -753,14 +753,27 @@ export default function RadarPolitico() {
                 className="w-full"
                 disabled={loadMoreMutation.isPending}
                 onClick={() => {
-                  if (visibleCount < filtered.length) setVisibleCount((v) => v + LOAD_MORE_STEP);
-                  else loadMoreMutation.mutate();
+                  const nextVisible = visibleCount + LOAD_MORE_STEP;
+                  console.log("[Radar] Load more clicked", {
+                    visibleCount,
+                    nextVisible,
+                    filteredLength: filtered.length,
+                    eventsLength: events.length,
+                    backendTotal: jobStatus?.events_count ?? 0,
+                  });
+                  // Sempre incrementa a janela visível
+                  setVisibleCount(nextVisible);
+                  // Se já mostramos tudo que está em memória e backend tem mais, busca próximo lote
+                  if (nextVisible > filtered.length && (jobStatus?.events_count ?? 0) > events.length) {
+                    loadMoreMutation.mutate();
+                  }
                 }}
               >
                 {loadMoreMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                 Carregar mais {LOAD_MORE_STEP}
               </Button>
             )}
+
           </div>
         )}
       </section>
