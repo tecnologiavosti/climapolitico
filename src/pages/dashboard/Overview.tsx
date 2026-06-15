@@ -18,7 +18,6 @@ import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { NetworkLegendWithTooltips } from "@/components/dashboard/NetworkLegendWithTooltips";
 import { isHiddenNetwork } from "@/lib/networkVisibility";
 import { ReactionsPerPost } from "@/components/dashboard/ReactionsPerPost";
-import { TrialCountdown } from "@/components/TrialCountdown";
 
 
 
@@ -402,10 +401,6 @@ export default function Overview() {
             <LayoutDashboard className="h-5 w-5 text-primary" />
             <span className="font-medium">Visão Consolidada do Candidato</span>
           </div>
-          <div className="sm:ml-auto order-first sm:order-none">
-            <TrialCountdown />
-          </div>
-
           <HelpTooltip text="Clique aqui pra ver os números só de um candidato específico.">
             <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
               <SelectTrigger className="w-64">
