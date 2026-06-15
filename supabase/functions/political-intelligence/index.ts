@@ -118,11 +118,105 @@ function parseRss(xml: string, sourceLabel: string): RawItem[] {
   return items;
 }
 
+function isGoogleNewsUrl(url: string): boolean {
+  return /news\.google\.com\/(rss\/)?articles/i.test(url || "");
+}
+
+async function resolveNewsUrl(url: string): Promise<string> {
+  if (!url) return "";
+  try {
+    const response = await fetch(url, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(7000),
+      headers: FETCH_HEADERS,
+    });
+    return response.url || url;
+  } catch (e) {
+    console.warn(`[political-intelligence] URL resolve failed ${url}: ${(e as Error).message}`);
+    return url;
+  }
+}
+
+function extractMeta(html: string, names: string[]): string {
+  for (const name of names) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re1 = new RegExp(`<meta[^>]+(?:name|property)=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>`, "i");
+    const re2 = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:name|property)=["']${escaped}["'][^>]*>`, "i");
+    const value = html.match(re1)?.[1] || html.match(re2)?.[1];
+    if (value) return cleanText(value);
+  }
+  return "";
+}
+
+function isYoutubeUrl(url: string): boolean {
+  return /(?:youtube\.com|youtu\.be)/i.test(url || "");
+}
+
+async function extractYoutubeContent(url: string, item: RawItem): Promise<string> {
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000), headers: FETCH_HEADERS });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const html = await r.text();
+    const title = extractMeta(html, ["og:title", "twitter:title"]) || item.title;
+    const description = extractMeta(html, ["description", "og:description", "twitter:description"]);
+    const transcript = html.match(/"transcript"\s*:\s*"([\s\S]{80,3000}?)"/)?.[1] || "";
+    return cleanText([transcript, description, title].filter(Boolean).join(". "));
+  } catch (e) {
+    console.warn(`[political-intelligence] YouTube extraction failed ${url}: ${(e as Error).message}`);
+    return cleanText(`${item.summary || ""} ${item.title}`);
+  }
+}
+
+async function extractReadableContent(url: string): Promise<string> {
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(9000), headers: FETCH_HEADERS });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const html = await r.text();
+    const meta = extractMeta(html, ["description", "og:description", "twitter:description"]);
+    const text = cleanHtml(html);
+    return cleanText([meta, text].filter(Boolean).join(". ")).slice(0, 3500);
+  } catch (e) {
+    console.warn(`[political-intelligence] content extraction failed ${url}: ${(e as Error).message}`);
+    return "";
+  }
+}
+
+function compactContentSummary(content: string, title: string, candidateName: string): string {
+  const clean = cleanText(content);
+  if (isBrokenText(clean)) return buildFallbackSummary(title, candidateName);
+  const sentences = clean
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => cleanText(s))
+    .filter((s) => s.length >= 45 && !/cookies|assine|newsletter|publicidade|javascript|google news/i.test(s));
+  const selected = sentences.slice(0, 3).join(" ");
+  return cleanText(selected || clean.slice(0, 520)).slice(0, 700) || buildFallbackSummary(title, candidateName);
+}
+
+async function enrichRealtimeItems(items: RawItem[], candidateName: string): Promise<RawItem[]> {
+  const top = items.slice(0, 35);
+  const enriched = await Promise.all(top.map(async (item) => {
+    const initialUrl = item.url || "";
+    const finalUrl = isGoogleNewsUrl(initialUrl) ? await resolveNewsUrl(initialUrl) : initialUrl;
+    const sourceContent = isYoutubeUrl(finalUrl) || /youtube/i.test(item.source)
+      ? await extractYoutubeContent(finalUrl || initialUrl, item)
+      : await extractReadableContent(finalUrl || initialUrl);
+    const summary = compactContentSummary(sourceContent || item.summary, item.title, candidateName);
+    return {
+      ...item,
+      url: finalUrl || initialUrl,
+      title: cleanText(item.title).slice(0, 300),
+      summary,
+      source: cleanText(item.source) || "Fonte externa",
+    };
+  }));
+  return enriched.filter((item) => item.title && item.summary).concat(items.slice(35));
+}
+
 async function fetchAllSources(candidateName: string): Promise<RawItem[]> {
   const feeds = RSS_FEEDS(`"${candidateName}"`);
   const results = await Promise.allSettled(
     feeds.map(async (f) => {
-      const r = await fetch(f.url, { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0 ClimaPolitico/1.0" } });
+      const r = await fetch(f.url, { signal: AbortSignal.timeout(8000), headers: FETCH_HEADERS });
       if (!r.ok) return [];
       const xml = await r.text();
       return parseRss(xml, f.src);
