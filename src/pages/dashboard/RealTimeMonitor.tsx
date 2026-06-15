@@ -59,6 +59,21 @@ interface Brief {
 const REFRESH_MS = 5 * 60 * 1000; // 5 min
 const CACHE_PREFIX = "pol-intel-v1:";
 
+function cleanFeedContent(text?: string | null): string {
+  if (!text) return "";
+  return String(text)
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "")
+    .replace(/&gt;/gi, "")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 const statusTone = (s: string) => {
   const k = (s || "").toLowerCase();
   if (k.includes("crise")) return { ring: "border-destructive/40", bg: "bg-destructive/10", text: "text-destructive", label: "Crise" };
