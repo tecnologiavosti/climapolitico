@@ -246,45 +246,78 @@ const RealTimeMonitor = () => {
         </CardContent></Card>
       ) : loading && !brief ? (
         <LoadingState />
-      ) : analysis ? (
+      ) : brief ? (
         <>
-          {/* 5 KPI Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-            <KpiCard
-              icon={<Activity className="h-4 w-4" />}
-              label="Status político"
-              valueNode={<span className={cn("text-lg font-bold", st.text)}>{st.label}</span>}
-              tone={st}
-            />
-            <KpiCard
-              icon={momentumPos ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-              label="Momentum"
-              valueNode={
-                <div className="space-y-1">
-                  <div className={cn("text-2xl font-bold tabular-nums", momentumPos ? "text-emerald-500" : "text-red-500")}>
-                    {momentum > 0 ? "+" : ""}{momentum}
+          {/* Intensidade sempre visível (calculada das fontes, não da IA) */}
+          {intensity && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+              <Card className="lg:col-span-1 border-border/60">
+                <CardContent className="p-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className={cn("rounded-md p-1.5", intensityTone.bg, intensityTone.text)}>
+                      <Activity className="h-4 w-4" />
+                    </div>
+                    <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                      Intensidade de Movimento Público
+                    </span>
                   </div>
-                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                    <div className={cn("h-full", momentumPos ? "bg-emerald-500" : "bg-red-500")}
-                         style={{ width: `${Math.min(100, Math.abs(momentum))}%` }} />
+                  <div className="flex items-end gap-2">
+                    <div className={cn("text-3xl font-bold tabular-nums", intensityTone.text)}>{intensity.score}</div>
+                    <div className={cn("text-sm font-medium pb-1", intensityTone.text)}>{intensity.label}</div>
                   </div>
-                </div>
-              }
-              tone={{ text: momentumPos ? "text-emerald-500" : "text-red-500", bg: momentumPos ? "bg-emerald-500/10" : "bg-red-500/10" }}
-            />
-            <KpiCard
-              icon={<ShieldAlert className="h-4 w-4" />}
-              label="Risco reputacional"
-              valueNode={
-                <div className="space-y-1">
-                  <div className={cn("text-lg font-bold", risk.text)}>{risk.label}</div>
-                  <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                    <div className={cn("h-full", risk.text.replace("text-", "bg-"))} style={{ width: `${risk.pct}%` }} />
+                  <div className="h-2 rounded-full bg-muted overflow-hidden">
+                    <div className={cn("h-full transition-all", intensityTone.text.replace("text-", "bg-"))}
+                         style={{ width: `${Math.min(100, intensity.score)}%` }} />
                   </div>
-                </div>
-              }
-              tone={risk}
-            />
+                  <div className="flex justify-between text-[10px] text-muted-foreground tabular-nums pt-1">
+                    <span>{intensity.volume6h} nas últimas 6h</span>
+                    <span>{intensity.volume24h} em 24h</span>
+                    <span className={intensity.growthPct >= 0 ? "text-emerald-500" : "text-red-500"}>
+                      {intensity.growthPct >= 0 ? "+" : ""}{intensity.growthPct}% vs 6h ant.
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+              {analysis && (
+                <>
+                  <KpiCard
+                    icon={<Activity className="h-4 w-4" />}
+                    label="Status político"
+                    valueNode={<span className={cn("text-lg font-bold", st.text)}>{st.label}</span>}
+                    tone={st}
+                  />
+                  <KpiCard
+                    icon={<ShieldAlert className="h-4 w-4" />}
+                    label="Risco reputacional"
+                    valueNode={
+                      <div className="space-y-1">
+                        <div className={cn("text-lg font-bold", risk.text)}>{risk.label}</div>
+                        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div className={cn("h-full", risk.text.replace("text-", "bg-"))} style={{ width: `${risk.pct}%` }} />
+                        </div>
+                      </div>
+                    }
+                    tone={risk}
+                  />
+                </>
+              )}
+            </div>
+          )}
+
+          {insufficient ? (
+            <Card className="border-amber-500/40 bg-amber-500/5">
+              <CardContent className="p-8 text-center space-y-2">
+                <AlertTriangle className="h-8 w-8 text-amber-500 mx-auto" />
+                <h3 className="text-base font-semibold">Dados insuficientes para análise em tempo real</h3>
+                <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                  {brief.message || "Não há evidências suficientes para análise estratégica confiável."}
+                  {" "}Janela atual: últimas {brief.window_hours}h · {brief.sources_count} fontes válidas (mínimo 5).
+                </p>
+              </CardContent>
+            </Card>
+          ) : analysis ? (
+            <>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <KpiCard
               icon={<Trophy className="h-4 w-4" />}
               label="Força eleitoral"
@@ -305,6 +338,7 @@ const RealTimeMonitor = () => {
               tone={{ text: "text-primary", bg: "bg-primary/10" }}
             />
           </div>
+
 
           {/* Executive Summary + Risks/Shifts */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
