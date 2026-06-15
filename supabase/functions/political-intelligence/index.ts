@@ -62,6 +62,15 @@ function cleanText(value: unknown): string {
   return s.replace(/\s+/g, " ").trim();
 }
 
+function cleanUrl(value: unknown): string {
+  const s = decodeEntities(String(value || ""))
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return /^https?:\/\//i.test(s) ? s : "";
+}
+
 function cleanHtml(html: string): string {
   let s = decodeEntities(html || "");
   s = s.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ");
@@ -101,7 +110,7 @@ function parseRss(xml: string, sourceLabel: string): RawItem[] {
     const end = block.indexOf("</item>");
     const body = end >= 0 ? block.slice(0, end) : block;
     const title = cleanText((body.match(/<title>([\s\S]*?)<\/title>/i)?.[1]) || "");
-    const link = cleanText((body.match(/<link>([\s\S]*?)<\/link>/i)?.[1]) || "");
+    const link = cleanUrl((body.match(/<link>([\s\S]*?)<\/link>/i)?.[1]) || "");
     const desc = cleanText((body.match(/<description>([\s\S]*?)<\/description>/i)?.[1]) || "");
     const pub = cleanText((body.match(/<pubDate>([\s\S]*?)<\/pubDate>/i)?.[1]) || "");
     const source = cleanText((body.match(/<source[^>]*>([\s\S]*?)<\/source>/i)?.[1]) || sourceLabel);
