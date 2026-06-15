@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { createLovableAuth } from "@lovable.dev/cloud-auth-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -15,7 +14,6 @@ import { z } from "zod";
 const emailSchema = z.string().email("Email inválido");
 const passwordSchema = z.string().min(6, "Senha deve ter no mínimo 6 caracteres");
 const fullNameSchema = z.string().min(2, "Nome deve ter no mínimo 2 caracteres");
-const LOVABLE_PROJECT_ID = "a499df7b-ed03-4453-8bfa-ee4c0df3dd55";
 const PRODUCTION_ORIGIN = "https://climapolitico.com.br";
 const getAuthOrigin = () => {
   if (typeof window === "undefined") return PRODUCTION_ORIGIN;
@@ -105,24 +103,40 @@ const Auth = () => {
   const handleGoogle = async () => {
     setLoading(true);
     try {
-      const oauth = createLovableAuth({ oauthBrokerUrl: "https://oauth.lovable.app/initiate" });
       const redirectTo = `${getAuthOrigin()}/auth/callback`;
       console.log("Current origin:", window.location.origin);
       console.log("OAuth redirect:", redirectTo);
-      const result = await oauth.signInWithOAuth("google", {
-        redirect_uri: redirectTo,
-        extraParams: { project_id: LOVABLE_PROJECT_ID },
+      console.log("OAuth mode:", "redirect/top-level/direct-google-provider");
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo,
+          skipBrowserRedirect: true,
+          queryParams: {
+            prompt: "select_account",
+          },
+        },
       });
-      if (result.error) {
-        toast({ title: "Erro Google", description: String(result.error), variant: "destructive" });
+
+      if (error) {
+        toast({ title: "Erro Google", description: error.message, variant: "destructive" });
         setLoading(false);
         return;
       }
-      if (result.redirected) return;
-      if (result.tokens) {
-        await supabase.auth.setSession(result.tokens);
-        navigate("/dashboard");
+
+      console.log("OAuth provider URL:", data.url);
+      if (data.url?.includes("lovable.app")) {
+        console.warn("LOVABLE OAUTH PROXY STILL PRESENT", data.url);
       }
+
+      if (!data.url) {
+        toast({ title: "Erro Google", description: "URL de autenticação indisponível.", variant: "destructive" });
+        setLoading(false);
+        return;
+      }
+
+      window.location.assign(data.url);
     } catch (e: unknown) {
       toast({ title: "Erro Google", description: e instanceof Error ? e.message : "Falha", variant: "destructive" });
       setLoading(false);
