@@ -154,8 +154,37 @@ export const TrendingCandidates = () => {
     };
   }, []);
 
-  const byRole = (key: string) =>
-    items === null ? null : items.filter((i) => i.role === key).sort((a, b) => a.rank - b.rank);
+  // Blocklist: nomes que aparecem no cache de buscas mas NÃO são pré-candidatos
+  // presidenciais reais no ciclo atual (ex-presidentes sem candidatura, figuras
+  // históricas, familiares sem articulação partidária nacional).
+  const PRESIDENTIAL_BLOCKLIST = new Set(
+    [
+      "dilma rousseff",
+      "dilma vana rousseff",
+      "michelle bolsonaro",
+      "michelle de paula firmo reinaldo bolsonaro",
+      "fernando henrique cardoso",
+      "fhc",
+      "michel temer",
+       "itamar franco",
+      "jose sarney",
+      "josé sarney",
+      "collor",
+      "fernando collor",
+    ].map((n) => n.toLowerCase())
+  );
+
+  const normalize = (s: string) =>
+    s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+  const byRole = (key: string) => {
+    if (items === null) return null;
+    let list = items.filter((i) => i.role === key);
+    if (key === "Presidente") {
+      list = list.filter((i) => !PRESIDENTIAL_BLOCKLIST.has(normalize(i.full_name)));
+    }
+    return list.sort((a, b) => a.rank - b.rank);
+  };
 
   return (
     <section className="container mx-auto px-4 py-16 md:py-24">
