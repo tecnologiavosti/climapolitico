@@ -17,10 +17,10 @@ import { getTrialStart, startTrial, getDaysLeft, hasMachineTrialStarted, request
 
 const WHATSAPP_LINKS = {
   basico:
-    "https://wa.me/556198117983?text=Ol%C3%A1!%20Tenho%20interesse%20no%20plano%20B%C3%A1sico%20(R%24%20299%2Fm%C3%AAs)",
-  pro: "https://wa.me/556198117983?text=Ol%C3%A1!%20Tenho%20interesse%20no%20plano%20Pro%20(R%24%20899%2Fm%C3%AAs)",
+    "https://wa.me/556198117985?text=Ol%C3%A1!%20Tenho%20interesse%20no%20plano%20B%C3%A1sico",
+  pro: "https://wa.me/556198117985?text=Ol%C3%A1!%20Tenho%20interesse%20no%20plano%20Pro",
   enterprise:
-    "https://wa.me/556198117983?text=Ol%C3%A1!%20Tenho%20interesse%20no%20plano%20Enterprise",
+    "https://wa.me/556198117985?text=Ol%C3%A1!%20Tenho%20interesse%20no%20plano%20Enterprise",
 } as const;
 
 
