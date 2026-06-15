@@ -173,11 +173,49 @@ INSTRUÇÕES:
 }
 
 function safeJsonParse(s: string): any | null {
-  const t = (s || "").trim();
-  try { return JSON.parse(t); } catch { /* try strip */ }
-  const m = t.match(/\{[\s\S]*\}/);
-  if (m) { try { return JSON.parse(m[0]); } catch { /* ignore */ } }
-  return null;
+  let t = (s || "").trim();
+  if (!t) return null;
+  // strip markdown fences
+  t = t.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+  try { return JSON.parse(t); } catch { /* fallthrough */ }
+  // find outermost JSON object
+  const start = t.indexOf("{");
+  const end = t.lastIndexOf("}");
+  if (start === -1 || end === -1 || end < start) return null;
+  let body = t.substring(start, end + 1);
+  try { return JSON.parse(body); } catch { /* try cleanup */ }
+  body = body
+    .replace(/,\s*}/g, "}")
+    .replace(/,\s*]/g, "]")
+    .replace(/[\x00-\x1F\x7F]/g, " ");
+  try { return JSON.parse(body); } catch { return null; }
+}
+
+function fallbackAnalysis(items: RawItem[], confidence: string) {
+  const top = items.slice(0, 8);
+  const narrative = top[0]?.title?.slice(0, 140) || "Sem narrativa dominante clara nas últimas 24h.";
+  const key_events = top.slice(0, 6).map((it) => ({
+    title: it.title.slice(0, 120),
+    date: it.published_at.slice(0, 10),
+    impact: "neutro",
+    summary: it.summary?.slice(0, 200) || it.title.slice(0, 200),
+    source: it.source,
+    url: it.url,
+  }));
+  return {
+    status: "neutro",
+    reputation_risk: "moderado",
+    election_strength: "moderada",
+    dominant_narrative: narrative,
+    key_events,
+    narrative_shifts: [],
+    emerging_risks: [],
+    strategic_analysis: items.length
+      ? `Análise automática baseada em ${items.length} fontes coletadas nas últimas 24h. Modelo de IA indisponível neste ciclo; mostrando síntese direta das manchetes recentes.`
+      : "Sem fontes coletadas nas últimas 24h.",
+    confidence,
+    evidence_count: items.length,
+  };
 }
 
 Deno.serve(async (req) => {
@@ -204,19 +242,30 @@ Deno.serve(async (req) => {
     const intensity = computeIntensity(realtimeItems);
     const confidence = confidenceFromCount(realtimeItems.length);
 
-    const ai = await callAICerebrasFirst({
-      systemMsg: SYSTEM,
-      userPrompt: buildPrompt(candidate_name, realtimeItems, confidence),
-      jsonMode: true,
-      maxTokens: 2200,
-      temperature: 0.2,
-      tag: "political-intelligence",
-    });
+    let parsed: any = null;
+    let provider = "fallback";
+    let model = "";
+    try {
+      const ai = await callAICerebrasFirst({
+        systemMsg: SYSTEM,
+        userPrompt: buildPrompt(candidate_name, realtimeItems, confidence),
+        jsonMode: true,
+        maxTokens: 2200,
+        temperature: 0.2,
+        tag: "political-intelligence",
+      });
+      provider = ai.provider;
+      model = ai.model;
+      parsed = safeJsonParse(ai.content);
+      if (!parsed) {
+        console.error("[political-intelligence] JSON parse failed", ai.content?.slice(0, 300));
+      }
+    } catch (aiErr) {
+      console.error("[political-intelligence] AI call failed", aiErr);
+    }
 
-    const parsed = safeJsonParse(ai.content);
     if (!parsed) {
-      console.error("[political-intelligence] JSON parse failed", ai.content?.slice(0, 200));
-      return jsonResponse({ error: "ai_invalid_json", provider: ai.provider }, 502);
+      parsed = fallbackAnalysis(realtimeItems, confidence);
     }
 
     // Sanity: descarta key_events fora das últimas 24h.
@@ -240,8 +289,8 @@ Deno.serve(async (req) => {
       fetched_at: new Date().toISOString(),
       window_hours: 24,
       sources_count: realtimeItems.length,
-      provider: ai.provider,
-      model: ai.model,
+      provider,
+      model,
       intensity,
       analysis: parsed,
       raw_items: realtimeItems.slice(0, 30),
