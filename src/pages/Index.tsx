@@ -33,6 +33,21 @@ const Index = () => {
   const hasActiveTrial = !!trialStart && (daysLeft ?? 0) > 0;
   const machineTrialStarted = hasMachineTrialStarted();
 
+  const { data: subscription } = useQuery({
+    queryKey: ["subscription-active", user?.id],
+    enabled: !!user,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("subscriptions")
+        .select("status")
+        .eq("user_id", user!.id)
+        .maybeSingle();
+      return data;
+    },
+  });
+  const hasActivePlan = subscription?.status === "active";
+  const hideTrialCta = hasActiveTrial || machineTrialStarted || hasActivePlan;
+
   const handleFreeTrial = () => {
     if (!user) {
       requestTrialAfterLogin();
