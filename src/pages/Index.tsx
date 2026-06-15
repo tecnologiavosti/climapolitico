@@ -99,7 +99,7 @@ const Index = () => {
       {/* Pricing Section */}
       <section className="container mx-auto px-4 py-20">
         {/* Free Trial Highlight — escondido se já houver teste ativo */}
-        {!hasActiveTrial && !machineTrialStarted && (
+        {!hideTrialCta && (
           <div className="max-w-3xl mx-auto mb-14 animate-fade-in-up">
             <Card className="relative overflow-hidden border-2 border-primary/30 bg-gradient-to-br from-primary/10 via-background to-accent/10 p-6 sm:p-8 md:p-10 shadow-xl">
               <div className="absolute -top-16 -right-16 h-48 w-48 rounded-full bg-primary/20 blur-3xl" />
