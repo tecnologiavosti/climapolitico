@@ -56,13 +56,13 @@ const POOL: Record<Role, string[]> = {
     "Eduardo Pimentel", "Álvaro Dias", "Daniel Sucupira",
   ],
   Vereador: [
-    "Carlos Bolsonaro", "Milton Leite", "Rubinho Nunes", "Gabriel Monteiro", "Thammy Miranda",
-    "Sonaira Fernandes", "Amanda Vettorazzo", "Cris Monteiro", "Eli Corrêa Filho",
-    "Adilson Amadeu", "Senival Moura", "Marlon Luz", "Lucas Pavanato",
-    "Tânia Bandeira", "Luna Zarattini", "Silvia da Bancada Feminista", "Erika Hilton",
-    "Rinaldi Digilio", "Eduardo Suplicy", "Sandra Tadeu",
+    // Vereadores em exercício (mandato 2025-2028) — São Paulo e Rio de Janeiro
+    "Carlos Bolsonaro", "Milton Leite", "Rubinho Nunes", "Lucas Pavanato",
+    "Cris Monteiro", "Sonaira Fernandes", "Amanda Vettorazzo", "Eli Corrêa Filho",
+    "Adilson Amadeu", "Senival Moura", "Marlon Luz", "Rinaldi Digilio",
+    "Sandra Tadeu", "Luna Zarattini", "Tânia Bandeira",
     "Tarcísio Motta", "Carlo Caiado", "Vera Lins", "Inaldo Silva", "Pedro Duarte",
-    "Chico Alencar", "Reimont", "Monica Benicio", "Thais Ferreira",
+    "Monica Benicio", "Thais Ferreira",
   ],
 };
 
@@ -132,6 +132,7 @@ async function fetchSummary(article: string): Promise<{
   party: string | null;
   region: string | null;
   title: string;
+  extract: string;
 } | null> {
   try {
     const r = await fetch(
@@ -143,7 +144,7 @@ async function fetchSummary(article: string): Promise<{
     const photo = j?.originalimage?.source ?? j?.thumbnail?.source ?? null;
     const extract = `${j?.description ?? ""} ${j?.extract ?? ""}`;
     const meta = parseMeta(extract);
-    return { photo, party: meta.party, region: meta.region, title: j?.title ?? article };
+    return { photo, party: meta.party, region: meta.region, title: j?.title ?? article, extract };
   } catch {
     return null;
   }
@@ -176,11 +177,21 @@ Deno.serve(async (req) => {
     }
     scores.sort((a, b) => b.score - a.score);
 
-    // 2. Enrich top 5 with photo + party + region
-    const top = scores.filter((s) => s.score > 0).slice(0, 5);
+    // 2. Enrich top candidates with photo + party + region.
+    // For Vereador, validate against Wikipedia extract to exclude non-vereadores.
+    const candidates = scores.filter((s) => s.score > 0).slice(0, role === "Vereador" ? 12 : 5);
     let rank = 1;
-    for (const t of top) {
+    for (const t of candidates) {
+      if (rank > 5) break;
       const meta = await fetchSummary(t.name);
+      if (role === "Vereador") {
+        const ext = (meta?.extract ?? "").toLowerCase();
+        const isVereador = /\bvereador(a|es|as)?\b/.test(ext);
+        if (!isVereador) {
+          await sleep(120);
+          continue;
+        }
+      }
       allUpserts.push({
         role,
         rank,
