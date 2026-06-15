@@ -163,6 +163,23 @@ function setRadarCache(key: string, entry: { events: RadarEvent[]; jobId?: strin
 function sanitizeRadarText(input: unknown): string {
   if (input == null) return "";
   let s = String(input);
+  // Remove HTML tags
+  s = s.replace(/<[^>]*>/g, " ");
+  // Decode common HTML entities
+  s = s
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "")
+    .replace(/&gt;/gi, "")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/&#(\d+);/g, (_, n) => {
+      try { return String.fromCodePoint(Number(n)); } catch { return ""; }
+    });
+  // Remove URLs cruas
+  s = s.replace(/https?:\/\/\S+/gi, "");
+  // Remove control / zero-width
   s = Array.from(s).map((ch) => {
     const code = ch.charCodeAt(0);
     return (code <= 31 || (code >= 127 && code <= 159)) ? " " : ch;
@@ -179,6 +196,7 @@ function sanitizeRadarText(input: unknown): string {
   s = s.replace(/[\u2018\u2019\u201A\u201B\u201C\u201D\u201E\u201F\u2013\u2014\u2015\u2212\u2022\u2023\u25E6\u2043\u00A0\u202F\u2009\u200A\u2026]/g, (c) => map[c] ?? c);
   return s.replace(/\s+/g, " ").trim();
 }
+
 
 function band(value: number) {
   if (value >= 70) return { label: "Grande", tone: "bg-foreground text-background" };
@@ -810,28 +828,27 @@ export default function RadarPolitico() {
                     </div>
                   );
                 })()}
-                {selected.sources?.length > 0 && (
-                  <div>
-                    <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
-                      Fontes ({selected.sources.length})
-                    </h4>
-                    <ul className="space-y-1.5">
-                      {selected.sources.map((s, i) => (
-                        <li key={i}>
-                          <a
-                            href={s.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm hover:underline flex items-center gap-1.5"
-                          >
-                            <ExternalLink className="h-3 w-3 shrink-0" />
-                            <span className="truncate">{s.name}</span>
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                {selected.sources?.length > 0 && (() => {
+                  const names = Array.from(
+                    new Set(
+                      selected.sources
+                        .map((s) => sanitizeRadarText(s.name))
+                        .filter((n) => n && !/^https?:/i.test(n))
+                    )
+                  );
+                  if (names.length === 0) return null;
+                  return (
+                    <div>
+                      <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
+                        Fontes ({names.length})
+                      </h4>
+                      <p className="text-sm text-muted-foreground leading-6 break-words">
+                        {names.join(" · ")}
+                      </p>
+                    </div>
+                  );
+                })()}
+
               </div>
             </>
           )}
