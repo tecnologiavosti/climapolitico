@@ -15,8 +15,11 @@ const WHATSAPP_LINKS = {
     "https://wa.me/556198117983?text=Ol%C3%A1!%20Tenho%20interesse%20no%20plano%20Enterprise",
 } as const;
 
+const Index = () => {
+  const navigate = useNavigate();
 
   return (
+
     <div className="min-h-screen bg-gradient-secondary">
       {/* Hero Section */}
       <HeroSection />
