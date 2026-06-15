@@ -7,39 +7,19 @@ import { BentoFeatures } from "@/components/landing/BentoFeatures";
 import { TrendingCandidates } from "@/components/landing/TrendingCandidates";
 import { useNavigate } from "react-router-dom";
 
-const WHATSAPP_URL =
-  "https://wa.me/556198117983?text=Ol%C3%A1!%20Tenho%20interesse%20nos%20planos%20do%20Clima%20Pol%C3%ADtico.";
-const WHATSAPP_WEB_URL =
-  "https://web.whatsapp.com/send?phone=556198117983&text=Ol%C3%A1!%20Tenho%20interesse%20nos%20planos%20do%20Clima%20Pol%C3%ADtico.";
-const WHATSAPP_DEEP_LINK =
-  "whatsapp://send?phone=556198117983&text=Ol%C3%A1!%20Tenho%20interesse%20nos%20planos%20do%20Clima%20Pol%C3%ADtico.";
+const WHATSAPP_LINKS = {
+  basico:
+    "https://wa.me/556198117983?text=Ol%C3%A1!%20Tenho%20interesse%20no%20plano%20B%C3%A1sico%20(R%24%20299%2Fm%C3%AAs)",
+  pro: "https://wa.me/556198117983?text=Ol%C3%A1!%20Tenho%20interesse%20no%20plano%20Pro%20(R%24%20899%2Fm%C3%AAs)",
+  enterprise:
+    "https://wa.me/556198117983?text=Ol%C3%A1!%20Tenho%20interesse%20no%20plano%20Enterprise",
+} as const;
 
 const Index = () => {
   const navigate = useNavigate();
 
-  const openWhatsapp = () => {
-    console.log("iframe?", window.self !== window.top);
-
-    try {
-      window.location.assign(WHATSAPP_URL);
-      return;
-    } catch (assignError) {
-      console.error("WhatsApp assign failed", assignError);
-    }
-
-    try {
-      window.open(WHATSAPP_URL, "_blank", "noopener,noreferrer");
-      return;
-    } catch (openError) {
-      console.error("WhatsApp window.open failed", openError);
-    }
-
-    window.location.href = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
-      ? WHATSAPP_DEEP_LINK
-      : WHATSAPP_WEB_URL;
-  };
-
   return (
+
     <div className="min-h-screen bg-gradient-secondary">
       {/* Hero Section */}
       <HeroSection />
@@ -89,9 +69,12 @@ const Index = () => {
                   Dashboard padrão
                 </li>
               </ul>
-              <Button className="w-full" variant="outline" onClick={openWhatsapp}>
-                Saiba mais
+              <Button className="w-full" variant="outline" asChild>
+                <a href={WHATSAPP_LINKS.basico} target="_blank" rel="noopener noreferrer">
+                  Saiba mais
+                </a>
               </Button>
+
             </div>
           </Card>
 
@@ -129,9 +112,12 @@ const Index = () => {
                   Alertas por email/SMS
                 </li>
               </ul>
-              <Button className="w-full bg-gradient-primary hover-glow" onClick={openWhatsapp}>
-                Saiba mais
+              <Button className="w-full bg-gradient-primary hover-glow" asChild>
+                <a href={WHATSAPP_LINKS.pro} target="_blank" rel="noopener noreferrer">
+                  Saiba mais
+                </a>
               </Button>
+
             </div>
           </Card>
 
@@ -162,9 +148,12 @@ const Index = () => {
                   Múltiplos usuários
                 </li>
               </ul>
-              <Button className="w-full bg-gradient-primary hover-glow" onClick={openWhatsapp}>
-                Saiba mais
+              <Button className="w-full bg-gradient-primary hover-glow" asChild>
+                <a href={WHATSAPP_LINKS.enterprise} target="_blank" rel="noopener noreferrer">
+                  Saiba mais
+                </a>
               </Button>
+
             </div>
           </Card>
         </div>
