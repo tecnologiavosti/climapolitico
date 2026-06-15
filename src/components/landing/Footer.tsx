@@ -40,13 +40,13 @@ export const Footer = () => {
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
                 <a
-                  href="https://wa.me/556198117983"
+                  href="https://wa.me/556198117985"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-2 hover:text-primary transition-colors"
                 >
                   <MessageCircle className="h-4 w-4" />
-                  WhatsApp
+                  WhatsApp: (61) 9811-7985
                 </a>
               </li>
               <li>
