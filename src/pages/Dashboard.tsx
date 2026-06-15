@@ -14,6 +14,7 @@ import { PageLoader } from "@/components/ui/page-loader";
 import { useOnboarding } from "@/hooks/useOnboarding";
 import { OnboardingTour } from "@/components/onboarding/OnboardingTour";
 import { onboardingSteps, validateOnboardingTargets } from "@/config/onboardingSteps";
+import { TrialCelebration } from "@/components/TrialCelebration";
 
 // Lazy-load das rotas: cada página só baixa o JS quando o usuário entra nela.
 const Overview = lazy(() => import("./dashboard/Overview"));
@@ -177,6 +178,7 @@ const Dashboard = () => {
         onPrevious={onboarding.previous}
         onSkip={onboarding.skip}
       />
+      <TrialCelebration />
     </SidebarProvider>
   );
 };

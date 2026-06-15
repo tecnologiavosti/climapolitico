@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { useTheme } from "next-themes";
 import { Loader2, User, Settings as SettingsIcon, Shield, CreditCard, Camera, Eye, EyeOff, KeyRound, Mail } from "lucide-react";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { TrialCountdown } from "@/components/TrialCountdown";
 
 export default function Settings() {
   const { user } = useAuth();
@@ -268,9 +269,12 @@ export default function Settings() {
           Configurações
         </h1>
       </HelpTooltip>
-        <p className="text-muted-foreground mt-1">
-          Gerencie seu perfil, preferências, segurança e assinatura
-        </p>
+        <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-muted-foreground">
+            Gerencie seu perfil, preferências, segurança e assinatura
+          </p>
+          <TrialCountdown />
+        </div>
       </div>
 
       <Tabs defaultValue="profile" className="space-y-4">
