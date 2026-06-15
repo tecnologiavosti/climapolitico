@@ -26,6 +26,9 @@ const WHATSAPP_LINKS = {
 const Index = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const trialStart = user ? getTrialStart(user.id) : null;
+  const daysLeft = user ? getDaysLeft(user.id) : null;
+  const hasActiveTrial = !!trialStart && (daysLeft ?? 0) > 0;
 
   const handleFreeTrial = () => {
     if (!user) {
@@ -34,23 +37,22 @@ const Index = () => {
       return;
     }
 
-    const start = getTrialStart(user.id);
-
-    if (!start) {
+    if (!trialStart) {
       startTrial(user.id);
       toast.success("Seu teste gratuito de 7 dias foi ativado!", {
         description: "Aproveite o acesso completo em climapolitico.com.br",
       });
+      navigate("/dashboard");
       return;
     }
 
-    const daysLeft = getDaysLeft(user.id) ?? 0;
-    if (daysLeft > 0) {
+    if ((daysLeft ?? 0) > 0) {
       toast.info(`Você ainda tem ${daysLeft} ${daysLeft === 1 ? "dia" : "dias"} de teste gratuito.`);
     } else {
       toast.error("Seu período de teste gratuito expirou. Escolha um plano para continuar.");
     }
   };
+
 
   return (
 
