@@ -61,6 +61,52 @@ const CATEGORIES = [
 
 const MONTHS_PT = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
+// =====================================================================
+// Entity Resolution — distinguir Flávio / Jair / Eduardo / Michelle / Carlos Bolsonaro
+// =====================================================================
+const CANDIDATE_ALIASES: Record<string, { strong: string[]; conflicts: string[] }> = {
+  "flavio bolsonaro": {
+    strong: ["flávio bolsonaro", "flavio bolsonaro", "senador flávio", "senador flavio", "flávio nantes", "flavio nantes"],
+    conflicts: ["jair bolsonaro", "ex-presidente bolsonaro", "presidente bolsonaro", "eduardo bolsonaro", "michelle bolsonaro", "carlos bolsonaro"],
+  },
+  "jair bolsonaro": {
+    strong: ["jair bolsonaro", "ex-presidente bolsonaro", "presidente bolsonaro", "jair messias"],
+    conflicts: ["flávio bolsonaro", "flavio bolsonaro", "eduardo bolsonaro", "michelle bolsonaro", "carlos bolsonaro"],
+  },
+  "eduardo bolsonaro": {
+    strong: ["eduardo bolsonaro", "deputado eduardo bolsonaro"],
+    conflicts: ["jair bolsonaro", "flávio bolsonaro", "flavio bolsonaro", "michelle bolsonaro", "carlos bolsonaro"],
+  },
+  "michelle bolsonaro": {
+    strong: ["michelle bolsonaro"],
+    conflicts: ["jair bolsonaro", "flávio bolsonaro", "flavio bolsonaro", "eduardo bolsonaro", "carlos bolsonaro"],
+  },
+  "carlos bolsonaro": {
+    strong: ["carlos bolsonaro", "vereador carlos bolsonaro"],
+    conflicts: ["jair bolsonaro", "flávio bolsonaro", "flavio bolsonaro", "eduardo bolsonaro", "michelle bolsonaro"],
+  },
+};
+
+function normalizeCandidateName(name: string) {
+  return name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
+function isEventRelevantForCandidate(event: RadarEvent, candidateName: string): boolean {
+  const normalized = normalizeCandidateName(candidateName);
+  const rule = CANDIDATE_ALIASES[normalized];
+  if (!rule) return true; // sem regra específica = não filtra
+  const haystack = `${event.title ?? ""} ${event.summary ?? ""} ${event.description ?? ""} ${event.content ?? ""}`
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const hasStrong = rule.strong.some((a) => haystack.includes(normalizeCandidateName(a)));
+  if (hasStrong) return true;
+  const hasConflict = rule.conflicts.some((a) => haystack.includes(normalizeCandidateName(a)));
+  // se menciona "bolsonaro" sozinho mas só aparece um conflito (ex.: Jair), descarta para Flávio
+  if (hasConflict) return false;
+  // sem strong e sem conflito: aceitar só se candidato base é genérico (sobrenome único etc.)
+  const surnameOnly = haystack.includes("bolsonaro");
+  return !surnameOnly;
+}
+
 const PRESETS = [
   { id: "7d", label: "7 dias", days: 7 },
   { id: "30d", label: "30 dias", days: 30 },
@@ -70,6 +116,7 @@ const PRESETS = [
   { id: "8y", label: "8 anos", days: 365 * 8 },
   { id: "custom", label: "Personalizado", days: 0 },
 ];
+
 
 const nfBR = new Intl.NumberFormat("pt-BR");
 const PAGE_SIZE = 500;
@@ -354,6 +401,14 @@ export default function RadarPolitico() {
   // Filtros locais
   const filtered = useMemo(() => {
     let list = events;
+    // Entity resolution: garante que notícias do Jair não vazem para Flávio (e vice-versa)
+    if (candidateId !== "all" && candidateName) {
+      const before = list.length;
+      list = list.filter((e) => isEventRelevantForCandidate(e, candidateName));
+      if (before !== list.length) {
+        console.log(`[Radar] Entity filter '${candidateName}': ${before} → ${list.length} eventos`);
+      }
+    }
     if (category !== "Todos") list = list.filter((e) => e.category === category);
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -365,7 +420,8 @@ export default function RadarPolitico() {
       return new Date(b.event_date).getTime() - new Date(a.event_date).getTime();
     });
     return list;
-  }, [events, category, search, sortBy]);
+  }, [events, candidateId, candidateName, category, search, sortBy]);
+
 
   useEffect(() => {
     setVisibleCount(LOAD_MORE_STEP);
@@ -697,14 +753,27 @@ export default function RadarPolitico() {
                 className="w-full"
                 disabled={loadMoreMutation.isPending}
                 onClick={() => {
-                  if (visibleCount < filtered.length) setVisibleCount((v) => v + LOAD_MORE_STEP);
-                  else loadMoreMutation.mutate();
+                  const nextVisible = visibleCount + LOAD_MORE_STEP;
+                  console.log("[Radar] Load more clicked", {
+                    visibleCount,
+                    nextVisible,
+                    filteredLength: filtered.length,
+                    eventsLength: events.length,
+                    backendTotal: jobStatus?.events_count ?? 0,
+                  });
+                  // Sempre incrementa a janela visível
+                  setVisibleCount(nextVisible);
+                  // Se já mostramos tudo que está em memória e backend tem mais, busca próximo lote
+                  if (nextVisible > filtered.length && (jobStatus?.events_count ?? 0) > events.length) {
+                    loadMoreMutation.mutate();
+                  }
                 }}
               >
                 {loadMoreMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                 Carregar mais {LOAD_MORE_STEP}
               </Button>
             )}
+
           </div>
         )}
       </section>
