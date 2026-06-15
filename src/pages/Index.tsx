@@ -6,6 +6,11 @@ import { SocialProof } from "@/components/landing/SocialProof";
 import { BentoFeatures } from "@/components/landing/BentoFeatures";
 import { TrendingCandidates } from "@/components/landing/TrendingCandidates";
 import { useNavigate } from "react-router-dom";
+import { Sparkles, Gift, ShieldCheck } from "lucide-react";
+import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import { getTrialStart, startTrial, getDaysLeft, TRIAL_DURATION_MS } from "@/lib/trial";
+
 
 const WHATSAPP_LINKS = {
   basico:
@@ -20,28 +25,37 @@ const WHATSAPP_LINKS = {
 const Index = () => {
   const navigate = useNavigate();
 
-  const handleFreeTrial = () => {
-    const TRIAL_MS = 604800000;
-    const stored = localStorage.getItem("trial_start");
+const Index = () => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
 
-    if (!stored) {
-      localStorage.setItem("trial_start", Date.now().toString());
-      alert("Seu teste gratuito de 7 dias foi ativado!");
+  const handleFreeTrial = () => {
+    if (!user) {
+      toast.info("Faça login para ativar seu teste gratuito de 7 dias.");
+      navigate("/auth");
       return;
     }
 
-    const start = parseInt(stored, 10);
-    const elapsed = Date.now() - start;
+    const start = getTrialStart(user.id);
 
-    if (elapsed < TRIAL_MS) {
-      const daysLeft = Math.ceil((TRIAL_MS - elapsed) / 86400000);
-      alert(`Você ainda tem ${daysLeft} ${daysLeft === 1 ? "dia" : "dias"} de teste gratuito.`);
+    if (!start) {
+      startTrial(user.id);
+      toast.success("Seu teste gratuito de 7 dias foi ativado!", {
+        description: "Aproveite o acesso completo em climapolitico.com.br",
+      });
+      return;
+    }
+
+    const daysLeft = getDaysLeft(user.id) ?? 0;
+    if (daysLeft > 0) {
+      toast.info(`Você ainda tem ${daysLeft} ${daysLeft === 1 ? "dia" : "dias"} de teste gratuito.`);
     } else {
-      alert("Seu período de teste gratuito expirou. Escolha um plano para continuar.");
+      toast.error("Seu período de teste gratuito expirou. Escolha um plano para continuar.");
     }
   };
 
   return (
+
 
 
     <div className="min-h-screen bg-gradient-secondary">
