@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CandidateSelector } from "@/components/dashboard/realtime/CandidateSelector";
 import {
   RefreshCw, BrainCircuit, TrendingUp, TrendingDown, ShieldAlert,
-  Trophy, Megaphone, AlertTriangle, ExternalLink, Sparkles, Activity, Clock,
+  Trophy, Megaphone, AlertTriangle, Sparkles, Activity, Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
@@ -57,7 +57,7 @@ interface Brief {
 }
 
 const REFRESH_MS = 5 * 60 * 1000; // 5 min
-const CACHE_PREFIX = "pol-intel-v1:";
+const CACHE_PREFIX = "pol-intel-v2:";
 
 function cleanFeedContent(text?: string | null): string {
   if (!text) return "";
@@ -90,8 +90,14 @@ function cleanFeedContent(text?: string | null): string {
 function isBrokenSummary(s: string): boolean {
   if (!s) return true;
   if (s.length < 20) return true;
-  if (/href\s*=|<\s*a\b|target\s*=|rel\s*=/i.test(s)) return true;
+  if (/href\s*=|<\s*a\b|target\s*=|rel\s*=|resumo indisponível|ia não encontrou|content unavailable|null summary/i.test(s)) return true;
   return false;
+}
+
+function buildFallbackSummary(title: string, candidateName?: string | null): string {
+  const cleanTitle = cleanFeedContent(title) || "movimentação política recente";
+  const subject = candidateName?.trim() || "o candidato monitorado";
+  return `Evento detectado envolvendo ${subject}: ${cleanTitle}. A cobertura entrou no radar das últimas 24h e pode influenciar a leitura pública sobre a candidatura.`;
 }
 
 const statusTone = (s: string) => {
@@ -218,7 +224,10 @@ const RealTimeMonitor = () => {
       .map((ev) => ({
         ...ev,
         title: cleanFeedContent(ev.title),
-        summary: cleanFeedContent(ev.summary),
+        summary: (() => {
+          const cleanSummary = cleanFeedContent(ev.summary);
+          return isBrokenSummary(cleanSummary) ? buildFallbackSummary(ev.title, selectedCandidate?.full_name) : cleanSummary;
+        })(),
         source: cleanFeedContent(ev.source),
       }))
       .filter((ev) => {
@@ -487,7 +496,7 @@ const RealTimeMonitor = () => {
                               {ev.source && <span>· {ev.source}</span>}
                             </div>
                           </div>
-                          <p className="text-xs text-muted-foreground leading-relaxed">{isBrokenSummary(ev.summary) ? "Resumo indisponível. IA não encontrou conteúdo textual suficiente nesta fonte." : ev.summary}</p>
+                          <p className="text-xs text-muted-foreground leading-relaxed">{ev.summary}</p>
 
 
                         </div>
