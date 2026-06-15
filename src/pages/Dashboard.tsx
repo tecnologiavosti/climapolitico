@@ -140,6 +140,7 @@ const Dashboard = () => {
                 <Route path="/ai-insights" element={wrap("AIInsights", AIInsights)} />
                 <Route path="/admin" element={wrap("Admin", Admin)} />
                 <Route path="/admin/api-settings" element={wrap("AdminApiSettings", AdminApiSettings)} />
+                <Route path="/admin/blog" element={wrap("BlogAdmin", BlogAdmin)} />
                 <Route path="/system-health" element={wrap("SystemHealth", SystemHealth)} />
                 <Route path="/observability" element={wrap("Observability", Observability)} />
                 <Route path="/operations" element={wrap("Operations", Operations)} />
