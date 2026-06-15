@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, BarChart3 } from "lucide-react";
 import { z } from "zod";
+import { consumeTrialAfterLogin, getTrialStart, queueTrialCelebration, startTrial } from "@/lib/trial";
 
 const emailSchema = z.string().email("Email inválido");
 const passwordSchema = z.string().min(6, "Senha deve ter no mínimo 6 caracteres");
@@ -41,7 +42,24 @@ const Auth = () => {
   const [signupOrganization, setSignupOrganization] = useState("");
 
   useEffect(() => {
-    if (user && !authLoading) navigate("/dashboard");
+    if (!user || authLoading) return;
+
+    if (consumeTrialAfterLogin() && !getTrialStart(user.id)) {
+      const startedAt = startTrial(user.id);
+      if (startedAt) {
+        queueTrialCelebration(user.id);
+        toast({ title: "Teste gratuito ativado!", description: "Parabéns pelos seus 7 dias no Clima Político." });
+        navigate("/dashboard/settings");
+        return;
+      }
+      toast({
+        title: "Teste gratuito indisponível",
+        description: "Este dispositivo já ativou um teste gratuito.",
+        variant: "destructive",
+      });
+    }
+
+    navigate("/dashboard");
   }, [user, authLoading, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
