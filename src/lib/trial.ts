@@ -15,12 +15,20 @@ export function getTrialStart(userId: string): number | null {
 
 export function hasMachineTrialStarted(): boolean {
   const store = storage();
-  return !!(store?.getItem(MACHINE_TRIAL_KEY) || store?.getItem(LEGACY_TRIAL_KEY));
+  if (!store?.length) return false;
+  if (store.getItem(MACHINE_TRIAL_KEY) || store.getItem(LEGACY_TRIAL_KEY)) return true;
+  for (let i = 0; i < store.length; i += 1) {
+    if (store.key(i)?.startsWith("trial_start:")) return true;
+  }
+  return false;
 }
 
 export function startTrial(userId: string): number | null {
   const existing = getTrialStart(userId);
-  if (existing) return existing;
+  if (existing) {
+    storage()?.setItem(MACHINE_TRIAL_KEY, existing.toString());
+    return existing;
+  }
 
   if (hasMachineTrialStarted()) return null;
 
