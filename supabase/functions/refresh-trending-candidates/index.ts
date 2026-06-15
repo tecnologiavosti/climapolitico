@@ -56,13 +56,13 @@ const POOL: Record<Role, string[]> = {
     "Eduardo Pimentel", "Álvaro Dias", "Daniel Sucupira",
   ],
   Vereador: [
-    "Carlos Bolsonaro", "Milton Leite", "Rubinho Nunes", "Gabriel Monteiro", "Thammy Miranda",
-    "Sonaira Fernandes", "Amanda Vettorazzo", "Cris Monteiro", "Eli Corrêa Filho",
-    "Adilson Amadeu", "Senival Moura", "Marlon Luz", "Lucas Pavanato",
-    "Tânia Bandeira", "Luna Zarattini", "Silvia da Bancada Feminista", "Erika Hilton",
-    "Rinaldi Digilio", "Eduardo Suplicy", "Sandra Tadeu",
+    // Vereadores em exercício (mandato 2025-2028) — São Paulo e Rio de Janeiro
+    "Carlos Bolsonaro", "Milton Leite", "Rubinho Nunes", "Lucas Pavanato",
+    "Cris Monteiro", "Sonaira Fernandes", "Amanda Vettorazzo", "Eli Corrêa Filho",
+    "Adilson Amadeu", "Senival Moura", "Marlon Luz", "Rinaldi Digilio",
+    "Sandra Tadeu", "Luna Zarattini", "Tânia Bandeira",
     "Tarcísio Motta", "Carlo Caiado", "Vera Lins", "Inaldo Silva", "Pedro Duarte",
-    "Chico Alencar", "Reimont", "Monica Benicio", "Thais Ferreira",
+    "Monica Benicio", "Thais Ferreira",
   ],
 };
 
