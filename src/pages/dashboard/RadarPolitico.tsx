@@ -61,6 +61,52 @@ const CATEGORIES = [
 
 const MONTHS_PT = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
+// =====================================================================
+// Entity Resolution — distinguir Flávio / Jair / Eduardo / Michelle / Carlos Bolsonaro
+// =====================================================================
+const CANDIDATE_ALIASES: Record<string, { strong: string[]; conflicts: string[] }> = {
+  "flavio bolsonaro": {
+    strong: ["flávio bolsonaro", "flavio bolsonaro", "senador flávio", "senador flavio", "flávio nantes", "flavio nantes"],
+    conflicts: ["jair bolsonaro", "ex-presidente bolsonaro", "presidente bolsonaro", "eduardo bolsonaro", "michelle bolsonaro", "carlos bolsonaro"],
+  },
+  "jair bolsonaro": {
+    strong: ["jair bolsonaro", "ex-presidente bolsonaro", "presidente bolsonaro", "jair messias"],
+    conflicts: ["flávio bolsonaro", "flavio bolsonaro", "eduardo bolsonaro", "michelle bolsonaro", "carlos bolsonaro"],
+  },
+  "eduardo bolsonaro": {
+    strong: ["eduardo bolsonaro", "deputado eduardo bolsonaro"],
+    conflicts: ["jair bolsonaro", "flávio bolsonaro", "flavio bolsonaro", "michelle bolsonaro", "carlos bolsonaro"],
+  },
+  "michelle bolsonaro": {
+    strong: ["michelle bolsonaro"],
+    conflicts: ["jair bolsonaro", "flávio bolsonaro", "flavio bolsonaro", "eduardo bolsonaro", "carlos bolsonaro"],
+  },
+  "carlos bolsonaro": {
+    strong: ["carlos bolsonaro", "vereador carlos bolsonaro"],
+    conflicts: ["jair bolsonaro", "flávio bolsonaro", "flavio bolsonaro", "eduardo bolsonaro", "michelle bolsonaro"],
+  },
+};
+
+function normalizeCandidateName(name: string) {
+  return name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
+function isEventRelevantForCandidate(event: RadarEvent, candidateName: string): boolean {
+  const normalized = normalizeCandidateName(candidateName);
+  const rule = CANDIDATE_ALIASES[normalized];
+  if (!rule) return true; // sem regra específica = não filtra
+  const haystack = `${event.title ?? ""} ${event.summary ?? ""} ${event.description ?? ""} ${event.content ?? ""}`
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const hasStrong = rule.strong.some((a) => haystack.includes(normalizeCandidateName(a)));
+  if (hasStrong) return true;
+  const hasConflict = rule.conflicts.some((a) => haystack.includes(normalizeCandidateName(a)));
+  // se menciona "bolsonaro" sozinho mas só aparece um conflito (ex.: Jair), descarta para Flávio
+  if (hasConflict) return false;
+  // sem strong e sem conflito: aceitar só se candidato base é genérico (sobrenome único etc.)
+  const surnameOnly = haystack.includes("bolsonaro");
+  return !surnameOnly;
+}
+
 const PRESETS = [
   { id: "7d", label: "7 dias", days: 7 },
   { id: "30d", label: "30 dias", days: 30 },
@@ -70,6 +116,7 @@ const PRESETS = [
   { id: "8y", label: "8 anos", days: 365 * 8 },
   { id: "custom", label: "Personalizado", days: 0 },
 ];
+
 
 const nfBR = new Intl.NumberFormat("pt-BR");
 const PAGE_SIZE = 500;
