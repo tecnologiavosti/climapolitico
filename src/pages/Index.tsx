@@ -60,9 +60,14 @@ const Index = () => {
                   Dashboard padrão
                 </li>
               </ul>
-              <a href="https://wa.me/5561998117985" target="_blank" rel="noopener noreferrer" className="block w-full">
+              <a
+                href="https://wa.me/556198117983?text=Ol%C3%A1!%20Tenho%20interesse%20nos%20planos%20do%20Clima%20Pol%C3%ADtico%20e%20gostaria%20de%20receber%20mais%20informa%C3%A7%C3%B5es."
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block w-full"
+              >
                 <Button className="w-full" variant="outline">
-                  Começar
+                  Saiba mais
                 </Button>
               </a>
             </div>
