@@ -195,16 +195,21 @@ export const TrendingCandidates = () => {
     let list = items.filter((i) => i.role === key);
     if (key === "Presidente") {
       list = list.filter((i) => !PRESIDENTIAL_BLOCKLIST.has(normalize(i.full_name)));
+      // Preencher fotos ausentes usando o fallback (match por primeiro nome).
+      list = list.map((it) => {
+        if (it.photo_url) return it;
+        const first = normalize(it.full_name).split(" ")[0];
+        const fb = PRESIDENTIAL_FALLBACK.find((f) => normalize(f.full_name).split(" ")[0] === first);
+        return fb?.photo_url ? { ...it, photo_url: fb.photo_url } : it;
+      });
       // Completar até 5 com fallback de presidenciáveis viáveis, sem duplicar.
-      const seen = new Set(list.map((i) => normalize(i.full_name)));
+      const seen = new Set(list.map((i) => normalize(i.full_name).split(" ")[0]));
       for (const fb of PRESIDENTIAL_FALLBACK) {
         if (list.length >= 5) break;
-        const key = normalize(fb.full_name);
-        const firstName = key.split(" ")[0];
-        const dup = [...seen].some((n) => n === key || n.startsWith(firstName + " ") || n.endsWith(" " + firstName));
-        if (!dup) {
+        const first = normalize(fb.full_name).split(" ")[0];
+        if (!seen.has(first)) {
           list.push(fb);
-          seen.add(key);
+          seen.add(first);
         }
       }
       list = list.slice(0, 5).map((it, i) => ({ ...it, rank: i + 1 }));
