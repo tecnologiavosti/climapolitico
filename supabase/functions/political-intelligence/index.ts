@@ -26,8 +26,65 @@ const RSS_FEEDS = (q: string) => [
   { src: "YouTube", url: `https://news.google.com/rss/search?q=${encodeURIComponent(q + " site:youtube.com")}&hl=pt-BR&gl=BR&ceid=BR:pt-419` },
 ];
 
-const stripHtml = (s: string) =>
-  s.replace(/<!\[CDATA\[|\]\]>/g, "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+const FETCH_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (compatible; ClimaPoliticoBot/1.0; +https://climapolitico.com.br)",
+  "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+};
+
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", ndash: "–", mdash: "—",
+  hellip: "…", laquo: "«", raquo: "»", ldquo: "“", rdquo: "”", lsquo: "‘", rsquo: "’", bull: "•", middot: "·",
+};
+
+function decodeEntities(input: string): string {
+  return String(input || "").replace(/&(#x?[0-9a-f]+|[a-z][a-z0-9]*);/gi, (_m, raw: string) => {
+    if (raw[0] === "#") {
+      const isHex = raw[1]?.toLowerCase() === "x";
+      const code = parseInt(raw.slice(isHex ? 2 : 1), isHex ? 16 : 10);
+      if (Number.isFinite(code) && code > 0 && code < 0x110000) {
+        try { return String.fromCodePoint(code); } catch { return ""; }
+      }
+      return "";
+    }
+    return NAMED_ENTITIES[raw.toLowerCase()] ?? "";
+  });
+}
+
+function cleanText(value: unknown): string {
+  let s = decodeEntities(String(value || ""));
+  s = s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1");
+  s = s.replace(/<\s*a\b[^>]*>/gi, " ").replace(/<\s*\/\s*a\s*>/gi, " ");
+  s = s.replace(/<[^>]+>/g, " ");
+  s = s.replace(/\b(?:href|target|rel|src|class|style)\s*=\s*"[^"]*"/gi, " ");
+  s = s.replace(/\b(?:href|target|rel|src|class|style)\s*=\s*'[^']*'/gi, " ");
+  s = s.replace(/https?:\/\/\S+/gi, " ");
+  return s.replace(/\s+/g, " ").trim();
+}
+
+function cleanHtml(html: string): string {
+  let s = decodeEntities(html || "");
+  s = s.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ");
+  s = s.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ");
+  s = s.replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ");
+  s = s.replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, " ");
+  s = s.replace(/<(nav|footer|header|aside|form)\b[^>]*>[\s\S]*?<\/\1>/gi, " ");
+  s = s.replace(/<[^>]+(?:cookie|banner|advert|publicidade|tracking|analytics|share|social)[^>]*>[\s\S]*?<\/[a-z0-9]+>/gi, " ");
+  s = s.replace(/<!--([\s\S]*?)-->/g, " ");
+  s = s.replace(/<[^>]+>/g, " ");
+  s = s.replace(/https?:\/\/\S+/gi, " ");
+  return s.replace(/\s+/g, " ").trim();
+}
+
+function buildFallbackSummary(title: string, candidateName?: string): string {
+  const cleanTitle = cleanText(title) || "movimentação política recente";
+  const subject = cleanText(candidateName || "o candidato monitorado") || "o candidato monitorado";
+  return `Evento detectado envolvendo ${subject}: ${cleanTitle}. A cobertura recente indica movimentação política nas últimas 24h e pode influenciar a leitura pública sobre a candidatura.`;
+}
+
+function isBrokenText(s: string): boolean {
+  return !s || s.length < 30 || /href\s*=|<\s*a\b|target\s*=|rel\s*=|rss\/articles|news\.google\.com|resumo indisponível|ia não encontrou|content unavailable|null summary/i.test(s);
+}
 
 // Parser robusto — só retorna ISO se data realmente válida (não inventa "agora").
 function parsePubDate(raw: string): string | null {
@@ -43,14 +100,15 @@ function parseRss(xml: string, sourceLabel: string): RawItem[] {
   for (const block of blocks) {
     const end = block.indexOf("</item>");
     const body = end >= 0 ? block.slice(0, end) : block;
-    const title = stripHtml((body.match(/<title>([\s\S]*?)<\/title>/i)?.[1]) || "");
-    const link = stripHtml((body.match(/<link>([\s\S]*?)<\/link>/i)?.[1]) || "");
-    const desc = stripHtml((body.match(/<description>([\s\S]*?)<\/description>/i)?.[1]) || "");
-    const pub = stripHtml((body.match(/<pubDate>([\s\S]*?)<\/pubDate>/i)?.[1]) || "");
+    const title = cleanText((body.match(/<title>([\s\S]*?)<\/title>/i)?.[1]) || "");
+    const link = cleanText((body.match(/<link>([\s\S]*?)<\/link>/i)?.[1]) || "");
+    const desc = cleanText((body.match(/<description>([\s\S]*?)<\/description>/i)?.[1]) || "");
+    const pub = cleanText((body.match(/<pubDate>([\s\S]*?)<\/pubDate>/i)?.[1]) || "");
+    const source = cleanText((body.match(/<source[^>]*>([\s\S]*?)<\/source>/i)?.[1]) || sourceLabel);
     const iso = parsePubDate(pub);
     if (!title || !iso) continue; // descarta sem título OU sem timestamp confiável
     items.push({
-      source: sourceLabel,
+      source: source || sourceLabel,
       title: title.slice(0, 300),
       summary: desc.slice(0, 500),
       url: link,
