@@ -274,26 +274,28 @@ const Index = () => {
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="container mx-auto px-4 py-20">
-        <Card className="p-12 md:p-16 bg-gradient-hero text-white text-center relative overflow-hidden animate-fade-in-up">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.1),transparent_70%)]" />
-          <div className="relative z-10 space-y-6">
-            <h2 className="text-3xl md:text-5xl font-bold mb-4">Pronto para transformar sua estratégia política?</h2>
-            <p className="text-xl md:text-2xl mb-8 opacity-90 max-w-2xl mx-auto">
-              Comece hoje e tenha acesso a insights que fazem a diferença
-            </p>
-            <Button
-              size="lg"
-              variant="secondary"
-              className="hover-scale text-base h-12 px-8"
-              onClick={() => navigate("/auth")}
-            >
-              Iniciar Teste Gratuito
-            </Button>
-          </div>
-        </Card>
-      </section>
+      {/* CTA Section — escondida se já houver teste/plano ativo */}
+      {!hideTrialCta && (
+        <section className="container mx-auto px-4 py-20">
+          <Card className="p-12 md:p-16 bg-gradient-hero text-white text-center relative overflow-hidden animate-fade-in-up">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.1),transparent_70%)]" />
+            <div className="relative z-10 space-y-6">
+              <h2 className="text-3xl md:text-5xl font-bold mb-4">Pronto para transformar sua estratégia política?</h2>
+              <p className="text-xl md:text-2xl mb-8 opacity-90 max-w-2xl mx-auto">
+                Comece hoje e tenha acesso a insights que fazem a diferença
+              </p>
+              <Button
+                size="lg"
+                variant="secondary"
+                className="hover-scale text-base h-12 px-8"
+                onClick={() => navigate("/auth")}
+              >
+                Iniciar Teste Gratuito
+              </Button>
+            </div>
+          </Card>
+        </section>
+      )}
 
     </div>
   );
