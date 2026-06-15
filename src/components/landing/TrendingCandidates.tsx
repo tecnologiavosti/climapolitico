@@ -154,9 +154,8 @@ export const TrendingCandidates = () => {
     };
   }, []);
 
-  // Blocklist: nomes que aparecem no cache de buscas mas NÃO são pré-candidatos
-  // presidenciais reais no ciclo atual (ex-presidentes sem candidatura, figuras
-  // históricas, familiares sem articulação partidária nacional).
+  // Blocklist: nomes que aparecem no cache de buscas mas NÃO são presidenciáveis
+  // reais (ex-presidentes sem articulação, figuras históricas, familiares).
   const PRESIDENTIAL_BLOCKLIST = new Set(
     [
       "dilma rousseff",
@@ -166,13 +165,23 @@ export const TrendingCandidates = () => {
       "fernando henrique cardoso",
       "fhc",
       "michel temer",
-       "itamar franco",
+      "itamar franco",
       "jose sarney",
       "josé sarney",
       "collor",
       "fernando collor",
     ].map((n) => n.toLowerCase())
   );
+
+  // Fallback: presidenciáveis com viabilidade política real no ciclo atual.
+  // Usado para completar até 5 quando o cache de buscas não cobrir o cenário.
+  const PRESIDENTIAL_FALLBACK: TrendingItem[] = [
+    { role: "Presidente", rank: 1, full_name: "Luiz Inácio Lula da Silva", party: "PT", region: "Nacional", photo_url: null, search_score: 0 },
+    { role: "Presidente", rank: 2, full_name: "Jair Bolsonaro", party: "PL", region: "Nacional", photo_url: null, search_score: 0 },
+    { role: "Presidente", rank: 3, full_name: "Tarcísio de Freitas", party: "Republicanos", region: "SP", photo_url: null, search_score: 0 },
+    { role: "Presidente", rank: 4, full_name: "Romeu Zema", party: "Novo", region: "MG", photo_url: null, search_score: 0 },
+    { role: "Presidente", rank: 5, full_name: "Ronaldo Caiado", party: "União Brasil", region: "GO", photo_url: null, search_score: 0 },
+  ];
 
   const normalize = (s: string) =>
     s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -182,6 +191,19 @@ export const TrendingCandidates = () => {
     let list = items.filter((i) => i.role === key);
     if (key === "Presidente") {
       list = list.filter((i) => !PRESIDENTIAL_BLOCKLIST.has(normalize(i.full_name)));
+      // Completar até 5 com fallback de presidenciáveis viáveis, sem duplicar.
+      const seen = new Set(list.map((i) => normalize(i.full_name)));
+      for (const fb of PRESIDENTIAL_FALLBACK) {
+        if (list.length >= 5) break;
+        const key = normalize(fb.full_name);
+        const firstName = key.split(" ")[0];
+        const dup = [...seen].some((n) => n === key || n.startsWith(firstName + " ") || n.endsWith(" " + firstName));
+        if (!dup) {
+          list.push(fb);
+          seen.add(key);
+        }
+      }
+      list = list.slice(0, 5).map((it, i) => ({ ...it, rank: i + 1 }));
     }
     return list.sort((a, b) => a.rank - b.rank);
   };
