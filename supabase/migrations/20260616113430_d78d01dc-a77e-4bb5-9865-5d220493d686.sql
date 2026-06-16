@@ -1,0 +1,1 @@
+DELETE FROM public.network_view_cache WHERE section IN ('core','content','top_posts');
