@@ -4,16 +4,17 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { MapPin, MessageSquare, ThumbsUp, ThumbsDown, Minus, Info } from "lucide-react";
+import { MapPin, ThumbsUp, ThumbsDown, Minus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { BR_STATES_MAP } from "@/data/brStatesMap";
 import { UFS, UF_NAME, inferLocation, type UF } from "@/lib/brazilStatesInference";
 import { NETWORKS, ALL_NETWORKS_VALUE } from "@/pages/dashboard/regionalAnalysis.helpers";
+import { fetchAllPaginated } from "@/lib/supabasePagination";
 
 interface Props {
   userId: string;
   candidateId: string;
-  network: string; // ALL_NETWORKS_VALUE | label
+  network: string;
 }
 
 interface Row {
@@ -31,8 +32,7 @@ interface UFAgg {
   pos: number;
   neg: number;
   neu: number;
-  cities: Map<string, { total: number; pos: number; neg: number; neu: number }>;
-  samples: Row[]; // até 30 mais recentes
+  samples: Row[];
 }
 
 function colorFor(total: number, pos: number, neg: number): string {
@@ -55,8 +55,6 @@ function sentimentKey(s: string | null): "pos" | "neg" | "neu" {
 export default function BrazilStateMap({ userId, candidateId, network }: Props) {
   const [loading, setLoading] = useState(false);
   const [aggs, setAggs] = useState<Record<UF, UFAgg>>({} as Record<UF, UFAgg>);
-  const [totalScanned, setTotalScanned] = useState(0);
-  const [identified, setIdentified] = useState(0);
   const [openUF, setOpenUF] = useState<UF | null>(null);
 
   useEffect(() => {
@@ -68,63 +66,41 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
         const isAll = network === ALL_NETWORKS_VALUE;
         const netCfg = isAll ? null : NETWORKS.find((n) => n.label === network);
         const netValues = netCfg ? netCfg.values : null;
+        const EXCLUDED = new Set(["mastodon", "lemmy", "pinterest"]);
 
-        const PAGE = 1000;
-        const HARD_CAP = 10000;
-        let from = 0;
-        const rows: Row[] = [];
-        while (rows.length < HARD_CAP) {
+        // Sem cap artificial: usa 100% das menções via paginação.
+        const rows = await fetchAllPaginated<Row>((from, to) => {
           let q = supabase
             .from("social_interactions")
             .select("id, comment_text, comment_author, sentiment_label, social_network, created_at")
             .eq("user_id", userId)
             .eq("candidate_id", candidateId)
             .not("comment_text", "is", null)
-            .not("social_network", "in", "(mastodon,lemmy,pinterest)")
             .order("created_at", { ascending: false })
-            .range(from, from + PAGE - 1);
+            .range(from, to);
           if (netValues) q = q.in("social_network", netValues);
-          const { data, error } = await q;
-          if (error) throw error;
-          if (!data || data.length === 0) break;
-          rows.push(...(data as Row[]));
-          if (data.length < PAGE) break;
-          from += PAGE;
-        }
+          return q;
+        }, 1000, 200_000);
 
         if (cancelled) return;
 
+        const filtered = rows.filter((r) => !EXCLUDED.has((r.social_network || "").toLowerCase()));
+
         const acc = {} as Record<UF, UFAgg>;
         for (const uf of UFS) {
-          acc[uf] = {
-            uf,
-            total: 0, pos: 0, neg: 0, neu: 0,
-            cities: new Map(),
-            samples: [],
-          };
+          acc[uf] = { uf, total: 0, pos: 0, neg: 0, neu: 0, samples: [] };
         }
-        let id = 0;
-        for (const r of rows) {
-          const { uf, city } = inferLocation(r.comment_text, r.comment_author);
+        for (const r of filtered) {
+          const { uf } = inferLocation(r.comment_text, r.comment_author);
           if (!uf) continue;
-          id++;
           const a = acc[uf];
           const k = sentimentKey(r.sentiment_label);
           a.total++;
           a[k]++;
-          const cityKey = city || "Não identificada";
-          const c = a.cities.get(cityKey) || { total: 0, pos: 0, neg: 0, neu: 0 };
-          c.total++;
-          c[k]++;
-          a.cities.set(cityKey, c);
           if (a.samples.length < 30) a.samples.push(r);
         }
 
-        if (!cancelled) {
-          setAggs(acc);
-          setTotalScanned(rows.length);
-          setIdentified(id);
-        }
+        if (!cancelled) setAggs(acc);
       } catch (e) {
         console.error("[BrazilStateMap]", e);
       } finally {
@@ -141,6 +117,11 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
       .slice(0, 10);
   }, [aggs]);
 
+  const totalIdentified = useMemo(
+    () => (Object.values(aggs) as UFAgg[]).reduce((s, a) => s + a.total, 0),
+    [aggs],
+  );
+
   const current = openUF ? aggs[openUF] : null;
 
   return (
@@ -152,20 +133,19 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
             Mapa por estado
           </CardTitle>
           <CardDescription>
-            Clique em uma UF para ver as cidades e comentários identificados naquele estado.
+            Clique em uma UF para ver os comentários identificados naquele estado.
           </CardDescription>
         </div>
       </CardHeader>
       <CardContent>
         {loading ? (
           <Skeleton className="h-[420px] w-full" />
-        ) : identified === 0 ? (
+        ) : totalIdentified === 0 ? (
           <div className="py-12 text-center text-sm text-muted-foreground">
-            Nenhuma localização (UF/cidade) foi identificada nos comentários desta combinação.
+            Nenhuma localização (UF) foi identificada nos comentários desta combinação.
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-            {/* Mapa SVG */}
             <div className="lg:col-span-3">
               <TooltipProvider delayDuration={120}>
                 <div className="w-full flex justify-center">
@@ -221,9 +201,7 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
                                     <div className="text-green-600">+ {a!.pos} positivos</div>
                                     <div className="text-red-600">- {a!.neg} negativos</div>
                                     <div className="text-muted-foreground">= {a!.neu} neutros</div>
-                                    <div className="text-xs text-muted-foreground mt-1">
-                                      Clique para detalhes
-                                    </div>
+                                    <div className="text-xs text-muted-foreground mt-1">Clique para detalhes</div>
                                   </>
                                 ) : (
                                   <div className="text-muted-foreground">Sem dados identificados</div>
@@ -234,7 +212,6 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
                         );
                       })}
                   </svg>
-
                 </div>
                 <p className="text-[11px] text-muted-foreground text-center mt-2">
                   Mapa esquemático. As cores indicam aceitação (verde &gt;65%, amarelo 35-65%, vermelho &lt;35%).
@@ -242,7 +219,6 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
               </TooltipProvider>
             </div>
 
-            {/* Ranking de UFs */}
             <div className="lg:col-span-2 space-y-2">
               <h4 className="text-sm font-semibold mb-2">Top estados por menções</h4>
               {ranking.map((a) => {
@@ -255,9 +231,7 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
                     className="w-full text-left rounded-lg border p-3 hover:border-primary/60 transition-all"
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-sm">
-                        {a.uf} · {UF_NAME[a.uf]}
-                      </span>
+                      <span className="font-medium text-sm">{a.uf} · {UF_NAME[a.uf]}</span>
                       <span className="text-xs text-muted-foreground">
                         {Number(a.total ?? 0).toLocaleString("pt-BR")}
                       </span>
@@ -270,7 +244,7 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
                         </div>
                         <div className="flex justify-between text-[11px] mt-1">
                           <span className="text-green-600">{posPct}% aceitação</span>
-                          <span className="text-muted-foreground">{a.cities.size} cidades</span>
+                          <span className="text-red-600">{100 - posPct}% rejeição</span>
                         </div>
                       </>
                     ) : (
@@ -284,7 +258,6 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
         )}
       </CardContent>
 
-      {/* Modal de detalhes da UF */}
       <Dialog open={!!openUF} onOpenChange={(o) => !o && setOpenUF(null)}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
@@ -293,49 +266,17 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
               {current ? `${UF_NAME[current.uf]} (${current.uf})` : ""}
             </DialogTitle>
             <DialogDescription>
-              {current ? `${current.total} comentários identificados · ${current.cities.size} cidades` : ""}
+              {current ? `${Number(current.total ?? 0).toLocaleString("pt-BR")} comentários identificados` : ""}
             </DialogDescription>
           </DialogHeader>
 
           {current && (
             <div className="space-y-6">
-              {/* Cidades */}
-              <div>
-                <h4 className="text-sm font-semibold mb-2">Cidades com mais menções</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {Array.from(current.cities.entries())
-                    .sort((a, b) => b[1].total - a[1].total)
-                    .slice(0, 12)
-                    .map(([city, c]) => {
-                      const opin = c.pos + c.neg;
-                      const posPct = opin > 0 ? Math.round((c.pos / opin) * 100) : 0;
-                      return (
-                        <div key={city} className="rounded-md border bg-muted/30 px-3 py-2">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm font-medium truncate">{city}</span>
-                            <span className="text-xs text-muted-foreground">{c.total}</span>
-                          </div>
-                          {opin >= 2 ? (
-                            <div className="flex h-1.5 rounded-full overflow-hidden bg-muted">
-                              <div className="bg-green-500" style={{ width: `${posPct}%` }} />
-                              <div className="bg-red-500" style={{ width: `${100 - posPct}%` }} />
-                            </div>
-                          ) : (
-                            <div className="text-[11px] text-muted-foreground">Sem opinião suficiente</div>
-                          )}
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
-
-              {/* Comentários */}
               <div>
                 <h4 className="text-sm font-semibold mb-2">Comentários recentes</h4>
                 <div className="space-y-2">
                   {current.samples.slice(0, 15).map((r) => {
                     const k = sentimentKey(r.sentiment_label);
-                    const { city } = inferLocation(r.comment_text, r.comment_author);
                     return (
                       <div key={r.id} className="rounded-md border bg-card p-3 space-y-1">
                         <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
@@ -344,7 +285,6 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
                           </span>
                           <span>·</span>
                           <span>{r.social_network}</span>
-                          {city && (<><span>·</span><span>{city}</span></>)}
                           <span className="ml-auto">
                             {k === "pos" && <Badge className="bg-green-500/15 text-green-600 border-green-500/30"><ThumbsUp className="h-3 w-3 mr-1" />Positivo</Badge>}
                             {k === "neg" && <Badge className="bg-red-500/15 text-red-600 border-red-500/30"><ThumbsDown className="h-3 w-3 mr-1" />Negativo</Badge>}
