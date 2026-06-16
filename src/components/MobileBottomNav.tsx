@@ -93,7 +93,7 @@ const sections: Section[] = [
     icon: Brain,
     items: [
       { label: "Narrativas", icon: Sparkles, to: "/dashboard/narrative-recommendations", badge: "ai" },
-      { label: "Repercussão", icon: MessagesSquare, to: "/dashboard/event-repercussion" },
+      
       { label: "Comparação Histórica", icon: GitCompareArrows, to: "/dashboard/historical-comparison", badge: "ai" },
       { label: "Alertas", icon: Bell, to: "/dashboard/notifications" },
     ],
