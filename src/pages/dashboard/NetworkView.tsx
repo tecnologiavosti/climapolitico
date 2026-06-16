@@ -408,37 +408,7 @@ export default function NetworkView() {
         <Kpi label="Rede dominante" value={dominant === "—" ? "—" : dominant.charAt(0).toUpperCase() + dominant.slice(1)} icon={<Crown className="h-4 w-4" />} loading={isLoadingCore} sub={dominantNet && total > 0 ? `${fmt(dominantNet.mentions)} menções · ${compact(dominantNet.engagement || 0)} int.` : ""} />
       </div>
 
-      {!isLoadingCore && agg.debug && (
-        <Card className="p-4 border-primary/20 bg-primary/5 space-y-3">
-          <div className="text-xs font-semibold">Diagnóstico do funil de menções</div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
-            <div><div className="text-muted-foreground">Total no banco</div><div className="font-bold text-base">{fmt(agg.debug.totalInDatabase ?? 0)}</div></div>
-            <div><div className="text-muted-foreground">No período</div><div className="font-bold text-base">{fmt(agg.debug.afterPeriodFilter ?? 0)}</div></div>
-            <div><div className="text-muted-foreground">Após candidato</div><div className="font-bold text-base">{fmt(agg.debug.afterCandidateFilter ?? 0)}</div></div>
-            <div><div className="text-muted-foreground">Após rede</div><div className="font-bold text-base">{fmt(agg.debug.afterPlatformFilter ?? 0)}</div></div>
-            <div><div className="text-muted-foreground">Analytics</div><div className="font-bold text-base text-primary">{fmt(agg.debug.finalAnalyticsCount ?? 0)}</div></div>
-          </div>
-          {(() => {
-            const period = agg.debug?.afterPeriodFilter ?? 0;
-            const finalC = agg.debug?.finalAnalyticsCount ?? 0;
-            const pipelineLoss = Math.max(0, period - finalC);
-            const lossPct = period > 0 ? Math.round((pipelineLoss / period) * 1000) / 10 : 0;
-            const tone = lossPct >= 5 ? "text-destructive" : "text-success";
-            return (
-              <div className={`text-[11px] font-medium ${tone}`}>
-                Perda no pipeline (período → analytics): {fmt(pipelineLoss)} ({lossPct}%). Meta ≤ 5%.
-              </div>
-            );
-          })()}
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-[11px] text-muted-foreground">
-            <span>posts: <b className="text-foreground">{fmt(agg.debug.posts)}</b></span>
-            <span>classified: <b className="text-foreground">{fmt(agg.debug.classified)}</b></span>
-            <span>themes: <b className="text-foreground">{fmt(agg.debug.themes)}</b></span>
-            <span>hashtags: <b className="text-foreground">{fmt(agg.debug.hashtags)}</b></span>
-            <span>período: <b className="text-foreground">{agg.debug.periodMode ?? `${days} dias`}</b></span>
-          </div>
-        </Card>
-      )}
+      {/* Debug card removido — diagnóstico técnico permanece apenas no console. */}
 
       {/* AI Alerts */}
       {!isLoadingCore && aiAlerts.length > 0 && (
