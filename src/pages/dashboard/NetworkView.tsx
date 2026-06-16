@@ -252,8 +252,12 @@ export default function NetworkView() {
 
       {errorMessage && (
         <Card className="p-4 border-destructive bg-destructive/5">
-          <div className="text-sm text-destructive font-medium">Erro ao carregar analytics: {errorMessage}</div>
-          <div className="text-xs text-muted-foreground mt-1">Verifique o console do navegador para o diagnóstico completo de qual RPC falhou.</div>
+          <div className="text-sm text-destructive font-medium">{errorMessage}</div>
+        </Card>
+      )}
+      {reprocessingMsg && !errorMessage && (
+        <Card className="p-3 bg-muted/40 border-border">
+          <div className="text-xs text-muted-foreground">{reprocessingMsg}</div>
         </Card>
       )}
 
