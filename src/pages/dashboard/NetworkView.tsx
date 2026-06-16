@@ -529,12 +529,12 @@ function computeTopicsAndTerms(rows: Array<{ post_title: string | null; comment_
   for (const r of rows) {
     const text = cleanText(`${r.post_title ?? ""} ${r.comment_text ?? ""}`);
     if (!text) continue;
-    const lower = text.toLowerCase();
+    const norm = normalizeTerm(text);
     const sentRaw = (r.sentiment_label ?? "").toLowerCase();
     const sentKey = sentRaw.startsWith("pos") ? "pos" : sentRaw.startsWith("neg") ? "neg" : "neu";
 
     for (const [theme, kws] of Object.entries(THEME_KEYWORDS)) {
-      if (kws.some((k) => lower.includes(k))) {
+      if (kws.some((k) => norm.includes(normalizeTerm(k)))) {
         const t = (themeStats[theme] ||= { mentions: 0, pos: 0, neg: 0, neu: 0 });
         t.mentions++;
         (t as any)[sentKey]++;
@@ -543,17 +543,19 @@ function computeTopicsAndTerms(rows: Array<{ post_title: string | null; comment_
 
     let m;
     while ((m = hashRe.exec(text)) !== null) {
-      const tag = m[1].toLowerCase();
-      if (tag.length < 2 || STOPWORDS.has(tag) || HEX_RE.test(tag) || !HAS_LETTER_RE.test(tag)) continue;
+      const tag = normalizeTerm(m[1]);
+      if (tag.length < 2 || STOPWORDS.has(tag) || SOCIAL_BLACKLIST.has(tag) || HEX_RE.test(tag) || !HAS_LETTER_RE.test(tag)) continue;
       hashCount["#" + tag] = (hashCount["#" + tag] ?? 0) + 1;
     }
 
-    for (const w of lower.split(/[^\p{L}\p{N}_#]+/u)) {
-      if (!w || w.startsWith("#")) continue;
-      if (w.length < 3 || STOPWORDS.has(w) || /^\d+$/.test(w) || HEX_RE.test(w) || !HAS_LETTER_RE.test(w)) continue;
+    for (const raw of text.split(/[^\p{L}\p{N}_#]+/u)) {
+      if (!raw || raw.startsWith("#")) continue;
+      const w = normalizeTerm(raw);
+      if (w.length < 3 || STOPWORDS.has(w) || SOCIAL_BLACKLIST.has(w) || /^\d+$/.test(w) || HEX_RE.test(w) || !HAS_LETTER_RE.test(w)) continue;
       wordCount[w] = (wordCount[w] ?? 0) + 1;
     }
   }
+
 
   const topics = Object.entries(themeStats)
     .map(([theme, s]) => ({ theme, mentions: s.mentions, pos: s.pos, neg: s.neg, neu: s.neu }))
