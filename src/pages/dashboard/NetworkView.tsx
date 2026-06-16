@@ -76,31 +76,48 @@ export default function NetworkView() {
   };
 
   const fetchBlock = async (rpc: string) => {
-    console.log(`[NetworkView] → ${rpc}`, params);
-    const { data, error } = await (supabase.rpc as any)(rpc, params);
-    if (error) {
-      console.error(`[NetworkView] ✖ ${rpc} error:`, error);
-      throw error;
+    const label = `[NetworkView] ${rpc}`;
+    console.time(label);
+    try {
+      const { data, error } = await (supabase.rpc as any)(rpc, params);
+      if (error) {
+        console.error(`✖ ${rpc} error:`, error);
+        throw error;
+      }
+      if (data && data.ok === false) {
+        console.error(`✖ ${rpc} ok=false:`, data.message);
+        throw new Error(data.message || `Falha em ${rpc}`);
+      }
+      return data;
+    } finally {
+      console.timeEnd(label);
     }
-    if (data && data.ok === false) {
-      console.error(`[NetworkView] ✖ ${rpc} ok=false:`, data.message, data);
-      throw new Error(data.message || `Falha em ${rpc}`);
-    }
-    console.log(`[NetworkView] ✓ ${rpc}`, data?.diagnostics);
-    return data;
   };
 
   const query = useQuery({
     queryKey: ["nv-blocks", user?.id, network, candidateId, days],
     queryFn: async () => {
       console.log("[NetworkView] filters →", { user: user?.id, candidate: candidateId, network, period: days });
-      const [summary, sentiment, engagement, topics, terms] = await Promise.all([
+      // allSettled: timeout em UM bloco não derruba os outros
+      const settled = await Promise.allSettled([
         fetchBlock("network_view_summary"),
         fetchBlock("network_view_sentiment_block"),
         fetchBlock("network_view_engagement_block"),
         fetchBlock("network_view_topics_block"),
         fetchBlock("network_view_terms_block"),
       ]);
+      const [summary, sentiment, engagement, topics, terms] = settled.map((s) =>
+        s.status === "fulfilled" ? s.value : null,
+      );
+      const names = ["summary", "sentiment", "engagement", "topics", "terms"];
+      const failures: Record<string, string> = {};
+      settled.forEach((s, i) => {
+        if (s.status === "rejected") {
+          const msg = (s.reason as Error)?.message || String(s.reason);
+          failures[names[i]] = msg;
+          console.error(`[NetworkView] bloco ${names[i]} falhou:`, msg);
+        }
+      });
       const result = {
         kpis: summary?.data?.kpis ?? {},
         sentimentKpis: sentiment?.data?.kpis ?? {},
@@ -108,6 +125,7 @@ export default function NetworkView() {
         byNet: ((engagement?.data?.by_network ?? []) as NetRow[]).filter((n) => ALLOWED_NETWORKS.has(n.network)),
         topics: ((topics?.data?.topics ?? []) as TopicRow[]).filter((t) => !!t.theme),
         terms: (terms?.data?.terms ?? []) as TermRow[],
+        failures,
       };
       console.log("[NetworkView] pipeline →", {
         total: result.kpis?.total ?? 0,
@@ -116,6 +134,7 @@ export default function NetworkView() {
         topics_n: result.topics.length,
         terms_n: result.terms.length,
         series_n: result.series.length,
+        failures,
       });
       return result;
     },
@@ -125,7 +144,13 @@ export default function NetworkView() {
     refetchOnWindowFocus: false,
   });
 
-  const errorMessage = query.error ? (query.error as Error).message : null;
+  const failures = (query.data as any)?.failures ?? {};
+  const failedBlocks = Object.keys(failures);
+  const errorMessage = query.error
+    ? (query.error as Error).message
+    : failedBlocks.length > 0
+    ? `Blocos com timeout: ${failedBlocks.join(", ")}. Tente um período menor.`
+    : null;
 
 
   const loading = query.isLoading;
