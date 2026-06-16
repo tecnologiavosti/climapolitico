@@ -298,20 +298,55 @@ export default function NetworkView() {
 
   const maxHashtag = Math.max(1, ...(agg?.hashtags ?? []).map((h) => h.c));
 
-  const aiSummary = useMemo(() => {
-    // Inferência estatística apenas com base em dados reais já exibidos na tela.
-    if (!agg || total < 30 || !agg.by_network.length) {
-      return "Dados insuficientes para inferência estatística.";
-    }
-    const top = agg.by_network[0];
-    const totalNet = agg.by_network.reduce((s, n) => s + (n.mentions || 0), 0);
-    const sharePct = totalNet > 0 ? Math.round((top.mentions / totalNet) * 100) : 0;
+  // Resumo executivo derivado dos dados reais: forte_em / sofre_em / narrativas / momento.
+  const aiBullets = useMemo(() => {
+    if (!agg || total < 30 || !agg.by_network.length) return null;
     const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-    const trend = growthPct === null
-      ? "Sem base comparativa"
-      : (growthPct >= 0 ? `crescimento de ${growthPct}%` : `queda de ${Math.abs(growthPct)}%`);
-    return `${cap(top.network)} concentra o maior volume com ${fmt(top.mentions)} menções (${sharePct}% do total de ${fmt(total)}). Variação vs. período anterior: ${trend}. Sentimento atual: ${posPct}% positivo, ${negPct}% negativo, ${neuPct}% neutro (base de ${fmt(labeled)} menções classificadas).`;
-  }, [agg, total, k?.prev_total, growthPct, posPct, negPct, neuPct, labeled]);
+    const nets = [...agg.by_network].sort((a, b) => (b.engagement || 0) - (a.engagement || 0));
+    const strong = nets[0];
+    const weakSentNet = [...agg.by_network]
+      .map((n) => ({ ...n, neg: Math.max(0, (n.mentions || 0) - (n.likes || 0) - (n.replies || 0)) }))
+      .sort((a, b) => b.neg - a.neg)[0];
+    const topTopics = (agg.topics ?? []).slice(0, 3).map((t) => t.theme).filter(Boolean);
+    const moment = growthPct === null
+      ? "Sem base histórica suficiente para avaliar tendência."
+      : growthPct >= 30 ? `Crescimento acelerado (+${growthPct}% vs. período anterior).`
+      : growthPct <= -30 ? `Queda significativa (${growthPct}% vs. período anterior).`
+      : `Estabilidade no volume (${growthPct >= 0 ? "+" : ""}${growthPct}%).`;
+    return [
+      { label: "Mais forte em", text: `${cap(strong.network)} — ${fmt(strong.mentions)} menções, ${compact(strong.engagement || 0)} interações.` },
+      { label: "Sofre mais em", text: negPct > posPct
+          ? `Sentimento negativo predomina (${negPct}% vs. ${posPct}% positivo).`
+          : `${cap(weakSentNet?.network ?? "—")} com a menor proporção positiva.` },
+      { label: "Narrativas dominantes", text: topTopics.length ? topTopics.join(" · ") : "Sem temas dominantes classificados." },
+      { label: "Momento", text: moment },
+    ];
+  }, [agg, total, growthPct, posPct, negPct]);
+
+  // Alertas IA baseados em regras: variação > 30%, crise de sentimento, pico em horário eleitoral (17h-22h).
+  const aiAlerts = useMemo(() => {
+    const alerts: { level: "success" | "warning" | "destructive"; title: string; detail: string }[] = [];
+    if (!agg) return alerts;
+    // Variação por rede (precisa comparar com prev — usamos só growth global aqui)
+    if (growthPct !== null && growthPct >= 30) {
+      alerts.push({ level: "success", title: "Crescimento anormal", detail: `Volume +${growthPct}% vs. período anterior.` });
+    } else if (growthPct !== null && growthPct <= -30) {
+      alerts.push({ level: "destructive", title: "Queda acentuada", detail: `Volume ${growthPct}% vs. período anterior.` });
+    }
+    // Crise de sentimento
+    if (prevLabeled > 0 && labeled > 0 && (negPct - prevNegPct) >= 15) {
+      alerts.push({ level: "destructive", title: "Aumento de sentimento negativo", detail: `+${negPct - prevNegPct}pp de negativo em relação ao período anterior.` });
+    }
+    // Pico em horário eleitoral (17h-22h)
+    const electoralPeak = (agg.heatmap ?? []).filter((h) => h.hr >= 17 && h.hr <= 22);
+    const totalElectoral = electoralPeak.reduce((s, h) => s + h.c, 0);
+    const totalHeat = (agg.heatmap ?? []).reduce((s, h) => s + h.c, 0);
+    if (totalHeat > 100 && totalElectoral / totalHeat >= 0.5) {
+      alerts.push({ level: "warning", title: "Pico em janela eleitoral", detail: `${Math.round((totalElectoral / totalHeat) * 100)}% das menções ocorrem entre 17h-22h.` });
+    }
+    return alerts;
+  }, [agg, growthPct, negPct, prevNegPct, labeled, prevLabeled]);
+
 
   return (
     <div className="space-y-6">
