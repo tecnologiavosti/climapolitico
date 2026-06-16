@@ -576,7 +576,7 @@ export default function NetworkView() {
                       <span className="font-semibold">{t.theme}</span>
                       <div className="flex items-center gap-2 text-xs">
                         <span className="text-muted-foreground">{fmt(t.mentions)} menções</span>
-                        {variation === null ? <span className="text-muted-foreground">Sem base</span> : <span className={`font-medium ${variation >= 0 ? "text-success" : "text-destructive"}`}>{variation >= 0 ? "+" : ""}{variation}%</span>}
+                        {variation === null ? <span className="text-muted-foreground">Sem base histórica</span> : <span className={`font-medium ${variation >= 0 ? "text-success" : "text-destructive"}`}>{variation >= 0 ? "+" : ""}{variation}%</span>}
                       </div>
                     </div>
                     <div className="text-[11px] text-muted-foreground mb-1">{posP}% positivo</div>
@@ -611,7 +611,7 @@ export default function NetworkView() {
                     <span className="font-medium truncate max-w-[40%]">{h.tag}</span>
                     <div className="flex items-center gap-3 text-xs">
                       <span className="text-muted-foreground">{fmt(h.c)}</span>
-                      {variation === null ? <span className="text-muted-foreground">Sem base</span> : <span className={`font-medium ${variation >= 0 ? "text-success" : "text-destructive"}`}>{variation >= 0 ? "+" : ""}{variation}%</span>}
+                      {variation === null ? <span className="text-muted-foreground">Sem base histórica</span> : <span className={`font-medium ${variation >= 0 ? "text-success" : "text-destructive"}`}>{variation >= 0 ? "+" : ""}{variation}%</span>}
                       {lab > 0 && <span className="text-success">{posP}% pos</span>}
                     </div>
                   </div>
