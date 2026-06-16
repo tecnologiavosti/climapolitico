@@ -51,11 +51,13 @@ export const SocialMediaTemporalEvolution = ({
     queryFn: async () => {
       const { fetchAllPaginated } = await import('@/lib/supabasePagination');
 
+      const EXCLUDED_NETWORKS = new Set(['mastodon', 'lemmy', 'pinterest', 'gdelt']);
+
       const rows = await fetchAllPaginated<any>((from, to) => {
         let q = supabase
           .from('social_interactions')
           .select('social_network, sentiment_label, sentiment_score, likes_count, replies_count, shares_count, created_at')
-          .not('social_network', 'in', '(mastodon,lemmy,pinterest,gdelt)');
+          .order('created_at', { ascending: true });
 
         if (!isAdmin && user) q = q.eq('user_id', user.id);
         if (selectedCandidate !== 'all') q = q.eq('candidate_id', selectedCandidate);
@@ -64,6 +66,13 @@ export const SocialMediaTemporalEvolution = ({
         if (dateRange?.to) q = q.lte('created_at', dateRange.to.toISOString());
 
         return q.range(from, to);
+      });
+
+      // Filtra redes excluídas em memória — preserva linhas com social_network NULL,
+      // que antes eram descartadas pelo `.not('in', ...)` no PostgREST.
+      const filteredRows = (rows || []).filter((r: any) => {
+        const net = (r.social_network || '').toLowerCase();
+        return !EXCLUDED_NETWORKS.has(net);
       });
 
       if (!rows || rows.length === 0) {
