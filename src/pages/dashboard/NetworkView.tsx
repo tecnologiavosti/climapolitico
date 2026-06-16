@@ -55,7 +55,7 @@ export default function NetworkView() {
   const { isAdmin } = useAdminCheck();
   const [network, setNetwork] = useState("all");
   const [candidateId, setCandidateId] = useState<string>("all");
-  const [days, setDays] = useState(30);
+  const [days, setDays] = useState(3650);
 
   const { data: candidates } = useQuery({
     queryKey: ["nv-candidates", user?.id, isAdmin],
@@ -146,25 +146,55 @@ export default function NetworkView() {
 
   const failures = (query.data as any)?.failures ?? {};
   const failedBlocks = Object.keys(failures);
+  const needsJsFallback = !!(failures.topics || failures.terms);
   const errorMessage = query.error
-    ? (query.error as Error).message
-    : failedBlocks.length > 0
-    ? `Blocos com timeout: ${failedBlocks.join(", ")}. Tente um período menor.`
+    ? "Não foi possível carregar a análise. Tente novamente."
     : null;
+  const reprocessingMsg = failedBlocks.length > 0 ? "Reprocessando temas e termos..." : null;
 
+  // Fallback JS: se topics/terms falharam, busca amostra leve e processa no cliente
+  const fallback = useQuery({
+    queryKey: ["nv-fallback", user?.id, candidateId, network, days, needsJsFallback],
+    enabled: !!user?.id && needsJsFallback,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      console.time("[NetworkView] fallback-fetch");
+      let q = supabase
+        .from("social_interactions")
+        .select("post_title, comment_text, social_network, sentiment_label")
+        .is("invalidated_at", null)
+        .order("collected_at", { ascending: false })
+        .limit(5000);
+      if (candidateId !== "all") q = q.eq("candidate_id", candidateId);
+      if (network !== "all") q = q.eq("social_network", network);
+      const { data, error } = await q;
+      console.timeEnd("[NetworkView] fallback-fetch");
+      if (error) { console.error("fallback fetch error", error); return { topics: [], terms: [] }; }
+      return computeTopicsAndTerms(data ?? []);
+    },
+  });
 
   const loading = query.isLoading;
   const d = query.data;
 
   const totalMentions = d?.kpis?.total ?? 0;
   const totalEngagement = d?.kpis?.engagement ?? 0;
-  const pos = d?.sentimentKpis?.pos ?? 0;
-  const neg = d?.sentimentKpis?.neg ?? 0;
-  const neu = d?.sentimentKpis?.neu ?? 0;
-  const labeled = pos + neg + neu;
-  // Sentimento líquido: (-100..+100)
-  const netSentiment = labeled > 0 ? Math.round(((pos - neg) / labeled) * 100) : 0;
-  const netLabel = netSentiment >= 10 ? "Favorável" : netSentiment <= -10 ? "Desfavorável" : "Neutro";
+
+  // Sentimento líquido — usa bloco sentiment; se vazio, agrega de byNet
+  const sFromBlock = { pos: d?.sentimentKpis?.pos ?? 0, neg: d?.sentimentKpis?.neg ?? 0, neu: d?.sentimentKpis?.neu ?? 0 };
+  const sFromNet = (d?.byNet ?? []).reduce(
+    (acc, n) => ({ pos: acc.pos + (n.pos || 0), neg: acc.neg + (n.neg || 0), neu: acc.neu + (n.neu || 0) }),
+    { pos: 0, neg: 0, neu: 0 },
+  );
+  const sBlockTotal = sFromBlock.pos + sFromBlock.neg + sFromBlock.neu;
+  const sent = sBlockTotal > 0 ? sFromBlock : sFromNet;
+  const labeled = sent.pos + sent.neg + sent.neu;
+  const netSentiment = labeled > 0 ? Math.round(((sent.pos - sent.neg) / labeled) * 100) : 0;
+  const netLabel =
+    netSentiment >= 40 ? "Muito favorável" :
+    netSentiment >= 10 ? "Favorável" :
+    netSentiment <= -40 ? "Muito desfavorável" :
+    netSentiment <= -10 ? "Desfavorável" : "Neutro";
   const netTone = netSentiment >= 10 ? "text-success" : netSentiment <= -10 ? "text-destructive" : "text-muted-foreground";
 
   const dominant = useMemo(() => {
@@ -192,6 +222,17 @@ export default function NetworkView() {
         total: r.p + r.n + r.u,
       }));
   }, [d]);
+
+  const mergedTopics = useMemo(() => {
+    const fromRpc = d?.topics ?? [];
+    return fromRpc.length > 0 ? fromRpc : (fallback.data?.topics ?? []);
+  }, [d, fallback.data]);
+
+  const mergedTerms = useMemo(() => {
+    const fromRpc = d?.terms ?? [];
+    return fromRpc.length > 0 ? fromRpc : (fallback.data?.terms ?? []);
+  }, [d, fallback.data]);
+
 
   return (
     <div className="space-y-8">
@@ -222,8 +263,12 @@ export default function NetworkView() {
 
       {errorMessage && (
         <Card className="p-4 border-destructive bg-destructive/5">
-          <div className="text-sm text-destructive font-medium">Erro ao carregar analytics: {errorMessage}</div>
-          <div className="text-xs text-muted-foreground mt-1">Verifique o console do navegador para o diagnóstico completo de qual RPC falhou.</div>
+          <div className="text-sm text-destructive font-medium">{errorMessage}</div>
+        </Card>
+      )}
+      {reprocessingMsg && !errorMessage && (
+        <Card className="p-3 bg-muted/40 border-border">
+          <div className="text-xs text-muted-foreground">{reprocessingMsg}</div>
         </Card>
       )}
 
@@ -344,9 +389,9 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Assuntos dominantes</h2>
         <p className="text-sm text-muted-foreground mb-6">Volume, participação e sentimento médio por tema.</p>
-        {loading ? <Skeleton className="h-56 w-full" /> : (d?.topics?.length ?? 0) === 0 ? <Empty /> : (
+        {loading ? <Skeleton className="h-56 w-full" /> : (mergedTopics.length === 0) ? (fallback.isLoading ? <div className="text-sm text-muted-foreground py-10 text-center">Reprocessando temas...</div> : <Empty />) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {(d?.topics ?? []).map((t) => {
+            {mergedTopics.map((t) => {
               const lab = t.pos + t.neg + t.neu;
               const share = pct(t.mentions, totalMentions);
               const posP = pct(t.pos, lab);
@@ -377,10 +422,10 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Termos em alta</h2>
         <p className="text-sm text-muted-foreground mb-6">Hashtags, nomes e entidades mais citados no período.</p>
-        {loading ? <Skeleton className="h-40 w-full" /> : (d?.terms?.length ?? 0) === 0 ? <Empty /> : (
+        {loading ? <Skeleton className="h-40 w-full" /> : mergedTerms.length === 0 ? (fallback.isLoading ? <div className="text-sm text-muted-foreground py-10 text-center">Reprocessando termos...</div> : <Empty />) : (
           <div className="flex flex-wrap gap-2">
-            {(d?.terms ?? []).map((t) => {
-              const max = (d?.terms?.[0]?.count ?? 1);
+            {mergedTerms.map((t) => {
+              const max = (mergedTerms[0]?.count ?? 1);
               const intensity = Math.max(0.3, Math.min(1, t.count / max));
               return (
                 <div
@@ -416,4 +461,75 @@ function BigKpi({ icon, label, value, sub, valueClassName }: { icon: React.React
 
 function Empty() {
   return <div className="text-sm text-muted-foreground py-10 text-center">Sem dados para o período selecionado.</div>;
+}
+
+// ============================================================
+// FALLBACK CLIENT-SIDE: extração leve de temas e termos
+// Usado quando os blocos SQL (topics/terms) dão timeout.
+// ============================================================
+const THEME_KEYWORDS: Record<string, string[]> = {
+  "Eleições": ["eleição", "eleicao", "eleições", "eleicoes", "voto", "votar", "candidato", "campanha", "urna", "tse"],
+  "Economia": ["economia", "inflação", "inflacao", "pib", "juros", "selic", "dólar", "dolar", "imposto", "tributária", "tributaria"],
+  "STF / Justiça": ["stf", "supremo", "moraes", "judiciário", "judiciario", "ministro", "tribunal", "pgr", "pf"],
+  "Corrupção": ["corrupção", "corrupcao", "propina", "lavagem", "desvio", "esquema", "delação", "delacao"],
+  "Segurança": ["segurança", "seguranca", "polícia", "policia", "crime", "violência", "violencia", "facção", "faccao"],
+  "Saúde": ["sus", "saúde", "saude", "hospital", "vacina", "médico", "medico"],
+  "Educação": ["educação", "educacao", "escola", "universidade", "enem", "professor", "fies"],
+  "Congresso": ["congresso", "senado", "câmara", "camara", "deputado", "senador", "lira", "pacheco"],
+  "Internacional": ["trump", "biden", "putin", "maduro", "milei", "ucrânia", "ucrania", "israel", "china"],
+  "Meio Ambiente": ["amazônia", "amazonia", "desmatamento", "clima", "ambiental", "ibama"],
+};
+const STOPWORDS = new Set(["de","da","do","das","dos","a","o","e","é","em","um","uma","para","com","no","na","nos","nas","que","se","por","ao","aos","como","mais","mas","ou","já","foi","ser","sobre","ele","ela","eles","elas","isso","esse","essa","este","esta","quando","onde","sim","não","nao","sua","seu","suas","seus","vai","tem","teve","ter","só","so","muito","pelo","pela","entre","até","ate","você","voce","vocês","voces","https","http","com.br","www","amp"]);
+
+function computeTopicsAndTerms(rows: Array<{ post_title: string | null; comment_text: string | null; social_network: string | null; sentiment_label: string | null }>) {
+  console.log("[NetworkView] fallback rows:", rows.length);
+  const themeStats: Record<string, { mentions: number; pos: number; neg: number; neu: number }> = {};
+  const hashCount: Record<string, number> = {};
+  const wordCount: Record<string, number> = {};
+  const hashRe = /#([\p{L}\p{N}_]{2,})/gu;
+
+  for (const r of rows) {
+    const text = `${r.post_title ?? ""} ${r.comment_text ?? ""}`.trim();
+    if (!text) continue;
+    const lower = text.toLowerCase();
+    const sentRaw = (r.sentiment_label ?? "").toLowerCase();
+    const sentKey = sentRaw.startsWith("pos") ? "pos" : sentRaw.startsWith("neg") ? "neg" : "neu";
+
+    for (const [theme, kws] of Object.entries(THEME_KEYWORDS)) {
+      if (kws.some((k) => lower.includes(k))) {
+        const t = (themeStats[theme] ||= { mentions: 0, pos: 0, neg: 0, neu: 0 });
+        t.mentions++;
+        (t as any)[sentKey]++;
+      }
+    }
+
+    let m;
+    while ((m = hashRe.exec(text)) !== null) {
+      const tag = "#" + m[1].toLowerCase();
+      hashCount[tag] = (hashCount[tag] ?? 0) + 1;
+    }
+
+    for (const w of lower.split(/[^\p{L}\p{N}_#]+/u)) {
+      if (!w || w.startsWith("#") || w.length < 4 || STOPWORDS.has(w) || /^\d+$/.test(w)) continue;
+      wordCount[w] = (wordCount[w] ?? 0) + 1;
+    }
+  }
+
+  const topics = Object.entries(themeStats)
+    .map(([theme, s]) => ({ theme, mentions: s.mentions, pos: s.pos, neg: s.neg, neu: s.neu }))
+    .sort((a, b) => b.mentions - a.mentions)
+    .slice(0, 8);
+
+  const hashTerms = Object.entries(hashCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12)
+    .map(([term, count]) => ({ term, count, kind: "hashtag" as const }));
+
+  const wordTerms = Object.entries(wordCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20)
+    .map(([term, count]) => ({ term, count, kind: "entity" as const }));
+
+  const terms = [...hashTerms, ...wordTerms].slice(0, 25);
+  return { topics, terms };
 }
