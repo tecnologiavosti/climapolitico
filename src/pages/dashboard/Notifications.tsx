@@ -46,6 +46,8 @@ export default function Notifications() {
       return (data || []) as Notification[];
     },
     enabled: !!user,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
 
   // Realtime subscription
