@@ -5,15 +5,13 @@ import { useAuth } from "@/hooks/useAuth";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 import {
-  MessageSquare, TrendingUp, TrendingDown, Heart, Hash, Users, Activity, Crown, Sparkles, ExternalLink, Eye, MessageCircle, Share2, AlertTriangle,
+  MessageSquare, TrendingUp, TrendingDown, Heart, Hash, Activity, Crown, Sparkles, AlertTriangle,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -62,14 +60,13 @@ type Agg = {
   heatmap: { dow: number; hr: number; c: number }[];
   hashtags: { tag: string; c: number; pos: number; neg: number; neu: number; prev_c: number }[];
   topics: { theme: string; mentions: number; pos: number; neg: number; neu: number; prev_mentions: number }[];
-  top_posts: { id: string; social_network: string; comment_text: string; comment_author: string; sent: string; eng: number; score?: number; likes: number; replies: number; shares: number; views?: number; thumbnail_url?: string | null; post_url?: string | null; original_posted_at: string; collected_at: string }[];
   analytics?: unknown;
   debug?: {
     totalInDatabase?: number; rawTotalInDatabase?: number; afterInvalidationFilter?: number;
     afterPeriodFilter?: number; afterCandidateFilter?: number; afterPlatformFilter?: number;
     afterDeduplication?: number; deduplicatedPosts?: number; finalAnalyticsCount?: number;
     loss?: number; lossPct?: number; periodMode?: string;
-    mentions: number; posts: number; classified: number; themes: number; hashtags: number; top_posts: number;
+    mentions: number; posts: number; classified: number; themes: number; hashtags: number;
   };
 };
 
@@ -82,6 +79,8 @@ type SectionResponse<T> = {
     records_read?: number;
     records_returned?: number;
     cache_hit?: boolean;
+    section?: string;
+    error?: string;
     plan?: unknown;
   };
 };
