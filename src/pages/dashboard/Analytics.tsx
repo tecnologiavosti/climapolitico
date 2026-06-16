@@ -615,5 +615,6 @@ export default function Analytics() {
         - Distribuição por Gênero
       */}
     </div>
+    </WidgetStatusProvider>
   );
 }
