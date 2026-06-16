@@ -4228,6 +4228,10 @@ export type Database = {
         Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
         Returns: Json
       }
+      network_view_analytics: {
+        Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
+        Returns: Json
+      }
       network_view_content_metrics: {
         Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
         Returns: Json

@@ -58,11 +58,13 @@ type Agg = {
     prev_total: number; prev_pos: number; prev_neg: number; prev_neu: number;
   };
   series: { day: string; p: number; n: number; u: number }[];
-  by_network: { network: string; mentions: number; likes: number; replies: number; shares: number; engagement: number }[];
+  by_network: { network: string; mentions: number; likes: number; replies: number; shares: number; engagement: number; dominance?: number }[];
   heatmap: { dow: number; hr: number; c: number }[];
   hashtags: { tag: string; c: number; pos: number; neg: number; neu: number; prev_c: number }[];
   topics: { theme: string; mentions: number; pos: number; neg: number; neu: number; prev_mentions: number }[];
   top_posts: { id: string; social_network: string; comment_text: string; comment_author: string; sent: string; eng: number; score?: number; likes: number; replies: number; shares: number; views?: number; thumbnail_url?: string | null; post_url?: string | null; original_posted_at: string; collected_at: string }[];
+  analytics?: unknown;
+  debug?: { mentions: number; posts: number; classified: number; themes: number; hashtags: number; top_posts: number };
 };
 
 type SectionResponse<T> = {
@@ -78,10 +80,6 @@ type SectionResponse<T> = {
   };
 };
 
-type CoreAgg = Pick<Agg, "kpis" | "series" | "by_network" | "heatmap">;
-type ContentAgg = Pick<Agg, "hashtags" | "topics">;
-type TopPostsAgg = Pick<Agg, "top_posts">;
-
 const emptyKpis: Agg["kpis"] = {
   total: 0, authors: 0, engagement: 0,
   likes: 0, replies: 0, shares: 0,
@@ -92,9 +90,9 @@ const emptyKpis: Agg["kpis"] = {
 const fmt = (n: number) => Number(n ?? 0).toLocaleString("pt-BR");
 const compact = (n: number) => Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
-// Crescimento: exige base mínima de 10 e satura em ±500% para não distorcer.
+// Crescimento: exige base mínima de 20 e satura em ±500% para não distorcer.
 const growth = (cur: number, prev: number) => {
-  if (prev < 10) return null;
+  if (prev < 20) return null;
   const g = Math.round(((cur - prev) / prev) * 100);
   if (g > 500) return 500;
   if (g < -100) return -100;
@@ -149,84 +147,47 @@ export default function NetworkView() {
     p_days: days,
   };
 
-  const coreQuery = useQuery({
-    queryKey: ["nv-core", user?.id, network, candidateId, days],
-    queryFn: async (): Promise<SectionResponse<CoreAgg>> => {
+  const analyticsQuery = useQuery({
+    queryKey: ["nv-analytics-ssot", user?.id, network, candidateId, days],
+    queryFn: async (): Promise<SectionResponse<Agg>> => {
       const started = performance.now();
-      const { data, error } = await supabase.rpc("network_view_core_metrics", queryParams);
+      const { data, error } = await supabase.rpc("network_view_analytics", queryParams);
       const elapsed = Math.round(performance.now() - started);
       if (error) {
-        console.error("[NetworkView] core RPC failed", { elapsed, error, queryParams });
+        console.error("[NetworkView] analytics RPC failed", { elapsed, error, queryParams });
         throw error;
       }
-      console.info("[NetworkView] core loaded", { elapsed, diagnostics: (data as SectionResponse<CoreAgg>)?.diagnostics });
-      return data as SectionResponse<CoreAgg>;
-    },
-    enabled: !!user,
-    staleTime: 15 * 60_000, gcTime: 60 * 60_000, refetchOnWindowFocus: false,
-  });
-
-  const contentQuery = useQuery({
-    queryKey: ["nv-content", user?.id, network, candidateId, days],
-    queryFn: async (): Promise<SectionResponse<ContentAgg>> => {
-      const started = performance.now();
-      const { data, error } = await supabase.rpc("network_view_content_metrics", queryParams);
-      const elapsed = Math.round(performance.now() - started);
-      if (error) {
-        console.error("[NetworkView] content RPC failed", { elapsed, error, queryParams });
-        throw error;
+      const response = data as SectionResponse<Agg>;
+      if ((response.data?.top_posts?.length ?? 0) === 0 && (response.data?.kpis?.engagement ?? 0) > 0) {
+        console.error("TOP_POSTS_PIPELINE_FAILED", { elapsed, debug: response.data?.debug, queryParams });
       }
-      console.info("[NetworkView] content loaded", { elapsed, diagnostics: (data as SectionResponse<ContentAgg>)?.diagnostics });
-      return data as SectionResponse<ContentAgg>;
+      console.info("[NetworkView] analytics loaded", { elapsed, diagnostics: response?.diagnostics });
+      return response;
     },
     enabled: !!user,
-    staleTime: 15 * 60_000, gcTime: 60 * 60_000, refetchOnWindowFocus: false,
+    staleTime: 0, gcTime: 30 * 60_000, refetchOnWindowFocus: false,
   });
 
-  const topPostsQuery = useQuery({
-    queryKey: ["nv-top-posts", user?.id, network, candidateId, days],
-    queryFn: async (): Promise<SectionResponse<TopPostsAgg>> => {
-      const started = performance.now();
-      const { data, error } = await supabase.functions.invoke("social/top-posts", {
-        body: {
-          candidateId: candidateId === "all" ? null : candidateId,
-          network: network === "all" ? null : network,
-          days,
-        },
-      });
-      const elapsed = Math.round(performance.now() - started);
-      if (error) {
-        console.error("[NetworkView] top_posts RPC failed", { elapsed, error, queryParams });
-        throw error;
-      }
-      console.info("[NetworkView] top_posts loaded", { elapsed, diagnostics: (data as SectionResponse<TopPostsAgg>)?.diagnostics });
-      return data as SectionResponse<TopPostsAgg>;
-    },
-    enabled: !!user,
-    staleTime: 15 * 60_000, gcTime: 60 * 60_000, refetchOnWindowFocus: false,
-  });
-
-  const coreData = coreQuery.data?.data;
-  const contentData = contentQuery.data?.data;
-  const topPostsData = topPostsQuery.data?.data;
-  const isLoadingCore = coreQuery.isLoading;
-  const isLoadingContent = contentQuery.isLoading;
-  const isLoadingTopPosts = topPostsQuery.isLoading;
+  const analyticsData = analyticsQuery.data?.data;
+  const isLoadingCore = analyticsQuery.isLoading;
+  const isLoadingContent = analyticsQuery.isLoading;
+  const isLoadingTopPosts = analyticsQuery.isLoading;
   const sectionErrors = [
-    coreQuery.error || (coreQuery.data?.ok === false ? new Error(coreQuery.data.message || sectionErrorMessage("métricas gerais")) : null),
-    contentQuery.error || (contentQuery.data?.ok === false ? new Error(contentQuery.data.message || sectionErrorMessage("assuntos e hashtags")) : null),
-    topPostsQuery.error || (topPostsQuery.data?.ok === false ? new Error(topPostsQuery.data.message || sectionErrorMessage("top posts")) : null),
+    analyticsQuery.error || (analyticsQuery.data?.ok === false ? new Error(analyticsQuery.data.message || sectionErrorMessage("a visão por rede social")) : null),
   ].filter(Boolean) as Error[];
 
-  const agg: Agg = {
-    kpis: coreData?.kpis ?? emptyKpis,
-    series: coreData?.series ?? [],
-    by_network: coreData?.by_network ?? [],
-    heatmap: coreData?.heatmap ?? [],
-    hashtags: (contentData?.hashtags ?? []).filter((h) => isValidHashtag(h.tag)),
-    topics: (contentData?.topics ?? []).filter((t) => t.theme?.trim() && t.mentions > 0),
-    top_posts: (topPostsData?.top_posts ?? []).filter((p) => isWithinSelectedPeriod(p.original_posted_at, days)),
+  const analytics: Agg = {
+    kpis: analyticsData?.kpis ?? emptyKpis,
+    series: analyticsData?.series ?? [],
+    by_network: analyticsData?.by_network ?? [],
+    heatmap: analyticsData?.heatmap ?? [],
+    hashtags: (analyticsData?.hashtags ?? []).filter((h) => isValidHashtag(h.tag)),
+    topics: (analyticsData?.topics ?? []).filter((t) => t.theme?.trim() && t.mentions > 0),
+    top_posts: (analyticsData?.top_posts ?? []).filter((p) => isWithinSelectedPeriod(p.original_posted_at, days)),
+    analytics: analyticsData?.analytics,
+    debug: analyticsData?.debug,
   };
+  const agg = analytics;
 
   const k = agg?.kpis;
   const total = k?.total ?? 0;
@@ -240,15 +201,13 @@ export default function NetworkView() {
   const prevNeuPct = pct(k?.prev_neu ?? 0, prevLabeled);
   const growthPct = growth(total, k?.prev_total ?? 0);
 
-  // Rede dominante por score composto: 50% volume normalizado + 50% engajamento normalizado
+  // Rede dominante: mesmo score absoluto usado no backend e no resumo executivo.
   const dominantNet = useMemo(() => {
     const nets = agg?.by_network ?? [];
     if (!nets.length) return null;
-    const maxM = Math.max(1, ...nets.map((n) => n.mentions || 0));
-    const maxE = Math.max(1, ...nets.map((n) => n.engagement || 0));
     const scored = nets.map((n) => ({
       ...n,
-      dominanceScore: ((n.mentions || 0) / maxM) * 0.5 + ((n.engagement || 0) / maxE) * 0.5,
+      dominanceScore: n.dominance ?? ((n.mentions || 0) * 0.4 + (n.engagement || 0) * 0.6),
     }));
     scored.sort((a, b) => b.dominanceScore - a.dominanceScore);
     return scored[0];
@@ -266,7 +225,9 @@ export default function NetworkView() {
   const lowVolume = total > 0 && total < 50;
 
   const sentimentSeries = useMemo(() => {
-    return (agg?.series ?? []).map((d) => {
+    return [...(agg?.series ?? [])].sort(
+      (a, b) => new Date(a.day).getTime() - new Date(b.day).getTime()
+    ).map((d) => {
       const tot = d.p + d.n + d.u;
       return {
         date: format(parseISO(d.day), "dd/MM"),
@@ -296,14 +257,11 @@ export default function NetworkView() {
     return { m, max: Math.max(1, max) };
   }, [agg]);
 
-  const maxHashtag = Math.max(1, ...(agg?.hashtags ?? []).map((h) => h.c));
-
   // Resumo executivo derivado dos dados reais: forte_em / sofre_em / narrativas / momento.
   const aiBullets = useMemo(() => {
     if (!agg || total < 30 || !agg.by_network.length) return null;
     const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-    const nets = [...agg.by_network].sort((a, b) => (b.engagement || 0) - (a.engagement || 0));
-    const strong = nets[0];
+    const strong = dominantNet ?? [...agg.by_network].sort((a, b) => ((b.mentions || 0) * 0.4 + (b.engagement || 0) * 0.6) - ((a.mentions || 0) * 0.4 + (a.engagement || 0) * 0.6))[0];
     const weakSentNet = [...agg.by_network]
       .map((n) => ({ ...n, neg: Math.max(0, (n.mentions || 0) - (n.likes || 0) - (n.replies || 0)) }))
       .sort((a, b) => b.neg - a.neg)[0];
@@ -321,7 +279,7 @@ export default function NetworkView() {
       { label: "Narrativas dominantes", text: topTopics.length ? topTopics.join(" · ") : "Sem temas dominantes classificados." },
       { label: "Momento", text: moment },
     ];
-  }, [agg, total, growthPct, posPct, negPct]);
+  }, [agg, dominantNet, total, growthPct, posPct, negPct]);
 
   // Alertas IA baseados em regras: variação > 30%, crise de sentimento, pico em horário eleitoral (17h-22h).
   const aiAlerts = useMemo(() => {
@@ -407,11 +365,25 @@ export default function NetworkView() {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <Kpi label="Total de menções" value={fmt(total)} icon={<MessageSquare className="h-4 w-4" />} loading={isLoadingCore} />
         <Kpi label="Interações" value={compact(realInteractions)} icon={<Activity className="h-4 w-4" />} loading={isLoadingCore} sub={`${compact(k?.likes ?? 0)} ♥ · ${compact(k?.replies ?? 0)} 💬 · ${compact(k?.shares ?? 0)} ↗`} />
-        <Kpi label="Sentimento positivo" value={`${posPct}%`} icon={<Heart className="h-4 w-4 text-success" />} loading={isLoadingCore} sub={`${fmt(k?.pos ?? 0)} menções`} tone="success" delta={prevLabeled > 0 ? posPct - prevPosPct : undefined} />
-        <Kpi label="Sentimento negativo" value={`${negPct}%`} icon={<TrendingDown className="h-4 w-4 text-destructive" />} loading={isLoadingCore} sub={`${fmt(k?.neg ?? 0)} menções`} tone="destructive" delta={prevLabeled > 0 ? negPct - prevNegPct : undefined} invertDelta />
+        <Kpi label="Sentimento positivo" value={`${posPct}%`} icon={<Heart className="h-4 w-4 text-success" />} loading={isLoadingCore} sub={`${fmt(k?.pos ?? 0)} menções`} tone="success" delta={prevLabeled >= 20 ? posPct - prevPosPct : undefined} />
+        <Kpi label="Sentimento negativo" value={`${negPct}%`} icon={<TrendingDown className="h-4 w-4 text-destructive" />} loading={isLoadingCore} sub={`${fmt(k?.neg ?? 0)} menções`} tone="destructive" delta={prevLabeled >= 20 ? negPct - prevNegPct : undefined} invertDelta />
         <Kpi label="Crescimento" value={growthPct === null ? "—" : `${growthPct >= 0 ? "+" : ""}${growthPct}%`} icon={growthPct === null || growthPct >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} loading={isLoadingCore} sub={growthPct === null ? "Sem base histórica suficiente" : "vs. período anterior"} tone={growthPct === null || growthPct >= 0 ? "success" : "destructive"} />
         <Kpi label="Rede dominante" value={dominant === "—" ? "—" : dominant.charAt(0).toUpperCase() + dominant.slice(1)} icon={<Crown className="h-4 w-4" />} loading={isLoadingCore} sub={dominantNet && total > 0 ? `${fmt(dominantNet.mentions)} menções · ${compact(dominantNet.engagement || 0)} int.` : ""} />
       </div>
+
+      {!isLoadingCore && agg.debug && (
+        <Card className="p-4 border-primary/20 bg-primary/5">
+          <div className="text-xs font-semibold mb-2">Analytics debug</div>
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-xs text-muted-foreground">
+            <span>mentions: <b className="text-foreground">{fmt(agg.debug.mentions)}</b></span>
+            <span>posts: <b className="text-foreground">{fmt(agg.debug.posts)}</b></span>
+            <span>classified: <b className="text-foreground">{fmt(agg.debug.classified)}</b></span>
+            <span>themes: <b className="text-foreground">{fmt(agg.debug.themes)}</b></span>
+            <span>hashtags: <b className="text-foreground">{fmt(agg.debug.hashtags)}</b></span>
+            <span>topPosts: <b className="text-foreground">{fmt(agg.debug.top_posts)}</b></span>
+          </div>
+        </Card>
+      )}
 
       {/* AI Alerts */}
       {!isLoadingCore && aiAlerts.length > 0 && (
@@ -500,9 +472,9 @@ export default function NetworkView() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="space-y-2 mt-2">
-                <SentBar label="Positivo" pct={posPct} count={k?.pos ?? 0} delta={prevLabeled > 0 ? posPct - prevPosPct : 0} color={COLORS.positive} />
-                <SentBar label="Negativo" pct={negPct} count={k?.neg ?? 0} delta={prevLabeled > 0 ? negPct - prevNegPct : 0} color={COLORS.negative} invert />
-                <SentBar label="Neutro" pct={neuPct} count={k?.neu ?? 0} delta={prevLabeled > 0 ? neuPct - prevNeuPct : 0} color={COLORS.neutral} />
+                <SentBar label="Positivo" pct={posPct} count={k?.pos ?? 0} delta={prevLabeled >= 20 ? posPct - prevPosPct : undefined} color={COLORS.positive} />
+                <SentBar label="Negativo" pct={negPct} count={k?.neg ?? 0} delta={prevLabeled >= 20 ? negPct - prevNegPct : undefined} color={COLORS.negative} invert />
+                <SentBar label="Neutro" pct={neuPct} count={k?.neu ?? 0} delta={prevLabeled >= 20 ? neuPct - prevNeuPct : undefined} color={COLORS.neutral} />
               </div>
             </>
           )}
@@ -657,17 +629,23 @@ export default function NetworkView() {
                         {variation === null ? <span className="text-muted-foreground">Sem base histórica</span> : <span className={`font-medium ${variation >= 0 ? "text-success" : "text-destructive"}`}>{variation >= 0 ? "+" : ""}{variation}%</span>}
                       </div>
                     </div>
-                    <div className="text-[11px] text-muted-foreground mb-1">{posP}% positivo</div>
-                    <div className="flex h-2 rounded-full overflow-hidden bg-muted">
-                      <div style={{ width: `${pct(t.pos, lab)}%`, backgroundColor: COLORS.positive }} />
-                      <div style={{ width: `${pct(t.neu, lab)}%`, backgroundColor: COLORS.neutral }} />
-                      <div style={{ width: `${pct(t.neg, lab)}%`, backgroundColor: COLORS.negative }} />
-                    </div>
-                    <div className="flex justify-between mt-1 text-[10px] text-muted-foreground">
-                      <span>+{pct(t.pos, lab)}%</span>
-                      <span>~{pct(t.neu, lab)}%</span>
-                      <span>−{pct(t.neg, lab)}%</span>
-                    </div>
+                    {lab < 20 ? (
+                      <div className="text-[11px] text-muted-foreground">Dados insuficientes</div>
+                    ) : (
+                      <>
+                        <div className="text-[11px] text-muted-foreground mb-1">{posP}% positivo</div>
+                        <div className="flex h-2 rounded-full overflow-hidden bg-muted">
+                          <div style={{ width: `${pct(t.pos, lab)}%`, backgroundColor: COLORS.positive }} />
+                          <div style={{ width: `${pct(t.neu, lab)}%`, backgroundColor: COLORS.neutral }} />
+                          <div style={{ width: `${pct(t.neg, lab)}%`, backgroundColor: COLORS.negative }} />
+                        </div>
+                        <div className="flex justify-between mt-1 text-[10px] text-muted-foreground">
+                          <span>+{pct(t.pos, lab)}%</span>
+                          <span>~{pct(t.neu, lab)}%</span>
+                          <span>−{pct(t.neg, lab)}%</span>
+                        </div>
+                      </>
+                    )}
                   </div>
                 );
               })}
@@ -729,8 +707,8 @@ function Kpi({ label, value, icon, loading, sub, tone, delta, invertDelta }: {
   );
 }
 
-function SentBar({ label, pct: p, count, delta, color, invert }: { label: string; pct: number; count?: number; delta: number; color: string; invert?: boolean }) {
-  const goodDelta = invert ? delta < 0 : delta > 0;
+function SentBar({ label, pct: p, count, delta, color, invert }: { label: string; pct: number; count?: number; delta?: number; color: string; invert?: boolean }) {
+  const goodDelta = invert ? (delta ?? 0) < 0 : (delta ?? 0) > 0;
   return (
     <div>
       <div className="flex items-center justify-between text-xs mb-1">
@@ -740,7 +718,7 @@ function SentBar({ label, pct: p, count, delta, color, invert }: { label: string
         </span>
         <span className="flex items-center gap-2">
           <span className="font-semibold">{p}%{count !== undefined ? ` (${Number(count ?? 0).toLocaleString("pt-BR")})` : ""}</span>
-          {delta !== 0 && (
+          {delta !== undefined && delta !== 0 && (
             <span className={goodDelta ? "text-success" : "text-destructive"}>
               ({delta > 0 ? "+" : ""}{delta}pp)
             </span>
