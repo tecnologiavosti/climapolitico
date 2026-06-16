@@ -198,6 +198,29 @@ const NarrativeRecommendationsPage = () => {
         </CardContent>
       </Card>
 
+      {/* Loading state */}
+      {isLoading && (
+        <Card className="animate-fade-in">
+          <CardContent className="py-6 space-y-4">
+            <Progress value={undefined} className="h-1.5 animate-pulse" />
+            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Sparkles className="h-4 w-4 animate-pulse text-primary" />
+              Analisando narrativas detectadas...
+            </div>
+            {slowLoading && (
+              <p className="text-center text-xs text-amber-600 dark:text-amber-400">
+                A análise está demorando mais que o esperado...
+              </p>
+            )}
+            <div className="grid gap-3 sm:grid-cols-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-24 w-full" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* No data / fallback */}
       {result && !rec && (
         <Card>
