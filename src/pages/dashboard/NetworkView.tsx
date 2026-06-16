@@ -339,6 +339,16 @@ export default function NetworkView() {
         </Card>
       )}
 
+      {!isLoadingCore && total > 0 && total < 50 && (
+        <Card className="p-4 border-warning/40 bg-warning/5 text-sm flex items-start gap-3">
+          <AlertTriangle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
+          <div>
+            <div className="font-semibold mb-0.5">Dados insuficientes para análise estatística confiável</div>
+            <div className="text-muted-foreground text-xs">Apenas {fmt(total)} menções no período selecionado. Aumente o período ou aguarde mais coleta para análises mais robustas.</div>
+          </div>
+        </Card>
+      )}
+
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <Kpi label="Total de menções" value={fmt(total)} icon={<MessageSquare className="h-4 w-4" />} loading={isLoadingCore} />
