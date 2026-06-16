@@ -159,19 +159,29 @@ export default function NetworkView() {
     staleTime: 5 * 60_000,
     queryFn: async () => {
       console.time("[NetworkView] fallback-fetch");
-      let q = supabase
-        .from("social_interactions")
-        .select("post_title, comment_text, social_network, sentiment_label")
-        .is("invalidated_at", null)
-        .order("collected_at", { ascending: false })
-        .limit(5000);
-      if (candidateId !== "all") q = q.eq("candidate_id", candidateId);
-      if (network !== "all") q = q.eq("social_network", network);
-      const { data, error } = await q;
+      const PAGE = 1000;
+      const MAX_ROWS = 20000;
+      const all: any[] = [];
+      for (let from = 0; from < MAX_ROWS; from += PAGE) {
+        let q = supabase
+          .from("social_interactions")
+          .select("post_title, comment_text, social_network, sentiment_label")
+          .is("invalidated_at", null)
+          .order("collected_at", { ascending: false })
+          .range(from, from + PAGE - 1);
+        if (candidateId !== "all") q = q.eq("candidate_id", candidateId);
+        if (network !== "all") q = q.eq("social_network", network);
+        const { data, error } = await q;
+        if (error) { console.error("fallback fetch error", error); break; }
+        if (!data || data.length === 0) break;
+        all.push(...data);
+        if (data.length < PAGE) break;
+      }
       console.timeEnd("[NetworkView] fallback-fetch");
-      if (error) { console.error("fallback fetch error", error); return { topics: [], terms: [] }; }
-      return computeTopicsAndTerms(data ?? []);
+      console.log("[NetworkView] fallback rows fetched:", all.length);
+      return computeTopicsAndTerms(all);
     },
+
   });
 
   const loading = query.isLoading;
