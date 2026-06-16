@@ -673,11 +673,8 @@ export default function RadarPolitico() {
       )}
 
       {/* KPIs */}
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <section className="grid grid-cols-1 gap-3">
         <Kpi label="Eventos" value={kpis.total} />
-        <Kpi label="Grandes" value={kpis.grandes} hint="importância ≥ 70" />
-        <Kpi label="Institucionais" value={kpis.institucionais} hint="STF · TSE · PF · TCU" />
-        <Kpi label="Alta repercussão" value={kpis.altaRepercussao} hint="social ≥ 60" />
       </section>
 
       {/* Timeline */}
