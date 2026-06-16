@@ -550,12 +550,17 @@ export default function NetworkView() {
                   {Array.from({ length: 24 }, (_, h) => {
                     const c = heat.m.get(`${di}-${h}`) || 0;
                     const intensity = c / heat.max;
+                    // 4 níveis: baixo, médio, alto, explosivo
+                    const tier = c === 0 ? 0 : intensity < 0.25 ? 1 : intensity < 0.55 ? 2 : intensity < 0.85 ? 3 : 4;
+                    const alpha = [0.05, 0.25, 0.5, 0.75, 1.0][tier];
+                    const tierLabel = ["sem atividade", "baixo", "médio", "alto", "explosivo"][tier];
+                    const dayName = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"][di];
                     return (
                       <div
                         key={`${di}-${h}`}
-                        title={`${dn} ${h}h — ${fmt(c)} menções`}
-                        className="aspect-square rounded-sm"
-                        style={{ backgroundColor: `hsl(var(--primary) / ${0.08 + intensity * 0.85})` }}
+                        title={`${dayName} ${h}h → ${fmt(c)} interações (${tierLabel})`}
+                        className="aspect-square rounded-sm transition-transform hover:scale-110 cursor-default"
+                        style={{ backgroundColor: `hsl(var(--primary) / ${alpha})` }}
                       />
                     );
                   })}
