@@ -553,9 +553,11 @@ export default function Analytics() {
             )}
           </CardContent>
         </Card>
+        </WidgetBoundary>
       </div>
 
       {/* Volume Chart */}
+      <WidgetBoundary name="Volume de Menções">
       <Card>
         <CardHeader>
           <HelpTooltip text="Quantos comentários foram coletados em cada dia. Picos = momentos de mais barulho nas redes.">
