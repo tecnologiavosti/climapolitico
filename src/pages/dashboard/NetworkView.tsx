@@ -394,7 +394,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Assuntos dominantes</h2>
         <p className="text-sm text-muted-foreground mb-6">Volume, participação e sentimento médio por tema.</p>
-        {loading ? <Skeleton className="h-56 w-full" /> : (mergedTopics.length === 0) ? (fallback.isLoading ? <div className="text-sm text-muted-foreground py-10 text-center">Reprocessando temas...</div> : <Empty />) : (
+        {loading ? <Skeleton className="h-56 w-full" /> : (mergedTopics.length === 0) ? (fallback.isLoading ? <Skeleton className="h-56 w-full" /> : <Empty />) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {mergedTopics.map((t) => {
               const lab = t.pos + t.neg + t.neu;
