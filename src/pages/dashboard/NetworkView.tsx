@@ -13,7 +13,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 import {
-  MessageSquare, TrendingUp, TrendingDown, Heart, Hash, Users, Activity, Crown, Sparkles, ExternalLink,
+  MessageSquare, TrendingUp, TrendingDown, Heart, Hash, Users, Activity, Crown, Sparkles, ExternalLink, Eye, MessageCircle, Share2, AlertTriangle,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -62,7 +62,7 @@ type Agg = {
   heatmap: { dow: number; hr: number; c: number }[];
   hashtags: { tag: string; c: number; pos: number; neg: number; neu: number; prev_c: number }[];
   topics: { theme: string; mentions: number; pos: number; neg: number; neu: number; prev_mentions: number }[];
-  top_posts: { id: string; social_network: string; comment_text: string; comment_author: string; sent: string; eng: number; likes: number; replies: number; shares: number; original_posted_at: string; collected_at: string }[];
+  top_posts: { id: string; social_network: string; comment_text: string; comment_author: string; sent: string; eng: number; score?: number; likes: number; replies: number; shares: number; views?: number; thumbnail_url?: string | null; post_url?: string | null; original_posted_at: string; collected_at: string }[];
 };
 
 type SectionResponse<T> = {
@@ -92,14 +92,27 @@ const emptyKpis: Agg["kpis"] = {
 const fmt = (n: number) => Number(n ?? 0).toLocaleString("pt-BR");
 const compact = (n: number) => Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
-const growth = (cur: number, prev: number) => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null);
+// Crescimento: exige base mínima de 10 e satura em ±500% para não distorcer.
+const growth = (cur: number, prev: number) => {
+  if (prev < 10) return null;
+  const g = Math.round(((cur - prev) / prev) * 100);
+  if (g > 500) return 500;
+  if (g < -100) return -100;
+  return g;
+};
+const HASHTAG_BLOCKLIST = /\b(fyp+|fyppp+|foryou|foryoupage|parati|viral\d*|funny|funnyvideos?|trending|tiktok|reels?|shorts?|explore|explorepage|likes?forlikes?|followme|like4like|comedy|memes?)\b/i;
 const isValidHashtag = (tag: string) => {
   const clean = tag
     .normalize("NFD")
     .replace(/[\u0300-\u036f\u200B-\u200D\uFEFF\u00A0]/g, "")
     .toLowerCase()
     .replace(/^#+/, "");
-  return clean.length >= 3 && clean.length <= 40 && /[a-z]/.test(clean) && !/^(x200b|xfeff|nbsp|amp|[0-9_\-]+|[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(clean);
+  if (clean.length < 3 || clean.length > 40) return false;
+  if (!/[a-z]/.test(clean)) return false;
+  if (/(.)\1{5,}/.test(clean)) return false; // 6+ caracteres repetidos
+  if (HASHTAG_BLOCKLIST.test(clean)) return false;
+  if (/^(x200b|xfeff|nbsp|amp|[0-9_\-]+|[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(clean)) return false;
+  return true;
 };
 const isWithinSelectedPeriod = (date: string | null | undefined, days: number) => {
   if (!date) return false;
@@ -326,13 +339,23 @@ export default function NetworkView() {
         </Card>
       )}
 
+      {!isLoadingCore && total > 0 && total < 50 && (
+        <Card className="p-4 border-warning/40 bg-warning/5 text-sm flex items-start gap-3">
+          <AlertTriangle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
+          <div>
+            <div className="font-semibold mb-0.5">Dados insuficientes para análise estatística confiável</div>
+            <div className="text-muted-foreground text-xs">Apenas {fmt(total)} menções no período selecionado. Aumente o período ou aguarde mais coleta para análises mais robustas.</div>
+          </div>
+        </Card>
+      )}
+
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <Kpi label="Total de menções" value={fmt(total)} icon={<MessageSquare className="h-4 w-4" />} loading={isLoadingCore} />
         <Kpi label="Interações" value={compact(k?.engagement ?? 0)} icon={<Activity className="h-4 w-4" />} loading={isLoadingCore} sub={`${fmt(k?.likes ?? 0)} curtidas`} />
         <Kpi label="Sentimento positivo" value={`${posPct}%`} icon={<Heart className="h-4 w-4 text-success" />} loading={isLoadingCore} sub={`${fmt(k?.pos ?? 0)} menções`} tone="success" delta={prevLabeled > 0 ? posPct - prevPosPct : undefined} />
         <Kpi label="Sentimento negativo" value={`${negPct}%`} icon={<TrendingDown className="h-4 w-4 text-destructive" />} loading={isLoadingCore} sub={`${fmt(k?.neg ?? 0)} menções`} tone="destructive" delta={prevLabeled > 0 ? negPct - prevNegPct : undefined} invertDelta />
-        <Kpi label="Crescimento" value={growthPct === null ? "Sem base" : `${growthPct >= 0 ? "+" : ""}${growthPct}%`} icon={growthPct === null || growthPct >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} loading={isLoadingCore} sub={growthPct === null ? "Sem base comparativa" : "vs. período anterior"} tone={growthPct === null || growthPct >= 0 ? "success" : "destructive"} />
+        <Kpi label="Crescimento" value={growthPct === null ? "—" : `${growthPct >= 0 ? "+" : ""}${growthPct}%`} icon={growthPct === null || growthPct >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} loading={isLoadingCore} sub={growthPct === null ? "Sem base histórica suficiente" : "vs. período anterior"} tone={growthPct === null || growthPct >= 0 ? "success" : "destructive"} />
         <Kpi label="Rede dominante" value={dominant === "—" ? "—" : dominant.charAt(0).toUpperCase() + dominant.slice(1)} icon={<Crown className="h-4 w-4" />} loading={isLoadingCore} sub={agg?.by_network?.[0] && total > 0 ? `${fmt(agg.by_network[0].mentions)} (${pct(agg.by_network[0].mentions, agg.by_network.reduce((s,n)=>s+(n.mentions||0),0))}%)` : ""} />
       </div>
 
@@ -459,8 +482,63 @@ export default function NetworkView() {
         )}
       </Card>
 
+      {/* Top Posts */}
+      <Card className="p-6">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-lg font-bold">Top posts</h3>
+          <Badge variant="outline" className="text-[10px]">score = curtidas + 2·comentários + 3·shares + 0,1·views</Badge>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">Posts com maior repercussão no período</p>
+        {isLoadingTopPosts ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28 w-full" />)}
+          </div>
+        ) : !agg?.top_posts?.length ? (
+          <div className="h-[160px] flex flex-col items-center justify-center text-sm text-muted-foreground text-center px-4 gap-2">
+            <MessageSquare className="h-6 w-6 opacity-40" />
+            <span>Sem posts com engajamento suficiente nesse recorte. Tente ampliar o período ou trocar de rede.</span>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {agg.top_posts.slice(0, 10).map((p) => {
+              const sentColor = p.sent?.toLowerCase().startsWith("pos") ? COLORS.positive
+                : p.sent?.toLowerCase().startsWith("neg") ? COLORS.negative : COLORS.neutral;
+              return (
+                <div key={p.id} className="border border-border rounded-lg p-3 hover:shadow-sm transition-shadow flex gap-3">
+                  {p.thumbnail_url ? (
+                    <img src={p.thumbnail_url} alt="" loading="lazy" className="w-16 h-16 rounded-md object-cover shrink-0 bg-muted" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                  ) : (
+                    <div className="w-16 h-16 rounded-md bg-muted shrink-0 flex items-center justify-center"><MessageSquare className="h-5 w-5 text-muted-foreground/50" /></div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <Badge variant="secondary" className="text-[9px] uppercase">{p.social_network}</Badge>
+                      <span className="text-[9px] font-medium px-1.5 py-0.5 rounded" style={{ backgroundColor: `${sentColor}22`, color: sentColor }}>{p.sent}</span>
+                    </div>
+                    <p className="text-xs text-foreground line-clamp-2 mb-1">{p.comment_text}</p>
+                    <div className="text-[10px] text-muted-foreground truncate mb-1">@{p.comment_author || "anônimo"}</div>
+                    <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                      <span className="flex items-center gap-1"><Heart className="h-3 w-3" />{compact(p.likes)}</span>
+                      <span className="flex items-center gap-1"><MessageCircle className="h-3 w-3" />{compact(p.replies)}</span>
+                      <span className="flex items-center gap-1"><Share2 className="h-3 w-3" />{compact(p.shares)}</span>
+                      {(p.views ?? 0) > 0 && <span className="flex items-center gap-1"><Eye className="h-3 w-3" />{compact(p.views ?? 0)}</span>}
+                      {p.post_url && (
+                        <a href={p.post_url} target="_blank" rel="noopener noreferrer" className="ml-auto text-primary hover:underline flex items-center gap-1">
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
       {/* Topics + Hashtags */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
         <Card className="p-6">
           <h3 className="text-lg font-bold mb-1">Assuntos dominantes</h3>
           <p className="text-sm text-muted-foreground mb-4">Temas detectados em posts, comentários e respostas (agrupamento semântico)</p>
