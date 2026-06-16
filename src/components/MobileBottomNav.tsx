@@ -82,7 +82,7 @@ const sections: Section[] = [
       { label: "Resumo Inteligente", icon: FileText, to: "/dashboard/candidate-summary", badge: "ai" },
       { label: "Ranking", icon: Trophy, to: "/dashboard/ranking" },
       { label: "Por Rede Social", icon: Network, to: "/dashboard/network-view" },
-      { label: "Coleta", icon: Database, to: "/dashboard/collection-status" },
+      
     ],
   },
   {
@@ -110,6 +110,7 @@ const sections: Section[] = [
     title: "Conta",
     icon: SettingsIcon,
     items: [
+      { label: "Coleta", icon: Database, to: "/dashboard/collection-status" },
       { label: "Notificações", icon: Bell, to: "/dashboard/notifications" },
       { label: "Configurações", icon: SettingsIcon, to: "/dashboard/settings" },
     ],
