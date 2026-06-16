@@ -84,6 +84,7 @@ export default function NetworkView() {
   const query = useQuery({
     queryKey: ["nv-blocks", user?.id, network, candidateId, days],
     queryFn: async () => {
+      console.log("[NetworkView] filters →", { candidate: candidateId, network, period: days });
       const [summary, sentiment, engagement, topics, terms] = await Promise.all([
         fetchBlock("network_view_summary"),
         fetchBlock("network_view_sentiment_block"),
@@ -91,7 +92,7 @@ export default function NetworkView() {
         fetchBlock("network_view_topics_block"),
         fetchBlock("network_view_terms_block"),
       ]);
-      return {
+      const result = {
         kpis: summary?.data?.kpis ?? {},
         sentimentKpis: sentiment?.data?.kpis ?? {},
         series: (sentiment?.data?.series ?? []) as SeriesRow[],
@@ -99,11 +100,29 @@ export default function NetworkView() {
         topics: ((topics?.data?.topics ?? []) as TopicRow[]).filter((t) => !!t.theme),
         terms: (terms?.data?.terms ?? []) as TermRow[],
       };
+      console.log("[NetworkView] pipeline →", {
+        summary_ok: summary?.ok, summary_msg: summary?.message,
+        sentiment_ok: sentiment?.ok, sentiment_msg: sentiment?.message,
+        engagement_ok: engagement?.ok, engagement_msg: engagement?.message,
+        topics_ok: topics?.ok, topics_msg: topics?.message,
+        terms_ok: terms?.ok, terms_msg: terms?.message,
+        total: result.kpis?.total ?? 0,
+        engagement_sum: result.kpis?.engagement ?? 0,
+        networks: result.byNet.length,
+        topics_n: result.topics.length,
+        terms_n: result.terms.length,
+        series_n: result.series.length,
+      });
+      if ((result.kpis?.total ?? 0) === 0) {
+        console.error("[NetworkView] WHY ZERO?", { summary, sentiment, engagement, topics, terms });
+      }
+      return result;
     },
     enabled: !!user,
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
   });
+
 
   const loading = query.isLoading;
   const d = query.data;
