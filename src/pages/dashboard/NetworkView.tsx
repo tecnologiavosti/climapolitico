@@ -239,12 +239,31 @@ export default function NetworkView() {
   const prevNegPct = pct(k?.prev_neg ?? 0, prevLabeled);
   const prevNeuPct = pct(k?.prev_neu ?? 0, prevLabeled);
   const growthPct = growth(total, k?.prev_total ?? 0);
-  const dominant = agg?.by_network?.[0]?.network ?? "—";
+
+  // Rede dominante por score composto: 50% volume normalizado + 50% engajamento normalizado
+  const dominantNet = useMemo(() => {
+    const nets = agg?.by_network ?? [];
+    if (!nets.length) return null;
+    const maxM = Math.max(1, ...nets.map((n) => n.mentions || 0));
+    const maxE = Math.max(1, ...nets.map((n) => n.engagement || 0));
+    const scored = nets.map((n) => ({
+      ...n,
+      dominanceScore: ((n.mentions || 0) / maxM) * 0.5 + ((n.engagement || 0) / maxE) * 0.5,
+    }));
+    scored.sort((a, b) => b.dominanceScore - a.dominanceScore);
+    return scored[0];
+  }, [agg]);
+  const dominant = dominantNet?.network ?? "—";
+
+  // Interações reais = curtidas + comentários + compartilhamentos (views NÃO entram)
+  const realInteractions = (k?.likes ?? 0) + (k?.replies ?? 0) + (k?.shares ?? 0);
+
   const networksSum = (agg?.by_network ?? []).reduce((s, n) => s + (n.mentions || 0), 0);
   const consistencyOk = total === 0 || (
     Math.abs(networksSum - total) / Math.max(total, 1) <= 0.01 &&
     Math.abs(labeled - total) / Math.max(total, 1) <= 0.05
   );
+  const lowVolume = total > 0 && total < 50;
 
   const sentimentSeries = useMemo(() => {
     return (agg?.series ?? []).map((d) => {
