@@ -75,9 +75,10 @@ export const SocialMediaTemporalEvolution = ({
         return !EXCLUDED_NETWORKS.has(net);
       });
 
-      if (!rows || rows.length === 0) {
+      if (filteredRows.length === 0) {
         return { networks: [], temporalDataByNetwork: {} };
       }
+
 
       // Determinar granularidade dinâmica
       const spanMs = (dateRange?.to?.getTime() ?? Date.now()) - (dateRange?.from?.getTime() ?? Date.now() - 30 * 86400000);
