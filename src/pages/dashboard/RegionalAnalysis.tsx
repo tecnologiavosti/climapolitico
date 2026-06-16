@@ -435,8 +435,16 @@ export default function RegionalAnalysis() {
             </CardHeader>
             <CardContent>
               {mapLoading ? (
-                <Skeleton className="h-[400px] w-full" />
+                <div className="space-y-3 animate-fade-in">
+                  <Progress value={undefined} className="h-1.5 animate-pulse" />
+                  <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-2">
+                    <MapPinned className="h-4 w-4 animate-pulse text-primary" />
+                    Carregando mapa de aceitação...
+                  </div>
+                  <Skeleton className="h-[360px] w-full" />
+                </div>
               ) : (
+                <div className="animate-fade-in">
                 <TooltipProvider delayDuration={150}>
                   <div className="w-full flex justify-center">
                     <svg
@@ -494,6 +502,7 @@ export default function RegionalAnalysis() {
                     </svg>
                   </div>
                 </TooltipProvider>
+                </div>
               )}
             </CardContent>
           </Card>
