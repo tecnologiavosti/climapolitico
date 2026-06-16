@@ -24,6 +24,7 @@ import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { analyzeEventImpact, type ImpactAnalysis } from "@/lib/radarImpactAnalysis";
+import { generateEventSummary } from "@/lib/radarEventSummary";
 
 interface RadarEvent {
   id: string;
@@ -323,16 +324,31 @@ export default function RadarPolitico() {
   useEffect(() => {
     if (!jobStatus) return;
     if (Array.isArray(jobStatus.events)) {
-      const clean = (jobStatus.events ?? []).map((e) => ({
-        ...e,
-        title: sanitizeRadarText(e.title),
-        summary: buildEventSummary(e),
-        description: sanitizeRadarText(e.description ?? ""),
-        snippet: sanitizeRadarText((e as { snippet?: string }).snippet ?? ""),
-        content: sanitizeRadarText(e.content ?? ""),
-        category: sanitizeRadarText(e.category),
-        sources: (e.sources ?? []).map((s) => ({ ...s, name: sanitizeRadarText(s.name) })),
-      }));
+      const clean = (jobStatus.events ?? []).map((e) => {
+        const rawWithExtras = e as RadarEvent & { body?: string; snippet?: string };
+        return {
+          ...e,
+          title: sanitizeRadarText(e.title),
+          summary: generateEventSummary({
+            title: e.title,
+            summary: e.summary,
+            description: e.description,
+            snippet: rawWithExtras.snippet,
+            content: e.content,
+            body: rawWithExtras.body,
+            category: e.category,
+            source_count: e.source_count,
+            institutional_sources: e.institutional_sources,
+            social_score: e.social_score,
+            importance: e.importance,
+          }),
+          description: sanitizeRadarText(e.description ?? ""),
+          snippet: sanitizeRadarText(rawWithExtras.snippet ?? ""),
+          content: sanitizeRadarText(e.content ?? ""),
+          category: sanitizeRadarText(e.category),
+          sources: (e.sources ?? []).map((s) => ({ ...s, name: sanitizeRadarText(s.name) })),
+        };
+      });
       setEvents((prev) => {
         const source = prev.length > clean.length ? prev : clean;
         const seen = new Set(source.map((e) => e.id || `${e.event_date}|${e.title}`));
