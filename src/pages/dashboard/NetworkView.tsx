@@ -239,12 +239,31 @@ export default function NetworkView() {
   const prevNegPct = pct(k?.prev_neg ?? 0, prevLabeled);
   const prevNeuPct = pct(k?.prev_neu ?? 0, prevLabeled);
   const growthPct = growth(total, k?.prev_total ?? 0);
-  const dominant = agg?.by_network?.[0]?.network ?? "—";
+
+  // Rede dominante por score composto: 50% volume normalizado + 50% engajamento normalizado
+  const dominantNet = useMemo(() => {
+    const nets = agg?.by_network ?? [];
+    if (!nets.length) return null;
+    const maxM = Math.max(1, ...nets.map((n) => n.mentions || 0));
+    const maxE = Math.max(1, ...nets.map((n) => n.engagement || 0));
+    const scored = nets.map((n) => ({
+      ...n,
+      dominanceScore: ((n.mentions || 0) / maxM) * 0.5 + ((n.engagement || 0) / maxE) * 0.5,
+    }));
+    scored.sort((a, b) => b.dominanceScore - a.dominanceScore);
+    return scored[0];
+  }, [agg]);
+  const dominant = dominantNet?.network ?? "—";
+
+  // Interações reais = curtidas + comentários + compartilhamentos (views NÃO entram)
+  const realInteractions = (k?.likes ?? 0) + (k?.replies ?? 0) + (k?.shares ?? 0);
+
   const networksSum = (agg?.by_network ?? []).reduce((s, n) => s + (n.mentions || 0), 0);
   const consistencyOk = total === 0 || (
     Math.abs(networksSum - total) / Math.max(total, 1) <= 0.01 &&
     Math.abs(labeled - total) / Math.max(total, 1) <= 0.05
   );
+  const lowVolume = total > 0 && total < 50;
 
   const sentimentSeries = useMemo(() => {
     return (agg?.series ?? []).map((d) => {
@@ -352,11 +371,11 @@ export default function NetworkView() {
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <Kpi label="Total de menções" value={fmt(total)} icon={<MessageSquare className="h-4 w-4" />} loading={isLoadingCore} />
-        <Kpi label="Interações" value={compact(k?.engagement ?? 0)} icon={<Activity className="h-4 w-4" />} loading={isLoadingCore} sub={`${fmt(k?.likes ?? 0)} curtidas`} />
+        <Kpi label="Interações" value={compact(realInteractions)} icon={<Activity className="h-4 w-4" />} loading={isLoadingCore} sub={`${compact(k?.likes ?? 0)} ♥ · ${compact(k?.replies ?? 0)} 💬 · ${compact(k?.shares ?? 0)} ↗`} />
         <Kpi label="Sentimento positivo" value={`${posPct}%`} icon={<Heart className="h-4 w-4 text-success" />} loading={isLoadingCore} sub={`${fmt(k?.pos ?? 0)} menções`} tone="success" delta={prevLabeled > 0 ? posPct - prevPosPct : undefined} />
         <Kpi label="Sentimento negativo" value={`${negPct}%`} icon={<TrendingDown className="h-4 w-4 text-destructive" />} loading={isLoadingCore} sub={`${fmt(k?.neg ?? 0)} menções`} tone="destructive" delta={prevLabeled > 0 ? negPct - prevNegPct : undefined} invertDelta />
         <Kpi label="Crescimento" value={growthPct === null ? "—" : `${growthPct >= 0 ? "+" : ""}${growthPct}%`} icon={growthPct === null || growthPct >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} loading={isLoadingCore} sub={growthPct === null ? "Sem base histórica suficiente" : "vs. período anterior"} tone={growthPct === null || growthPct >= 0 ? "success" : "destructive"} />
-        <Kpi label="Rede dominante" value={dominant === "—" ? "—" : dominant.charAt(0).toUpperCase() + dominant.slice(1)} icon={<Crown className="h-4 w-4" />} loading={isLoadingCore} sub={agg?.by_network?.[0] && total > 0 ? `${fmt(agg.by_network[0].mentions)} (${pct(agg.by_network[0].mentions, agg.by_network.reduce((s,n)=>s+(n.mentions||0),0))}%)` : ""} />
+        <Kpi label="Rede dominante" value={dominant === "—" ? "—" : dominant.charAt(0).toUpperCase() + dominant.slice(1)} icon={<Crown className="h-4 w-4" />} loading={isLoadingCore} sub={dominantNet && total > 0 ? `${fmt(dominantNet.mentions)} menções · ${compact(dominantNet.engagement || 0)} int.` : ""} />
       </div>
 
       {/* AI Insight */}
@@ -450,6 +469,7 @@ export default function NetworkView() {
       )}
 
       {/* Heatmap */}
+      {!lowVolume && (
       <Card className="p-6">
         <h3 className="text-lg font-bold mb-1">Horários de maior movimento</h3>
         <p className="text-sm text-muted-foreground mb-4">Dia da semana × hora — concentração de atividade</p>
@@ -481,6 +501,7 @@ export default function NetworkView() {
           </div>
         )}
       </Card>
+      )}
 
       {/* Top Posts */}
       <Card className="p-6">
@@ -537,6 +558,7 @@ export default function NetworkView() {
       </Card>
 
       {/* Topics + Hashtags */}
+      {!lowVolume && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         <Card className="p-6">
@@ -554,7 +576,7 @@ export default function NetworkView() {
                       <span className="font-semibold">{t.theme}</span>
                       <div className="flex items-center gap-2 text-xs">
                         <span className="text-muted-foreground">{fmt(t.mentions)} menções</span>
-                        {variation === null ? <span className="text-muted-foreground">Sem base</span> : <span className={`font-medium ${variation >= 0 ? "text-success" : "text-destructive"}`}>{variation >= 0 ? "+" : ""}{variation}%</span>}
+                        {variation === null ? <span className="text-muted-foreground">Sem base histórica</span> : <span className={`font-medium ${variation >= 0 ? "text-success" : "text-destructive"}`}>{variation >= 0 ? "+" : ""}{variation}%</span>}
                       </div>
                     </div>
                     <div className="text-[11px] text-muted-foreground mb-1">{posP}% positivo</div>
@@ -589,7 +611,7 @@ export default function NetworkView() {
                     <span className="font-medium truncate max-w-[40%]">{h.tag}</span>
                     <div className="flex items-center gap-3 text-xs">
                       <span className="text-muted-foreground">{fmt(h.c)}</span>
-                      {variation === null ? <span className="text-muted-foreground">Sem base</span> : <span className={`font-medium ${variation >= 0 ? "text-success" : "text-destructive"}`}>{variation >= 0 ? "+" : ""}{variation}%</span>}
+                      {variation === null ? <span className="text-muted-foreground">Sem base histórica</span> : <span className={`font-medium ${variation >= 0 ? "text-success" : "text-destructive"}`}>{variation >= 0 ? "+" : ""}{variation}%</span>}
                       {lab > 0 && <span className="text-success">{posP}% pos</span>}
                     </div>
                   </div>
@@ -599,6 +621,7 @@ export default function NetworkView() {
           )}
         </Card>
       </div>
+      )}
 
     </div>
   );
