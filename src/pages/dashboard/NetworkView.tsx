@@ -5,15 +5,13 @@ import { useAuth } from "@/hooks/useAuth";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 import {
-  MessageSquare, TrendingUp, TrendingDown, Heart, Hash, Users, Activity, Crown, Sparkles, ExternalLink, Eye, MessageCircle, Share2, AlertTriangle,
+  MessageSquare, TrendingUp, TrendingDown, Heart, Hash, Activity, Crown, Sparkles, AlertTriangle,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -62,14 +60,13 @@ type Agg = {
   heatmap: { dow: number; hr: number; c: number }[];
   hashtags: { tag: string; c: number; pos: number; neg: number; neu: number; prev_c: number }[];
   topics: { theme: string; mentions: number; pos: number; neg: number; neu: number; prev_mentions: number }[];
-  top_posts: { id: string; social_network: string; comment_text: string; comment_author: string; sent: string; eng: number; score?: number; likes: number; replies: number; shares: number; views?: number; thumbnail_url?: string | null; post_url?: string | null; original_posted_at: string; collected_at: string }[];
   analytics?: unknown;
   debug?: {
     totalInDatabase?: number; rawTotalInDatabase?: number; afterInvalidationFilter?: number;
     afterPeriodFilter?: number; afterCandidateFilter?: number; afterPlatformFilter?: number;
     afterDeduplication?: number; deduplicatedPosts?: number; finalAnalyticsCount?: number;
     loss?: number; lossPct?: number; periodMode?: string;
-    mentions: number; posts: number; classified: number; themes: number; hashtags: number; top_posts: number;
+    mentions: number; posts: number; classified: number; themes: number; hashtags: number;
   };
 };
 
@@ -82,6 +79,8 @@ type SectionResponse<T> = {
     records_read?: number;
     records_returned?: number;
     cache_hit?: boolean;
+    section?: string;
+    error?: string;
     plan?: unknown;
   };
 };
@@ -151,40 +150,68 @@ export default function NetworkView() {
   };
 
   const analyticsQuery = useQuery({
-    queryKey: ["nv-analytics-ssot", user?.id, network, candidateId, days],
+    queryKey: ["nv-analytics-blocks", user?.id, network, candidateId, days],
     queryFn: async (): Promise<SectionResponse<Agg>> => {
-      const started = performance.now();
-      const { data, error } = await supabase.rpc("network_view_analytics", queryParams);
-      const elapsed = Math.round(performance.now() - started);
-      if (error) {
-        console.error("[NetworkView] analytics RPC failed", { elapsed, error, queryParams });
-        throw error;
-      }
-      const response = data as SectionResponse<Agg>;
-      if ((response.data?.top_posts?.length ?? 0) === 0 && (response.data?.kpis?.engagement ?? 0) > 0) {
-        console.error("TOP_POSTS_PIPELINE_FAILED", { elapsed, debug: response.data?.debug, queryParams });
-      }
-      console.log({
-        totalInDatabase: response.data?.debug?.totalInDatabase,
-        afterPeriodFilter: response.data?.debug?.afterPeriodFilter,
-        afterCandidateFilter: response.data?.debug?.afterCandidateFilter,
-        afterPlatformFilter: response.data?.debug?.afterPlatformFilter,
-        afterDeduplication: response.data?.debug?.afterDeduplication,
-        finalAnalyticsCount: response.data?.debug?.finalAnalyticsCount,
+      const callBlock = async <T,>(rpcName: string, label: string): Promise<SectionResponse<T>> => {
+        console.time(`[NetworkView] ${label}`);
+        const started = performance.now();
+        const { data, error } = await (supabase.rpc as any)(rpcName, queryParams);
+        const elapsed = Math.round(performance.now() - started);
+        console.timeEnd(`[NetworkView] ${label}`);
+        if (error) {
+          console.error(`[NetworkView] ${label} failed`, { elapsed, error, queryParams });
+          return { ok: false, message: sectionErrorMessage(label), data: {} as T, diagnostics: { section: label, duration_ms: elapsed, error: error.message } };
+        }
+        const response = data as SectionResponse<T>;
+        if (response?.ok === false) {
+          console.warn(`[NetworkView] ${label} partial failure`, { elapsed, response, queryParams });
+        }
+        return response;
+      };
+
+      const [summary, sentiment, engagement, heatmap, topics, hashtags] = await Promise.all([
+        callBlock<Pick<Agg, "kpis" | "debug">>("network_view_summary", "summary"),
+        callBlock<Pick<Agg, "kpis" | "series">>("network_view_sentiment_block", "sentiment"),
+        callBlock<Pick<Agg, "by_network">>("network_view_engagement_block", "engagement"),
+        callBlock<Pick<Agg, "heatmap">>("network_view_heatmap_block", "heatmap"),
+        callBlock<Pick<Agg, "topics">>("network_view_topics_block", "themes"),
+        callBlock<Pick<Agg, "hashtags">>("network_view_hashtags_block", "hashtags"),
+      ]);
+
+      const data: Agg = {
+        kpis: { ...emptyKpis, ...(summary.data?.kpis ?? {}), ...(sentiment.data?.kpis ?? {}) },
+        series: sentiment.data?.series ?? [],
+        by_network: engagement.data?.by_network ?? [],
+        heatmap: heatmap.data?.heatmap ?? [],
+        topics: topics.data?.topics ?? [],
+        hashtags: hashtags.data?.hashtags ?? [],
+        debug: {
+          ...(summary.data?.debug ?? {}),
+          themes: topics.data?.topics?.length ?? 0,
+          hashtags: hashtags.data?.hashtags?.length ?? 0,
+        } as Agg["debug"],
+      };
+      console.info("[NetworkView] analytics blocks loaded", {
+        diagnostics: { summary: summary.diagnostics, sentiment: sentiment.diagnostics, engagement: engagement.diagnostics, heatmap: heatmap.diagnostics, topics: topics.diagnostics, hashtags: hashtags.diagnostics },
+        debug: data.debug,
       });
-      console.info("[NetworkView] analytics loaded", { elapsed, diagnostics: response?.diagnostics });
-      return response;
+
+      return {
+        ok: [summary, sentiment, engagement, heatmap, topics, hashtags].every((r) => r.ok !== false),
+        data,
+        diagnostics: { section: "network-view", plan: { summary: summary.diagnostics, sentiment: sentiment.diagnostics, engagement: engagement.diagnostics, heatmap: heatmap.diagnostics, topics: topics.diagnostics, hashtags: hashtags.diagnostics } },
+        message: [summary, sentiment, engagement, heatmap, topics, hashtags].filter((r) => r.ok === false).map((r) => r.message).filter(Boolean).join("\n"),
+      };
     },
     enabled: !!user,
-    staleTime: 0, gcTime: 30 * 60_000, refetchOnWindowFocus: false,
+    staleTime: 5 * 60_000, gcTime: 30 * 60_000, refetchOnWindowFocus: false,
   });
 
   const analyticsData = analyticsQuery.data?.data;
   const isLoadingCore = analyticsQuery.isLoading;
   const isLoadingContent = analyticsQuery.isLoading;
-  const isLoadingTopPosts = analyticsQuery.isLoading;
   const sectionErrors = [
-    analyticsQuery.error || (analyticsQuery.data?.ok === false ? new Error(analyticsQuery.data.message || sectionErrorMessage("a visão por rede social")) : null),
+    analyticsQuery.error || (analyticsQuery.data?.ok === false && analyticsQuery.data.message ? new Error(analyticsQuery.data.message) : null),
   ].filter(Boolean) as Error[];
 
   const analytics: Agg = {
@@ -194,7 +221,6 @@ export default function NetworkView() {
     heatmap: analyticsData?.heatmap ?? [],
     hashtags: (analyticsData?.hashtags ?? []).filter((h) => isValidHashtag(h.tag)),
     topics: (analyticsData?.topics ?? []).filter((t) => t.theme?.trim() && t.mentions > 0),
-    top_posts: analyticsData?.top_posts ?? [],
     analytics: analyticsData?.analytics,
     debug: analyticsData?.debug,
   };
@@ -409,7 +435,6 @@ export default function NetworkView() {
             <span>classified: <b className="text-foreground">{fmt(agg.debug.classified)}</b></span>
             <span>themes: <b className="text-foreground">{fmt(agg.debug.themes)}</b></span>
             <span>hashtags: <b className="text-foreground">{fmt(agg.debug.hashtags)}</b></span>
-            <span>topPosts: <b className="text-foreground">{fmt(agg.debug.top_posts)}</b></span>
             <span>período: <b className="text-foreground">{agg.debug.periodMode ?? `${days} dias`}</b></span>
           </div>
         </Card>
@@ -582,60 +607,6 @@ export default function NetworkView() {
         )}
       </Card>
       )}
-
-      {/* Top Posts */}
-      <Card className="p-6">
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="text-lg font-bold">Top posts</h3>
-          <Badge variant="outline" className="text-[10px]">score = curtidas + 2·comentários + 3·shares + 0,1·views</Badge>
-        </div>
-        <p className="text-sm text-muted-foreground mb-4">Posts com maior repercussão no período</p>
-        {isLoadingTopPosts ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28 w-full" />)}
-          </div>
-        ) : !agg?.top_posts?.length ? (
-          <div className="h-[160px] flex flex-col items-center justify-center text-sm text-muted-foreground text-center px-4 gap-2">
-            <MessageSquare className="h-6 w-6 opacity-40" />
-            <span>Sem posts com engajamento suficiente nesse recorte. Tente ampliar o período ou trocar de rede.</span>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {agg.top_posts.slice(0, 10).map((p) => {
-              const sentColor = p.sent?.toLowerCase().startsWith("pos") ? COLORS.positive
-                : p.sent?.toLowerCase().startsWith("neg") ? COLORS.negative : COLORS.neutral;
-              return (
-                <div key={p.id} className="border border-border rounded-lg p-3 hover:shadow-sm transition-shadow flex gap-3">
-                  {p.thumbnail_url ? (
-                    <img src={p.thumbnail_url} alt="" loading="lazy" className="w-16 h-16 rounded-md object-cover shrink-0 bg-muted" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
-                  ) : (
-                    <div className="w-16 h-16 rounded-md bg-muted shrink-0 flex items-center justify-center"><MessageSquare className="h-5 w-5 text-muted-foreground/50" /></div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <Badge variant="secondary" className="text-[9px] uppercase">{p.social_network}</Badge>
-                      <span className="text-[9px] font-medium px-1.5 py-0.5 rounded" style={{ backgroundColor: `${sentColor}22`, color: sentColor }}>{p.sent}</span>
-                    </div>
-                    <p className="text-xs text-foreground line-clamp-2 mb-1">{p.comment_text}</p>
-                    <div className="text-[10px] text-muted-foreground truncate mb-1">@{p.comment_author || "anônimo"}</div>
-                    <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-                      <span className="flex items-center gap-1"><Heart className="h-3 w-3" />{compact(p.likes)}</span>
-                      <span className="flex items-center gap-1"><MessageCircle className="h-3 w-3" />{compact(p.replies)}</span>
-                      <span className="flex items-center gap-1"><Share2 className="h-3 w-3" />{compact(p.shares)}</span>
-                      {(p.views ?? 0) > 0 && <span className="flex items-center gap-1"><Eye className="h-3 w-3" />{compact(p.views ?? 0)}</span>}
-                      {p.post_url && (
-                        <a href={p.post_url} target="_blank" rel="noopener noreferrer" className="ml-auto text-primary hover:underline flex items-center gap-1">
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </Card>
 
       {/* Topics + Hashtags */}
       {!lowVolume && (

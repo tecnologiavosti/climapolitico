@@ -4244,13 +4244,33 @@ export type Database = {
         Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
         Returns: Json
       }
+      network_view_engagement_block: {
+        Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
+        Returns: Json
+      }
+      network_view_hashtags_block: {
+        Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
+        Returns: Json
+      }
+      network_view_heatmap_block: {
+        Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
+        Returns: Json
+      }
       network_view_sentiment:
         | { Args: { _label: string }; Returns: string }
         | {
             Args: { _label: string; _score?: number; _text?: string }
             Returns: string
           }
-      network_view_top_posts: {
+      network_view_sentiment_block: {
+        Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
+        Returns: Json
+      }
+      network_view_summary: {
+        Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
+        Returns: Json
+      }
+      network_view_topics_block: {
         Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
         Returns: Json
       }
