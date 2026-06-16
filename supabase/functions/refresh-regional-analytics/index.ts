@@ -3,7 +3,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { corsHeaders, handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { inferLocation, CITY_TO_UF, UF_SET } from "../_shared/infer-location.ts";
-import { getOutletInfo } from "../_shared/outlet-regions.ts";
+import { identifyOutlet } from "../_shared/outlet-regions.ts";
 
 const UF_TO_REGION: Record<string, string> = {
   AC: "Norte", AM: "Norte", AP: "Norte", PA: "Norte", RO: "Norte", RR: "Norte", TO: "Norte",
@@ -87,9 +87,8 @@ function inferUF(row: Row): { uf: string | null; region: string | null } {
   const hUf = inferUFFromHashtags(row.hashtags);
   if (hUf) return { uf: hUf, region: UF_TO_REGION[hUf] || null };
   // 4) regional media outlet via post URL host
-  const host = hostFromUrl(row.post_url);
-  if (host) {
-    const outlet = getOutletInfo(host);
+  if (row.post_url) {
+    const outlet = identifyOutlet(row.post_url);
     if (outlet && outlet.region !== "Nacional" && outlet.region !== "Internacional") {
       return { uf: null, region: outlet.region as string };
     }
