@@ -227,7 +227,7 @@ function OnboardingBanner() {
         </div>
       </div>
       <Button asChild size="sm" className="w-full mt-2 h-8 text-xs">
-        <Link to="/dashboard/candidates-catalog">
+        <Link to="/dashboard/candidates?add=1">
           <UserPlus className="h-3.5 w-3.5 mr-1.5" />
           Adicionar candidato
         </Link>
