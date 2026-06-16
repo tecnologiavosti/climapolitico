@@ -76,15 +76,24 @@ export default function NetworkView() {
   };
 
   const fetchBlock = async (rpc: string) => {
+    console.log(`[NetworkView] → ${rpc}`, params);
     const { data, error } = await (supabase.rpc as any)(rpc, params);
-    if (error) throw error;
+    if (error) {
+      console.error(`[NetworkView] ✖ ${rpc} error:`, error);
+      throw error;
+    }
+    if (data && data.ok === false) {
+      console.error(`[NetworkView] ✖ ${rpc} ok=false:`, data.message, data);
+      throw new Error(data.message || `Falha em ${rpc}`);
+    }
+    console.log(`[NetworkView] ✓ ${rpc}`, data?.diagnostics);
     return data;
   };
 
   const query = useQuery({
     queryKey: ["nv-blocks", user?.id, network, candidateId, days],
     queryFn: async () => {
-      console.log("[NetworkView] filters →", { candidate: candidateId, network, period: days });
+      console.log("[NetworkView] filters →", { user: user?.id, candidate: candidateId, network, period: days });
       const [summary, sentiment, engagement, topics, terms] = await Promise.all([
         fetchBlock("network_view_summary"),
         fetchBlock("network_view_sentiment_block"),
@@ -101,11 +110,6 @@ export default function NetworkView() {
         terms: (terms?.data?.terms ?? []) as TermRow[],
       };
       console.log("[NetworkView] pipeline →", {
-        summary_ok: summary?.ok, summary_msg: summary?.message,
-        sentiment_ok: sentiment?.ok, sentiment_msg: sentiment?.message,
-        engagement_ok: engagement?.ok, engagement_msg: engagement?.message,
-        topics_ok: topics?.ok, topics_msg: topics?.message,
-        terms_ok: terms?.ok, terms_msg: terms?.message,
         total: result.kpis?.total ?? 0,
         engagement_sum: result.kpis?.engagement ?? 0,
         networks: result.byNet.length,
@@ -113,15 +117,15 @@ export default function NetworkView() {
         terms_n: result.terms.length,
         series_n: result.series.length,
       });
-      if ((result.kpis?.total ?? 0) === 0) {
-        console.error("[NetworkView] WHY ZERO?", { summary, sentiment, engagement, topics, terms });
-      }
       return result;
     },
-    enabled: !!user,
+    enabled: !!user?.id,
+    retry: 1,
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
   });
+
+  const errorMessage = query.error ? (query.error as Error).message : null;
 
 
   const loading = query.isLoading;
@@ -190,6 +194,15 @@ export default function NetworkView() {
           </Select>
         </div>
       </div>
+
+      {errorMessage && (
+        <Card className="p-4 border-destructive bg-destructive/5">
+          <div className="text-sm text-destructive font-medium">Erro ao carregar analytics: {errorMessage}</div>
+          <div className="text-xs text-muted-foreground mt-1">Verifique o console do navegador para o diagnóstico completo de qual RPC falhou.</div>
+        </Card>
+      )}
+
+
 
       {/* BLOCO 1 — RESUMO EXECUTIVO */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
