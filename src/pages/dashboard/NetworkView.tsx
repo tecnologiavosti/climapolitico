@@ -276,11 +276,6 @@ export default function NetworkView() {
           <div className="text-sm text-destructive font-medium">{errorMessage}</div>
         </Card>
       )}
-      {reprocessingMsg && !errorMessage && (
-        <Card className="p-3 bg-muted/40 border-border">
-          <div className="text-xs text-muted-foreground">{reprocessingMsg}</div>
-        </Card>
-      )}
 
 
 
@@ -399,7 +394,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Assuntos dominantes</h2>
         <p className="text-sm text-muted-foreground mb-6">Volume, participação e sentimento médio por tema.</p>
-        {loading ? <Skeleton className="h-56 w-full" /> : (mergedTopics.length === 0) ? (fallback.isLoading ? <div className="text-sm text-muted-foreground py-10 text-center">Reprocessando temas...</div> : <Empty />) : (
+        {loading ? <Skeleton className="h-56 w-full" /> : (mergedTopics.length === 0) ? (fallback.isLoading ? <Skeleton className="h-56 w-full" /> : <Empty />) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {mergedTopics.map((t) => {
               const lab = t.pos + t.neg + t.neu;
@@ -433,7 +428,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Termos em alta</h2>
         <p className="text-sm text-muted-foreground mb-6">Hashtags, nomes e entidades mais citados no período.</p>
-        {loading ? <Skeleton className="h-40 w-full" /> : mergedTerms.length === 0 ? (fallback.isLoading ? <div className="text-sm text-muted-foreground py-10 text-center">Reprocessando termos...</div> : <Empty />) : (
+        {loading ? <Skeleton className="h-40 w-full" /> : mergedTerms.length === 0 ? (fallback.isLoading ? <Skeleton className="h-40 w-full" /> : <Empty />) : (
           <div className="flex flex-wrap gap-2">
             {mergedTerms.map((t) => {
               const max = (mergedTerms[0]?.count ?? 1);
