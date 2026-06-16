@@ -60,15 +60,15 @@ serve(async (req) => {
 
     return json({ ...(data as Record<string, unknown>), page_duration_ms: durationMs });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error("[social/top-posts] erro", msg);
-    // Retorna 200 com ok:false para que o cliente exiba mensagem amigável
-    // em vez de quebrar com "Edge function returned a non-2xx status code".
+    const msg = error instanceof Error
+      ? error.message
+      : (typeof error === "object" ? JSON.stringify(error) : String(error));
+    console.error("[social/top-posts] erro", msg, JSON.stringify(error));
     return json({
       ok: false,
       message: /timeout|canceling statement/i.test(msg)
         ? "A consulta de top posts demorou demais. Tente reduzir o período ou filtrar por rede."
-        : "Não foi possível carregar os top posts no momento.",
+        : "Sem posts suficientes no período selecionado.",
       fallback: true,
       data: { top_posts: [] },
     }, 200);
