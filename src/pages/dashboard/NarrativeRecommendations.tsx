@@ -91,6 +91,13 @@ const NarrativeRecommendationsPage = () => {
   const [selectedPeriod, setSelectedPeriod] = useState<string>("7");
   const [result, setResult] = useState<RecommendationResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [slowLoading, setSlowLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isLoading) { setSlowLoading(false); return; }
+    const t = setTimeout(() => setSlowLoading(true), 3000);
+    return () => clearTimeout(t);
+  }, [isLoading]);
 
   const { data: candidates = [] } = useQuery({
     queryKey: ['candidates-for-narrative', user?.id],
