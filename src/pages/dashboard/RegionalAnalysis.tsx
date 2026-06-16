@@ -462,13 +462,23 @@ export default function RegionalAnalysis() {
             </CardHeader>
             <CardContent>
               {mapLoading ? (
-                <div className="space-y-3 animate-fade-in">
-                  <Progress value={undefined} className="h-1.5 animate-pulse" />
-                  <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-2">
-                    <MapPinned className="h-4 w-4 animate-pulse text-primary" />
-                    Carregando mapa de aceitação...
+                <div className="space-y-4 animate-fade-in">
+                  <div className="space-y-2">
+                    <Progress value={loadProgress} className="h-1.5 transition-all duration-500" />
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <MapPinned className="h-4 w-4 animate-pulse text-primary" />
+                        <span className="transition-all">{loadStage}</span>
+                      </div>
+                      <span className="font-mono text-muted-foreground">{Math.round(loadProgress)}%</span>
+                    </div>
                   </div>
-                  <Skeleton className="h-[360px] w-full" />
+                  <div className="relative h-[360px] w-full overflow-hidden rounded-md bg-muted/40">
+                    <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-transparent via-muted-foreground/10 to-transparent" />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <MapPinned className="h-20 w-20 text-muted-foreground/30 animate-pulse" />
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div className="animate-fade-in">
