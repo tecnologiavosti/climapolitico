@@ -276,11 +276,6 @@ export default function NetworkView() {
           <div className="text-sm text-destructive font-medium">{errorMessage}</div>
         </Card>
       )}
-      {reprocessingMsg && !errorMessage && (
-        <Card className="p-3 bg-muted/40 border-border">
-          <div className="text-xs text-muted-foreground">{reprocessingMsg}</div>
-        </Card>
-      )}
 
 
 
