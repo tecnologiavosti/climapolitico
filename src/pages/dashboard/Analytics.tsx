@@ -319,9 +319,12 @@ export default function Analytics() {
       </Card>
 
       {/* Collection Status (per network) */}
-      <CollectionStatusPanel />
+      <WidgetBoundary name="Status de Coleta">
+        <CollectionStatusPanel />
+      </WidgetBoundary>
 
       {/* KPI Cards */}
+      <WidgetBoundary name="KPIs">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <HelpTooltip text="Como o povo está se sentindo na média. Quanto maior, mais elogios; quanto menor, mais críticas.">
           <Card>
