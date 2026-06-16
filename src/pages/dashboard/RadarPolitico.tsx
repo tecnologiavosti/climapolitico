@@ -30,6 +30,7 @@ interface RadarEvent {
   title: string;
   summary?: string;
   description?: string;
+  snippet?: string;
   content?: string;
   category: string;
   event_date: string;
@@ -198,6 +199,39 @@ function sanitizeRadarText(input: unknown): string {
   return s.replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Constrói um resumo real e legível do evento, evitando repetir o título.
+ * Prioridade: summary -> description -> snippet -> content (recortado) -> title.
+ */
+function buildEventSummary(e: {
+  title?: string;
+  summary?: string;
+  description?: string;
+  snippet?: string;
+  content?: string;
+}, maxLen = 800): string {
+  const title = sanitizeRadarText(e.title).toLowerCase();
+  const isUseful = (raw: unknown) => {
+    const t = sanitizeRadarText(raw);
+    if (!t || t.length < 25) return "";
+    if (title && t.toLowerCase() === title) return "";
+    return t;
+  };
+  const candidates = [e.summary, e.description, e.snippet];
+  for (const c of candidates) {
+    const t = isUseful(c);
+    if (t) return t.length > maxLen ? t.slice(0, maxLen).replace(/\s+\S*$/, "") + "…" : t;
+  }
+  const contentClean = sanitizeRadarText(e.content);
+  if (contentClean && contentClean.toLowerCase() !== title) {
+    const trimmed = contentClean.length > maxLen
+      ? contentClean.slice(0, maxLen).replace(/\s+\S*$/, "") + "…"
+      : contentClean;
+    if (trimmed.length >= 25) return trimmed;
+  }
+  return sanitizeRadarText(e.title);
+}
+
 
 function band(value: number) {
   if (value >= 70) return { label: "Grande", tone: "bg-foreground text-background" };
@@ -292,8 +326,9 @@ export default function RadarPolitico() {
       const clean = (jobStatus.events ?? []).map((e) => ({
         ...e,
         title: sanitizeRadarText(e.title),
-        summary: sanitizeRadarText(e.summary ?? e.description ?? e.content ?? ""),
+        summary: buildEventSummary(e),
         description: sanitizeRadarText(e.description ?? ""),
+        snippet: sanitizeRadarText((e as { snippet?: string }).snippet ?? ""),
         content: sanitizeRadarText(e.content ?? ""),
         category: sanitizeRadarText(e.category),
         sources: (e.sources ?? []).map((s) => ({ ...s, name: sanitizeRadarText(s.name) })),
