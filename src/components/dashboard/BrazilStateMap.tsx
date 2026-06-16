@@ -106,13 +106,28 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
         }>) {
           const uf = (row.state || "").toUpperCase() as UF;
           if (!UFS.includes(uf)) continue;
+          const m = Number(row.mentions ?? 0);
           acc[uf] = {
             uf,
-            mentions: Number(row.mentions ?? 0),
+            mentions: m,
             positive_percentage: Number(row.positive_percentage ?? 0),
             negative_percentage: Number(row.negative_percentage ?? 0),
           };
+          stateTotal += m;
         }
+
+        // Debug: validar cobertura vs mapa por região
+        const regionTotal = regionCountRes?.count ?? 0;
+        const coverage = regionTotal > 0 ? (stateTotal / regionTotal) * 100 : 0;
+        console.log(
+          `[BrazilStateMap] Region mentions: ${regionTotal} · State mentions: ${stateTotal} · Coverage: ${coverage.toFixed(1)}%`,
+        );
+        if (regionTotal > 0 && coverage < 90) {
+          console.error(
+            `[BrazilStateMap] State aggregation mismatch — coverage ${coverage.toFixed(1)}% < 90%`,
+          );
+        }
+
         cache.set(cacheKey, { ts: Date.now(), data: acc });
         if (!cancelled) setAggs(acc);
       } finally {
