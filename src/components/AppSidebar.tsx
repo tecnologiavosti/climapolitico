@@ -88,7 +88,7 @@ const groups: NavGroup[] = [
     icon: UserPlus,
     defaultOpen: true,
     items: [
-      { title: "Adicionar Candidato", url: "/dashboard/candidates-catalog", icon: UserPlus, tip: "Escolha candidatos prontos no catálogo e adicione na sua conta." },
+      { title: "Adicionar Candidato", url: "/dashboard/candidates?add=1", icon: UserPlus, tip: "Abre o formulário de adicionar candidato." },
       { title: "Catálogo de Candidatos", url: "/dashboard/candidates-catalog", icon: BookUser, tip: "Candidatos prontos para adicionar." },
       { title: "Meus Candidatos", url: "/dashboard/candidates", icon: Users, tip: "Gerencie os candidatos que você está monitorando." },
     ],
@@ -100,8 +100,17 @@ const groups: NavGroup[] = [
     defaultOpen: true,
     items: [
       { title: "Monitor em Tempo Real", url: "/dashboard/realtime-monitor", icon: Radio, badge: { label: "AO VIVO", variant: "live" }, tip: "Comentários e menções chegando ao vivo." },
+    ],
+  },
+  {
+    id: "relatorios",
+    label: "Relatórios",
+    icon: FileText,
+    defaultOpen: true,
+    items: [
       { title: "Resumo Inteligente", url: "/dashboard/candidate-summary", icon: FileText, badge: { label: "IA", variant: "ai" }, tip: "Resumo automático do que falaram do seu candidato." },
-      
+      { title: "Ranking", url: "/dashboard/ranking", icon: Trophy, tip: "Ranking de desempenho dos candidatos." },
+      { title: "Visão por Rede Social", url: "/dashboard/network-view", icon: Network, tip: "Resultados detalhados por rede social." },
     ],
   },
   {
@@ -123,20 +132,7 @@ const groups: NavGroup[] = [
     defaultOpen: false,
     items: [
       { title: "Narrativas Detectadas", url: "/dashboard/narrative-recommendations", icon: Sparkles, badge: { label: "IA", variant: "ai" }, tip: "Narrativas em ascensão e recomendações." },
-      
       { title: "Comparação Histórica", url: "/dashboard/historical-comparison", icon: GitCompareArrows, badge: { label: "IA", variant: "ai" }, tip: "Compare dois períodos do candidato com análise por IA." },
-      { title: "Alertas Inteligentes", url: "/dashboard/notifications", icon: Bell, tip: "Avisos importantes detectados automaticamente." },
-    ],
-  },
-  {
-    id: "relatorios",
-    label: "Relatórios",
-    icon: FileText,
-    defaultOpen: false,
-    items: [
-      
-      { title: "Ranking", url: "/dashboard/ranking", icon: Trophy, tip: "Ranking de desempenho dos candidatos." },
-      { title: "Visão por Rede Social", url: "/dashboard/network-view", icon: Network, tip: "Resultados detalhados por rede social." },
     ],
   },
 ];
