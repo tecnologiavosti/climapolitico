@@ -1,15 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { MapPin, ThumbsUp, ThumbsDown, Minus } from "lucide-react";
+import { MapPin } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { BR_STATES_MAP } from "@/data/brStatesMap";
-import { UFS, UF_NAME, inferLocation, type UF } from "@/lib/brazilStatesInference";
+import { UFS, UF_NAME, type UF } from "@/lib/brazilStatesInference";
 import { NETWORKS, ALL_NETWORKS_VALUE } from "@/pages/dashboard/regionalAnalysis.helpers";
-import { fetchAllPaginated } from "@/lib/supabasePagination";
 
 interface Props {
   userId: string;
@@ -17,112 +14,113 @@ interface Props {
   network: string;
 }
 
-interface Row {
-  id: string;
-  comment_text: string | null;
-  comment_author: string | null;
-  sentiment_label: string | null;
-  social_network: string;
-  created_at: string;
-}
-
 interface UFAgg {
   uf: UF;
-  total: number;
-  pos: number;
-  neg: number;
-  neu: number;
-  samples: Row[];
+  mentions: number;
+  positive_percentage: number;
+  negative_percentage: number;
 }
 
-function colorFor(total: number, pos: number, neg: number): string {
-  if (total < 3) return "hsl(var(--muted))";
-  const opin = pos + neg;
-  if (opin === 0) return "hsl(220, 13%, 80%)";
-  const acc = (pos / opin) * 100;
+// ─── Cache simples em memória: regional:{candidateId}:{network} (TTL 5 min) ───
+const TTL_MS = 5 * 60 * 1000;
+const cache = new Map<string, { ts: number; data: Record<UF, UFAgg> }>();
+
+function colorFor(a: UFAgg | undefined): string {
+  if (!a || a.mentions < 3) return "hsl(220, 13%, 88%)";
+  const acc = a.positive_percentage ?? 0;
+  if (acc + a.negative_percentage === 0) return "hsl(220, 13%, 80%)";
   if (acc > 65) return "hsl(142, 70%, 45%)";
   if (acc >= 35) return "hsl(45, 95%, 55%)";
   return "hsl(0, 75%, 55%)";
 }
 
-function sentimentKey(s: string | null): "pos" | "neg" | "neu" {
-  const k = (s || "").toLowerCase();
-  if (k === "positive" || k === "positivo") return "pos";
-  if (k === "negative" || k === "negativo") return "neg";
-  return "neu";
-}
-
 export default function BrazilStateMap({ userId, candidateId, network }: Props) {
   const [loading, setLoading] = useState(false);
   const [aggs, setAggs] = useState<Record<UF, UFAgg>>({} as Record<UF, UFAgg>);
-  const [openUF, setOpenUF] = useState<UF | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     if (!userId || !candidateId) return;
+
+    const isAll = network === ALL_NETWORKS_VALUE;
+    const netCfg = isAll ? null : NETWORKS.find((n) => n.label === network);
+    const netValues = netCfg ? netCfg.values : null;
+    const cacheKey = `regional:${candidateId}:${network}`;
+
+    // Cache hit → render instantâneo (<50ms)
+    const cached = cache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < TTL_MS) {
+      setAggs(cached.data);
+      setLoading(false);
+      return () => { cancelled = true; };
+    }
+
+    // Mostra último cache válido (mesmo expirado) enquanto recarrega
+    if (cached) setAggs(cached.data);
+    setLoading(!cached);
+
     (async () => {
-      setLoading(true);
+      // Timeout defensivo
+      const timeout = new Promise<{ data: null; error: Error }>((resolve) =>
+        setTimeout(() => resolve({ data: null, error: new Error("timeout") }), 12_000),
+      );
+
       try {
-        const isAll = network === ALL_NETWORKS_VALUE;
-        const netCfg = isAll ? null : NETWORKS.find((n) => n.label === network);
-        const netValues = netCfg ? netCfg.values : null;
-        const EXCLUDED = new Set(["mastodon", "lemmy", "pinterest"]);
+        const call = supabase.rpc("get_regional_state_aggregates", {
+          p_user_id: userId,
+          p_candidate_id: candidateId,
+          p_networks: netValues,
+        });
 
-        // Sem cap artificial: usa 100% das menções via paginação.
-        const rows = await fetchAllPaginated<Row>((from, to) => {
-          let q = supabase
-            .from("social_interactions")
-            .select("id, comment_text, comment_author, sentiment_label, social_network, created_at")
-            .eq("user_id", userId)
-            .eq("candidate_id", candidateId)
-            .not("comment_text", "is", null)
-            .order("created_at", { ascending: false })
-            .range(from, to);
-          if (netValues) q = q.in("social_network", netValues);
-          return q;
-        }, 1000, 200_000);
-
+        const result = (await Promise.race([call, timeout])) as { data: any[] | null; error: any };
         if (cancelled) return;
 
-        const filtered = rows.filter((r) => !EXCLUDED.has((r.social_network || "").toLowerCase()));
+        if (result.error || !result.data) {
+          console.error("[BrazilStateMap]", result.error);
+          // Em timeout/erro mantém o último cache válido se houver
+          return;
+        }
 
         const acc = {} as Record<UF, UFAgg>;
         for (const uf of UFS) {
-          acc[uf] = { uf, total: 0, pos: 0, neg: 0, neu: 0, samples: [] };
+          acc[uf] = { uf, mentions: 0, positive_percentage: 0, negative_percentage: 0 };
         }
-        for (const r of filtered) {
-          const { uf } = inferLocation(r.comment_text, r.comment_author);
-          if (!uf) continue;
-          const a = acc[uf];
-          const k = sentimentKey(r.sentiment_label);
-          a.total++;
-          a[k]++;
-          if (a.samples.length < 30) a.samples.push(r);
+        for (const row of result.data as Array<{
+          state: string;
+          mentions: number;
+          positive_percentage: number | null;
+          negative_percentage: number | null;
+        }>) {
+          const uf = (row.state || "").toUpperCase() as UF;
+          if (!UFS.includes(uf)) continue;
+          acc[uf] = {
+            uf,
+            mentions: Number(row.mentions ?? 0),
+            positive_percentage: Number(row.positive_percentage ?? 0),
+            negative_percentage: Number(row.negative_percentage ?? 0),
+          };
         }
-
+        cache.set(cacheKey, { ts: Date.now(), data: acc });
         if (!cancelled) setAggs(acc);
-      } catch (e) {
-        console.error("[BrazilStateMap]", e);
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
+
     return () => { cancelled = true; };
   }, [userId, candidateId, network]);
 
   const ranking = useMemo(() => {
     return (Object.values(aggs) as UFAgg[])
-      .filter((a) => a.total > 0)
-      .sort((a, b) => b.total - a.total)
+      .filter((a) => a.mentions > 0)
+      .sort((a, b) => b.mentions - a.mentions)
       .slice(0, 10);
   }, [aggs]);
 
   const totalIdentified = useMemo(
-    () => (Object.values(aggs) as UFAgg[]).reduce((s, a) => s + a.total, 0),
+    () => (Object.values(aggs) as UFAgg[]).reduce((s, a) => s + a.mentions, 0),
     [aggs],
   );
-
-  const current = openUF ? aggs[openUF] : null;
 
   return (
     <Card>
@@ -133,16 +131,16 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
             Mapa por estado
           </CardTitle>
           <CardDescription>
-            Clique em uma UF para ver os comentários identificados naquele estado.
+            Distribuição agregada de menções por UF. Passe o mouse para ver os percentuais.
           </CardDescription>
         </div>
       </CardHeader>
       <CardContent>
-        {loading ? (
+        {loading && totalIdentified === 0 ? (
           <Skeleton className="h-[420px] w-full" />
         ) : totalIdentified === 0 ? (
           <div className="py-12 text-center text-sm text-muted-foreground">
-            Nenhuma localização (UF) foi identificada nos comentários desta combinação.
+            Nenhuma localização (UF) foi identificada para esta combinação.
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
@@ -158,15 +156,11 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
                     {(Object.entries(BR_STATES_MAP.states) as [UF, { path: string; cx: number; cy: number }][])
                       .map(([code, geom]) => {
                         const a = aggs[code];
-                        const fill = a && a.total > 0 ? colorFor(a.total, a.pos, a.neg) : "hsl(220, 13%, 88%)";
-                        const hasData = a && a.total > 0;
+                        const fill = colorFor(a);
                         return (
                           <Tooltip key={code}>
                             <TooltipTrigger asChild>
-                              <g
-                                onClick={() => hasData && setOpenUF(code)}
-                                className={hasData ? "cursor-pointer" : "cursor-not-allowed"}
-                              >
+                              <g>
                                 <path
                                   d={geom.path}
                                   fill={fill}
@@ -195,16 +189,14 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
                             <TooltipContent>
                               <div className="text-sm space-y-0.5">
                                 <div className="font-semibold">{UF_NAME[code]} ({code})</div>
-                                {hasData ? (
+                                {a && a.mentions > 0 ? (
                                   <>
-                                    <div>Menções: {Number(a!.total ?? 0).toLocaleString("pt-BR")}</div>
-                                    <div className="text-green-600">+ {a!.pos} positivos</div>
-                                    <div className="text-red-600">- {a!.neg} negativos</div>
-                                    <div className="text-muted-foreground">= {a!.neu} neutros</div>
-                                    <div className="text-xs text-muted-foreground mt-1">Clique para detalhes</div>
+                                    <div>Menções: {a.mentions.toLocaleString("pt-BR")}</div>
+                                    <div className="text-green-600">{a.positive_percentage}% aceitação</div>
+                                    <div className="text-red-600">{a.negative_percentage}% rejeição</div>
                                   </>
                                 ) : (
-                                  <div className="text-muted-foreground">Sem dados identificados</div>
+                                  <div className="text-muted-foreground">Sem dados</div>
                                 )}
                               </div>
                             </TooltipContent>
@@ -214,96 +206,44 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
                   </svg>
                 </div>
                 <p className="text-[11px] text-muted-foreground text-center mt-2">
-                  Mapa esquemático. As cores indicam aceitação (verde &gt;65%, amarelo 35-65%, vermelho &lt;35%).
+                  Mapa esquemático. Cores indicam aceitação (verde &gt;65%, amarelo 35-65%, vermelho &lt;35%).
                 </p>
               </TooltipProvider>
             </div>
 
             <div className="lg:col-span-2 space-y-2">
               <h4 className="text-sm font-semibold mb-2">Top estados por menções</h4>
-              {ranking.map((a) => {
-                const opin = a.pos + a.neg;
-                const posPct = opin > 0 ? Math.round((a.pos / opin) * 100) : 0;
-                return (
-                  <button
-                    key={a.uf}
-                    onClick={() => setOpenUF(a.uf)}
-                    className="w-full text-left rounded-lg border p-3 hover:border-primary/60 transition-all"
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-sm">{a.uf} · {UF_NAME[a.uf]}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {Number(a.total ?? 0).toLocaleString("pt-BR")}
-                      </span>
-                    </div>
-                    {opin >= 3 ? (
-                      <>
-                        <div className="flex h-1.5 rounded-full overflow-hidden bg-muted">
-                          <div className="bg-green-500" style={{ width: `${posPct}%` }} />
-                          <div className="bg-red-500" style={{ width: `${100 - posPct}%` }} />
-                        </div>
-                        <div className="flex justify-between text-[11px] mt-1">
-                          <span className="text-green-600">{posPct}% aceitação</span>
-                          <span className="text-red-600">{100 - posPct}% rejeição</span>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="text-[11px] text-muted-foreground italic">Poucas opiniões</div>
-                    )}
-                  </button>
-                );
-              })}
+              {ranking.map((a) => (
+                <div
+                  key={a.uf}
+                  className="w-full text-left rounded-lg border p-3"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-medium text-sm">{a.uf} · {UF_NAME[a.uf]}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {a.mentions.toLocaleString("pt-BR")}
+                    </span>
+                  </div>
+                  {a.positive_percentage + a.negative_percentage > 0 ? (
+                    <>
+                      <div className="flex h-1.5 rounded-full overflow-hidden bg-muted">
+                        <div className="bg-green-500" style={{ width: `${a.positive_percentage}%` }} />
+                        <div className="bg-red-500" style={{ width: `${a.negative_percentage}%` }} />
+                      </div>
+                      <div className="flex justify-between text-[11px] mt-1">
+                        <span className="text-green-600">{a.positive_percentage}% aceitação</span>
+                        <span className="text-red-600">{a.negative_percentage}% rejeição</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-[11px] text-muted-foreground italic">Sem opiniões classificadas</div>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         )}
       </CardContent>
-
-      <Dialog open={!!openUF} onOpenChange={(o) => !o && setOpenUF(null)}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <MapPin className="h-5 w-5 text-primary" />
-              {current ? `${UF_NAME[current.uf]} (${current.uf})` : ""}
-            </DialogTitle>
-            <DialogDescription>
-              {current ? `${Number(current.total ?? 0).toLocaleString("pt-BR")} comentários identificados` : ""}
-            </DialogDescription>
-          </DialogHeader>
-
-          {current && (
-            <div className="space-y-6">
-              <div>
-                <h4 className="text-sm font-semibold mb-2">Comentários recentes</h4>
-                <div className="space-y-2">
-                  {current.samples.slice(0, 15).map((r) => {
-                    const k = sentimentKey(r.sentiment_label);
-                    return (
-                      <div key={r.id} className="rounded-md border bg-card p-3 space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
-                          <span className="font-medium text-foreground">
-                            {r.comment_author || "Anônimo"}
-                          </span>
-                          <span>·</span>
-                          <span>{r.social_network}</span>
-                          <span className="ml-auto">
-                            {k === "pos" && <Badge className="bg-green-500/15 text-green-600 border-green-500/30"><ThumbsUp className="h-3 w-3 mr-1" />Positivo</Badge>}
-                            {k === "neg" && <Badge className="bg-red-500/15 text-red-600 border-red-500/30"><ThumbsDown className="h-3 w-3 mr-1" />Negativo</Badge>}
-                            {k === "neu" && <Badge variant="secondary"><Minus className="h-3 w-3 mr-1" />Neutro</Badge>}
-                          </span>
-                        </div>
-                        <p className="text-sm leading-snug">
-                          {(r.comment_text || "").slice(0, 280)}
-                          {(r.comment_text || "").length > 280 ? "…" : ""}
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </Card>
   );
 }
