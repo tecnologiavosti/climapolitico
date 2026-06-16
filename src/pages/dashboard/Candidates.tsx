@@ -57,6 +57,17 @@ export default function Candidates() {
   });
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
+  // Open add-candidate dialog automatically when navigated with ?add=1 (from sidebar)
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get("add") === "1") {
+      setDialogOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete("add");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
   // Fetch user's subscription
   const { data: subscription } = useQuery({
     queryKey: ['subscription'],
