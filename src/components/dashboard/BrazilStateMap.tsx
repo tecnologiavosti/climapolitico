@@ -146,37 +146,14 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
   return (
     <Card>
       <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <MapPin className="h-5 w-5 text-primary" />
-              Mapa por estado (UF) e cidade
-            </CardTitle>
-            <CardDescription>
-              Clique em uma UF para ver as cidades e comentários identificados naquele estado.
-            </CardDescription>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            <Badge variant="secondary">
-              <MessageSquare className="h-3 w-3 mr-1" />
-              {Number(totalScanned ?? 0).toLocaleString("pt-BR")} comentários
-            </Badge>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Badge variant="outline" className="cursor-help">
-                    <Info className="h-3 w-3 mr-1" />
-                    {Number(identified ?? 0).toLocaleString("pt-BR")} com localização identificada
-                  </Badge>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-xs">
-                  Identificamos a UF/cidade pelo conteúdo do comentário ou nome do autor
-                  (capitais, grandes cidades, nomes de estado e siglas). Comentários sem
-                  pistas geográficas explícitas não aparecem no mapa.
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <MapPin className="h-5 w-5 text-primary" />
+            Mapa por estado
+          </CardTitle>
+          <CardDescription>
+            Clique em uma UF para ver as cidades e comentários identificados naquele estado.
+          </CardDescription>
         </div>
       </CardHeader>
       <CardContent>
