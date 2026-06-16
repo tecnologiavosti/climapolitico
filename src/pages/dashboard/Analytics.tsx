@@ -12,6 +12,41 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { useAuth } from "@/hooks/useAuth";
 import { CollectionStatusPanel } from "@/components/dashboard/CollectionStatusPanel";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import {
+  WidgetBoundary,
+  WidgetStatusProvider,
+  useWidgetStatuses,
+} from "@/components/dashboard/WidgetBoundary";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
+
+const ANALYTICS_TIMEOUT_MS = 8000;
+
+function AnalyticsStatusBar() {
+  const statuses = useWidgetStatuses();
+  const entries = Object.entries(statuses);
+  if (entries.length === 0) return null;
+  const failed = entries.filter(([, s]) => s === "fail").map(([n]) => n);
+  const ok = entries.length - failed.length;
+  return (
+    <div
+      className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+        failed.length > 0
+          ? "border-destructive/40 bg-destructive/10 text-destructive"
+          : "border-success/40 bg-success/10 text-success"
+      }`}
+    >
+      {failed.length > 0 ? (
+        <AlertTriangle className="h-4 w-4 shrink-0" />
+      ) : (
+        <CheckCircle2 className="h-4 w-4 shrink-0" />
+      )}
+      <span>
+        Analytics carregado ({ok}/{entries.length} blocos)
+        {failed.length > 0 && ` • ${failed.length} bloco${failed.length === 1 ? "" : "s"} falhou: ${failed.join(", ")}`}
+      </span>
+    </div>
+  );
+}
 
 // Componentes de análise demográfica temporariamente ocultos
 // Motivo: YouTube Data API não fornece idade, gênero ou localização dos usuários
