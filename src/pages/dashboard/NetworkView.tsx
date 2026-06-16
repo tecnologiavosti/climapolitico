@@ -480,7 +480,25 @@ const THEME_KEYWORDS: Record<string, string[]> = {
   "Internacional": ["trump", "biden", "putin", "maduro", "milei", "ucrânia", "ucrania", "israel", "china"],
   "Meio Ambiente": ["amazônia", "amazonia", "desmatamento", "clima", "ambiental", "ibama"],
 };
-const STOPWORDS = new Set(["de","da","do","das","dos","a","o","e","é","em","um","uma","para","com","no","na","nos","nas","que","se","por","ao","aos","como","mais","mas","ou","já","foi","ser","sobre","ele","ela","eles","elas","isso","esse","essa","este","esta","quando","onde","sim","não","nao","sua","seu","suas","seus","vai","tem","teve","ter","só","so","muito","pelo","pela","entre","até","ate","você","voce","vocês","voces","https","http","com.br","www","amp"]);
+const STOPWORDS = new Set([
+  "de","da","do","das","dos","a","o","e","é","em","um","uma","para","com","no","na","nos","nas","que","se","por","ao","aos","como","mais","mas","ou","já","foi","ser","sobre","ele","ela","eles","elas","isso","esse","essa","este","esta","quando","onde","sim","não","nao","sua","seu","suas","seus","vai","tem","teve","ter","só","so","muito","pelo","pela","entre","até","ate","você","voce","vocês","voces",
+  // HTML/web noise
+  "https","http","com.br","www","amp","href","target","_blank","blank","font","nbsp","color","style","span","div","class","src","alt","img","html","body","head","meta","link","script","rel","noopener","noreferrer","google","news","com","br","org","net",
+]);
+const HEX_RE = /^[a-f0-9]{3}$|^[a-f0-9]{6}$/i;
+const HAS_LETTER_RE = /[a-zà-ÿ]/i;
+
+function cleanText(text: string): string {
+  if (!text) return "";
+  return text
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&[a-z#0-9]+;/gi, " ")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 function computeTopicsAndTerms(rows: Array<{ post_title: string | null; comment_text: string | null; social_network: string | null; sentiment_label: string | null }>) {
   console.log("[NetworkView] fallback rows:", rows.length);
