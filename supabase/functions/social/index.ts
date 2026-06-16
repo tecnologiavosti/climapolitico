@@ -65,10 +65,7 @@ serve(async (req) => {
       : (typeof error === "object" ? JSON.stringify(error) : String(error));
     console.error("[social/top-posts] erro", msg, JSON.stringify(error));
     return json({
-      ok: false,
-      message: /timeout|canceling statement/i.test(msg)
-        ? "A consulta de top posts demorou demais. Tente reduzir o período ou filtrar por rede."
-        : "Sem posts suficientes no período selecionado.",
+      ok: true,
       fallback: true,
       data: { top_posts: [] },
     }, 200);
