@@ -1,128 +1,54 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { MapPin, ThumbsUp, ThumbsDown, Minus } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { MapPin } from "lucide-react";
 import { BR_STATES_MAP } from "@/data/brStatesMap";
-import { UFS, UF_NAME, inferLocation, type UF } from "@/lib/brazilStatesInference";
-import { NETWORKS, ALL_NETWORKS_VALUE } from "@/pages/dashboard/regionalAnalysis.helpers";
-import { fetchAllPaginated } from "@/lib/supabasePagination";
+import { UFS, UF_NAME, type UF } from "@/lib/brazilStatesInference";
+
+interface CacheRow {
+  mentions: number;
+  positive: number;
+  negative: number;
+  neutral: number;
+  avg_engagement: number;
+}
 
 interface Props {
-  userId: string;
-  candidateId: string;
-  network: string;
+  loading?: boolean;
+  byState: Map<UF, CacheRow>;
+  selectedUF: UF | null;
+  onSelect: (uf: UF) => void;
 }
 
-interface Row {
-  id: string;
-  comment_text: string | null;
-  comment_author: string | null;
-  sentiment_label: string | null;
-  social_network: string;
-  created_at: string;
+function pct(n: number, d: number) {
+  if (!d) return 0;
+  return Math.round((n / d) * 1000) / 10;
 }
 
-interface UFAgg {
-  uf: UF;
-  total: number;
-  pos: number;
-  neg: number;
-  neu: number;
-  samples: Row[];
-}
-
-function colorFor(total: number, pos: number, neg: number): string {
-  if (total < 3) return "hsl(var(--muted))";
-  const opin = pos + neg;
+function colorFor(row: CacheRow | undefined) {
+  if (!row || row.mentions < 5) return "hsl(220, 13%, 88%)";
+  const opin = row.positive + row.negative;
   if (opin === 0) return "hsl(220, 13%, 80%)";
-  const acc = (pos / opin) * 100;
+  const acc = (row.positive / opin) * 100;
   if (acc > 65) return "hsl(142, 70%, 45%)";
   if (acc >= 35) return "hsl(45, 95%, 55%)";
   return "hsl(0, 75%, 55%)";
 }
 
-function sentimentKey(s: string | null): "pos" | "neg" | "neu" {
-  const k = (s || "").toLowerCase();
-  if (k === "positive" || k === "positivo") return "pos";
-  if (k === "negative" || k === "negativo") return "neg";
-  return "neu";
-}
-
-export default function BrazilStateMap({ userId, candidateId, network }: Props) {
-  const [loading, setLoading] = useState(false);
-  const [aggs, setAggs] = useState<Record<UF, UFAgg>>({} as Record<UF, UFAgg>);
-  const [openUF, setOpenUF] = useState<UF | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!userId || !candidateId) return;
-    (async () => {
-      setLoading(true);
-      try {
-        const isAll = network === ALL_NETWORKS_VALUE;
-        const netCfg = isAll ? null : NETWORKS.find((n) => n.label === network);
-        const netValues = netCfg ? netCfg.values : null;
-        const EXCLUDED = new Set(["mastodon", "lemmy", "pinterest"]);
-
-        // Sem cap artificial: usa 100% das menções via paginação.
-        const rows = await fetchAllPaginated<Row>((from, to) => {
-          let q = supabase
-            .from("social_interactions")
-            .select("id, comment_text, comment_author, sentiment_label, social_network, created_at")
-            .eq("user_id", userId)
-            .eq("candidate_id", candidateId)
-            .not("comment_text", "is", null)
-            .order("created_at", { ascending: false })
-            .range(from, to);
-          if (netValues) q = q.in("social_network", netValues);
-          return q;
-        }, 1000, 200_000);
-
-        if (cancelled) return;
-
-        const filtered = rows.filter((r) => !EXCLUDED.has((r.social_network || "").toLowerCase()));
-
-        const acc = {} as Record<UF, UFAgg>;
-        for (const uf of UFS) {
-          acc[uf] = { uf, total: 0, pos: 0, neg: 0, neu: 0, samples: [] };
-        }
-        for (const r of filtered) {
-          const { uf } = inferLocation(r.comment_text, r.comment_author);
-          if (!uf) continue;
-          const a = acc[uf];
-          const k = sentimentKey(r.sentiment_label);
-          a.total++;
-          a[k]++;
-          if (a.samples.length < 30) a.samples.push(r);
-        }
-
-        if (!cancelled) setAggs(acc);
-      } catch (e) {
-        console.error("[BrazilStateMap]", e);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [userId, candidateId, network]);
-
-  const ranking = useMemo(() => {
-    return (Object.values(aggs) as UFAgg[])
-      .filter((a) => a.total > 0)
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 10);
-  }, [aggs]);
-
-  const totalIdentified = useMemo(
-    () => (Object.values(aggs) as UFAgg[]).reduce((s, a) => s + a.total, 0),
-    [aggs],
+export default function BrazilStateMap({ loading, byState, selectedUF, onSelect }: Props) {
+  const ranking = useMemo(
+    () => (Array.from(byState.entries()) as [UF, CacheRow][])
+      .filter(([, r]) => r.mentions > 0)
+      .sort(([, a], [, b]) => b.mentions - a.mentions)
+      .slice(0, 10),
+    [byState],
   );
 
-  const current = openUF ? aggs[openUF] : null;
+  const totalIdentified = useMemo(
+    () => Array.from(byState.values()).reduce((s, r) => s + r.mentions, 0),
+    [byState],
+  );
 
   return (
     <Card>
@@ -130,10 +56,10 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
         <div>
           <CardTitle className="flex items-center gap-2">
             <MapPin className="h-5 w-5 text-primary" />
-            Mapa por estado
+            Mapa por Estado
           </CardTitle>
           <CardDescription>
-            Clique em uma UF para ver os comentários identificados naquele estado.
+            Clique em uma UF para ver as métricas no painel abaixo. Mapa estático, sem coleta de comentários.
           </CardDescription>
         </div>
       </CardHeader>
@@ -142,99 +68,75 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
           <Skeleton className="h-[420px] w-full" />
         ) : totalIdentified === 0 ? (
           <div className="py-12 text-center text-sm text-muted-foreground">
-            Nenhuma localização (UF) foi identificada nos comentários desta combinação.
+            Nenhuma UF identificada ainda. Clique em "Atualizar agora" para rodar a inferência.
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
             <div className="lg:col-span-3">
               <TooltipProvider delayDuration={120}>
                 <div className="w-full flex justify-center">
-                  <svg
-                    viewBox={BR_STATES_MAP.viewBox}
-                    className="w-full max-w-lg h-auto"
-                    role="img"
-                    aria-label="Mapa do Brasil por estado"
-                  >
-                    {(Object.entries(BR_STATES_MAP.states) as [UF, { path: string; cx: number; cy: number }][])
-                      .map(([code, geom]) => {
-                        const a = aggs[code];
-                        const fill = a && a.total > 0 ? colorFor(a.total, a.pos, a.neg) : "hsl(220, 13%, 88%)";
-                        const hasData = a && a.total > 0;
-                        return (
-                          <Tooltip key={code}>
-                            <TooltipTrigger asChild>
-                              <g
-                                onClick={() => hasData && setOpenUF(code)}
-                                className={hasData ? "cursor-pointer" : "cursor-not-allowed"}
-                              >
-                                <path
-                                  d={geom.path}
-                                  fill={fill}
-                                  stroke="hsl(var(--background))"
-                                  strokeWidth={0.8}
-                                  className="transition-all hover:opacity-80"
-                                />
-                                <text
-                                  x={geom.cx}
-                                  y={geom.cy}
-                                  textAnchor="middle"
-                                  dominantBaseline="middle"
-                                  className="fill-white font-bold pointer-events-none"
-                                  style={{
-                                    fontSize: 11,
-                                    paintOrder: "stroke",
-                                    stroke: "rgba(0,0,0,0.6)",
-                                    strokeWidth: 2.5,
-                                    strokeLinejoin: "round",
-                                  }}
-                                >
-                                  {code}
-                                </text>
-                              </g>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <div className="text-sm space-y-0.5">
-                                <div className="font-semibold">{UF_NAME[code]} ({code})</div>
-                                {hasData ? (
-                                  <>
-                                    <div>Menções: {Number(a!.total ?? 0).toLocaleString("pt-BR")}</div>
-                                    <div className="text-green-600">+ {a!.pos} positivos</div>
-                                    <div className="text-red-600">- {a!.neg} negativos</div>
-                                    <div className="text-muted-foreground">= {a!.neu} neutros</div>
-                                    <div className="text-xs text-muted-foreground mt-1">Clique para detalhes</div>
-                                  </>
-                                ) : (
-                                  <div className="text-muted-foreground">Sem dados identificados</div>
-                                )}
-                              </div>
-                            </TooltipContent>
-                          </Tooltip>
-                        );
-                      })}
+                  <svg viewBox={BR_STATES_MAP.viewBox} className="w-full max-w-lg h-auto"
+                       role="img" aria-label="Mapa do Brasil por estado">
+                    {(Object.entries(BR_STATES_MAP.states) as [UF, { path: string; cx: number; cy: number }][]).map(([code, geom]) => {
+                      const row = byState.get(code);
+                      const hasData = !!row && row.mentions > 0;
+                      const fill = colorFor(row);
+                      const selected = selectedUF === code;
+                      return (
+                        <Tooltip key={code}>
+                          <TooltipTrigger asChild>
+                            <g onClick={() => hasData && onSelect(code)}
+                               className={hasData ? "cursor-pointer" : "cursor-not-allowed"}>
+                              <path d={geom.path} fill={fill}
+                                stroke={selected ? "hsl(var(--primary))" : "hsl(var(--background))"}
+                                strokeWidth={selected ? 2 : 0.8}
+                                className="transition-all hover:opacity-80" />
+                              <text x={geom.cx} y={geom.cy} textAnchor="middle" dominantBaseline="middle"
+                                className="fill-white font-bold pointer-events-none"
+                                style={{ fontSize: 11, paintOrder: "stroke", stroke: "rgba(0,0,0,0.6)", strokeWidth: 2.5, strokeLinejoin: "round" }}>
+                                {code}
+                              </text>
+                            </g>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <div className="text-sm space-y-0.5">
+                              <div className="font-semibold">{UF_NAME[code]} ({code})</div>
+                              {hasData ? (
+                                <>
+                                  <div>Menções: {row!.mentions.toLocaleString("pt-BR")}</div>
+                                  <div className="text-green-600">+ {row!.positive} positivos ({pct(row!.positive, row!.mentions)}%)</div>
+                                  <div className="text-red-600">- {row!.negative} negativos ({pct(row!.negative, row!.mentions)}%)</div>
+                                  <div className="text-muted-foreground">= {row!.neutral} neutros ({pct(row!.neutral, row!.mentions)}%)</div>
+                                  <div className="text-xs text-muted-foreground">Eng. médio: {row!.avg_engagement}</div>
+                                </>
+                              ) : (
+                                <div className="text-muted-foreground">Sem dados identificados</div>
+                              )}
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      );
+                    })}
                   </svg>
                 </div>
                 <p className="text-[11px] text-muted-foreground text-center mt-2">
-                  Mapa esquemático. As cores indicam aceitação (verde &gt;65%, amarelo 35-65%, vermelho &lt;35%).
+                  Cores: verde &gt;65% aceitação, amarelo 35-65%, vermelho &lt;35%.
                 </p>
               </TooltipProvider>
             </div>
 
             <div className="lg:col-span-2 space-y-2">
               <h4 className="text-sm font-semibold mb-2">Top estados por menções</h4>
-              {ranking.map((a) => {
-                const opin = a.pos + a.neg;
-                const posPct = opin > 0 ? Math.round((a.pos / opin) * 100) : 0;
+              {ranking.map(([uf, r]) => {
+                const opin = r.positive + r.negative;
+                const posPct = pct(r.positive, opin);
+                const selected = selectedUF === uf;
                 return (
-                  <button
-                    key={a.uf}
-                    onClick={() => setOpenUF(a.uf)}
-                    className="w-full text-left rounded-lg border p-3 hover:border-primary/60 transition-all"
-                  >
+                  <button key={uf} onClick={() => onSelect(uf)}
+                    className={`w-full text-left rounded-lg border p-3 transition-all hover:border-primary/60 ${selected ? "border-primary bg-primary/5" : ""}`}>
                     <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-sm">{a.uf} · {UF_NAME[a.uf]}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {Number(a.total ?? 0).toLocaleString("pt-BR")}
-                      </span>
+                      <span className="font-medium text-sm">{uf} · {UF_NAME[uf]}</span>
+                      <span className="text-xs text-muted-foreground">{r.mentions.toLocaleString("pt-BR")}</span>
                     </div>
                     {opin >= 3 ? (
                       <>
@@ -244,7 +146,7 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
                         </div>
                         <div className="flex justify-between text-[11px] mt-1">
                           <span className="text-green-600">{posPct}% aceitação</span>
-                          <span className="text-red-600">{100 - posPct}% rejeição</span>
+                          <span className="text-red-600">{Math.round((100 - posPct) * 10) / 10}% rejeição</span>
                         </div>
                       </>
                     ) : (
@@ -253,57 +155,13 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
                   </button>
                 );
               })}
+              <p className="text-[11px] text-muted-foreground pt-1">
+                Total de {UFS.length} UFs · {Array.from(byState.values()).filter(r => r.mentions > 0).length} com dados.
+              </p>
             </div>
           </div>
         )}
       </CardContent>
-
-      <Dialog open={!!openUF} onOpenChange={(o) => !o && setOpenUF(null)}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <MapPin className="h-5 w-5 text-primary" />
-              {current ? `${UF_NAME[current.uf]} (${current.uf})` : ""}
-            </DialogTitle>
-            <DialogDescription>
-              {current ? `${Number(current.total ?? 0).toLocaleString("pt-BR")} comentários identificados` : ""}
-            </DialogDescription>
-          </DialogHeader>
-
-          {current && (
-            <div className="space-y-6">
-              <div>
-                <h4 className="text-sm font-semibold mb-2">Comentários recentes</h4>
-                <div className="space-y-2">
-                  {current.samples.slice(0, 15).map((r) => {
-                    const k = sentimentKey(r.sentiment_label);
-                    return (
-                      <div key={r.id} className="rounded-md border bg-card p-3 space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
-                          <span className="font-medium text-foreground">
-                            {r.comment_author || "Anônimo"}
-                          </span>
-                          <span>·</span>
-                          <span>{r.social_network}</span>
-                          <span className="ml-auto">
-                            {k === "pos" && <Badge className="bg-green-500/15 text-green-600 border-green-500/30"><ThumbsUp className="h-3 w-3 mr-1" />Positivo</Badge>}
-                            {k === "neg" && <Badge className="bg-red-500/15 text-red-600 border-red-500/30"><ThumbsDown className="h-3 w-3 mr-1" />Negativo</Badge>}
-                            {k === "neu" && <Badge variant="secondary"><Minus className="h-3 w-3 mr-1" />Neutro</Badge>}
-                          </span>
-                        </div>
-                        <p className="text-sm leading-snug">
-                          {(r.comment_text || "").slice(0, 280)}
-                          {(r.comment_text || "").length > 280 ? "…" : ""}
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </Card>
   );
 }
