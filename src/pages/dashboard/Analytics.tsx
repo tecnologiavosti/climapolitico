@@ -61,7 +61,7 @@ export default function Analytics() {
 
   // Query: Buscar TODOS os dados reais de social_interactions com paginação
   // (Supabase limita 1000 linhas por request — paginamos para pegar todo o histórico)
-  const { data: interactions, isLoading } = useQuery({
+  const { data: interactions, isLoading, error: queryError } = useQuery({
     queryKey: ['analytics-interactions', dateRange, user?.id],
     queryFn: async () => {
       if (!user) return [];
@@ -74,38 +74,77 @@ export default function Analytics() {
       const endDate = dateRange?.to ? new Date(dateRange.to) : null;
       if (endDate) endDate.setDate(endDate.getDate() + 1);
 
-      while (true) {
-        let query = supabase
-          .from('social_interactions')
-          .select('id, sentiment_label, sentiment_score, likes_count, social_network, created_at, comment_author')
-          .eq('user_id', user.id)
-          .not('social_network', 'in', '(mastodon,lemmy,pinterest)')
-          .order('created_at', { ascending: true })
-          .range(offset, offset + PAGE_SIZE - 1);
+      const startedAt = performance.now();
+      const payload = {
+        user_id: user.id,
+        from: dateRange?.from?.toISOString() ?? null,
+        to: endDate?.toISOString() ?? null,
+      };
 
-        if (dateRange?.from) {
-          query = query.gte('created_at', dateRange.from.toISOString());
+      const fetchAll = async () => {
+        while (true) {
+          let query = supabase
+            .from('social_interactions')
+            .select('id, sentiment_label, sentiment_score, likes_count, social_network, created_at, comment_author')
+            .eq('user_id', user.id)
+            .not('social_network', 'in', '(mastodon,lemmy,pinterest)')
+            .order('created_at', { ascending: true })
+            .range(offset, offset + PAGE_SIZE - 1);
+
+          if (dateRange?.from) {
+            query = query.gte('created_at', dateRange.from.toISOString());
+          }
+          if (endDate) {
+            query = query.lt('created_at', endDate.toISOString());
+          }
+
+          const { data, error } = await query;
+          if (error) throw error;
+          if (!data || data.length === 0) break;
+
+          all.push(...(data as Row[]));
+          if (data.length < PAGE_SIZE) break;
+          offset += PAGE_SIZE;
+
+          if (offset > 200000) break;
         }
-        if (endDate) {
-          query = query.lt('created_at', endDate.toISOString());
-        }
+        return all;
+      };
 
-        const { data, error } = await query;
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-
-        all.push(...(data as Row[]));
-        if (data.length < PAGE_SIZE) break;
-        offset += PAGE_SIZE;
-
-        // safety cap to avoid runaway loops
-        if (offset > 200000) break;
+      try {
+        const result = await Promise.race([
+          fetchAll(),
+          new Promise<Row[]>((_, reject) =>
+            setTimeout(
+              () => reject(new Error(`Timeout: query excedeu ${ANALYTICS_TIMEOUT_MS}ms`)),
+              ANALYTICS_TIMEOUT_MS,
+            ),
+          ),
+        ]);
+        const elapsed = Math.round(performance.now() - startedAt);
+        console.info("[Analytics]", {
+          widget: "social_interactions",
+          payload,
+          elapsedMs: elapsed,
+          rows: result.length,
+        });
+        return result;
+      } catch (error) {
+        const elapsed = Math.round(performance.now() - startedAt);
+        console.error("[Analytics]", {
+          widget: "social_interactions",
+          payload,
+          elapsedMs: elapsed,
+          error: error instanceof Error ? error.message : String(error),
+          partialRows: all.length,
+        });
+        // Return partial data so other blocks can render
+        return all;
       }
-
-      return all;
     },
     enabled: !!user,
     staleTime: 60_000,
+    retry: false,
   });
 
 
