@@ -452,10 +452,12 @@ export default function Analytics() {
           )}
         </CardContent>
       </Card>
+      </WidgetBoundary>
 
       {/* Charts Row */}
       <div className="grid gap-6 md:grid-cols-2">
         {/* Sentiment Distribution */}
+        <WidgetBoundary name="Distribuição de Sentimento">
         <Card>
           <CardHeader>
             <HelpTooltip text="Pizza com a divisão entre comentários positivos, negativos e neutros.">
