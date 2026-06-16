@@ -371,7 +371,7 @@ export default function NetworkView() {
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <Kpi label="Total de menções" value={fmt(total)} icon={<MessageSquare className="h-4 w-4" />} loading={isLoadingCore} />
-        <Kpi label="Interações" value={compact(k?.engagement ?? 0)} icon={<Activity className="h-4 w-4" />} loading={isLoadingCore} sub={`${fmt(k?.likes ?? 0)} curtidas`} />
+        <Kpi label="Interações" value={compact(realInteractions)} icon={<Activity className="h-4 w-4" />} loading={isLoadingCore} sub={`${compact(k?.likes ?? 0)} ♥ · ${compact(k?.replies ?? 0)} 💬 · ${compact(k?.shares ?? 0)} ↗`} />
         <Kpi label="Sentimento positivo" value={`${posPct}%`} icon={<Heart className="h-4 w-4 text-success" />} loading={isLoadingCore} sub={`${fmt(k?.pos ?? 0)} menções`} tone="success" delta={prevLabeled > 0 ? posPct - prevPosPct : undefined} />
         <Kpi label="Sentimento negativo" value={`${negPct}%`} icon={<TrendingDown className="h-4 w-4 text-destructive" />} loading={isLoadingCore} sub={`${fmt(k?.neg ?? 0)} menções`} tone="destructive" delta={prevLabeled > 0 ? negPct - prevNegPct : undefined} invertDelta />
         <Kpi label="Crescimento" value={growthPct === null ? "—" : `${growthPct >= 0 ? "+" : ""}${growthPct}%`} icon={growthPct === null || growthPct >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} loading={isLoadingCore} sub={growthPct === null ? "Sem base histórica suficiente" : "vs. período anterior"} tone={growthPct === null || growthPct >= 0 ? "success" : "destructive"} />
