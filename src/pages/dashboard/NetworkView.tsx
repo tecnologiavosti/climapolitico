@@ -92,14 +92,27 @@ const emptyKpis: Agg["kpis"] = {
 const fmt = (n: number) => Number(n ?? 0).toLocaleString("pt-BR");
 const compact = (n: number) => Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
-const growth = (cur: number, prev: number) => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null);
+// Crescimento: exige base mínima de 10 e satura em ±500% para não distorcer.
+const growth = (cur: number, prev: number) => {
+  if (prev < 10) return null;
+  const g = Math.round(((cur - prev) / prev) * 100);
+  if (g > 500) return 500;
+  if (g < -100) return -100;
+  return g;
+};
+const HASHTAG_BLOCKLIST = /\b(fyp+|fyppp+|foryou|foryoupage|parati|viral\d*|funny|funnyvideos?|trending|tiktok|reels?|shorts?|explore|explorepage|likes?forlikes?|followme|like4like|comedy|memes?)\b/i;
 const isValidHashtag = (tag: string) => {
   const clean = tag
     .normalize("NFD")
     .replace(/[\u0300-\u036f\u200B-\u200D\uFEFF\u00A0]/g, "")
     .toLowerCase()
     .replace(/^#+/, "");
-  return clean.length >= 3 && clean.length <= 40 && /[a-z]/.test(clean) && !/^(x200b|xfeff|nbsp|amp|[0-9_\-]+|[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(clean);
+  if (clean.length < 3 || clean.length > 40) return false;
+  if (!/[a-z]/.test(clean)) return false;
+  if (/(.)\1{5,}/.test(clean)) return false; // 6+ caracteres repetidos
+  if (HASHTAG_BLOCKLIST.test(clean)) return false;
+  if (/^(x200b|xfeff|nbsp|amp|[0-9_\-]+|[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(clean)) return false;
+  return true;
 };
 const isWithinSelectedPeriod = (date: string | null | undefined, days: number) => {
   if (!date) return false;
