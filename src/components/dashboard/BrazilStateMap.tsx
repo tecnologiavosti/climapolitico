@@ -72,12 +72,24 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
           p_networks: netValues,
         });
 
-        const result = (await Promise.race([call, timeout])) as { data: any[] | null; error: any };
+        // Conta menções classificadas por região (mesma base do mapa por região)
+        let regionCountQuery = supabase
+          .from("social_interactions")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", userId)
+          .eq("candidate_id", candidateId)
+          .not("region", "is", null)
+          .not("social_network", "in", "(mastodon,lemmy,pinterest)");
+        if (netValues) regionCountQuery = regionCountQuery.in("social_network", netValues);
+
+        const [result, regionCountRes] = (await Promise.all([
+          Promise.race([call, timeout]),
+          regionCountQuery,
+        ])) as [{ data: any[] | null; error: any }, { count: number | null }];
         if (cancelled) return;
 
         if (result.error || !result.data) {
           console.error("[BrazilStateMap]", result.error);
-          // Em timeout/erro mantém o último cache válido se houver
           return;
         }
 
@@ -85,6 +97,7 @@ export default function BrazilStateMap({ userId, candidateId, network }: Props) 
         for (const uf of UFS) {
           acc[uf] = { uf, mentions: 0, positive_percentage: 0, negative_percentage: 0 };
         }
+        let stateTotal = 0;
         for (const row of result.data as Array<{
           state: string;
           mentions: number;
