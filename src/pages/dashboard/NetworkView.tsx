@@ -64,7 +64,13 @@ type Agg = {
   topics: { theme: string; mentions: number; pos: number; neg: number; neu: number; prev_mentions: number }[];
   top_posts: { id: string; social_network: string; comment_text: string; comment_author: string; sent: string; eng: number; score?: number; likes: number; replies: number; shares: number; views?: number; thumbnail_url?: string | null; post_url?: string | null; original_posted_at: string; collected_at: string }[];
   analytics?: unknown;
-  debug?: { mentions: number; posts: number; classified: number; themes: number; hashtags: number; top_posts: number };
+  debug?: {
+    totalInDatabase?: number; rawTotalInDatabase?: number; afterInvalidationFilter?: number;
+    afterPeriodFilter?: number; afterCandidateFilter?: number; afterPlatformFilter?: number;
+    afterDeduplication?: number; deduplicatedPosts?: number; finalAnalyticsCount?: number;
+    loss?: number; lossPct?: number; periodMode?: string;
+    mentions: number; posts: number; classified: number; themes: number; hashtags: number; top_posts: number;
+  };
 };
 
 type SectionResponse<T> = {
@@ -90,13 +96,10 @@ const emptyKpis: Agg["kpis"] = {
 const fmt = (n: number) => Number(n ?? 0).toLocaleString("pt-BR");
 const compact = (n: number) => Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
-// Crescimento: exige base mínima de 20 e satura em ±500% para não distorcer.
+// Crescimento: exige base mínima de 20; sem teto artificial para não mascarar bug.
 const growth = (cur: number, prev: number) => {
   if (prev < 20) return null;
-  const g = Math.round(((cur - prev) / prev) * 100);
-  if (g > 500) return 500;
-  if (g < -100) return -100;
-  return g;
+  return Math.round(((cur - prev) / prev) * 100);
 };
 const HASHTAG_BLOCKLIST = /\b(fyp+|fyppp+|foryou|foryoupage|parati|viral\d*|funny|funnyvideos?|trending|tiktok|reels?|shorts?|explore|explorepage|likes?forlikes?|followme|like4like|comedy|memes?)\b/i;
 const isValidHashtag = (tag: string) => {
@@ -127,7 +130,7 @@ export default function NetworkView() {
   const { isAdmin } = useAdminCheck();
   const [network, setNetwork] = useState("all");
   const [candidateId, setCandidateId] = useState<string>("all");
-  const [days, setDays] = useState(30);
+  const [days, setDays] = useState(3650);
 
   const { data: candidates } = useQuery({
     queryKey: ["nv-candidates", user?.id, isAdmin],
@@ -161,6 +164,14 @@ export default function NetworkView() {
       if ((response.data?.top_posts?.length ?? 0) === 0 && (response.data?.kpis?.engagement ?? 0) > 0) {
         console.error("TOP_POSTS_PIPELINE_FAILED", { elapsed, debug: response.data?.debug, queryParams });
       }
+      console.log({
+        totalInDatabase: response.data?.debug?.totalInDatabase,
+        afterPeriodFilter: response.data?.debug?.afterPeriodFilter,
+        afterCandidateFilter: response.data?.debug?.afterCandidateFilter,
+        afterPlatformFilter: response.data?.debug?.afterPlatformFilter,
+        afterDeduplication: response.data?.debug?.afterDeduplication,
+        finalAnalyticsCount: response.data?.debug?.finalAnalyticsCount,
+      });
       console.info("[NetworkView] analytics loaded", { elapsed, diagnostics: response?.diagnostics });
       return response;
     },
@@ -183,7 +194,7 @@ export default function NetworkView() {
     heatmap: analyticsData?.heatmap ?? [],
     hashtags: (analyticsData?.hashtags ?? []).filter((h) => isValidHashtag(h.tag)),
     topics: (analyticsData?.topics ?? []).filter((t) => t.theme?.trim() && t.mentions > 0),
-    top_posts: (analyticsData?.top_posts ?? []).filter((p) => isWithinSelectedPeriod(p.original_posted_at, days)),
+    top_posts: analyticsData?.top_posts ?? [],
     analytics: analyticsData?.analytics,
     debug: analyticsData?.debug,
   };
