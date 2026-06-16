@@ -110,6 +110,7 @@ const sections: Section[] = [
     title: "Conta",
     icon: SettingsIcon,
     items: [
+      { label: "Coleta", icon: Database, to: "/dashboard/collection-status" },
       { label: "Notificações", icon: Bell, to: "/dashboard/notifications" },
       { label: "Configurações", icon: SettingsIcon, to: "/dashboard/settings" },
     ],
