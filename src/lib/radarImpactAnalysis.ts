@@ -64,6 +64,56 @@ function detectImpact(category: string, importance: number, sourceCount: number)
   return "Baixo";
 }
 
+function institutionalNarrative(category: string): string {
+  switch (category) {
+    case "STF":
+      return "Por envolver diretamente o Supremo Tribunal Federal, o caso eleva a tensão institucional e tende a reverberar nos três Poderes.";
+    case "TSE":
+      return "Por tramitar no TSE, o episódio se conecta diretamente às regras da disputa eleitoral e pode redefinir o terreno da campanha.";
+    case "PF":
+      return "A presença da Polícia Federal adiciona peso investigativo e amplia o desgaste reputacional dos envolvidos.";
+    case "CPI":
+      return "O ambiente de CPI cria exposição pública prolongada, com forte disputa narrativa entre governo e oposição.";
+    case "Prisões":
+    case "Julgamentos":
+      return "Por envolver decisão judicial de natureza restritiva, o caso projeta impacto institucional imediato.";
+    case "Escândalos":
+      return "A natureza de escândalo tende a polarizar a opinião pública e mobilizar bases adversárias com intensidade.";
+    default:
+      return "O caso tem peso institucional dentro do padrão da categoria, sem fator agravante adicional.";
+  }
+}
+
+function electoralNarrative(impact: ImpactLevel, tone: ToneLevel): string {
+  if (tone === "Desfavorável" && impact !== "Baixo") {
+    return "No campo eleitoral, há risco real de erosão de apoio entre eleitores menos fidelizados e ampliação da rejeição.";
+  }
+  if (tone === "Favorável" && impact !== "Baixo") {
+    return "No campo eleitoral, o episódio pode consolidar a base e atrair eleitores indecisos sensíveis ao tema.";
+  }
+  return "No campo eleitoral, o efeito tende a ser marginal no curto prazo, sem deslocamento expressivo de intenção de voto.";
+}
+
+function reputationalNarrative(tone: ToneLevel): string {
+  if (tone === "Desfavorável") {
+    return "Reputacionalmente, a leitura predominante tende a ser negativa, reforçando narrativas críticas já em circulação.";
+  }
+  if (tone === "Favorável") {
+    return "Reputacionalmente, o tom favorece a imagem pública e dá munição para a comunicação do candidato.";
+  }
+  return "Reputacionalmente, o tom é ambíguo e abre espaço para leituras conflitantes entre apoiadores e opositores.";
+}
+
+function socialNarrative(social: SocialLevel, score: number): string {
+  if (social === "Alta") {
+    return `Socialmente, a repercussão é alta (score ${score}), com tendência de viralização e polarização nas redes.`;
+  }
+  if (social === "Moderada") {
+    return `Socialmente, a repercussão é moderada (score ${score}), mantendo o tema vivo sem explodir o debate.`;
+  }
+  return `Socialmente, a repercussão ainda é baixa (score ${score}), mas pode escalar caso surjam novos desdobramentos.`;
+}
+
 export function analyzeEventImpact(e: EventInput): ImpactAnalysis {
   const category = e.category || "Outros";
   const importance = e.importance ?? 0;
@@ -75,29 +125,15 @@ export function analyzeEventImpact(e: EventInput): ImpactAnalysis {
   const social = detectSocial(social_score);
   const impact = detectImpact(category, importance, source_count);
 
-  const toneText =
-    tone === "Desfavorável"
-      ? "tende a desgastar a imagem pública do candidato"
-      : tone === "Favorável"
-      ? "tende a fortalecer a imagem pública do candidato"
-      : "tem efeito neutro sobre a imagem pública do candidato";
-
-  const socialText =
-    social === "Alta"
-      ? "com forte repercussão nas redes sociais"
-      : social === "Moderada"
-      ? "com repercussão moderada nas redes"
-      : "com repercussão social limitada";
-
-  const categoryText = HIGH_IMPACT_CATEGORIES.has(category)
-    ? `Por envolver ${category}, o caso ganha peso institucional adicional.`
-    : `Categoria ${category} com peso institucional padrão.`;
-
-  const sourcesText = source_count >= 5
-    ? `Cobertura ampla, com ${source_count} fontes registradas.`
-    : `Cobertura limitada (${source_count} fontes).`;
-
-  const text = `${categoryText} O evento ${toneText}, ${socialText} (score ${social_score}). ${sourcesText} Impacto político estimado: ${impact.toLowerCase()}.`;
+  const text = [
+    institutionalNarrative(category),
+    electoralNarrative(impact, tone),
+    reputationalNarrative(tone),
+    socialNarrative(social, social_score),
+    source_count >= 5
+      ? `Cobertura ampla com ${source_count} fontes reforça a relevância do episódio.`
+      : `Cobertura ainda limitada (${source_count} fontes) — acompanhar evolução.`,
+  ].join(" ");
 
   return { impact, tone, social, text };
 }
