@@ -413,14 +413,43 @@ export default function NetworkView() {
         <Kpi label="Rede dominante" value={dominant === "—" ? "—" : dominant.charAt(0).toUpperCase() + dominant.slice(1)} icon={<Crown className="h-4 w-4" />} loading={isLoadingCore} sub={dominantNet && total > 0 ? `${fmt(dominantNet.mentions)} menções · ${compact(dominantNet.engagement || 0)} int.` : ""} />
       </div>
 
+      {/* AI Alerts */}
+      {!isLoadingCore && aiAlerts.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {aiAlerts.map((a, i) => {
+            const toneClass = a.level === "destructive" ? "border-destructive/40 bg-destructive/5"
+              : a.level === "warning" ? "border-warning/40 bg-warning/5"
+              : "border-success/40 bg-success/5";
+            const iconClass = a.level === "destructive" ? "text-destructive"
+              : a.level === "warning" ? "text-warning" : "text-success";
+            return (
+              <Card key={i} className={`p-3 flex items-start gap-2 ${toneClass}`}>
+                <AlertTriangle className={`h-4 w-4 mt-0.5 shrink-0 ${iconClass}`} />
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold">{a.title}</div>
+                  <div className="text-[11px] text-muted-foreground">{a.detail}</div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
       {/* AI Insight */}
-      {!isLoadingCore && aiSummary && (
+      {!isLoadingCore && aiBullets && (
         <Card className="p-5 bg-gradient-to-br from-primary/5 to-accent/5 border-primary/20">
           <div className="flex items-start gap-3">
-            <div className="p-2 rounded-lg bg-primary/10"><Sparkles className="h-5 w-5 text-primary" /></div>
-            <div>
-              <h3 className="font-bold mb-1">Resumo da IA</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">{aiSummary}</p>
+            <div className="p-2 rounded-lg bg-primary/10 shrink-0"><Sparkles className="h-5 w-5 text-primary" /></div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold mb-2">Resumo executivo</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2">
+                {aiBullets.map((b) => (
+                  <div key={b.label} className="text-sm">
+                    <span className="font-semibold text-foreground">{b.label}: </span>
+                    <span className="text-muted-foreground">{b.text}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </Card>
