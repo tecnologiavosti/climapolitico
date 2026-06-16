@@ -23,6 +23,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { analyzeEventImpact, type ImpactAnalysis } from "@/lib/radarImpactAnalysis";
 
 interface RadarEvent {
   id: string;
@@ -752,6 +753,11 @@ export default function RadarPolitico() {
                             <p className="text-xs text-muted-foreground mt-1 line-clamp-2 break-words [overflow-wrap:anywhere]">{s}</p>
                           ) : null;
                         })()}
+                        <ImpactSection analysis={analyzeEventImpact({
+                          title: e.title, summary: e.summary, category: e.category,
+                          social_score: e.social_score, importance: e.importance, source_count: e.source_count,
+                        })} compact />
+
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${b.tone}`}>
@@ -831,6 +837,11 @@ export default function RadarPolitico() {
                     </div>
                   );
                 })()}
+                <ImpactSection analysis={analyzeEventImpact({
+                  title: selected.title, summary: selected.summary, category: selected.category,
+                  social_score: selected.social_score, importance: selected.importance, source_count: selected.source_count,
+                })} />
+
                 {selected.sources?.length > 0 && (() => {
                   const names = Array.from(
                     new Set(
@@ -897,3 +908,47 @@ function Stat({ label, value }: { label: string; value: number }) {
     </div>
   );
 }
+
+function ImpactSection({ analysis, compact = false }: { analysis: ImpactAnalysis; compact?: boolean }) {
+  const impactTone =
+    analysis.impact === "Alto"
+      ? "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30"
+      : analysis.impact === "Médio"
+      ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
+      : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30";
+  const toneTone =
+    analysis.tone === "Desfavorável"
+      ? "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30"
+      : analysis.tone === "Favorável"
+      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+      : "bg-muted text-muted-foreground border-border";
+  const socialTone =
+    analysis.social === "Alta"
+      ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30"
+      : analysis.social === "Moderada"
+      ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
+      : "bg-muted text-muted-foreground border-border";
+
+  return (
+    <div className={cn("mt-2 rounded-md border border-border/60 bg-muted/30 p-2", compact ? "space-y-1.5" : "space-y-2 p-3")}>
+      <div className={cn("uppercase tracking-wider text-muted-foreground", compact ? "text-[10px]" : "text-xs")}>
+        Análise de impacto
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        <span className={cn("px-1.5 py-0.5 rounded border text-[10px] font-medium", impactTone)}>
+          Impacto: {analysis.impact}
+        </span>
+        <span className={cn("px-1.5 py-0.5 rounded border text-[10px] font-medium", toneTone)}>
+          Tom: {analysis.tone}
+        </span>
+        <span className={cn("px-1.5 py-0.5 rounded border text-[10px] font-medium", socialTone)}>
+          Social: {analysis.social}
+        </span>
+      </div>
+      <p className={cn("leading-snug text-foreground/80", compact ? "text-[11px] line-clamp-3" : "text-xs leading-6")}>
+        {analysis.text}
+      </p>
+    </div>
+  );
+}
+
