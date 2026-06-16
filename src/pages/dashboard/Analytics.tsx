@@ -596,6 +596,7 @@ export default function Analytics() {
           )}
         </CardContent>
       </Card>
+      </WidgetBoundary>
 
       {/* Data Info Footer */}
       <Card className="bg-muted/30">
