@@ -462,3 +462,74 @@ function BigKpi({ icon, label, value, sub, valueClassName }: { icon: React.React
 function Empty() {
   return <div className="text-sm text-muted-foreground py-10 text-center">Sem dados para o período selecionado.</div>;
 }
+
+// ============================================================
+// FALLBACK CLIENT-SIDE: extração leve de temas e termos
+// Usado quando os blocos SQL (topics/terms) dão timeout.
+// ============================================================
+const THEME_KEYWORDS: Record<string, string[]> = {
+  "Eleições": ["eleição", "eleicao", "eleições", "eleicoes", "voto", "votar", "candidato", "campanha", "urna", "tse"],
+  "Economia": ["economia", "inflação", "inflacao", "pib", "juros", "selic", "dólar", "dolar", "imposto", "tributária", "tributaria"],
+  "STF / Justiça": ["stf", "supremo", "moraes", "judiciário", "judiciario", "ministro", "tribunal", "pgr", "pf"],
+  "Corrupção": ["corrupção", "corrupcao", "propina", "lavagem", "desvio", "esquema", "delação", "delacao"],
+  "Segurança": ["segurança", "seguranca", "polícia", "policia", "crime", "violência", "violencia", "facção", "faccao"],
+  "Saúde": ["sus", "saúde", "saude", "hospital", "vacina", "médico", "medico"],
+  "Educação": ["educação", "educacao", "escola", "universidade", "enem", "professor", "fies"],
+  "Congresso": ["congresso", "senado", "câmara", "camara", "deputado", "senador", "lira", "pacheco"],
+  "Internacional": ["trump", "biden", "putin", "maduro", "milei", "ucrânia", "ucrania", "israel", "china"],
+  "Meio Ambiente": ["amazônia", "amazonia", "desmatamento", "clima", "ambiental", "ibama"],
+};
+const STOPWORDS = new Set(["de","da","do","das","dos","a","o","e","é","em","um","uma","para","com","no","na","nos","nas","que","se","por","ao","aos","como","mais","mas","ou","já","foi","ser","sobre","ele","ela","eles","elas","isso","esse","essa","este","esta","quando","onde","sim","não","nao","sua","seu","suas","seus","vai","tem","teve","ter","só","so","muito","pelo","pela","entre","até","ate","você","voce","vocês","voces","https","http","com.br","www","amp"]);
+
+function computeTopicsAndTerms(rows: Array<{ post_title: string | null; comment_text: string | null; social_network: string | null; sentiment_label: string | null }>) {
+  console.log("[NetworkView] fallback rows:", rows.length);
+  const themeStats: Record<string, { mentions: number; pos: number; neg: number; neu: number }> = {};
+  const hashCount: Record<string, number> = {};
+  const wordCount: Record<string, number> = {};
+  const hashRe = /#([\p{L}\p{N}_]{2,})/gu;
+
+  for (const r of rows) {
+    const text = `${r.post_title ?? ""} ${r.comment_text ?? ""}`.trim();
+    if (!text) continue;
+    const lower = text.toLowerCase();
+    const sentRaw = (r.sentiment_label ?? "").toLowerCase();
+    const sentKey = sentRaw.startsWith("pos") ? "pos" : sentRaw.startsWith("neg") ? "neg" : "neu";
+
+    for (const [theme, kws] of Object.entries(THEME_KEYWORDS)) {
+      if (kws.some((k) => lower.includes(k))) {
+        const t = (themeStats[theme] ||= { mentions: 0, pos: 0, neg: 0, neu: 0 });
+        t.mentions++;
+        (t as any)[sentKey]++;
+      }
+    }
+
+    let m;
+    while ((m = hashRe.exec(text)) !== null) {
+      const tag = "#" + m[1].toLowerCase();
+      hashCount[tag] = (hashCount[tag] ?? 0) + 1;
+    }
+
+    for (const w of lower.split(/[^\p{L}\p{N}_#]+/u)) {
+      if (!w || w.startsWith("#") || w.length < 4 || STOPWORDS.has(w) || /^\d+$/.test(w)) continue;
+      wordCount[w] = (wordCount[w] ?? 0) + 1;
+    }
+  }
+
+  const topics = Object.entries(themeStats)
+    .map(([theme, s]) => ({ theme, mentions: s.mentions, pos: s.pos, neg: s.neg, neu: s.neu }))
+    .sort((a, b) => b.mentions - a.mentions)
+    .slice(0, 8);
+
+  const hashTerms = Object.entries(hashCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12)
+    .map(([term, count]) => ({ term, count, kind: "hashtag" as const }));
+
+  const wordTerms = Object.entries(wordCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20)
+    .map(([term, count]) => ({ term, count, kind: "entity" as const }));
+
+  const terms = [...hashTerms, ...wordTerms].slice(0, 25);
+  return { topics, terms };
+}
