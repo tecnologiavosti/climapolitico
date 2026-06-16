@@ -153,7 +153,7 @@ const Dashboard = () => {
                 <Route path="/notifications" element={wrap("Notifications", Notifications)} />
                 <Route path="/data-collection-methodology" element={wrap("DataCollectionMethodology", DataCollectionMethodology)} />
                 <Route path="/regional-analysis" element={wrap("RegionalAnalysis", RegionalAnalysis)} />
-                <Route path="/event-repercussion" element={wrap("EventRepercussion", EventRepercussion)} />
+                
                 <Route path="/social-feeds" element={wrap("SocialFeeds", SocialFeeds)} />
                 <Route path="/network-view" element={wrap("NetworkView", NetworkView)} />
                 
