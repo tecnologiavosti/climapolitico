@@ -621,6 +621,7 @@ export default function NetworkView() {
           )}
         </Card>
       </div>
+      )}
 
     </div>
   );
