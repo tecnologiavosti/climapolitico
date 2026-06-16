@@ -495,8 +495,10 @@ export default function Analytics() {
             )}
           </CardContent>
         </Card>
+        </WidgetBoundary>
 
         {/* Network Distribution - only show if there's data */}
+        <WidgetBoundary name="Origem dos Dados">
         <Card>
           <CardHeader>
             <HelpTooltip text="De qual rede social vem cada parte dos comentários.">
