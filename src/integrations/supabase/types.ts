@@ -4284,6 +4284,7 @@ export type Database = {
         Args: { _candidate_name?: string; _text: string }
         Returns: boolean
       }
+      nv_is_portuguese_text: { Args: { p_text: string }; Returns: boolean }
       nv_is_valid_hashtag: { Args: { _tag: string }; Returns: boolean }
       nv_network_key: { Args: { _network: string }; Returns: string }
       nv_non_political_regex: { Args: never; Returns: string }
