@@ -24,6 +24,7 @@ import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { analyzeEventImpact, type ImpactAnalysis } from "@/lib/radarImpactAnalysis";
+import { generateEventSummary } from "@/lib/radarEventSummary";
 
 interface RadarEvent {
   id: string;
