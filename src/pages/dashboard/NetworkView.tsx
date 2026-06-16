@@ -298,20 +298,55 @@ export default function NetworkView() {
 
   const maxHashtag = Math.max(1, ...(agg?.hashtags ?? []).map((h) => h.c));
 
-  const aiSummary = useMemo(() => {
-    // Inferência estatística apenas com base em dados reais já exibidos na tela.
-    if (!agg || total < 30 || !agg.by_network.length) {
-      return "Dados insuficientes para inferência estatística.";
-    }
-    const top = agg.by_network[0];
-    const totalNet = agg.by_network.reduce((s, n) => s + (n.mentions || 0), 0);
-    const sharePct = totalNet > 0 ? Math.round((top.mentions / totalNet) * 100) : 0;
+  // Resumo executivo derivado dos dados reais: forte_em / sofre_em / narrativas / momento.
+  const aiBullets = useMemo(() => {
+    if (!agg || total < 30 || !agg.by_network.length) return null;
     const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-    const trend = growthPct === null
-      ? "Sem base comparativa"
-      : (growthPct >= 0 ? `crescimento de ${growthPct}%` : `queda de ${Math.abs(growthPct)}%`);
-    return `${cap(top.network)} concentra o maior volume com ${fmt(top.mentions)} menções (${sharePct}% do total de ${fmt(total)}). Variação vs. período anterior: ${trend}. Sentimento atual: ${posPct}% positivo, ${negPct}% negativo, ${neuPct}% neutro (base de ${fmt(labeled)} menções classificadas).`;
-  }, [agg, total, k?.prev_total, growthPct, posPct, negPct, neuPct, labeled]);
+    const nets = [...agg.by_network].sort((a, b) => (b.engagement || 0) - (a.engagement || 0));
+    const strong = nets[0];
+    const weakSentNet = [...agg.by_network]
+      .map((n) => ({ ...n, neg: Math.max(0, (n.mentions || 0) - (n.likes || 0) - (n.replies || 0)) }))
+      .sort((a, b) => b.neg - a.neg)[0];
+    const topTopics = (agg.topics ?? []).slice(0, 3).map((t) => t.theme).filter(Boolean);
+    const moment = growthPct === null
+      ? "Sem base histórica suficiente para avaliar tendência."
+      : growthPct >= 30 ? `Crescimento acelerado (+${growthPct}% vs. período anterior).`
+      : growthPct <= -30 ? `Queda significativa (${growthPct}% vs. período anterior).`
+      : `Estabilidade no volume (${growthPct >= 0 ? "+" : ""}${growthPct}%).`;
+    return [
+      { label: "Mais forte em", text: `${cap(strong.network)} — ${fmt(strong.mentions)} menções, ${compact(strong.engagement || 0)} interações.` },
+      { label: "Sofre mais em", text: negPct > posPct
+          ? `Sentimento negativo predomina (${negPct}% vs. ${posPct}% positivo).`
+          : `${cap(weakSentNet?.network ?? "—")} com a menor proporção positiva.` },
+      { label: "Narrativas dominantes", text: topTopics.length ? topTopics.join(" · ") : "Sem temas dominantes classificados." },
+      { label: "Momento", text: moment },
+    ];
+  }, [agg, total, growthPct, posPct, negPct]);
+
+  // Alertas IA baseados em regras: variação > 30%, crise de sentimento, pico em horário eleitoral (17h-22h).
+  const aiAlerts = useMemo(() => {
+    const alerts: { level: "success" | "warning" | "destructive"; title: string; detail: string }[] = [];
+    if (!agg) return alerts;
+    // Variação por rede (precisa comparar com prev — usamos só growth global aqui)
+    if (growthPct !== null && growthPct >= 30) {
+      alerts.push({ level: "success", title: "Crescimento anormal", detail: `Volume +${growthPct}% vs. período anterior.` });
+    } else if (growthPct !== null && growthPct <= -30) {
+      alerts.push({ level: "destructive", title: "Queda acentuada", detail: `Volume ${growthPct}% vs. período anterior.` });
+    }
+    // Crise de sentimento
+    if (prevLabeled > 0 && labeled > 0 && (negPct - prevNegPct) >= 15) {
+      alerts.push({ level: "destructive", title: "Aumento de sentimento negativo", detail: `+${negPct - prevNegPct}pp de negativo em relação ao período anterior.` });
+    }
+    // Pico em horário eleitoral (17h-22h)
+    const electoralPeak = (agg.heatmap ?? []).filter((h) => h.hr >= 17 && h.hr <= 22);
+    const totalElectoral = electoralPeak.reduce((s, h) => s + h.c, 0);
+    const totalHeat = (agg.heatmap ?? []).reduce((s, h) => s + h.c, 0);
+    if (totalHeat > 100 && totalElectoral / totalHeat >= 0.5) {
+      alerts.push({ level: "warning", title: "Pico em janela eleitoral", detail: `${Math.round((totalElectoral / totalHeat) * 100)}% das menções ocorrem entre 17h-22h.` });
+    }
+    return alerts;
+  }, [agg, growthPct, negPct, prevNegPct, labeled, prevLabeled]);
+
 
   return (
     <div className="space-y-6">
@@ -378,14 +413,43 @@ export default function NetworkView() {
         <Kpi label="Rede dominante" value={dominant === "—" ? "—" : dominant.charAt(0).toUpperCase() + dominant.slice(1)} icon={<Crown className="h-4 w-4" />} loading={isLoadingCore} sub={dominantNet && total > 0 ? `${fmt(dominantNet.mentions)} menções · ${compact(dominantNet.engagement || 0)} int.` : ""} />
       </div>
 
+      {/* AI Alerts */}
+      {!isLoadingCore && aiAlerts.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {aiAlerts.map((a, i) => {
+            const toneClass = a.level === "destructive" ? "border-destructive/40 bg-destructive/5"
+              : a.level === "warning" ? "border-warning/40 bg-warning/5"
+              : "border-success/40 bg-success/5";
+            const iconClass = a.level === "destructive" ? "text-destructive"
+              : a.level === "warning" ? "text-warning" : "text-success";
+            return (
+              <Card key={i} className={`p-3 flex items-start gap-2 ${toneClass}`}>
+                <AlertTriangle className={`h-4 w-4 mt-0.5 shrink-0 ${iconClass}`} />
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold">{a.title}</div>
+                  <div className="text-[11px] text-muted-foreground">{a.detail}</div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
       {/* AI Insight */}
-      {!isLoadingCore && aiSummary && (
+      {!isLoadingCore && aiBullets && (
         <Card className="p-5 bg-gradient-to-br from-primary/5 to-accent/5 border-primary/20">
           <div className="flex items-start gap-3">
-            <div className="p-2 rounded-lg bg-primary/10"><Sparkles className="h-5 w-5 text-primary" /></div>
-            <div>
-              <h3 className="font-bold mb-1">Resumo da IA</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">{aiSummary}</p>
+            <div className="p-2 rounded-lg bg-primary/10 shrink-0"><Sparkles className="h-5 w-5 text-primary" /></div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold mb-2">Resumo executivo</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2">
+                {aiBullets.map((b) => (
+                  <div key={b.label} className="text-sm">
+                    <span className="font-semibold text-foreground">{b.label}: </span>
+                    <span className="text-muted-foreground">{b.text}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </Card>
@@ -471,7 +535,16 @@ export default function NetworkView() {
       {/* Heatmap */}
       {!lowVolume && (
       <Card className="p-6">
-        <h3 className="text-lg font-bold mb-1">Horários de maior movimento</h3>
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+          <h3 className="text-lg font-bold">Horários de maior movimento</h3>
+          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+            <span>baixo</span>
+            {[1, 2, 3, 4].map((t) => (
+              <span key={t} className="w-3 h-3 rounded-sm" style={{ backgroundColor: `hsl(var(--primary) / ${[0.25, 0.5, 0.75, 1.0][t - 1]})` }} />
+            ))}
+            <span>explosivo</span>
+          </div>
+        </div>
         <p className="text-sm text-muted-foreground mb-4">Dia da semana × hora — concentração de atividade</p>
         {isLoadingCore ? <Skeleton className="h-[220px] w-full" /> : !agg?.heatmap.length ? <EmptyState /> : (
           <div className="overflow-x-auto">
@@ -486,12 +559,17 @@ export default function NetworkView() {
                   {Array.from({ length: 24 }, (_, h) => {
                     const c = heat.m.get(`${di}-${h}`) || 0;
                     const intensity = c / heat.max;
+                    // 4 níveis: baixo, médio, alto, explosivo
+                    const tier = c === 0 ? 0 : intensity < 0.25 ? 1 : intensity < 0.55 ? 2 : intensity < 0.85 ? 3 : 4;
+                    const alpha = [0.05, 0.25, 0.5, 0.75, 1.0][tier];
+                    const tierLabel = ["sem atividade", "baixo", "médio", "alto", "explosivo"][tier];
+                    const dayName = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"][di];
                     return (
                       <div
                         key={`${di}-${h}`}
-                        title={`${dn} ${h}h — ${fmt(c)} menções`}
-                        className="aspect-square rounded-sm"
-                        style={{ backgroundColor: `hsl(var(--primary) / ${0.08 + intensity * 0.85})` }}
+                        title={`${dayName} ${h}h → ${fmt(c)} interações (${tierLabel})`}
+                        className="aspect-square rounded-sm transition-transform hover:scale-110 cursor-default"
+                        style={{ backgroundColor: `hsl(var(--primary) / ${alpha})` }}
                       />
                     );
                   })}
