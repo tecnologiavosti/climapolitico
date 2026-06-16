@@ -326,8 +326,9 @@ export default function RadarPolitico() {
       const clean = (jobStatus.events ?? []).map((e) => ({
         ...e,
         title: sanitizeRadarText(e.title),
-        summary: sanitizeRadarText(e.summary ?? e.description ?? e.content ?? ""),
+        summary: buildEventSummary(e),
         description: sanitizeRadarText(e.description ?? ""),
+        snippet: sanitizeRadarText((e as { snippet?: string }).snippet ?? ""),
         content: sanitizeRadarText(e.content ?? ""),
         category: sanitizeRadarText(e.category),
         sources: (e.sources ?? []).map((s) => ({ ...s, name: sanitizeRadarText(s.name) })),
