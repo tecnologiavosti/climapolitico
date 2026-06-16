@@ -501,6 +501,7 @@ export default function NetworkView() {
           </div>
         )}
       </Card>
+      )}
 
       {/* Top Posts */}
       <Card className="p-6">
