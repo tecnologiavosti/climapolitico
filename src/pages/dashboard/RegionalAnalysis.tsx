@@ -502,6 +502,7 @@ export default function RegionalAnalysis() {
                     </svg>
                   </div>
                 </TooltipProvider>
+                </div>
               )}
             </CardContent>
           </Card>
