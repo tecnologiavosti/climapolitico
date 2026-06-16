@@ -195,6 +195,15 @@ export default function NetworkView() {
         </div>
       </div>
 
+      {errorMessage && (
+        <Card className="p-4 border-destructive bg-destructive/5">
+          <div className="text-sm text-destructive font-medium">Erro ao carregar analytics: {errorMessage}</div>
+          <div className="text-xs text-muted-foreground mt-1">Verifique o console do navegador para o diagnóstico completo de qual RPC falhou.</div>
+        </Card>
+      )}
+
+
+
       {/* BLOCO 1 — RESUMO EXECUTIVO */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <BigKpi icon={<MessageSquare className="h-5 w-5" />} label="Total de menções" value={loading ? null : fmt(totalMentions)} />
