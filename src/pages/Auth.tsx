@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { createLovableAuth } from "@lovable.dev/cloud-auth-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -16,13 +15,9 @@ import { consumeTrialAfterLogin, getTrialStart, queueTrialCelebration, startTria
 const emailSchema = z.string().email("Email inválido");
 const passwordSchema = z.string().min(6, "Senha deve ter no mínimo 6 caracteres");
 const fullNameSchema = z.string().min(2, "Nome deve ter no mínimo 2 caracteres");
-const LOVABLE_PROJECT_ID = "a499df7b-ed03-4453-8bfa-ee4c0df3dd55";
-const PRODUCTION_ORIGIN = "https://climapolitico.com.br";
 const getAuthOrigin = () => {
-  if (typeof window === "undefined") return PRODUCTION_ORIGIN;
-  const host = window.location.hostname;
-  if (host === "localhost" || host === "127.0.0.1") return window.location.origin;
-  return PRODUCTION_ORIGIN;
+  if (typeof window === "undefined") return "";
+  return window.location.origin;
 };
 
 const Auth = () => {
