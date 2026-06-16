@@ -116,6 +116,33 @@ export default function RegionalAnalysis() {
   const [mapLoading, setMapLoading] = useState(false);
   const [regionLoading, setRegionLoading] = useState(false);
   const [insightsLoading, setInsightsLoading] = useState(false);
+  const [loadProgress, setLoadProgress] = useState(0);
+  const [loadStage, setLoadStage] = useState("Carregando mapa regional...");
+
+  useEffect(() => {
+    if (!mapLoading) {
+      if (loadProgress > 0) {
+        setLoadProgress(100);
+        const t = setTimeout(() => setLoadProgress(0), 400);
+        return () => clearTimeout(t);
+      }
+      return;
+    }
+    setLoadProgress(8);
+    setLoadStage("Carregando mapa regional...");
+    const started = Date.now();
+    const tick = setInterval(() => {
+      setLoadProgress((p) => {
+        const inc = Math.random() * 6 + 2;
+        return Math.min(p + inc, 90);
+      });
+      const elapsed = Date.now() - started;
+      if (elapsed > 8000) setLoadStage("Consulta grande detectada, aguarde...");
+      else if (elapsed > 4000) setLoadStage("Analisando sentimento regional...");
+      else if (elapsed > 1500) setLoadStage("Processando menções por estado...");
+    }, 350);
+    return () => clearInterval(tick);
+  }, [mapLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [mapData, setMapData] = useState<Record<RegionLabel, Metrics>>({} as Record<RegionLabel, Metrics>);
   const [unclassifiedTotal, setUnclassifiedTotal] = useState(0);
