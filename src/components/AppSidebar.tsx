@@ -134,7 +134,7 @@ const groups: NavGroup[] = [
     icon: FileText,
     defaultOpen: false,
     items: [
-      { title: "Analytics Avançado", url: "/dashboard/analytics-advanced", icon: LineChart, tip: "Gráficos detalhados e exportação." },
+      
       { title: "Ranking", url: "/dashboard/ranking", icon: Trophy, tip: "Ranking de desempenho dos candidatos." },
       { title: "Visão por Rede Social", url: "/dashboard/network-view", icon: Network, tip: "Resultados detalhados por rede social." },
     ],
