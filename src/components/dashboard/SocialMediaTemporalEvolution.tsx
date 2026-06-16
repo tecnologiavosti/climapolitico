@@ -105,7 +105,7 @@ export const SocialMediaTemporalEvolution = ({
       const networkMap: Record<string, Record<string, TemporalData & { _scoreSum: number; _scoreCnt: number; _ts: number }>> = {};
       const networksSet = new Set<string>();
 
-      rows.forEach((r) => {
+      filteredRows.forEach((r) => {
         const network = r.social_network || 'Outro';
         networksSet.add(network);
         const key = bucketKey(r.created_at);
