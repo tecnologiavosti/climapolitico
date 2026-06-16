@@ -4221,6 +4221,22 @@ export type Database = {
         Args: { _candidate_id: string; _user_id: string }
         Returns: Json
       }
+      get_regional_state_aggregates: {
+        Args: {
+          p_candidate_id: string
+          p_networks?: string[]
+          p_user_id: string
+        }
+        Returns: {
+          mentions: number
+          negative: number
+          negative_percentage: number
+          neutral: number
+          positive: number
+          positive_percentage: number
+          state: string
+        }[]
+      }
       get_tenant_analytics: {
         Args: { _days?: number; _limit?: number }
         Returns: {
