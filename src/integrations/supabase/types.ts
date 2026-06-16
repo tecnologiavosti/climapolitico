@@ -2682,60 +2682,6 @@ export type Database = {
         }
         Relationships: []
       }
-      regional_analytics_cache: {
-        Row: {
-          avg_engagement: number
-          candidate_id: string
-          created_at: string
-          id: string
-          last_refreshed_at: string
-          mentions: number
-          negative: number
-          network_distribution: Json
-          neutral: number
-          positive: number
-          region: string | null
-          scope: string
-          state: string | null
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          avg_engagement?: number
-          candidate_id: string
-          created_at?: string
-          id?: string
-          last_refreshed_at?: string
-          mentions?: number
-          negative?: number
-          network_distribution?: Json
-          neutral?: number
-          positive?: number
-          region?: string | null
-          scope: string
-          state?: string | null
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          avg_engagement?: number
-          candidate_id?: string
-          created_at?: string
-          id?: string
-          last_refreshed_at?: string
-          mentions?: number
-          negative?: number
-          network_distribution?: Json
-          neutral?: number
-          positive?: number
-          region?: string | null
-          scope?: string
-          state?: string | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       report_templates: {
         Row: {
           created_at: string | null
