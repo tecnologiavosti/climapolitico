@@ -393,13 +393,14 @@ export default function NetworkView() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {mergedTopics.map((t) => {
               const lab = t.pos + t.neg + t.neu;
-              const share = pct(t.mentions, totalMentions);
+              const shareNum = totalMentions > 0 ? (t.mentions / totalMentions) * 100 : 0;
+              const shareLabel = shareNum >= 1 ? `${shareNum.toFixed(1)}%` : `${shareNum.toFixed(2)}%`;
               const posP = pct(t.pos, lab);
               return (
                 <div key={t.theme} className="rounded-lg border border-border p-4 bg-card/50">
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-semibold">{t.theme}</span>
-                    <span className="text-xs text-muted-foreground tabular-nums">{share}% share</span>
+                    <span className="text-xs text-muted-foreground tabular-nums">{shareLabel} share</span>
                   </div>
                   <div className="flex items-baseline gap-2 mb-2">
                     <span className="text-2xl font-bold tabular-nums">{fmt(t.mentions)}</span>
