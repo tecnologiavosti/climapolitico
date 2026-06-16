@@ -482,8 +482,63 @@ export default function NetworkView() {
         )}
       </Card>
 
+      {/* Top Posts */}
+      <Card className="p-6">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-lg font-bold">Top posts</h3>
+          <Badge variant="outline" className="text-[10px]">score = curtidas + 2·comentários + 3·shares + 0,1·views</Badge>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">Posts com maior repercussão no período</p>
+        {isLoadingTopPosts ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28 w-full" />)}
+          </div>
+        ) : !agg?.top_posts?.length ? (
+          <div className="h-[160px] flex flex-col items-center justify-center text-sm text-muted-foreground text-center px-4 gap-2">
+            <MessageSquare className="h-6 w-6 opacity-40" />
+            <span>Sem posts com engajamento suficiente nesse recorte. Tente ampliar o período ou trocar de rede.</span>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {agg.top_posts.slice(0, 10).map((p) => {
+              const sentColor = p.sent?.toLowerCase().startsWith("pos") ? COLORS.positive
+                : p.sent?.toLowerCase().startsWith("neg") ? COLORS.negative : COLORS.neutral;
+              return (
+                <div key={p.id} className="border border-border rounded-lg p-3 hover:shadow-sm transition-shadow flex gap-3">
+                  {p.thumbnail_url ? (
+                    <img src={p.thumbnail_url} alt="" loading="lazy" className="w-16 h-16 rounded-md object-cover shrink-0 bg-muted" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                  ) : (
+                    <div className="w-16 h-16 rounded-md bg-muted shrink-0 flex items-center justify-center"><MessageSquare className="h-5 w-5 text-muted-foreground/50" /></div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <Badge variant="secondary" className="text-[9px] uppercase">{p.social_network}</Badge>
+                      <span className="text-[9px] font-medium px-1.5 py-0.5 rounded" style={{ backgroundColor: `${sentColor}22`, color: sentColor }}>{p.sent}</span>
+                    </div>
+                    <p className="text-xs text-foreground line-clamp-2 mb-1">{p.comment_text}</p>
+                    <div className="text-[10px] text-muted-foreground truncate mb-1">@{p.comment_author || "anônimo"}</div>
+                    <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                      <span className="flex items-center gap-1"><Heart className="h-3 w-3" />{compact(p.likes)}</span>
+                      <span className="flex items-center gap-1"><MessageCircle className="h-3 w-3" />{compact(p.replies)}</span>
+                      <span className="flex items-center gap-1"><Share2 className="h-3 w-3" />{compact(p.shares)}</span>
+                      {(p.views ?? 0) > 0 && <span className="flex items-center gap-1"><Eye className="h-3 w-3" />{compact(p.views ?? 0)}</span>}
+                      {p.post_url && (
+                        <a href={p.post_url} target="_blank" rel="noopener noreferrer" className="ml-auto text-primary hover:underline flex items-center gap-1">
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
       {/* Topics + Hashtags */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
         <Card className="p-6">
           <h3 className="text-lg font-bold mb-1">Assuntos dominantes</h3>
           <p className="text-sm text-muted-foreground mb-4">Temas detectados em posts, comentários e respostas (agrupamento semântico)</p>
