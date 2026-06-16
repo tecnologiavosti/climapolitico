@@ -479,24 +479,33 @@ function Empty() {
 // Usado quando os blocos SQL (topics/terms) dão timeout.
 // ============================================================
 const THEME_KEYWORDS: Record<string, string[]> = {
-  "Eleições": ["eleição", "eleicao", "eleições", "eleicoes", "voto", "votar", "candidato", "campanha", "urna", "tse"],
-  "Economia": ["economia", "inflação", "inflacao", "pib", "juros", "selic", "dólar", "dolar", "imposto", "tributária", "tributaria"],
-  "STF / Justiça": ["stf", "supremo", "moraes", "judiciário", "judiciario", "ministro", "tribunal", "pgr", "pf"],
-  "Corrupção": ["corrupção", "corrupcao", "propina", "lavagem", "desvio", "esquema", "delação", "delacao"],
-  "Segurança": ["segurança", "seguranca", "polícia", "policia", "crime", "violência", "violencia", "facção", "faccao"],
+  "Eleições": ["eleic", "eleiç", "voto", "votar", "candidat", "campanha", "urna", "tse", "pesquisa", "intenção de voto", "intencao de voto", "segundo turno", "primeiro turno", "btg", "nexus", "ibope", "datafolha", "quaest", "paraná pesquisas", "parana pesquisas"],
+  "Economia": ["economia", "inflaç", "inflac", "pib", "juros", "selic", "dólar", "dolar", "imposto", "tributár", "tributar", "fiscal", "arcabouço", "arcabouco"],
+  "STF / Justiça": ["stf", "supremo", "moraes", "judiciár", "judiciar", "ministro", "tribunal", "pgr", "pf ", "polícia federal", "policia federal", "corte", "barroso", "dino", "fachin", "toffoli"],
+  "Corrupção": ["corrupç", "corrupc", "propina", "lavagem", "desvio", "esquema", "delaç", "delac", "operação", "operacao"],
+  "Segurança": ["segurança pública", "seguranca publica", "polícia", "policia", "crime", "violênc", "violenc", "facç", "facc", "pcc", "cv "],
   "Saúde": ["sus", "saúde", "saude", "hospital", "vacina", "médico", "medico"],
-  "Educação": ["educação", "educacao", "escola", "universidade", "enem", "professor", "fies"],
-  "Congresso": ["congresso", "senado", "câmara", "camara", "deputado", "senador", "lira", "pacheco"],
-  "Internacional": ["trump", "biden", "putin", "maduro", "milei", "ucrânia", "ucrania", "israel", "china"],
-  "Meio Ambiente": ["amazônia", "amazonia", "desmatamento", "clima", "ambiental", "ibama"],
+  "Educação": ["educaç", "educac", "escola", "universidade", "enem", "professor", "fies", "prouni"],
+  "Congresso": ["congresso", "senado", "câmara", "camara", "deputad", "senador", "lira", "pacheco", "comissão", "comissao", "cpi", "pec ", "projeto de lei"],
+  "Governo Lula": ["lula", "haddad", "alckmin", "planalto", "governo federal", "ministério", "ministerio"],
+  "Oposição": ["bolsonaro", "tarcísio", "tarcisio", "zema", "caiado", "ratinho", "pl ", "novo", "união brasil", "uniao brasil"],
+  "Internacional": ["trump", "biden", "putin", "maduro", "milei", "ucrân", "ucran", "israel", "china", "argentina", "venezuela"],
+  "Meio Ambiente": ["amazôn", "amazon", "desmatamento", "clima", "ambiental", "ibama", "cop "],
 };
+const SOCIAL_BLACKLIST = new Set(["facebook","youtube","instagram","telegram","twitter","reddit","linkedin","tiktok","whatsapp","threads","kwai","x.com","fb","ig","yt"]);
 const STOPWORDS = new Set([
   "de","da","do","das","dos","a","o","e","é","em","um","uma","para","com","no","na","nos","nas","que","se","por","ao","aos","como","mais","mas","ou","já","foi","ser","sobre","ele","ela","eles","elas","isso","esse","essa","este","esta","quando","onde","sim","não","nao","sua","seu","suas","seus","vai","tem","teve","ter","só","so","muito","pelo","pela","entre","até","ate","você","voce","vocês","voces",
   // HTML/web noise
   "https","http","com.br","www","amp","href","target","_blank","blank","font","nbsp","color","style","span","div","class","src","alt","img","html","body","head","meta","link","script","rel","noopener","noreferrer","google","news","com","br","org","net",
+  ...Array.from(SOCIAL_BLACKLIST),
 ]);
 const HEX_RE = /^[a-f0-9]{3}$|^[a-f0-9]{6}$/i;
 const HAS_LETTER_RE = /[a-zà-ÿ]/i;
+
+function normalizeTerm(s: string) {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
 
 function cleanText(text: string): string {
   if (!text) return "";
