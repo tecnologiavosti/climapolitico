@@ -137,9 +137,6 @@ const groups: NavGroup[] = [
       { title: "Analytics Avançado", url: "/dashboard/analytics-advanced", icon: LineChart, tip: "Gráficos detalhados e exportação." },
       { title: "Ranking", url: "/dashboard/ranking", icon: Trophy, tip: "Ranking de desempenho dos candidatos." },
       { title: "Visão por Rede Social", url: "/dashboard/network-view", icon: Network, tip: "Resultados detalhados por rede social." },
-      
-      { title: "Catálogo de Candidatos", url: "/dashboard/candidates-catalog", icon: BookUser, tip: "Candidatos prontos para adicionar." },
-      { title: "Configuração de Coleta", url: "/dashboard/collection-status", icon: Database, tip: "Status da coleta em cada rede." },
     ],
   },
 ];
@@ -150,6 +147,7 @@ const accountGroup: NavGroup = {
   icon: Settings,
   defaultOpen: false,
   items: [
+    { title: "Configuração de Coleta", url: "/dashboard/collection-status", icon: Database, tip: "Status da coleta em cada rede." },
     { title: "Notificações", url: "/dashboard/notifications", icon: Bell, tip: "Central de avisos da plataforma." },
     { title: "Configurações", url: "/dashboard/settings", icon: Settings, tip: "Perfil, senha, tema e preferências." },
   ],
