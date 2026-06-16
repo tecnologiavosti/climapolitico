@@ -62,7 +62,7 @@ type Agg = {
   heatmap: { dow: number; hr: number; c: number }[];
   hashtags: { tag: string; c: number; pos: number; neg: number; neu: number; prev_c: number }[];
   topics: { theme: string; mentions: number; pos: number; neg: number; neu: number; prev_mentions: number }[];
-  top_posts: { id: string; social_network: string; comment_text: string; comment_author: string; sent: string; eng: number; likes: number; replies: number; shares: number; original_posted_at: string; collected_at: string }[];
+  top_posts: { id: string; social_network: string; comment_text: string; comment_author: string; sent: string; eng: number; score?: number; likes: number; replies: number; shares: number; views?: number; thumbnail_url?: string | null; post_url?: string | null; original_posted_at: string; collected_at: string }[];
 };
 
 type SectionResponse<T> = {
