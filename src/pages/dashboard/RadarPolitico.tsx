@@ -30,6 +30,7 @@ interface RadarEvent {
   title: string;
   summary?: string;
   description?: string;
+  snippet?: string;
   content?: string;
   category: string;
   event_date: string;
