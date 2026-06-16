@@ -469,6 +469,7 @@ export default function NetworkView() {
       )}
 
       {/* Heatmap */}
+      {!lowVolume && (
       <Card className="p-6">
         <h3 className="text-lg font-bold mb-1">Horários de maior movimento</h3>
         <p className="text-sm text-muted-foreground mb-4">Dia da semana × hora — concentração de atividade</p>
