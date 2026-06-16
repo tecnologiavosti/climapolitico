@@ -61,7 +61,7 @@ const sections: Section[] = [
     title: "Configuração",
     icon: UserPlus,
     items: [
-      { label: "Adicionar Candidato", icon: UserPlus, to: "/dashboard/candidates-catalog" },
+      { label: "Adicionar Candidato", icon: UserPlus, to: "/dashboard/candidates?add=1" },
       { label: "Catálogo de Candidatos", icon: BookUser, to: "/dashboard/candidates-catalog" },
       { label: "Meus Candidatos", icon: Users, to: "/dashboard/candidates" },
     ],
@@ -72,8 +72,17 @@ const sections: Section[] = [
     icon: Radio,
     items: [
       { label: "Monitor em Tempo Real", icon: Radio, to: "/dashboard/realtime-monitor", badge: "live" },
+    ],
+  },
+  {
+    id: "relatorios",
+    title: "Relatórios",
+    icon: FileText,
+    items: [
       { label: "Resumo Inteligente", icon: FileText, to: "/dashboard/candidate-summary", badge: "ai" },
-      
+      { label: "Ranking", icon: Trophy, to: "/dashboard/ranking" },
+      { label: "Por Rede Social", icon: Network, to: "/dashboard/network-view" },
+      { label: "Coleta", icon: Database, to: "/dashboard/collection-status" },
     ],
   },
   {
@@ -93,21 +102,7 @@ const sections: Section[] = [
     icon: Brain,
     items: [
       { label: "Narrativas", icon: Sparkles, to: "/dashboard/narrative-recommendations", badge: "ai" },
-      
       { label: "Comparação Histórica", icon: GitCompareArrows, to: "/dashboard/historical-comparison", badge: "ai" },
-      { label: "Alertas", icon: Bell, to: "/dashboard/notifications" },
-    ],
-  },
-  {
-    id: "relatorios",
-    title: "Relatórios",
-    icon: FileText,
-    items: [
-      
-      { label: "Ranking", icon: Trophy, to: "/dashboard/ranking" },
-      { label: "Por Rede Social", icon: Network, to: "/dashboard/network-view" },
-      
-      { label: "Coleta", icon: Database, to: "/dashboard/collection-status" },
     ],
   },
   {

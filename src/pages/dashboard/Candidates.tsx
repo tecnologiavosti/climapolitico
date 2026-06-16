@@ -1,5 +1,6 @@
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -55,6 +56,17 @@ export default function Candidates() {
     facebookUrl: "",
   });
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+
+  // Open add-candidate dialog automatically when navigated with ?add=1 (from sidebar)
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get("add") === "1") {
+      setDialogOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete("add");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   // Fetch user's subscription
   const { data: subscription } = useQuery({
