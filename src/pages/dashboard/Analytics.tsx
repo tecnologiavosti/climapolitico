@@ -386,8 +386,10 @@ export default function Analytics() {
           </Card>
         </HelpTooltip>
       </div>
+      </WidgetBoundary>
 
       {/* Temporal Evolution - Full Width */}
+      <WidgetBoundary name="Evolução do Sentimento">
       <Card>
         <CardHeader>
           <HelpTooltip text="Mostra dia a dia se o povo está elogiando ou criticando mais ao longo do tempo.">
