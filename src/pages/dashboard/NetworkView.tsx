@@ -393,13 +393,14 @@ export default function NetworkView() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {mergedTopics.map((t) => {
               const lab = t.pos + t.neg + t.neu;
-              const share = pct(t.mentions, totalMentions);
+              const shareNum = totalMentions > 0 ? (t.mentions / totalMentions) * 100 : 0;
+              const shareLabel = shareNum >= 1 ? `${shareNum.toFixed(1)}%` : `${shareNum.toFixed(2)}%`;
               const posP = pct(t.pos, lab);
               return (
                 <div key={t.theme} className="rounded-lg border border-border p-4 bg-card/50">
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-semibold">{t.theme}</span>
-                    <span className="text-xs text-muted-foreground tabular-nums">{share}% share</span>
+                    <span className="text-xs text-muted-foreground tabular-nums">{shareLabel} share</span>
                   </div>
                   <div className="flex items-baseline gap-2 mb-2">
                     <span className="text-2xl font-bold tabular-nums">{fmt(t.mentions)}</span>
@@ -479,7 +480,25 @@ const THEME_KEYWORDS: Record<string, string[]> = {
   "Internacional": ["trump", "biden", "putin", "maduro", "milei", "ucrânia", "ucrania", "israel", "china"],
   "Meio Ambiente": ["amazônia", "amazonia", "desmatamento", "clima", "ambiental", "ibama"],
 };
-const STOPWORDS = new Set(["de","da","do","das","dos","a","o","e","é","em","um","uma","para","com","no","na","nos","nas","que","se","por","ao","aos","como","mais","mas","ou","já","foi","ser","sobre","ele","ela","eles","elas","isso","esse","essa","este","esta","quando","onde","sim","não","nao","sua","seu","suas","seus","vai","tem","teve","ter","só","so","muito","pelo","pela","entre","até","ate","você","voce","vocês","voces","https","http","com.br","www","amp"]);
+const STOPWORDS = new Set([
+  "de","da","do","das","dos","a","o","e","é","em","um","uma","para","com","no","na","nos","nas","que","se","por","ao","aos","como","mais","mas","ou","já","foi","ser","sobre","ele","ela","eles","elas","isso","esse","essa","este","esta","quando","onde","sim","não","nao","sua","seu","suas","seus","vai","tem","teve","ter","só","so","muito","pelo","pela","entre","até","ate","você","voce","vocês","voces",
+  // HTML/web noise
+  "https","http","com.br","www","amp","href","target","_blank","blank","font","nbsp","color","style","span","div","class","src","alt","img","html","body","head","meta","link","script","rel","noopener","noreferrer","google","news","com","br","org","net",
+]);
+const HEX_RE = /^[a-f0-9]{3}$|^[a-f0-9]{6}$/i;
+const HAS_LETTER_RE = /[a-zà-ÿ]/i;
+
+function cleanText(text: string): string {
+  if (!text) return "";
+  return text
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&[a-z#0-9]+;/gi, " ")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 function computeTopicsAndTerms(rows: Array<{ post_title: string | null; comment_text: string | null; social_network: string | null; sentiment_label: string | null }>) {
   console.log("[NetworkView] fallback rows:", rows.length);
@@ -489,7 +508,7 @@ function computeTopicsAndTerms(rows: Array<{ post_title: string | null; comment_
   const hashRe = /#([\p{L}\p{N}_]{2,})/gu;
 
   for (const r of rows) {
-    const text = `${r.post_title ?? ""} ${r.comment_text ?? ""}`.trim();
+    const text = cleanText(`${r.post_title ?? ""} ${r.comment_text ?? ""}`);
     if (!text) continue;
     const lower = text.toLowerCase();
     const sentRaw = (r.sentiment_label ?? "").toLowerCase();
@@ -505,12 +524,14 @@ function computeTopicsAndTerms(rows: Array<{ post_title: string | null; comment_
 
     let m;
     while ((m = hashRe.exec(text)) !== null) {
-      const tag = "#" + m[1].toLowerCase();
-      hashCount[tag] = (hashCount[tag] ?? 0) + 1;
+      const tag = m[1].toLowerCase();
+      if (tag.length < 2 || STOPWORDS.has(tag) || HEX_RE.test(tag) || !HAS_LETTER_RE.test(tag)) continue;
+      hashCount["#" + tag] = (hashCount["#" + tag] ?? 0) + 1;
     }
 
     for (const w of lower.split(/[^\p{L}\p{N}_#]+/u)) {
-      if (!w || w.startsWith("#") || w.length < 4 || STOPWORDS.has(w) || /^\d+$/.test(w)) continue;
+      if (!w || w.startsWith("#")) continue;
+      if (w.length < 3 || STOPWORDS.has(w) || /^\d+$/.test(w) || HEX_RE.test(w) || !HAS_LETTER_RE.test(w)) continue;
       wordCount[w] = (wordCount[w] ?? 0) + 1;
     }
   }
