@@ -146,25 +146,55 @@ export default function NetworkView() {
 
   const failures = (query.data as any)?.failures ?? {};
   const failedBlocks = Object.keys(failures);
+  const needsJsFallback = !!(failures.topics || failures.terms);
   const errorMessage = query.error
-    ? (query.error as Error).message
-    : failedBlocks.length > 0
-    ? `Blocos com timeout: ${failedBlocks.join(", ")}. Tente um período menor.`
+    ? "Não foi possível carregar a análise. Tente novamente."
     : null;
+  const reprocessingMsg = failedBlocks.length > 0 ? "Reprocessando temas e termos..." : null;
 
+  // Fallback JS: se topics/terms falharam, busca amostra leve e processa no cliente
+  const fallback = useQuery({
+    queryKey: ["nv-fallback", user?.id, candidateId, network, days, needsJsFallback],
+    enabled: !!user?.id && needsJsFallback,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      console.time("[NetworkView] fallback-fetch");
+      let q = supabase
+        .from("social_interactions")
+        .select("post_title, comment_text, social_network, sentiment_label")
+        .is("invalidated_at", null)
+        .order("collected_at", { ascending: false })
+        .limit(5000);
+      if (candidateId !== "all") q = q.eq("candidate_id", candidateId);
+      if (network !== "all") q = q.eq("social_network", network);
+      const { data, error } = await q;
+      console.timeEnd("[NetworkView] fallback-fetch");
+      if (error) { console.error("fallback fetch error", error); return { topics: [], terms: [] }; }
+      return computeTopicsAndTerms(data ?? []);
+    },
+  });
 
   const loading = query.isLoading;
   const d = query.data;
 
   const totalMentions = d?.kpis?.total ?? 0;
   const totalEngagement = d?.kpis?.engagement ?? 0;
-  const pos = d?.sentimentKpis?.pos ?? 0;
-  const neg = d?.sentimentKpis?.neg ?? 0;
-  const neu = d?.sentimentKpis?.neu ?? 0;
-  const labeled = pos + neg + neu;
-  // Sentimento líquido: (-100..+100)
-  const netSentiment = labeled > 0 ? Math.round(((pos - neg) / labeled) * 100) : 0;
-  const netLabel = netSentiment >= 10 ? "Favorável" : netSentiment <= -10 ? "Desfavorável" : "Neutro";
+
+  // Sentimento líquido — usa bloco sentiment; se vazio, agrega de byNet
+  const sFromBlock = { pos: d?.sentimentKpis?.pos ?? 0, neg: d?.sentimentKpis?.neg ?? 0, neu: d?.sentimentKpis?.neu ?? 0 };
+  const sFromNet = (d?.byNet ?? []).reduce(
+    (acc, n) => ({ pos: acc.pos + (n.pos || 0), neg: acc.neg + (n.neg || 0), neu: acc.neu + (n.neu || 0) }),
+    { pos: 0, neg: 0, neu: 0 },
+  );
+  const sBlockTotal = sFromBlock.pos + sFromBlock.neg + sFromBlock.neu;
+  const sent = sBlockTotal > 0 ? sFromBlock : sFromNet;
+  const labeled = sent.pos + sent.neg + sent.neu;
+  const netSentiment = labeled > 0 ? Math.round(((sent.pos - sent.neg) / labeled) * 100) : 0;
+  const netLabel =
+    netSentiment >= 40 ? "Muito favorável" :
+    netSentiment >= 10 ? "Favorável" :
+    netSentiment <= -40 ? "Muito desfavorável" :
+    netSentiment <= -10 ? "Desfavorável" : "Neutro";
   const netTone = netSentiment >= 10 ? "text-success" : netSentiment <= -10 ? "text-destructive" : "text-muted-foreground";
 
   const dominant = useMemo(() => {
