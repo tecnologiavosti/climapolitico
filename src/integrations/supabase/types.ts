@@ -4284,6 +4284,7 @@ export type Database = {
         }
         Returns: string
       }
+      nv_classify_theme: { Args: { _txt: string }; Returns: string }
       nv_clean_text: { Args: { _text: string }; Returns: string }
       nv_fast_sentiment: {
         Args: { _label: string; _score?: number }
