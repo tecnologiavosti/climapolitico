@@ -103,7 +103,7 @@ const sections: Section[] = [
     title: "Relatórios",
     icon: FileText,
     items: [
-      { label: "Analytics Avançado", icon: LineChart, to: "/dashboard/analytics-advanced" },
+      
       { label: "Ranking", icon: Trophy, to: "/dashboard/ranking" },
       { label: "Por Rede Social", icon: Network, to: "/dashboard/network-view" },
       
