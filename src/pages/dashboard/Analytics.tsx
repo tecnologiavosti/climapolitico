@@ -12,6 +12,41 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { useAuth } from "@/hooks/useAuth";
 import { CollectionStatusPanel } from "@/components/dashboard/CollectionStatusPanel";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import {
+  WidgetBoundary,
+  WidgetStatusProvider,
+  useWidgetStatuses,
+} from "@/components/dashboard/WidgetBoundary";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
+
+const ANALYTICS_TIMEOUT_MS = 8000;
+
+function AnalyticsStatusBar() {
+  const statuses = useWidgetStatuses();
+  const entries = Object.entries(statuses);
+  if (entries.length === 0) return null;
+  const failed = entries.filter(([, s]) => s === "fail").map(([n]) => n);
+  const ok = entries.length - failed.length;
+  return (
+    <div
+      className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+        failed.length > 0
+          ? "border-destructive/40 bg-destructive/10 text-destructive"
+          : "border-success/40 bg-success/10 text-success"
+      }`}
+    >
+      {failed.length > 0 ? (
+        <AlertTriangle className="h-4 w-4 shrink-0" />
+      ) : (
+        <CheckCircle2 className="h-4 w-4 shrink-0" />
+      )}
+      <span>
+        Analytics carregado ({ok}/{entries.length} blocos)
+        {failed.length > 0 && ` • ${failed.length} bloco${failed.length === 1 ? "" : "s"} falhou: ${failed.join(", ")}`}
+      </span>
+    </div>
+  );
+}
 
 // Componentes de análise demográfica temporariamente ocultos
 // Motivo: YouTube Data API não fornece idade, gênero ou localização dos usuários
@@ -26,7 +61,7 @@ export default function Analytics() {
 
   // Query: Buscar TODOS os dados reais de social_interactions com paginação
   // (Supabase limita 1000 linhas por request — paginamos para pegar todo o histórico)
-  const { data: interactions, isLoading } = useQuery({
+  const { data: interactions, isLoading, error: queryError } = useQuery({
     queryKey: ['analytics-interactions', dateRange, user?.id],
     queryFn: async () => {
       if (!user) return [];
@@ -39,38 +74,77 @@ export default function Analytics() {
       const endDate = dateRange?.to ? new Date(dateRange.to) : null;
       if (endDate) endDate.setDate(endDate.getDate() + 1);
 
-      while (true) {
-        let query = supabase
-          .from('social_interactions')
-          .select('id, sentiment_label, sentiment_score, likes_count, social_network, created_at, comment_author')
-          .eq('user_id', user.id)
-          .not('social_network', 'in', '(mastodon,lemmy,pinterest)')
-          .order('created_at', { ascending: true })
-          .range(offset, offset + PAGE_SIZE - 1);
+      const startedAt = performance.now();
+      const payload = {
+        user_id: user.id,
+        from: dateRange?.from?.toISOString() ?? null,
+        to: endDate?.toISOString() ?? null,
+      };
 
-        if (dateRange?.from) {
-          query = query.gte('created_at', dateRange.from.toISOString());
+      const fetchAll = async () => {
+        while (true) {
+          let query = supabase
+            .from('social_interactions')
+            .select('id, sentiment_label, sentiment_score, likes_count, social_network, created_at, comment_author')
+            .eq('user_id', user.id)
+            .not('social_network', 'in', '(mastodon,lemmy,pinterest)')
+            .order('created_at', { ascending: true })
+            .range(offset, offset + PAGE_SIZE - 1);
+
+          if (dateRange?.from) {
+            query = query.gte('created_at', dateRange.from.toISOString());
+          }
+          if (endDate) {
+            query = query.lt('created_at', endDate.toISOString());
+          }
+
+          const { data, error } = await query;
+          if (error) throw error;
+          if (!data || data.length === 0) break;
+
+          all.push(...(data as Row[]));
+          if (data.length < PAGE_SIZE) break;
+          offset += PAGE_SIZE;
+
+          if (offset > 200000) break;
         }
-        if (endDate) {
-          query = query.lt('created_at', endDate.toISOString());
-        }
+        return all;
+      };
 
-        const { data, error } = await query;
-        if (error) throw error;
-        if (!data || data.length === 0) break;
-
-        all.push(...(data as Row[]));
-        if (data.length < PAGE_SIZE) break;
-        offset += PAGE_SIZE;
-
-        // safety cap to avoid runaway loops
-        if (offset > 200000) break;
+      try {
+        const result = await Promise.race([
+          fetchAll(),
+          new Promise<Row[]>((_, reject) =>
+            setTimeout(
+              () => reject(new Error(`Timeout: query excedeu ${ANALYTICS_TIMEOUT_MS}ms`)),
+              ANALYTICS_TIMEOUT_MS,
+            ),
+          ),
+        ]);
+        const elapsed = Math.round(performance.now() - startedAt);
+        console.info("[Analytics]", {
+          widget: "social_interactions",
+          payload,
+          elapsedMs: elapsed,
+          rows: result.length,
+        });
+        return result;
+      } catch (error) {
+        const elapsed = Math.round(performance.now() - startedAt);
+        console.error("[Analytics]", {
+          widget: "social_interactions",
+          payload,
+          elapsedMs: elapsed,
+          error: error instanceof Error ? error.message : String(error),
+          partialRows: all.length,
+        });
+        // Return partial data so other blocks can render
+        return all;
       }
-
-      return all;
     },
     enabled: !!user,
     staleTime: 60_000,
+    retry: false,
   });
 
 
@@ -205,7 +279,15 @@ export default function Analytics() {
   }
 
   return (
+    <WidgetStatusProvider>
     <div className="space-y-6">
+      <AnalyticsStatusBar />
+      {queryError && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>Falha ao buscar dados: {(queryError as Error)?.message ?? 'erro desconhecido'}</span>
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
@@ -237,9 +319,12 @@ export default function Analytics() {
       </Card>
 
       {/* Collection Status (per network) */}
-      <CollectionStatusPanel />
+      <WidgetBoundary name="Status de Coleta">
+        <CollectionStatusPanel />
+      </WidgetBoundary>
 
       {/* KPI Cards */}
+      <WidgetBoundary name="KPIs">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <HelpTooltip text="Como o povo está se sentindo na média. Quanto maior, mais elogios; quanto menor, mais críticas.">
           <Card>
@@ -301,8 +386,10 @@ export default function Analytics() {
           </Card>
         </HelpTooltip>
       </div>
+      </WidgetBoundary>
 
       {/* Temporal Evolution - Full Width */}
+      <WidgetBoundary name="Evolução do Sentimento">
       <Card>
         <CardHeader>
           <HelpTooltip text="Mostra dia a dia se o povo está elogiando ou criticando mais ao longo do tempo.">
@@ -365,10 +452,12 @@ export default function Analytics() {
           )}
         </CardContent>
       </Card>
+      </WidgetBoundary>
 
       {/* Charts Row */}
       <div className="grid gap-6 md:grid-cols-2">
         {/* Sentiment Distribution */}
+        <WidgetBoundary name="Distribuição de Sentimento">
         <Card>
           <CardHeader>
             <HelpTooltip text="Pizza com a divisão entre comentários positivos, negativos e neutros.">
@@ -406,8 +495,10 @@ export default function Analytics() {
             )}
           </CardContent>
         </Card>
+        </WidgetBoundary>
 
         {/* Network Distribution - only show if there's data */}
+        <WidgetBoundary name="Origem dos Dados">
         <Card>
           <CardHeader>
             <HelpTooltip text="De qual rede social vem cada parte dos comentários.">
@@ -462,9 +553,11 @@ export default function Analytics() {
             )}
           </CardContent>
         </Card>
+        </WidgetBoundary>
       </div>
 
       {/* Volume Chart */}
+      <WidgetBoundary name="Volume de Menções">
       <Card>
         <CardHeader>
           <HelpTooltip text="Quantos comentários foram coletados em cada dia. Picos = momentos de mais barulho nas redes.">
@@ -503,6 +596,7 @@ export default function Analytics() {
           )}
         </CardContent>
       </Card>
+      </WidgetBoundary>
 
       {/* Data Info Footer */}
       <Card className="bg-muted/30">
@@ -533,5 +627,6 @@ export default function Analytics() {
         - Distribuição por Gênero
       */}
     </div>
+    </WidgetStatusProvider>
   );
 }
