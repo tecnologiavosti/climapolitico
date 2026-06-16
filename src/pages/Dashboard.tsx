@@ -133,7 +133,7 @@ const Dashboard = () => {
                 <Route path="/picos-mencao" element={<Navigate to="/dashboard/radar-politico" replace />} />
                 <Route path="/candidates" element={wrap("Candidates", Candidates)} />
                 <Route path="/candidates-catalog" element={wrap("CandidatesCatalog", CandidatesCatalog)} />
-                <Route path="/analytics-advanced" element={wrap("Analytics", Analytics)} />
+                
                 <Route path="/ranking" element={wrap("Ranking", CandidateRanking)} />
                 <Route path="/collection-status" element={wrap("CollectionStatus", CollectionStatus)} />
                 <Route path="/realtime-monitor" element={wrap("RealTimeMonitor", RealTimeMonitor)} />
