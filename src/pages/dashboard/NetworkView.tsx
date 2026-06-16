@@ -7,33 +7,29 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
-import {
-  MessageSquare, TrendingUp, TrendingDown, Heart, Hash, Activity, Crown, Sparkles, AlertTriangle,
-} from "lucide-react";
+import { MessageSquare, Activity, Gauge, Crown } from "lucide-react";
 import { format, parseISO } from "date-fns";
-import { ptBR } from "date-fns/locale";
 
-const NETWORKS = [
-  { value: "all", label: "Todas" },
-  { value: "instagram", label: "Instagram" },
-  { value: "twitter", label: "X / Twitter" },
-  { value: "facebook", label: "Facebook" },
-  { value: "youtube", label: "YouTube" },
-  { value: "tiktok", label: "TikTok" },
-  { value: "telegram", label: "Telegram" },
-  { value: "reddit", label: "Reddit" },
-  { value: "google_news", label: "Notícias" },
-  { value: "linkedin", label: "LinkedIn" },
+const ALLOWED_NETWORKS = new Set([
+  "youtube", "facebook", "tiktok", "telegram", "twitter", "google_news", "linkedin", "reddit", "instagram",
+]);
+
+const NETWORK_LABEL: Record<string, string> = {
+  youtube: "YouTube", facebook: "Facebook", tiktok: "TikTok", telegram: "Telegram",
+  twitter: "X / Twitter", google_news: "Notícias", linkedin: "LinkedIn", reddit: "Reddit", instagram: "Instagram",
+};
+
+const NETWORKS_FILTER = [
+  { value: "all", label: "Todas as redes" },
+  ...Array.from(ALLOWED_NETWORKS).map((v) => ({ value: v, label: NETWORK_LABEL[v] ?? v })),
 ];
 
 const PERIODS = [
   { value: 7, label: "7 dias" },
   { value: 30, label: "30 dias" },
   { value: 90, label: "90 dias" },
-  { value: 180, label: "6 meses" },
   { value: 365, label: "1 ano" },
   { value: 3650, label: "Total" },
 ];
@@ -41,95 +37,25 @@ const PERIODS = [
 const COLORS = {
   positive: "hsl(var(--success))",
   negative: "hsl(var(--destructive))",
-  neutral: "hsl(var(--warning))",
+  neutral: "hsl(var(--muted-foreground))",
   primary: "hsl(var(--primary))",
-  accent: "hsl(var(--accent))",
-};
-
-const DOW = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-
-type Agg = {
-  kpis: {
-    total: number; authors: number; engagement: number;
-    likes: number; replies: number; shares: number;
-    pos: number; neg: number; neu: number;
-    prev_total: number; prev_pos: number; prev_neg: number; prev_neu: number;
-  };
-  series: { day: string; p: number; n: number; u: number }[];
-  by_network: { network: string; mentions: number; likes: number; replies: number; shares: number; engagement: number; dominance?: number }[];
-  heatmap: { dow: number; hr: number; c: number }[];
-  hashtags: { tag: string; c: number; pos: number; neg: number; neu: number; prev_c: number }[];
-  topics: { theme: string; mentions: number; pos: number; neg: number; neu: number; prev_mentions: number }[];
-  analytics?: unknown;
-  debug?: {
-    totalInDatabase?: number; rawTotalInDatabase?: number; afterInvalidationFilter?: number;
-    afterPeriodFilter?: number; afterCandidateFilter?: number; afterPlatformFilter?: number;
-    afterDeduplication?: number; deduplicatedPosts?: number; finalAnalyticsCount?: number;
-    loss?: number; lossPct?: number; periodMode?: string;
-    mentions: number; posts: number; classified: number; themes: number; hashtags: number;
-  };
-};
-
-type SectionResponse<T> = {
-  ok?: boolean;
-  data?: T;
-  message?: string;
-  diagnostics?: {
-    duration_ms?: number;
-    records_read?: number;
-    records_returned?: number;
-    cache_hit?: boolean;
-    section?: string;
-    error?: string;
-    plan?: unknown;
-  };
-};
-
-const emptyKpis: Agg["kpis"] = {
-  total: 0, authors: 0, engagement: 0,
-  likes: 0, replies: 0, shares: 0,
-  pos: 0, neg: 0, neu: 0,
-  prev_total: 0, prev_pos: 0, prev_neg: 0, prev_neu: 0,
 };
 
 const fmt = (n: number) => Number(n ?? 0).toLocaleString("pt-BR");
-const compact = (n: number) => Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+const compact = (n: number) => Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 }).format(n ?? 0);
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
-// Crescimento: exige base mínima de 20; sem teto artificial para não mascarar bug.
-const growth = (cur: number, prev: number) => {
-  if (prev < 20) return null;
-  return Math.round(((cur - prev) / prev) * 100);
-};
-const HASHTAG_BLOCKLIST = /\b(fyp+|fyppp+|foryou|foryoupage|parati|viral\d*|funny|funnyvideos?|trending|tiktok|reels?|shorts?|explore|explorepage|likes?forlikes?|followme|like4like|comedy|memes?)\b/i;
-const isValidHashtag = (tag: string) => {
-  const clean = tag
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f\u200B-\u200D\uFEFF\u00A0]/g, "")
-    .toLowerCase()
-    .replace(/^#+/, "");
-  if (clean.length < 3 || clean.length > 40) return false;
-  if (!/[a-z]/.test(clean)) return false;
-  if (/(.)\1{5,}/.test(clean)) return false; // 6+ caracteres repetidos
-  if (HASHTAG_BLOCKLIST.test(clean)) return false;
-  if (/^(x200b|xfeff|nbsp|amp|[0-9_\-]+|[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(clean)) return false;
-  return true;
-};
-const isWithinSelectedPeriod = (date: string | null | undefined, days: number) => {
-  if (!date) return false;
-  const time = new Date(date).getTime();
-  if (!Number.isFinite(time)) return false;
-  if (days >= 3650) return true;
-  return time >= Date.now() - days * 24 * 60 * 60 * 1000 && time <= Date.now() + 60 * 1000;
-};
 
-const sectionErrorMessage = (section: string) => `Não foi possível carregar ${section}. As demais seções continuam disponíveis.`;
+type NetRow = { network: string; mentions: number; engagement: number; likes: number; replies: number; shares: number; pos: number; neg: number; neu: number };
+type SeriesRow = { day: string; p: number; n: number; u: number };
+type TopicRow = { theme: string; mentions: number; pos: number; neg: number; neu: number };
+type TermRow = { term: string; count: number; kind: "hashtag" | "entity" };
 
 export default function NetworkView() {
   const { user } = useAuth();
   const { isAdmin } = useAdminCheck();
   const [network, setNetwork] = useState("all");
   const [candidateId, setCandidateId] = useState<string>("all");
-  const [days, setDays] = useState(3650);
+  const [days, setDays] = useState(30);
 
   const { data: candidates } = useQuery({
     queryKey: ["nv-candidates", user?.id, isAdmin],
@@ -143,217 +69,89 @@ export default function NetworkView() {
     enabled: !!user,
   });
 
-  const queryParams = {
+  const params = {
     p_candidate_id: candidateId === "all" ? null : candidateId,
     p_network: network === "all" ? null : network,
     p_days: days,
   };
 
-  const analyticsQuery = useQuery({
-    queryKey: ["nv-analytics-blocks", user?.id, network, candidateId, days],
-    queryFn: async (): Promise<SectionResponse<Agg>> => {
-      const callBlock = async <T,>(rpcName: string, label: string): Promise<SectionResponse<T>> => {
-        console.time(`[NetworkView] ${label}`);
-        const started = performance.now();
-        const { data, error } = await (supabase.rpc as any)(rpcName, queryParams);
-        const elapsed = Math.round(performance.now() - started);
-        console.timeEnd(`[NetworkView] ${label}`);
-        if (error) {
-          console.error(`[NetworkView] ${label} failed`, { elapsed, error, queryParams });
-          return { ok: false, message: sectionErrorMessage(label), data: {} as T, diagnostics: { section: label, duration_ms: elapsed, error: error.message } };
-        }
-        const response = data as SectionResponse<T>;
-        if (response?.ok === false) {
-          console.warn(`[NetworkView] ${label} partial failure`, { elapsed, response, queryParams });
-        }
-        return response;
-      };
+  const fetchBlock = async (rpc: string) => {
+    const { data, error } = await (supabase.rpc as any)(rpc, params);
+    if (error) throw error;
+    return data;
+  };
 
-      const [summary, sentiment, engagement, heatmap, topics, hashtags] = await Promise.all([
-        callBlock<Pick<Agg, "kpis" | "debug">>("network_view_summary", "summary"),
-        callBlock<Pick<Agg, "kpis" | "series">>("network_view_sentiment_block", "sentiment"),
-        callBlock<Pick<Agg, "by_network">>("network_view_engagement_block", "engagement"),
-        callBlock<Pick<Agg, "heatmap">>("network_view_heatmap_block", "heatmap"),
-        callBlock<Pick<Agg, "topics">>("network_view_topics_block", "themes"),
-        callBlock<Pick<Agg, "hashtags">>("network_view_hashtags_block", "hashtags"),
+  const query = useQuery({
+    queryKey: ["nv-blocks", user?.id, network, candidateId, days],
+    queryFn: async () => {
+      const [summary, sentiment, engagement, topics, terms] = await Promise.all([
+        fetchBlock("network_view_summary"),
+        fetchBlock("network_view_sentiment_block"),
+        fetchBlock("network_view_engagement_block"),
+        fetchBlock("network_view_topics_block"),
+        fetchBlock("network_view_terms_block"),
       ]);
-
-      const data: Agg = {
-        kpis: { ...emptyKpis, ...(summary.data?.kpis ?? {}), ...(sentiment.data?.kpis ?? {}) },
-        series: sentiment.data?.series ?? [],
-        by_network: engagement.data?.by_network ?? [],
-        heatmap: heatmap.data?.heatmap ?? [],
-        topics: topics.data?.topics ?? [],
-        hashtags: hashtags.data?.hashtags ?? [],
-        debug: {
-          ...(summary.data?.debug ?? {}),
-          themes: topics.data?.topics?.length ?? 0,
-          hashtags: hashtags.data?.hashtags?.length ?? 0,
-        } as Agg["debug"],
-      };
-      console.info("[NetworkView] analytics blocks loaded", {
-        diagnostics: { summary: summary.diagnostics, sentiment: sentiment.diagnostics, engagement: engagement.diagnostics, heatmap: heatmap.diagnostics, topics: topics.diagnostics, hashtags: hashtags.diagnostics },
-        debug: data.debug,
-      });
-
       return {
-        ok: [summary, sentiment, engagement, heatmap, topics, hashtags].every((r) => r.ok !== false),
-        data,
-        diagnostics: { section: "network-view", plan: { summary: summary.diagnostics, sentiment: sentiment.diagnostics, engagement: engagement.diagnostics, heatmap: heatmap.diagnostics, topics: topics.diagnostics, hashtags: hashtags.diagnostics } },
-        message: [summary, sentiment, engagement, heatmap, topics, hashtags].filter((r) => r.ok === false).map((r) => r.message).filter(Boolean).join("\n"),
+        kpis: summary?.data?.kpis ?? {},
+        sentimentKpis: sentiment?.data?.kpis ?? {},
+        series: (sentiment?.data?.series ?? []) as SeriesRow[],
+        byNet: ((engagement?.data?.by_network ?? []) as NetRow[]).filter((n) => ALLOWED_NETWORKS.has(n.network)),
+        topics: ((topics?.data?.topics ?? []) as TopicRow[]).filter((t) => !!t.theme),
+        terms: (terms?.data?.terms ?? []) as TermRow[],
       };
     },
     enabled: !!user,
-    staleTime: 5 * 60_000, gcTime: 30 * 60_000, refetchOnWindowFocus: false,
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
   });
 
-  const analyticsData = analyticsQuery.data?.data;
-  const isLoadingCore = analyticsQuery.isLoading;
-  const isLoadingContent = analyticsQuery.isLoading;
-  const sectionErrors = [
-    analyticsQuery.error || (analyticsQuery.data?.ok === false && analyticsQuery.data.message ? new Error(analyticsQuery.data.message) : null),
-  ].filter(Boolean) as Error[];
+  const loading = query.isLoading;
+  const d = query.data;
 
-  const analytics: Agg = {
-    kpis: analyticsData?.kpis ?? emptyKpis,
-    series: analyticsData?.series ?? [],
-    by_network: analyticsData?.by_network ?? [],
-    heatmap: analyticsData?.heatmap ?? [],
-    hashtags: (analyticsData?.hashtags ?? []).filter((h) => isValidHashtag(h.tag)),
-    topics: (analyticsData?.topics ?? []).filter((t) => t.theme?.trim() && t.mentions > 0),
-    analytics: analyticsData?.analytics,
-    debug: analyticsData?.debug,
-  };
-  const agg = analytics;
+  const totalMentions = d?.kpis?.total ?? 0;
+  const totalEngagement = d?.kpis?.engagement ?? 0;
+  const pos = d?.sentimentKpis?.pos ?? 0;
+  const neg = d?.sentimentKpis?.neg ?? 0;
+  const neu = d?.sentimentKpis?.neu ?? 0;
+  const labeled = pos + neg + neu;
+  // Sentimento líquido: (-100..+100)
+  const netSentiment = labeled > 0 ? Math.round(((pos - neg) / labeled) * 100) : 0;
+  const netLabel = netSentiment >= 10 ? "Favorável" : netSentiment <= -10 ? "Desfavorável" : "Neutro";
+  const netTone = netSentiment >= 10 ? "text-success" : netSentiment <= -10 ? "text-destructive" : "text-muted-foreground";
 
-  const k = agg?.kpis;
-  const total = k?.total ?? 0;
-  const labeled = (k?.pos ?? 0) + (k?.neg ?? 0) + (k?.neu ?? 0);
-  const posPct = pct(k?.pos ?? 0, labeled);
-  const negPct = pct(k?.neg ?? 0, labeled);
-  const neuPct = pct(k?.neu ?? 0, labeled);
-  const prevLabeled = (k?.prev_pos ?? 0) + (k?.prev_neg ?? 0) + (k?.prev_neu ?? 0);
-  const prevPosPct = pct(k?.prev_pos ?? 0, prevLabeled);
-  const prevNegPct = pct(k?.prev_neg ?? 0, prevLabeled);
-  const prevNeuPct = pct(k?.prev_neu ?? 0, prevLabeled);
-  const growthPct = growth(total, k?.prev_total ?? 0);
+  const dominant = useMemo(() => {
+    const arr = d?.byNet ?? [];
+    if (!arr.length) return null;
+    return [...arr].sort((a, b) => (b.mentions * 0.4 + b.engagement * 0.6) - (a.mentions * 0.4 + a.engagement * 0.6))[0];
+  }, [d]);
 
-  // Rede dominante: mesmo score absoluto usado no backend e no resumo executivo.
-  const dominantNet = useMemo(() => {
-    const nets = agg?.by_network ?? [];
-    if (!nets.length) return null;
-    const scored = nets.map((n) => ({
-      ...n,
-      dominanceScore: n.dominance ?? ((n.mentions || 0) * 0.4 + (n.engagement || 0) * 0.6),
-    }));
-    scored.sort((a, b) => b.dominanceScore - a.dominanceScore);
-    return scored[0];
-  }, [agg]);
-  const dominant = dominantNet?.network ?? "—";
+  const networkTotal = useMemo(() => (d?.byNet ?? []).reduce((s, n) => s + n.mentions, 0), [d]);
 
-  // Interações reais = curtidas + comentários + compartilhamentos (views NÃO entram)
-  const realInteractions = (k?.likes ?? 0) + (k?.replies ?? 0) + (k?.shares ?? 0);
+  const sortedNetworks = useMemo(() => {
+    return [...(d?.byNet ?? [])].sort((a, b) => b.mentions - a.mentions);
+  }, [d]);
 
-  const networksSum = (agg?.by_network ?? []).reduce((s, n) => s + (n.mentions || 0), 0);
-  const consistencyOk = total === 0 || (
-    Math.abs(networksSum - total) / Math.max(total, 1) <= 0.01 &&
-    Math.abs(labeled - total) / Math.max(total, 1) <= 0.05
-  );
-  const lowVolume = total > 0 && total < 50;
-
-  const sentimentSeries = useMemo(() => {
-    return [...(agg?.series ?? [])].sort(
-      (a, b) => new Date(a.day).getTime() - new Date(b.day).getTime()
-    ).map((d) => {
-      const tot = d.p + d.n + d.u;
-      return {
-        date: format(parseISO(d.day), "dd/MM"),
-        positivo: d.p,
-        negativo: d.n,
-        neutro: d.u,
-        positivoPct: pct(d.p, tot),
-        negativoPct: pct(d.n, tot),
-        neutroPct: pct(d.u, tot),
-      };
-    });
-  }, [agg]);
-
-  const sentimentPie = [
-    { name: "Positivo", value: k?.pos ?? 0, color: COLORS.positive },
-    { name: "Negativo", value: k?.neg ?? 0, color: COLORS.negative },
-    { name: "Neutro", value: k?.neu ?? 0, color: COLORS.neutral },
-  ].filter((d) => d.value > 0);
-
-  const heat = useMemo(() => {
-    const m = new Map<string, number>();
-    let max = 0;
-    for (const h of agg?.heatmap ?? []) {
-      m.set(`${h.dow}-${h.hr}`, h.c);
-      if (h.c > max) max = h.c;
-    }
-    return { m, max: Math.max(1, max) };
-  }, [agg]);
-
-  // Resumo executivo derivado dos dados reais: forte_em / sofre_em / narrativas / momento.
-  const aiBullets = useMemo(() => {
-    if (!agg || total < 30 || !agg.by_network.length) return null;
-    const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-    const strong = dominantNet ?? [...agg.by_network].sort((a, b) => ((b.mentions || 0) * 0.4 + (b.engagement || 0) * 0.6) - ((a.mentions || 0) * 0.4 + (a.engagement || 0) * 0.6))[0];
-    const weakSentNet = [...agg.by_network]
-      .map((n) => ({ ...n, neg: Math.max(0, (n.mentions || 0) - (n.likes || 0) - (n.replies || 0)) }))
-      .sort((a, b) => b.neg - a.neg)[0];
-    const topTopics = (agg.topics ?? []).slice(0, 3).map((t) => t.theme).filter(Boolean);
-    const moment = growthPct === null
-      ? "Sem base histórica suficiente para avaliar tendência."
-      : growthPct >= 30 ? `Crescimento acelerado (+${growthPct}% vs. período anterior).`
-      : growthPct <= -30 ? `Queda significativa (${growthPct}% vs. período anterior).`
-      : `Estabilidade no volume (${growthPct >= 0 ? "+" : ""}${growthPct}%).`;
-    return [
-      { label: "Mais forte em", text: `${cap(strong.network)} — ${fmt(strong.mentions)} menções, ${compact(strong.engagement || 0)} interações.` },
-      { label: "Sofre mais em", text: negPct > posPct
-          ? `Sentimento negativo predomina (${negPct}% vs. ${posPct}% positivo).`
-          : `${cap(weakSentNet?.network ?? "—")} com a menor proporção positiva.` },
-      { label: "Narrativas dominantes", text: topTopics.length ? topTopics.join(" · ") : "Sem temas dominantes classificados." },
-      { label: "Momento", text: moment },
-    ];
-  }, [agg, dominantNet, total, growthPct, posPct, negPct]);
-
-  // Alertas IA baseados em regras: variação > 30%, crise de sentimento, pico em horário eleitoral (17h-22h).
-  const aiAlerts = useMemo(() => {
-    const alerts: { level: "success" | "warning" | "destructive"; title: string; detail: string }[] = [];
-    if (!agg) return alerts;
-    // Variação por rede (precisa comparar com prev — usamos só growth global aqui)
-    if (growthPct !== null && growthPct >= 30) {
-      alerts.push({ level: "success", title: "Crescimento anormal", detail: `Volume +${growthPct}% vs. período anterior.` });
-    } else if (growthPct !== null && growthPct <= -30) {
-      alerts.push({ level: "destructive", title: "Queda acentuada", detail: `Volume ${growthPct}% vs. período anterior.` });
-    }
-    // Crise de sentimento
-    if (prevLabeled > 0 && labeled > 0 && (negPct - prevNegPct) >= 15) {
-      alerts.push({ level: "destructive", title: "Aumento de sentimento negativo", detail: `+${negPct - prevNegPct}pp de negativo em relação ao período anterior.` });
-    }
-    // Pico em horário eleitoral (17h-22h)
-    const electoralPeak = (agg.heatmap ?? []).filter((h) => h.hr >= 17 && h.hr <= 22);
-    const totalElectoral = electoralPeak.reduce((s, h) => s + h.c, 0);
-    const totalHeat = (agg.heatmap ?? []).reduce((s, h) => s + h.c, 0);
-    if (totalHeat > 100 && totalElectoral / totalHeat >= 0.5) {
-      alerts.push({ level: "warning", title: "Pico em janela eleitoral", detail: `${Math.round((totalElectoral / totalHeat) * 100)}% das menções ocorrem entre 17h-22h.` });
-    }
-    return alerts;
-  }, [agg, growthPct, negPct, prevNegPct, labeled, prevLabeled]);
-
+  // Série temporal ordenada por timestamp ISO real
+  const series = useMemo(() => {
+    return [...(d?.series ?? [])]
+      .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.day))
+      .sort((a, b) => new Date(a.day + "T00:00:00Z").getTime() - new Date(b.day + "T00:00:00Z").getTime())
+      .map((r) => ({
+        iso: r.day,
+        date: format(parseISO(r.day), "dd/MM"),
+        positivo: r.p,
+        negativo: r.n,
+        total: r.p + r.n + r.u,
+      }));
+  }, [d]);
 
   return (
-    <div className="space-y-6">
-      {/* Header + Filters */}
+    <div className="space-y-8">
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-            Visão por Rede Social
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Análise detalhada de comportamento, sentimento e repercussão por plataforma.
-          </p>
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Visão por Rede Social</h1>
+          <p className="text-muted-foreground mt-1 text-sm">Inteligência social institucional — volume, repercussão e sentimento.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Select value={candidateId} onValueChange={setCandidateId}>
@@ -365,7 +163,7 @@ export default function NetworkView() {
           </Select>
           <Select value={network} onValueChange={setNetwork}>
             <SelectTrigger className="w-[170px]"><SelectValue /></SelectTrigger>
-            <SelectContent>{NETWORKS.map((n) => <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>)}</SelectContent>
+            <SelectContent>{NETWORKS_FILTER.map((n) => <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>)}</SelectContent>
           </Select>
           <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
             <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
@@ -374,348 +172,191 @@ export default function NetworkView() {
         </div>
       </div>
 
-      {sectionErrors.length > 0 && (
-        <Card className="p-4 border-destructive/40 bg-destructive/5 text-sm text-destructive">
-          {sectionErrors.map((err, index) => (
-            <div key={`${err.message}-${index}`}>{err.message}</div>
-          ))}
-        </Card>
-      )}
-
-      {!isLoadingCore && !consistencyOk && (
-        <Card className="p-4 border-warning/40 bg-warning/5 text-sm">
-          Recalculando agregações — algumas métricas estão sendo reprocessadas para garantir consistência.
-        </Card>
-      )}
-
-      {!isLoadingCore && total > 0 && total < 50 && (
-        <Card className="p-4 border-warning/40 bg-warning/5 text-sm flex items-start gap-3">
-          <AlertTriangle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
-          <div>
-            <div className="font-semibold mb-0.5">Dados insuficientes para análise estatística confiável</div>
-            <div className="text-muted-foreground text-xs">Apenas {fmt(total)} menções no período selecionado. Aumente o período ou aguarde mais coleta para análises mais robustas.</div>
-          </div>
-        </Card>
-      )}
-
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <Kpi label="Total de menções" value={fmt(total)} icon={<MessageSquare className="h-4 w-4" />} loading={isLoadingCore} />
-        <Kpi label="Interações" value={compact(realInteractions)} icon={<Activity className="h-4 w-4" />} loading={isLoadingCore} sub={`${compact(k?.likes ?? 0)} ♥ · ${compact(k?.replies ?? 0)} 💬 · ${compact(k?.shares ?? 0)} ↗`} />
-        <Kpi label="Sentimento positivo" value={`${posPct}%`} icon={<Heart className="h-4 w-4 text-success" />} loading={isLoadingCore} sub={`${fmt(k?.pos ?? 0)} menções`} tone="success" delta={prevLabeled >= 20 ? posPct - prevPosPct : undefined} />
-        <Kpi label="Sentimento negativo" value={`${negPct}%`} icon={<TrendingDown className="h-4 w-4 text-destructive" />} loading={isLoadingCore} sub={`${fmt(k?.neg ?? 0)} menções`} tone="destructive" delta={prevLabeled >= 20 ? negPct - prevNegPct : undefined} invertDelta />
-        <Kpi label="Crescimento" value={growthPct === null ? "—" : `${growthPct >= 0 ? "+" : ""}${growthPct}%`} icon={growthPct === null || growthPct >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />} loading={isLoadingCore} sub={growthPct === null ? "Sem base histórica suficiente" : "vs. período anterior"} tone={growthPct === null || growthPct >= 0 ? "success" : "destructive"} />
-        <Kpi label="Rede dominante" value={dominant === "—" ? "—" : dominant.charAt(0).toUpperCase() + dominant.slice(1)} icon={<Crown className="h-4 w-4" />} loading={isLoadingCore} sub={dominantNet && total > 0 ? `${fmt(dominantNet.mentions)} menções · ${compact(dominantNet.engagement || 0)} int.` : ""} />
+      {/* BLOCO 1 — RESUMO EXECUTIVO */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <BigKpi icon={<MessageSquare className="h-5 w-5" />} label="Total de menções" value={loading ? null : fmt(totalMentions)} />
+        <BigKpi icon={<Activity className="h-5 w-5" />} label="Total de interações" value={loading ? null : compact(totalEngagement)} sub={loading ? "" : `${compact(d?.kpis?.likes ?? 0)} curtidas · ${compact(d?.kpis?.replies ?? 0)} comentários · ${compact(d?.kpis?.shares ?? 0)} compart.`} />
+        <BigKpi
+          icon={<Gauge className="h-5 w-5" />}
+          label="Sentimento líquido"
+          value={loading ? null : `${netSentiment > 0 ? "+" : ""}${netSentiment}`}
+          sub={loading ? "" : netLabel}
+          valueClassName={netTone}
+        />
+        <BigKpi
+          icon={<Crown className="h-5 w-5" />}
+          label="Rede dominante"
+          value={loading ? null : dominant ? (NETWORK_LABEL[dominant.network] ?? dominant.network) : "—"}
+          sub={loading ? "" : dominant ? `${fmt(dominant.mentions)} menções · ${compact(dominant.engagement)} interações` : ""}
+        />
       </div>
 
-      {/* Debug card removido — diagnóstico técnico permanece apenas no console. */}
-
-      {/* AI Alerts */}
-      {!isLoadingCore && aiAlerts.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {aiAlerts.map((a, i) => {
-            const toneClass = a.level === "destructive" ? "border-destructive/40 bg-destructive/5"
-              : a.level === "warning" ? "border-warning/40 bg-warning/5"
-              : "border-success/40 bg-success/5";
-            const iconClass = a.level === "destructive" ? "text-destructive"
-              : a.level === "warning" ? "text-warning" : "text-success";
-            return (
-              <Card key={i} className={`p-3 flex items-start gap-2 ${toneClass}`}>
-                <AlertTriangle className={`h-4 w-4 mt-0.5 shrink-0 ${iconClass}`} />
-                <div className="min-w-0">
-                  <div className="text-xs font-semibold">{a.title}</div>
-                  <div className="text-[11px] text-muted-foreground">{a.detail}</div>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      )}
-
-      {/* AI Insight */}
-      {!isLoadingCore && aiBullets && (
-        <Card className="p-5 bg-gradient-to-br from-primary/5 to-accent/5 border-primary/20">
-          <div className="flex items-start gap-3">
-            <div className="p-2 rounded-lg bg-primary/10 shrink-0"><Sparkles className="h-5 w-5 text-primary" /></div>
-            <div className="flex-1 min-w-0">
-              <h3 className="font-bold mb-2">Resumo executivo</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2">
-                {aiBullets.map((b) => (
-                  <div key={b.label} className="text-sm">
-                    <span className="font-semibold text-foreground">{b.label}: </span>
-                    <span className="text-muted-foreground">{b.text}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {/* Sentiment temporal + distribution */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="p-6 lg:col-span-2">
-          <h3 className="text-lg font-bold mb-1">Sentimento ao longo do tempo</h3>
-          <p className="text-sm text-muted-foreground mb-4">Evolução de positivo, negativo e neutro</p>
-          {isLoadingCore ? <Skeleton className="h-[300px] w-full" /> : sentimentSeries.length === 0 ? (
-            <EmptyState />
-          ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={sentimentSeries}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="date" className="text-xs" />
-                <YAxis className="text-xs" />
-                <Tooltip
-                  contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
-                  formatter={(value: any, name: any, props: any) => {
-                    const pctKey = name === "Positivo" ? "positivoPct" : name === "Negativo" ? "negativoPct" : "neutroPct";
-                    return [`${value} (${props.payload[pctKey]}%)`, name];
-                  }}
-                />
-                <Legend />
-                <Line type="monotone" dataKey="positivo" stroke={COLORS.positive} strokeWidth={2} name="Positivo" dot={false} />
-                <Line type="monotone" dataKey="negativo" stroke={COLORS.negative} strokeWidth={2} name="Negativo" dot={false} />
-                <Line type="monotone" dataKey="neutro" stroke={COLORS.neutral} strokeWidth={2} name="Neutro" dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </Card>
-
-        <Card className="p-6">
-          <h3 className="text-lg font-bold mb-1">Distribuição de sentimento</h3>
-          <p className="text-sm text-muted-foreground mb-4">Proporção atual e variação</p>
-          {isLoadingCore ? <Skeleton className="h-[300px] w-full" /> : sentimentPie.length === 0 ? (
-            <EmptyState />
-          ) : (
-            <>
-              <ResponsiveContainer width="100%" height={180}>
-                <PieChart>
-                  <Pie data={sentimentPie} cx="50%" cy="50%" innerRadius={50} outerRadius={75} dataKey="value" paddingAngle={2}>
-                    {sentimentPie.map((d, i) => <Cell key={i} fill={d.color} />)}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="space-y-2 mt-2">
-                <SentBar label="Positivo" pct={posPct} count={k?.pos ?? 0} delta={prevLabeled >= 20 ? posPct - prevPosPct : undefined} color={COLORS.positive} />
-                <SentBar label="Negativo" pct={negPct} count={k?.neg ?? 0} delta={prevLabeled >= 20 ? negPct - prevNegPct : undefined} color={COLORS.negative} invert />
-                <SentBar label="Neutro" pct={neuPct} count={k?.neu ?? 0} delta={prevLabeled >= 20 ? neuPct - prevNeuPct : undefined} color={COLORS.neutral} />
-              </div>
-            </>
-          )}
-        </Card>
-      </div>
-
-      {/* Engagement by network */}
-      {network === "all" && (
-        <Card className="p-6">
-          <h3 className="text-lg font-bold mb-1">Engajamento por rede</h3>
-          <p className="text-sm text-muted-foreground mb-4">Curtidas, respostas e compartilhamentos</p>
-          {isLoadingCore ? <Skeleton className="h-[280px] w-full" /> : !agg?.by_network.length ? <EmptyState /> : (
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={agg.by_network}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="network" className="text-xs" />
-                <YAxis className="text-xs" />
-                <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
-                <Legend />
-                <Bar dataKey="likes" fill={COLORS.positive} name="Curtidas" stackId="a" />
-                <Bar dataKey="replies" fill={COLORS.primary} name="Comentários" stackId="a" />
-                <Bar dataKey="shares" fill={COLORS.accent} name="Compartilhamentos" stackId="a" />
-                <Bar dataKey="mentions" fill={COLORS.neutral} name="Menções" />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </Card>
-      )}
-
-      {/* Heatmap */}
-      {!lowVolume && (
+      {/* BLOCO 2 — DISTRIBUIÇÃO POR REDE */}
       <Card className="p-6">
-        <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
-          <h3 className="text-lg font-bold">Horários de maior movimento</h3>
-          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-            <span>baixo</span>
-            {[1, 2, 3, 4].map((t) => (
-              <span key={t} className="w-3 h-3 rounded-sm" style={{ backgroundColor: `hsl(var(--primary) / ${[0.25, 0.5, 0.75, 1.0][t - 1]})` }} />
-            ))}
-            <span>explosivo</span>
-          </div>
-        </div>
-        <p className="text-sm text-muted-foreground mb-4">Dia da semana × hora — concentração de atividade</p>
-        {isLoadingCore ? <Skeleton className="h-[220px] w-full" /> : !agg?.heatmap.length ? <EmptyState /> : (
-          <div className="overflow-x-auto">
-            <div className="inline-grid gap-1" style={{ gridTemplateColumns: "auto repeat(24, minmax(20px, 1fr))" }}>
-              <div />
-              {Array.from({ length: 24 }, (_, h) => (
-                <div key={h} className="text-[9px] text-center text-muted-foreground">{h}</div>
-              ))}
-              {DOW.map((dn, di) => (
-                <>
-                  <div key={`l-${di}`} className="text-[10px] text-muted-foreground pr-2 flex items-center">{dn}</div>
-                  {Array.from({ length: 24 }, (_, h) => {
-                    const c = heat.m.get(`${di}-${h}`) || 0;
-                    const intensity = c / heat.max;
-                    // 4 níveis: baixo, médio, alto, explosivo
-                    const tier = c === 0 ? 0 : intensity < 0.25 ? 1 : intensity < 0.55 ? 2 : intensity < 0.85 ? 3 : 4;
-                    const alpha = [0.05, 0.25, 0.5, 0.75, 1.0][tier];
-                    const tierLabel = ["sem atividade", "baixo", "médio", "alto", "explosivo"][tier];
-                    const dayName = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"][di];
-                    return (
-                      <div
-                        key={`${di}-${h}`}
-                        title={`${dayName} ${h}h → ${fmt(c)} interações (${tierLabel})`}
-                        className="aspect-square rounded-sm transition-transform hover:scale-110 cursor-default"
-                        style={{ backgroundColor: `hsl(var(--primary) / ${alpha})` }}
-                      />
-                    );
-                  })}
-                </>
-              ))}
-            </div>
+        <h2 className="text-lg font-semibold mb-1">Distribuição por rede</h2>
+        <p className="text-sm text-muted-foreground mb-6">Participação de cada plataforma no volume e nas interações.</p>
+        {loading ? <Skeleton className="h-64 w-full" /> : sortedNetworks.length === 0 ? <Empty /> : (
+          <div className="space-y-3">
+            {sortedNetworks.map((n) => {
+              const share = pct(n.mentions, networkTotal);
+              return (
+                <div key={n.network} className="grid grid-cols-12 items-center gap-3">
+                  <div className="col-span-3 md:col-span-2 text-sm font-medium">{NETWORK_LABEL[n.network] ?? n.network}</div>
+                  <div className="col-span-6 md:col-span-7">
+                    <div className="h-3 rounded-full bg-muted overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-primary to-primary/60" style={{ width: `${share}%` }} />
+                    </div>
+                  </div>
+                  <div className="col-span-3 md:col-span-3 flex items-center justify-end gap-4 text-xs tabular-nums">
+                    <span className="text-foreground font-medium">{fmt(n.mentions)}</span>
+                    <span className="text-muted-foreground hidden md:inline">{compact(n.engagement)} int.</span>
+                    <span className="w-10 text-right text-muted-foreground">{share}%</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </Card>
-      )}
 
-      {/* Topics + Hashtags */}
-      {!lowVolume && (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* BLOCO 3 — EVOLUÇÃO TEMPORAL */}
+      <Card className="p-6">
+        <h2 className="text-lg font-semibold mb-1">Evolução temporal</h2>
+        <p className="text-sm text-muted-foreground mb-6">Volume diário com sobreposição de sentimento positivo e negativo.</p>
+        {loading ? <Skeleton className="h-72 w-full" /> : series.length === 0 ? <Empty /> : (
+          <ResponsiveContainer width="100%" height={320}>
+            <LineChart data={series} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <XAxis dataKey="date" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
+              <YAxis className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
+              <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Line type="monotone" dataKey="total" name="Volume" stroke={COLORS.primary} strokeWidth={2.5} dot={false} />
+              <Line type="monotone" dataKey="positivo" name="Positivo" stroke={COLORS.positive} strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
+              <Line type="monotone" dataKey="negativo" name="Negativo" stroke={COLORS.negative} strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+      </Card>
 
-        <Card className="p-6">
-          <h3 className="text-lg font-bold mb-1">Assuntos dominantes</h3>
-          <p className="text-sm text-muted-foreground mb-4">Temas detectados em posts, comentários e respostas (agrupamento semântico)</p>
-          {isLoadingContent ? <LoadingMessage label="Carregando assuntos..." /> : !agg?.topics.length ? <EmptyState /> : (
-            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-2">
-              {agg.topics.map((t) => {
-                const lab = t.pos + t.neg + t.neu;
-                const variation = growth(t.mentions, t.prev_mentions);
-                const posP = pct(t.pos, lab);
-                return (
-                  <div key={t.theme} className="border border-border rounded-md p-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-semibold">{t.theme}</span>
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-muted-foreground">{fmt(t.mentions)} menções</span>
-                        {variation === null ? <span className="text-muted-foreground">Sem base histórica</span> : <span className={`font-medium ${variation >= 0 ? "text-success" : "text-destructive"}`}>{variation >= 0 ? "+" : ""}{variation}%</span>}
-                      </div>
-                    </div>
-                    {lab < 20 ? (
-                      <div className="text-[11px] text-muted-foreground">Dados insuficientes</div>
-                    ) : (
-                      <>
-                        <div className="text-[11px] text-muted-foreground mb-1">{posP}% positivo</div>
-                        <div className="flex h-2 rounded-full overflow-hidden bg-muted">
-                          <div style={{ width: `${pct(t.pos, lab)}%`, backgroundColor: COLORS.positive }} />
-                          <div style={{ width: `${pct(t.neu, lab)}%`, backgroundColor: COLORS.neutral }} />
-                          <div style={{ width: `${pct(t.neg, lab)}%`, backgroundColor: COLORS.negative }} />
+      {/* BLOCO 4 — SENTIMENTO POR REDE */}
+      <Card className="p-6">
+        <h2 className="text-lg font-semibold mb-1">Sentimento por rede</h2>
+        <p className="text-sm text-muted-foreground mb-6">Distribuição percentual de positivo, negativo e neutro em cada plataforma.</p>
+        {loading ? <Skeleton className="h-56 w-full" /> : sortedNetworks.length === 0 ? <Empty /> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b border-border">
+                  <th className="py-2 pr-4">Rede</th>
+                  <th className="py-2 pr-4 text-right">Menções</th>
+                  <th className="py-2 pr-4">Distribuição</th>
+                  <th className="py-2 pr-4 text-right w-20">+ %</th>
+                  <th className="py-2 pr-4 text-right w-20">− %</th>
+                  <th className="py-2 text-right w-20">~ %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedNetworks.map((n) => {
+                  const lab = n.pos + n.neg + n.neu;
+                  const p = pct(n.pos, lab), neg = pct(n.neg, lab), nu = pct(n.neu, lab);
+                  return (
+                    <tr key={n.network} className="border-b border-border/40 last:border-0">
+                      <td className="py-3 pr-4 font-medium">{NETWORK_LABEL[n.network] ?? n.network}</td>
+                      <td className="py-3 pr-4 text-right tabular-nums">{fmt(n.mentions)}</td>
+                      <td className="py-3 pr-4">
+                        <div className="flex h-2.5 rounded-full overflow-hidden bg-muted min-w-[140px]">
+                          <div style={{ width: `${p}%`, backgroundColor: COLORS.positive }} />
+                          <div style={{ width: `${neg}%`, backgroundColor: COLORS.negative }} />
+                          <div style={{ width: `${nu}%`, backgroundColor: COLORS.neutral }} />
                         </div>
-                        <div className="flex justify-between mt-1 text-[10px] text-muted-foreground">
-                          <span>+{pct(t.pos, lab)}%</span>
-                          <span>~{pct(t.neu, lab)}%</span>
-                          <span>−{pct(t.neg, lab)}%</span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </Card>
+                      </td>
+                      <td className="py-3 pr-4 text-right tabular-nums text-success">{p}%</td>
+                      <td className="py-3 pr-4 text-right tabular-nums text-destructive">{neg}%</td>
+                      <td className="py-3 text-right tabular-nums text-muted-foreground">{nu}%</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
 
-        <Card className="p-6">
-          <h3 className="text-lg font-bold mb-1 flex items-center gap-2"><Hash className="h-5 w-5" /> Hashtags recorrentes</h3>
-          <p className="text-sm text-muted-foreground mb-4">Top 20 — explícitas e implícitas, com variação e sentimento</p>
-          {isLoadingContent ? <LoadingMessage label="Carregando hashtags..." /> : !agg?.hashtags.length ? <EmptyState /> : (
-            <div className="space-y-1.5 max-h-[420px] overflow-y-auto pr-2">
-              {agg.hashtags.map((h) => {
-                const lab = h.pos + h.neg + h.neu;
-                const variation = growth(h.c, h.prev_c);
-                const posP = pct(h.pos, lab);
-                return (
-                  <div key={h.tag} className="flex items-center justify-between border border-border rounded-md p-2 text-sm">
-                    <span className="font-medium truncate max-w-[40%]">{h.tag}</span>
-                    <div className="flex items-center gap-3 text-xs">
-                      <span className="text-muted-foreground">{fmt(h.c)}</span>
-                      {variation === null ? <span className="text-muted-foreground">Sem base histórica</span> : <span className={`font-medium ${variation >= 0 ? "text-success" : "text-destructive"}`}>{variation >= 0 ? "+" : ""}{variation}%</span>}
-                      {lab > 0 && <span className="text-success">{posP}% pos</span>}
-                    </div>
+      {/* BLOCO 5 — ASSUNTOS DOMINANTES */}
+      <Card className="p-6">
+        <h2 className="text-lg font-semibold mb-1">Assuntos dominantes</h2>
+        <p className="text-sm text-muted-foreground mb-6">Volume, participação e sentimento médio por tema.</p>
+        {loading ? <Skeleton className="h-56 w-full" /> : (d?.topics?.length ?? 0) === 0 ? <Empty /> : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {(d?.topics ?? []).map((t) => {
+              const lab = t.pos + t.neg + t.neu;
+              const share = pct(t.mentions, totalMentions);
+              const posP = pct(t.pos, lab);
+              return (
+                <div key={t.theme} className="rounded-lg border border-border p-4 bg-card/50">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-semibold">{t.theme}</span>
+                    <span className="text-xs text-muted-foreground tabular-nums">{share}% share</span>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </Card>
-      </div>
-      )}
+                  <div className="flex items-baseline gap-2 mb-2">
+                    <span className="text-2xl font-bold tabular-nums">{fmt(t.mentions)}</span>
+                    <span className="text-xs text-muted-foreground">menções</span>
+                  </div>
+                  <div className="flex h-1.5 rounded-full overflow-hidden bg-muted">
+                    <div style={{ width: `${pct(t.pos, lab)}%`, backgroundColor: COLORS.positive }} />
+                    <div style={{ width: `${pct(t.neg, lab)}%`, backgroundColor: COLORS.negative }} />
+                    <div style={{ width: `${pct(t.neu, lab)}%`, backgroundColor: COLORS.neutral }} />
+                  </div>
+                  <div className="mt-1 text-[11px] text-success">{posP}% positivo</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
 
+      {/* BLOCO 6 — TERMOS EM ALTA */}
+      <Card className="p-6">
+        <h2 className="text-lg font-semibold mb-1">Termos em alta</h2>
+        <p className="text-sm text-muted-foreground mb-6">Hashtags, nomes e entidades mais citados no período.</p>
+        {loading ? <Skeleton className="h-40 w-full" /> : (d?.terms?.length ?? 0) === 0 ? <Empty /> : (
+          <div className="flex flex-wrap gap-2">
+            {(d?.terms ?? []).map((t) => {
+              const max = (d?.terms?.[0]?.count ?? 1);
+              const intensity = Math.max(0.3, Math.min(1, t.count / max));
+              return (
+                <div
+                  key={`${t.kind}-${t.term}`}
+                  className="rounded-full px-4 py-2 text-sm border border-border flex items-center gap-2 bg-card"
+                  style={{ fontSize: `${0.85 + intensity * 0.35}rem` }}
+                >
+                  <span className={t.kind === "hashtag" ? "text-primary font-semibold" : "font-semibold"}>{t.term}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{compact(t.count)}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }
 
-function Kpi({ label, value, icon, loading, sub, tone, delta, invertDelta }: {
-  label: string; value: string; icon: React.ReactNode; loading?: boolean; sub?: string;
-  tone?: "success" | "destructive"; delta?: number; invertDelta?: boolean;
-}) {
-  const goodDelta = invertDelta ? (delta ?? 0) < 0 : (delta ?? 0) > 0;
+function BigKpi({ icon, label, value, sub, valueClassName }: { icon: React.ReactNode; label: string; value: string | null; sub?: string; valueClassName?: string }) {
   return (
-    <Card className="p-4">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[11px] text-muted-foreground">{label}</span>
-        <span className={tone === "destructive" ? "text-destructive" : tone === "success" ? "text-success" : "text-primary"}>{icon}</span>
+    <Card className="p-5">
+      <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground mb-3">
+        <span className="text-primary">{icon}</span>{label}
       </div>
-      {loading ? <Skeleton className="h-7 w-20" /> : <div className="text-xl font-bold">{value}</div>}
-      <div className="flex items-center justify-between mt-1">
-        {sub && <span className="text-[10px] text-muted-foreground truncate">{sub}</span>}
-        {delta !== undefined && delta !== 0 && (
-          <span className={`text-[10px] font-medium ${goodDelta ? "text-success" : "text-destructive"}`}>
-            {delta > 0 ? "+" : ""}{delta}pp
-          </span>
-        )}
-      </div>
+      {value === null ? <Skeleton className="h-9 w-32" /> : (
+        <div className={`text-3xl font-bold tabular-nums ${valueClassName ?? ""}`}>{value}</div>
+      )}
+      {sub && <div className="text-xs text-muted-foreground mt-2">{sub}</div>}
     </Card>
   );
 }
 
-function SentBar({ label, pct: p, count, delta, color, invert }: { label: string; pct: number; count?: number; delta?: number; color: string; invert?: boolean }) {
-  const goodDelta = invert ? (delta ?? 0) < 0 : (delta ?? 0) > 0;
-  return (
-    <div>
-      <div className="flex items-center justify-between text-xs mb-1">
-        <span className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-          {label}
-        </span>
-        <span className="flex items-center gap-2">
-          <span className="font-semibold">{p}%{count !== undefined ? ` (${Number(count ?? 0).toLocaleString("pt-BR")})` : ""}</span>
-          {delta !== undefined && delta !== 0 && (
-            <span className={goodDelta ? "text-success" : "text-destructive"}>
-              ({delta > 0 ? "+" : ""}{delta}pp)
-            </span>
-          )}
-        </span>
-      </div>
-      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-        <div className="h-full rounded-full" style={{ width: `${p}%`, backgroundColor: color }} />
-      </div>
-    </div>
-  );
-}
-
-function LoadingMessage({ label }: { label: string }) {
-  return (
-    <div className="h-[200px] flex flex-col items-center justify-center gap-3 text-sm text-muted-foreground text-center px-4">
-      <Skeleton className="h-8 w-8 rounded-full" />
-      <span>{label}</span>
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground text-center px-4">
-      Nenhum dado encontrado para esta rede no período selecionado.
-    </div>
-  );
+function Empty() {
+  return <div className="text-sm text-muted-foreground py-10 text-center">Sem dados para o período selecionado.</div>;
 }

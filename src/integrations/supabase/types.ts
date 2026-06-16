@@ -4270,6 +4270,10 @@ export type Database = {
         Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
         Returns: Json
       }
+      network_view_terms_block: {
+        Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
+        Returns: Json
+      }
       network_view_topics_block: {
         Args: { p_candidate_id?: string; p_days?: number; p_network?: string }
         Returns: Json
@@ -4301,6 +4305,7 @@ export type Database = {
           variants: string[]
         }[]
       }
+      nv_is_consumer_network: { Args: { _net: string }; Returns: boolean }
       nv_is_political_text: {
         Args: { _candidate_name?: string; _text: string }
         Returns: boolean
