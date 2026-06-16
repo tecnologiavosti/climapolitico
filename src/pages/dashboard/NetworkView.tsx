@@ -508,7 +508,7 @@ function computeTopicsAndTerms(rows: Array<{ post_title: string | null; comment_
   const hashRe = /#([\p{L}\p{N}_]{2,})/gu;
 
   for (const r of rows) {
-    const text = `${r.post_title ?? ""} ${r.comment_text ?? ""}`.trim();
+    const text = cleanText(`${r.post_title ?? ""} ${r.comment_text ?? ""}`);
     if (!text) continue;
     const lower = text.toLowerCase();
     const sentRaw = (r.sentiment_label ?? "").toLowerCase();
@@ -524,12 +524,14 @@ function computeTopicsAndTerms(rows: Array<{ post_title: string | null; comment_
 
     let m;
     while ((m = hashRe.exec(text)) !== null) {
-      const tag = "#" + m[1].toLowerCase();
-      hashCount[tag] = (hashCount[tag] ?? 0) + 1;
+      const tag = m[1].toLowerCase();
+      if (tag.length < 2 || STOPWORDS.has(tag) || HEX_RE.test(tag) || !HAS_LETTER_RE.test(tag)) continue;
+      hashCount["#" + tag] = (hashCount["#" + tag] ?? 0) + 1;
     }
 
     for (const w of lower.split(/[^\p{L}\p{N}_#]+/u)) {
-      if (!w || w.startsWith("#") || w.length < 4 || STOPWORDS.has(w) || /^\d+$/.test(w)) continue;
+      if (!w || w.startsWith("#")) continue;
+      if (w.length < 3 || STOPWORDS.has(w) || /^\d+$/.test(w) || HEX_RE.test(w) || !HAS_LETTER_RE.test(w)) continue;
       wordCount[w] = (wordCount[w] ?? 0) + 1;
     }
   }
