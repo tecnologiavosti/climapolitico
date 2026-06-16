@@ -223,6 +223,17 @@ export default function NetworkView() {
       }));
   }, [d]);
 
+  const mergedTopics = useMemo(() => {
+    const fromRpc = d?.topics ?? [];
+    return fromRpc.length > 0 ? fromRpc : (fallback.data?.topics ?? []);
+  }, [d, fallback.data]);
+
+  const mergedTerms = useMemo(() => {
+    const fromRpc = d?.terms ?? [];
+    return fromRpc.length > 0 ? fromRpc : (fallback.data?.terms ?? []);
+  }, [d, fallback.data]);
+
+
   return (
     <div className="space-y-8">
       {/* Header */}
