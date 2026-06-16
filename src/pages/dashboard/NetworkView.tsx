@@ -150,40 +150,68 @@ export default function NetworkView() {
   };
 
   const analyticsQuery = useQuery({
-    queryKey: ["nv-analytics-ssot", user?.id, network, candidateId, days],
+    queryKey: ["nv-analytics-blocks", user?.id, network, candidateId, days],
     queryFn: async (): Promise<SectionResponse<Agg>> => {
-      const started = performance.now();
-      const { data, error } = await supabase.rpc("network_view_analytics", queryParams);
-      const elapsed = Math.round(performance.now() - started);
-      if (error) {
-        console.error("[NetworkView] analytics RPC failed", { elapsed, error, queryParams });
-        throw error;
-      }
-      const response = data as SectionResponse<Agg>;
-      if ((response.data?.top_posts?.length ?? 0) === 0 && (response.data?.kpis?.engagement ?? 0) > 0) {
-        console.error("TOP_POSTS_PIPELINE_FAILED", { elapsed, debug: response.data?.debug, queryParams });
-      }
-      console.log({
-        totalInDatabase: response.data?.debug?.totalInDatabase,
-        afterPeriodFilter: response.data?.debug?.afterPeriodFilter,
-        afterCandidateFilter: response.data?.debug?.afterCandidateFilter,
-        afterPlatformFilter: response.data?.debug?.afterPlatformFilter,
-        afterDeduplication: response.data?.debug?.afterDeduplication,
-        finalAnalyticsCount: response.data?.debug?.finalAnalyticsCount,
+      const callBlock = async <T,>(rpcName: string, label: string): Promise<SectionResponse<T>> => {
+        console.time(`[NetworkView] ${label}`);
+        const started = performance.now();
+        const { data, error } = await (supabase.rpc as any)(rpcName, queryParams);
+        const elapsed = Math.round(performance.now() - started);
+        console.timeEnd(`[NetworkView] ${label}`);
+        if (error) {
+          console.error(`[NetworkView] ${label} failed`, { elapsed, error, queryParams });
+          return { ok: false, message: sectionErrorMessage(label), data: {} as T, diagnostics: { section: label, duration_ms: elapsed, error: error.message } };
+        }
+        const response = data as SectionResponse<T>;
+        if (response?.ok === false) {
+          console.warn(`[NetworkView] ${label} partial failure`, { elapsed, response, queryParams });
+        }
+        return response;
+      };
+
+      const [summary, sentiment, engagement, heatmap, topics, hashtags] = await Promise.all([
+        callBlock<Pick<Agg, "kpis" | "debug">>("network_view_summary", "summary"),
+        callBlock<Pick<Agg, "kpis" | "series">>("network_view_sentiment_block", "sentiment"),
+        callBlock<Pick<Agg, "by_network">>("network_view_engagement_block", "engagement"),
+        callBlock<Pick<Agg, "heatmap">>("network_view_heatmap_block", "heatmap"),
+        callBlock<Pick<Agg, "topics">>("network_view_topics_block", "themes"),
+        callBlock<Pick<Agg, "hashtags">>("network_view_hashtags_block", "hashtags"),
+      ]);
+
+      const data: Agg = {
+        kpis: { ...emptyKpis, ...(summary.data?.kpis ?? {}), ...(sentiment.data?.kpis ?? {}) },
+        series: sentiment.data?.series ?? [],
+        by_network: engagement.data?.by_network ?? [],
+        heatmap: heatmap.data?.heatmap ?? [],
+        topics: topics.data?.topics ?? [],
+        hashtags: hashtags.data?.hashtags ?? [],
+        debug: {
+          ...(summary.data?.debug ?? {}),
+          themes: topics.data?.topics?.length ?? 0,
+          hashtags: hashtags.data?.hashtags?.length ?? 0,
+        } as Agg["debug"],
+      };
+      console.info("[NetworkView] analytics blocks loaded", {
+        diagnostics: { summary: summary.diagnostics, sentiment: sentiment.diagnostics, engagement: engagement.diagnostics, heatmap: heatmap.diagnostics, topics: topics.diagnostics, hashtags: hashtags.diagnostics },
+        debug: data.debug,
       });
-      console.info("[NetworkView] analytics loaded", { elapsed, diagnostics: response?.diagnostics });
-      return response;
+
+      return {
+        ok: [summary, sentiment, engagement, heatmap, topics, hashtags].every((r) => r.ok !== false),
+        data,
+        diagnostics: { section: "network-view", plan: { summary: summary.diagnostics, sentiment: sentiment.diagnostics, engagement: engagement.diagnostics, heatmap: heatmap.diagnostics, topics: topics.diagnostics, hashtags: hashtags.diagnostics } },
+        message: [summary, sentiment, engagement, heatmap, topics, hashtags].filter((r) => r.ok === false).map((r) => r.message).filter(Boolean).join("\n"),
+      };
     },
     enabled: !!user,
-    staleTime: 0, gcTime: 30 * 60_000, refetchOnWindowFocus: false,
+    staleTime: 5 * 60_000, gcTime: 30 * 60_000, refetchOnWindowFocus: false,
   });
 
   const analyticsData = analyticsQuery.data?.data;
   const isLoadingCore = analyticsQuery.isLoading;
   const isLoadingContent = analyticsQuery.isLoading;
-  const isLoadingTopPosts = analyticsQuery.isLoading;
   const sectionErrors = [
-    analyticsQuery.error || (analyticsQuery.data?.ok === false ? new Error(analyticsQuery.data.message || sectionErrorMessage("a visão por rede social")) : null),
+    analyticsQuery.error || (analyticsQuery.data?.ok === false && analyticsQuery.data.message ? new Error(analyticsQuery.data.message) : null),
   ].filter(Boolean) as Error[];
 
   const analytics: Agg = {
@@ -193,7 +221,6 @@ export default function NetworkView() {
     heatmap: analyticsData?.heatmap ?? [],
     hashtags: (analyticsData?.hashtags ?? []).filter((h) => isValidHashtag(h.tag)),
     topics: (analyticsData?.topics ?? []).filter((t) => t.theme?.trim() && t.mentions > 0),
-    top_posts: analyticsData?.top_posts ?? [],
     analytics: analyticsData?.analytics,
     debug: analyticsData?.debug,
   };
