@@ -535,7 +535,16 @@ export default function NetworkView() {
       {/* Heatmap */}
       {!lowVolume && (
       <Card className="p-6">
-        <h3 className="text-lg font-bold mb-1">Horários de maior movimento</h3>
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+          <h3 className="text-lg font-bold">Horários de maior movimento</h3>
+          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+            <span>baixo</span>
+            {[1, 2, 3, 4].map((t) => (
+              <span key={t} className="w-3 h-3 rounded-sm" style={{ backgroundColor: `hsl(var(--primary) / ${[0.25, 0.5, 0.75, 1.0][t - 1]})` }} />
+            ))}
+            <span>explosivo</span>
+          </div>
+        </div>
         <p className="text-sm text-muted-foreground mb-4">Dia da semana × hora — concentração de atividade</p>
         {isLoadingCore ? <Skeleton className="h-[220px] w-full" /> : !agg?.heatmap.length ? <EmptyState /> : (
           <div className="overflow-x-auto">
