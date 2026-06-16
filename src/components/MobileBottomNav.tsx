@@ -82,7 +82,7 @@ const sections: Section[] = [
       { label: "Resumo Inteligente", icon: FileText, to: "/dashboard/candidate-summary", badge: "ai" },
       { label: "Ranking", icon: Trophy, to: "/dashboard/ranking" },
       { label: "Por Rede Social", icon: Network, to: "/dashboard/network-view" },
-      { label: "Coleta", icon: Database, to: "/dashboard/collection-status" },
+      
     ],
   },
   {
