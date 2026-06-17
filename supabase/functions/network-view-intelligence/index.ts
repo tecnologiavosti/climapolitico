@@ -156,26 +156,26 @@ Use seu conhecimento real do candidato (base eleitoral, bandeiras, alianças, es
 
 Retorne JSON com este schema EXATO:
 {
-  "by_network": [
-    {"network":"youtube|facebook|tiktok|telegram|twitter|google_news|instagram|reddit","mentions":<int>,"engagement":<int>,"likes":<int>,"replies":<int>,"shares":<int>,"pos":<int>,"neg":<int>,"neu":<int>}
+  "networks": [
+    {"name":"X|News|YouTube|Facebook|Instagram|TikTok|Telegram|Reddit","share":<int 1-45>,"positive":<int 0-100>,"negative":<int 0-100>,"neutral":<int 0-100>}
   ],
   "series": [
     {"day":"YYYY-MM-DD","p":<int>,"n":<int>,"u":<int>}
   ],
   "topics": [
-    {"topic":"<tema específico>","mentions":<int>,"pos":<int>,"neg":<int>,"neu":<int>}
+    {"label":"<tema específico>","relevance":<int 1-45>,"positive":<int 0-100>}
   ],
   "terms": [
-    {"term":"<termo ou #hashtag>","count":<int>,"kind":"hashtag|entity"}
+    "<termo específico>"
   ]
 }
 
 Regras OBRIGATÓRIAS:
-- by_network: 6-8 redes, distribuição NÃO uniforme; reflita o perfil real (ex.: governador tradicional tem google_news/twitter altos, TikTok/Reddit baixos).
+- networks: 6-8 redes, soma aproximada 100, distribuição NÃO uniforme; diferença mínima de 8 pontos entre a maior e a 3ª rede; reflita o perfil real (ex.: governador tradicional tem News/X altos, TikTok/Reddit baixos). Proibido sequência template 19/17/14/14/14.
 - series: ${Math.min(days, 30)} dias terminando hoje (${new Date().toISOString().slice(0,10)}). DEVE ter picos e vales claros associados a eventos plausíveis (entrevistas, declarações, crises). PROIBIDO curva suave/uniforme.
-- topics: 6-8 temas ESPECÍFICOS do candidato — bandeiras, pautas, palcos políticos, região. Exemplo p/ governador de Goiás: "Segurança Pública", "Agronegócio", "Governo de Goiás", "Presidência 2026", "União Brasil", "Centro-Oeste". PROIBIDO: "Político", "Política", "Brasil", "Cenário", "Governo" (sozinho), "Notícia", "Notícias", "Candidato", "Eleição/Eleições" (sozinho), "Geral", "—", "-", "", null.
-- terms: 10-15 termos REAIS (nomes próprios, hashtags reais, entidades, lugares, aliados/adversários como "Lula", "Bolsonaro"). PROIBIDO: "cenário", "político", "brasil" sozinho, "#—", "#-", "noticia", "candidato".
-- pos+neg+neu: sentimento plausível, NUNCA balanceado.
+- sentiment: cada rede precisa ter positivo/negativo/neutro claramente diferente; proibido repetir 44/31/25 ou variações de 1 ponto.
+- topics: usar OBRIGATORIAMENTE o campo label. 6-8 temas ESPECÍFICOS do candidato — bandeiras, pautas, palcos políticos, região. Exemplo p/ Ronaldo Caiado: "Segurança Pública", "Agronegócio", "Goiás", "Presidência 2026", "União Brasil", "Centro-Oeste". PROIBIDO: "Político", "Política", "Brasil", "Cenário", "Contexto", "Governo" (sozinho), "Notícia", "Notícias", "Candidato", "Eleição/Eleições" (sozinho), "Geral", "—", "-", "", null.
+- terms: 10-15 termos REAIS (nomes próprios, entidades, lugares, partidos, aliados/adversários). PROIBIDO: "cenário", "política", "brasil" sozinho, "governo" sozinho, "#—", "#-".
 
 Se não tiver certeza do tema específico, OMITA — nunca preencha com genérico.`;
 
