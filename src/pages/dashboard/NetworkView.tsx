@@ -136,7 +136,7 @@ export default function NetworkView() {
   const { data: candidates } = useQuery({
     queryKey: ["nv-candidates", user?.id, isAdmin],
     queryFn: async () => {
-      let q = supabase.from("candidates").select("id, full_name, party, office, state").eq("status", "active");
+      let q = supabase.from("candidates").select("id, full_name, party, region").eq("status", "active");
       if (!isAdmin && user) q = q.eq("user_id", user.id);
       const { data, error } = await q.order("full_name");
       if (error) throw error;
