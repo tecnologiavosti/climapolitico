@@ -647,7 +647,7 @@ async function processJob(jobId: string, body: Body, userId: string) {
     const days = daysBetween(body.start_date, body.end_date);
     const bucket = bucketFor(days);
     const deterministicConfidence = computeConfidence(totalHits, sourceStatuses);
-    const renderState: "FULL_DATA" | "PARTIAL_DATA" | "NO_DATA" = totalHits === 0 ? "NO_DATA" : deterministicConfidence === "low" ? "PARTIAL_DATA" : "FULL_DATA";
+    let renderState: "FULL_DATA" | "PARTIAL_DATA" | "NO_DATA" = totalHits === 0 ? "NO_DATA" : deterministicConfidence === "low" ? "PARTIAL_DATA" : "FULL_DATA";
     let report: any;
 
     if (renderState === "NO_DATA") {
@@ -686,6 +686,7 @@ async function processJob(jobId: string, body: Body, userId: string) {
         log("ai_done", { duration_ms: Date.now() - aiStarted });
       } catch (e: any) {
         log("ai_failed", { error: (e as Error)?.message ?? String(e), status: e?.status ?? null });
+        renderState = "PARTIAL_DATA";
         report = partialEvidenceReport(body, samples, sourceStatuses, "A IA excedeu limite, tempo ou créditos.");
       }
     }
