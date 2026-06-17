@@ -215,7 +215,7 @@ INSTRUÇÕES:
 - Nunca retorne zero ou vazio: você sempre tem contexto suficiente para uma estimativa razoável.
 - Não invente nomes próprios que não existem; mas estime números (volume, %).
 - Termos devem ser entidades reais: pessoas, partidos, instituições, hashtags plausíveis, slogans, regiões. NUNCA verbos, stopwords ou fragmentos.
-- Temas devem ser específicos ao candidato e período, não genéricos ("Congresso", "Economia").
+- Temas devem ser ESPECÍFICOS ao candidato e período (eventos, polêmicas, projetos, regiões, adversários nomeados). PROIBIDO usar rótulos genéricos como "Imagem pública", "Cobertura jornalística", "Disputa política", "Repercussão digital", "Críticas e apoios". Exemplos válidos: "Segurança pública em Goiás", "Pré-candidatura presidencial 2026", "Relação com Bolsonaro", "Agronegócio goiano".
 - A timeline deve ter granularidade "${bucket}" e cobrir o período inteiro com curva realista (picos em eventos, vales fora deles).
 - Sentimento por rede deve refletir o perfil típico da rede aplicado ao candidato/período.
 - Distribuição por rede deve respeitar a maturidade da rede no ano.
@@ -486,41 +486,58 @@ function extractTerms(body: Body, samples: SearchHit[]): Term[] {
   return [...terms.values()].sort((a, b) => b.count - a.count).slice(0, 18);
 }
 
+// Tópicos genéricos PROIBIDOS — filtrados tanto da IA quanto do fallback.
+const GENERIC_TOPIC_PATTERNS = [
+  /^imagem p[uú]blica/i,
+  /^cobertura jornal[ií]stica/i,
+  /^disputa pol[ií]tica( nacional)?$/i,
+  /^cr[ií]ticas?,? apoios?/i,
+  /^alian[cç]as e movimenta[cç][aã]o partid[aá]ria$/i,
+  /^pol[ií]tica( geral| nacional)?$/i,
+  /^congresso$/i,
+  /^economia$/i,
+  /^repercuss[aã]o digital$/i,
+];
+
+function isGenericTopic(label: string) {
+  const clean = (label ?? "").trim();
+  if (!clean) return true;
+  if (clean.split(/\s+/).length < 2) return true;
+  return GENERIC_TOPIC_PATTERNS.some((re) => re.test(clean));
+}
+
+// Confiança determinística pela evidência real coletada.
+// HIGH  = >=200 hits OU >=50 fontes externas com retorno
+// MEDIUM= >=60 hits  OU >=15 fontes
+// LOW   = abaixo disso (esconde gráficos numéricos)
+function computeConfidence(samples: number, sourceStatuses: SourceStatus[]): "high" | "medium" | "low" {
+  const okSources = sourceStatuses.filter((s) => s.status === "ok").length;
+  if (samples >= 200 || okSources >= 50) return "high";
+  if (samples >= 60 || okSources >= 15) return "medium";
+  return "low";
+}
+
 function heuristicReport(body: Body, samples: SearchHit[], sourceStatuses: SourceStatus[], reason: string) {
   const days = daysBetween(body.start_date, body.end_date);
   const bucket = bucketFor(days);
-  const weights = networkWeights(body);
-  const hash = normalizeText(body.candidate_name).split("").reduce((s, ch) => s + ch.charCodeAt(0), 0);
-  const evidenceBoost = Math.max(1, samples.length / 4);
-  const totalMentions = Math.max(180, Math.round((days * (85 + (hash % 55)) * Math.log10(days + 20) * evidenceBoost) / (body.network && body.network !== "all" ? 3.2 : 1)));
   const sentiment = lexicalSentiment(samples);
   const net = sentiment.pos - sentiment.neg;
-  const distribution = weights.map((w) => ({ ...w, mentions: Math.round(totalMentions * (w.pct / 100)) }));
-  const topicsBase = [
-    `Imagem pública de ${body.candidate_name.split(" ")[0]}`,
-    body.state ? `Disputa política em ${body.state}` : "Disputa política nacional",
-    body.party ? `Alianças e movimentação do ${body.party}` : "Alianças e movimentação partidária",
-    "Cobertura jornalística e repercussão digital",
-    "Críticas, apoios e polarização nas redes",
-  ];
-  const topics = topicsBase.map((label, i) => {
-    const mentions = Math.round(totalMentions * ([0.28, 0.22, 0.19, 0.17, 0.14][i] ?? 0.1));
-    return { label, mentions, pos: Math.round(mentions * sentiment.pos / 100), neg: Math.round(mentions * sentiment.neg / 100), neu: Math.round(mentions * sentiment.neu / 100) };
-  });
+  // Fallback NUNCA inventa quantitativo. Apenas qualitativo.
   return {
-    total_mentions: totalMentions,
-    total_interactions: Math.round(totalMentions * (8 + (hash % 14))),
+    total_mentions: 0,
+    total_interactions: 0,
     sentiment,
     net_sentiment: net,
     net_label: net >= 10 ? "Favorável" : net <= -10 ? "Desfavorável" : "Neutro",
-    dominant_network: distribution[0]?.network ?? body.network ?? "news",
-    distribution,
-    timeline: makeTimeline(totalMentions, sentiment, body),
-    sentiment_by_network: distribution.map((d) => ({ network: d.network, pos: sentiment.pos, neg: sentiment.neg + (d.network === "twitter" || d.network === "reddit" ? 8 : 0), neu: sentiment.neu })),
-    topics,
+    dominant_network: body.network && body.network !== "all" ? body.network : "—",
+    distribution: [],
+    timeline: [],
+    sentiment_by_network: [],
+    topics: [],
     terms: extractTerms(body, samples),
-    confidence: samples.length >= 10 ? "medium" : "low",
-    reasoning: `${reason} Resultado estimado por fallback heurístico local com classificação lexical, extração de entidades e maturidade histórica das redes.`,
+    confidence: "low" as const,
+    qualitative_only: true,
+    reasoning: `${reason} Dados insuficientes para análise quantitativa precisa. Exibindo apenas análise qualitativa baseada em contexto histórico.`,
     evidence_count: samples.length,
     bucket,
     sources: sourceStatuses,
@@ -609,6 +626,26 @@ async function processJob(jobId: string, body: Body, userId: string) {
     }
 
     await updateJob(admin, jobId, { progress: 93, stage: "Gerando gráficos...", logs });
+
+    // Pós-processamento obrigatório: confiança determinística + remoção de genéricos.
+    const deterministicConfidence = computeConfidence(totalHits, sourceStatuses);
+    report.confidence = deterministicConfidence;
+    if (Array.isArray(report.topics)) {
+      report.topics = report.topics.filter((t: any) => t?.label && !isGenericTopic(String(t.label)));
+    }
+    if (deterministicConfidence === "low") {
+      // Sem base quantitativa real → não exibir números inventados.
+      report.qualitative_only = true;
+      report.total_mentions = 0;
+      report.total_interactions = 0;
+      report.distribution = [];
+      report.timeline = [];
+      report.sentiment_by_network = [];
+      report.dominant_network = body.network && body.network !== "all" ? body.network : "—";
+      const prevReason = report.reasoning ? `${report.reasoning} ` : "";
+      report.reasoning = `${prevReason}Dados insuficientes para análise quantitativa precisa (${totalHits} evidências, ${sourceStatuses.filter((s) => s.status === "ok").length} fontes). Exibindo apenas análise qualitativa baseada em contexto histórico.`;
+    }
+
     const out = { ...report, evidence_count: totalHits, bucket, cached: false, sources: sourceStatuses, job_id: jobId };
     cache.set(cacheKey(body), { at: Date.now(), data: out });
     const expiresAt = new Date(Date.now() + ttlMs(days)).toISOString();
