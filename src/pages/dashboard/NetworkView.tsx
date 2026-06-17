@@ -735,7 +735,7 @@ function BigKpi({ icon, label, value, sub, valueClassName }: { icon: React.React
 }
 
 function Empty() {
-  return <div className="text-sm text-muted-foreground py-10 text-center">Sem dados para o período selecionado.</div>;
+  return <div className="text-sm text-muted-foreground py-10 text-center">Gerando estimativa por IA…</div>;
 }
 
 // ============================================================
