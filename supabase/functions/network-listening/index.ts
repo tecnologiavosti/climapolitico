@@ -61,7 +61,7 @@ interface SourceTask {
 const cache = new Map<string, { at: number; data: unknown }>();
 
 function cacheKey(b: Body) {
-  return `social-v3|${b.candidate_id ?? normalizeText(b.candidate_name)}|${b.network ?? "all"}|${b.start_date}|${b.end_date}`;
+  return `social-v4|${b.candidate_id ?? normalizeText(b.candidate_name)}|${b.network ?? "all"}|${b.start_date}|${b.end_date}`;
 }
 
 function normalizeText(input: unknown): string {
