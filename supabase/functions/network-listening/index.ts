@@ -812,15 +812,18 @@ async function processJob(jobId: string, body: Body, userId: string) {
       .sort((a, b) => b.pct - a.pct)[0]?.network ?? null : null;
 
     report = sanitizeAiReport(report, evidence, renderState);
+    const longPeriodMsg = days > 90
+      ? "Histórico insuficiente para o período. O Índice Histórico Social ainda não acumulou menções suficientes para esta faixa de tempo — novas coletas diárias estão alimentando o banco. "
+      : "";
     if (renderState === "NO_DATA") {
-      Object.assign(report, noDataReport(body, sourceStatuses, "Não foi possível coletar evidências suficientes para este período.", 0));
+      Object.assign(report, noDataReport(body, sourceStatuses, `${longPeriodMsg}Não foi possível coletar evidências para este período.`, 0));
     } else if (renderState === "PARTIAL_DATA") {
       report.qualitative_only = true;
       report.total_mentions = null;
       report.total_interactions = null;
       report.sentiment = EMPTY_SENTIMENT;
       report.net_sentiment = 0;
-      report.net_label = "Dados insuficientes";
+      report.net_label = days > 90 ? "Histórico insuficiente" : "Dados insuficientes";
       report.dominant_network = null;
       report.distribution = [];
       report.timeline = [];
@@ -828,7 +831,7 @@ async function processJob(jobId: string, body: Body, userId: string) {
       report.topics = [];
       report.terms = [];
       const prevReason = report.reasoning ? `${report.reasoning} ` : "";
-      report.reasoning = `${prevReason}Dados insuficientes para análise quantitativa precisa (${totalHits} evidências, ${sourceStatuses.filter((s) => s.status === "ok").length} fontes). Números, gráficos, assuntos e termos foram ocultados.`;
+      report.reasoning = `${longPeriodMsg}${prevReason}Foram encontradas ${totalHits} evidências em ${sourceStatuses.filter((s) => s.status === "ok").length} fontes. Para preservar integridade, números, gráficos, assuntos e termos foram ocultados — apenas a análise qualitativa é exibida.`;
     } else {
       report.qualitative_only = false;
       report.total_mentions = totalHits;
