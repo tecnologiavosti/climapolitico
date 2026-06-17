@@ -369,6 +369,162 @@ async function callAI(systemMsg: string, userMsg: string) {
   throw err;
 }
 
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+async function getUser(req: Request) {
+  const authHeader = req.headers.get("Authorization") ?? "";
+  if (!authHeader.startsWith("Bearer ")) return { user: null, authHeader };
+  const client = createClient(SUPABASE_URL, ANON, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false },
+  });
+  const { data: { user } } = await client.auth.getUser();
+  return { user, authHeader };
+}
+
+async function updateJob(admin: any, jobId: string, patch: Record<string, unknown>) {
+  const { error } = await admin.from("social_analytics_jobs").update(patch).eq("id", jobId);
+  if (error) console.warn(`[network-listening ${jobId}] update failed`, error.message);
+}
+
+function preprocessEvidence(evidence: Array<{ net: Network; source: string; hits: SearchHit[] }>): SearchHit[] {
+  const seen = new Set<string>();
+  const out: SearchHit[] = [];
+  for (const item of evidence) {
+    for (const hit of item.hits) {
+      const text = `${hit.title ?? ""} ${hit.description ?? ""}`.trim();
+      const normalized = normalizeText(hit.url || text).slice(0, 220);
+      if (!text || seen.has(normalized)) continue;
+      if (/\b(cassino|bet|promoção|cupom|porn|download grátis)\b/i.test(text)) continue;
+      if (/^\s*RT\s+@/i.test(text)) continue;
+      seen.add(normalized);
+      out.push(hit);
+    }
+  }
+  return out.slice(0, 300);
+}
+
+function networkWeights(body: Body): Distribution[] {
+  const year = new Date(body.start_date).getUTCFullYear();
+  const base: Record<string, number> = year < 2019
+    ? { facebook: 34, twitter: 25, news: 20, youtube: 12, instagram: 6, telegram: 2, reddit: 1, tiktok: 0 }
+    : year < 2021
+      ? { twitter: 27, facebook: 22, news: 18, youtube: 16, instagram: 9, telegram: 6, reddit: 2, tiktok: 0 }
+      : year < 2023
+        ? { twitter: 25, youtube: 19, instagram: 15, telegram: 13, news: 13, facebook: 8, tiktok: 5, reddit: 2 }
+        : { twitter: 23, instagram: 18, youtube: 17, tiktok: 13, news: 12, telegram: 8, facebook: 6, reddit: 3 };
+  const entries = Object.entries(base).filter(([n]) => !body.network || body.network === "all" || body.network === n);
+  const sum = entries.reduce((s, [, v]) => s + v, 0) || 1;
+  return entries.map(([network, v]) => ({ network, pct: Math.round((v / sum) * 100) }));
+}
+
+function makeTimeline(total: number, sentiment: { pos: number; neg: number; neu: number }, body: Body) {
+  const days = daysBetween(body.start_date, body.end_date);
+  const bucket = bucketFor(days);
+  const step = bucket === "day" ? 1 : bucket === "week" ? 7 : bucket === "month" ? 30 : bucket === "quarter" ? 91 : 183;
+  const points = Math.max(3, Math.min(36, Math.ceil(days / step)));
+  const start = new Date(`${body.start_date}T00:00:00Z`);
+  const weights = Array.from({ length: points }, (_, i) => 0.75 + Math.sin((i / Math.max(1, points - 1)) * Math.PI * 2) * 0.18 + (i % 5 === 2 ? 0.28 : 0));
+  const sum = weights.reduce((s, w) => s + w, 0);
+  return weights.map((w, i) => {
+    const d = new Date(start);
+    d.setUTCDate(d.getUTCDate() + i * step);
+    const volume = Math.max(1, Math.round((total * w) / sum));
+    return {
+      date: d.toISOString().slice(0, 10),
+      total: volume,
+      positivo: Math.round(volume * (sentiment.pos / 100)),
+      negativo: Math.round(volume * (sentiment.neg / 100)),
+    };
+  });
+}
+
+function lexicalSentiment(samples: SearchHit[]) {
+  const positive = /\b(apoio|aprova|vitória|lidera|forte|avanço|entrega|popular|elogio|cresce|competente)\b/i;
+  const negative = /\b(crise|denúncia|rejeição|critica|ataque|investigação|derrota|escândalo|polêmica|desgaste)\b/i;
+  let pos = 0, neg = 0;
+  for (const h of samples) {
+    const text = `${h.title ?? ""} ${h.description ?? ""}`;
+    if (positive.test(text)) pos += 1;
+    if (negative.test(text)) neg += 1;
+  }
+  const total = Math.max(1, samples.length);
+  const p = Math.max(18, Math.min(48, Math.round((pos / total) * 70 + 24)));
+  const n = Math.max(20, Math.min(58, Math.round((neg / total) * 72 + 28)));
+  const neu = Math.max(10, 100 - p - n);
+  const scale = 100 / (p + n + neu);
+  return { pos: Math.round(p * scale), neg: Math.round(n * scale), neu: Math.round(neu * scale) };
+}
+
+function extractTerms(body: Body, samples: SearchHit[]): Term[] {
+  const terms = new Map<string, Term>();
+  const add = (term: string, kind: Term["kind"], count = 1) => {
+    const clean = term.trim().replace(/\s+/g, " ");
+    if (clean.length < 2) return;
+    const key = `${kind}:${clean.toLowerCase()}`;
+    terms.set(key, { term: clean, kind, count: (terms.get(key)?.count ?? 0) + count });
+  };
+  add(body.candidate_name, "pessoa", 12);
+  if (body.party) add(body.party, "partido", 8);
+  if (body.state) add(body.state, "regiao", 6);
+  const corpus = samples.map((h) => `${h.title ?? ""} ${h.description ?? ""}`).join("\n");
+  for (const tag of corpus.match(/#[\p{L}0-9_]{3,}/gu) ?? []) add(tag, "hashtag", 4);
+  for (const inst of ["STF", "TSE", "Congresso", "Senado", "Câmara", "Planalto", "Governo Federal", "Ministério Público"]) {
+    if (new RegExp(`\\b${inst}\\b`, "i").test(corpus)) add(inst, "instituicao", 5);
+  }
+  for (const party of ["PT", "PL", "MDB", "PSD", "PSDB", "PSB", "União Brasil", "Republicanos", "PP", "PDT", "PSOL"]) {
+    if (new RegExp(`\\b${party}\\b`, "i").test(corpus)) add(party, "partido", 4);
+  }
+  return [...terms.values()].sort((a, b) => b.count - a.count).slice(0, 18);
+}
+
+function heuristicReport(body: Body, samples: SearchHit[], sourceStatuses: SourceStatus[], reason: string) {
+  const days = daysBetween(body.start_date, body.end_date);
+  const bucket = bucketFor(days);
+  const weights = networkWeights(body);
+  const hash = normalizeText(body.candidate_name).split("").reduce((s, ch) => s + ch.charCodeAt(0), 0);
+  const evidenceBoost = Math.max(1, samples.length / 4);
+  const totalMentions = Math.max(180, Math.round((days * (85 + (hash % 55)) * Math.log10(days + 20) * evidenceBoost) / (body.network && body.network !== "all" ? 3.2 : 1)));
+  const sentiment = lexicalSentiment(samples);
+  const net = sentiment.pos - sentiment.neg;
+  const distribution = weights.map((w) => ({ ...w, mentions: Math.round(totalMentions * (w.pct / 100)) }));
+  const topicsBase = [
+    `Imagem pública de ${body.candidate_name.split(" ")[0]}`,
+    body.state ? `Disputa política em ${body.state}` : "Disputa política nacional",
+    body.party ? `Alianças e movimentação do ${body.party}` : "Alianças e movimentação partidária",
+    "Cobertura jornalística e repercussão digital",
+    "Críticas, apoios e polarização nas redes",
+  ];
+  const topics = topicsBase.map((label, i) => {
+    const mentions = Math.round(totalMentions * ([0.28, 0.22, 0.19, 0.17, 0.14][i] ?? 0.1));
+    return { label, mentions, pos: Math.round(mentions * sentiment.pos / 100), neg: Math.round(mentions * sentiment.neg / 100), neu: Math.round(mentions * sentiment.neu / 100) };
+  });
+  return {
+    total_mentions: totalMentions,
+    total_interactions: Math.round(totalMentions * (8 + (hash % 14))),
+    sentiment,
+    net_sentiment: net,
+    net_label: net >= 10 ? "Favorável" : net <= -10 ? "Desfavorável" : "Neutro",
+    dominant_network: distribution[0]?.network ?? body.network ?? "news",
+    distribution,
+    timeline: makeTimeline(totalMentions, sentiment, body),
+    sentiment_by_network: distribution.map((d) => ({ network: d.network, pos: sentiment.pos, neg: sentiment.neg + (d.network === "twitter" || d.network === "reddit" ? 8 : 0), neu: sentiment.neu })),
+    topics,
+    terms: extractTerms(body, samples),
+    confidence: samples.length >= 10 ? "medium" : "low",
+    reasoning: `${reason} Resultado estimado por fallback heurístico local com classificação lexical, extração de entidades e maturidade histórica das redes.`,
+    evidence_count: samples.length,
+    bucket,
+    sources: sourceStatuses,
+    fallback: true,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
