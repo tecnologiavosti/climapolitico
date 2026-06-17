@@ -220,27 +220,6 @@ export default function NetworkView() {
     },
 
   });
-  // Camada 2 — Inteligência IA (sempre disponível, usada quando dados reais são insuficientes)
-  const aiIntel = useQuery({
-    queryKey: ["nv-ai-intel", candidateId, network, effectiveDays, customRange?.startDate, customRange?.endDate],
-    enabled: !!user?.id,
-    staleTime: 12 * 60 * 60_000,
-    gcTime: 24 * 60 * 60_000,
-    retry: 1,
-    queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("network-view-intelligence", {
-        body: {
-          candidate_id: candidateId === "all" ? null : candidateId,
-          network: network === "all" ? null : network,
-          days: effectiveDays,
-          start_date: customRange?.startDate ?? null,
-          end_date: customRange?.endDate ?? null,
-        },
-      });
-      if (error) throw error;
-      return data as { by_network: NetRow[]; series: SeriesRow[]; topics: TopicRow[]; terms: TermRow[]; period: string };
-    },
-  });
 
   // Range efetivo: customRange ou [now - days, now]. Sempre ativo.
   const effectiveRange = useMemo(() => {
