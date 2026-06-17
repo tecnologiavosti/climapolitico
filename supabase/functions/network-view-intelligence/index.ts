@@ -232,12 +232,14 @@ Retorne JSON com este schema EXATO:
   ]
 }
 
+Perfil detectado: ${profileFromCandidate(name, party, position, state).persona}. Use esse perfil como REFERÊNCIA para a distribuição: traditional_regional concentra em News/Facebook/Instagram/YouTube (TikTok/Telegram baixos); digital_native concentra em TikTok/Instagram/X; institutional/executive concentram em News/X/YouTube; parliamentary concentra em X/Instagram.
+
 Regras OBRIGATÓRIAS:
-- networks: 6-8 redes, soma aproximada 100, distribuição NÃO uniforme; diferença mínima de 8 pontos entre a maior e a 3ª rede; reflita o perfil real (ex.: governador tradicional tem News/X altos, TikTok/Reddit baixos). Proibido sequência template 19/17/14/14/14.
-- series: ${Math.min(days, 30)} dias terminando hoje (${new Date().toISOString().slice(0,10)}). DEVE ter picos e vales claros associados a eventos plausíveis (entrevistas, declarações, crises). PROIBIDO curva suave/uniforme.
-- sentiment: cada rede precisa ter positivo/negativo/neutro claramente diferente; proibido repetir 44/31/25 ou variações de 1 ponto.
-- topics: usar OBRIGATORIAMENTE o campo label. 6-8 temas ESPECÍFICOS do candidato — bandeiras, pautas, palcos políticos, região. Exemplo p/ Ronaldo Caiado: "Segurança Pública", "Agronegócio", "Goiás", "Presidência 2026", "União Brasil", "Centro-Oeste". PROIBIDO: "Político", "Política", "Brasil", "Cenário", "Contexto", "Governo" (sozinho), "Notícia", "Notícias", "Candidato", "Eleição/Eleições" (sozinho), "Geral", "—", "-", "", null.
-- terms: 10-15 termos REAIS (nomes próprios, entidades, lugares, partidos, aliados/adversários). PROIBIDO: "cenário", "política", "brasil" sozinho, "governo" sozinho, "#—", "#-".
+- networks: 6-8 redes, soma aproximada 100, distribuição NÃO uniforme; diferença mínima de 8 pontos entre a maior e a 3ª rede. PROIBIDO senador/governador tradicional ter TikTok ou Telegram acima de 10%. PROIBIDO sequência template 19/17/14/14/14 ou 42/33/25.
+- series: gerar pontos respeitando granularidade "${pickGranularity(days).label}" (${pickGranularity(days).count} buckets). PROIBIDO retornar apenas 1-2 pontos. DEVE ter picos e vales ligados a eventos plausíveis do período.
+- sentiment: cada rede com positivo/negativo/neutro claramente diferentes; proibido repetir 44/31/25.
+- topics: 6-8 temas ULTRA ESPECÍFICOS — bandeiras, obras, regiões, palcos políticos do candidato. Exemplo Jayme Campos: "Agronegócio em Mato Grosso", "BR-163", "Bancada ruralista", "Cuiabá e Várzea Grande", "Senado Federal". PROIBIDO: "Político", "Política", "Brasil", "Cenário", "Contexto", "Governo" sozinho, "Notícia", "Notícias", "Candidato", "Eleição/Eleições" sozinho, "Congresso" sozinho, "Oposição" sozinho, "Economia" sozinho, "Geral", "—", "-", "", null.
+- terms: 10-15 entidades REAIS preservando NOMES COMPOSTOS como uma única string ("Mato Grosso", "Várzea Grande", "União Brasil", "Jayme Campos", "BR-163"). PROIBIDO quebrar nomes ("mato", "grosso", "varzea"). PROIBIDO verbos/preenchedores ("afirmou", "disse", "cenário", "política", "brasil" sozinho, "governo" sozinho).
 
 Se não tiver certeza do tema específico, OMITA — nunca preencha com genérico.`;
 
