@@ -13,7 +13,6 @@ const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 const MAX_CONCURRENT_REQUESTS = 3;
 const SOURCE_TIMEOUT_MS = 8_000;
 const AI_TIMEOUT_MS = 20_000;
-const BACKFILL_MIN_HISTORICAL_HITS = 1;
 
 type Network = "twitter" | "youtube" | "facebook" | "instagram" | "tiktok" | "telegram" | "reddit" | "news" | "linkedin";
 
@@ -132,6 +131,15 @@ function bucketFor(days: number): "day" | "week" | "month" | "quarter" | "semest
   if (days <= 365) return "month";
   if (days <= 1460) return "quarter";
   return "semester";
+}
+
+function minHistoricalHitsForBackfill(days: number) {
+  if (days <= 7) return 1;
+  if (days <= 30) return 10;
+  if (days <= 90) return 20;
+  if (days <= 365) return 30;
+  if (days <= 1460) return 50;
+  return 60;
 }
 
 // Constrói tarefas Firecrawl em 3 lotes: notícias/web, redes textuais, redes audiovisuais/comunidades.
