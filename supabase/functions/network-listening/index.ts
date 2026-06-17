@@ -246,7 +246,7 @@ async function invokeCollector(body: Body, jobId: string, mode: "backfill" | "on
   });
   const text = await r.text();
   const data = text ? JSON.parse(text) : null;
-  if (!r.ok || data?.ok === false) throw new Error(data?.error ?? `collector_${r.status}`);
+  if (!(r.ok || r.status === 202) || data?.ok === false) throw new Error(data?.error ?? `collector_${r.status}`);
   return data;
 }
 
