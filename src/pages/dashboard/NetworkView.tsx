@@ -564,13 +564,6 @@ export default function NetworkView() {
         </Card>
       )}
 
-      {!loading && useAI && (
-        <Card className="p-3 border-primary/30 bg-primary/5">
-          <div className="text-xs font-medium text-primary">
-            Estimativa por IA — análise inferida a partir do perfil do candidato e contexto político do período.
-          </div>
-        </Card>
-      )}
 
 
 
