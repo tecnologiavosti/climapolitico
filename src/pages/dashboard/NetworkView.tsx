@@ -35,8 +35,10 @@ const PERIODS = [
   { value: 30, label: "30 dias" },
   { value: 90, label: "90 dias" },
   { value: 365, label: "1 ano" },
-  { value: 3650, label: "Total" },
+  { value: 1460, label: "4 anos" },
+  { value: 2920, label: "8 anos" },
 ];
+const PERIOD_LABEL: Record<number, string> = Object.fromEntries(PERIODS.map((p) => [p.value, p.label]));
 
 const COLORS = {
   positive: "hsl(var(--success))",
