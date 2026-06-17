@@ -55,7 +55,16 @@ type NetRow = { network: string; mentions: number; engagement: number; likes: nu
 type SeriesRow = { day: string; p: number; n: number; u: number };
 type TopicRow = { label?: string; topic?: string; theme?: string; mentions: number; pos: number; neg: number; neu: number; relevance?: number; positive?: number };
 type TermRow = { term: string; count: number; kind: "hashtag" | "entity" };
-type RawInteraction = { collected_at: string | null; social_network: string | null; sentiment_label: string | null; likes_count: number | null; replies_count: number | null; shares_count: number | null };
+type RawInteraction = {
+  collected_at: string | null;
+  social_network: string | null;
+  sentiment_label: string | null;
+  likes_count: number | null;
+  replies_count: number | null;
+  shares_count: number | null;
+  post_title?: string | null;
+  comment_text?: string | null;
+};
 
 export default function NetworkView() {
   const { user } = useAuth();
