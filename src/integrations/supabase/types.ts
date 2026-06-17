@@ -4080,6 +4080,10 @@ export type Database = {
         Args: { p_candidate_id?: string; p_days?: number }
         Returns: Json
       }
+      delete_candidate_cascade: {
+        Args: { _candidate_id: string }
+        Returns: undefined
+      }
       dlq_summary: {
         Args: never
         Returns: {

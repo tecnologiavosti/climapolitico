@@ -184,18 +184,18 @@ export default function Candidates() {
     }
   });
 
-  // Delete candidate mutation
+  // Delete candidate mutation — cascade remove all derived data + caches
   const deleteCandidateMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('candidates')
-        .delete()
-        .eq('id', id);
-      
+      const { error } = await supabase.rpc('delete_candidate_cascade' as any, {
+        _candidate_id: id,
+      });
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      // Invalidate every cached query so dashboards, analytics, radar,
+      // notifications, rankings, etc. refetch without the removed candidate.
+      queryClient.invalidateQueries();
       toast.success('Candidato removido com sucesso!');
       setDeleteDialogOpen(false);
       setCandidateToDelete(null);
