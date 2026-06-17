@@ -799,7 +799,7 @@ async function processJob(jobId: string, body: Body, userId: string) {
       const historicalEvidence = await loadHistoricalEvidence(admin, body);
       for (const e of historicalEvidence) {
         evidence.push(e);
-        sourceStatuses.push({ source: `historical:${e.source}`, batch: 0, status: e.hits.length > 0 ? "ok" : "empty", duration_ms: 0, hits: e.hits.length });
+        sourceStatuses.push({ source: `historical:${e.source}`, network: e.net, batch: 0, status: e.hits.length > 0 ? "ok" : "empty", duration_ms: 0, hits: e.hits.length });
         historicalCount += e.hits.length;
       }
       log("historical_loaded", { hits: historicalCount, groups: historicalEvidence.length, days });
@@ -814,7 +814,10 @@ async function processJob(jobId: string, body: Body, userId: string) {
       log("backfill_start", { start_date: body.start_date, end_date: body.end_date, chunks: buildBackfillChunks(body.start_date, body.end_date).length });
       const backfill = await runHistoricalBackfill(admin, jobId, body, logs, log);
       backfillHits = backfill.totalFound;
-      sourceStatuses.push(...backfill.statuses);
+      const requestBackfillStatuses = !body.network || body.network === "all"
+        ? backfill.statuses
+        : backfill.statuses.filter((s) => s.network === body.network);
+      sourceStatuses.push(...requestBackfillStatuses);
       const requestBackfillEvidence = !body.network || body.network === "all"
         ? backfill.evidence
         : backfill.evidence.filter((e) => e.net === body.network);
