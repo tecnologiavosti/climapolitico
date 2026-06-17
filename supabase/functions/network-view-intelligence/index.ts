@@ -17,6 +17,60 @@ const PERIOD_LABEL = (d: number) =>
   d <= 90 ? "últimos 90 dias" :
   d <= 365 ? "último ano" : "histórico completo";
 
+const TOPIC_BLACKLIST = new Set([
+  "", "-", "—", "politico", "politica", "brasil", "noticia", "noticias",
+  "candidato", "candidatos", "governo", "eleicao", "eleicoes", "geral",
+  "outros", "diversos", "cenario", "contexto", "atuacao politica", "atuacao", "partido",
+]);
+const TERM_BLACKLIST = new Set([
+  "", "-", "—", "politico", "politica", "brasil", "noticia", "noticias",
+  "candidato", "governo", "cenario", "contexto", "eleicoes2026",
+]);
+
+const norm = (s: string) =>
+  String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/^#/, "");
+const isInvalidLabel = (s: any) => {
+  if (s == null) return true;
+  const t = String(s).trim();
+  return t === "" || t === "-" || t === "—" || t === "–" || t === "n/a" || /^#?[-—–\s]+$/.test(t);
+};
+
+const NETWORK_KEY: Record<string, string> = {
+  x: "twitter", twitter: "twitter", "x / twitter": "twitter", news: "google_news", noticias: "google_news",
+  notícias: "google_news", google_news: "google_news", "google news": "google_news", youtube: "youtube",
+  facebook: "facebook", instagram: "instagram", tiktok: "tiktok", telegram: "telegram", reddit: "reddit",
+};
+
+function toNetworkKey(value: any) {
+  const k = norm(String(value || "").replace(/_/g, " "));
+  return NETWORK_KEY[k] || String(value || "").toLowerCase().trim();
+}
+
+function profileFromCandidate(name: string, party: string, position: string, state: string) {
+  const full = norm(`${name} ${party} ${position} ${state}`);
+  const labels = ["google_news", "twitter", "facebook", "youtube", "instagram", "telegram", "tiktok", "reddit"];
+  let shares = [24, 22, 15, 14, 11, 6, 5, 3];
+  let topics = [
+    `Atuação em ${state && norm(state) !== "brasil" ? state : "âmbito estadual"}`,
+    `${party && party !== "—" ? party : "Partido"} e alianças`,
+    "Segurança Pública", "Economia e Emprego", "Presidência 2026", "Oposição ao PT",
+  ];
+  let terms = [name.split(" ")[0], state, party, "Lula", "Bolsonaro"];
+
+  if (full.includes("ronaldo caiado") || full.includes("goias") || full.includes("goias")) {
+    shares = [28, 24, 14, 13, 9, 5, 5, 2];
+    topics = ["Segurança Pública", "Agronegócio", "Goiás", "Presidência 2026", "União Brasil", "Centro-Oeste", "Oposição ao PT", "Governo de Goiás"];
+    terms = ["Caiado", "Goiás", "Agronegócio", "União Brasil", "Centro-Oeste", "Segurança Pública", "Presidência 2026", "Lula", "Bolsonaro"];
+  } else if (/governador|prefeito|senador/.test(norm(position))) {
+    shares = [27, 23, 15, 13, 10, 5, 5, 2];
+  } else if (/presiden/.test(norm(position))) {
+    shares = [25, 26, 11, 16, 13, 4, 8, 3];
+  } else if (/deputad/.test(norm(position))) {
+    shares = [18, 25, 17, 13, 15, 5, 9, 3];
+  }
+  return { labels, shares, topics, terms };
+}
+
 function profileFromPosition(position: string): { weights: number[]; labels: string[] } {
   const p = (position || "").toLowerCase();
   const labels = ["youtube","facebook","tiktok","telegram","twitter","google_news","instagram","reddit"];
