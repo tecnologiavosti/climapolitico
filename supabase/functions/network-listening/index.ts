@@ -192,7 +192,7 @@ INSTRUÇÕES:
 - Se não houver evidências suficientes, diga claramente que não há base. NÃO preencha lacunas.
 - Nunca invente menções, interações, percentuais, timeline, distribuição, sentimento por rede, assuntos ou termos.
 - Números só podem ser derivados das evidências informadas pelo usuário.
-- Termos devem ser entidades reais: pessoas, partidos, instituições, hashtags plausíveis, slogans, regiões. NUNCA verbos, stopwords ou fragmentos.
+- Termos devem ser entidades reais presentes nas evidências: pessoas, partidos, instituições, hashtags, slogans e regiões. NUNCA verbos, stopwords ou fragmentos.
 - Temas devem vir de agrupamentos reais de evidência. PROIBIDO usar rótulos genéricos como "Imagem pública", "Cobertura jornalística", "Disputa política", "Repercussão digital", "Críticas e apoios", "Polarização".
 - Se um campo não tiver evidência direta, retorne vazio/null/0 conforme o schema, sem estimar.
 - Responda APENAS um JSON válido no schema solicitado, sem markdown.`;
@@ -551,6 +551,22 @@ function directEvidenceByNetwork(evidence: Array<{ net: Network; source: string;
   const counts = new Map<string, number>();
   for (const item of evidence) counts.set(item.net, (counts.get(item.net) ?? 0) + item.hits.length);
   return counts;
+}
+
+function computeTimelineFromEvidence(samples: SearchHit[], body: Body) {
+  const start = Date.parse(`${body.start_date}T00:00:00Z`);
+  const end = Date.parse(`${body.end_date}T23:59:59Z`);
+  const counts = new Map<string, number>();
+  for (const h of samples) {
+    if (!h.date) continue;
+    const time = Date.parse(h.date);
+    if (!Number.isFinite(time) || time < start || time > end) continue;
+    const day = new Date(time).toISOString().slice(0, 10);
+    counts.set(day, (counts.get(day) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, total]) => ({ date, total, positivo: 0, negativo: 0 }));
 }
 
 function sanitizeAiReport(report: any, evidence: Array<{ net: Network; source: string; hits: SearchHit[] }>, renderState: "FULL_DATA" | "PARTIAL_DATA" | "NO_DATA") {
