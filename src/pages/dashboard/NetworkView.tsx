@@ -377,22 +377,39 @@ export default function NetworkView() {
 
       {!needsCandidate && (
         <>
+          {/* Banner qualitativo quando confiança baixa */}
+          {data && (data.qualitative_only || data.confidence === "low") && (
+            <Card className="p-4 border-warning/40 bg-warning/5 text-sm">
+              <div className="flex items-start gap-2">
+                <Sparkles className="h-4 w-4 text-warning shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-semibold mb-1">Dados insuficientes para análise quantitativa precisa</div>
+                  <div className="text-muted-foreground">
+                    Exibindo apenas análise qualitativa baseada em contexto histórico. Gráficos numéricos foram ocultados para não mostrar valores estimados.
+                    {typeof data.evidence_count === "number" && ` (${data.evidence_count} evidências coletadas)`}
+                  </div>
+                </div>
+              </div>
+            </Card>
+          )}
+
           {/* RESUMO EXECUTIVO */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <BigKpi icon={<MessageSquare className="h-5 w-5" />} label="Total de menções" value={loading || !data ? null : compact(data.total_mentions)} />
-            <BigKpi icon={<Activity className="h-5 w-5" />} label="Total de interações" value={loading || !data ? null : compact(data.total_interactions)} sub={loading || !data ? "" : "curtidas + shares + replies estimados"} />
+            <BigKpi icon={<MessageSquare className="h-5 w-5" />} label="Total de menções" value={loading || !data ? null : data.qualitative_only ? "—" : compact(data.total_mentions)} />
+            <BigKpi icon={<Activity className="h-5 w-5" />} label="Total de interações" value={loading || !data ? null : data.qualitative_only ? "—" : compact(data.total_interactions)} sub={loading || !data || data.qualitative_only ? "" : "curtidas + shares + replies estimados"} />
             <BigKpi
               icon={<Gauge className="h-5 w-5" />}
               label="Sentimento líquido"
-              value={loading || !data ? null : `${netSentiment > 0 ? "+" : ""}${netSentiment}`}
-              sub={loading || !data ? "" : (data.net_label ?? netLabel)}
+              value={loading || !data ? null : data.qualitative_only ? "—" : `${netSentiment > 0 ? "+" : ""}${netSentiment}`}
+              sub={loading || !data || data.qualitative_only ? "" : (data.net_label ?? netLabel)}
               valueClassName={netTone}
             />
             <BigKpi
               icon={<Crown className="h-5 w-5" />}
-              label="Rede dominante"
-              value={loading || !data ? null : dominant ? (NETWORK_LABEL[dominant.toLowerCase()] ?? dominant) : "—"}
-              sub={loading || !data ? "" : data.confidence ? `Confiança: ${data.confidence}` : ""}
+              label="Confiança"
+              value={loading || !data ? null : (data.confidence ?? "low").toUpperCase()}
+              sub={loading || !data ? "" : dominant && !data.qualitative_only ? `Rede dominante: ${NETWORK_LABEL[dominant.toLowerCase()] ?? dominant}` : ""}
+              valueClassName={data?.confidence === "high" ? "text-success" : data?.confidence === "medium" ? "text-warning" : "text-muted-foreground"}
             />
           </div>
 
