@@ -89,19 +89,45 @@ const parseDateBoundary = (value: string, boundary: "start" | "end") =>
   new Date(`${value}T${boundary === "end" ? "23:59:59.999" : "00:00:00"}`);
 const formatDisplayDate = (value: string) => format(parseDateBoundary(value, "start"), "dd/MM/yyyy");
 
+// Aliases canônicos network → tokens que o Radar pode salvar em type/name/url
+const NETWORK_ALIASES: Record<string, string[]> = {
+  youtube: ["youtube", "invidious", "yt.", "youtu.be"],
+  tiktok: ["tiktok"],
+  instagram: ["instagram", "instagr.am"],
+  facebook: ["facebook", "fb.com"],
+  telegram: ["telegram", "t.me"],
+  twitter: ["twitter", "x.com", "nitter", "bluesky", "bsky", " x ", "/x/"],
+  reddit: ["reddit", "4chan", "lemmy"],
+  linkedin: ["linkedin"],
+  news: [
+    "news", "google_news", "gdelt", "g1", "uol", "folha", "globo",
+    "jornal", "portal", "estadao", "veja", "terra", "cnn", "bbc",
+    "noticia", "notícia", "press", "rss",
+  ],
+};
+
+const STANDALONE_NETWORK: Record<string, string> = {
+  x: "twitter", twitter: "twitter",
+  youtube: "youtube", tiktok: "tiktok", instagram: "instagram",
+  facebook: "facebook", telegram: "telegram", reddit: "reddit",
+  linkedin: "linkedin", bluesky: "twitter",
+  news: "news", google_news: "news",
+};
+
 // Mapeia source.type/source.name → network canônica usada na UI
 function mapSourceToNetwork(s: { name?: string; url?: string; type?: string }): string | null {
-  const raw = `${s.type ?? ""} ${s.name ?? ""} ${s.url ?? ""}`.toLowerCase();
-  if (/youtube|invidious|yt\./.test(raw)) return "youtube";
-  if (/tiktok/.test(raw)) return "tiktok";
-  if (/instagram/.test(raw)) return "instagram";
-  if (/facebook|fb\.com/.test(raw)) return "facebook";
-  if (/telegram|t\.me/.test(raw)) return "telegram";
-  if (/twitter|x\.com|nitter|bluesky|bsky/.test(raw)) return "twitter";
-  if (/reddit|4chan|lemmy/.test(raw)) return "reddit";
-  if (/linkedin/.test(raw)) return "linkedin";
-  if (/news|gdelt|g1|uol|folha|globo|jornal|portal|estadao|veja|terra|cnn|bbc/.test(raw)) return "news";
-  return "news"; // default conservador: tratamos como notícia
+  // 1) Match exato em type/name (cobre "x", "twitter", "news", "google_news", etc.)
+  for (const raw of [s.type, s.name]) {
+    if (!raw) continue;
+    const key = String(raw).trim().toLowerCase();
+    if (STANDALONE_NETWORK[key]) return STANDALONE_NETWORK[key];
+  }
+  // 2) Match por substring (cobre URLs e nomes compostos)
+  const blob = ` ${s.type ?? ""} ${s.name ?? ""} ${s.url ?? ""} `.toLowerCase();
+  for (const [net, tokens] of Object.entries(NETWORK_ALIASES)) {
+    if (tokens.some((t) => blob.includes(t))) return net;
+  }
+  return null;
 }
 
 function eventNetworks(ev: RadarEvent): string[] {
@@ -110,6 +136,7 @@ function eventNetworks(ev: RadarEvent): string[] {
     const n = mapSourceToNetwork(s);
     if (n) set.add(n);
   }
+  // Sem sources reconhecidas → tratamos como "news" (cobertura de imprensa)
   if (set.size === 0) set.add("news");
   return Array.from(set);
 }
