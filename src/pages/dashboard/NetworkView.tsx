@@ -414,33 +414,49 @@ export default function NetworkView() {
             />
           </div>
 
-          {/* DISTRIBUIÇÃO POR REDE */}
-          {!data?.qualitative_only && (
-          <>
+          {/* DISTRIBUIÇÃO POR REDE — sempre visível, com badge data_source_type */}
           <Card className="p-6">
             <h2 className="text-lg font-semibold mb-1">Distribuição por rede</h2>
-            <p className="text-sm text-muted-foreground mb-6">Participação estimada de cada rede no período, considerando maturidade da plataforma.</p>
+            <p className="text-sm text-muted-foreground mb-6">
+              Peso calculado a partir das evidências reais coletadas (direct + proxy). Redes sem coleta direta exibem o tipo de fonte usada.
+            </p>
             {loading || !data ? <Skeleton className="h-64 w-full" /> : distribution.length === 0 ? <Empty /> : (
               <div className="space-y-3">
-                {distribution.map((n) => (
-                  <div key={n.network} className="grid grid-cols-12 items-center gap-3">
-                    <div className="col-span-3 md:col-span-2 text-sm font-medium">
-                      {NETWORK_LABEL[n.network.toLowerCase()] ?? n.network}
-                    </div>
-                    <div className="col-span-6 md:col-span-7">
-                      <div className="h-3 rounded-full bg-muted overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-primary to-primary/60" style={{ width: `${Math.min(100, n.pct)}%` }} />
+                {distribution.map((n) => {
+                  const dst = (n.data_source_type ?? "unavailable") as DataSourceType;
+                  const badge: Record<DataSourceType, { label: string; cls: string }> = {
+                    direct:      { label: "Direct",      cls: "bg-success/15 text-success border-success/30" },
+                    proxy:       { label: "Proxy",       cls: "bg-warning/15 text-warning border-warning/30" },
+                    inferred:    { label: "Inferred",    cls: "bg-orange-500/15 text-orange-500 border-orange-500/30" },
+                    unavailable: { label: "Sem dados",   cls: "bg-muted text-muted-foreground border-border" },
+                  };
+                  const hideNumbers = data.qualitative_only || dst === "unavailable";
+                  return (
+                    <div key={n.network} className="grid grid-cols-12 items-center gap-3">
+                      <div className="col-span-4 md:col-span-3 flex items-center gap-2 text-sm font-medium">
+                        <span>{NETWORK_LABEL[n.network.toLowerCase()] ?? n.network}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${badge[dst].cls}`}>{badge[dst].label}</span>
+                      </div>
+                      <div className="col-span-5 md:col-span-6">
+                        <div className="h-3 rounded-full bg-muted overflow-hidden">
+                          {!hideNumbers && <div className="h-full bg-gradient-to-r from-primary to-primary/60" style={{ width: `${Math.min(100, n.pct)}%` }} />}
+                        </div>
+                      </div>
+                      <div className="col-span-3 md:col-span-3 flex items-center justify-end gap-3 text-xs tabular-nums">
+                        {!hideNumbers && n.direct_hits != null && (
+                          <span className="text-muted-foreground hidden md:inline">{n.direct_hits} direct · {n.external_hits ?? 0} proxy</span>
+                        )}
+                        <span className="w-12 text-right text-foreground font-medium">
+                          {hideNumbers ? "—" : `${n.pct}%`}
+                        </span>
                       </div>
                     </div>
-                    <div className="col-span-3 md:col-span-3 flex items-center justify-end gap-4 text-xs tabular-nums">
-                      {n.mentions != null && <span className="text-muted-foreground hidden md:inline">{compact(n.mentions)} menções</span>}
-                      <span className="w-12 text-right text-foreground font-medium">{n.pct}%</span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </Card>
+
 
           {/* EVOLUÇÃO TEMPORAL */}
           <Card className="p-6">
