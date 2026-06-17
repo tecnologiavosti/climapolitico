@@ -340,10 +340,10 @@ export default function NetworkView() {
                     </div>
                   </div>
                   <div className="col-span-3 md:col-span-3 flex items-center justify-end gap-4 text-xs tabular-nums">
-                    <span className="text-foreground font-medium">{fmt(n.mentions)}</span>
-                    <span className="text-muted-foreground hidden md:inline">{compact(n.engagement)} int.</span>
-                    <span className="w-10 text-right text-muted-foreground">{share}%</span>
+                    <span className="text-muted-foreground hidden md:inline">{compact(n.engagement)} interações est.</span>
+                    <span className="w-12 text-right text-foreground font-medium">{share}%</span>
                   </div>
+
                 </div>
               );
             })}
