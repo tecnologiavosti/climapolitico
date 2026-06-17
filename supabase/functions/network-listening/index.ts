@@ -165,7 +165,7 @@ function buildSourceTasks(b: Body): SourceTask[] {
 async function firecrawlSearch(task: SourceTask, limit = 8): Promise<{ hits: SearchHit[]; status: SourceStatus }> {
   const started = Date.now();
   if (!FIRECRAWL_KEY) {
-    return { hits: [], status: { source: task.source, batch: task.batch, status: "skipped", duration_ms: 0, hits: 0, error: "FIRECRAWL_API_KEY ausente" } };
+    return { hits: [], status: { source: task.source, network: task.net, batch: task.batch, status: "skipped", duration_ms: 0, hits: 0, error: "FIRECRAWL_API_KEY ausente" } };
   }
   try {
     const r = await fetch("https://api.firecrawl.dev/v2/search", {
@@ -181,7 +181,7 @@ async function firecrawlSearch(task: SourceTask, limit = 8): Promise<{ hits: Sea
       const detail = (await r.text().catch(() => "")).slice(0, 240);
       const sourceStatus: SourceStatus["status"] = r.status === 429 ? "rate_limited" : "error";
       console.warn("[network-listening] source", task.source, sourceStatus, r.status, detail);
-      return { hits: [], status: { source: task.source, batch: task.batch, status: sourceStatus, duration_ms: Date.now() - started, hits: 0, error: detail } };
+      return { hits: [], status: { source: task.source, network: task.net, batch: task.batch, status: sourceStatus, duration_ms: Date.now() - started, hits: 0, error: detail } };
     }
     const j = await r.json();
     const raw: any[] = j?.data?.web ?? j?.data ?? j?.results ?? [];
@@ -192,12 +192,12 @@ async function firecrawlSearch(task: SourceTask, limit = 8): Promise<{ hits: Sea
       source: x.source ?? x.url,
       date: x.publishedDate ?? x.date ?? undefined,
     }));
-    return { hits, status: { source: task.source, batch: task.batch, status: hits.length ? "ok" : "empty", duration_ms: Date.now() - started, hits: hits.length } };
+    return { hits, status: { source: task.source, network: task.net, batch: task.batch, status: hits.length ? "ok" : "empty", duration_ms: Date.now() - started, hits: hits.length } };
   } catch (e) {
     const message = (e as Error)?.message ?? String(e);
     const timedOut = /timeout|aborted|signal/i.test(message);
     console.warn("[network-listening] source exception", task.source, message);
-    return { hits: [], status: { source: task.source, batch: task.batch, status: timedOut ? "timeout" : "error", duration_ms: Date.now() - started, hits: 0, error: message.slice(0, 180) } };
+    return { hits: [], status: { source: task.source, network: task.net, batch: task.batch, status: timedOut ? "timeout" : "error", duration_ms: Date.now() - started, hits: 0, error: message.slice(0, 180) } };
   }
 }
 
