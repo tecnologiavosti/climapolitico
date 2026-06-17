@@ -364,20 +364,18 @@ Entregue:
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
 
-    let summary: any;
-    let modelUsed = 'fallback_deterministic';
-    let fallbackUsed = false;
-
-    // 1. PRIMÁRIO: Cerebras (alta capacidade), com fallback automático para Lovable AI
-    try {
-      const aiResult = await callCerebrasSummary(prompt);
-      summary = aiResult.summary;
-      modelUsed = aiResult.model_used;
-    } catch (e: any) {
-      console.warn('[SUMMARY] Cerebras+Lovable falharam, tentando Lovable AI tool-calling...', e?.message || e);
+    // 1. PRIMÁRIO: Cerebras
+    if (!summary) {
+      try {
+        const aiResult = await callCerebrasSummary(prompt);
+        summary = aiResult.summary;
+        modelUsed = aiResult.model_used;
+      } catch (e: any) {
+        console.warn('[SUMMARY] Cerebras falhou, tentando Lovable AI tool-calling...', e?.message || e);
+      }
     }
 
-    // 2. Fallback secundário: Lovable AI Gateway com tool-calling estruturado
+    // 2. Lovable AI Gateway
     if (!summary && LOVABLE_API_KEY) {
       try {
         const aiResult = await callLovableAI(prompt, LOVABLE_API_KEY);
@@ -388,7 +386,7 @@ Entregue:
       }
     }
 
-    // 3. Fallback: Google Gemini API direta
+    // 3. Gemini direto
     if (!summary && GEMINI_API_KEY) {
       try {
         const aiResult = await callGeminiDirect(prompt, GEMINI_API_KEY);
@@ -399,10 +397,12 @@ Entregue:
       }
     }
 
-    // 4. Fallback determinístico (offline)
+    // 4. Fallback determinístico
     if (!summary) {
       summary = buildDeterministicSummary(stats, candidate, periodLabel);
       fallbackUsed = true;
+    } else if (modelUsed !== 'cache' && !modelUsed.endsWith('(cache)')) {
+      SUMMARY_CACHE.set(cacheKey, { summary, model_used: modelUsed, ts: Date.now() });
     }
 
     return new Response(JSON.stringify({
