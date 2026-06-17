@@ -528,91 +528,190 @@ function heuristicReport(body: Body, samples: SearchHit[], sourceStatuses: Sourc
   };
 }
 
+async function processJob(jobId: string, body: Body, userId: string) {
+  const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+  const started = Date.now();
+  const logs: Array<Record<string, unknown>> = [];
+  const log = (event: string, data: Record<string, unknown> = {}) => {
+    const item = { at: new Date().toISOString(), event, ...data };
+    logs.push(item);
+    console.log(`[network-listening ${jobId}]`, event, JSON.stringify(data));
+  };
+
+  try {
+    await updateJob(admin, jobId, { status: "running", progress: 12, stage: "Coletando notícias...", started_at: new Date().toISOString(), logs });
+
+    const tasks = buildSourceTasks(body);
+    const evidence: Array<{ net: Network; source: string; hits: SearchHit[] }> = [];
+    const sourceStatuses: SourceStatus[] = [];
+
+    for (const batch of [1, 2, 3]) {
+      const batchTasks = tasks.filter((t) => t.batch === batch);
+      if (!batchTasks.length) continue;
+      const stage = batch === 1 ? "Coletando notícias..." : batch === 2 ? "Analisando redes..." : "Coletando vídeos e comunidades...";
+      const progress = batch === 1 ? 20 : batch === 2 ? 45 : 62;
+      await updateJob(admin, jobId, { progress, stage, logs });
+      const batchStarted = Date.now();
+      const results = await runLimited(batchTasks, MAX_CONCURRENT_REQUESTS, (task) => firecrawlSearch(task, 8));
+      results.forEach((result, i) => {
+        const task = batchTasks[i];
+        evidence.push({ net: task.net, source: task.source, hits: result.hits });
+        sourceStatuses.push(result.status);
+        if (result.status.status === "rate_limited") log("rate_limit", { source: task.source });
+      });
+      log("batch_done", { batch, duration_ms: Date.now() - batchStarted, sources: batchTasks.length });
+    }
+
+    await updateJob(admin, jobId, { progress: 68, stage: "Pré-processando amostras...", sources: sourceStatuses, logs });
+    const samples = preprocessEvidence(evidence);
+    const totalHits = samples.length;
+    const days = daysBetween(body.start_date, body.end_date);
+    const bucket = bucketFor(days);
+    let report: any;
+
+    const allSourcesFailed = sourceStatuses.length > 0 && sourceStatuses.every((s) => ["rate_limited", "timeout", "error", "skipped"].includes(s.status));
+    if (allSourcesFailed) {
+      log("all_sources_failed", { sources: sourceStatuses.length });
+      report = heuristicReport(body, samples, sourceStatuses, "Todas as fontes externas falharam ou limitaram a coleta.");
+    } else {
+      await updateJob(admin, jobId, { progress: 72, stage: "Processando IA...", logs });
+      const evidenceForAi = evidence.map((e) => ({
+        network: e.net,
+        source: e.source,
+        hits: e.hits.slice(0, 8).map((h) => ({
+          title: (h.title ?? "").slice(0, 160),
+          snippet: (h.description ?? "").slice(0, 220),
+          date: h.date ?? null,
+          source: h.source ?? null,
+        })),
+      })).slice(0, 300);
+      const user = JSON.stringify({
+        candidate: body.candidate_name,
+        party: body.party ?? null,
+        office: body.office ?? null,
+        state: body.state ?? null,
+        period: { start: body.start_date, end: body.end_date, days, bucket },
+        network_filter: body.network ?? "all",
+        evidence_count: totalHits,
+        source_statuses: sourceStatuses,
+        preprocessing: "deduplicado, spam removido, RT duplicado removido, máximo 300 amostras",
+        evidence: evidenceForAi,
+        instructions: `Gere um relatório completo. Se evidence_count < 5, marque confidence="low" mas ainda assim infira valores plausíveis. Distribua a timeline com ${bucket === "day" ? "dias" : bucket === "week" ? "semanas" : bucket === "month" ? "meses" : bucket === "quarter" ? "trimestres" : "semestres"} cobrindo todo o período.`,
+      });
+      try {
+        const aiStarted = Date.now();
+        report = await callAI(systemPrompt(body, days), user);
+        log("ai_done", { duration_ms: Date.now() - aiStarted });
+      } catch (e: any) {
+        log("ai_failed", { error: (e as Error)?.message ?? String(e), status: e?.status ?? null });
+        report = heuristicReport(body, samples, sourceStatuses, "A IA excedeu limite, tempo ou créditos.");
+      }
+    }
+
+    await updateJob(admin, jobId, { progress: 93, stage: "Gerando gráficos...", logs });
+    const out = { ...report, evidence_count: totalHits, bucket, cached: false, sources: sourceStatuses, job_id: jobId };
+    cache.set(cacheKey(body), { at: Date.now(), data: out });
+    const expiresAt = new Date(Date.now() + ttlMs(days)).toISOString();
+    await admin.from("social_analytics_cache").upsert({
+      cache_key: cacheKey(body),
+      candidate_id: body.candidate_id ?? "unknown",
+      network: body.network ?? "all",
+      period_start: body.start_date,
+      period_end: body.end_date,
+      result: out,
+      source_job_id: jobId,
+      expires_at: expiresAt,
+    }, { onConflict: "cache_key" });
+    log("job_done", { duration_ms: Date.now() - started, cache_expires_at: expiresAt });
+    await updateJob(admin, jobId, { status: "completed", progress: 100, stage: "Análise concluída", result: out, sources: sourceStatuses, logs, completed_at: new Date().toISOString() });
+  } catch (e) {
+    const message = (e as Error)?.message ?? String(e);
+    log("job_failed", { error: message });
+    const fallback = heuristicReport(body, [], [], "Falha geral do job.");
+    await updateJob(admin, jobId, { status: "failed", progress: 100, stage: "Falha ao processar", result: fallback, error: message, logs, completed_at: new Date().toISOString() });
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const body = (await req.json()) as Body;
-    if (!body?.candidate_name || !body.start_date || !body.end_date) {
-      return new Response(JSON.stringify({ error: "candidate_name, start_date, end_date obrigatórios" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const { user } = await getUser(req);
+    if (!user) return json({ error: "unauthorized" }, 401);
+    const body = (await req.json().catch(() => ({}))) as Body;
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+
+    if (body.action === "status" || body.job_id) {
+      if (!body.job_id) return json({ error: "missing_job_id" }, 400);
+      const { data, error } = await admin
+        .from("social_analytics_jobs")
+        .select("id,status,progress,stage,result,sources,logs,error,created_at,started_at,completed_at")
+        .eq("id", body.job_id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (error) return json({ error: error.message }, 500);
+      if (!data) return json({ error: "not_found" }, 404);
+      return json(data);
+    }
+
+    if (!body?.candidate_name || !body?.candidate_id || !body.start_date || !body.end_date) {
+      return json({ error: "candidate_id, candidate_name, start_date, end_date obrigatórios" }, 400);
     }
 
     const key = cacheKey(body);
-    const hit = cache.get(key);
-    if (hit && Date.now() - hit.at < TTL) {
-      return new Response(JSON.stringify({ ...(hit.data as object), cached: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const days = daysBetween(body.start_date, body.end_date);
+    const hit = !body.force_refresh ? cache.get(key) : null;
+    if (hit && Date.now() - hit.at < ttlMs(days)) {
+      console.log("[network-listening] cache_hit memory", key);
+      return json({ status: "completed", cached: true, result: { ...(hit.data as object), cached: true }, progress: 100 });
     }
 
-    const queries = buildQueries(body);
-    const evidence: Array<{ net: Network; hits: SearchHit[] }> = [];
-    // Roda em paralelo, mas limitado
-    const results = await Promise.all(queries.map((q) => firecrawlSearch(q.q, 6)));
-    queries.forEach((q, i) => evidence.push({ net: q.net, hits: results[i] }));
+    if (!body.force_refresh) {
+      const { data: cached } = await admin
+        .from("social_analytics_cache")
+        .select("result,expires_at,source_job_id")
+        .eq("cache_key", key)
+        .gt("expires_at", new Date().toISOString())
+        .maybeSingle();
+      if (cached?.result) {
+        console.log("[network-listening] cache_hit db", key);
+        cache.set(key, { at: Date.now(), data: cached.result });
+        return json({ status: "completed", cached: true, job_id: cached.source_job_id, result: { ...(cached.result as object), cached: true }, progress: 100 });
+      }
+    }
 
-    const totalHits = evidence.reduce((s, e) => s + e.hits.length, 0);
-    const days = daysBetween(body.start_date, body.end_date);
-    const bucket = bucketFor(days);
+    const { data: active } = !body.force_refresh ? await admin
+      .from("social_analytics_jobs")
+      .select("id,status,progress,stage")
+      .eq("user_id", user.id)
+      .eq("cache_key", key)
+      .in("status", ["queued", "running"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle() : { data: null };
+    if (active?.id) return json({ status: active.status === "queued" ? "processing" : active.status, job_id: active.id, progress: active.progress ?? 0, stage: active.stage }, 202);
 
-    // Corpus compacto enviado para IA
-    const evidenceForAi = evidence.map((e) => ({
-      network: e.net,
-      hits: e.hits.slice(0, 6).map((h) => ({
-        title: (h.title ?? "").slice(0, 160),
-        snippet: (h.description ?? "").slice(0, 220),
-        date: h.date ?? null,
-        source: h.source ?? null,
-      })),
-    }));
+    const { data: job, error: insErr } = await admin.from("social_analytics_jobs").insert({
+      user_id: user.id,
+      candidate_id: body.candidate_id,
+      candidate_name: body.candidate_name,
+      network: body.network ?? "all",
+      period_start: body.start_date,
+      period_end: body.end_date,
+      cache_key: key,
+      status: "queued",
+      progress: 0,
+      stage: "Aguardando processamento",
+      force_refresh: body.force_refresh === true,
+    }).select("id").single();
+    if (insErr || !job) return json({ error: insErr?.message ?? "insert_failed" }, 500);
 
-    const user = JSON.stringify({
-      candidate: body.candidate_name,
-      party: body.party ?? null,
-      office: body.office ?? null,
-      state: body.state ?? null,
-      period: { start: body.start_date, end: body.end_date, days, bucket },
-      network_filter: body.network ?? "all",
-      evidence_count: totalHits,
-      evidence: evidenceForAi,
-      instructions: `Gere um relatório completo. Se evidence_count < 5, marque confidence="low" mas ainda assim infira valores plausíveis a partir do contexto histórico e da maturidade das redes. Distribua a timeline com ${bucket === "day" ? "dias" : bucket === "week" ? "semanas" : bucket === "month" ? "meses" : bucket === "quarter" ? "trimestres" : "semestres"} cobrindo todo o período.`,
-    });
-
-    const report = await callAI(systemPrompt(body, days), user);
-
-    const out = { ...report, evidence_count: totalHits, bucket, cached: false };
-    cache.set(key, { at: Date.now(), data: out });
-
-    return new Response(JSON.stringify(out), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    // @ts-ignore EdgeRuntime existe em Edge Functions
+    EdgeRuntime.waitUntil(processJob(job.id, body, user.id));
+    return json({ status: "processing", job_id: job.id, progress: 0, stage: "Aguardando processamento" }, 202);
   } catch (e: any) {
     const msg = e instanceof Error ? e.message : "erro";
-    const status = e?.status ?? 0;
     console.error("[network-listening]", msg);
-    const rateLimited = status === 429;
-    const noCredits = status === 402;
-    return new Response(
-      JSON.stringify({
-        error: rateLimited
-          ? "RATE_LIMITED"
-          : noCredits
-            ? "NO_CREDITS"
-            : "SERVICE_UNAVAILABLE",
-        message: rateLimited
-          ? "Muitas requisições no momento. Tente novamente em alguns instantes."
-          : noCredits
-            ? "Créditos de IA esgotados no workspace. Adicione créditos para continuar."
-            : msg,
-        fallback: true,
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    );
+    return json({ error: "SERVICE_UNAVAILABLE", message: msg, fallback: true }, 200);
   }
 });
