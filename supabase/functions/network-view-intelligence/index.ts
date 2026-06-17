@@ -127,13 +127,15 @@ Regras:
     const hasContext = (s: string) => s.trim().split(/\s+/).length >= 2;
 
     const rawTopics = Array.isArray(parsed.topics) ? parsed.topics : [];
-    const topics = rawTopics.filter((t: any) => {
-      if (!t || isInvalid(t.topic)) return false;
-      const n = norm(t.topic);
-      if (TOPIC_BLACKLIST.has(n)) return false;
-      if ((n === "eleicao" || n === "governo") && !hasContext(t.topic)) return false;
-      return true;
-    });
+    const topics = rawTopics
+      .map((t: any) => ({ ...t, topic: t?.topic ?? t?.theme ?? null }))
+      .filter((t: any) => {
+        if (!t || isInvalid(t.topic)) return false;
+        const n = norm(t.topic);
+        if (TOPIC_BLACKLIST.has(n)) return false;
+        if ((n === "eleicao" || n === "governo") && !hasContext(t.topic)) return false;
+        return true;
+      });
 
     const rawTerms = Array.isArray(parsed.terms) ? parsed.terms : [];
     const terms = rawTerms.filter((t: any) => {
