@@ -315,6 +315,7 @@ export default function NetworkView() {
         <div>
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Visão por Rede Social</h1>
           <p className="text-muted-foreground mt-1 text-sm">Inteligência social institucional — volume, repercussão e sentimento.</p>
+          <p className="text-xs text-muted-foreground mt-2 font-medium">{activePeriodLabel}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Select value={candidateId} onValueChange={setCandidateId}>
@@ -328,10 +329,61 @@ export default function NetworkView() {
             <SelectTrigger className="w-[170px]"><SelectValue /></SelectTrigger>
             <SelectContent>{NETWORKS_FILTER.map((n) => <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>)}</SelectContent>
           </Select>
-          <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
+          <Select
+            value={customRange ? "custom" : String(days)}
+            onValueChange={(v) => {
+              if (v === "custom") return;
+              setCustomRange(null);
+              setDays(Number(v));
+            }}
+          >
             <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-            <SelectContent>{PERIODS.map((p) => <SelectItem key={p.value} value={String(p.value)}>{p.label}</SelectItem>)}</SelectContent>
+            <SelectContent>
+              {PERIODS.map((p) => <SelectItem key={p.value} value={String(p.value)}>{p.label}</SelectItem>)}
+              {customRange && <SelectItem value="custom">Personalizado</SelectItem>}
+            </SelectContent>
           </Select>
+          <Popover open={customOpen} onOpenChange={(o) => {
+            setCustomOpen(o);
+            if (o) {
+              setDraftStart(customRange?.start);
+              setDraftEnd(customRange?.end);
+              setCustomError(null);
+            }
+          }}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="default" className={cn("gap-2", customRange && "border-primary text-primary")}>
+                <CalendarIcon className="h-4 w-4" />
+                Personalizado
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-4" align="end">
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div>
+                  <div className="text-xs font-medium mb-2 text-muted-foreground">Data inicial</div>
+                  <Calendar mode="single" selected={draftStart} onSelect={setDraftStart} initialFocus className={cn("p-3 pointer-events-auto")} />
+                </div>
+                <div>
+                  <div className="text-xs font-medium mb-2 text-muted-foreground">Data final</div>
+                  <Calendar mode="single" selected={draftEnd} onSelect={setDraftEnd} className={cn("p-3 pointer-events-auto")} />
+                </div>
+              </div>
+              {customError && <div className="text-xs text-destructive mt-3">{customError}</div>}
+              <div className="flex justify-end gap-2 mt-4">
+                <Button variant="ghost" size="sm" onClick={() => { setCustomOpen(false); setCustomError(null); }}>Cancelar</Button>
+                {customRange && (
+                  <Button variant="outline" size="sm" onClick={() => { setCustomRange(null); setCustomOpen(false); setCustomError(null); }}>Limpar</Button>
+                )}
+                <Button size="sm" onClick={() => {
+                  if (!draftStart || !draftEnd) { setCustomError("Selecione data inicial e final"); return; }
+                  if (draftEnd < draftStart) { setCustomError("Data final não pode ser menor que data inicial"); return; }
+                  setCustomRange({ start: draftStart, end: draftEnd });
+                  setCustomOpen(false);
+                  setCustomError(null);
+                }}>Aplicar</Button>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 
