@@ -648,7 +648,7 @@ export default function NetworkView() {
                 const shareNum = topicsTotal > 0 ? (t.mentions / topicsTotal) * 100 : 0;
                 const shareLabel = `${shareNum.toFixed(1)}%`;
                 const posP = pct(t.pos, lab);
-                const topicLabel = t.label ?? t.topic ?? t.theme;
+                const topicLabel = (t as TopicRow).label ?? (t as TopicRow).topic ?? t.theme;
                 return (
                   <div key={topicLabel} className="rounded-lg border border-border p-4 bg-card/50">
                     <div className="flex items-center justify-between mb-2">
