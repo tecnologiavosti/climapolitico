@@ -419,34 +419,34 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Assuntos dominantes</h2>
         <p className="text-sm text-muted-foreground mb-6">Volume, participação e sentimento médio por tema.</p>
-        {loading ? <Skeleton className="h-56 w-full" /> : (mergedTopics.length === 0) ? (fallback.isLoading ? <Skeleton className="h-56 w-full" /> : <Empty />) : (
+        {aiIntel.isLoading ? <Skeleton className="h-56 w-full" /> : (mergedTopics.length === 0) ? <Empty /> : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {mergedTopics.map((t) => {
-              const lab = t.pos + t.neg + t.neu;
-              const shareNum = totalMentions > 0 ? (t.mentions / totalMentions) * 100 : 0;
-              const shareLabel = shareNum >= 1 ? `${shareNum.toFixed(1)}%` : `${shareNum.toFixed(2)}%`;
-              const posP = pct(t.pos, lab);
-              return (
-                <div key={t.theme} className="rounded-lg border border-border p-4 bg-card/50">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-semibold">{t.theme}</span>
-                    <span className="text-xs text-muted-foreground tabular-nums">{shareLabel} share</span>
+            {(() => {
+              const topicsTotal = mergedTopics.reduce((s, t) => s + (t.mentions || 0), 0);
+              return mergedTopics.map((t) => {
+                const lab = t.pos + t.neg + t.neu;
+                const shareNum = topicsTotal > 0 ? (t.mentions / topicsTotal) * 100 : 0;
+                const shareLabel = `${shareNum.toFixed(1)}%`;
+                const posP = pct(t.pos, lab);
+                return (
+                  <div key={t.theme} className="rounded-lg border border-border p-4 bg-card/50">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-semibold">{t.theme}</span>
+                      <span className="text-xs text-muted-foreground tabular-nums">{shareLabel} relevância</span>
+                    </div>
+                    <div className="flex h-1.5 rounded-full overflow-hidden bg-muted mb-2">
+                      <div style={{ width: `${pct(t.pos, lab)}%`, backgroundColor: COLORS.positive }} />
+                      <div style={{ width: `${pct(t.neg, lab)}%`, backgroundColor: COLORS.negative }} />
+                      <div style={{ width: `${pct(t.neu, lab)}%`, backgroundColor: COLORS.neutral }} />
+                    </div>
+                    <div className="text-[11px] text-success">{posP}% tom positivo estimado</div>
                   </div>
-                  <div className="flex items-baseline gap-2 mb-2">
-                    <span className="text-2xl font-bold tabular-nums">{fmt(t.mentions)}</span>
-                    <span className="text-xs text-muted-foreground">menções</span>
-                  </div>
-                  <div className="flex h-1.5 rounded-full overflow-hidden bg-muted">
-                    <div style={{ width: `${pct(t.pos, lab)}%`, backgroundColor: COLORS.positive }} />
-                    <div style={{ width: `${pct(t.neg, lab)}%`, backgroundColor: COLORS.negative }} />
-                    <div style={{ width: `${pct(t.neu, lab)}%`, backgroundColor: COLORS.neutral }} />
-                  </div>
-                  <div className="mt-1 text-[11px] text-success">{posP}% positivo</div>
-                </div>
-              );
-            })}
+                );
+              });
+            })()}
           </div>
         )}
+
       </Card>
 
       {/* BLOCO 6 — TERMOS EM ALTA */}
