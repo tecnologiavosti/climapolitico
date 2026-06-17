@@ -38,6 +38,7 @@ interface ListeningReport {
   topics: Topic[];
   terms: Term[];
   confidence: "high" | "medium" | "low";
+  qualitative_only?: boolean;
   reasoning?: string;
   evidence_count?: number;
   bucket?: string;
