@@ -561,7 +561,7 @@ export default function NetworkView() {
         />
         <BigKpi
           icon={<Crown className="h-5 w-5" />}
-          label="Rede dominante"
+          label={useAI ? "Rede dominante (estimada)" : "Rede dominante"}
           value={loading ? null : dominant ? (NETWORK_LABEL[dominant.network] ?? dominant.network) : "—"}
           sub={loading ? "" : dominant ? `${fmt(dominant.mentions)} menções · ${compact(dominant.engagement)} interações` : ""}
         />
