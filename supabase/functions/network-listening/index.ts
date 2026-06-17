@@ -3,13 +3,22 @@
 // Fluxo: Firecrawl search -> corpus compacto -> Lovable AI (JSON) -> resposta.
 
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const FIRECRAWL_KEY = Deno.env.get("FIRECRAWL_API_KEY");
 const LOVABLE_KEY = Deno.env.get("LOVABLE_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
+const MAX_CONCURRENT_REQUESTS = 3;
+const SOURCE_TIMEOUT_MS = 8_000;
+const AI_TIMEOUT_MS = 20_000;
 
 type Network = "twitter" | "youtube" | "facebook" | "instagram" | "tiktok" | "telegram" | "reddit" | "news" | "linkedin";
 
 interface Body {
+  action?: "create" | "status";
+  job_id?: string;
   candidate_name: string;
   candidate_id?: string | null;
   party?: string | null;
@@ -18,6 +27,7 @@ interface Body {
   start_date: string; // ISO yyyy-mm-dd
   end_date: string;
   network?: Network | "all";
+  force_refresh?: boolean;
 }
 
 interface SearchHit {
@@ -28,16 +38,50 @@ interface SearchHit {
   date?: string;
 }
 
-// Cache em memória (instance-level)
+interface SourceStatus {
+  source: string;
+  batch: number;
+  status: "ok" | "empty" | "rate_limited" | "timeout" | "error" | "skipped";
+  duration_ms: number;
+  hits: number;
+  error?: string;
+}
+
+interface SourceTask {
+  source: string;
+  batch: number;
+  net: Network;
+  q: string;
+}
+
+// Cache quente em memória (instance-level). O cache principal fica no banco.
 const cache = new Map<string, { at: number; data: unknown }>();
-const TTL = 30 * 60_000;
 
 function cacheKey(b: Body) {
-  return `${b.candidate_name}|${b.start_date}|${b.end_date}|${b.network ?? "all"}`;
+  return `social-v2|${b.candidate_id ?? normalizeText(b.candidate_name)}|${b.network ?? "all"}|${b.start_date}|${b.end_date}`;
+}
+
+function normalizeText(input: unknown): string {
+  return String(input ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9#\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function daysBetween(a: string, b: string) {
   return Math.max(1, Math.ceil((Date.parse(b) - Date.parse(a)) / 86_400_000));
+}
+
+function ttlMs(days: number) {
+  if (days <= 7) return 30 * 60_000;
+  if (days <= 30) return 2 * 60 * 60_000;
+  if (days <= 90) return 6 * 60 * 60_000;
+  if (days <= 365) return 24 * 60 * 60_000;
+  if (days <= 1460) return 7 * 24 * 60 * 60_000;
+  return 14 * 24 * 60 * 60_000;
 }
 
 function bucketFor(days: number): "day" | "week" | "month" | "quarter" | "semester" {
