@@ -71,23 +71,6 @@ function profileFromCandidate(name: string, party: string, position: string, sta
   return { labels, shares, topics, terms };
 }
 
-function profileFromPosition(position: string): { weights: number[]; labels: string[] } {
-  const p = (position || "").toLowerCase();
-  const labels = ["youtube","facebook","tiktok","telegram","twitter","google_news","instagram","reddit"];
-  let weights: number[];
-  if (/(governador|prefeito|senador)/.test(p)) {
-    // tradicional: news/X fortes, TikTok/Reddit baixos
-    weights = [18, 22, 6, 4, 24, 28, 14, 2];
-  } else if (/(deputad)/.test(p)) {
-    weights = [16, 18, 10, 6, 22, 18, 16, 3];
-  } else if (/(presiden)/.test(p)) {
-    weights = [20, 16, 14, 8, 26, 24, 18, 4];
-  } else {
-    weights = [15, 15, 12, 6, 20, 18, 15, 3];
-  }
-  return { weights, labels };
-}
-
 function deterministicFallback(name: string, party: string, position: string, state: string, days: number) {
   const { shares: weights, labels, topics: fallbackTopics, terms: fallbackTerms } = profileFromCandidate(name, party, position, state);
   const by_network = labels.map((n, i) => {
@@ -117,7 +100,6 @@ function deterministicFallback(name: string, party: string, position: string, st
       u: 2 + (i % 2),
     });
   }
-  const first = (name.split(" ")[0] || "candidato");
   const topicWeights = [31, 24, 18, 13, 8, 6, 5, 4];
   const topics = fallbackTopics.map((label, i) => {
     const mentions = topicWeights[i] ?? Math.max(4, 12 - i);
