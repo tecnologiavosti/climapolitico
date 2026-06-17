@@ -504,6 +504,7 @@ export default function NetworkView() {
               </div>
             )}
           </Card>
+          </>
           )}
 
           {/* ASSUNTOS DOMINANTES */}
