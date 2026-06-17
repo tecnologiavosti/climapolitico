@@ -104,11 +104,51 @@ Regras:
       tag: "network-view-ai",
     });
     const parsed = JSON.parse(res.content || "{}");
+
+    // Filter invalid/generic topics and terms
+    const TOPIC_BLACKLIST = new Set([
+      "politico", "politica", "brasil", "noticia", "noticias",
+      "candidato", "candidatos", "governo", "eleicao", "eleicoes",
+      "geral", "outros", "diversos",
+    ]);
+    const TERM_BLACKLIST = new Set([
+      "politico", "politica", "brasil", "noticia", "noticias",
+      "candidato", "governo",
+    ]);
+    const norm = (s: string) =>
+      String(s || "")
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase().trim().replace(/^#/, "");
+    const isInvalid = (s: any) => {
+      if (s == null) return true;
+      const t = String(s).trim();
+      return t === "" || t === "-" || t === "—" || t === "–" || t === "n/a";
+    };
+    const hasContext = (s: string) => s.trim().split(/\s+/).length >= 2;
+
+    const rawTopics = Array.isArray(parsed.topics) ? parsed.topics : [];
+    const topics = rawTopics.filter((t: any) => {
+      if (!t || isInvalid(t.topic)) return false;
+      const n = norm(t.topic);
+      if (TOPIC_BLACKLIST.has(n)) return false;
+      if ((n === "eleicao" || n === "governo") && !hasContext(t.topic)) return false;
+      return true;
+    });
+
+    const rawTerms = Array.isArray(parsed.terms) ? parsed.terms : [];
+    const terms = rawTerms.filter((t: any) => {
+      if (!t || isInvalid(t.term)) return false;
+      const n = norm(t.term);
+      if (TERM_BLACKLIST.has(n)) return false;
+      if ((n === "eleicao" || n === "governo") && !hasContext(t.term)) return false;
+      return true;
+    });
+
     return {
       by_network: Array.isArray(parsed.by_network) ? parsed.by_network : [],
       series: Array.isArray(parsed.series) ? parsed.series : [],
-      topics: Array.isArray(parsed.topics) ? parsed.topics : [],
-      terms: Array.isArray(parsed.terms) ? parsed.terms : [],
+      topics,
+      terms,
       model_used: `${res.provider}/${res.model}`,
       period: periodLabel,
     };
