@@ -57,7 +57,7 @@ function profileFromCandidate(name: string, party: string, position: string, sta
   ];
   let terms = [name.split(" ")[0], state, party, "Lula", "Bolsonaro"];
 
-  if (full.includes("ronaldo caiado") || full.includes("goias") || full.includes("goias")) {
+  if (full.includes("ronaldo caiado") || full.includes("goias")) {
     shares = [28, 24, 14, 13, 9, 5, 5, 2];
     topics = ["Segurança Pública", "Agronegócio", "Goiás", "Presidência 2026", "União Brasil", "Centro-Oeste", "Oposição ao PT", "Governo de Goiás"];
     terms = ["Caiado", "Goiás", "Agronegócio", "União Brasil", "Centro-Oeste", "Segurança Pública", "Presidência 2026", "Lula", "Bolsonaro"];
@@ -219,7 +219,7 @@ Se não tiver certeza do tema específico, OMITA — nunca preencha com genéric
       });
 
     const rawTerms = Array.isArray(parsed.terms) ? parsed.terms : [];
-    const terms = rawTerms.map((t: any, i: number) => typeof t === "string" ? { term: t, count: 100 - i * 6, kind: "entity" } : t).filter((t: any) => {
+    const terms = rawTerms.map((t: any, i: number) => typeof t === "string" ? { term: t, count: 100 - i * 6, kind: "entity" } : { ...t, kind: t?.kind ?? "entity", count: Number(t?.count ?? 100 - i * 6) }).filter((t: any) => {
       if (!t || isInvalidLabel(t.term)) return false;
       const n = norm(t.term);
       if (TERM_BLACKLIST.has(n)) return false;
