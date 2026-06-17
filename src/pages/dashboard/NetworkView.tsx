@@ -20,7 +20,8 @@ import { format } from "date-fns";
 // Toda a análise vem de supabase.functions.invoke('network-listening').
 // ------------------------------------------------------------
 
-interface Distribution { network: string; pct: number; mentions?: number }
+type DataSourceType = "direct" | "proxy" | "inferred" | "unavailable";
+interface Distribution { network: string; pct: number; mentions?: number; data_source_type?: DataSourceType; direct_hits?: number; external_hits?: number }
 interface TimelinePoint { date: string; total: number; positivo: number; negativo: number }
 interface SentByNetwork { network: string; pos: number; neg: number; neu: number }
 interface Topic { label: string; mentions: number; pos?: number; neg?: number; neu?: number }
