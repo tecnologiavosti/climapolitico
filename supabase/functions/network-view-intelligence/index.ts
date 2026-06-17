@@ -307,9 +307,15 @@ Se não tiver certeza do tema específico, OMITA — nunca preencha com genéric
       return true;
     });
 
+    // Timeline sempre bucketizada por período (AI não é confiável aqui)
+    const aiSeries = Array.isArray(parsed.series) ? parsed.series : [];
+    const series = aiSeries.length >= pickGranularity(days).count * 0.7
+      ? aiSeries
+      : generateTimelineByPeriod(days);
+
     return {
       by_network,
-      series: Array.isArray(parsed.series) ? parsed.series : [],
+      series,
       topics: topics.length ? topics : deterministicFallback(name, party, position, state, days).topics,
       terms: terms.length ? terms : deterministicFallback(name, party, position, state, days).terms,
       model_used: `${res.provider}/${res.model}`,
