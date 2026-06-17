@@ -179,7 +179,7 @@ export default function NetworkView() {
 
   // Fallback JS: se topics/terms falharam, busca amostra leve e processa no cliente
   const fallback = useQuery({
-    queryKey: ["nv-fallback", user?.id, candidateId, network, days, needsJsFallback],
+    queryKey: ["nv-fallback", user?.id, candidateId, network, effectiveDays, needsJsFallback],
     enabled: !!user?.id && needsJsFallback,
     staleTime: 5 * 60_000,
     queryFn: async () => {
