@@ -385,7 +385,7 @@ export default function NetworkView() {
   const analyticsSeriesRows = customData?.series ?? [];
   const analyticsTopics = customData?.topics ?? [];
   const analyticsTerms = customData?.terms ?? [];
-  const kpis = customData?.kpis ?? {};
+  const kpis: { total?: number; engagement?: number; likes?: number; replies?: number; shares?: number } = customData?.kpis ?? {};
   const insufficient = (customData?.kpis?.total ?? 0) < 10;
 
   // Distribuição por rede — sempre recalculada do período
