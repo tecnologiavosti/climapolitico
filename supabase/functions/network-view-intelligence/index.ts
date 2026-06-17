@@ -17,11 +17,27 @@ const PERIOD_LABEL = (d: number) =>
   d <= 90 ? "últimos 90 dias" :
   d <= 365 ? "último ano" : "histórico completo";
 
+function profileFromPosition(position: string): { weights: number[]; labels: string[] } {
+  const p = (position || "").toLowerCase();
+  const labels = ["youtube","facebook","tiktok","telegram","twitter","google_news","instagram","reddit"];
+  let weights: number[];
+  if (/(governador|prefeito|senador)/.test(p)) {
+    // tradicional: news/X fortes, TikTok/Reddit baixos
+    weights = [18, 22, 6, 4, 24, 28, 14, 2];
+  } else if (/(deputad)/.test(p)) {
+    weights = [16, 18, 10, 6, 22, 18, 16, 3];
+  } else if (/(presiden)/.test(p)) {
+    weights = [20, 16, 14, 8, 26, 24, 18, 4];
+  } else {
+    weights = [15, 15, 12, 6, 20, 18, 15, 3];
+  }
+  return { weights, labels };
+}
+
 function deterministicFallback(name: string, party: string, position: string, state: string, days: number) {
-  const nets = ["youtube","facebook","tiktok","telegram","twitter","google_news","instagram","reddit"];
-  const base = [22, 18, 14, 8, 16, 12, 7, 3];
-  const by_network = nets.map((n, i) => {
-    const m = base[i];
+  const { weights, labels } = profileFromPosition(position);
+  const by_network = labels.map((n, i) => {
+    const m = weights[i];
     return {
       network: n,
       mentions: m,
@@ -35,22 +51,35 @@ function deterministicFallback(name: string, party: string, position: string, st
   const pts = Math.min(days, 30);
   for (let i = pts - 1; i >= 0; i--) {
     const d = new Date(today); d.setDate(d.getDate() - i);
-    series.push({ day: d.toISOString().slice(0, 10), p: 3 + (i % 4), n: 1 + (i % 3), u: 2 + (i % 2) });
+    // picos/vales em vez de curva suave
+    const peak = (i % 7 === 0) ? 8 : (i % 5 === 0 ? 5 : 0);
+    series.push({
+      day: d.toISOString().slice(0, 10),
+      p: 3 + (i % 4) + peak,
+      n: 1 + (i % 3) + Math.round(peak / 2),
+      u: 2 + (i % 2),
+    });
   }
+  const first = (name.split(" ")[0] || "candidato");
   const topics = [
-    { theme: "Eleições 2026", mentions: 35, pos: 16, neg: 12, neu: 7 },
-    { theme: position || "Atuação política", mentions: 28, pos: 14, neg: 8, neu: 6 },
-    { theme: party || "Partido", mentions: 22, pos: 10, neg: 7, neu: 5 },
-    { theme: state || "Atuação regional", mentions: 18, pos: 9, neg: 5, neu: 4 },
+    { topic: `Atuação em ${state || "âmbito estadual"}`, mentions: 35, pos: 16, neg: 12, neu: 7 },
+    { topic: `${party || "Partido"} e alianças`, mentions: 28, pos: 14, neg: 8, neu: 6 },
+    { topic: "Segurança Pública", mentions: 22, pos: 10, neg: 7, neu: 5 },
+    { topic: "Economia e Emprego", mentions: 18, pos: 9, neg: 5, neu: 4 },
+    { topic: "Presidência 2026", mentions: 16, pos: 7, neg: 6, neu: 3 },
+    { topic: "Oposição ao PT", mentions: 14, pos: 6, neg: 5, neu: 3 },
   ];
   const terms = [
-    { term: name.split(" ")[0] || "candidato", count: 80, kind: "entity" },
-    { term: "#" + (party || "politica").toLowerCase().replace(/\s+/g, ""), count: 45, kind: "hashtag" },
-    { term: state || "brasil", count: 30, kind: "entity" },
-    { term: "eleicoes2026", count: 25, kind: "entity" },
+    { term: first, count: 80, kind: "entity" },
+    { term: state || "Brasília", count: 45, kind: "entity" },
+    { term: party || "Partido", count: 35, kind: "entity" },
+    { term: "#" + first.toLowerCase(), count: 30, kind: "hashtag" },
+    { term: "Lula", count: 22, kind: "entity" },
+    { term: "Bolsonaro", count: 20, kind: "entity" },
   ];
   return { by_network, series, topics, terms, model_used: "deterministic", period: PERIOD_LABEL(days) };
 }
+
 
 async function generateAI(candidate: any, days: number) {
   const periodLabel = PERIOD_LABEL(days);
