@@ -61,9 +61,27 @@ export default function NetworkView() {
   const { isAdmin } = useAdminCheck();
   const [network, setNetwork] = useState("all");
   const [candidateId, setCandidateId] = useState<string>("all");
-  const [days, setDays] = useState(3650);
+  const [days, setDays] = useState(365);
+  const [customRange, setCustomRange] = useState<{ start: Date; end: Date } | null>(null);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [draftStart, setDraftStart] = useState<Date | undefined>(undefined);
+  const [draftEnd, setDraftEnd] = useState<Date | undefined>(undefined);
+  const [customError, setCustomError] = useState<string | null>(null);
 
-  const { data: candidates } = useQuery({
+  // Effective days used for backend fetch: when custom is active,
+  // fetch enough days back from "now" to cover startDate; we then
+  // post-filter the timeline by the explicit range.
+  const effectiveDays = useMemo(() => {
+    if (!customRange) return days;
+    const now = Date.now();
+    const span = Math.ceil((now - customRange.start.getTime()) / 86_400_000);
+    return Math.max(1, span);
+  }, [customRange, days]);
+
+  const activePeriodLabel = customRange
+    ? `Período: ${format(customRange.start, "dd/MM/yyyy")} - ${format(customRange.end, "dd/MM/yyyy")}`
+    : `Período: Últimos ${PERIOD_LABEL[days] ?? days + " dias"}`;
+
     queryKey: ["nv-candidates", user?.id, isAdmin],
     queryFn: async () => {
       let q = supabase.from("candidates").select("id, full_name").eq("status", "active");
