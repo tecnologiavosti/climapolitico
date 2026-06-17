@@ -226,32 +226,28 @@ export default function NetworkView() {
     netSentiment <= -10 ? "Desfavorável" : "Neutro";
   const netTone = netSentiment >= 10 ? "text-success" : netSentiment <= -10 ? "text-destructive" : "text-muted-foreground";
 
-  // Camada 2: rede dominante — prefere real, senão IA
+  // Camada 2: SEMPRE IA-driven. Dados reais NÃO são fonte primária aqui.
+  const aiByNet: NetRow[] = ((aiIntel.data?.by_network ?? []) as NetRow[])
+    .filter((n) => ALLOWED_NETWORKS.has(n.network));
+  const aiSeries: SeriesRow[] = (aiIntel.data?.series ?? []) as SeriesRow[];
+  const aiTopics: TopicRow[] = (aiIntel.data?.topics ?? []) as TopicRow[];
+  const aiTerms: TermRow[] = (aiIntel.data?.terms ?? []) as TermRow[];
+
+  // Rede dominante: prefere real (Camada 1) quando há volume; senão IA
   const dominant = useMemo(() => {
     const realArr = d?.byNet ?? [];
-    const arr = realArr.length > 0
-      ? realArr
-      : ((aiIntel.data?.by_network ?? []) as NetRow[]).filter((n) => ALLOWED_NETWORKS.has(n.network));
+    const arr = realArr.length > 0 ? realArr : aiByNet;
     if (!arr.length) return null;
     return [...arr].sort((a, b) => (b.mentions * 0.4 + b.engagement * 0.6) - (a.mentions * 0.4 + a.engagement * 0.6))[0];
-  }, [d, aiIntel.data]);
+  }, [d, aiByNet]);
 
-  // Camada 2: distribuição por rede — real se houver volume, senão IA
-  const REAL_MENTIONS_THRESHOLD = 30;
-  const realByNet = d?.byNet ?? [];
-  const realTotalMentions = realByNet.reduce((s, n) => s + n.mentions, 0);
-  const useAIForNetworks = realTotalMentions < REAL_MENTIONS_THRESHOLD;
-  const effectiveByNet: NetRow[] = useAIForNetworks
-    ? ((aiIntel.data?.by_network ?? []) as NetRow[]).filter((n) => ALLOWED_NETWORKS.has(n.network))
-    : realByNet;
-  const networkTotal = useMemo(() => effectiveByNet.reduce((s, n) => s + n.mentions, 0), [effectiveByNet]);
-  const sortedNetworks = useMemo(() => [...effectiveByNet].sort((a, b) => b.mentions - a.mentions), [effectiveByNet]);
+  // Distribuição por rede — IA sempre
+  const networkTotal = useMemo(() => aiByNet.reduce((s, n) => s + n.mentions, 0), [aiByNet]);
+  const sortedNetworks = useMemo(() => [...aiByNet].sort((a, b) => b.mentions - a.mentions), [aiByNet]);
 
-  // Camada 2: série temporal — real se suficiente, senão IA
-  const realSeries = d?.series ?? [];
-  const seriesSource: SeriesRow[] = realSeries.length >= 3 ? realSeries : ((aiIntel.data?.series ?? []) as SeriesRow[]);
+  // Evolução temporal — IA sempre
   const series = useMemo(() => {
-    return [...seriesSource]
+    return [...aiSeries]
       .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.day))
       .sort((a, b) => new Date(a.day + "T00:00:00Z").getTime() - new Date(b.day + "T00:00:00Z").getTime())
       .map((r) => ({
@@ -261,25 +257,14 @@ export default function NetworkView() {
         negativo: r.n,
         total: r.p + r.n + r.u,
       }));
-  }, [seriesSource]);
+  }, [aiSeries]);
 
-  // Camada 2: assuntos dominantes — real → fallback JS → IA
-  const mergedTopics = useMemo(() => {
-    const fromRpc = d?.topics ?? [];
-    if (fromRpc.length > 0) return fromRpc;
-    const fromJs = fallback.data?.topics ?? [];
-    if (fromJs.length > 0) return fromJs;
-    return (aiIntel.data?.topics ?? []) as TopicRow[];
-  }, [d, fallback.data, aiIntel.data]);
+  // Assuntos dominantes — IA sempre
+  const mergedTopics = aiTopics;
+  // Termos em alta — IA sempre
+  const mergedTerms = aiTerms;
 
-  // Camada 2: termos em alta — real → fallback JS → IA
-  const mergedTerms = useMemo(() => {
-    const fromRpc = d?.terms ?? [];
-    if (fromRpc.length > 0) return fromRpc;
-    const fromJs = fallback.data?.terms ?? [];
-    if (fromJs.length > 0) return fromJs;
-    return (aiIntel.data?.terms ?? []) as TermRow[];
-  }, [d, fallback.data, aiIntel.data]);
+
 
 
 
@@ -342,7 +327,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Distribuição por rede</h2>
         <p className="text-sm text-muted-foreground mb-6">Participação de cada plataforma no volume e nas interações.</p>
-        {loading ? <Skeleton className="h-64 w-full" /> : sortedNetworks.length === 0 ? <Empty /> : (
+        {aiIntel.isLoading ? <Skeleton className="h-64 w-full" /> : sortedNetworks.length === 0 ? <Empty /> : (
           <div className="space-y-3">
             {sortedNetworks.map((n) => {
               const share = pct(n.mentions, networkTotal);
@@ -355,10 +340,10 @@ export default function NetworkView() {
                     </div>
                   </div>
                   <div className="col-span-3 md:col-span-3 flex items-center justify-end gap-4 text-xs tabular-nums">
-                    <span className="text-foreground font-medium">{fmt(n.mentions)}</span>
-                    <span className="text-muted-foreground hidden md:inline">{compact(n.engagement)} int.</span>
-                    <span className="w-10 text-right text-muted-foreground">{share}%</span>
+                    <span className="text-muted-foreground hidden md:inline">{compact(n.engagement)} interações est.</span>
+                    <span className="w-12 text-right text-foreground font-medium">{share}%</span>
                   </div>
+
                 </div>
               );
             })}
@@ -370,7 +355,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Evolução temporal</h2>
         <p className="text-sm text-muted-foreground mb-6">Volume diário com sobreposição de sentimento positivo e negativo.</p>
-        {loading ? <Skeleton className="h-72 w-full" /> : series.length === 0 ? <Empty /> : (
+        {aiIntel.isLoading ? <Skeleton className="h-72 w-full" /> : series.length === 0 ? <Empty /> : (
           <ResponsiveContainer width="100%" height={320}>
             <LineChart data={series} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -390,13 +375,12 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Sentimento por rede</h2>
         <p className="text-sm text-muted-foreground mb-6">Distribuição percentual de positivo, negativo e neutro em cada plataforma.</p>
-        {loading ? <Skeleton className="h-56 w-full" /> : sortedNetworks.length === 0 ? <Empty /> : (
+        {aiIntel.isLoading ? <Skeleton className="h-56 w-full" /> : sortedNetworks.length === 0 ? <Empty /> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b border-border">
                   <th className="py-2 pr-4">Rede</th>
-                  <th className="py-2 pr-4 text-right">Menções</th>
                   <th className="py-2 pr-4">Distribuição</th>
                   <th className="py-2 pr-4 text-right w-20">+ %</th>
                   <th className="py-2 pr-4 text-right w-20">− %</th>
@@ -410,7 +394,7 @@ export default function NetworkView() {
                   return (
                     <tr key={n.network} className="border-b border-border/40 last:border-0">
                       <td className="py-3 pr-4 font-medium">{NETWORK_LABEL[n.network] ?? n.network}</td>
-                      <td className="py-3 pr-4 text-right tabular-nums">{fmt(n.mentions)}</td>
+
                       <td className="py-3 pr-4">
                         <div className="flex h-2.5 rounded-full overflow-hidden bg-muted min-w-[140px]">
                           <div style={{ width: `${p}%`, backgroundColor: COLORS.positive }} />
@@ -434,41 +418,41 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Assuntos dominantes</h2>
         <p className="text-sm text-muted-foreground mb-6">Volume, participação e sentimento médio por tema.</p>
-        {loading ? <Skeleton className="h-56 w-full" /> : (mergedTopics.length === 0) ? (fallback.isLoading ? <Skeleton className="h-56 w-full" /> : <Empty />) : (
+        {aiIntel.isLoading ? <Skeleton className="h-56 w-full" /> : (mergedTopics.length === 0) ? <Empty /> : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {mergedTopics.map((t) => {
-              const lab = t.pos + t.neg + t.neu;
-              const shareNum = totalMentions > 0 ? (t.mentions / totalMentions) * 100 : 0;
-              const shareLabel = shareNum >= 1 ? `${shareNum.toFixed(1)}%` : `${shareNum.toFixed(2)}%`;
-              const posP = pct(t.pos, lab);
-              return (
-                <div key={t.theme} className="rounded-lg border border-border p-4 bg-card/50">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-semibold">{t.theme}</span>
-                    <span className="text-xs text-muted-foreground tabular-nums">{shareLabel} share</span>
+            {(() => {
+              const topicsTotal = mergedTopics.reduce((s, t) => s + (t.mentions || 0), 0);
+              return mergedTopics.map((t) => {
+                const lab = t.pos + t.neg + t.neu;
+                const shareNum = topicsTotal > 0 ? (t.mentions / topicsTotal) * 100 : 0;
+                const shareLabel = `${shareNum.toFixed(1)}%`;
+                const posP = pct(t.pos, lab);
+                return (
+                  <div key={t.theme} className="rounded-lg border border-border p-4 bg-card/50">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-semibold">{t.theme}</span>
+                      <span className="text-xs text-muted-foreground tabular-nums">{shareLabel} relevância</span>
+                    </div>
+                    <div className="flex h-1.5 rounded-full overflow-hidden bg-muted mb-2">
+                      <div style={{ width: `${pct(t.pos, lab)}%`, backgroundColor: COLORS.positive }} />
+                      <div style={{ width: `${pct(t.neg, lab)}%`, backgroundColor: COLORS.negative }} />
+                      <div style={{ width: `${pct(t.neu, lab)}%`, backgroundColor: COLORS.neutral }} />
+                    </div>
+                    <div className="text-[11px] text-success">{posP}% tom positivo estimado</div>
                   </div>
-                  <div className="flex items-baseline gap-2 mb-2">
-                    <span className="text-2xl font-bold tabular-nums">{fmt(t.mentions)}</span>
-                    <span className="text-xs text-muted-foreground">menções</span>
-                  </div>
-                  <div className="flex h-1.5 rounded-full overflow-hidden bg-muted">
-                    <div style={{ width: `${pct(t.pos, lab)}%`, backgroundColor: COLORS.positive }} />
-                    <div style={{ width: `${pct(t.neg, lab)}%`, backgroundColor: COLORS.negative }} />
-                    <div style={{ width: `${pct(t.neu, lab)}%`, backgroundColor: COLORS.neutral }} />
-                  </div>
-                  <div className="mt-1 text-[11px] text-success">{posP}% positivo</div>
-                </div>
-              );
-            })}
+                );
+              });
+            })()}
           </div>
         )}
+
       </Card>
 
       {/* BLOCO 6 — TERMOS EM ALTA */}
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Termos em alta</h2>
-        <p className="text-sm text-muted-foreground mb-6">Hashtags, nomes e entidades mais citados no período.</p>
-        {loading ? <Skeleton className="h-40 w-full" /> : mergedTerms.length === 0 ? (fallback.isLoading ? <Skeleton className="h-40 w-full" /> : <Empty />) : (
+        <p className="text-sm text-muted-foreground mb-6">Hashtags, nomes e entidades com maior relevância contextual no período.</p>
+        {aiIntel.isLoading ? <Skeleton className="h-40 w-full" /> : mergedTerms.length === 0 ? <Empty /> : (
           <div className="flex flex-wrap gap-2">
             {mergedTerms.map((t) => {
               const max = (mergedTerms[0]?.count ?? 1);
@@ -477,15 +461,15 @@ export default function NetworkView() {
                 <div
                   key={`${t.kind}-${t.term}`}
                   className="rounded-full px-4 py-2 text-sm border border-border flex items-center gap-2 bg-card"
-                  style={{ fontSize: `${0.85 + intensity * 0.35}rem` }}
+                  style={{ fontSize: `${0.85 + intensity * 0.35}rem`, opacity: 0.6 + intensity * 0.4 }}
                 >
                   <span className={t.kind === "hashtag" ? "text-primary font-semibold" : "font-semibold"}>{t.term}</span>
-                  <span className="text-xs text-muted-foreground tabular-nums">{compact(t.count)}</span>
                 </div>
               );
             })}
           </div>
         )}
+
       </Card>
     </div>
   );
