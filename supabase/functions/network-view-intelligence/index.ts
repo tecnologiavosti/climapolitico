@@ -270,9 +270,14 @@ Se não tiver certeza do tema específico, OMITA — nunca preencha com genéric
       })
       .filter((n: any) => profile.labels.includes(n.network));
 
+    // Clamp distribuição ao perfil: se o AI gerou redes incoerentes com o persona, recai no determinístico
+    const personaShares = profile.shares;
+    const personaMaxByLabel: Record<string, number> = {};
+    profile.labels.forEach((lab, i) => { personaMaxByLabel[lab] = personaShares[i] + 8; });
+    const offProfile = by_network.some((n: any) => n.mentions > (personaMaxByLabel[n.network] ?? 100));
     const topShares = [...by_network].sort((a, b) => b.mentions - a.mentions).map((n) => n.mentions);
     const uniform = topShares.length < 6 || (topShares[0] - (topShares[2] ?? topShares[0]) < 8) || (Math.max(...topShares) - Math.min(...topShares) < 14);
-    if (uniform) by_network = deterministicFallback(name, party, position, state, days).by_network;
+    if (uniform || offProfile) by_network = deterministicFallback(name, party, position, state, days).by_network;
 
     const rawTopics = Array.isArray(parsed.topics) ? parsed.topics : [];
     const topics = rawTopics
