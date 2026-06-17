@@ -745,7 +745,7 @@ function cleanText(text: string): string {
     .trim();
 }
 
-function computeTopicsAndTerms(rows: Array<{ post_title: string | null; comment_text: string | null; social_network: string | null; sentiment_label: string | null }>) {
+function computeTopicsAndTerms(rows: Array<{ post_title?: string | null; comment_text?: string | null; social_network?: string | null; sentiment_label?: string | null }>) {
   console.log("[NetworkView] fallback rows:", rows.length);
   const themeStats: Record<string, { mentions: number; pos: number; neg: number; neu: number }> = {};
   const hashCount: Record<string, number> = {};
