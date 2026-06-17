@@ -1,57 +1,78 @@
-## Objetivo
+# Refatorar Visão por Rede Social → mesmo pipeline do Radar Político
 
-Refatorar a aba **Visão por Rede Social** para funcionar igual ao **Radar Político**: o período controla a coleta real, e a IA apenas analisa o material coletado. Acabar com simulações genéricas.
+A aba hoje lê `social_interactions` e usa IA para inventar tópicos quando há poucos dados. Vou trocar a fonte pelos eventos do Radar (`radar-job-create` + `radar-job-status`) e derivar TODOS os blocos a partir desses documentos reais.
 
----
+## 1. Fonte única: jobs do Radar
 
-## Mudanças no frontend (`src/pages/dashboard/NetworkView.tsx`)
+- Disparar `radar-job-create` em `NetworkView.tsx` com `{ candidate_id, candidate_name, start_date, end_date, categories: [], force_refresh: false }` sempre que o usuário trocar candidato/período (igual Radar).
+- Reutilizar polling de `radar-job-status` com prefetch incremental até `events_count` (mesmo padrão do `RadarPolitico.tsx`).
+- Cache em memória + `localStorage` com chave `nv-radar:${candidate}|${start}|${end}` para evitar reprocessar.
+- Pré-requisito: candidato selecionado (≠ "all") e período válido — caso contrário renderizar empty state explicando a regra (Radar já exige o mesmo).
 
-1. **Remover a camada de IA generativa (`aiIntel`)** que inventa distribuição, séries, tópicos e termos.
-2. **Tornar `customInteractions` a única fonte primária**, sempre ativa (já está), recalculada a cada mudança de `period | startDate | endDate | candidate | network`.
-3. **Remover `useAI` / `REAL_THRESHOLD`** — não há mais fallback para dados sintéticos.
-4. **Estado vazio honesto**: se o intervalo não tiver dados, renderizar mensagem "Sem dados no período selecionado" em cada bloco (gráficos, tabelas, termos, assuntos). Sem inventar.
-5. **Bucketing dinâmico de timeline** no `useMemo` do `series`:
-   - ≤30d → diário
-   - 31–90d → semanal (ISO week)
-   - 91–365d → mensal
-   - 366–1460d → trimestral
-   - >1460d → semestral
-6. **Topics/Terms** vêm de duas vias, nessa ordem:
-   - a) extração JS local (`computeTopicsAndTerms`) sobre as linhas reais do período;
-   - b) chamada à nova edge function `network-view-analyze` (abaixo) que recebe **somente os textos coletados** e devolve tópicos + termos refinados por IA. Se a IA falhar, exibe a versão local.
-7. Loading: usar `customInteractions.isFetching || analyzeQuery.isFetching` para skeletons.
-8. KPIs (`total`, `engagement`, `likes`, `replies`, `shares`, sentimentos, rede dominante) sempre derivados de `customData`.
+## 2. Mapeamento evento → rede social
 
----
+Cada `RadarEvent.sources[]` tem `type` (`news`, `youtube`, `twitter`, `telegram`, `tiktok`, `instagram`, `facebook`, `reddit`, etc.). Normalizar:
 
-## Mudanças no backend
+```text
+news/google_news/gdelt   → News
+youtube/invidious        → YouTube
+twitter/x/bluesky        → X/Twitter
+telegram                 → Telegram
+tiktok                   → TikTok
+instagram/meta           → Instagram
+facebook                 → Facebook
+reddit/4chan/lemmy       → Reddit
+```
 
-### `supabase/functions/network-view-intelligence/index.ts`
-Reescrever de "gerador de cenário" para **analisador de conteúdo coletado**, renomeando lógica internamente (manter o nome para não quebrar invokes):
-- Input: `{ candidate_id, network, start_date, end_date, samples: string[] }` (textos curtos: `post_title + comment_text`, deduplicados, máx ~120 amostras).
-- Coleta no servidor (caso o cliente não envie `samples`): query em `social_interactions` no intervalo, paginada como o cliente faz, limitada a ~5k linhas para extração.
-- IA (Lovable AI Gateway, modelo padrão) recebe **apenas** os textos e devolve:
-  - `topics`: temas detectados (label + relevância + sentimento agregado).
-  - `terms`: entidades/hashtags extraídas, com contagem.
-- Sem `PERSONA_SHARES`, sem `generateTimelineByPeriod`, sem `yearHint` de cenário.
-- Cache key passa a ser `${candidate_id}|${network}|${start_date}|${end_date}|${hash(samples)}`.
-- Retorno: `{ topics, terms, period }` — não retorna mais `by_network` nem `series` (esses vêm dos dados reais no frontend).
+Um evento pode contar para várias redes (uma vez por rede distinta nos sources). Aplicar filtro `network !== "all"` removendo eventos sem aquela rede.
 
----
+## 3. Blocos derivados (sem IA generativa)
 
-## Detalhes técnicos
+| Bloco | Cálculo |
+| --- | --- |
+| Total menções | `events.length` filtrados |
+| Total interações | `Σ event.social_score` (proxy real do Radar) |
+| Sentimento líquido | `sentimentByEvent` agregado (ver §4) |
+| Rede dominante | `argmax(byNetwork.count)` |
+| Distribuição | `byNetwork.count / total` |
+| Evolução temporal | bucket por `event_date` usando granularidade existente (diário/semanal/mensal/trimestral/semestral) |
+| Sentimento por rede | sentimento médio dentro de cada rede |
+| Assuntos dominantes | IA sobre títulos+summaries reais |
+| Termos em alta | extração de entidades sobre o corpus real |
 
-- `pickBucket(days)` no frontend agrupa `series` por chave (`YYYY-MM-DD`, `YYYY-Www`, `YYYY-MM`, `YYYY-Qn`, `YYYY-Sn`) e formata `date` adequadamente para o eixo X.
-- Sanitizar textos antes de enviar à IA (`clean-content.ts` já existe em `_shared`).
-- Manter `network_view_*` RPCs como estão; eles continuam alimentando `query.data` para casos sem custom range, mas o caminho principal vira `customInteractions` (já é hoje na prática).
-- Nenhuma migration; nenhuma mudança em outras abas.
+## 4. Sentimento por evento
 
----
+Radar não retorna sentimento. Adicionar `network-view-sentiment` edge function (ou estender `network-view-intelligence`) que recebe até ~200 amostras `{id, text}` e devolve `{id, sentiment: 'pos'|'neg'|'neu'}` via Lovable AI Gateway (`google/gemini-3-flash-preview`, modo JSON). Resultado memoizado por hash do corpus.
 
-## Critérios de aceite
+## 5. Tópicos e termos
 
-- Trocar 7d ↔ 8a recalcula menções, distribuição, séries, tópicos e termos com valores claramente distintos.
-- Período personalizado refaz toda a aba.
-- Nada de "Estimativa por IA" sobre distribuição/rede dominante — esses números só existem se houver dado real.
-- Timeline muda de granularidade conforme o intervalo.
-- Sem dados ⇒ blocos mostram "Sem dados no período selecionado".
+Manter chamada existente `network-view-intelligence` mas passando títulos+summaries dos eventos do Radar em vez de `social_interactions`. Backend já preserva entidades compostas e bloqueia stopwords/verbos — apenas reforçar blacklist (verbos PT comuns) e exigir saída categorizada em: `politico | partido | hashtag | instituicao`. Descartar tokens fora dessas classes.
+
+## 6. Mudanças por arquivo
+
+- `src/pages/dashboard/NetworkView.tsx`
+  - Remover queries `query`, `fallback`, `customInteractions` (dependentes de `social_interactions`).
+  - Adicionar `radarJob` mutation + `radarStatus` query (mesmo shape do Radar).
+  - `customData` passa a derivar de `radarEvents` (eventos paginados completos).
+  - `aiAnalyze` passa a enviar `samples` extraídos dos eventos do Radar.
+  - Novo hook `useEventSentiment(events)` que chama `network-view-sentiment`.
+  - Empty state honesto quando `events.length === 0`.
+
+- `supabase/functions/network-view-intelligence/index.ts`
+  - Aceitar opcionalmente `documents: [{title, summary, sources}]` além de `samples`.
+  - Reforçar blacklist de verbos PT e exigir classificação de termo.
+
+- `supabase/functions/network-view-sentiment/index.ts` (novo)
+  - Input: `{ samples: [{id, text}] }`.
+  - Output: `{ results: [{id, sentiment, score}] }`.
+  - Cache em memória 30min por hash.
+
+## 7. Critérios de aceite
+
+- Trocar 7d ↔ 30d ↔ 1a ↔ 8a ↔ Personalizado recoleta via Radar e recalcula TODOS os blocos.
+- Nenhum bloco mostra "Estimativa por IA" para distribuição/rede dominante.
+- Sem candidato selecionado: tab mostra "Selecione um candidato" (igual Radar).
+- Sem eventos no período: cada bloco mostra "Sem dados no período".
+- Termos em alta nunca contém verbos (`afirmou`, `disse`, `falou`, etc.) nem fragmentos isolados (`mato`, `grosso`).
+
+Confirma esse plano para eu aplicar?
