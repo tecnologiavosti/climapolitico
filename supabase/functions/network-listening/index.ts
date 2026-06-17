@@ -798,6 +798,7 @@ async function processJob(jobId: string, body: Body, userId: string) {
     const sourceStatuses: SourceStatus[] = [];
     const days = daysBetween(body.start_date, body.end_date);
     const bucket = bucketFor(days);
+    const backfillThreshold = minHistoricalHitsForBackfill(days);
 
     // 1) Fonte primária: índice histórico persistido.
     let historicalCount = 0;
@@ -817,9 +818,9 @@ async function processJob(jobId: string, body: Body, userId: string) {
 
     // 2) Backfill on-demand: se o índice estiver vazio para candidate+period+network,
     // coleta retroativa em janelas e persiste em historical_social_mentions imediatamente.
-    if (historicalCount < BACKFILL_MIN_HISTORICAL_HITS) {
+    if (historicalCount < backfillThreshold) {
       backfillRan = true;
-      log("backfill_start", { start_date: body.start_date, end_date: body.end_date, chunks: buildBackfillChunks(body.start_date, body.end_date).length });
+      log("backfill_start", { start_date: body.start_date, end_date: body.end_date, historical_hits: historicalCount, min_required: backfillThreshold, chunks: buildBackfillChunks(body.start_date, body.end_date).length });
       const backfill = await runHistoricalBackfill(admin, jobId, body, logs, log);
       backfillHits = backfill.totalFound;
       const requestBackfillStatuses = !body.network || body.network === "all"
