@@ -233,6 +233,8 @@ export default function NetworkView() {
           candidate_id: candidateId === "all" ? null : candidateId,
           network: network === "all" ? null : network,
           days: effectiveDays,
+          start_date: customRange?.startDate ?? null,
+          end_date: customRange?.endDate ?? null,
         },
       });
       if (error) throw error;
@@ -338,27 +340,6 @@ export default function NetworkView() {
     return { kpis, sentimentKpis, byNet: Array.from(byNetworkMap.values()), series: Array.from(seriesMap.values()), topics: topicsAndTerms.topics, terms: topicsAndTerms.terms };
   }, [customInteractions.data, customRange]);
 
-  const totalMentions = customData?.kpis?.total ?? d?.kpis?.total ?? 0;
-  const totalEngagement = customData?.kpis?.engagement ?? d?.kpis?.engagement ?? 0;
-
-  // Sentimento líquido — SEMPRE dados reais (Camada 1)
-  const realByNet = customData?.byNet ?? d?.byNet ?? [];
-  const sFromBlock = customData?.sentimentKpis ?? { pos: d?.sentimentKpis?.pos ?? 0, neg: d?.sentimentKpis?.neg ?? 0, neu: d?.sentimentKpis?.neu ?? 0 };
-  const sFromNet = realByNet.reduce(
-    (acc, n) => ({ pos: acc.pos + (n.pos || 0), neg: acc.neg + (n.neg || 0), neu: acc.neu + (n.neu || 0) }),
-    { pos: 0, neg: 0, neu: 0 },
-  );
-  const sBlockTotal = sFromBlock.pos + sFromBlock.neg + sFromBlock.neu;
-  const sent = sBlockTotal > 0 ? sFromBlock : sFromNet;
-  const labeled = sent.pos + sent.neg + sent.neu;
-  const netSentiment = labeled > 0 ? Math.round(((sent.pos - sent.neg) / labeled) * 100) : 0;
-  const netLabel =
-    netSentiment >= 40 ? "Muito favorável" :
-    netSentiment >= 10 ? "Favorável" :
-    netSentiment <= -40 ? "Muito desfavorável" :
-    netSentiment <= -10 ? "Desfavorável" : "Neutro";
-  const netTone = netSentiment >= 10 ? "text-success" : netSentiment <= -10 ? "text-destructive" : "text-muted-foreground";
-
   // Camada 2: SEMPRE IA-driven. Dados reais NÃO são fonte primária aqui.
   const aiByNet: NetRow[] = ((aiIntel.data?.by_network ?? []) as NetRow[])
     .filter((n) => ALLOWED_NETWORKS.has(n.network));
@@ -373,20 +354,36 @@ export default function NetworkView() {
     .filter((t) => !invalidLabel(t.label));
   const aiTerms: TermRow[] = (aiIntel.data?.terms ?? []) as TermRow[];
 
-  // Rede dominante: prefere real (Camada 1) quando há volume; senão IA
+  // Real-data layer (Camada 1) computed from filtered period
+  const realKpisTotal = customData?.kpis?.total ?? 0;
+  const REAL_THRESHOLD = 10;
+  const useAI = realKpisTotal < REAL_THRESHOLD;
+
+  // Analytics datasets: real when sufficient, IA otherwise. Nunca deixar vazio.
+  const analyticsByNet = useAI ? aiByNet : (customData?.byNet ?? []);
+  const analyticsSeriesRows = useAI ? aiSeries : (customData?.series ?? []);
+  const analyticsTopics = useAI ? aiTopics : (customData?.topics ?? []);
+  const analyticsTerms = useAI ? aiTerms : (customData?.terms ?? []);
+
+  // KPIs: use AI estimates when fallback is active
+  const aiKpis = useMemo(() => {
+    const total = aiByNet.reduce((s, n) => s + (n.mentions || 0), 0);
+    const engagement = aiByNet.reduce((s, n) => s + (n.engagement || 0), 0);
+    const likes = aiByNet.reduce((s, n) => s + (n.likes || 0), 0);
+    const replies = aiByNet.reduce((s, n) => s + (n.replies || 0), 0);
+    const shares = aiByNet.reduce((s, n) => s + (n.shares || 0), 0);
+    return { total, engagement, likes, replies, shares };
+  }, [aiByNet]);
+
+  const kpis: { total?: number; engagement?: number; likes?: number; replies?: number; shares?: number } =
+    useAI ? aiKpis : (customData?.kpis ?? {});
+
+  // Rede dominante: real quando suficiente, senão IA
   const dominant = useMemo(() => {
-    const realArr = realByNet;
-    const arr = realArr.length > 0 ? realArr : aiByNet;
+    const arr = analyticsByNet;
     if (!arr.length) return null;
     return [...arr].sort((a, b) => (b.mentions * 0.4 + b.engagement * 0.6) - (a.mentions * 0.4 + a.engagement * 0.6))[0];
-  }, [realByNet, aiByNet]);
-
-  const analyticsByNet = customData?.byNet ?? [];
-  const analyticsSeriesRows = customData?.series ?? [];
-  const analyticsTopics = customData?.topics ?? [];
-  const analyticsTerms = customData?.terms ?? [];
-  const kpis: { total?: number; engagement?: number; likes?: number; replies?: number; shares?: number } = customData?.kpis ?? {};
-  const insufficient = (customData?.kpis?.total ?? 0) < 10;
+  }, [analyticsByNet]);
 
   // Distribuição por rede — sempre recalculada do período
   const networkTotal = useMemo(() => analyticsByNet.reduce((s, n) => s + n.mentions, 0), [analyticsByNet]);
@@ -424,10 +421,26 @@ export default function NetworkView() {
     window.setTimeout(() => setIsApplyingCustom(false), 500);
   };
 
-  // Assuntos dominantes — IA sempre
   const mergedTopics = analyticsTopics;
-  // Termos em alta — IA sempre
   const mergedTerms = analyticsTerms;
+
+  // KPIs derivados
+  const totalMentions = kpis.total ?? 0;
+  const totalEngagement = kpis.engagement ?? 0;
+
+  // Sentimento líquido — derivado do dataset ativo (real ou IA)
+  const sentAgg = analyticsByNet.reduce(
+    (acc, n) => ({ pos: acc.pos + (n.pos || 0), neg: acc.neg + (n.neg || 0), neu: acc.neu + (n.neu || 0) }),
+    { pos: 0, neg: 0, neu: 0 },
+  );
+  const sentLabeled = sentAgg.pos + sentAgg.neg + sentAgg.neu;
+  const netSentiment = sentLabeled > 0 ? Math.round(((sentAgg.pos - sentAgg.neg) / sentLabeled) * 100) : 0;
+  const netLabel =
+    netSentiment >= 40 ? "Muito favorável" :
+    netSentiment >= 10 ? "Favorável" :
+    netSentiment <= -40 ? "Muito desfavorável" :
+    netSentiment <= -10 ? "Desfavorável" : "Neutro";
+  const netTone = netSentiment >= 10 ? "text-success" : netSentiment <= -10 ? "text-destructive" : "text-muted-foreground";
 
 
 
@@ -523,13 +536,15 @@ export default function NetworkView() {
         </Card>
       )}
 
-      {!loading && insufficient && (
-        <Card className="p-4 border-amber-500/40 bg-amber-500/5">
-          <div className="text-sm text-amber-700 dark:text-amber-400">
-            Dados insuficientes para análise temática precisa neste período.
+      {!loading && useAI && (
+        <Card className="p-3 border-primary/30 bg-primary/5">
+          <div className="text-xs font-medium text-primary">
+            Estimativa por IA — análise inferida a partir do perfil do candidato e contexto político do período.
           </div>
         </Card>
       )}
+
+
 
 
 
@@ -546,7 +561,7 @@ export default function NetworkView() {
         />
         <BigKpi
           icon={<Crown className="h-5 w-5" />}
-          label="Rede dominante"
+          label={useAI ? "Rede dominante (estimada)" : "Rede dominante"}
           value={loading ? null : dominant ? (NETWORK_LABEL[dominant.network] ?? dominant.network) : "—"}
           sub={loading ? "" : dominant ? `${fmt(dominant.mentions)} menções · ${compact(dominant.engagement)} interações` : ""}
         />
@@ -720,7 +735,7 @@ function BigKpi({ icon, label, value, sub, valueClassName }: { icon: React.React
 }
 
 function Empty() {
-  return <div className="text-sm text-muted-foreground py-10 text-center">Sem dados para o período selecionado.</div>;
+  return <div className="text-sm text-muted-foreground py-10 text-center">Gerando estimativa por IA…</div>;
 }
 
 // ============================================================
