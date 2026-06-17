@@ -611,12 +611,32 @@ Deno.serve(async (req) => {
       if (!body.job_id) return json({ error: "missing_job_id" }, 400);
       const { data, error } = await admin
         .from("social_analytics_jobs")
-        .select("id,status,progress,stage,result,sources,logs,error,created_at,started_at,completed_at")
+        .select("id,status,progress,stage,result,sources,logs,error,created_at,started_at,completed_at,candidate_id,candidate_name,network,period_start,period_end,force_refresh")
         .eq("id", body.job_id)
         .eq("user_id", user.id)
         .maybeSingle();
       if (error) return json({ error: error.message }, 500);
       if (!data) return json({ error: "not_found" }, 404);
+      if (data.status === "running") {
+        const statusBody: Body = {
+          ...body,
+          candidate_id: data.candidate_id,
+          candidate_name: data.candidate_name,
+          network: data.network,
+          start_date: data.period_start,
+          end_date: data.period_end,
+          force_refresh: data.force_refresh,
+        };
+        const run = await latestCollectorRun(admin, statusBody, data.id).catch(() => null);
+        if (run && ["running", "queued"].includes(run.status)) {
+          return json({ ...data, progress: Math.min(66, 12 + Math.round(((run.current_chunk ?? 0) / Math.max(1, run.total_chunks ?? 1)) * 52)), stage: `Coletando histórico... Janela ${run.current_chunk ?? 0}/${run.total_chunks ?? 0} · ${Number(run.mentions_found ?? 0).toLocaleString("pt-BR")} menções encontradas` }, 202);
+        }
+        if (run?.status === "completed" && !data.result) {
+          // @ts-ignore EdgeRuntime existe em Edge Functions
+          EdgeRuntime.waitUntil(processJob(data.id, statusBody));
+          return json({ ...data, status: "running", progress: 68, stage: "Reconsultando índice histórico..." }, 202);
+        }
+      }
       return json(data);
     }
 
