@@ -286,7 +286,7 @@ serve(async (req) => {
       candidate = data;
     }
 
-    const cacheKey = `${candidate_id || "all"}::${network || "all"}::${days}`;
+    const cacheKey = `${candidate_id || "all"}::${network || "all"}::${days}::${start_date || "-"}::${end_date || "-"}`;
     const cached = CACHE.get(cacheKey);
     if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
       return new Response(JSON.stringify({ ...cached.payload, cached: true }), {
