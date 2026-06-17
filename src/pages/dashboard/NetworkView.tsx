@@ -381,27 +381,21 @@ export default function NetworkView() {
     return [...arr].sort((a, b) => (b.mentions * 0.4 + b.engagement * 0.6) - (a.mentions * 0.4 + a.engagement * 0.6))[0];
   }, [realByNet, aiByNet]);
 
-  const analyticsByNet = customRange ? (customData?.byNet ?? []) : aiByNet;
-  const analyticsSeriesRows = customRange ? (customData?.series ?? []) : aiSeries;
-  const analyticsTopics = customRange ? (customData?.topics ?? []) : aiTopics;
-  const analyticsTerms = customRange ? (customData?.terms ?? []) : aiTerms;
-  const kpis = customData?.kpis ?? d?.kpis ?? {};
+  const analyticsByNet = customData?.byNet ?? [];
+  const analyticsSeriesRows = customData?.series ?? [];
+  const analyticsTopics = customData?.topics ?? [];
+  const analyticsTerms = customData?.terms ?? [];
+  const kpis = customData?.kpis ?? {};
+  const insufficient = (customData?.kpis?.total ?? 0) < 10;
 
-  // Distribuição por rede — IA no padrão; período customizado recalcula pelo intervalo aplicado
+  // Distribuição por rede — sempre recalculada do período
   const networkTotal = useMemo(() => analyticsByNet.reduce((s, n) => s + n.mentions, 0), [analyticsByNet]);
   const sortedNetworks = useMemo(() => [...analyticsByNet].sort((a, b) => b.mentions - a.mentions), [analyticsByNet]);
 
-  // Evolução temporal — IA sempre; filtra por intervalo customizado quando ativo
+  // Evolução temporal — sempre do período
   const series = useMemo(() => {
-    const startMs = customRange ? parseDateBoundary(customRange.startDate, "start").getTime() : null;
-    const endMs = customRange ? parseDateBoundary(customRange.endDate, "end").getTime() : null;
     return [...analyticsSeriesRows]
       .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.day))
-      .filter((r) => {
-        if (startMs == null || endMs == null) return true;
-        const t = new Date(r.day + "T00:00:00Z").getTime();
-        return t >= startMs && t <= endMs;
-      })
       .sort((a, b) => new Date(a.day + "T00:00:00Z").getTime() - new Date(b.day + "T00:00:00Z").getTime())
       .map((r) => ({
         iso: r.day,
