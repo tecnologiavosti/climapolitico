@@ -630,6 +630,57 @@ function partialEvidenceReport(body: Body, samples: SearchHit[], sourceStatuses:
   };
 }
 
+async function loadHistoricalEvidence(admin: any, body: Body): Promise<Array<{ net: Network; source: string; hits: SearchHit[] }>> {
+  const wantAll = !body.network || body.network === "all";
+  let q = admin.from("historical_social_mentions")
+    .select("network,source,url,title,content,date")
+    .eq("candidate_name_normalized", normalizeText(body.candidate_name))
+    .gte("date", `${body.start_date}T00:00:00Z`)
+    .lte("date", `${body.end_date}T23:59:59Z`)
+    .limit(2000);
+  if (!wantAll) q = q.eq("network", body.network);
+  const { data, error } = await q;
+  if (error || !data) return [];
+  const grouped = new Map<string, SearchHit[]>();
+  for (const row of data as any[]) {
+    const key = `${row.network}|${row.source}`;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push({
+      url: row.url, title: row.title, description: row.content, date: row.date, source: row.source,
+    });
+  }
+  return [...grouped.entries()].map(([k, hits]) => {
+    const [net, source] = k.split("|");
+    return { net: net as Network, source, hits };
+  });
+}
+
+async function persistEvidenceToHistory(
+  admin: any,
+  body: Body,
+  evidence: Array<{ net: Network; source: string; hits: SearchHit[] }>,
+) {
+  const normName = normalizeText(body.candidate_name);
+  for (const item of evidence) {
+    for (const h of item.hits) {
+      const text = `${h.title ?? ""} ${h.description ?? ""}`.trim();
+      if (!text) continue;
+      const row = {
+        candidate_id: body.candidate_id ?? null,
+        candidate_name: body.candidate_name,
+        candidate_name_normalized: normName,
+        source: item.source,
+        network: item.net,
+        url: h.url ?? null,
+        title: (h.title ?? "").slice(0, 500),
+        content: (h.description ?? "").slice(0, 2000),
+        date: h.date ? (Number.isFinite(Date.parse(h.date)) ? new Date(h.date).toISOString() : null) : null,
+      };
+      await admin.from("historical_social_mentions").insert(row).then(() => {}, () => {});
+    }
+  }
+}
+
 async function processJob(jobId: string, body: Body, userId: string) {
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
   const started = Date.now();
@@ -641,34 +692,60 @@ async function processJob(jobId: string, body: Body, userId: string) {
   };
 
   try {
-    await updateJob(admin, jobId, { status: "running", progress: 12, stage: "Coletando notícias...", started_at: new Date().toISOString(), logs });
+    await updateJob(admin, jobId, { status: "running", progress: 10, stage: "Consultando índice histórico...", started_at: new Date().toISOString(), logs });
 
-    const tasks = buildSourceTasks(body);
     const evidence: Array<{ net: Network; source: string; hits: SearchHit[] }> = [];
     const sourceStatuses: SourceStatus[] = [];
+    const days = daysBetween(body.start_date, body.end_date);
+    const bucket = bucketFor(days);
 
-    for (const batch of [1, 2, 3]) {
-      const batchTasks = tasks.filter((t) => t.batch === batch);
-      if (!batchTasks.length) continue;
-      const stage = batch === 1 ? "Coletando notícias..." : batch === 2 ? "Analisando redes..." : "Coletando vídeos e comunidades...";
-      const progress = batch === 1 ? 20 : batch === 2 ? 45 : 62;
-      await updateJob(admin, jobId, { progress, stage, logs });
-      const batchStarted = Date.now();
-      const results = await runLimited(batchTasks, MAX_CONCURRENT_REQUESTS, (task) => firecrawlSearch(task, 8));
-      results.forEach((result, i) => {
-        const task = batchTasks[i];
-        evidence.push({ net: task.net, source: task.source, hits: result.hits });
-        sourceStatuses.push(result.status);
-        if (result.status.status === "rate_limited") log("rate_limit", { source: task.source });
-      });
-      log("batch_done", { batch, duration_ms: Date.now() - batchStarted, sources: batchTasks.length });
+    // 1) Fonte primária: índice histórico persistido.
+    let historicalCount = 0;
+    try {
+      const historicalEvidence = await loadHistoricalEvidence(admin, body);
+      for (const e of historicalEvidence) {
+        evidence.push(e);
+        sourceStatuses.push({ source: `historical:${e.source}`, batch: 0, status: e.hits.length > 0 ? "ok" : "empty", duration_ms: 0, hits: e.hits.length });
+        historicalCount += e.hits.length;
+      }
+      log("historical_loaded", { hits: historicalCount, groups: historicalEvidence.length, days });
+    } catch (e: any) {
+      log("historical_load_failed", { error: e?.message ?? String(e) });
+    }
+
+    // 2) Coleta live só para períodos curtos (<=90d) e quando o histórico está fraco.
+    // Períodos longos (1, 4, 8 anos): coleta live nunca traz cobertura histórica útil — pular.
+    const allowLive = days <= 90 && historicalCount < 60;
+    if (allowLive) {
+      const tasks = buildSourceTasks(body);
+      const liveEvidence: Array<{ net: Network; source: string; hits: SearchHit[] }> = [];
+      for (const batch of [1, 2, 3]) {
+        const batchTasks = tasks.filter((t) => t.batch === batch);
+        if (!batchTasks.length) continue;
+        const stage = batch === 1 ? "Coletando notícias..." : batch === 2 ? "Analisando redes..." : "Coletando vídeos e comunidades...";
+        const progress = batch === 1 ? 25 : batch === 2 ? 45 : 62;
+        await updateJob(admin, jobId, { progress, stage, logs });
+        const batchStarted = Date.now();
+        const results = await runLimited(batchTasks, MAX_CONCURRENT_REQUESTS, (task) => firecrawlSearch(task, 8));
+        results.forEach((result, i) => {
+          const task = batchTasks[i];
+          evidence.push({ net: task.net, source: task.source, hits: result.hits });
+          liveEvidence.push({ net: task.net, source: task.source, hits: result.hits });
+          sourceStatuses.push(result.status);
+          if (result.status.status === "rate_limited") log("rate_limit", { source: task.source });
+        });
+        log("batch_done", { batch, duration_ms: Date.now() - batchStarted, sources: batchTasks.length });
+      }
+      // Persiste o que veio do live no índice histórico, para uso futuro.
+      try { await persistEvidenceToHistory(admin, body, liveEvidence); }
+      catch (e: any) { log("persist_failed", { error: e?.message ?? String(e) }); }
+    } else {
+      log("skip_live", { reason: days > 90 ? "long_period" : "historical_sufficient", days, historical_hits: historicalCount });
     }
 
     await updateJob(admin, jobId, { progress: 68, stage: "Pré-processando amostras...", sources: sourceStatuses, logs });
     const samples = preprocessEvidence(evidence);
     const totalHits = samples.length;
-    const days = daysBetween(body.start_date, body.end_date);
-    const bucket = bucketFor(days);
     const deterministicConfidence = computeConfidence(totalHits, sourceStatuses);
     let renderState: "FULL_DATA" | "PARTIAL_DATA" | "NO_DATA" = totalHits === 0 ? "NO_DATA" : deterministicConfidence === "low" ? "PARTIAL_DATA" : "FULL_DATA";
     let report: any;
