@@ -519,7 +519,7 @@ export default function NetworkView() {
           {/* SENTIMENTO POR REDE */}
           <Card className="p-6">
             <h2 className="text-lg font-semibold mb-1">Sentimento por rede</h2>
-            <p className="text-sm text-muted-foreground mb-6">Perfil de sentimento típico de cada rede aplicado ao período.</p>
+            <p className="text-sm text-muted-foreground mb-6">Somente redes com evidência mínima; caso contrário, os percentuais ficam ocultos.</p>
             {loading || !data ? <Skeleton className="h-56 w-full" /> : (data.sentiment_by_network ?? []).length === 0 ? <Empty /> : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -561,9 +561,10 @@ export default function NetworkView() {
           )}
 
           {/* ASSUNTOS DOMINANTES */}
+          {(loading || !data || (data.topics ?? []).length >= 3) && (
           <Card className="p-6">
             <h2 className="text-lg font-semibold mb-1">Assuntos dominantes</h2>
-            <p className="text-sm text-muted-foreground mb-6">Temas específicos do candidato + período, gerados pela IA com contexto histórico.</p>
+            <p className="text-sm text-muted-foreground mb-6">Temas específicos extraídos por agrupamento das evidências coletadas.</p>
             {loading || !data ? <Skeleton className="h-56 w-full" /> : (data.topics ?? []).length === 0 ? <Empty /> : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {(() => {
@@ -584,7 +585,7 @@ export default function NetworkView() {
                             <div style={{ width: `${pct(t.neu ?? 0, lab)}%`, backgroundColor: COLORS.neutral }} />
                           </div>
                         )}
-                        <div className="text-[11px] text-muted-foreground">{compact(t.mentions)} menções estimadas</div>
+                        <div className="text-[11px] text-muted-foreground">{compact(t.mentions)} evidências relacionadas</div>
                       </div>
                     );
                   });
@@ -592,6 +593,7 @@ export default function NetworkView() {
               </div>
             )}
           </Card>
+          )}
 
           {/* TERMOS EM ALTA */}
           <Card className="p-6">
