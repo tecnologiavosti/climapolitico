@@ -457,7 +457,7 @@ export default function NetworkView() {
             )}
           </Card>
 
-
+          {!data?.qualitative_only && (<>
           {/* EVOLUÇÃO TEMPORAL */}
           <Card className="p-6">
             <h2 className="text-lg font-semibold mb-1">Evolução temporal</h2>
