@@ -297,16 +297,24 @@ export default function NetworkView() {
   const filteredEvents = useMemo(() => {
     const startMs = effectiveRange.start.getTime();
     const endMs = effectiveRange.end.getTime();
-    return events.filter((ev) => {
+    let afterDate = 0;
+    const result = events.filter((ev) => {
       const t = Date.parse(ev.event_date ?? "");
       if (!Number.isFinite(t)) return false;
       if (t < startMs || t > endMs) return false;
+      afterDate++;
       if (network !== "all") {
         const nets = eventNetworks(ev);
         if (!nets.includes(network)) return false;
       }
       return true;
     });
+    if (events.length > 0) {
+      // Diagnóstico temporário: rastreia onde os eventos se perdem no filtro
+      // eslint-disable-next-line no-console
+      console.log("[NetworkView] Radar total:", events.length, "after date:", afterDate, "after network(" + network + "):", result.length);
+    }
+    return result;
   }, [events, effectiveRange, network]);
 
   // Sentimento por evento via edge function
