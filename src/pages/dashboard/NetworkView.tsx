@@ -414,6 +414,7 @@ export default function NetworkView() {
           </div>
 
           {/* DISTRIBUIÇÃO POR REDE */}
+          {!data?.qualitative_only && (
           <Card className="p-6">
             <h2 className="text-lg font-semibold mb-1">Distribuição por rede</h2>
             <p className="text-sm text-muted-foreground mb-6">Participação estimada de cada rede no período, considerando maturidade da plataforma.</p>
