@@ -4,6 +4,10 @@ import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 
 const CEREBRAS_MODELS = ["qwen-3-235b-a22b-instruct-2507", "llama-3.3-70b", "llama3.1-8b"];
 
+// Cache em memória da análise textual da IA — chave: candidateId::periodLabel
+const SUMMARY_CACHE = new Map<string, { summary: any; model_used: string; ts: number }>();
+const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12h
+
 async function callCerebrasSummary(prompt: string) {
   const systemMsg = 'Você é um analista político estratégico brasileiro especializado em comunicação de campanha. Responda sempre em português do Brasil. Seja direto, prático e acionável. Responda SEMPRE em JSON válido seguindo o schema solicitado.';
   const fullPrompt = `${prompt}\n\nResponda EXCLUSIVAMENTE com um JSON no formato:\n{"overall_sentiment":"muito_positiva|positiva|mista|negativa|muito_negativa","overall_summary":"...","positive_points":["..."],"negative_points":["..."],"narrative_recommendations":["..."],"risk_alert":"...","opportunity_alert":"..."}`;
