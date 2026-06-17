@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -7,10 +7,11 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
-import { MessageSquare, Activity, Gauge, Crown, Radar as RadarIcon, Sparkles } from "lucide-react";
+import { MessageSquare, Activity, Gauge, Crown, Radar as RadarIcon, Sparkles, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 
 // ------------------------------------------------------------
@@ -40,6 +41,18 @@ interface ListeningReport {
   reasoning?: string;
   evidence_count?: number;
   bucket?: string;
+  cached?: boolean;
+  fallback?: boolean;
+}
+
+interface JobResponse {
+  status: "processing" | "queued" | "running" | "completed" | "failed";
+  job_id?: string;
+  progress?: number;
+  stage?: string;
+  result?: ListeningReport;
+  cached?: boolean;
+  error?: string;
 }
 
 const NETWORK_LABEL: Record<string, string> = {
@@ -115,6 +128,8 @@ export default function NetworkView() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [customError, setCustomError] = useState<string | null>(null);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [reprocessNonce, setReprocessNonce] = useState(0);
 
   const effectiveRange = useMemo(() => {
     if (customRange) {
@@ -152,15 +167,38 @@ export default function NetworkView() {
 
   const start_date = toIsoDate(effectiveRange.start);
   const end_date = toIsoDate(effectiveRange.end);
+  const filterKey = `${candidateId}|${start_date}|${end_date}|${network}`;
+  const requestKey = `${filterKey}|${reprocessNonce}`;
 
-  const report = useQuery<ListeningReport>({
-    queryKey: ["nv-listening", candidateId, start_date, end_date, network],
+  useEffect(() => {
+    setActiveJobId(null);
+  }, [requestKey]);
+
+  useEffect(() => {
+    setReprocessNonce(0);
+  }, [filterKey]);
+
+  const report = useQuery<JobResponse>({
+    queryKey: ["nv-listening-job", candidateId, start_date, end_date, network, reprocessNonce, activeJobId],
     enabled: !!user && candidateId !== "all" && !!candidate?.full_name,
-    staleTime: 30 * 60_000,
-    retry: 1,
+    staleTime: 0,
+    retry: false,
+    refetchInterval: (query) => {
+      const state = query.state.data as JobResponse | undefined;
+      return state?.status === "processing" || state?.status === "queued" || state?.status === "running" ? 1200 : false;
+    },
     queryFn: async () => {
+      if (activeJobId) {
+        const { data, error } = await supabase.functions.invoke("network-listening", {
+          body: { action: "status", job_id: activeJobId },
+        });
+        if (error) throw error;
+        return data as JobResponse;
+      }
+
       const { data, error } = await supabase.functions.invoke("network-listening", {
         body: {
+          action: "create",
           candidate_id: candidateId,
           candidate_name: (candidate as any).full_name,
           party: (candidate as any).party ?? null,
@@ -169,6 +207,7 @@ export default function NetworkView() {
           start_date,
           end_date,
           network,
+          force_refresh: reprocessNonce > 0,
         },
       });
       if (error) throw error;
@@ -181,12 +220,16 @@ export default function NetworkView() {
         };
         throw new Error(map[d.error] ?? d.message ?? d.error);
       }
-      return data as ListeningReport;
+      if (d?.job_id) setActiveJobId(d.job_id);
+      return data as JobResponse;
     },
   });
 
-  const data = report.data;
-  const loading = report.isFetching;
+  const job = report.data;
+  const data = job?.result;
+  const isProcessing = job?.status === "processing" || job?.status === "queued" || job?.status === "running";
+  const jobFailed = job?.status === "failed";
+  const loading = report.isFetching || isProcessing;
   const needsCandidate = candidateId === "all";
 
   // Derivações de exibição
@@ -304,8 +347,30 @@ export default function NetworkView() {
       )}
 
       {!needsCandidate && report.isError && (
-        <Card className="p-4 text-sm text-destructive">
-          Falha ao gerar análise: {(report.error as Error)?.message ?? "erro desconhecido"}
+        <Card className="p-4 text-sm text-destructive flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <span>Falha ao gerar análise: {(report.error as Error)?.message ?? "erro desconhecido"}</span>
+          <Button size="sm" variant="outline" onClick={() => { setActiveJobId(null); setReprocessNonce((n) => n + 1); }}>
+            <RefreshCw className="h-4 w-4 mr-2" /> Reprocessar análise
+          </Button>
+        </Card>
+      )}
+
+      {!needsCandidate && isProcessing && (
+        <Card className="p-5 space-y-3">
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="font-medium">{job?.stage ?? "Processando análise..."}</span>
+            <span className="text-muted-foreground tabular-nums">{Math.round(job?.progress ?? 0)}%</span>
+          </div>
+          <Progress value={job?.progress ?? 0} className="h-2" />
+        </Card>
+      )}
+
+      {!needsCandidate && jobFailed && (
+        <Card className="p-4 text-sm border-destructive/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <span className="text-muted-foreground">A análise usou fallback local porque o job falhou: {job?.error ?? "erro desconhecido"}</span>
+          <Button size="sm" variant="outline" onClick={() => { setActiveJobId(null); setReprocessNonce((n) => n + 1); }}>
+            <RefreshCw className="h-4 w-4 mr-2" /> Reprocessar análise
+          </Button>
         </Card>
       )}
 

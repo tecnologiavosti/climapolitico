@@ -2880,6 +2880,125 @@ export type Database = {
         }
         Relationships: []
       }
+      social_analytics_cache: {
+        Row: {
+          cache_key: string
+          candidate_id: string
+          created_at: string
+          expires_at: string
+          id: string
+          network: string
+          period_end: string
+          period_start: string
+          result: Json
+          source_job_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          cache_key: string
+          candidate_id: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          network?: string
+          period_end: string
+          period_start: string
+          result: Json
+          source_job_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cache_key?: string
+          candidate_id?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          network?: string
+          period_end?: string
+          period_start?: string
+          result?: Json
+          source_job_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_analytics_cache_source_job_id_fkey"
+            columns: ["source_job_id"]
+            isOneToOne: false
+            referencedRelation: "social_analytics_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      social_analytics_jobs: {
+        Row: {
+          cache_key: string
+          candidate_id: string
+          candidate_name: string
+          completed_at: string | null
+          created_at: string
+          error: string | null
+          force_refresh: boolean
+          id: string
+          logs: Json
+          network: string
+          period_end: string
+          period_start: string
+          progress: number
+          result: Json | null
+          sources: Json
+          stage: string
+          started_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cache_key: string
+          candidate_id: string
+          candidate_name: string
+          completed_at?: string | null
+          created_at?: string
+          error?: string | null
+          force_refresh?: boolean
+          id?: string
+          logs?: Json
+          network?: string
+          period_end: string
+          period_start: string
+          progress?: number
+          result?: Json | null
+          sources?: Json
+          stage?: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cache_key?: string
+          candidate_id?: string
+          candidate_name?: string
+          completed_at?: string | null
+          created_at?: string
+          error?: string | null
+          force_refresh?: boolean
+          id?: string
+          logs?: Json
+          network?: string
+          period_end?: string
+          period_start?: string
+          progress?: number
+          result?: Json | null
+          sources?: Json
+          stage?: string
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       social_event_metrics: {
         Row: {
           computed_at: string
