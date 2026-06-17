@@ -79,7 +79,7 @@ Retorne JSON com este schema EXATO:
     {"day":"YYYY-MM-DD","p":<int>,"n":<int>,"u":<int>}
   ],
   "topics": [
-    {"theme":"<tema curto>","mentions":<int>,"pos":<int>,"neg":<int>,"neu":<int>}
+    {"topic":"<tema específico>","mentions":<int>,"pos":<int>,"neg":<int>,"neu":<int>}
   ],
   "terms": [
     {"term":"<termo ou #hashtag>","count":<int>,"kind":"hashtag|entity"}
@@ -89,8 +89,8 @@ Retorne JSON com este schema EXATO:
 Regras:
 - by_network: 6-8 redes, valores proporcionais à força real do candidato em cada plataforma.
 - series: ${Math.min(days, 30)} dias terminando hoje (${new Date().toISOString().slice(0,10)}), com variação realista.
-- topics: 6-8 temas dominantes específicos para esse candidato/contexto.
-- terms: 10-15 termos (hashtags e entidades) realmente associados a esse candidato.
+- topics: 6-8 temas ESPECÍFICOS ao candidato (ex.: "Segurança Pública", "Agronegócio", "Oposição ao PT", "Presidência 2026", o estado dele). PROIBIDO: "Político", "Brasil", "Notícia", "Candidato", "Governo", "Eleição", "-", "—", vazio.
+- terms: 10-15 termos específicos (hashtags e entidades). Evite genéricos como "político", "brasil", "notícia", "candidato".
 - pos+neg+neu deve refletir sentimento plausível (não sempre balanceado).`;
 
   try {
@@ -104,11 +104,53 @@ Regras:
       tag: "network-view-ai",
     });
     const parsed = JSON.parse(res.content || "{}");
+
+    // Filter invalid/generic topics and terms
+    const TOPIC_BLACKLIST = new Set([
+      "politico", "politica", "brasil", "noticia", "noticias",
+      "candidato", "candidatos", "governo", "eleicao", "eleicoes",
+      "geral", "outros", "diversos",
+    ]);
+    const TERM_BLACKLIST = new Set([
+      "politico", "politica", "brasil", "noticia", "noticias",
+      "candidato", "governo",
+    ]);
+    const norm = (s: string) =>
+      String(s || "")
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase().trim().replace(/^#/, "");
+    const isInvalid = (s: any) => {
+      if (s == null) return true;
+      const t = String(s).trim();
+      return t === "" || t === "-" || t === "—" || t === "–" || t === "n/a";
+    };
+    const hasContext = (s: string) => s.trim().split(/\s+/).length >= 2;
+
+    const rawTopics = Array.isArray(parsed.topics) ? parsed.topics : [];
+    const topics = rawTopics
+      .map((t: any) => ({ ...t, topic: t?.topic ?? t?.theme ?? null }))
+      .filter((t: any) => {
+        if (!t || isInvalid(t.topic)) return false;
+        const n = norm(t.topic);
+        if (TOPIC_BLACKLIST.has(n)) return false;
+        if ((n === "eleicao" || n === "governo") && !hasContext(t.topic)) return false;
+        return true;
+      });
+
+    const rawTerms = Array.isArray(parsed.terms) ? parsed.terms : [];
+    const terms = rawTerms.filter((t: any) => {
+      if (!t || isInvalid(t.term)) return false;
+      const n = norm(t.term);
+      if (TERM_BLACKLIST.has(n)) return false;
+      if ((n === "eleicao" || n === "governo") && !hasContext(t.term)) return false;
+      return true;
+    });
+
     return {
       by_network: Array.isArray(parsed.by_network) ? parsed.by_network : [],
       series: Array.isArray(parsed.series) ? parsed.series : [],
-      topics: Array.isArray(parsed.topics) ? parsed.topics : [],
-      terms: Array.isArray(parsed.terms) ? parsed.terms : [],
+      topics,
+      terms,
       model_used: `${res.provider}/${res.model}`,
       period: periodLabel,
     };
