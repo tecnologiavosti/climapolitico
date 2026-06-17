@@ -442,6 +442,11 @@ Deno.serve(async (req) => {
     }
 
     if (body.candidate_name) {
+      if (body.parent_job_id && (body.mode === "backfill" || body.mode === "on_demand")) {
+        // @ts-ignore EdgeRuntime existe em Edge Functions
+        EdgeRuntime.waitUntil(collectForCandidate(admin, body));
+        return json({ ok: true, mode: body.mode, status: "processing" }, 202);
+      }
       const result = await collectForCandidate(admin, body);
       return json({ ok: true, mode: body.mode ?? "on_demand", ...result });
     }
