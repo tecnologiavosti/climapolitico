@@ -7,10 +7,11 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
-import { MessageSquare, Activity, Gauge, Crown, Radar as RadarIcon, Sparkles } from "lucide-react";
+import { MessageSquare, Activity, Gauge, Crown, Radar as RadarIcon, Sparkles, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 
 // ------------------------------------------------------------
@@ -40,6 +41,18 @@ interface ListeningReport {
   reasoning?: string;
   evidence_count?: number;
   bucket?: string;
+  cached?: boolean;
+  fallback?: boolean;
+}
+
+interface JobResponse {
+  status: "processing" | "queued" | "running" | "completed" | "failed";
+  job_id?: string;
+  progress?: number;
+  stage?: string;
+  result?: ListeningReport;
+  cached?: boolean;
+  error?: string;
 }
 
 const NETWORK_LABEL: Record<string, string> = {
