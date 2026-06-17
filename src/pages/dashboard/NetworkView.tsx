@@ -123,9 +123,9 @@ export default function NetworkView() {
   };
 
   const query = useQuery({
-    queryKey: ["nv-blocks", user?.id, network, candidateId, effectiveDays, customRange?.start?.toISOString(), customRange?.end?.toISOString()],
+    queryKey: ["nv-blocks", user?.id, network, candidateId, effectiveDays, customRange?.startDate, customRange?.endDate],
     queryFn: async () => {
-      console.log("[NetworkView] filters →", { user: user?.id, candidate: candidateId, network, period: days });
+      console.log("[NetworkView] filters →", { user: user?.id, candidate: candidateId, network, period: selectedPeriod, customRange });
       // allSettled: timeout em UM bloco não derruba os outros
       const settled = await Promise.allSettled([
         fetchBlock("network_view_summary"),
@@ -213,7 +213,7 @@ export default function NetworkView() {
   });
   // Camada 2 — Inteligência IA (sempre disponível, usada quando dados reais são insuficientes)
   const aiIntel = useQuery({
-    queryKey: ["nv-ai-intel", candidateId, network, effectiveDays, customRange?.start?.toISOString(), customRange?.end?.toISOString()],
+    queryKey: ["nv-ai-intel", candidateId, network, effectiveDays, customRange?.startDate, customRange?.endDate],
     enabled: !!user?.id,
     staleTime: 12 * 60 * 60_000,
     gcTime: 24 * 60 * 60_000,
@@ -231,7 +231,8 @@ export default function NetworkView() {
     },
   });
 
-  const loading = query.isLoading;
+  const loading = query.isLoading || isApplyingCustom;
+  const analyticsLoading = aiIntel.isLoading || isApplyingCustom;
   const d = query.data;
 
   const totalMentions = d?.kpis?.total ?? 0;
@@ -282,8 +283,8 @@ export default function NetworkView() {
 
   // Evolução temporal — IA sempre; filtra por intervalo customizado quando ativo
   const series = useMemo(() => {
-    const startMs = customRange ? customRange.start.getTime() : null;
-    const endMs = customRange ? customRange.end.getTime() + 86_399_000 : null;
+    const startMs = customRange ? parseDateBoundary(customRange.startDate, "start").getTime() : null;
+    const endMs = customRange ? parseDateBoundary(customRange.endDate, "end").getTime() : null;
     return [...aiSeries]
       .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.day))
       .filter((r) => {
@@ -300,6 +301,24 @@ export default function NetworkView() {
         total: r.p + r.n + r.u,
       }));
   }, [aiSeries, customRange]);
+
+  const applyCustomRange = () => {
+    if (!startDate || !endDate) {
+      setCustomError("Selecione ambas as datas");
+      return;
+    }
+    const start = parseDateBoundary(startDate, "start");
+    const end = parseDateBoundary(endDate, "end");
+    if (end < start) {
+      setCustomError("Data final não pode ser menor que a inicial");
+      return;
+    }
+    setIsApplyingCustom(true);
+    setSelectedPeriod("custom");
+    setCustomRange({ startDate, endDate });
+    setCustomError(null);
+    window.setTimeout(() => setIsApplyingCustom(false), 500);
+  };
 
   // Assuntos dominantes — IA sempre
   const mergedTopics = aiTopics;
