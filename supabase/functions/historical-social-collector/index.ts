@@ -215,7 +215,7 @@ async function setSourceCache(admin: any, key: string, hits: SearchHit[], provid
     provider,
     expires_at: new Date(Date.now() + SOURCE_CACHE_TTL_MS).toISOString(),
     last_hit_at: new Date().toISOString(),
-  }, { onConflict: "cache_key,analysis_type" });
+  }, { onConflict: "cache_key" });
 }
 
 async function firecrawlSearch(admin: any, task: SourceTask, startDate: string, endDate: string, forceRefresh = false): Promise<{ hits: SearchHit[]; status: string; error?: string }> {
@@ -281,7 +281,6 @@ function buildRows(input: CollectInput, task: SourceTask, hits: SearchHit[], chu
     if (/\b(cassino|bet|promo[cç][aã]o|cupom|porn|download gr[aá]tis)\b/i.test(text)) continue;
     const mentionDate = parseDate(h.date, chunkEnd);
     const sentiment = sentimentFromText(text);
-    const sourceKey = crypto.randomUUID ? undefined : undefined;
     const dedupeSource = `${h.url ?? ""}|${h.title ?? ""}|${task.source}|${normalizedName}`;
     rows.push({
       candidate_id: input.candidate_id ?? null,
@@ -305,11 +304,9 @@ function buildRows(input: CollectInput, task: SourceTask, hits: SearchHit[], chu
       themes: extractThemes(text),
       topics: extractThemes(text),
       raw: { provider: "firecrawl", date_inferred_from_query_window: !h.date, source_priority: task.priority },
-      source_key: crypto.subtle ? undefined : sourceKey,
+      source_key: `${normalizedName}:${task.source}:${normalizeText(dedupeSource).slice(0, 220)}`,
       collected_at: new Date().toISOString(),
     });
-    rows[rows.length - 1].source_key = crypto.randomUUID ? undefined : rows[rows.length - 1].source_key;
-    rows[rows.length - 1].source_key = `${normalizedName}:${task.source}:${normalizeText(dedupeSource).slice(0, 220)}`;
   }
   return rows;
 }
