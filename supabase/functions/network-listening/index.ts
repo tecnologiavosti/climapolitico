@@ -691,6 +691,19 @@ Deno.serve(async (req) => {
       .maybeSingle() : { data: null };
     if (active?.id) return json({ status: active.status === "queued" ? "processing" : active.status, job_id: active.id, progress: active.progress ?? 0, stage: active.stage }, 202);
 
+    const { data: failed } = !body.force_refresh ? await admin
+      .from("social_analytics_jobs")
+      .select("id,status,progress,stage,result,error")
+      .eq("user_id", user.id)
+      .eq("cache_key", key)
+      .eq("status", "failed")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle() : { data: null };
+    if (failed?.id) {
+      return json({ status: "failed", job_id: failed.id, progress: failed.progress ?? 100, stage: failed.stage, result: failed.result, error: failed.error }, 200);
+    }
+
     const { data: job, error: insErr } = await admin.from("social_analytics_jobs").insert({
       user_id: user.id,
       candidate_id: body.candidate_id,
