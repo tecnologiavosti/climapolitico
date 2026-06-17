@@ -319,68 +319,117 @@ export default function NetworkView() {
     return { kpis, sentimentKpis, byNet: Array.from(byNetworkMap.values()), series: Array.from(seriesMap.values()), topics: topicsAndTerms.topics, terms: topicsAndTerms.terms };
   }, [customInteractions.data, customRange]);
 
-  // Camada 2: SEMPRE IA-driven. Dados reais NÃO são fonte primária aqui.
-  const aiByNet: NetRow[] = ((aiIntel.data?.by_network ?? []) as NetRow[])
-    .filter((n) => ALLOWED_NETWORKS.has(n.network));
-  const aiSeries: SeriesRow[] = (aiIntel.data?.series ?? []) as SeriesRow[];
-  const invalidLabel = (value: unknown) => {
-    const raw = String(value ?? "").trim();
-    const normalized = raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-    return !raw || ["-", "—", "politica", "politico", "brasil", "cenario", "contexto", "noticia"].includes(normalized);
-  };
-  const aiTopics: TopicRow[] = ((aiIntel.data?.topics ?? []) as TopicRow[])
+  // Período em dias (efetivo) para escolher granularidade
+  const rangeDays = useMemo(() => {
+    return Math.max(1, Math.ceil((effectiveRange.end.getTime() - effectiveRange.start.getTime()) / 86_400_000));
+  }, [effectiveRange]);
+
+  // IA analítica: só refina tópicos/termos a partir dos textos reais coletados
+  const aiAnalyze = useQuery({
+    queryKey: ["nv-ai-analyze", candidateId, network, effectiveRange.key, customInteractions.data?.length ?? 0],
+    enabled: !!user?.id && !customInteractions.isFetching && (customInteractions.data?.length ?? 0) > 0,
+    staleTime: 30 * 60_000,
+    gcTime: 60 * 60_000,
+    retry: 1,
+    queryFn: async () => {
+      const rows = customInteractions.data ?? [];
+      const seen = new Set<string>();
+      const samples: string[] = [];
+      for (const r of rows) {
+        const t = `${r.post_title ?? ""} ${r.comment_text ?? ""}`.replace(/\s+/g, " ").trim();
+        if (!t || t.length < 8) continue;
+        const key = t.slice(0, 160).toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        samples.push(t.slice(0, 400));
+        if (samples.length >= 120) break;
+      }
+      if (samples.length === 0) return { topics: [], terms: [] };
+      const { data, error } = await supabase.functions.invoke("network-view-intelligence", {
+        body: {
+          candidate_id: candidateId === "all" ? null : candidateId,
+          network: network === "all" ? null : network,
+          start_date: effectiveRange.start.toISOString(),
+          end_date: effectiveRange.end.toISOString(),
+          samples,
+        },
+      });
+      if (error) throw error;
+      return (data ?? { topics: [], terms: [] }) as { topics: TopicRow[]; terms: TermRow[] };
+    },
+  });
+
+  // Datasets analíticos — sempre dados reais do período.
+  const analyticsByNet: NetRow[] = customData?.byNet ?? [];
+  const aiTopicsRefined: TopicRow[] = (aiAnalyze.data?.topics ?? [])
     .map((t) => ({ ...t, label: t.label ?? t.topic ?? t.theme, theme: t.theme ?? t.label ?? t.topic }))
-    .filter((t) => !invalidLabel(t.label));
-  const aiTerms: TermRow[] = (aiIntel.data?.terms ?? []) as TermRow[];
-
-  // Real-data layer (Camada 1) computed from filtered period
-  const realKpisTotal = customData?.kpis?.total ?? 0;
-  const REAL_THRESHOLD = 10;
-  const useAI = realKpisTotal < REAL_THRESHOLD;
-
-  // Analytics datasets: real when sufficient, IA otherwise. Nunca deixar vazio.
-  const analyticsByNet = useAI ? aiByNet : (customData?.byNet ?? []);
-  const analyticsSeriesRows = useAI ? aiSeries : (customData?.series ?? []);
-  const analyticsTopics = useAI ? aiTopics : (customData?.topics ?? []);
-  const analyticsTerms = useAI ? aiTerms : (customData?.terms ?? []);
-
-  // KPIs: use AI estimates when fallback is active
-  const aiKpis = useMemo(() => {
-    const total = aiByNet.reduce((s, n) => s + (n.mentions || 0), 0);
-    const engagement = aiByNet.reduce((s, n) => s + (n.engagement || 0), 0);
-    const likes = aiByNet.reduce((s, n) => s + (n.likes || 0), 0);
-    const replies = aiByNet.reduce((s, n) => s + (n.replies || 0), 0);
-    const shares = aiByNet.reduce((s, n) => s + (n.shares || 0), 0);
-    return { total, engagement, likes, replies, shares };
-  }, [aiByNet]);
+    .filter((t) => !!(t.label || t.theme));
+  const analyticsTopics: TopicRow[] = aiTopicsRefined.length > 0 ? aiTopicsRefined : (customData?.topics ?? []);
+  const analyticsTerms: TermRow[] = (aiAnalyze.data?.terms?.length ?? 0) > 0
+    ? (aiAnalyze.data!.terms as TermRow[])
+    : (customData?.terms ?? []);
 
   const kpis: { total?: number; engagement?: number; likes?: number; replies?: number; shares?: number } =
-    useAI ? aiKpis : (customData?.kpis ?? {});
+    customData?.kpis ?? {};
 
-  // Rede dominante: real quando suficiente, senão IA
   const dominant = useMemo(() => {
-    const arr = analyticsByNet;
-    if (!arr.length) return null;
-    return [...arr].sort((a, b) => (b.mentions * 0.4 + b.engagement * 0.6) - (a.mentions * 0.4 + a.engagement * 0.6))[0];
+    if (!analyticsByNet.length) return null;
+    return [...analyticsByNet].sort((a, b) => (b.mentions * 0.4 + b.engagement * 0.6) - (a.mentions * 0.4 + a.engagement * 0.6))[0];
   }, [analyticsByNet]);
 
-  // Distribuição por rede — sempre recalculada do período
   const networkTotal = useMemo(() => analyticsByNet.reduce((s, n) => s + n.mentions, 0), [analyticsByNet]);
   const sortedNetworks = useMemo(() => [...analyticsByNet].sort((a, b) => b.mentions - a.mentions), [analyticsByNet]);
 
-  // Evolução temporal — sempre do período
+  // Evolução temporal com bucketing dinâmico
   const series = useMemo(() => {
-    return [...analyticsSeriesRows]
-      .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.day))
-      .sort((a, b) => new Date(a.day + "T00:00:00Z").getTime() - new Date(b.day + "T00:00:00Z").getTime())
-      .map((r) => ({
-        iso: r.day,
-        date: format(parseISO(r.day), "dd/MM"),
-        positivo: r.p,
-        negativo: r.n,
-        total: r.p + r.n + r.u,
-      }));
-  }, [analyticsSeriesRows, customRange]);
+    const raw = (customData?.series ?? []).filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.day));
+    if (raw.length === 0) return [];
+
+    type Bucket = "day" | "week" | "month" | "quarter" | "semester";
+    const bucket: Bucket =
+      rangeDays <= 30 ? "day" :
+      rangeDays <= 90 ? "week" :
+      rangeDays <= 365 ? "month" :
+      rangeDays <= 1460 ? "quarter" : "semester";
+
+    const keyFor = (d: Date): { key: string; sortKey: number; label: string } => {
+      const y = d.getUTCFullYear();
+      const m = d.getUTCMonth();
+      if (bucket === "day") {
+        const k = d.toISOString().slice(0, 10);
+        return { key: k, sortKey: d.getTime(), label: format(d, "dd/MM") };
+      }
+      if (bucket === "week") {
+        const ws = new Date(Date.UTC(y, m, d.getUTCDate() - ((d.getUTCDay() + 6) % 7)));
+        const k = ws.toISOString().slice(0, 10);
+        return { key: k, sortKey: ws.getTime(), label: format(ws, "dd/MM") };
+      }
+      if (bucket === "month") {
+        const k = `${y}-${String(m + 1).padStart(2, "0")}`;
+        return { key: k, sortKey: Date.UTC(y, m, 1), label: format(new Date(Date.UTC(y, m, 1)), "MM/yyyy") };
+      }
+      if (bucket === "quarter") {
+        const q = Math.floor(m / 3);
+        const k = `${y}-Q${q + 1}`;
+        return { key: k, sortKey: Date.UTC(y, q * 3, 1), label: `Q${q + 1}/${y}` };
+      }
+      const s = m < 6 ? 1 : 2;
+      const k = `${y}-S${s}`;
+      return { key: k, sortKey: Date.UTC(y, (s - 1) * 6, 1), label: `S${s}/${y}` };
+    };
+
+    const map = new Map<string, { sortKey: number; date: string; positivo: number; negativo: number; total: number }>();
+    for (const r of raw) {
+      const d = new Date(r.day + "T00:00:00Z");
+      const { key, sortKey, label } = keyFor(d);
+      const cur = map.get(key) ?? { sortKey, date: label, positivo: 0, negativo: 0, total: 0 };
+      cur.positivo += r.p;
+      cur.negativo += r.n;
+      cur.total += r.p + r.n + r.u;
+      map.set(key, cur);
+    }
+    return Array.from(map.values()).sort((a, b) => a.sortKey - b.sortKey);
+  }, [customData?.series, rangeDays]);
 
   const applyCustomRange = () => {
     if (!startDate || !endDate) {
