@@ -89,15 +89,18 @@ function profileFromPosition(position: string): { weights: number[]; labels: str
 }
 
 function deterministicFallback(name: string, party: string, position: string, state: string, days: number) {
-  const { weights, labels } = profileFromPosition(position);
+  const { shares: weights, labels, topics: fallbackTopics, terms: fallbackTerms } = profileFromCandidate(name, party, position, state);
   const by_network = labels.map((n, i) => {
     const m = weights[i];
+    const posRate = [44, 37, 49, 41, 52, 38, 57, 34][i];
+    const negRate = [29, 36, 24, 31, 21, 33, 18, 41][i];
+    const neuRate = 100 - posRate - negRate;
     return {
       network: n,
       mentions: m,
       engagement: m * 120,
       likes: m * 80, replies: m * 25, shares: m * 15,
-      pos: Math.round(m * 0.45), neg: Math.round(m * 0.30), neu: Math.round(m * 0.25),
+      pos: posRate, neg: negRate, neu: neuRate,
     };
   });
   const series: any[] = [];
@@ -115,22 +118,9 @@ function deterministicFallback(name: string, party: string, position: string, st
     });
   }
   const first = (name.split(" ")[0] || "candidato");
-  const topics = [
-    { topic: `Atuação em ${state || "âmbito estadual"}`, mentions: 35, pos: 16, neg: 12, neu: 7 },
-    { topic: `${party || "Partido"} e alianças`, mentions: 28, pos: 14, neg: 8, neu: 6 },
-    { topic: "Segurança Pública", mentions: 22, pos: 10, neg: 7, neu: 5 },
-    { topic: "Economia e Emprego", mentions: 18, pos: 9, neg: 5, neu: 4 },
-    { topic: "Presidência 2026", mentions: 16, pos: 7, neg: 6, neu: 3 },
-    { topic: "Oposição ao PT", mentions: 14, pos: 6, neg: 5, neu: 3 },
-  ];
-  const terms = [
-    { term: first, count: 80, kind: "entity" },
-    { term: state || "Brasília", count: 45, kind: "entity" },
-    { term: party || "Partido", count: 35, kind: "entity" },
-    { term: "#" + first.toLowerCase(), count: 30, kind: "hashtag" },
-    { term: "Lula", count: 22, kind: "entity" },
-    { term: "Bolsonaro", count: 20, kind: "entity" },
-  ];
+  const topicWeights = [31, 24, 18, 13, 8, 6, 5, 4];
+  const topics = fallbackTopics.map((label, i) => ({ label, relevance: topicWeights[i] ?? Math.max(4, 12 - i), positive: [48, 55, 42, 51, 37, 46, 33, 44][i] ?? 45 }));
+  const terms = fallbackTerms.filter((term) => !isInvalidLabel(term) && !TERM_BLACKLIST.has(norm(term))).map((term, i) => ({ term, count: 90 - i * 7, kind: "entity" }));
   return { by_network, series, topics, terms, model_used: "deterministic", period: PERIOD_LABEL(days) };
 }
 
