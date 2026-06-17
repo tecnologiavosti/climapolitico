@@ -1,0 +1,2 @@
+ALTER TABLE public.social_analytics_jobs
+DROP CONSTRAINT IF EXISTS social_analytics_jobs_user_id_fkey;
