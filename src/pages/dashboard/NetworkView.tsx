@@ -7,14 +7,11 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
-import { MessageSquare, Activity, Gauge, Crown, CalendarIcon } from "lucide-react";
+import { MessageSquare, Activity, Gauge, Crown } from "lucide-react";
 import { format, parseISO } from "date-fns";
-import { cn } from "@/lib/utils";
 
 const ALLOWED_NETWORKS = new Set([
   "youtube", "facebook", "tiktok", "telegram", "twitter", "google_news", "linkedin", "reddit", "instagram",
@@ -50,11 +47,15 @@ const COLORS = {
 const fmt = (n: number) => Number(n ?? 0).toLocaleString("pt-BR");
 const compact = (n: number) => Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 }).format(n ?? 0);
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
+const parseDateBoundary = (value: string, boundary: "start" | "end") =>
+  new Date(`${value}T${boundary === "end" ? "23:59:59.999" : "00:00:00"}`);
+const formatDisplayDate = (value: string) => format(parseDateBoundary(value, "start"), "dd/MM/yyyy");
 
 type NetRow = { network: string; mentions: number; engagement: number; likes: number; replies: number; shares: number; pos: number; neg: number; neu: number };
 type SeriesRow = { day: string; p: number; n: number; u: number };
 type TopicRow = { label?: string; topic?: string; theme?: string; mentions: number; pos: number; neg: number; neu: number; relevance?: number; positive?: number };
 type TermRow = { term: string; count: number; kind: "hashtag" | "entity" };
+type RawInteraction = { collected_at: string | null; social_network: string | null; sentiment_label: string | null; likes_count: number | null; replies_count: number | null; shares_count: number | null };
 
 export default function NetworkView() {
   const { user } = useAuth();
@@ -62,11 +63,13 @@ export default function NetworkView() {
   const [network, setNetwork] = useState("all");
   const [candidateId, setCandidateId] = useState<string>("all");
   const [days, setDays] = useState(365);
-  const [customRange, setCustomRange] = useState<{ start: Date; end: Date } | null>(null);
-  const [customOpen, setCustomOpen] = useState(false);
-  const [draftStart, setDraftStart] = useState<Date | undefined>(undefined);
-  const [draftEnd, setDraftEnd] = useState<Date | undefined>(undefined);
+  const [selectedPeriod, setSelectedPeriod] = useState<string>("365");
+  const [customRange, setCustomRange] = useState<{ startDate: string; endDate: string } | null>(null);
+  const [customPanelOpen, setCustomPanelOpen] = useState(false);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [customError, setCustomError] = useState<string | null>(null);
+  const [isApplyingCustom, setIsApplyingCustom] = useState(false);
 
   // Effective days used for backend fetch: when custom is active,
   // fetch enough days back from "now" to cover startDate; we then
@@ -74,12 +77,12 @@ export default function NetworkView() {
   const effectiveDays = useMemo(() => {
     if (!customRange) return days;
     const now = Date.now();
-    const span = Math.ceil((now - customRange.start.getTime()) / 86_400_000);
+    const span = Math.ceil((now - parseDateBoundary(customRange.startDate, "start").getTime()) / 86_400_000);
     return Math.max(1, span);
   }, [customRange, days]);
 
   const activePeriodLabel = customRange
-    ? `Período: ${format(customRange.start, "dd/MM/yyyy")} - ${format(customRange.end, "dd/MM/yyyy")}`
+    ? `Período: ${formatDisplayDate(customRange.startDate)} até ${formatDisplayDate(customRange.endDate)}`
     : `Período: Últimos ${PERIOD_LABEL[days] ?? days + " dias"}`;
 
   const { data: candidates } = useQuery({
