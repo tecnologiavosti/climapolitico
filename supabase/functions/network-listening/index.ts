@@ -488,7 +488,7 @@ function computeConfidence(samples: number, sourceStatuses: SourceStatus[]): "hi
 
 // Sempre renderizar todas as redes suportadas, com badge de origem do dado.
 const ALL_NETWORKS: Network[] = ["twitter", "instagram", "facebook", "youtube", "tiktok", "telegram", "reddit", "news"];
-type DataSourceType = "direct" | "proxy" | "inferred" | "unavailable";
+type DataSourceType = "direct" | "proxy" | "unavailable";
 
 const NETWORK_DOMAINS: Record<string, RegExp> = {
   twitter: /(twitter\.com|x\.com|t\.co)/i,
@@ -528,7 +528,6 @@ function computeDistribution(
     let data_source_type: DataSourceType;
     if (d >= 3) data_source_type = "direct";
     else if (e >= 2) data_source_type = "proxy";
-    else if (d + e >= 1) data_source_type = "inferred";
     else data_source_type = "unavailable";
     return { network: n as string, w, d, e, data_source_type };
   });
