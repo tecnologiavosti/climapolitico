@@ -44,6 +44,7 @@ interface Term { term: string; kind: "pessoa" | "partido" | "instituicao" | "has
 
 interface SourceStatus {
   source: string;
+  network?: Network;
   batch: number;
   status: "ok" | "empty" | "rate_limited" | "timeout" | "error" | "skipped";
   duration_ms: number;
@@ -99,9 +100,10 @@ function buildBackfillChunks(startDate: string, endDate: string): Array<{ start:
   const start = new Date(`${startDate}T00:00:00Z`);
   const end = new Date(`${endDate}T23:59:59Z`);
   const days = daysBetween(startDate, endDate);
+  const inclusiveDays = Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1);
   const targetCount = days <= 7 ? 1 : days <= 30 ? 4 : days <= 90 ? 12 : days <= 370 ? 12 : days <= 1500 ? 48 : 32;
   const mode: "days" | "months" = days <= 90 ? "days" : "months";
-  const step = mode === "days" ? Math.ceil(days / targetCount) : days <= 1500 ? 1 : 3;
+  const step = mode === "days" ? Math.ceil(inclusiveDays / targetCount) : days <= 1500 ? 1 : 3;
   const chunks: Array<{ start: string; end: string }> = [];
   let cursor = start;
 
