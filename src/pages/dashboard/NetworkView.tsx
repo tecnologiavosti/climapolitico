@@ -375,7 +375,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Sentimento por rede</h2>
         <p className="text-sm text-muted-foreground mb-6">Distribuição percentual de positivo, negativo e neutro em cada plataforma.</p>
-        {loading ? <Skeleton className="h-56 w-full" /> : sortedNetworks.length === 0 ? <Empty /> : (
+        {aiIntel.isLoading ? <Skeleton className="h-56 w-full" /> : sortedNetworks.length === 0 ? <Empty /> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
