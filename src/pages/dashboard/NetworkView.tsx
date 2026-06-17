@@ -523,6 +523,14 @@ export default function NetworkView() {
         </Card>
       )}
 
+      {!loading && insufficient && (
+        <Card className="p-4 border-amber-500/40 bg-amber-500/5">
+          <div className="text-sm text-amber-700 dark:text-amber-400">
+            Dados insuficientes para análise temática precisa neste período.
+          </div>
+        </Card>
+      )}
+
 
 
       {/* BLOCO 1 — RESUMO EXECUTIVO */}
