@@ -513,7 +513,7 @@ export default function NetworkView() {
       {/* BLOCO 1 — RESUMO EXECUTIVO */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <BigKpi icon={<MessageSquare className="h-5 w-5" />} label="Total de menções" value={loading ? null : fmt(totalMentions)} />
-        <BigKpi icon={<Activity className="h-5 w-5" />} label="Total de interações" value={loading ? null : compact(totalEngagement)} sub={loading ? "" : `${compact(d?.kpis?.likes ?? 0)} curtidas · ${compact(d?.kpis?.replies ?? 0)} comentários · ${compact(d?.kpis?.shares ?? 0)} compart.`} />
+        <BigKpi icon={<Activity className="h-5 w-5" />} label="Total de interações" value={loading ? null : compact(totalEngagement)} sub={loading ? "" : `${compact(kpis.likes ?? 0)} curtidas · ${compact(kpis.replies ?? 0)} comentários · ${compact(kpis.shares ?? 0)} compart.`} />
         <BigKpi
           icon={<Gauge className="h-5 w-5" />}
           label="Sentimento líquido"
@@ -533,7 +533,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Distribuição por rede</h2>
         <p className="text-sm text-muted-foreground mb-6">Participação de cada plataforma no volume e nas interações.</p>
-        {aiIntel.isLoading ? <Skeleton className="h-64 w-full" /> : sortedNetworks.length === 0 ? <Empty /> : (
+        {analyticsLoading ? <Skeleton className="h-64 w-full" /> : sortedNetworks.length === 0 ? <Empty /> : (
           <div className="space-y-3">
             {sortedNetworks.map((n) => {
               const share = pct(n.mentions, networkTotal);
@@ -561,7 +561,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Evolução temporal</h2>
         <p className="text-sm text-muted-foreground mb-6">Volume diário com sobreposição de sentimento positivo e negativo.</p>
-        {aiIntel.isLoading ? <Skeleton className="h-72 w-full" /> : series.length === 0 ? <Empty /> : (
+        {analyticsLoading ? <Skeleton className="h-72 w-full" /> : series.length === 0 ? <Empty /> : (
           <ResponsiveContainer width="100%" height={320}>
             <LineChart data={series} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -581,7 +581,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Sentimento por rede</h2>
         <p className="text-sm text-muted-foreground mb-6">Distribuição percentual de positivo, negativo e neutro em cada plataforma.</p>
-        {aiIntel.isLoading ? <Skeleton className="h-56 w-full" /> : sortedNetworks.length === 0 ? <Empty /> : (
+        {analyticsLoading ? <Skeleton className="h-56 w-full" /> : sortedNetworks.length === 0 ? <Empty /> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -624,7 +624,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Assuntos dominantes</h2>
         <p className="text-sm text-muted-foreground mb-6">Volume, participação e sentimento médio por tema.</p>
-        {aiIntel.isLoading ? <Skeleton className="h-56 w-full" /> : (mergedTopics.length === 0) ? <Empty /> : (
+        {analyticsLoading ? <Skeleton className="h-56 w-full" /> : (mergedTopics.length === 0) ? <Empty /> : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {(() => {
               const topicsTotal = mergedTopics.reduce((s, t) => s + (t.mentions || 0), 0);
@@ -659,7 +659,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Termos em alta</h2>
         <p className="text-sm text-muted-foreground mb-6">Hashtags, nomes e entidades com maior relevância contextual no período.</p>
-        {aiIntel.isLoading ? <Skeleton className="h-40 w-full" /> : mergedTerms.length === 0 ? <Empty /> : (
+        {analyticsLoading ? <Skeleton className="h-40 w-full" /> : mergedTerms.length === 0 ? <Empty /> : (
           <div className="flex flex-wrap gap-2">
             {mergedTerms.map((t) => {
               const max = (mergedTerms[0]?.count ?? 1);
