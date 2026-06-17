@@ -254,7 +254,7 @@ serve(async (req) => {
     if (candidate_id) {
       const { data } = await supa
         .from("candidates")
-        .select("id, full_name, party, position, state, region")
+        .select("id, full_name, party, region")
         .eq("id", candidate_id)
         .maybeSingle();
       candidate = data;
@@ -268,7 +268,7 @@ serve(async (req) => {
       });
     }
 
-    const payload = await generateAI(candidate || { full_name: "Cenário agregado" }, days);
+    const payload = await generateAI(candidate ? { ...candidate, state: candidate.region } : { full_name: "Cenário agregado" }, days);
     if (payload.model_used !== "deterministic") {
       CACHE.set(cacheKey, { ts: Date.now(), payload });
     }
