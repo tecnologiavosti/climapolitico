@@ -1,0 +1,1 @@
+ALTER TYPE subscription_tier ADD VALUE IF NOT EXISTS 'lifetime';
