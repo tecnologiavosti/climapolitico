@@ -38,6 +38,9 @@ interface SearchHit {
   date?: string;
 }
 
+interface Distribution { network: string; pct: number; mentions?: number }
+interface Term { term: string; kind: "pessoa" | "partido" | "instituicao" | "hashtag" | "slogan" | "regiao"; count: number }
+
 interface SourceStatus {
   source: string;
   batch: number;
