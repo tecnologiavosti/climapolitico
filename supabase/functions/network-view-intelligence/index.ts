@@ -119,7 +119,14 @@ function deterministicFallback(name: string, party: string, position: string, st
   }
   const first = (name.split(" ")[0] || "candidato");
   const topicWeights = [31, 24, 18, 13, 8, 6, 5, 4];
-  const topics = fallbackTopics.map((label, i) => ({ label, relevance: topicWeights[i] ?? Math.max(4, 12 - i), positive: [48, 55, 42, 51, 37, 46, 33, 44][i] ?? 45 }));
+  const topics = fallbackTopics.map((label, i) => {
+    const mentions = topicWeights[i] ?? Math.max(4, 12 - i);
+    const positive = [48, 55, 42, 51, 37, 46, 33, 44][i] ?? 45;
+    const pos = Math.max(1, Math.round(mentions * positive / 100));
+    const neg = Math.max(1, Math.round(mentions * (100 - positive) / 180));
+    const neu = Math.max(1, mentions - pos - neg);
+    return { label, topic: label, theme: label, mentions, relevance: mentions, positive, pos, neg, neu };
+  });
   const terms = fallbackTerms.filter((term) => !isInvalidLabel(term) && !TERM_BLACKLIST.has(norm(term))).map((term, i) => ({ term, count: 90 - i * 7, kind: "entity" }));
   return { by_network, series, topics, terms, model_used: "deterministic", period: PERIOD_LABEL(days) };
 }
