@@ -167,11 +167,16 @@ export default function NetworkView() {
 
   const start_date = toIsoDate(effectiveRange.start);
   const end_date = toIsoDate(effectiveRange.end);
-  const requestKey = `${candidateId}|${start_date}|${end_date}|${network}|${reprocessNonce}`;
+  const filterKey = `${candidateId}|${start_date}|${end_date}|${network}`;
+  const requestKey = `${filterKey}|${reprocessNonce}`;
 
   useEffect(() => {
     setActiveJobId(null);
   }, [requestKey]);
+
+  useEffect(() => {
+    setReprocessNonce(0);
+  }, [filterKey]);
 
   const report = useQuery<JobResponse>({
     queryKey: ["nv-listening-job", candidateId, start_date, end_date, network, reprocessNonce, activeJobId],
@@ -223,6 +228,7 @@ export default function NetworkView() {
   const job = report.data;
   const data = job?.result;
   const isProcessing = job?.status === "processing" || job?.status === "queued" || job?.status === "running";
+  const jobFailed = job?.status === "failed";
   const loading = report.isFetching || isProcessing;
   const needsCandidate = candidateId === "all";
 
