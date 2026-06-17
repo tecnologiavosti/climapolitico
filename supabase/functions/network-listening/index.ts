@@ -459,6 +459,16 @@ async function processJob(jobId: string, body: Body) {
       try {
         const collectorMode = days > 90 ? "backfill" : "on_demand";
         const collector = await invokeCollector(body, jobId, collectorMode);
+        if (collector?.status === "processing") {
+          log("collector_started", { mode: collectorMode });
+          await updateJob(admin, jobId, {
+            status: "running",
+            progress: 12,
+            stage: "Coletando histórico... Janela 0/0 · 0 menções encontradas",
+            logs,
+          });
+          return;
+        }
         backfillHits = Number(collector?.total_hits ?? collector?.inserted ?? 0);
         log("collector_done", { mode: collectorMode, hits: backfillHits, run_id: collector?.run_id, chunks: collector?.total_chunks });
         await updateJob(admin, jobId, { progress: 66, stage: "Reconsultando índice histórico...", logs });
@@ -467,7 +477,7 @@ async function processJob(jobId: string, body: Body) {
         samples = preprocessEvidence(evidence);
       } catch (e: any) {
         log("collector_failed", { error: e?.message ?? String(e) });
-        const run = await latestCollectorRun(admin, body).catch(() => null);
+        const run = await latestCollectorRun(admin, body, jobId).catch(() => null);
         if (run && ["running", "queued"].includes(run.status)) {
           await updateJob(admin, jobId, { status: "running", progress: Math.min(66, 12 + Math.round(((run.current_chunk ?? 0) / Math.max(1, run.total_chunks ?? 1)) * 52)), stage: `Coletando histórico... Janela ${run.current_chunk ?? 0}/${run.total_chunks ?? 0} · ${Number(run.mentions_found ?? 0).toLocaleString("pt-BR")} menções encontradas`, logs });
           return;
