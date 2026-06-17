@@ -23,11 +23,30 @@ type TrendingItem = {
 
 const ROLES_PLURAL: Array<{ key: string; label: string; emptyMessage?: string }> = [
   { key: "Presidente", label: "Presidentes" },
+  { key: "Governador", label: "Governadores" },
   { key: "Senador", label: "Senadores" },
   { key: "Deputado Federal", label: "Deputados Federais" },
   { key: "Deputado Estadual", label: "Deputados Estaduais" },
   { key: "Prefeito", label: "Prefeitos" },
   { key: "Vereador", label: "Vereadores", emptyMessage: "Nenhum vereador disponível no momento." },
+];
+
+// Governadores presidenciáveis 2026 — devem aparecer apenas em "Presidentes".
+const GOVERNOR_PRESIDENTIAL_BLOCK = new Set([
+  "tarcisio de freitas",
+  "tarcisio gomes de freitas",
+  "romeu zema",
+  "romeu zema neto",
+  "ronaldo caiado",
+]);
+
+// Governadores fixos (Top 5 mais pesquisados).
+const GOVERNORS_FIXED: TrendingItem[] = [
+  { role: "Governador", rank: 1, full_name: "Ratinho Júnior", party: "PSD", region: "PR", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2e/Ratinho_J%C3%BAnior_em_2023.jpg/330px-Ratinho_J%C3%BAnior_em_2023.jpg", search_score: 0 },
+  { role: "Governador", rank: 2, full_name: "Cláudio Castro", party: "PL", region: "RJ", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Cl%C3%A1udio_Castro_em_2022.jpg/330px-Cl%C3%A1udio_Castro_em_2022.jpg", search_score: 0 },
+  { role: "Governador", rank: 3, full_name: "Jerônimo Rodrigues", party: "PT", region: "BA", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6e/Jer%C3%B4nimo_Rodrigues_em_2023.jpg/330px-Jer%C3%B4nimo_Rodrigues_em_2023.jpg", search_score: 0 },
+  { role: "Governador", rank: 4, full_name: "Helder Barbalho", party: "MDB", region: "PA", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Helder_Barbalho_em_2023.jpg/330px-Helder_Barbalho_em_2023.jpg", search_score: 0 },
+  { role: "Governador", rank: 5, full_name: "Raquel Lyra", party: "PSD", region: "PE", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Raquel_Lyra_em_2023.jpg/330px-Raquel_Lyra_em_2023.jpg", search_score: 0 },
 ];
 
 function initials(name: string) {
