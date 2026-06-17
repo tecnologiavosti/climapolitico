@@ -210,7 +210,7 @@ export default function NetworkView() {
   });
   // Camada 2 — Inteligência IA (sempre disponível, usada quando dados reais são insuficientes)
   const aiIntel = useQuery({
-    queryKey: ["nv-ai-intel", candidateId, network, days],
+    queryKey: ["nv-ai-intel", candidateId, network, effectiveDays, customRange?.start?.toISOString(), customRange?.end?.toISOString()],
     enabled: !!user?.id,
     staleTime: 12 * 60 * 60_000,
     gcTime: 24 * 60 * 60_000,
@@ -220,7 +220,7 @@ export default function NetworkView() {
         body: {
           candidate_id: candidateId === "all" ? null : candidateId,
           network: network === "all" ? null : network,
-          days,
+          days: effectiveDays,
         },
       });
       if (error) throw error;
