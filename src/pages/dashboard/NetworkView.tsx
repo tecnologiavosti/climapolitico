@@ -385,62 +385,57 @@ export default function NetworkView() {
             <SelectContent>{NETWORKS_FILTER.map((n) => <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>)}</SelectContent>
           </Select>
           <Select
-            value={customRange ? "custom" : String(days)}
+            value={selectedPeriod}
             onValueChange={(v) => {
-              if (v === "custom") return;
+              setSelectedPeriod(v);
+              if (v === "custom") {
+                setCustomPanelOpen(true);
+                setStartDate(customRange?.startDate ?? startDate);
+                setEndDate(customRange?.endDate ?? endDate);
+                setCustomError(null);
+                return;
+              }
               setCustomRange(null);
+              setCustomPanelOpen(false);
+              setCustomError(null);
               setDays(Number(v));
             }}
           >
             <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               {PERIODS.map((p) => <SelectItem key={p.value} value={String(p.value)}>{p.label}</SelectItem>)}
-              {customRange && <SelectItem value="custom">Personalizado</SelectItem>}
+              <SelectItem value="custom">Personalizado</SelectItem>
             </SelectContent>
           </Select>
-          <Popover open={customOpen} onOpenChange={(o) => {
-            setCustomOpen(o);
-            if (o) {
-              setDraftStart(customRange?.start);
-              setDraftEnd(customRange?.end);
-              setCustomError(null);
-            }
-          }}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="default" className={cn("gap-2", customRange && "border-primary text-primary")}>
-                <CalendarIcon className="h-4 w-4" />
-                Personalizado
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-4" align="end">
-              <div className="flex flex-col sm:flex-row gap-4">
-                <div>
-                  <div className="text-xs font-medium mb-2 text-muted-foreground">Data inicial</div>
-                  <Calendar mode="single" selected={draftStart} onSelect={setDraftStart} initialFocus className={cn("p-3 pointer-events-auto")} />
-                </div>
-                <div>
-                  <div className="text-xs font-medium mb-2 text-muted-foreground">Data final</div>
-                  <Calendar mode="single" selected={draftEnd} onSelect={setDraftEnd} className={cn("p-3 pointer-events-auto")} />
-                </div>
-              </div>
-              {customError && <div className="text-xs text-destructive mt-3">{customError}</div>}
-              <div className="flex justify-end gap-2 mt-4">
-                <Button variant="ghost" size="sm" onClick={() => { setCustomOpen(false); setCustomError(null); }}>Cancelar</Button>
-                {customRange && (
-                  <Button variant="outline" size="sm" onClick={() => { setCustomRange(null); setCustomOpen(false); setCustomError(null); }}>Limpar</Button>
-                )}
-                <Button size="sm" onClick={() => {
-                  if (!draftStart || !draftEnd) { setCustomError("Selecione data inicial e final"); return; }
-                  if (draftEnd < draftStart) { setCustomError("Data final não pode ser menor que data inicial"); return; }
-                  setCustomRange({ start: draftStart, end: draftEnd });
-                  setCustomOpen(false);
-                  setCustomError(null);
-                }}>Aplicar</Button>
-              </div>
-            </PopoverContent>
-          </Popover>
         </div>
       </div>
+
+      {customPanelOpen && (
+        <Card className="p-4">
+          <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-muted-foreground">De:</span>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-muted-foreground">Até:</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+              />
+            </label>
+            <Button onClick={applyCustomRange}>Aplicar</Button>
+          </div>
+          {customError && <div className="text-xs text-destructive mt-3">{customError}</div>}
+        </Card>
+      )}
 
       {errorMessage && (
         <Card className="p-4 border-destructive bg-destructive/5">
