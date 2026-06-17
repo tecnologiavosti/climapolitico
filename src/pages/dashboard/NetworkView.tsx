@@ -172,7 +172,15 @@ export default function NetworkView() {
         },
       });
       if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
+      const d = data as any;
+      if (d?.error) {
+        const map: Record<string, string> = {
+          RATE_LIMITED: "Muitas requisições agora. Aguarde alguns instantes e tente novamente.",
+          NO_CREDITS: "Créditos de IA esgotados. Adicione créditos no workspace para continuar.",
+          SERVICE_UNAVAILABLE: "Serviço de análise temporariamente indisponível. Tente novamente.",
+        };
+        throw new Error(map[d.error] ?? d.message ?? d.error);
+      }
       return data as ListeningReport;
     },
   });
