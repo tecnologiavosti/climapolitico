@@ -20,7 +20,7 @@ import { format } from "date-fns";
 // Toda a análise vem de supabase.functions.invoke('network-listening').
 // ------------------------------------------------------------
 
-type DataSourceType = "direct" | "proxy" | "inferred" | "unavailable";
+type DataSourceType = "direct" | "proxy" | "unavailable";
 interface Distribution { network: string; pct: number; mentions?: number; data_source_type?: DataSourceType; direct_hits?: number; external_hits?: number }
 interface TimelinePoint { date: string; total: number; positivo: number; negativo: number }
 interface SentByNetwork { network: string; pos: number; neg: number; neu: number }
@@ -463,7 +463,6 @@ export default function NetworkView() {
                   const badge: Record<DataSourceType, { label: string; cls: string }> = {
                     direct:      { label: "Direct",      cls: "bg-success/15 text-success border-success/30" },
                     proxy:       { label: "Proxy",       cls: "bg-warning/15 text-warning border-warning/30" },
-                    inferred:    { label: "Inferred",    cls: "bg-orange-500/15 text-orange-500 border-orange-500/30" },
                     unavailable: { label: "Sem dados",   cls: "bg-muted text-muted-foreground border-border" },
                   };
                   const hideNumbers = data.qualitative_only || dst === "unavailable";

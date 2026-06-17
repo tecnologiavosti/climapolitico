@@ -340,7 +340,7 @@ async function callAI(systemMsg: string, userMsg: string) {
     }
     lastStatus = r.status;
     lastErr = (await r.text().catch(() => "")).slice(0, 300);
-    console.warn(`[network-listening] modelo ${m} → ${r.status}, tentando fallback`);
+    console.warn(`[network-listening] modelo ${m} → ${r.status}, tentando próximo modelo`);
     if (r.status !== 429 && r.status !== 402 && r.status < 500) break;
   }
   const err: any = new Error(`AI gateway ${lastStatus}: ${lastErr}`);
@@ -436,7 +436,7 @@ function extractTerms(body: Body, samples: SearchHit[]): Term[] {
   return [...terms.values()].sort((a, b) => b.count - a.count).slice(0, 18);
 }
 
-// Tópicos genéricos PROIBIDOS — filtrados tanto da IA quanto do fallback.
+// Tópicos genéricos PROIBIDOS — filtrados da IA.
 const GENERIC_TOPIC_PATTERNS = [
   /^imagem p[uú]blica/i,
   /^cobertura jornal[ií]stica/i,
