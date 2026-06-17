@@ -497,6 +497,10 @@ const GENERIC_TOPIC_PATTERNS = [
   /^congresso$/i,
   /^economia$/i,
   /^repercuss[aã]o digital$/i,
+  /^polariza[cç][aã]o$/i,
+  /^contexto pol[ií]tico$/i,
+  /^pol[eê]micas?$/i,
+  /^opini[aã]o p[uú]blica$/i,
 ];
 
 function isGenericTopic(label: string) {
@@ -506,15 +510,87 @@ function isGenericTopic(label: string) {
   return GENERIC_TOPIC_PATTERNS.some((re) => re.test(clean));
 }
 
-// Confiança determinística pela evidência real coletada.
-// HIGH  = >=200 hits OU >=50 fontes externas com retorno
-// MEDIUM= >=60 hits  OU >=15 fontes
-// LOW   = abaixo disso (esconde gráficos numéricos)
+// Termos NLP "labels" proibidos (categorias, não entidades reais).
+const FORBIDDEN_TERM_LABELS = new Set([
+  "pessoa", "pessoas", "regiao", "regioes", "organizacao", "organization",
+  "entidade", "categoria", "local", "lugar", "gpe", "loc", "org", "per", "misc",
+  "evento", "data", "tempo", "nome", "lugar geografico",
+]);
+
+function isForbiddenTerm(term: string) {
+  const clean = normalizeText(term).trim();
+  if (!clean || clean.length < 2) return true;
+  if (FORBIDDEN_TERM_LABELS.has(clean)) return true;
+  if (/^(ser|estar|ter|haver|fazer|disse|falou|novo|nova|grande|bom|ruim)$/i.test(clean)) return true;
+  return false;
+}
+
+// Confiança determinística — thresholds calibrados para coleta externa.
+// HIGH  = >=200 hits OU >=30 fontes ok
+// MEDIUM= >=30 hits  OU >=5 fontes  OU >=20 evidências
+// LOW   = abaixo (esconde gráficos numéricos)
 function computeConfidence(samples: number, sourceStatuses: SourceStatus[]): "high" | "medium" | "low" {
   const okSources = sourceStatuses.filter((s) => s.status === "ok").length;
-  if (samples >= 200 || okSources >= 50) return "high";
-  if (samples >= 60 || okSources >= 15) return "medium";
+  if (samples >= 200 || okSources >= 30) return "high";
+  if (samples >= 30 || okSources >= 5 || samples >= 20) return "medium";
   return "low";
+}
+
+// Sempre renderizar todas as redes suportadas, com badge de origem do dado.
+const ALL_NETWORKS: Network[] = ["twitter", "instagram", "facebook", "youtube", "tiktok", "telegram", "reddit", "news"];
+type DataSourceType = "direct" | "proxy" | "inferred" | "unavailable";
+
+const NETWORK_DOMAINS: Record<string, RegExp> = {
+  twitter: /(twitter\.com|x\.com|t\.co)/i,
+  instagram: /instagram\.com/i,
+  facebook: /facebook\.com|fb\.com/i,
+  youtube: /youtube\.com|youtu\.be/i,
+  tiktok: /tiktok\.com/i,
+  telegram: /t\.me|telegram\.me/i,
+  reddit: /reddit\.com/i,
+  news: /(globo|uol|folha|estad[aã]o|g1|cnn|veja|carta|metropoles|valor|exame|terra|r7|band)/i,
+};
+
+// network_weight = direct*0.45 + engagement*0.35 + external*0.20 (engagement indisponível → 0)
+function computeDistribution(
+  evidence: Array<{ net: Network; source: string; hits: SearchHit[] }>,
+  body: Body,
+) {
+  const direct = new Map<string, number>();
+  const external = new Map<string, number>();
+  for (const item of evidence) direct.set(item.net, (direct.get(item.net) ?? 0) + item.hits.length);
+  for (const target of ALL_NETWORKS) {
+    const re = NETWORK_DOMAINS[target];
+    if (!re) continue;
+    let count = 0;
+    for (const item of evidence) {
+      if (item.net === target) continue;
+      for (const h of item.hits) if (re.test(h.url ?? "") || re.test(h.description ?? "")) count += 1;
+    }
+    external.set(target, count);
+  }
+  const wantAll = !body.network || body.network === "all";
+  const networks = wantAll ? ALL_NETWORKS : ALL_NETWORKS.filter((n) => n === body.network);
+  const rows = networks.map((n) => {
+    const d = direct.get(n) ?? 0;
+    const e = external.get(n) ?? 0;
+    const w = d * 0.45 + e * 0.20;
+    let data_source_type: DataSourceType;
+    if (d >= 3) data_source_type = "direct";
+    else if (e >= 2) data_source_type = "proxy";
+    else if (d + e >= 1) data_source_type = "inferred";
+    else data_source_type = "unavailable";
+    return { network: n as string, w, d, e, data_source_type };
+  });
+  const total = rows.reduce((s, r) => s + r.w, 0);
+  return rows.map((r) => ({
+    network: r.network,
+    pct: total > 0 ? Math.round((r.w / total) * 100) : 0,
+    mentions: r.d,
+    direct_hits: r.d,
+    external_hits: r.e,
+    data_source_type: r.data_source_type,
+  }));
 }
 
 function heuristicReport(body: Body, samples: SearchHit[], sourceStatuses: SourceStatus[], reason: string) {
