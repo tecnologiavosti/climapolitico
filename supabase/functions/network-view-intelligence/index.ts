@@ -21,10 +21,19 @@ const TOPIC_BLACKLIST = new Set([
   "", "-", "—", "politico", "politica", "brasil", "noticia", "noticias",
   "candidato", "candidatos", "governo", "eleicao", "eleicoes", "geral",
   "outros", "diversos", "cenario", "contexto", "atuacao politica", "atuacao", "partido",
+  "congresso", "oposicao", "economia", "situacao", "atualidade", "debate",
+  "midia", "redes sociais", "internet", "discurso", "declaracao", "entrevista",
 ]);
 const TERM_BLACKLIST = new Set([
   "", "-", "—", "politico", "politica", "brasil", "noticia", "noticias",
   "candidato", "governo", "cenario", "contexto", "eleicoes2026",
+  "afirmou", "disse", "declarou", "falou", "comentou", "explicou", "destacou",
+  "informou", "respondeu", "criticou", "defendeu", "ressaltou", "garantiu",
+  "hoje", "ontem", "amanha", "agora", "esta", "este", "isso", "aquilo",
+  "ano", "anos", "mes", "meses", "dia", "dias", "semana", "tempo",
+  "pessoas", "todos", "alguns", "muitos", "outros", "outras", "novo", "nova",
+  "mato", "grosso", "varzea", "grande", "rio", "janeiro", "sao", "paulo",
+  "minas", "gerais", "espirito", "santo", "porto", "alegre", "belo", "horizonte",
 ]);
 
 const norm = (s: string) =>
