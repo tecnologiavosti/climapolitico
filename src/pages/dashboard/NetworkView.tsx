@@ -20,28 +20,32 @@ import { format } from "date-fns";
 // Toda a análise vem de supabase.functions.invoke('network-listening').
 // ------------------------------------------------------------
 
-type DataSourceType = "direct" | "proxy" | "inferred" | "unavailable";
+type DataSourceType = "direct" | "proxy" | "unavailable";
 interface Distribution { network: string; pct: number; mentions?: number; data_source_type?: DataSourceType; direct_hits?: number; external_hits?: number }
 interface TimelinePoint { date: string; total: number; positivo: number; negativo: number }
 interface SentByNetwork { network: string; pos: number; neg: number; neu: number }
 interface Topic { label: string; mentions: number; pos?: number; neg?: number; neu?: number }
 interface Term { term: string; kind: "pessoa" | "partido" | "instituicao" | "hashtag" | "slogan" | "regiao"; count: number }
 interface ListeningReport {
-  total_mentions: number;
-  total_interactions: number;
+  total_mentions: number | null;
+  total_interactions: number | null;
   sentiment: { pos: number; neg: number; neu: number };
   net_sentiment: number;
   net_label?: string;
-  dominant_network: string;
+  dominant_network: string | null;
   distribution: Distribution[];
   timeline: TimelinePoint[];
   sentiment_by_network: SentByNetwork[];
   topics: Topic[];
   terms: Term[];
   confidence: "high" | "medium" | "low";
+  render_state?: "FULL_DATA" | "PARTIAL_DATA" | "NO_DATA";
   qualitative_only?: boolean;
   reasoning?: string;
   evidence_count?: number;
+  source_count?: number;
+  pipeline_used?: string;
+  fallback_used?: boolean;
   bucket?: string;
   cached?: boolean;
   fallback?: boolean;
@@ -233,6 +237,8 @@ export default function NetworkView() {
   const jobFailed = job?.status === "failed";
   const loading = report.isFetching || isProcessing;
   const needsCandidate = candidateId === "all";
+  const evidenceCount = data?.evidence_count ?? 0;
+  const renderState = data?.render_state ?? (data ? (evidenceCount === 0 ? "NO_DATA" : data.confidence === "low" || data.qualitative_only ? "PARTIAL_DATA" : "FULL_DATA") : undefined);
 
   // Derivações de exibição
   const netSentiment = data?.net_sentiment ?? 0;
@@ -242,6 +248,13 @@ export default function NetworkView() {
     () => (data?.distribution ?? []).slice().sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0)),
     [data?.distribution],
   );
+  const socialViewDebug = data ? {
+    evidence_count: evidenceCount,
+    source_count: data.source_count ?? 0,
+    pipeline_used: data.pipeline_used ?? "external_evidence_only",
+    fallback_used: false,
+    confidence: data.confidence ?? "low",
+  } : null;
 
   const applyCustomRange = () => {
     if (!startDate || !endDate) { setCustomError("Selecione ambas as datas"); return; }
@@ -367,9 +380,9 @@ export default function NetworkView() {
         </Card>
       )}
 
-      {!needsCandidate && jobFailed && (
+      {!needsCandidate && jobFailed && !data && (
         <Card className="p-4 text-sm border-destructive/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <span className="text-muted-foreground">A análise usou fallback local porque o job falhou: {job?.error ?? "erro desconhecido"}</span>
+          <span className="text-muted-foreground">A análise falhou e nenhum fallback artificial foi aplicado: {job?.error ?? "erro desconhecido"}</span>
           <Button size="sm" variant="outline" onClick={() => { setActiveJobId(null); setReprocessNonce((n) => n + 1); }}>
             <RefreshCw className="h-4 w-4 mr-2" /> Reprocessar análise
           </Button>
@@ -379,25 +392,48 @@ export default function NetworkView() {
       {!needsCandidate && (
         <>
           {/* Banner qualitativo quando confiança baixa */}
-          {data && (data.qualitative_only || data.confidence === "low") && (
+          {data && renderState === "PARTIAL_DATA" && (
             <Card className="p-4 border-warning/40 bg-warning/5 text-sm">
               <div className="flex items-start gap-2">
                 <Sparkles className="h-4 w-4 text-warning shrink-0 mt-0.5" />
                 <div>
                   <div className="font-semibold mb-1">Dados insuficientes para análise quantitativa precisa</div>
                   <div className="text-muted-foreground">
-                    Exibindo apenas análise qualitativa baseada em contexto histórico. Gráficos numéricos foram ocultados para não mostrar valores estimados.
-                    {typeof data.evidence_count === "number" && ` (${data.evidence_count} evidências coletadas)`}
+                    Números, gráficos, assuntos e termos foram ocultados para não mostrar valores artificiais.
+                    {` (${evidenceCount} evidências coletadas)`}
                   </div>
                 </div>
               </div>
             </Card>
           )}
 
+          {data && renderState === "NO_DATA" && !loading && (
+            <Card className="p-8 text-center border-warning/40">
+              <RadarIcon className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+              <h3 className="text-lg font-semibold mb-1">Não foi possível coletar evidências suficientes para este período.</h3>
+              <p className="text-sm text-muted-foreground">Nenhum número, gráfico, assunto ou termo foi exibido porque a coleta retornou 0 evidências.</p>
+            </Card>
+          )}
+
+          {data && renderState === "PARTIAL_DATA" && !loading && (
+            <Card className="p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold">Resumo qualitativo</h2>
+                  <p className="text-sm text-muted-foreground">Poucas evidências reais foram encontradas; a análise permanece sem números estimados.</p>
+                </div>
+                <div className="text-sm font-semibold text-warning">Confiança {(data.confidence ?? "low").toUpperCase()}</div>
+              </div>
+              {data.reasoning && <p className="text-sm text-muted-foreground leading-relaxed">{data.reasoning}</p>}
+            </Card>
+          )}
+
+          {(loading || !data || renderState === "FULL_DATA") && (<>
+
           {/* RESUMO EXECUTIVO */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <BigKpi icon={<MessageSquare className="h-5 w-5" />} label="Total de menções" value={loading || !data ? null : data.qualitative_only ? "—" : compact(data.total_mentions)} />
-            <BigKpi icon={<Activity className="h-5 w-5" />} label="Total de interações" value={loading || !data ? null : data.qualitative_only ? "—" : compact(data.total_interactions)} sub={loading || !data || data.qualitative_only ? "" : "curtidas + shares + replies estimados"} />
+            <BigKpi icon={<MessageSquare className="h-5 w-5" />} label="Total de menções" value={loading || !data ? null : data.total_mentions == null ? "—" : compact(data.total_mentions)} />
+            <BigKpi icon={<Activity className="h-5 w-5" />} label="Total de interações" value={loading || !data ? null : data.total_interactions == null ? "—" : compact(data.total_interactions)} sub={loading || !data || data.total_interactions == null ? "" : "curtidas + shares + replies derivados das evidências"} />
             <BigKpi
               icon={<Gauge className="h-5 w-5" />}
               label="Sentimento líquido"
@@ -423,13 +459,13 @@ export default function NetworkView() {
             {loading || !data ? <Skeleton className="h-64 w-full" /> : distribution.length === 0 ? <Empty /> : (
               <div className="space-y-3">
                 {distribution.map((n) => {
-                  const dst = (n.data_source_type ?? "unavailable") as DataSourceType;
                   const badge: Record<DataSourceType, { label: string; cls: string }> = {
                     direct:      { label: "Direct",      cls: "bg-success/15 text-success border-success/30" },
                     proxy:       { label: "Proxy",       cls: "bg-warning/15 text-warning border-warning/30" },
-                    inferred:    { label: "Inferred",    cls: "bg-orange-500/15 text-orange-500 border-orange-500/30" },
                     unavailable: { label: "Sem dados",   cls: "bg-muted text-muted-foreground border-border" },
                   };
+                  const rawDst = String(n.data_source_type ?? "unavailable") as DataSourceType;
+                  const dst = rawDst in badge ? rawDst : "unavailable";
                   const hideNumbers = data.qualitative_only || dst === "unavailable";
                   return (
                     <div key={n.network} className="grid grid-cols-12 items-center gap-3">
@@ -483,7 +519,7 @@ export default function NetworkView() {
           {/* SENTIMENTO POR REDE */}
           <Card className="p-6">
             <h2 className="text-lg font-semibold mb-1">Sentimento por rede</h2>
-            <p className="text-sm text-muted-foreground mb-6">Perfil de sentimento típico de cada rede aplicado ao período.</p>
+            <p className="text-sm text-muted-foreground mb-6">Somente redes com evidência mínima; caso contrário, os percentuais ficam ocultos.</p>
             {loading || !data ? <Skeleton className="h-56 w-full" /> : (data.sentiment_by_network ?? []).length === 0 ? <Empty /> : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -525,9 +561,10 @@ export default function NetworkView() {
           )}
 
           {/* ASSUNTOS DOMINANTES */}
+          {(loading || !data || (data.topics ?? []).length >= 3) && (
           <Card className="p-6">
             <h2 className="text-lg font-semibold mb-1">Assuntos dominantes</h2>
-            <p className="text-sm text-muted-foreground mb-6">Temas específicos do candidato + período, gerados pela IA com contexto histórico.</p>
+            <p className="text-sm text-muted-foreground mb-6">Temas específicos extraídos por agrupamento das evidências coletadas.</p>
             {loading || !data ? <Skeleton className="h-56 w-full" /> : (data.topics ?? []).length === 0 ? <Empty /> : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {(() => {
@@ -548,7 +585,7 @@ export default function NetworkView() {
                             <div style={{ width: `${pct(t.neu ?? 0, lab)}%`, backgroundColor: COLORS.neutral }} />
                           </div>
                         )}
-                        <div className="text-[11px] text-muted-foreground">{compact(t.mentions)} menções estimadas</div>
+                        <div className="text-[11px] text-muted-foreground">{compact(t.mentions)} evidências relacionadas</div>
                       </div>
                     );
                   });
@@ -556,6 +593,7 @@ export default function NetworkView() {
               </div>
             )}
           </Card>
+          )}
 
           {/* TERMOS EM ALTA */}
           <Card className="p-6">
@@ -589,6 +627,13 @@ export default function NetworkView() {
               <Sparkles className="h-4 w-4 text-primary shrink-0 mt-0.5" />
               <span>{data.reasoning}</span>
             </Card>
+          )}
+          </>)}
+
+          {socialViewDebug && (
+            <pre id="social_view_debug" className="hidden" aria-hidden="true">
+              {JSON.stringify(socialViewDebug)}
+            </pre>
           )}
         </>
       )}

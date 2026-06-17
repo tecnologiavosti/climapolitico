@@ -61,7 +61,7 @@ interface SourceTask {
 const cache = new Map<string, { at: number; data: unknown }>();
 
 function cacheKey(b: Body) {
-  return `social-v2|${b.candidate_id ?? normalizeText(b.candidate_name)}|${b.network ?? "all"}|${b.start_date}|${b.end_date}`;
+  return `social-v3|${b.candidate_id ?? normalizeText(b.candidate_name)}|${b.network ?? "all"}|${b.start_date}|${b.end_date}`;
 }
 
 function normalizeText(input: unknown): string {
@@ -178,30 +178,8 @@ async function runLimited<T, R>(items: T[], limit: number, fn: (item: T) => Prom
 function systemPrompt(b: Body, days: number) {
   const yearStart = new Date(b.start_date).getUTCFullYear();
   const yearEnd = new Date(b.end_date).getUTCFullYear();
-  const bucket = bucketFor(days);
   return `Você é um analista sênior de social listening político no Brasil.
-Sua tarefa: estimar o buzz digital sobre um político em um período específico, combinando evidências coletadas (Firecrawl) com seu conhecimento histórico.
-
-REGRAS DE MATURIDADE DAS REDES NO BRASIL:
-- TikTok: insignificante antes de 2020. Começa a relevância em 2021. Forte de 2022 em diante.
-- Bluesky: praticamente inexistente antes de 2023.
-- Instagram: relevante desde 2015, dominante para imagem após 2018.
-- Telegram (política): explode a partir de 2018, forte 2020-2022.
-- Twitter/X: dominante para debate político 2014-2024.
-- Facebook: dominante 2014-2018, declina em alcance político após 2020.
-- YouTube: relevante para discurso longo desde 2017; muito forte 2018-2022.
-- Reddit: nicho no Brasil, mas relevante para discussão de subgrupos.
-- Notícias: sempre presentes; baseline obrigatório.
-
-PERFIL ESPERADO POR REDE (sentimento típico em política BR):
-- Twitter/X: polarizado, com tendência negativa.
-- Reddit: polarizado, crítico.
-- Telegram: militante (forte pró ou forte contra dependendo dos canais).
-- Facebook: misto, mais positivo entre apoiadores.
-- Instagram: predominantemente neutro/positivo (imagem cuidada).
-- TikTok: humor e viralização, polarizado.
-- YouTube: depende do canal — equilibrado a polarizado.
-- Notícias: neutro a levemente negativo (jornalismo crítico).
+Sua tarefa: analisar SOMENTE as evidências coletadas para um político em um período específico.
 
 CONTEXTO HISTÓRICO RELEVANTE NO PERÍODO (${yearStart}-${yearEnd}):
 - 2018: eleições, antipetismo, Lava Jato, fake news WhatsApp, ascensão Bolsonaro.
@@ -211,14 +189,12 @@ CONTEXTO HISTÓRICO RELEVANTE NO PERÍODO (${yearStart}-${yearEnd}):
 - 2025-2026: pré-eleições 2026, presidenciáveis.
 
 INSTRUÇÕES:
-- Use evidências quando existirem; quando faltarem, **infira** com base no contexto político e na maturidade das redes.
-- Nunca retorne zero ou vazio: você sempre tem contexto suficiente para uma estimativa razoável.
-- Não invente nomes próprios que não existem; mas estime números (volume, %).
-- Termos devem ser entidades reais: pessoas, partidos, instituições, hashtags plausíveis, slogans, regiões. NUNCA verbos, stopwords ou fragmentos.
-- Temas devem ser ESPECÍFICOS ao candidato e período (eventos, polêmicas, projetos, regiões, adversários nomeados). PROIBIDO usar rótulos genéricos como "Imagem pública", "Cobertura jornalística", "Disputa política", "Repercussão digital", "Críticas e apoios". Exemplos válidos: "Segurança pública em Goiás", "Pré-candidatura presidencial 2026", "Relação com Bolsonaro", "Agronegócio goiano".
-- A timeline deve ter granularidade "${bucket}" e cobrir o período inteiro com curva realista (picos em eventos, vales fora deles).
-- Sentimento por rede deve refletir o perfil típico da rede aplicado ao candidato/período.
-- Distribuição por rede deve respeitar a maturidade da rede no ano.
+- Se não houver evidências suficientes, diga claramente que não há base. NÃO preencha lacunas.
+- Nunca invente menções, interações, percentuais, timeline, distribuição, sentimento por rede, assuntos ou termos.
+- Números só podem ser derivados das evidências informadas pelo usuário.
+- Termos devem ser entidades reais presentes nas evidências: pessoas, partidos, instituições, hashtags, slogans e regiões. NUNCA verbos, stopwords ou fragmentos.
+- Temas devem vir de agrupamentos reais de evidência. PROIBIDO usar rótulos genéricos como "Imagem pública", "Cobertura jornalística", "Disputa política", "Repercussão digital", "Críticas e apoios", "Polarização".
+- Se um campo não tiver evidência direta, retorne vazio/null/0 conforme o schema, sem estimar.
 - Responda APENAS um JSON válido no schema solicitado, sem markdown.`;
 }
 
@@ -364,7 +340,7 @@ async function callAI(systemMsg: string, userMsg: string) {
     }
     lastStatus = r.status;
     lastErr = (await r.text().catch(() => "")).slice(0, 300);
-    console.warn(`[network-listening] modelo ${m} → ${r.status}, tentando fallback`);
+    console.warn(`[network-listening] modelo ${m} → ${r.status}, tentando próximo modelo`);
     if (r.status !== 429 && r.status !== 402 && r.status < 500) break;
   }
   const err: any = new Error(`AI gateway ${lastStatus}: ${lastErr}`);
@@ -412,69 +388,43 @@ function preprocessEvidence(evidence: Array<{ net: Network; source: string; hits
   return out.slice(0, 300);
 }
 
-function networkWeights(body: Body): Distribution[] {
-  const year = new Date(body.start_date).getUTCFullYear();
-  const base: Record<string, number> = year < 2019
-    ? { facebook: 34, twitter: 25, news: 20, youtube: 12, instagram: 6, telegram: 2, reddit: 1, tiktok: 0 }
-    : year < 2021
-      ? { twitter: 27, facebook: 22, news: 18, youtube: 16, instagram: 9, telegram: 6, reddit: 2, tiktok: 0 }
-      : year < 2023
-        ? { twitter: 25, youtube: 19, instagram: 15, telegram: 13, news: 13, facebook: 8, tiktok: 5, reddit: 2 }
-        : { twitter: 23, instagram: 18, youtube: 17, tiktok: 13, news: 12, telegram: 8, facebook: 6, reddit: 3 };
-  const entries = Object.entries(base).filter(([n]) => !body.network || body.network === "all" || body.network === n);
-  const sum = entries.reduce((s, [, v]) => s + v, 0) || 1;
-  return entries.map(([network, v]) => ({ network, pct: Math.round((v / sum) * 100) }));
-}
+const EMPTY_SENTIMENT = { pos: 0, neg: 0, neu: 0 };
 
-function makeTimeline(total: number, sentiment: { pos: number; neg: number; neu: number }, body: Body) {
-  const days = daysBetween(body.start_date, body.end_date);
-  const bucket = bucketFor(days);
-  const step = bucket === "day" ? 1 : bucket === "week" ? 7 : bucket === "month" ? 30 : bucket === "quarter" ? 91 : 183;
-  const points = Math.max(3, Math.min(36, Math.ceil(days / step)));
-  const start = new Date(`${body.start_date}T00:00:00Z`);
-  const weights = Array.from({ length: points }, (_, i) => 0.75 + Math.sin((i / Math.max(1, points - 1)) * Math.PI * 2) * 0.18 + (i % 5 === 2 ? 0.28 : 0));
-  const sum = weights.reduce((s, w) => s + w, 0);
-  return weights.map((w, i) => {
-    const d = new Date(start);
-    d.setUTCDate(d.getUTCDate() + i * step);
-    const volume = Math.max(1, Math.round((total * w) / sum));
-    return {
-      date: d.toISOString().slice(0, 10),
-      total: volume,
-      positivo: Math.round(volume * (sentiment.pos / 100)),
-      negativo: Math.round(volume * (sentiment.neg / 100)),
-    };
-  });
-}
-
-function lexicalSentiment(samples: SearchHit[]) {
-  const positive = /\b(apoio|aprova|vitória|lidera|forte|avanço|entrega|popular|elogio|cresce|competente)\b/i;
-  const negative = /\b(crise|denúncia|rejeição|critica|ataque|investigação|derrota|escândalo|polêmica|desgaste)\b/i;
-  let pos = 0, neg = 0;
-  for (const h of samples) {
-    const text = `${h.title ?? ""} ${h.description ?? ""}`;
-    if (positive.test(text)) pos += 1;
-    if (negative.test(text)) neg += 1;
-  }
-  const total = Math.max(1, samples.length);
-  const p = Math.max(18, Math.min(48, Math.round((pos / total) * 70 + 24)));
-  const n = Math.max(20, Math.min(58, Math.round((neg / total) * 72 + 28)));
-  const neu = Math.max(10, 100 - p - n);
-  const scale = 100 / (p + n + neu);
-  return { pos: Math.round(p * scale), neg: Math.round(n * scale), neu: Math.round(neu * scale) };
+function noDataReport(body: Body, sourceStatuses: SourceStatus[], reason: string, evidenceCount = 0) {
+  return {
+    total_mentions: null,
+    total_interactions: null,
+    sentiment: EMPTY_SENTIMENT,
+    net_sentiment: 0,
+    net_label: "Dados insuficientes",
+    dominant_network: null,
+    distribution: [],
+    timeline: [],
+    sentiment_by_network: [],
+    topics: [],
+    terms: [],
+    confidence: "low" as const,
+    render_state: "NO_DATA" as const,
+    qualitative_only: false,
+    reasoning: reason,
+    evidence_count: evidenceCount,
+    source_count: sourceStatuses.filter((s) => s.status === "ok").length,
+    bucket: bucketFor(daysBetween(body.start_date, body.end_date)),
+    sources: sourceStatuses,
+    fallback: false,
+    fallback_used: false,
+    pipeline_used: "external_evidence_only",
+  };
 }
 
 function extractTerms(body: Body, samples: SearchHit[]): Term[] {
   const terms = new Map<string, Term>();
   const add = (term: string, kind: Term["kind"], count = 1) => {
     const clean = term.trim().replace(/\s+/g, " ");
-    if (clean.length < 2) return;
+    if (isForbiddenTerm(clean)) return;
     const key = `${kind}:${clean.toLowerCase()}`;
     terms.set(key, { term: clean, kind, count: (terms.get(key)?.count ?? 0) + count });
   };
-  add(body.candidate_name, "pessoa", 12);
-  if (body.party) add(body.party, "partido", 8);
-  if (body.state) add(body.state, "regiao", 6);
   const corpus = samples.map((h) => `${h.title ?? ""} ${h.description ?? ""}`).join("\n");
   for (const tag of corpus.match(/#[\p{L}0-9_]{3,}/gu) ?? []) add(tag, "hashtag", 4);
   for (const inst of ["STF", "TSE", "Congresso", "Senado", "Câmara", "Planalto", "Governo Federal", "Ministério Público"]) {
@@ -486,7 +436,7 @@ function extractTerms(body: Body, samples: SearchHit[]): Term[] {
   return [...terms.values()].sort((a, b) => b.count - a.count).slice(0, 18);
 }
 
-// Tópicos genéricos PROIBIDOS — filtrados tanto da IA quanto do fallback.
+// Tópicos genéricos PROIBIDOS — filtrados da IA.
 const GENERIC_TOPIC_PATTERNS = [
   /^imagem p[uú]blica/i,
   /^cobertura jornal[ií]stica/i,
@@ -538,7 +488,7 @@ function computeConfidence(samples: number, sourceStatuses: SourceStatus[]): "hi
 
 // Sempre renderizar todas as redes suportadas, com badge de origem do dado.
 const ALL_NETWORKS: Network[] = ["twitter", "instagram", "facebook", "youtube", "tiktok", "telegram", "reddit", "news"];
-type DataSourceType = "direct" | "proxy" | "inferred" | "unavailable";
+type DataSourceType = "direct" | "proxy" | "unavailable";
 
 const NETWORK_DOMAINS: Record<string, RegExp> = {
   twitter: /(twitter\.com|x\.com|t\.co)/i,
@@ -574,12 +524,14 @@ function computeDistribution(
   const rows = networks.map((n) => {
     const d = direct.get(n) ?? 0;
     const e = external.get(n) ?? 0;
-    const w = d * 0.45 + e * 0.20;
+    let w = d * 0.45 + e * 0.20;
     let data_source_type: DataSourceType;
     if (d >= 3) data_source_type = "direct";
     else if (e >= 2) data_source_type = "proxy";
-    else if (d + e >= 1) data_source_type = "inferred";
-    else data_source_type = "unavailable";
+    else {
+      data_source_type = "unavailable";
+      w = 0;
+    }
     return { network: n as string, w, d, e, data_source_type };
   });
   const total = rows.reduce((s, r) => s + r.w, 0);
@@ -593,31 +545,88 @@ function computeDistribution(
   }));
 }
 
-function heuristicReport(body: Body, samples: SearchHit[], sourceStatuses: SourceStatus[], reason: string) {
-  const days = daysBetween(body.start_date, body.end_date);
-  const bucket = bucketFor(days);
-  const sentiment = lexicalSentiment(samples);
-  const net = sentiment.pos - sentiment.neg;
-  // Fallback NUNCA inventa quantitativo. Apenas qualitativo.
+const MIN_NETWORK_EVIDENCE = 3;
+
+function directEvidenceByNetwork(evidence: Array<{ net: Network; source: string; hits: SearchHit[] }>) {
+  const counts = new Map<string, number>();
+  for (const item of evidence) counts.set(item.net, (counts.get(item.net) ?? 0) + item.hits.length);
+  return counts;
+}
+
+function computeTimelineFromEvidence(samples: SearchHit[], body: Body) {
+  const start = Date.parse(`${body.start_date}T00:00:00Z`);
+  const end = Date.parse(`${body.end_date}T23:59:59Z`);
+  const counts = new Map<string, number>();
+  for (const h of samples) {
+    if (!h.date) continue;
+    const time = Date.parse(h.date);
+    if (!Number.isFinite(time) || time < start || time > end) continue;
+    const day = new Date(time).toISOString().slice(0, 10);
+    counts.set(day, (counts.get(day) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, total]) => ({ date, total, positivo: 0, negativo: 0 }));
+}
+
+function sanitizeAiReport(report: any, evidence: Array<{ net: Network; source: string; hits: SearchHit[] }>, renderState: "FULL_DATA" | "PARTIAL_DATA" | "NO_DATA") {
+  const byNetwork = directEvidenceByNetwork(evidence);
+  const corpus = normalizeText(evidence.flatMap((e) => e.hits).map((h) => `${h.title ?? ""} ${h.description ?? ""}`).join("\n"));
+  const appearsInCorpus = (value: string) => {
+    const clean = normalizeText(value).replace(/^#/, "");
+    return clean.length >= 3 && corpus.includes(clean);
+  };
+  if (Array.isArray(report.topics)) {
+    report.topics = report.topics.filter((t: any) => t?.label && !isGenericTopic(String(t.label)) && String(t.label).split(/\s+/).some(appearsInCorpus)).slice(0, 8);
+    if (report.topics.length < 3) report.topics = [];
+  } else report.topics = [];
+
+  if (Array.isArray(report.terms)) {
+    report.terms = report.terms
+      .map((t: any) => ({ ...t, term: String(t?.text ?? t?.value ?? t?.term ?? "").trim() }))
+      .filter((t: any) => t.term && !isForbiddenTerm(String(t.term)) && appearsInCorpus(String(t.term)))
+      .slice(0, 18);
+  } else report.terms = [];
+
+  if (Array.isArray(report.sentiment_by_network)) {
+    report.sentiment_by_network = report.sentiment_by_network.filter((n: any) => {
+      const network = normalizeText(n?.network);
+      const evidenceCount = byNetwork.get(network) ?? 0;
+      const hasValues = Number(n?.pos ?? 0) + Number(n?.neg ?? 0) + Number(n?.neu ?? 0) > 0;
+      return evidenceCount >= MIN_NETWORK_EVIDENCE && hasValues;
+    });
+  } else report.sentiment_by_network = [];
+
+  if (!Array.isArray(report.timeline) || renderState !== "FULL_DATA") report.timeline = [];
+  if (renderState !== "FULL_DATA") report.sentiment_by_network = [];
+  return report;
+}
+
+function partialEvidenceReport(body: Body, samples: SearchHit[], sourceStatuses: SourceStatus[], reason: string) {
+  const bucket = bucketFor(daysBetween(body.start_date, body.end_date));
   return {
-    total_mentions: 0,
-    total_interactions: 0,
-    sentiment,
-    net_sentiment: net,
-    net_label: net >= 10 ? "Favorável" : net <= -10 ? "Desfavorável" : "Neutro",
-    dominant_network: body.network && body.network !== "all" ? body.network : "—",
+    total_mentions: null,
+    total_interactions: null,
+    sentiment: EMPTY_SENTIMENT,
+    net_sentiment: 0,
+    net_label: "Dados insuficientes",
+    dominant_network: null,
     distribution: [],
     timeline: [],
     sentiment_by_network: [],
     topics: [],
     terms: extractTerms(body, samples),
     confidence: "low" as const,
+    render_state: "PARTIAL_DATA" as const,
     qualitative_only: true,
-    reasoning: `${reason} Dados insuficientes para análise quantitativa precisa. Exibindo apenas análise qualitativa baseada em contexto histórico.`,
+    reasoning: `${reason} Foram encontradas poucas evidências reais; por integridade, números, gráficos e percentuais foram ocultados.`,
     evidence_count: samples.length,
+    source_count: sourceStatuses.filter((s) => s.status === "ok").length,
     bucket,
     sources: sourceStatuses,
-    fallback: true,
+    fallback: false,
+    fallback_used: false,
+    pipeline_used: "external_evidence_only",
   };
 }
 
@@ -660,12 +669,13 @@ async function processJob(jobId: string, body: Body, userId: string) {
     const totalHits = samples.length;
     const days = daysBetween(body.start_date, body.end_date);
     const bucket = bucketFor(days);
+    const deterministicConfidence = computeConfidence(totalHits, sourceStatuses);
+    let renderState: "FULL_DATA" | "PARTIAL_DATA" | "NO_DATA" = totalHits === 0 ? "NO_DATA" : deterministicConfidence === "low" ? "PARTIAL_DATA" : "FULL_DATA";
     let report: any;
 
-    const allSourcesFailed = sourceStatuses.length > 0 && sourceStatuses.every((s) => ["rate_limited", "timeout", "error", "skipped"].includes(s.status));
-    if (allSourcesFailed) {
-      log("all_sources_failed", { sources: sourceStatuses.length });
-      report = heuristicReport(body, samples, sourceStatuses, "Todas as fontes externas falharam ou limitaram a coleta.");
+    if (renderState === "NO_DATA") {
+      log("no_evidence", { sources: sourceStatuses.length });
+      report = noDataReport(body, sourceStatuses, "Não foi possível coletar evidências suficientes para este período.", 0);
     } else {
       await updateJob(admin, jobId, { progress: 72, stage: "Processando IA...", logs });
       const evidenceForAi = evidence.map((e) => ({
@@ -689,7 +699,9 @@ async function processJob(jobId: string, body: Body, userId: string) {
         source_statuses: sourceStatuses,
         preprocessing: "deduplicado, spam removido, RT duplicado removido, máximo 300 amostras",
         evidence: evidenceForAi,
-        instructions: `Gere um relatório completo. Se evidence_count < 5, marque confidence="low" mas ainda assim infira valores plausíveis. Distribua a timeline com ${bucket === "day" ? "dias" : bucket === "week" ? "semanas" : bucket === "month" ? "meses" : bucket === "quarter" ? "trimestres" : "semestres"} cobrindo todo o período.`,
+        instructions: renderState === "FULL_DATA"
+          ? "Gere análise apenas a partir das evidências. Não estime lacunas. Se não houver evidência para um campo, retorne vazio."
+          : "Gere somente resumo qualitativo e insights baseados nas evidências disponíveis. Não gere números, gráficos, percentuais, tópicos ou sentimento por rede.",
       });
       try {
         const aiStarted = Date.now();
@@ -697,42 +709,60 @@ async function processJob(jobId: string, body: Body, userId: string) {
         log("ai_done", { duration_ms: Date.now() - aiStarted });
       } catch (e: any) {
         log("ai_failed", { error: (e as Error)?.message ?? String(e), status: e?.status ?? null });
-        report = heuristicReport(body, samples, sourceStatuses, "A IA excedeu limite, tempo ou créditos.");
+        renderState = "PARTIAL_DATA";
+        report = partialEvidenceReport(body, samples, sourceStatuses, "A IA excedeu limite, tempo ou créditos.");
       }
     }
 
     await updateJob(admin, jobId, { progress: 93, stage: "Gerando gráficos...", logs });
 
-    // Pós-processamento obrigatório: confiança determinística + remoção de genéricos.
-    const deterministicConfidence = computeConfidence(totalHits, sourceStatuses);
+    // Pós-processamento obrigatório: estados exclusivos + confiança determinística.
     report.confidence = deterministicConfidence;
+    report.render_state = renderState;
+    report.fallback = false;
+    report.fallback_used = false;
+    report.pipeline_used = "external_evidence_only";
 
     // Distribuição SEMPRE recalculada a partir de evidência real (nunca a IA inventa).
     // Mantém todas as redes visíveis com badge data_source_type.
-    const realDistribution = computeDistribution(evidence, body);
+    const realDistribution = renderState === "FULL_DATA" ? computeDistribution(evidence, body) : [];
     report.distribution = realDistribution;
-    report.dominant_network = realDistribution
+    report.dominant_network = renderState === "FULL_DATA" ? realDistribution
       .filter((r) => r.data_source_type !== "unavailable")
-      .sort((a, b) => b.pct - a.pct)[0]?.network ?? (body.network && body.network !== "all" ? body.network : "—");
+      .sort((a, b) => b.pct - a.pct)[0]?.network ?? null : null;
 
-    if (Array.isArray(report.topics)) {
-      report.topics = report.topics.filter((t: any) => t?.label && !isGenericTopic(String(t.label)));
-    }
-    if (Array.isArray(report.terms)) {
-      report.terms = report.terms.filter((t: any) => t?.term && !isForbiddenTerm(String(t.term)));
-    }
-    if (deterministicConfidence === "low") {
-      // Sem base quantitativa real → não exibir números inventados (mas preserva distribution para badges).
+    report = sanitizeAiReport(report, evidence, renderState);
+    if (renderState === "NO_DATA") {
+      Object.assign(report, noDataReport(body, sourceStatuses, "Não foi possível coletar evidências suficientes para este período.", 0));
+    } else if (renderState === "PARTIAL_DATA") {
       report.qualitative_only = true;
-      report.total_mentions = 0;
-      report.total_interactions = 0;
+      report.total_mentions = null;
+      report.total_interactions = null;
+      report.sentiment = EMPTY_SENTIMENT;
+      report.net_sentiment = 0;
+      report.net_label = "Dados insuficientes";
+      report.dominant_network = null;
+      report.distribution = [];
       report.timeline = [];
       report.sentiment_by_network = [];
+      report.topics = [];
+      report.terms = [];
       const prevReason = report.reasoning ? `${report.reasoning} ` : "";
-      report.reasoning = `${prevReason}Dados insuficientes para análise quantitativa precisa (${totalHits} evidências, ${sourceStatuses.filter((s) => s.status === "ok").length} fontes). Exibindo apenas análise qualitativa baseada em contexto histórico.`;
+      report.reasoning = `${prevReason}Dados insuficientes para análise quantitativa precisa (${totalHits} evidências, ${sourceStatuses.filter((s) => s.status === "ok").length} fontes). Números, gráficos, assuntos e termos foram ocultados.`;
+    } else {
+      report.qualitative_only = false;
+      report.total_mentions = totalHits;
+      report.total_interactions = null;
+      report.timeline = computeTimelineFromEvidence(samples, body);
+      if (Array.isArray(report.topics)) {
+        report.topics = report.topics.map((t: any) => ({
+          ...t,
+          mentions: Math.max(1, Math.min(totalHits, Number(t.mentions ?? 1))),
+        }));
+      }
     }
 
-    const out = { ...report, evidence_count: totalHits, bucket, cached: false, sources: sourceStatuses, job_id: jobId };
+    const out = { ...report, evidence_count: totalHits, source_count: sourceStatuses.filter((s) => s.status === "ok").length, bucket, cached: false, sources: sourceStatuses, job_id: jobId };
     cache.set(cacheKey(body), { at: Date.now(), data: out });
     const expiresAt = new Date(Date.now() + ttlMs(days)).toISOString();
     await admin.from("social_analytics_cache").upsert({
@@ -750,8 +780,8 @@ async function processJob(jobId: string, body: Body, userId: string) {
   } catch (e) {
     const message = (e as Error)?.message ?? String(e);
     log("job_failed", { error: message });
-    const fallback = heuristicReport(body, [], [], "Falha geral do job.");
-    await updateJob(admin, jobId, { status: "failed", progress: 100, stage: "Falha ao processar", result: fallback, error: message, logs, completed_at: new Date().toISOString() });
+    const result = noDataReport(body, [], "Não foi possível coletar evidências suficientes para este período.", 0);
+    await updateJob(admin, jobId, { status: "failed", progress: 100, stage: "Falha ao processar", result, error: message, logs, completed_at: new Date().toISOString() });
   }
 }
 
@@ -848,6 +878,6 @@ Deno.serve(async (req) => {
   } catch (e: any) {
     const msg = e instanceof Error ? e.message : "erro";
     console.error("[network-listening]", msg);
-    return json({ error: "SERVICE_UNAVAILABLE", message: msg, fallback: true }, 200);
+    return json({ error: "SERVICE_UNAVAILABLE", message: msg, fallback: false, fallback_used: false }, 200);
   }
 });
