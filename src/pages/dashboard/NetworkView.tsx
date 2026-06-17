@@ -452,8 +452,8 @@ export default function NetworkView() {
       {/* BLOCO 6 — TERMOS EM ALTA */}
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Termos em alta</h2>
-        <p className="text-sm text-muted-foreground mb-6">Hashtags, nomes e entidades mais citados no período.</p>
-        {loading ? <Skeleton className="h-40 w-full" /> : mergedTerms.length === 0 ? (fallback.isLoading ? <Skeleton className="h-40 w-full" /> : <Empty />) : (
+        <p className="text-sm text-muted-foreground mb-6">Hashtags, nomes e entidades com maior relevância contextual no período.</p>
+        {aiIntel.isLoading ? <Skeleton className="h-40 w-full" /> : mergedTerms.length === 0 ? <Empty /> : (
           <div className="flex flex-wrap gap-2">
             {mergedTerms.map((t) => {
               const max = (mergedTerms[0]?.count ?? 1);
@@ -462,15 +462,15 @@ export default function NetworkView() {
                 <div
                   key={`${t.kind}-${t.term}`}
                   className="rounded-full px-4 py-2 text-sm border border-border flex items-center gap-2 bg-card"
-                  style={{ fontSize: `${0.85 + intensity * 0.35}rem` }}
+                  style={{ fontSize: `${0.85 + intensity * 0.35}rem`, opacity: 0.6 + intensity * 0.4 }}
                 >
                   <span className={t.kind === "hashtag" ? "text-primary font-semibold" : "font-semibold"}>{t.term}</span>
-                  <span className="text-xs text-muted-foreground tabular-nums">{compact(t.count)}</span>
                 </div>
               );
             })}
           </div>
         )}
+
       </Card>
     </div>
   );
