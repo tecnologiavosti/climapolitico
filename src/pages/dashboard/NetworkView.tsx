@@ -380,7 +380,7 @@ export default function NetworkView() {
         </Card>
       )}
 
-      {!needsCandidate && jobFailed && (
+      {!needsCandidate && jobFailed && !data && (
         <Card className="p-4 text-sm border-destructive/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <span className="text-muted-foreground">A análise falhou e nenhum fallback artificial foi aplicado: {job?.error ?? "erro desconhecido"}</span>
           <Button size="sm" variant="outline" onClick={() => { setActiveJobId(null); setReprocessNonce((n) => n + 1); }}>
