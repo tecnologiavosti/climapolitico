@@ -355,7 +355,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Evolução temporal</h2>
         <p className="text-sm text-muted-foreground mb-6">Volume diário com sobreposição de sentimento positivo e negativo.</p>
-        {loading ? <Skeleton className="h-72 w-full" /> : series.length === 0 ? <Empty /> : (
+        {aiIntel.isLoading ? <Skeleton className="h-72 w-full" /> : series.length === 0 ? <Empty /> : (
           <ResponsiveContainer width="100%" height={320}>
             <LineChart data={series} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
