@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -128,6 +128,8 @@ export default function NetworkView() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [customError, setCustomError] = useState<string | null>(null);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [reprocessNonce, setReprocessNonce] = useState(0);
 
   const effectiveRange = useMemo(() => {
     if (customRange) {
@@ -165,15 +167,33 @@ export default function NetworkView() {
 
   const start_date = toIsoDate(effectiveRange.start);
   const end_date = toIsoDate(effectiveRange.end);
+  const requestKey = `${candidateId}|${start_date}|${end_date}|${network}|${reprocessNonce}`;
 
-  const report = useQuery<ListeningReport>({
-    queryKey: ["nv-listening", candidateId, start_date, end_date, network],
+  useEffect(() => {
+    setActiveJobId(null);
+  }, [requestKey]);
+
+  const report = useQuery<JobResponse>({
+    queryKey: ["nv-listening-job", candidateId, start_date, end_date, network, reprocessNonce, activeJobId],
     enabled: !!user && candidateId !== "all" && !!candidate?.full_name,
-    staleTime: 30 * 60_000,
-    retry: 1,
+    staleTime: 0,
+    retry: false,
+    refetchInterval: (query) => {
+      const state = query.state.data as JobResponse | undefined;
+      return state?.status === "processing" || state?.status === "queued" || state?.status === "running" ? 1200 : false;
+    },
     queryFn: async () => {
+      if (activeJobId) {
+        const { data, error } = await supabase.functions.invoke("network-listening", {
+          body: { action: "status", job_id: activeJobId },
+        });
+        if (error) throw error;
+        return data as JobResponse;
+      }
+
       const { data, error } = await supabase.functions.invoke("network-listening", {
         body: {
+          action: "create",
           candidate_id: candidateId,
           candidate_name: (candidate as any).full_name,
           party: (candidate as any).party ?? null,
@@ -182,6 +202,7 @@ export default function NetworkView() {
           start_date,
           end_date,
           network,
+          force_refresh: reprocessNonce > 0,
         },
       });
       if (error) throw error;
@@ -194,12 +215,15 @@ export default function NetworkView() {
         };
         throw new Error(map[d.error] ?? d.message ?? d.error);
       }
-      return data as ListeningReport;
+      if (d?.job_id) setActiveJobId(d.job_id);
+      return data as JobResponse;
     },
   });
 
-  const data = report.data;
-  const loading = report.isFetching;
+  const job = report.data;
+  const data = job?.result;
+  const isProcessing = job?.status === "processing" || job?.status === "queued" || job?.status === "running";
+  const loading = report.isFetching || isProcessing;
   const needsCandidate = candidateId === "all";
 
   // Derivações de exibição
