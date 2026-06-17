@@ -626,6 +626,26 @@ async function processJob(jobId: string, body: Body, userId: string) {
     }
 
     await updateJob(admin, jobId, { progress: 93, stage: "Gerando gráficos...", logs });
+
+    // Pós-processamento obrigatório: confiança determinística + remoção de genéricos.
+    const deterministicConfidence = computeConfidence(totalHits, sourceStatuses);
+    report.confidence = deterministicConfidence;
+    if (Array.isArray(report.topics)) {
+      report.topics = report.topics.filter((t: any) => t?.label && !isGenericTopic(String(t.label)));
+    }
+    if (deterministicConfidence === "low") {
+      // Sem base quantitativa real → não exibir números inventados.
+      report.qualitative_only = true;
+      report.total_mentions = 0;
+      report.total_interactions = 0;
+      report.distribution = [];
+      report.timeline = [];
+      report.sentiment_by_network = [];
+      report.dominant_network = body.network && body.network !== "all" ? body.network : "—";
+      const prevReason = report.reasoning ? `${report.reasoning} ` : "";
+      report.reasoning = `${prevReason}Dados insuficientes para análise quantitativa precisa (${totalHits} evidências, ${sourceStatuses.filter((s) => s.status === "ok").length} fontes). Exibindo apenas análise qualitativa baseada em contexto histórico.`;
+    }
+
     const out = { ...report, evidence_count: totalHits, bucket, cached: false, sources: sourceStatuses, job_id: jobId };
     cache.set(cacheKey(body), { at: Date.now(), data: out });
     const expiresAt = new Date(Date.now() + ttlMs(days)).toISOString();
