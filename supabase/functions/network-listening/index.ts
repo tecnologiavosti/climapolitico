@@ -571,15 +571,20 @@ function computeTimelineFromEvidence(samples: SearchHit[], body: Body) {
 
 function sanitizeAiReport(report: any, evidence: Array<{ net: Network; source: string; hits: SearchHit[] }>, renderState: "FULL_DATA" | "PARTIAL_DATA" | "NO_DATA") {
   const byNetwork = directEvidenceByNetwork(evidence);
+  const corpus = normalizeText(evidence.flatMap((e) => e.hits).map((h) => `${h.title ?? ""} ${h.description ?? ""}`).join("\n"));
+  const appearsInCorpus = (value: string) => {
+    const clean = normalizeText(value).replace(/^#/, "");
+    return clean.length >= 3 && corpus.includes(clean);
+  };
   if (Array.isArray(report.topics)) {
-    report.topics = report.topics.filter((t: any) => t?.label && !isGenericTopic(String(t.label))).slice(0, 8);
+    report.topics = report.topics.filter((t: any) => t?.label && !isGenericTopic(String(t.label)) && String(t.label).split(/\s+/).some(appearsInCorpus)).slice(0, 8);
     if (report.topics.length < 3) report.topics = [];
   } else report.topics = [];
 
   if (Array.isArray(report.terms)) {
     report.terms = report.terms
       .map((t: any) => ({ ...t, term: String(t?.text ?? t?.value ?? t?.term ?? "").trim() }))
-      .filter((t: any) => t.term && !isForbiddenTerm(String(t.term)))
+      .filter((t: any) => t.term && !isForbiddenTerm(String(t.term)) && appearsInCorpus(String(t.term)))
       .slice(0, 18);
   } else report.terms = [];
 
