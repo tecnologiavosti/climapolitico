@@ -235,10 +235,22 @@ export const TrendingCandidates = () => {
     let list = items.filter((i) => i.role === key);
     if (key === "Senador") {
       // Flávio Bolsonaro é monitorado como presidenciável 2026, não como senador.
-      list = list
-        .filter((i) => !["flavio bolsonaro", "flavio nantes bolsonaro"].includes(normalize(i.full_name)))
-        .slice(0, 5)
-        .map((it, i) => ({ ...it, rank: i + 1 }));
+      list = list.filter(
+        (i) => !["flavio bolsonaro", "flavio nantes bolsonaro"].includes(normalize(i.full_name))
+      );
+      // Garantir Top 5 — completar com fallback de senadores elegíveis sem duplicar.
+      const SENATORS_FALLBACK: TrendingItem[] = [
+        { role: "Senador", rank: 99, full_name: "Rodrigo Pacheco", party: "PSD", region: "MG", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/Foto_oficial_2_Senador_Rodrigo_Pacheco.jpg/330px-Foto_oficial_2_Senador_Rodrigo_Pacheco.jpg", search_score: 0 },
+      ];
+      const seen = new Set(list.map((i) => normalize(i.full_name)));
+      for (const fb of SENATORS_FALLBACK) {
+        if (list.length >= 5) break;
+        if (!seen.has(normalize(fb.full_name))) {
+          list.push(fb);
+          seen.add(normalize(fb.full_name));
+        }
+      }
+      list = list.slice(0, 5).map((it, i) => ({ ...it, rank: i + 1 }));
     }
     if (key === "Presidente") {
       list = list.filter((i) => !PRESIDENTIAL_BLOCKLIST.has(normalize(i.full_name)));
