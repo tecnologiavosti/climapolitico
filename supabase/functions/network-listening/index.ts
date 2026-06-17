@@ -13,6 +13,7 @@ const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 const MAX_CONCURRENT_REQUESTS = 3;
 const SOURCE_TIMEOUT_MS = 8_000;
 const AI_TIMEOUT_MS = 20_000;
+const BACKFILL_MIN_HISTORICAL_HITS = 1;
 
 type Network = "twitter" | "youtube" | "facebook" | "instagram" | "tiktok" | "telegram" | "reddit" | "news" | "linkedin";
 
@@ -61,7 +62,7 @@ interface SourceTask {
 const cache = new Map<string, { at: number; data: unknown }>();
 
 function cacheKey(b: Body) {
-  return `social-v4|${b.candidate_id ?? normalizeText(b.candidate_name)}|${b.network ?? "all"}|${b.start_date}|${b.end_date}`;
+  return `social-v5-backfill|${b.candidate_id ?? normalizeText(b.candidate_name)}|${b.network ?? "all"}|${b.start_date}|${b.end_date}`;
 }
 
 function normalizeText(input: unknown): string {
@@ -76,6 +77,42 @@ function normalizeText(input: unknown): string {
 
 function daysBetween(a: string, b: string) {
   return Math.max(1, Math.ceil((Date.parse(b) - Date.parse(a)) / 86_400_000));
+}
+
+function addUtcDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function addUtcMonths(date: Date, months: number) {
+  const next = new Date(date);
+  next.setUTCMonth(next.getUTCMonth() + months);
+  return next;
+}
+
+function isoDay(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function buildBackfillChunks(startDate: string, endDate: string): Array<{ start: string; end: string }> {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T23:59:59Z`);
+  const days = daysBetween(startDate, endDate);
+  const targetCount = days <= 7 ? 1 : days <= 30 ? 4 : days <= 90 ? 12 : days <= 370 ? 12 : days <= 1500 ? 48 : 32;
+  const mode: "days" | "months" = days <= 90 ? "days" : "months";
+  const step = mode === "days" ? Math.ceil(days / targetCount) : days <= 1500 ? 1 : 3;
+  const chunks: Array<{ start: string; end: string }> = [];
+  let cursor = start;
+
+  while (cursor <= end && chunks.length < targetCount) {
+    const nextStart = mode === "days" ? addUtcDays(cursor, step) : addUtcMonths(cursor, step);
+    const chunkEnd = new Date(Math.min(addUtcDays(nextStart, -1).getTime(), end.getTime()));
+    chunks.push({ start: isoDay(cursor), end: isoDay(chunkEnd) });
+    cursor = nextStart;
+  }
+
+  return chunks;
 }
 
 function ttlMs(days: number) {
@@ -665,6 +702,7 @@ async function persistEvidenceToHistory(
     for (const h of item.hits) {
       const text = `${h.title ?? ""} ${h.description ?? ""}`.trim();
       if (!text) continue;
+      const parsedDate = h.date && Number.isFinite(Date.parse(h.date)) ? new Date(h.date).toISOString() : null;
       const row = {
         candidate_id: body.candidate_id ?? null,
         candidate_name: body.candidate_name,
@@ -674,11 +712,63 @@ async function persistEvidenceToHistory(
         url: h.url ?? null,
         title: (h.title ?? "").slice(0, 500),
         content: (h.description ?? "").slice(0, 2000),
-        date: h.date ? (Number.isFinite(Date.parse(h.date)) ? new Date(h.date).toISOString() : null) : null,
+        date: parsedDate ?? `${body.end_date}T12:00:00Z`,
+        raw: { date_inferred_from_query_window: !parsedDate },
       };
       await admin.from("historical_social_mentions").insert(row).then(() => {}, () => {});
     }
   }
+}
+
+async function runHistoricalBackfill(
+  admin: any,
+  jobId: string,
+  body: Body,
+  logs: Array<Record<string, unknown>>,
+  log: (event: string, data?: Record<string, unknown>) => void,
+) {
+  const chunks = buildBackfillChunks(body.start_date, body.end_date);
+  const collected: Array<{ net: Network; source: string; hits: SearchHit[] }> = [];
+  const statuses: SourceStatus[] = [];
+  let totalFound = 0;
+  let processed = 0;
+
+  for (const chunk of chunks) {
+    processed += 1;
+    const progress = Math.min(62, 14 + Math.round((processed - 1) / Math.max(1, chunks.length) * 48));
+    await updateJob(admin, jobId, {
+      progress,
+      stage: `Coletando histórico... Janela ${processed}/${chunks.length} · ${totalFound} menções encontradas`,
+      logs,
+    });
+
+    const chunkBody: Body = { ...body, start_date: chunk.start, end_date: chunk.end, network: "all" };
+    const tasks = buildSourceTasks(chunkBody);
+    const started = Date.now();
+    const results = await runLimited(tasks, MAX_CONCURRENT_REQUESTS, (task) => firecrawlSearch(task, 8));
+    const chunkEvidence: Array<{ net: Network; source: string; hits: SearchHit[] }> = [];
+
+    results.forEach((result, index) => {
+      const task = tasks[index];
+      const evidenceItem = { net: task.net, source: task.source, hits: result.hits };
+      chunkEvidence.push(evidenceItem);
+      collected.push(evidenceItem);
+      statuses.push({ ...result.status, source: `backfill:${result.status.source}` });
+      totalFound += result.hits.length;
+      if (result.status.status === "rate_limited") log("backfill_rate_limit", { source: task.source, chunk: processed });
+    });
+
+    try { await persistEvidenceToHistory(admin, chunkBody, chunkEvidence); }
+    catch (e: any) { log("backfill_persist_failed", { chunk: processed, error: e?.message ?? String(e) }); }
+    log("backfill_chunk_done", { chunk: processed, total_chunks: chunks.length, hits: chunkEvidence.reduce((s, e) => s + e.hits.length, 0), duration_ms: Date.now() - started });
+  }
+
+  await updateJob(admin, jobId, {
+    progress: 64,
+    stage: `Backfill histórico concluído · ${totalFound} menções encontradas`,
+    logs,
+  });
+  return { evidence: collected, statuses, totalFound, totalChunks: chunks.length };
 }
 
 async function processJob(jobId: string, body: Body, userId: string) {
@@ -701,6 +791,8 @@ async function processJob(jobId: string, body: Body, userId: string) {
 
     // 1) Fonte primária: índice histórico persistido.
     let historicalCount = 0;
+    let backfillRan = false;
+    let backfillHits = 0;
     try {
       const historicalEvidence = await loadHistoricalEvidence(admin, body);
       for (const e of historicalEvidence) {
@@ -713,9 +805,25 @@ async function processJob(jobId: string, body: Body, userId: string) {
       log("historical_load_failed", { error: e?.message ?? String(e) });
     }
 
-    // 2) Coleta live só para períodos curtos (<=90d) e quando o histórico está fraco.
+    // 2) Backfill on-demand: se o índice estiver vazio para candidate+period+network,
+    // coleta retroativa em janelas e persiste em historical_social_mentions imediatamente.
+    if (historicalCount < BACKFILL_MIN_HISTORICAL_HITS) {
+      backfillRan = true;
+      log("backfill_start", { start_date: body.start_date, end_date: body.end_date, chunks: buildBackfillChunks(body.start_date, body.end_date).length });
+      const backfill = await runHistoricalBackfill(admin, jobId, body, logs, log);
+      backfillHits = backfill.totalFound;
+      sourceStatuses.push(...backfill.statuses);
+      const requestBackfillEvidence = !body.network || body.network === "all"
+        ? backfill.evidence
+        : backfill.evidence.filter((e) => e.net === body.network);
+      for (const e of requestBackfillEvidence) evidence.push(e);
+      historicalCount += requestBackfillEvidence.reduce((sum, e) => sum + e.hits.length, 0);
+      log("backfill_done", { hits: backfillHits, request_hits: historicalCount, chunks: backfill.totalChunks });
+    }
+
+    // 3) Coleta live só para períodos curtos (<=90d) e quando o histórico/backfill está fraco.
     // Períodos longos (1, 4, 8 anos): coleta live nunca traz cobertura histórica útil — pular.
-    const allowLive = days <= 90 && historicalCount < 60;
+    const allowLive = days <= 90 && historicalCount < 60 && !backfillRan;
     if (allowLive) {
       const tasks = buildSourceTasks(body);
       const liveEvidence: Array<{ net: Network; source: string; hits: SearchHit[] }> = [];
@@ -798,10 +906,13 @@ async function processJob(jobId: string, body: Body, userId: string) {
     report.render_state = renderState;
     report.fallback = false;
     report.fallback_used = false;
-    report.pipeline_used = historicalCount > 0 && !allowLive
-      ? "historical_index_only"
+    const pipelineUsed = historicalCount > 0 && !allowLive
+      ? (backfillRan ? "historical_backfill_plus_index" : "historical_index_only")
       : historicalCount > 0 ? "historical_index_plus_live" : "live_only";
+    report.pipeline_used = pipelineUsed;
     report.historical_hits = historicalCount;
+    report.backfill_used = backfillRan;
+    report.backfill_hits = backfillHits;
 
     // Distribuição SEMPRE recalculada a partir de evidência real (nunca a IA inventa).
     // Mantém todas as redes visíveis com badge data_source_type.
@@ -844,6 +955,11 @@ async function processJob(jobId: string, body: Body, userId: string) {
         }));
       }
     }
+
+    report.pipeline_used = pipelineUsed;
+    report.backfill_used = backfillRan;
+    report.backfill_hits = backfillHits;
+    report.historical_hits = historicalCount;
 
     const out = { ...report, evidence_count: totalHits, source_count: sourceStatuses.filter((s) => s.status === "ok").length, bucket, cached: false, sources: sourceStatuses, job_id: jobId };
     cache.set(cacheKey(body), { at: Date.now(), data: out });

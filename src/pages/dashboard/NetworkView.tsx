@@ -46,6 +46,8 @@ interface ListeningReport {
   source_count?: number;
   pipeline_used?: string;
   fallback_used?: boolean;
+  backfill_used?: boolean;
+  backfill_hits?: number;
   bucket?: string;
   cached?: boolean;
   fallback?: boolean;
@@ -253,6 +255,8 @@ export default function NetworkView() {
     source_count: data.source_count ?? 0,
     pipeline_used: data.pipeline_used ?? "external_evidence_only",
     fallback_used: false,
+    backfill_used: data.backfill_used === true,
+    backfill_hits: data.backfill_hits ?? 0,
     confidence: data.confidence ?? "low",
   } : null;
 
