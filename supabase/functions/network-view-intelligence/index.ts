@@ -114,14 +114,38 @@ function deterministicFallback(name: string, party: string, position: string, st
 }
 
 
-async function generateAI(candidate: any, days: number) {
-  const periodLabel = PERIOD_LABEL(days);
+async function generateAI(candidate: any, days: number, startDate?: string | null, endDate?: string | null) {
+  const periodLabel = startDate && endDate
+    ? `de ${startDate} até ${endDate}`
+    : PERIOD_LABEL(days);
   const name = candidate?.full_name || "Candidato";
   const party = candidate?.party || "—";
   const position = candidate?.position || "Político";
   const state = candidate?.state || "Brasil";
 
-  const systemMsg = "Você é analista político brasileiro sênior, especialista em mídias sociais e comunicação política. Estime distribuição em redes sociais e temas com base no histórico, posicionamento partidário, perfil eleitoral e contexto político brasileiro real. Responda SEMPRE em JSON válido.";
+  // Contexto histórico-político por janela temporal — alimenta a IA com pistas
+  const yearHint = (() => {
+    const end = endDate ? new Date(endDate) : new Date();
+    const start = startDate ? new Date(startDate) : new Date(end.getTime() - days * 86_400_000);
+    const ys = start.getFullYear();
+    const ye = end.getFullYear();
+    const span = ys === ye ? `${ys}` : `${ys}-${ye}`;
+    const events: string[] = [];
+    for (let y = ys; y <= ye; y++) {
+      if (y === 2018) events.push("2018: eleição presidencial, prisão de Lula, facada em Bolsonaro, Lava Jato, Haddad/PT, STF/Moro");
+      if (y === 2019) events.push("2019: início governo Bolsonaro, reforma da Previdência");
+      if (y === 2020) events.push("2020: pandemia COVID-19, eleições municipais");
+      if (y === 2021) events.push("2021: CPI da Covid, 8 de janeiro em fermento, vacinação");
+      if (y === 2022) events.push("2022: eleição presidencial Lula x Bolsonaro, TSE, segundo turno");
+      if (y === 2023) events.push("2023: 8 de janeiro, novo governo Lula, Centrão, STF x Bolsonaro");
+      if (y === 2024) events.push("2024: eleições municipais, Pablo Marçal, Nunes, Boulos, Datena");
+      if (y === 2025) events.push("2025: pré-campanha 2026, Tarcísio, Caiado, Zema, STF, PEC da Blindagem");
+      if (y === 2026) events.push("2026: eleição presidencial, governadores, Senado, STF");
+    }
+    return `Janela temporal: ${span}. Contexto político brasileiro relevante:\n- ${events.join("\n- ") || "contexto político geral"}.`;
+  })();
+
+  const systemMsg = "Você é analista político brasileiro sênior, especialista em mídias sociais e comunicação política. Estime distribuição em redes sociais e temas com base no histórico, posicionamento partidário, perfil eleitoral e contexto político brasileiro real do período solicitado. Responda SEMPRE em JSON válido.";
 
   const profileHint = (() => {
     const p = (position || "").toLowerCase();
@@ -141,7 +165,9 @@ async function generateAI(candidate: any, days: number) {
 - Estado/Região: ${state}
 - Período: ${periodLabel}
 
-Use seu conhecimento real do candidato (base eleitoral, bandeiras, alianças, escândalos, cobertura de imprensa recente, perfil digital, eventos políticos do período). ${profileHint}
+${yearHint}
+
+Use seu conhecimento real do candidato (base eleitoral, bandeiras, alianças, escândalos, cobertura de imprensa do período, perfil digital, eventos políticos da janela acima). ${profileHint}
 
 Retorne JSON com este schema EXATO:
 {
