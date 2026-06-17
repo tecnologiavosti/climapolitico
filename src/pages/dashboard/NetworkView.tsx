@@ -47,7 +47,7 @@ const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
 
 type NetRow = { network: string; mentions: number; engagement: number; likes: number; replies: number; shares: number; pos: number; neg: number; neu: number };
 type SeriesRow = { day: string; p: number; n: number; u: number };
-type TopicRow = { theme: string; mentions: number; pos: number; neg: number; neu: number };
+type TopicRow = { label?: string; topic?: string; theme?: string; mentions: number; pos: number; neg: number; neu: number; relevance?: number; positive?: number };
 type TermRow = { term: string; count: number; kind: "hashtag" | "entity" };
 
 export default function NetworkView() {
@@ -230,7 +230,14 @@ export default function NetworkView() {
   const aiByNet: NetRow[] = ((aiIntel.data?.by_network ?? []) as NetRow[])
     .filter((n) => ALLOWED_NETWORKS.has(n.network));
   const aiSeries: SeriesRow[] = (aiIntel.data?.series ?? []) as SeriesRow[];
-  const aiTopics: TopicRow[] = (aiIntel.data?.topics ?? []) as TopicRow[];
+  const invalidLabel = (value: unknown) => {
+    const raw = String(value ?? "").trim();
+    const normalized = raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    return !raw || ["-", "—", "politica", "politico", "brasil", "cenario", "contexto", "noticia"].includes(normalized);
+  };
+  const aiTopics: TopicRow[] = ((aiIntel.data?.topics ?? []) as TopicRow[])
+    .map((t) => ({ ...t, label: t.label ?? t.topic ?? t.theme, theme: t.theme ?? t.label ?? t.topic }))
+    .filter((t) => !invalidLabel(t.label));
   const aiTerms: TermRow[] = (aiIntel.data?.terms ?? []) as TermRow[];
 
   // Rede dominante: prefere real (Camada 1) quando há volume; senão IA
