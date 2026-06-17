@@ -798,7 +798,10 @@ async function processJob(jobId: string, body: Body, userId: string) {
     report.render_state = renderState;
     report.fallback = false;
     report.fallback_used = false;
-    report.pipeline_used = "external_evidence_only";
+    report.pipeline_used = historicalCount > 0 && !allowLive
+      ? "historical_index_only"
+      : historicalCount > 0 ? "historical_index_plus_live" : "live_only";
+    report.historical_hits = historicalCount;
 
     // Distribuição SEMPRE recalculada a partir de evidência real (nunca a IA inventa).
     // Mantém todas as redes visíveis com badge data_source_type.
