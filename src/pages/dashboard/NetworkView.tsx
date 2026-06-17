@@ -277,7 +277,7 @@ export default function NetworkView() {
         <div>
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Visão por Rede Social</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Social listening histórico — coleta externa (Google News, X, YouTube, Reddit, Telegram, blogs) + análise por IA. Independente do Radar Político.
+            Social listening histórico — leitura do índice persistido + análise por IA. A coleta roda em background.
           </p>
           <p className="text-xs text-muted-foreground mt-2 font-medium">{activePeriodLabel}</p>
         </div>
@@ -412,10 +412,15 @@ export default function NetworkView() {
           )}
 
           {data && renderState === "NO_DATA" && !loading && (
-            <Card className="p-8 text-center border-warning/40">
+            <Card className="p-8 text-center border-warning/40 space-y-4">
               <RadarIcon className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-              <h3 className="text-lg font-semibold mb-1">Não foi possível coletar evidências suficientes para este período.</h3>
-              <p className="text-sm text-muted-foreground">Nenhum número, gráfico, assunto ou termo foi exibido porque a coleta retornou 0 evidências.</p>
+              <div>
+                <h3 className="text-lg font-semibold mb-1">Histórico ainda não coletado para este candidato.</h3>
+                <p className="text-sm text-muted-foreground">Inicie backfill. Nenhum número, gráfico, assunto ou termo será exibido sem evidências reais no índice.</p>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => { setActiveJobId(null); setReprocessNonce((n) => n + 1); }}>
+                <RefreshCw className="h-4 w-4 mr-2" /> Iniciar backfill
+              </Button>
             </Card>
           )}
 

@@ -1750,38 +1750,53 @@ export type Database = {
         Row: {
           candidate_id: string | null
           candidate_name: string
+          completed_at: string | null
           created_at: string
+          current_chunk: number | null
           error: string | null
           finished_at: string | null
           id: string
           inserted_count: number
+          job_id: string | null
+          mentions_found: number | null
           source_count: number
           started_at: string | null
           status: string
+          total_chunks: number | null
         }
         Insert: {
           candidate_id?: string | null
           candidate_name: string
+          completed_at?: string | null
           created_at?: string
+          current_chunk?: number | null
           error?: string | null
           finished_at?: string | null
           id?: string
           inserted_count?: number
+          job_id?: string | null
+          mentions_found?: number | null
           source_count?: number
           started_at?: string | null
           status?: string
+          total_chunks?: number | null
         }
         Update: {
           candidate_id?: string | null
           candidate_name?: string
+          completed_at?: string | null
           created_at?: string
+          current_chunk?: number | null
           error?: string | null
           finished_at?: string | null
           id?: string
           inserted_count?: number
+          job_id?: string | null
+          mentions_found?: number | null
           source_count?: number
           started_at?: string | null
           status?: string
+          total_chunks?: number | null
         }
         Relationships: []
       }
@@ -1799,13 +1814,19 @@ export type Database = {
           entities: Json | null
           hashtags: Json | null
           id: string
+          interactions: number | null
           likes: number | null
+          mention_date: string | null
           network: string
           raw: Json | null
           sentiment: number | null
           sentiment_label: string | null
           shares: number | null
           source: string
+          source_key: string | null
+          source_name: string | null
+          source_url: string | null
+          themes: Json | null
           title: string | null
           topics: Json | null
           url: string | null
@@ -1823,13 +1844,19 @@ export type Database = {
           entities?: Json | null
           hashtags?: Json | null
           id?: string
+          interactions?: number | null
           likes?: number | null
+          mention_date?: string | null
           network: string
           raw?: Json | null
           sentiment?: number | null
           sentiment_label?: string | null
           shares?: number | null
           source: string
+          source_key?: string | null
+          source_name?: string | null
+          source_url?: string | null
+          themes?: Json | null
           title?: string | null
           topics?: Json | null
           url?: string | null
@@ -1847,13 +1874,19 @@ export type Database = {
           entities?: Json | null
           hashtags?: Json | null
           id?: string
+          interactions?: number | null
           likes?: number | null
+          mention_date?: string | null
           network?: string
           raw?: Json | null
           sentiment?: number | null
           sentiment_label?: string | null
           shares?: number | null
           source?: string
+          source_key?: string | null
+          source_name?: string | null
+          source_url?: string | null
+          themes?: Json | null
           title?: string | null
           topics?: Json | null
           url?: string | null
