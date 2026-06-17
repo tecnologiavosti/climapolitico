@@ -233,6 +233,13 @@ export const TrendingCandidates = () => {
         .map((it, i) => ({ ...it, rank: i + 1 }));
     }
     let list = items.filter((i) => i.role === key);
+    if (key === "Senador") {
+      // Flávio Bolsonaro é monitorado como presidenciável 2026, não como senador.
+      list = list
+        .filter((i) => !["flavio bolsonaro", "flavio nantes bolsonaro"].includes(normalize(i.full_name)))
+        .slice(0, 5)
+        .map((it, i) => ({ ...it, rank: i + 1 }));
+    }
     if (key === "Presidente") {
       list = list.filter((i) => !PRESIDENTIAL_BLOCKLIST.has(normalize(i.full_name)));
       // Preencher fotos ausentes usando o fallback (match por primeiro nome).
