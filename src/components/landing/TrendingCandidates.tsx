@@ -42,11 +42,11 @@ const GOVERNOR_PRESIDENTIAL_BLOCK = new Set([
 
 // Governadores fixos (Top 5 mais pesquisados).
 const GOVERNORS_FIXED: TrendingItem[] = [
-  { role: "Governador", rank: 1, full_name: "Ratinho Júnior", party: "PSD", region: "PR", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2e/Ratinho_J%C3%BAnior_em_2023.jpg/330px-Ratinho_J%C3%BAnior_em_2023.jpg", search_score: 0 },
-  { role: "Governador", rank: 2, full_name: "Cláudio Castro", party: "PL", region: "RJ", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Cl%C3%A1udio_Castro_em_2022.jpg/330px-Cl%C3%A1udio_Castro_em_2022.jpg", search_score: 0 },
-  { role: "Governador", rank: 3, full_name: "Jerônimo Rodrigues", party: "PT", region: "BA", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6e/Jer%C3%B4nimo_Rodrigues_em_2023.jpg/330px-Jer%C3%B4nimo_Rodrigues_em_2023.jpg", search_score: 0 },
-  { role: "Governador", rank: 4, full_name: "Helder Barbalho", party: "MDB", region: "PA", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Helder_Barbalho_em_2023.jpg/330px-Helder_Barbalho_em_2023.jpg", search_score: 0 },
-  { role: "Governador", rank: 5, full_name: "Raquel Lyra", party: "PSD", region: "PE", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Raquel_Lyra_em_2023.jpg/330px-Raquel_Lyra_em_2023.jpg", search_score: 0 },
+  { role: "Governador", rank: 1, full_name: "Ratinho Júnior", party: "PSD", region: "PR", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/31/Ratinho_J%C3%BAnior_as_governor_of_Paran%C3%A1%2C_January_2023_%28cropped%29.jpg/330px-Ratinho_J%C3%BAnior_as_governor_of_Paran%C3%A1%2C_January_2023_%28cropped%29.jpg", search_score: 0 },
+  { role: "Governador", rank: 2, full_name: "Cláudio Castro", party: "PL", region: "RJ", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c0/Claudio_Castro_como_Vice_Governador_do_Rio_de_Janeiro.jpg/330px-Claudio_Castro_como_Vice_Governador_do_Rio_de_Janeiro.jpg", search_score: 0 },
+  { role: "Governador", rank: 3, full_name: "Jerônimo Rodrigues", party: "PT", region: "BA", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/18_01_2023_-_Visita_de_Cortesia_Jer%C3%B4nimo_Rodrigues_%28Governador_do_Estado_da_Bahia-BA%29_%2852635213362%29_%28cropped%29.jpg/330px-18_01_2023_-_Visita_de_Cortesia_Jer%C3%B4nimo_Rodrigues_%28Governador_do_Estado_da_Bahia-BA%29_%2852635213362%29_%28cropped%29.jpg", search_score: 0 },
+  { role: "Governador", rank: 4, full_name: "Helder Barbalho", party: "MDB", region: "PA", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/50/Helder_Barbalho%2C_January_2023_%28cropped%29.jpg/500px-Helder_Barbalho%2C_January_2023_%28cropped%29.jpg", search_score: 0 },
+  { role: "Governador", rank: 5, full_name: "Raquel Lyra", party: "PSD", region: "PE", photo_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/08/RL45_14-09.jpg/500px-RL45_14-09.jpg", search_score: 0 },
 ];
 
 function initials(name: string) {
