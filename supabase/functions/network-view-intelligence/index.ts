@@ -55,29 +55,82 @@ function toNetworkKey(value: any) {
   return NETWORK_KEY[k] || String(value || "").toLowerCase().trim();
 }
 
+type Persona = "digital_native" | "traditional_regional" | "institutional" | "activist" | "executive" | "parliamentary";
+
+// shares aligned with labels order:
+// ["google_news","twitter","facebook","youtube","instagram","telegram","tiktok","reddit"]
+const PERSONA_SHARES: Record<Persona, number[]> = {
+  digital_native:       [10, 22,  8, 14, 18,  6, 18,  4],
+  traditional_regional: [28, 18, 18, 14, 11,  5,  4,  2],
+  institutional:        [32, 22, 12, 14, 10,  4,  4,  2],
+  activist:             [12, 28, 10,  8, 14, 14,  8,  6],
+  executive:            [30, 24, 11, 14, 12,  4,  3,  2],
+  parliamentary:        [22, 26, 13, 11, 14,  6,  6,  2],
+};
+
+function detectPersona(name: string, party: string, position: string, state: string): Persona {
+  const p = norm(position);
+  const full = norm(`${name} ${party} ${position} ${state}`);
+  if (/marcal|nikolas|janones|boulos|datena/.test(full)) return "digital_native";
+  if (/governador|prefeito/.test(p)) return "executive";
+  if (/senador/.test(p)) return "traditional_regional";
+  if (/deputad|vereador/.test(p)) return "parliamentary";
+  if (/presiden|ministr/.test(p)) return "institutional";
+  if (/ativist|movimento/.test(p)) return "activist";
+  return "traditional_regional";
+}
+
 function profileFromCandidate(name: string, party: string, position: string, state: string) {
   const full = norm(`${name} ${party} ${position} ${state}`);
   const labels = ["google_news", "twitter", "facebook", "youtube", "instagram", "telegram", "tiktok", "reddit"];
-  let shares = [24, 22, 15, 14, 11, 6, 5, 3];
+  const persona = detectPersona(name, party, position, state);
+  let shares = PERSONA_SHARES[persona].slice();
+  const stateLabel = state && norm(state) !== "brasil" ? state : "âmbito estadual";
+  const firstName = name.split(" ")[0] || name;
   let topics = [
-    `Atuação em ${state && norm(state) !== "brasil" ? state : "âmbito estadual"}`,
+    `Atuação em ${stateLabel}`,
     `${party && party !== "—" ? party : "Partido"} e alianças`,
     "Segurança Pública", "Economia e Emprego", "Presidência 2026", "Oposição ao PT",
   ];
-  let terms = [name.split(" ")[0], state, party, "Lula", "Bolsonaro"];
+  let terms = [firstName, state, party, "Lula", "Bolsonaro"];
 
   if (full.includes("ronaldo caiado") || full.includes("goias")) {
     shares = [28, 24, 14, 13, 9, 5, 5, 2];
     topics = ["Segurança Pública", "Agronegócio", "Goiás", "Presidência 2026", "União Brasil", "Centro-Oeste", "Oposição ao PT", "Governo de Goiás"];
     terms = ["Caiado", "Goiás", "Agronegócio", "União Brasil", "Centro-Oeste", "Segurança Pública", "Presidência 2026", "Lula", "Bolsonaro"];
-  } else if (/governador|prefeito|senador/.test(norm(position))) {
-    shares = [27, 23, 15, 13, 10, 5, 5, 2];
-  } else if (/presiden/.test(norm(position))) {
-    shares = [25, 26, 11, 16, 13, 4, 8, 3];
-  } else if (/deputad/.test(norm(position))) {
-    shares = [18, 25, 17, 13, 15, 5, 9, 3];
+  } else if (full.includes("jayme campos") || (full.includes("mato grosso") && /senador/.test(norm(position)))) {
+    topics = ["Agronegócio em Mato Grosso", "BR-163", "Senado Federal", "Bancada ruralista", "Cuiabá e Várzea Grande", "Infraestrutura logística", "União Brasil em MT", "Relação com governo federal"];
+    terms = ["Jayme Campos", "Mato Grosso", "União Brasil", "Senado Federal", "Bancada Ruralista", "Cuiabá", "Várzea Grande", "Agronegócio", "BR-163", "Bolsonaro"];
   }
-  return { labels, shares, topics, terms };
+  return { labels, shares, topics, terms, persona };
+}
+
+function pickGranularity(days: number): { bucketDays: number; count: number; label: string } {
+  if (days <= 30)   return { bucketDays: 1,   count: days,                  label: "diário" };
+  if (days <= 90)   return { bucketDays: 7,   count: Math.ceil(days / 7),   label: "semanal" };
+  if (days <= 365)  return { bucketDays: 30,  count: Math.ceil(days / 30),  label: "mensal" };
+  if (days <= 1460) return { bucketDays: 90,  count: Math.ceil(days / 90),  label: "trimestral" };
+  return              { bucketDays: 180, count: Math.ceil(days / 180), label: "semestral" };
+}
+
+function generateTimelineByPeriod(days: number) {
+  const { bucketDays, count } = pickGranularity(days);
+  const today = new Date();
+  const series: any[] = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i * bucketDays);
+    const peak = (i % 5 === 0) ? Math.round(8 * Math.max(1, bucketDays / 3)) :
+                 (i % 3 === 0) ? Math.round(4 * Math.max(1, bucketDays / 3)) : 0;
+    const base = Math.max(1, Math.round(bucketDays * 1.5));
+    series.push({
+      day: d.toISOString().slice(0, 10),
+      p: base + (i % 4) + peak,
+      n: Math.max(1, Math.round(base * 0.6)) + (i % 3) + Math.round(peak / 2),
+      u: Math.max(1, Math.round(base * 0.4)) + (i % 2),
+    });
+  }
+  return series;
 }
 
 function deterministicFallback(name: string, party: string, position: string, state: string, days: number) {
@@ -88,27 +141,12 @@ function deterministicFallback(name: string, party: string, position: string, st
     const negRate = [29, 36, 24, 31, 21, 33, 18, 41][i];
     const neuRate = 100 - posRate - negRate;
     return {
-      network: n,
-      mentions: m,
-      engagement: m * 120,
+      network: n, mentions: m, engagement: m * 120,
       likes: m * 80, replies: m * 25, shares: m * 15,
       pos: posRate, neg: negRate, neu: neuRate,
     };
   });
-  const series: any[] = [];
-  const today = new Date();
-  const pts = Math.min(days, 30);
-  for (let i = pts - 1; i >= 0; i--) {
-    const d = new Date(today); d.setDate(d.getDate() - i);
-    // picos/vales em vez de curva suave
-    const peak = (i % 7 === 0) ? 8 : (i % 5 === 0 ? 5 : 0);
-    series.push({
-      day: d.toISOString().slice(0, 10),
-      p: 3 + (i % 4) + peak,
-      n: 1 + (i % 3) + Math.round(peak / 2),
-      u: 2 + (i % 2),
-    });
-  }
+  const series = generateTimelineByPeriod(days);
   const topicWeights = [31, 24, 18, 13, 8, 6, 5, 4];
   const topics = fallbackTopics.map((label, i) => {
     const mentions = topicWeights[i] ?? Math.max(4, 12 - i);
