@@ -6,11 +6,15 @@ import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
-import { MessageSquare, Activity, Gauge, Crown } from "lucide-react";
+import { MessageSquare, Activity, Gauge, Crown, CalendarIcon } from "lucide-react";
 import { format, parseISO } from "date-fns";
+import { cn } from "@/lib/utils";
 
 const ALLOWED_NETWORKS = new Set([
   "youtube", "facebook", "tiktok", "telegram", "twitter", "google_news", "linkedin", "reddit", "instagram",
@@ -31,8 +35,10 @@ const PERIODS = [
   { value: 30, label: "30 dias" },
   { value: 90, label: "90 dias" },
   { value: 365, label: "1 ano" },
-  { value: 3650, label: "Total" },
+  { value: 1460, label: "4 anos" },
+  { value: 2920, label: "8 anos" },
 ];
+const PERIOD_LABEL: Record<number, string> = Object.fromEntries(PERIODS.map((p) => [p.value, p.label]));
 
 const COLORS = {
   positive: "hsl(var(--success))",
@@ -55,7 +61,26 @@ export default function NetworkView() {
   const { isAdmin } = useAdminCheck();
   const [network, setNetwork] = useState("all");
   const [candidateId, setCandidateId] = useState<string>("all");
-  const [days, setDays] = useState(3650);
+  const [days, setDays] = useState(365);
+  const [customRange, setCustomRange] = useState<{ start: Date; end: Date } | null>(null);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [draftStart, setDraftStart] = useState<Date | undefined>(undefined);
+  const [draftEnd, setDraftEnd] = useState<Date | undefined>(undefined);
+  const [customError, setCustomError] = useState<string | null>(null);
+
+  // Effective days used for backend fetch: when custom is active,
+  // fetch enough days back from "now" to cover startDate; we then
+  // post-filter the timeline by the explicit range.
+  const effectiveDays = useMemo(() => {
+    if (!customRange) return days;
+    const now = Date.now();
+    const span = Math.ceil((now - customRange.start.getTime()) / 86_400_000);
+    return Math.max(1, span);
+  }, [customRange, days]);
+
+  const activePeriodLabel = customRange
+    ? `Período: ${format(customRange.start, "dd/MM/yyyy")} - ${format(customRange.end, "dd/MM/yyyy")}`
+    : `Período: Últimos ${PERIOD_LABEL[days] ?? days + " dias"}`;
 
   const { data: candidates } = useQuery({
     queryKey: ["nv-candidates", user?.id, isAdmin],
@@ -72,7 +97,7 @@ export default function NetworkView() {
   const params = {
     p_candidate_id: candidateId === "all" ? null : candidateId,
     p_network: network === "all" ? null : network,
-    p_days: days,
+    p_days: effectiveDays,
   };
 
   const fetchBlock = async (rpc: string) => {
@@ -95,7 +120,7 @@ export default function NetworkView() {
   };
 
   const query = useQuery({
-    queryKey: ["nv-blocks", user?.id, network, candidateId, days],
+    queryKey: ["nv-blocks", user?.id, network, candidateId, effectiveDays, customRange?.start?.toISOString(), customRange?.end?.toISOString()],
     queryFn: async () => {
       console.log("[NetworkView] filters →", { user: user?.id, candidate: candidateId, network, period: days });
       // allSettled: timeout em UM bloco não derruba os outros
@@ -154,7 +179,7 @@ export default function NetworkView() {
 
   // Fallback JS: se topics/terms falharam, busca amostra leve e processa no cliente
   const fallback = useQuery({
-    queryKey: ["nv-fallback", user?.id, candidateId, network, days, needsJsFallback],
+    queryKey: ["nv-fallback", user?.id, candidateId, network, effectiveDays, needsJsFallback],
     enabled: !!user?.id && needsJsFallback,
     staleTime: 5 * 60_000,
     queryFn: async () => {
@@ -185,7 +210,7 @@ export default function NetworkView() {
   });
   // Camada 2 — Inteligência IA (sempre disponível, usada quando dados reais são insuficientes)
   const aiIntel = useQuery({
-    queryKey: ["nv-ai-intel", candidateId, network, days],
+    queryKey: ["nv-ai-intel", candidateId, network, effectiveDays, customRange?.start?.toISOString(), customRange?.end?.toISOString()],
     enabled: !!user?.id,
     staleTime: 12 * 60 * 60_000,
     gcTime: 24 * 60 * 60_000,
@@ -195,7 +220,7 @@ export default function NetworkView() {
         body: {
           candidate_id: candidateId === "all" ? null : candidateId,
           network: network === "all" ? null : network,
-          days,
+          days: effectiveDays,
         },
       });
       if (error) throw error;
@@ -252,10 +277,17 @@ export default function NetworkView() {
   const networkTotal = useMemo(() => aiByNet.reduce((s, n) => s + n.mentions, 0), [aiByNet]);
   const sortedNetworks = useMemo(() => [...aiByNet].sort((a, b) => b.mentions - a.mentions), [aiByNet]);
 
-  // Evolução temporal — IA sempre
+  // Evolução temporal — IA sempre; filtra por intervalo customizado quando ativo
   const series = useMemo(() => {
+    const startMs = customRange ? customRange.start.getTime() : null;
+    const endMs = customRange ? customRange.end.getTime() + 86_399_000 : null;
     return [...aiSeries]
       .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.day))
+      .filter((r) => {
+        if (startMs == null || endMs == null) return true;
+        const t = new Date(r.day + "T00:00:00Z").getTime();
+        return t >= startMs && t <= endMs;
+      })
       .sort((a, b) => new Date(a.day + "T00:00:00Z").getTime() - new Date(b.day + "T00:00:00Z").getTime())
       .map((r) => ({
         iso: r.day,
@@ -264,7 +296,7 @@ export default function NetworkView() {
         negativo: r.n,
         total: r.p + r.n + r.u,
       }));
-  }, [aiSeries]);
+  }, [aiSeries, customRange]);
 
   // Assuntos dominantes — IA sempre
   const mergedTopics = aiTopics;
@@ -283,6 +315,7 @@ export default function NetworkView() {
         <div>
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Visão por Rede Social</h1>
           <p className="text-muted-foreground mt-1 text-sm">Inteligência social institucional — volume, repercussão e sentimento.</p>
+          <p className="text-xs text-muted-foreground mt-2 font-medium">{activePeriodLabel}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Select value={candidateId} onValueChange={setCandidateId}>
@@ -296,10 +329,61 @@ export default function NetworkView() {
             <SelectTrigger className="w-[170px]"><SelectValue /></SelectTrigger>
             <SelectContent>{NETWORKS_FILTER.map((n) => <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>)}</SelectContent>
           </Select>
-          <Select value={String(days)} onValueChange={(v) => setDays(Number(v))}>
+          <Select
+            value={customRange ? "custom" : String(days)}
+            onValueChange={(v) => {
+              if (v === "custom") return;
+              setCustomRange(null);
+              setDays(Number(v));
+            }}
+          >
             <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-            <SelectContent>{PERIODS.map((p) => <SelectItem key={p.value} value={String(p.value)}>{p.label}</SelectItem>)}</SelectContent>
+            <SelectContent>
+              {PERIODS.map((p) => <SelectItem key={p.value} value={String(p.value)}>{p.label}</SelectItem>)}
+              {customRange && <SelectItem value="custom">Personalizado</SelectItem>}
+            </SelectContent>
           </Select>
+          <Popover open={customOpen} onOpenChange={(o) => {
+            setCustomOpen(o);
+            if (o) {
+              setDraftStart(customRange?.start);
+              setDraftEnd(customRange?.end);
+              setCustomError(null);
+            }
+          }}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="default" className={cn("gap-2", customRange && "border-primary text-primary")}>
+                <CalendarIcon className="h-4 w-4" />
+                Personalizado
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-4" align="end">
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div>
+                  <div className="text-xs font-medium mb-2 text-muted-foreground">Data inicial</div>
+                  <Calendar mode="single" selected={draftStart} onSelect={setDraftStart} initialFocus className={cn("p-3 pointer-events-auto")} />
+                </div>
+                <div>
+                  <div className="text-xs font-medium mb-2 text-muted-foreground">Data final</div>
+                  <Calendar mode="single" selected={draftEnd} onSelect={setDraftEnd} className={cn("p-3 pointer-events-auto")} />
+                </div>
+              </div>
+              {customError && <div className="text-xs text-destructive mt-3">{customError}</div>}
+              <div className="flex justify-end gap-2 mt-4">
+                <Button variant="ghost" size="sm" onClick={() => { setCustomOpen(false); setCustomError(null); }}>Cancelar</Button>
+                {customRange && (
+                  <Button variant="outline" size="sm" onClick={() => { setCustomRange(null); setCustomOpen(false); setCustomError(null); }}>Limpar</Button>
+                )}
+                <Button size="sm" onClick={() => {
+                  if (!draftStart || !draftEnd) { setCustomError("Selecione data inicial e final"); return; }
+                  if (draftEnd < draftStart) { setCustomError("Data final não pode ser menor que data inicial"); return; }
+                  setCustomRange({ start: draftStart, end: draftEnd });
+                  setCustomOpen(false);
+                  setCustomError(null);
+                }}>Aplicar</Button>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 
