@@ -277,10 +277,17 @@ export default function NetworkView() {
   const networkTotal = useMemo(() => aiByNet.reduce((s, n) => s + n.mentions, 0), [aiByNet]);
   const sortedNetworks = useMemo(() => [...aiByNet].sort((a, b) => b.mentions - a.mentions), [aiByNet]);
 
-  // Evolução temporal — IA sempre
+  // Evolução temporal — IA sempre; filtra por intervalo customizado quando ativo
   const series = useMemo(() => {
+    const startMs = customRange ? customRange.start.getTime() : null;
+    const endMs = customRange ? customRange.end.getTime() + 86_399_000 : null;
     return [...aiSeries]
       .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.day))
+      .filter((r) => {
+        if (startMs == null || endMs == null) return true;
+        const t = new Date(r.day + "T00:00:00Z").getTime();
+        return t >= startMs && t <= endMs;
+      })
       .sort((a, b) => new Date(a.day + "T00:00:00Z").getTime() - new Date(b.day + "T00:00:00Z").getTime())
       .map((r) => ({
         iso: r.day,
@@ -289,7 +296,7 @@ export default function NetworkView() {
         negativo: r.n,
         total: r.p + r.n + r.u,
       }));
-  }, [aiSeries]);
+  }, [aiSeries, customRange]);
 
   // Assuntos dominantes — IA sempre
   const mergedTopics = aiTopics;
