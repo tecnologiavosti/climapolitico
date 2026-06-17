@@ -381,7 +381,6 @@ export default function NetworkView() {
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b border-border">
                   <th className="py-2 pr-4">Rede</th>
-                  <th className="py-2 pr-4 text-right">Menções</th>
                   <th className="py-2 pr-4">Distribuição</th>
                   <th className="py-2 pr-4 text-right w-20">+ %</th>
                   <th className="py-2 pr-4 text-right w-20">− %</th>
@@ -395,7 +394,7 @@ export default function NetworkView() {
                   return (
                     <tr key={n.network} className="border-b border-border/40 last:border-0">
                       <td className="py-3 pr-4 font-medium">{NETWORK_LABEL[n.network] ?? n.network}</td>
-                      <td className="py-3 pr-4 text-right tabular-nums">{fmt(n.mentions)}</td>
+
                       <td className="py-3 pr-4">
                         <div className="flex h-2.5 rounded-full overflow-hidden bg-muted min-w-[140px]">
                           <div style={{ width: `${p}%`, backgroundColor: COLORS.positive }} />
