@@ -363,21 +363,27 @@ export default function NetworkView() {
 
   // Rede dominante: prefere real (Camada 1) quando há volume; senão IA
   const dominant = useMemo(() => {
-    const realArr = d?.byNet ?? [];
+    const realArr = realByNet;
     const arr = realArr.length > 0 ? realArr : aiByNet;
     if (!arr.length) return null;
     return [...arr].sort((a, b) => (b.mentions * 0.4 + b.engagement * 0.6) - (a.mentions * 0.4 + a.engagement * 0.6))[0];
-  }, [d, aiByNet]);
+  }, [realByNet, aiByNet]);
 
-  // Distribuição por rede — IA sempre
-  const networkTotal = useMemo(() => aiByNet.reduce((s, n) => s + n.mentions, 0), [aiByNet]);
-  const sortedNetworks = useMemo(() => [...aiByNet].sort((a, b) => b.mentions - a.mentions), [aiByNet]);
+  const analyticsByNet = customRange ? (customData?.byNet ?? []) : aiByNet;
+  const analyticsSeriesRows = customRange ? (customData?.series ?? []) : aiSeries;
+  const analyticsTopics = customRange ? (customData?.topics ?? []) : aiTopics;
+  const analyticsTerms = customRange ? (customData?.terms ?? []) : aiTerms;
+  const kpis = customData?.kpis ?? d?.kpis ?? {};
+
+  // Distribuição por rede — IA no padrão; período customizado recalcula pelo intervalo aplicado
+  const networkTotal = useMemo(() => analyticsByNet.reduce((s, n) => s + n.mentions, 0), [analyticsByNet]);
+  const sortedNetworks = useMemo(() => [...analyticsByNet].sort((a, b) => b.mentions - a.mentions), [analyticsByNet]);
 
   // Evolução temporal — IA sempre; filtra por intervalo customizado quando ativo
   const series = useMemo(() => {
     const startMs = customRange ? parseDateBoundary(customRange.startDate, "start").getTime() : null;
     const endMs = customRange ? parseDateBoundary(customRange.endDate, "end").getTime() : null;
-    return [...aiSeries]
+    return [...analyticsSeriesRows]
       .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.day))
       .filter((r) => {
         if (startMs == null || endMs == null) return true;
@@ -392,7 +398,7 @@ export default function NetworkView() {
         negativo: r.n,
         total: r.p + r.n + r.u,
       }));
-  }, [aiSeries, customRange]);
+  }, [analyticsSeriesRows, customRange]);
 
   const applyCustomRange = () => {
     if (!startDate || !endDate) {
@@ -413,9 +419,9 @@ export default function NetworkView() {
   };
 
   // Assuntos dominantes — IA sempre
-  const mergedTopics = aiTopics;
+  const mergedTopics = analyticsTopics;
   // Termos em alta — IA sempre
-  const mergedTerms = aiTerms;
+  const mergedTerms = analyticsTerms;
 
 
 
