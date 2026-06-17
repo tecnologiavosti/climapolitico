@@ -749,6 +749,17 @@ async function processJob(jobId: string, body: Body, userId: string) {
       report.terms = [];
       const prevReason = report.reasoning ? `${report.reasoning} ` : "";
       report.reasoning = `${prevReason}Dados insuficientes para análise quantitativa precisa (${totalHits} evidências, ${sourceStatuses.filter((s) => s.status === "ok").length} fontes). Números, gráficos, assuntos e termos foram ocultados.`;
+    } else {
+      report.qualitative_only = false;
+      report.total_mentions = totalHits;
+      report.total_interactions = null;
+      report.timeline = computeTimelineFromEvidence(samples, body);
+      if (Array.isArray(report.topics)) {
+        report.topics = report.topics.map((t: any) => ({
+          ...t,
+          mentions: Math.max(1, Math.min(totalHits, Number(t.mentions ?? 1))),
+        }));
+      }
     }
 
     const out = { ...report, evidence_count: totalHits, source_count: sourceStatuses.filter((s) => s.status === "ok").length, bucket, cached: false, sources: sourceStatuses, job_id: jobId };
