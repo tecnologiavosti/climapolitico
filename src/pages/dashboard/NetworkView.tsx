@@ -327,7 +327,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Distribuição por rede</h2>
         <p className="text-sm text-muted-foreground mb-6">Participação de cada plataforma no volume e nas interações.</p>
-        {loading ? <Skeleton className="h-64 w-full" /> : sortedNetworks.length === 0 ? <Empty /> : (
+        {aiIntel.isLoading ? <Skeleton className="h-64 w-full" /> : sortedNetworks.length === 0 ? <Empty /> : (
           <div className="space-y-3">
             {sortedNetworks.map((n) => {
               const share = pct(n.mentions, networkTotal);
