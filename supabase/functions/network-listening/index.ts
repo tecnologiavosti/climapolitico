@@ -524,11 +524,14 @@ function computeDistribution(
   const rows = networks.map((n) => {
     const d = direct.get(n) ?? 0;
     const e = external.get(n) ?? 0;
-    const w = d * 0.45 + e * 0.20;
+    let w = d * 0.45 + e * 0.20;
     let data_source_type: DataSourceType;
     if (d >= 3) data_source_type = "direct";
     else if (e >= 2) data_source_type = "proxy";
-    else data_source_type = "unavailable";
+    else {
+      data_source_type = "unavailable";
+      w = 0;
+    }
     return { network: n as string, w, d, e, data_source_type };
   });
   const total = rows.reduce((s, r) => s + r.w, 0);
