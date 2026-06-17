@@ -240,16 +240,15 @@ const RESPONSE_SCHEMA = {
   ],
 };
 
-async function callAI(systemMsg: string, userMsg: string) {
-  if (!LOVABLE_KEY) throw new Error("LOVABLE_API_KEY ausente");
-  const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+async function callAIWithModel(model: string, systemMsg: string, userMsg: string) {
+  return await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${LOVABLE_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
+      model,
       messages: [
         { role: "system", content: systemMsg },
         { role: "user", content: userMsg },
@@ -267,15 +266,34 @@ async function callAI(systemMsg: string, userMsg: string) {
       tool_choice: { type: "function", function: { name: "emit_listening_report" } },
     }),
   });
-  if (!r.ok) {
-    const txt = await r.text().catch(() => "");
-    throw new Error(`AI gateway ${r.status}: ${txt.slice(0, 300)}`);
+}
+
+async function callAI(systemMsg: string, userMsg: string) {
+  if (!LOVABLE_KEY) throw new Error("LOVABLE_API_KEY ausente");
+  const models = [
+    "google/gemini-2.5-flash",
+    "google/gemini-2.5-flash-lite",
+    "google/gemini-3-flash-preview",
+  ];
+  let lastStatus = 0;
+  let lastErr = "";
+  for (const m of models) {
+    const r = await callAIWithModel(m, systemMsg, userMsg);
+    if (r.ok) {
+      const j = await r.json();
+      const call = j?.choices?.[0]?.message?.tool_calls?.[0];
+      const args = call?.function?.arguments;
+      if (!args) throw new Error("Sem tool_call da IA");
+      return typeof args === "string" ? JSON.parse(args) : args;
+    }
+    lastStatus = r.status;
+    lastErr = (await r.text().catch(() => "")).slice(0, 300);
+    console.warn(`[network-listening] modelo ${m} → ${r.status}, tentando fallback`);
+    if (r.status !== 429 && r.status !== 402 && r.status < 500) break;
   }
-  const j = await r.json();
-  const call = j?.choices?.[0]?.message?.tool_calls?.[0];
-  const args = call?.function?.arguments;
-  if (!args) throw new Error("Sem tool_call da IA");
-  return typeof args === "string" ? JSON.parse(args) : args;
+  const err: any = new Error(`AI gateway ${lastStatus}: ${lastErr}`);
+  err.status = lastStatus;
+  throw err;
 }
 
 Deno.serve(async (req) => {
