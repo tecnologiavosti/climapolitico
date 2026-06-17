@@ -270,7 +270,7 @@ Se não tiver certeza do tema específico, OMITA — nunca preencha com genéric
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
-    const { candidate_id, network, days = 30 } = await req.json();
+    const { candidate_id, network, days = 30, start_date = null, end_date = null } = await req.json();
     const supa = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
