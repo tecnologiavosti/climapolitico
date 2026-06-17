@@ -226,6 +226,12 @@ export const TrendingCandidates = () => {
 
   const byRole = (key: string) => {
     if (items === null) return null;
+    if (key === "Governador") {
+      return GOVERNORS_FIXED
+        .filter((g) => !GOVERNOR_PRESIDENTIAL_BLOCK.has(normalize(g.full_name)))
+        .slice(0, 5)
+        .map((it, i) => ({ ...it, rank: i + 1 }));
+    }
     let list = items.filter((i) => i.role === key);
     if (key === "Presidente") {
       list = list.filter((i) => !PRESIDENTIAL_BLOCKLIST.has(normalize(i.full_name)));
