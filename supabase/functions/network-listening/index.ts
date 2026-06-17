@@ -929,8 +929,10 @@ async function processJob(jobId: string, body: Body, userId: string) {
 
     report = sanitizeAiReport(report, evidence, renderState);
     const longPeriodMsg = days > 90
-      ? "Histórico insuficiente para o período. O Índice Histórico Social ainda não acumulou menções suficientes para esta faixa de tempo — novas coletas diárias estão alimentando o banco. "
-      : "";
+      ? backfillRan
+        ? `Histórico insuficiente para o período após backfill retroativo (${backfillHits} menções brutas encontradas). `
+        : "Histórico insuficiente para o período. O Índice Histórico Social ainda não acumulou menções suficientes para esta faixa de tempo. "
+      : backfillRan && backfillHits === 0 ? "Backfill retroativo executado, mas nenhuma evidência foi encontrada. " : "";
     if (renderState === "NO_DATA") {
       Object.assign(report, noDataReport(body, sourceStatuses, `${longPeriodMsg}Não foi possível coletar evidências para este período.`, 0));
     } else if (renderState === "PARTIAL_DATA") {
