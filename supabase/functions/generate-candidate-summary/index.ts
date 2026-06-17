@@ -4,6 +4,10 @@ import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 
 const CEREBRAS_MODELS = ["qwen-3-235b-a22b-instruct-2507", "llama-3.3-70b", "llama3.1-8b"];
 
+// Cache em memória da análise textual da IA — chave: candidateId::periodLabel
+const SUMMARY_CACHE = new Map<string, { summary: any; model_used: string; ts: number }>();
+const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12h
+
 async function callCerebrasSummary(prompt: string) {
   const systemMsg = 'Você é um analista político estratégico brasileiro especializado em comunicação de campanha. Responda sempre em português do Brasil. Seja direto, prático e acionável. Responda SEMPRE em JSON válido seguindo o schema solicitado.';
   const fullPrompt = `${prompt}\n\nResponda EXCLUSIVAMENTE com um JSON no formato:\n{"overall_sentiment":"muito_positiva|positiva|mista|negativa|muito_negativa","overall_summary":"...","positive_points":["..."],"negative_points":["..."],"narrative_recommendations":["..."],"risk_alert":"...","opportunity_alert":"..."}`;
@@ -312,19 +316,14 @@ serve(async (req) => {
       offset += pageSize;
     }
 
-    if (allComments.length === 0) {
-      return new Response(JSON.stringify({
-        summary: null,
-        message: 'Nenhum comentário encontrado no período selecionado.',
-        stats: { total: 0, positive: 0, negative: 0, neutral: 0 }
-      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
+    // NOTE: A análise textual da IA NÃO depende mais de comentários/menções.
+    // Os comentários só alimentam as ESTATÍSTICAS de sentimento (cards do topo).
+    // A IA usa apenas contexto político (nome, cargo, partido, estado, período).
 
     const positive = coreKpis ? Number(coreKpis.pos || 0) : allComments.filter(c => normalizeSentiment(c.sentiment_label, c.sentiment_score) === 'positive').length;
     const negative = coreKpis ? Number(coreKpis.neg || 0) : allComments.filter(c => normalizeSentiment(c.sentiment_label, c.sentiment_score) === 'negative').length;
     const neutral = coreKpis ? Number(coreKpis.neu || 0) : allComments.filter(c => normalizeSentiment(c.sentiment_label, c.sentiment_score) === 'neutral').length;
     const withoutSentiment = allComments.filter(c => !c.sentiment_label).length;
-    // total exibido = mesma base consolidada usada nas demais telas.
     const stats = {
       total: coreKpis ? Number(coreKpis.total || 0) : positive + negative + neutral,
       positive,
@@ -334,46 +333,53 @@ serve(async (req) => {
       totalCollected: allComments.length,
     };
 
-    const positiveComments = allComments.filter(c => c.sentiment_label === 'Positivo' && c.comment_text).slice(0, 50).map(c => c.comment_text.substring(0, 200));
-    const negativeComments = allComments.filter(c => c.sentiment_label === 'Negativo' && c.comment_text).slice(0, 50).map(c => c.comment_text.substring(0, 200));
-    const neutralComments = allComments.filter(c => c.sentiment_label === 'Neutro' && c.comment_text).slice(0, 50).map(c => c.comment_text.substring(0, 200));
+    // Cache da análise textual da IA por candidato + período (12h)
+    const cacheKey = `${candidateId}::${periodLabel}`;
+    const cached = SUMMARY_CACHE.get(cacheKey);
+    let summary: any = null;
+    let modelUsed = 'cache';
+    let fallbackUsed = false;
+    if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+      summary = cached.summary;
+      modelUsed = cached.model_used + ' (cache)';
+    }
 
-    const prompt = `Você é um analista político estratégico brasileiro. Analise os seguintes comentários reais sobre o candidato ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}${candidate.region ? ` - ${candidate.region}` : ''} coletados no ${periodLabel}.
+    const prompt = `Você é um analista político estratégico brasileiro com profundo conhecimento do cenário eleitoral e histórico do país.
 
-ESTATÍSTICAS:
-- Total: ${stats.total}
-- Positivos: ${stats.positive} (${((stats.positive / stats.total) * 100).toFixed(1)}%)
-- Negativos: ${stats.negative} (${((stats.negative / stats.total) * 100).toFixed(1)}%)
-- Neutros: ${stats.neutral} (${((stats.neutral / stats.total) * 100).toFixed(1)}%)
+Gere uma análise estratégica completa sobre o candidato/político abaixo, usando seu conhecimento amplo do contexto político brasileiro — histórico de campanhas, alianças partidárias, escândalos, debates, eventos econômicos e sociais, posicionamento ideológico, bases eleitorais regionais, redes sociais e narrativas dominantes na época.
 
-POSITIVOS (${positiveComments.length}):
-${positiveComments.map((c, i) => `${i + 1}. ${c}`).join('\n')}
+CANDIDATO: ${candidate.full_name}
+PARTIDO: ${candidate.party || 'não informado'}
+ESTADO/REGIÃO: ${candidate.region || 'não informado'}
+PERÍODO DE ANÁLISE: ${periodLabel}
 
-NEGATIVOS (${negativeComments.length}):
-${negativeComments.map((c, i) => `${i + 1}. ${c}`).join('\n')}
+Considere o contexto político-eleitoral brasileiro do período (eleições anteriores, cenário nacional, principais adversários e aliados, temas em debate, conjuntura econômica e social). Não dependa de comentários de redes sociais — baseie a análise no conhecimento político geral sobre essa figura e período.
 
-NEUTROS (${neutralComments.length}):
-${neutralComments.map((c, i) => `${i + 1}. ${c}`).join('\n')}
+Entregue:
+- overall_sentiment: percepção pública dominante no período (muito_positiva | positiva | mista | negativa | muito_negativa)
+- overall_summary: resumo executivo (3-5 frases) do momento político do candidato
+- positive_points: 4-6 pontos fortes contextuais (capital político, base, marcas, conquistas)
+- negative_points: 4-6 fragilidades contextuais (desgastes, controvérsias, oposições)
+- narrative_recommendations: 4-6 recomendações estratégicas de comunicação
+- risk_alert: principal risco político a monitorar no período
+- opportunity_alert: principal oportunidade política a explorar no período`;
 
-Gere um resumo executivo completo para a equipe de campanha.`;
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
 
-    let summary: any;
-    let modelUsed = 'fallback_deterministic';
-    let fallbackUsed = false;
-
-    // 1. PRIMÁRIO: Cerebras (alta capacidade), com fallback automático para Lovable AI
-    try {
-      const aiResult = await callCerebrasSummary(prompt);
-      summary = aiResult.summary;
-      modelUsed = aiResult.model_used;
-    } catch (e: any) {
-      console.warn('[SUMMARY] Cerebras+Lovable falharam, tentando Lovable AI tool-calling...', e?.message || e);
+    // 1. PRIMÁRIO: Cerebras
+    if (!summary) {
+      try {
+        const aiResult = await callCerebrasSummary(prompt);
+        summary = aiResult.summary;
+        modelUsed = aiResult.model_used;
+      } catch (e: any) {
+        console.warn('[SUMMARY] Cerebras falhou, tentando Lovable AI tool-calling...', e?.message || e);
+      }
     }
 
-    // 2. Fallback secundário: Lovable AI Gateway com tool-calling estruturado
+    // 2. Lovable AI Gateway
     if (!summary && LOVABLE_API_KEY) {
       try {
         const aiResult = await callLovableAI(prompt, LOVABLE_API_KEY);
@@ -384,7 +390,7 @@ Gere um resumo executivo completo para a equipe de campanha.`;
       }
     }
 
-    // 3. Fallback: Google Gemini API direta
+    // 3. Gemini direto
     if (!summary && GEMINI_API_KEY) {
       try {
         const aiResult = await callGeminiDirect(prompt, GEMINI_API_KEY);
@@ -395,10 +401,12 @@ Gere um resumo executivo completo para a equipe de campanha.`;
       }
     }
 
-    // 4. Fallback determinístico (offline)
+    // 4. Fallback determinístico
     if (!summary) {
       summary = buildDeterministicSummary(stats, candidate, periodLabel);
       fallbackUsed = true;
+    } else if (modelUsed !== 'cache' && !modelUsed.endsWith('(cache)')) {
+      SUMMARY_CACHE.set(cacheKey, { summary, model_used: modelUsed, ts: Date.now() });
     }
 
     return new Response(JSON.stringify({
