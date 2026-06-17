@@ -82,6 +82,7 @@ export default function NetworkView() {
     ? `Período: ${format(customRange.start, "dd/MM/yyyy")} - ${format(customRange.end, "dd/MM/yyyy")}`
     : `Período: Últimos ${PERIOD_LABEL[days] ?? days + " dias"}`;
 
+  const { data: candidates } = useQuery({
     queryKey: ["nv-candidates", user?.id, isAdmin],
     queryFn: async () => {
       let q = supabase.from("candidates").select("id, full_name").eq("status", "active");
@@ -96,7 +97,7 @@ export default function NetworkView() {
   const params = {
     p_candidate_id: candidateId === "all" ? null : candidateId,
     p_network: network === "all" ? null : network,
-    p_days: days,
+    p_days: effectiveDays,
   };
 
   const fetchBlock = async (rpc: string) => {
