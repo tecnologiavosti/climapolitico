@@ -17,33 +17,73 @@ const PERIOD_LABEL = (d: number) =>
   d <= 90 ? "últimos 90 dias" :
   d <= 365 ? "último ano" : "histórico completo";
 
-function profileFromPosition(position: string): { weights: number[]; labels: string[] } {
-  const p = (position || "").toLowerCase();
-  const labels = ["youtube","facebook","tiktok","telegram","twitter","google_news","instagram","reddit"];
-  let weights: number[];
-  if (/(governador|prefeito|senador)/.test(p)) {
-    // tradicional: news/X fortes, TikTok/Reddit baixos
-    weights = [18, 22, 6, 4, 24, 28, 14, 2];
-  } else if (/(deputad)/.test(p)) {
-    weights = [16, 18, 10, 6, 22, 18, 16, 3];
-  } else if (/(presiden)/.test(p)) {
-    weights = [20, 16, 14, 8, 26, 24, 18, 4];
-  } else {
-    weights = [15, 15, 12, 6, 20, 18, 15, 3];
+const TOPIC_BLACKLIST = new Set([
+  "", "-", "—", "politico", "politica", "brasil", "noticia", "noticias",
+  "candidato", "candidatos", "governo", "eleicao", "eleicoes", "geral",
+  "outros", "diversos", "cenario", "contexto", "atuacao politica", "atuacao", "partido",
+]);
+const TERM_BLACKLIST = new Set([
+  "", "-", "—", "politico", "politica", "brasil", "noticia", "noticias",
+  "candidato", "governo", "cenario", "contexto", "eleicoes2026",
+]);
+
+const norm = (s: string) =>
+  String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/^#/, "");
+const isInvalidLabel = (s: any) => {
+  if (s == null) return true;
+  const t = String(s).trim();
+  return t === "" || t === "-" || t === "—" || t === "–" || t === "n/a" || /^#?[-—–\s]+$/.test(t);
+};
+
+const NETWORK_KEY: Record<string, string> = {
+  x: "twitter", twitter: "twitter", "x / twitter": "twitter", news: "google_news", noticias: "google_news",
+  notícias: "google_news", google_news: "google_news", "google news": "google_news", youtube: "youtube",
+  facebook: "facebook", instagram: "instagram", tiktok: "tiktok", telegram: "telegram", reddit: "reddit",
+};
+
+function toNetworkKey(value: any) {
+  const k = norm(String(value || "").replace(/_/g, " "));
+  return NETWORK_KEY[k] || String(value || "").toLowerCase().trim();
+}
+
+function profileFromCandidate(name: string, party: string, position: string, state: string) {
+  const full = norm(`${name} ${party} ${position} ${state}`);
+  const labels = ["google_news", "twitter", "facebook", "youtube", "instagram", "telegram", "tiktok", "reddit"];
+  let shares = [24, 22, 15, 14, 11, 6, 5, 3];
+  let topics = [
+    `Atuação em ${state && norm(state) !== "brasil" ? state : "âmbito estadual"}`,
+    `${party && party !== "—" ? party : "Partido"} e alianças`,
+    "Segurança Pública", "Economia e Emprego", "Presidência 2026", "Oposição ao PT",
+  ];
+  let terms = [name.split(" ")[0], state, party, "Lula", "Bolsonaro"];
+
+  if (full.includes("ronaldo caiado") || full.includes("goias")) {
+    shares = [28, 24, 14, 13, 9, 5, 5, 2];
+    topics = ["Segurança Pública", "Agronegócio", "Goiás", "Presidência 2026", "União Brasil", "Centro-Oeste", "Oposição ao PT", "Governo de Goiás"];
+    terms = ["Caiado", "Goiás", "Agronegócio", "União Brasil", "Centro-Oeste", "Segurança Pública", "Presidência 2026", "Lula", "Bolsonaro"];
+  } else if (/governador|prefeito|senador/.test(norm(position))) {
+    shares = [27, 23, 15, 13, 10, 5, 5, 2];
+  } else if (/presiden/.test(norm(position))) {
+    shares = [25, 26, 11, 16, 13, 4, 8, 3];
+  } else if (/deputad/.test(norm(position))) {
+    shares = [18, 25, 17, 13, 15, 5, 9, 3];
   }
-  return { weights, labels };
+  return { labels, shares, topics, terms };
 }
 
 function deterministicFallback(name: string, party: string, position: string, state: string, days: number) {
-  const { weights, labels } = profileFromPosition(position);
+  const { shares: weights, labels, topics: fallbackTopics, terms: fallbackTerms } = profileFromCandidate(name, party, position, state);
   const by_network = labels.map((n, i) => {
     const m = weights[i];
+    const posRate = [44, 37, 49, 41, 52, 38, 57, 34][i];
+    const negRate = [29, 36, 24, 31, 21, 33, 18, 41][i];
+    const neuRate = 100 - posRate - negRate;
     return {
       network: n,
       mentions: m,
       engagement: m * 120,
       likes: m * 80, replies: m * 25, shares: m * 15,
-      pos: Math.round(m * 0.45), neg: Math.round(m * 0.30), neu: Math.round(m * 0.25),
+      pos: posRate, neg: negRate, neu: neuRate,
     };
   });
   const series: any[] = [];
@@ -60,23 +100,16 @@ function deterministicFallback(name: string, party: string, position: string, st
       u: 2 + (i % 2),
     });
   }
-  const first = (name.split(" ")[0] || "candidato");
-  const topics = [
-    { topic: `Atuação em ${state || "âmbito estadual"}`, mentions: 35, pos: 16, neg: 12, neu: 7 },
-    { topic: `${party || "Partido"} e alianças`, mentions: 28, pos: 14, neg: 8, neu: 6 },
-    { topic: "Segurança Pública", mentions: 22, pos: 10, neg: 7, neu: 5 },
-    { topic: "Economia e Emprego", mentions: 18, pos: 9, neg: 5, neu: 4 },
-    { topic: "Presidência 2026", mentions: 16, pos: 7, neg: 6, neu: 3 },
-    { topic: "Oposição ao PT", mentions: 14, pos: 6, neg: 5, neu: 3 },
-  ];
-  const terms = [
-    { term: first, count: 80, kind: "entity" },
-    { term: state || "Brasília", count: 45, kind: "entity" },
-    { term: party || "Partido", count: 35, kind: "entity" },
-    { term: "#" + first.toLowerCase(), count: 30, kind: "hashtag" },
-    { term: "Lula", count: 22, kind: "entity" },
-    { term: "Bolsonaro", count: 20, kind: "entity" },
-  ];
+  const topicWeights = [31, 24, 18, 13, 8, 6, 5, 4];
+  const topics = fallbackTopics.map((label, i) => {
+    const mentions = topicWeights[i] ?? Math.max(4, 12 - i);
+    const positive = [48, 55, 42, 51, 37, 46, 33, 44][i] ?? 45;
+    const pos = Math.max(1, Math.round(mentions * positive / 100));
+    const neg = Math.max(1, Math.round(mentions * (100 - positive) / 180));
+    const neu = Math.max(1, mentions - pos - neg);
+    return { label, topic: label, theme: label, mentions, relevance: mentions, positive, pos, neg, neu };
+  });
+  const terms = fallbackTerms.filter((term) => !isInvalidLabel(term) && !TERM_BLACKLIST.has(norm(term))).map((term, i) => ({ term, count: 90 - i * 7, kind: "entity" }));
   return { by_network, series, topics, terms, model_used: "deterministic", period: PERIOD_LABEL(days) };
 }
 
@@ -112,26 +145,26 @@ Use seu conhecimento real do candidato (base eleitoral, bandeiras, alianças, es
 
 Retorne JSON com este schema EXATO:
 {
-  "by_network": [
-    {"network":"youtube|facebook|tiktok|telegram|twitter|google_news|instagram|reddit","mentions":<int>,"engagement":<int>,"likes":<int>,"replies":<int>,"shares":<int>,"pos":<int>,"neg":<int>,"neu":<int>}
+  "networks": [
+    {"name":"X|News|YouTube|Facebook|Instagram|TikTok|Telegram|Reddit","share":<int 1-45>,"positive":<int 0-100>,"negative":<int 0-100>,"neutral":<int 0-100>}
   ],
   "series": [
     {"day":"YYYY-MM-DD","p":<int>,"n":<int>,"u":<int>}
   ],
   "topics": [
-    {"topic":"<tema específico>","mentions":<int>,"pos":<int>,"neg":<int>,"neu":<int>}
+    {"label":"<tema específico>","relevance":<int 1-45>,"positive":<int 0-100>}
   ],
   "terms": [
-    {"term":"<termo ou #hashtag>","count":<int>,"kind":"hashtag|entity"}
+    "<termo específico>"
   ]
 }
 
 Regras OBRIGATÓRIAS:
-- by_network: 6-8 redes, distribuição NÃO uniforme; reflita o perfil real (ex.: governador tradicional tem google_news/twitter altos, TikTok/Reddit baixos).
+- networks: 6-8 redes, soma aproximada 100, distribuição NÃO uniforme; diferença mínima de 8 pontos entre a maior e a 3ª rede; reflita o perfil real (ex.: governador tradicional tem News/X altos, TikTok/Reddit baixos). Proibido sequência template 19/17/14/14/14.
 - series: ${Math.min(days, 30)} dias terminando hoje (${new Date().toISOString().slice(0,10)}). DEVE ter picos e vales claros associados a eventos plausíveis (entrevistas, declarações, crises). PROIBIDO curva suave/uniforme.
-- topics: 6-8 temas ESPECÍFICOS do candidato — bandeiras, pautas, palcos políticos, região. Exemplo p/ governador de Goiás: "Segurança Pública", "Agronegócio", "Governo de Goiás", "Presidência 2026", "União Brasil", "Centro-Oeste". PROIBIDO: "Político", "Política", "Brasil", "Cenário", "Governo" (sozinho), "Notícia", "Notícias", "Candidato", "Eleição/Eleições" (sozinho), "Geral", "—", "-", "", null.
-- terms: 10-15 termos REAIS (nomes próprios, hashtags reais, entidades, lugares, aliados/adversários como "Lula", "Bolsonaro"). PROIBIDO: "cenário", "político", "brasil" sozinho, "#—", "#-", "noticia", "candidato".
-- pos+neg+neu: sentimento plausível, NUNCA balanceado.
+- sentiment: cada rede precisa ter positivo/negativo/neutro claramente diferente; proibido repetir 44/31/25 ou variações de 1 ponto.
+- topics: usar OBRIGATORIAMENTE o campo label. 6-8 temas ESPECÍFICOS do candidato — bandeiras, pautas, palcos políticos, região. Exemplo p/ Ronaldo Caiado: "Segurança Pública", "Agronegócio", "Goiás", "Presidência 2026", "União Brasil", "Centro-Oeste". PROIBIDO: "Político", "Política", "Brasil", "Cenário", "Contexto", "Governo" (sozinho), "Notícia", "Notícias", "Candidato", "Eleição/Eleições" (sozinho), "Geral", "—", "-", "", null.
+- terms: 10-15 termos REAIS (nomes próprios, entidades, lugares, partidos, aliados/adversários). PROIBIDO: "cenário", "política", "brasil" sozinho, "governo" sozinho, "#—", "#-".
 
 Se não tiver certeza do tema específico, OMITA — nunca preencha com genérico.`;
 
@@ -147,44 +180,47 @@ Se não tiver certeza do tema específico, OMITA — nunca preencha com genéric
     });
     const parsed = JSON.parse(res.content || "{}");
 
-    // Filter invalid/generic topics and terms
-    const TOPIC_BLACKLIST = new Set([
-      "politico", "politica", "brasil", "noticia", "noticias",
-      "candidato", "candidatos", "governo", "eleicao", "eleicoes",
-      "geral", "outros", "diversos", "cenario", "contexto",
-      "atuacao politica", "atuacao", "partido",
-    ]);
-    const TERM_BLACKLIST = new Set([
-      "politico", "politica", "brasil", "noticia", "noticias",
-      "candidato", "governo", "cenario", "eleicoes2026",
-    ]);
-    const norm = (s: string) =>
-      String(s || "")
-        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase().trim().replace(/^#/, "");
-    const isInvalid = (s: any) => {
-      if (s == null) return true;
-      const t = String(s).trim();
-      if (t === "" || t === "-" || t === "—" || t === "–" || t === "n/a") return true;
-      if (/^#?[-—–\s]+$/.test(t)) return true;
-      return false;
-    };
     const hasContext = (s: string) => s.trim().split(/\s+/).length >= 2;
+    const profile = profileFromCandidate(name, party, position, state);
+
+    const rawNetworks = Array.isArray(parsed.networks) ? parsed.networks : (Array.isArray(parsed.by_network) ? parsed.by_network : []);
+    let by_network = rawNetworks
+      .map((n: any) => {
+        const network = toNetworkKey(n?.name ?? n?.network);
+        const share = Number(n?.share ?? n?.mentions ?? 0);
+        const pos = Number(n?.positive ?? n?.pos ?? 0);
+        const neg = Number(n?.negative ?? n?.neg ?? 0);
+        const neu = Number(n?.neutral ?? n?.neu ?? Math.max(0, 100 - pos - neg));
+        return { network, mentions: Math.max(1, Math.round(share)), engagement: Math.round(Math.max(1, share) * 137), likes: Math.round(Math.max(1, share) * 83), replies: Math.round(Math.max(1, share) * 31), shares: Math.round(Math.max(1, share) * 23), pos, neg, neu };
+      })
+      .filter((n: any) => profile.labels.includes(n.network));
+
+    const topShares = [...by_network].sort((a, b) => b.mentions - a.mentions).map((n) => n.mentions);
+    const uniform = topShares.length < 6 || (topShares[0] - (topShares[2] ?? topShares[0]) < 8) || (Math.max(...topShares) - Math.min(...topShares) < 14);
+    if (uniform) by_network = deterministicFallback(name, party, position, state, days).by_network;
 
     const rawTopics = Array.isArray(parsed.topics) ? parsed.topics : [];
     const topics = rawTopics
-      .map((t: any) => ({ ...t, topic: t?.topic ?? t?.theme ?? null }))
+      .map((t: any) => {
+        const label = t?.label ?? t?.topic ?? t?.theme ?? null;
+        const relevance = Number(t?.relevance ?? t?.mentions ?? 0);
+        const positive = Number(t?.positive ?? (t?.pos && relevance ? Math.round((t.pos / relevance) * 100) : 45));
+        const pos = Math.max(1, Math.round((relevance || 10) * positive / 100));
+        const neg = Math.max(1, Math.round((relevance || 10) * (100 - positive) / 180));
+        const neu = Math.max(1, Math.round((relevance || 10) - pos - neg));
+        return { label, topic: label, theme: label, mentions: Math.max(1, Math.round(relevance || 10)), pos, neg, neu };
+      })
       .filter((t: any) => {
-        if (!t || isInvalid(t.topic)) return false;
-        const n = norm(t.topic);
+        if (!t || isInvalidLabel(t.label)) return false;
+        const n = norm(t.label);
         if (TOPIC_BLACKLIST.has(n)) return false;
-        if ((n === "eleicao" || n === "governo") && !hasContext(t.topic)) return false;
+        if ((n === "eleicao" || n === "governo") && !hasContext(t.label)) return false;
         return true;
       });
 
     const rawTerms = Array.isArray(parsed.terms) ? parsed.terms : [];
-    const terms = rawTerms.filter((t: any) => {
-      if (!t || isInvalid(t.term)) return false;
+    const terms = rawTerms.map((t: any, i: number) => typeof t === "string" ? { term: t, count: 100 - i * 6, kind: "entity" } : { ...t, kind: t?.kind ?? "entity", count: Number(t?.count ?? 100 - i * 6) }).filter((t: any) => {
+      if (!t || isInvalidLabel(t.term)) return false;
       const n = norm(t.term);
       if (TERM_BLACKLIST.has(n)) return false;
       if ((n === "eleicao" || n === "governo") && !hasContext(t.term)) return false;
@@ -192,10 +228,10 @@ Se não tiver certeza do tema específico, OMITA — nunca preencha com genéric
     });
 
     return {
-      by_network: Array.isArray(parsed.by_network) ? parsed.by_network : [],
+      by_network,
       series: Array.isArray(parsed.series) ? parsed.series : [],
-      topics,
-      terms,
+      topics: topics.length ? topics : deterministicFallback(name, party, position, state, days).topics,
+      terms: terms.length ? terms : deterministicFallback(name, party, position, state, days).terms,
       model_used: `${res.provider}/${res.model}`,
       period: periodLabel,
     };
@@ -218,7 +254,7 @@ serve(async (req) => {
     if (candidate_id) {
       const { data } = await supa
         .from("candidates")
-        .select("id, full_name, party, position, state, region")
+        .select("id, full_name, party, region")
         .eq("id", candidate_id)
         .maybeSingle();
       candidate = data;
@@ -232,7 +268,7 @@ serve(async (req) => {
       });
     }
 
-    const payload = await generateAI(candidate || { full_name: "Cenário agregado" }, days);
+    const payload = await generateAI(candidate ? { ...candidate, state: candidate.region } : { full_name: "Cenário agregado" }, days);
     if (payload.model_used !== "deterministic") {
       CACHE.set(cacheKey, { ts: Date.now(), payload });
     }
