@@ -277,12 +277,62 @@ export default function NetworkView() {
   const analyticsLoading = aiIntel.isLoading || customInteractions.isFetching || isApplyingCustom;
   const d = query.data;
 
-  const totalMentions = d?.kpis?.total ?? 0;
-  const totalEngagement = d?.kpis?.engagement ?? 0;
+  const customData = useMemo(() => {
+    if (!customRange) return null;
+    const rows = (customInteractions.data ?? []).filter((item) => {
+      if (!item.collected_at) return false;
+      const date = new Date(item.collected_at);
+      return date >= parseDateBoundary(customRange.startDate, "start") && date <= parseDateBoundary(customRange.endDate, "end");
+    });
+    const byNetworkMap = new Map<string, NetRow>();
+    const sentimentKpis = { pos: 0, neg: 0, neu: 0 };
+    const seriesMap = new Map<string, SeriesRow>();
+    for (const item of rows) {
+      const networkKey = item.social_network ?? "";
+      if (!ALLOWED_NETWORKS.has(networkKey)) continue;
+      const likes = Number(item.likes_count ?? 0);
+      const replies = Number(item.replies_count ?? 0);
+      const shares = Number(item.shares_count ?? 0);
+      const sentKey = String(item.sentiment_label ?? "").toLowerCase().startsWith("pos")
+        ? "pos"
+        : String(item.sentiment_label ?? "").toLowerCase().startsWith("neg")
+          ? "neg"
+          : "neu";
+      const row = byNetworkMap.get(networkKey) ?? { network: networkKey, mentions: 0, engagement: 0, likes: 0, replies: 0, shares: 0, pos: 0, neg: 0, neu: 0 };
+      row.mentions += 1;
+      row.engagement += likes + replies + shares;
+      row.likes += likes;
+      row.replies += replies;
+      row.shares += shares;
+      row[sentKey] += 1;
+      byNetworkMap.set(networkKey, row);
+      sentimentKpis[sentKey] += 1;
+
+      const day = String(item.collected_at).slice(0, 10);
+      const point = seriesMap.get(day) ?? { day, p: 0, n: 0, u: 0 };
+      if (sentKey === "pos") point.p += 1;
+      else if (sentKey === "neg") point.n += 1;
+      else point.u += 1;
+      seriesMap.set(day, point);
+    }
+    const topicsAndTerms = computeTopicsAndTerms(rows);
+    const kpis = {
+      total: rows.length,
+      engagement: rows.reduce((sum, item) => sum + Number(item.likes_count ?? 0) + Number(item.replies_count ?? 0) + Number(item.shares_count ?? 0), 0),
+      likes: rows.reduce((sum, item) => sum + Number(item.likes_count ?? 0), 0),
+      replies: rows.reduce((sum, item) => sum + Number(item.replies_count ?? 0), 0),
+      shares: rows.reduce((sum, item) => sum + Number(item.shares_count ?? 0), 0),
+    };
+    return { kpis, sentimentKpis, byNet: Array.from(byNetworkMap.values()), series: Array.from(seriesMap.values()), topics: topicsAndTerms.topics, terms: topicsAndTerms.terms };
+  }, [customInteractions.data, customRange]);
+
+  const totalMentions = customData?.kpis?.total ?? d?.kpis?.total ?? 0;
+  const totalEngagement = customData?.kpis?.engagement ?? d?.kpis?.engagement ?? 0;
 
   // Sentimento líquido — SEMPRE dados reais (Camada 1)
-  const sFromBlock = { pos: d?.sentimentKpis?.pos ?? 0, neg: d?.sentimentKpis?.neg ?? 0, neu: d?.sentimentKpis?.neu ?? 0 };
-  const sFromNet = (d?.byNet ?? []).reduce(
+  const realByNet = customData?.byNet ?? d?.byNet ?? [];
+  const sFromBlock = customData?.sentimentKpis ?? { pos: d?.sentimentKpis?.pos ?? 0, neg: d?.sentimentKpis?.neg ?? 0, neu: d?.sentimentKpis?.neu ?? 0 };
+  const sFromNet = realByNet.reduce(
     (acc, n) => ({ pos: acc.pos + (n.pos || 0), neg: acc.neg + (n.neg || 0), neu: acc.neu + (n.neu || 0) }),
     { pos: 0, neg: 0, neu: 0 },
   );
