@@ -240,18 +240,31 @@ export default function NetworkView() {
     },
   });
 
+  // Range efetivo: customRange ou [now - days, now]. Sempre ativo.
+  const effectiveRange = useMemo(() => {
+    if (customRange) {
+      return {
+        start: parseDateBoundary(customRange.startDate, "start"),
+        end: parseDateBoundary(customRange.endDate, "end"),
+        key: `${customRange.startDate}_${customRange.endDate}`,
+      };
+    }
+    const end = new Date();
+    const start = new Date(end.getTime() - days * 86_400_000);
+    return { start, end, key: `last_${days}` };
+  }, [customRange, days]);
+
   const customInteractions = useQuery({
-    queryKey: ["nv-custom-interactions", user?.id, candidateId, network, customRange?.startDate, customRange?.endDate],
-    enabled: !!user?.id && !!customRange,
+    queryKey: ["nv-range-interactions", user?.id, candidateId, network, effectiveRange.key],
+    enabled: !!user?.id,
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
     queryFn: async () => {
-      if (!customRange) return [] as RawInteraction[];
       const PAGE = 1000;
       const MAX_ROWS = 20000;
       const all: RawInteraction[] = [];
-      const startIso = parseDateBoundary(customRange.startDate, "start").toISOString();
-      const endIso = parseDateBoundary(customRange.endDate, "end").toISOString();
+      const startIso = effectiveRange.start.toISOString();
+      const endIso = effectiveRange.end.toISOString();
       for (let from = 0; from < MAX_ROWS; from += PAGE) {
         let q = supabase
           .from("social_interactions")
@@ -274,15 +287,14 @@ export default function NetworkView() {
   });
 
   const loading = query.isLoading || customInteractions.isFetching || isApplyingCustom;
-  const analyticsLoading = aiIntel.isLoading || customInteractions.isFetching || isApplyingCustom;
+  const analyticsLoading = customInteractions.isFetching || isApplyingCustom;
   const d = query.data;
 
   const customData = useMemo(() => {
-    if (!customRange) return null;
     const rows = (customInteractions.data ?? []).filter((item) => {
       if (!item.collected_at) return false;
       const date = new Date(item.collected_at);
-      return date >= parseDateBoundary(customRange.startDate, "start") && date <= parseDateBoundary(customRange.endDate, "end");
+      return date >= effectiveRange.start && date <= effectiveRange.end;
     });
     const byNetworkMap = new Map<string, NetRow>();
     const sentimentKpis = { pos: 0, neg: 0, neu: 0 };
