@@ -7,14 +7,11 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
-import { MessageSquare, Activity, Gauge, Crown, CalendarIcon } from "lucide-react";
+import { MessageSquare, Activity, Gauge, Crown } from "lucide-react";
 import { format, parseISO } from "date-fns";
-import { cn } from "@/lib/utils";
 
 const ALLOWED_NETWORKS = new Set([
   "youtube", "facebook", "tiktok", "telegram", "twitter", "google_news", "linkedin", "reddit", "instagram",
@@ -50,11 +47,24 @@ const COLORS = {
 const fmt = (n: number) => Number(n ?? 0).toLocaleString("pt-BR");
 const compact = (n: number) => Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 }).format(n ?? 0);
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
+const parseDateBoundary = (value: string, boundary: "start" | "end") =>
+  new Date(`${value}T${boundary === "end" ? "23:59:59.999" : "00:00:00"}`);
+const formatDisplayDate = (value: string) => format(parseDateBoundary(value, "start"), "dd/MM/yyyy");
 
 type NetRow = { network: string; mentions: number; engagement: number; likes: number; replies: number; shares: number; pos: number; neg: number; neu: number };
 type SeriesRow = { day: string; p: number; n: number; u: number };
 type TopicRow = { label?: string; topic?: string; theme?: string; mentions: number; pos: number; neg: number; neu: number; relevance?: number; positive?: number };
 type TermRow = { term: string; count: number; kind: "hashtag" | "entity" };
+type RawInteraction = {
+  collected_at: string | null;
+  social_network: string | null;
+  sentiment_label: string | null;
+  likes_count: number | null;
+  replies_count: number | null;
+  shares_count: number | null;
+  post_title?: string | null;
+  comment_text?: string | null;
+};
 
 export default function NetworkView() {
   const { user } = useAuth();
@@ -62,11 +72,13 @@ export default function NetworkView() {
   const [network, setNetwork] = useState("all");
   const [candidateId, setCandidateId] = useState<string>("all");
   const [days, setDays] = useState(365);
-  const [customRange, setCustomRange] = useState<{ start: Date; end: Date } | null>(null);
-  const [customOpen, setCustomOpen] = useState(false);
-  const [draftStart, setDraftStart] = useState<Date | undefined>(undefined);
-  const [draftEnd, setDraftEnd] = useState<Date | undefined>(undefined);
+  const [selectedPeriod, setSelectedPeriod] = useState<string>("365");
+  const [customRange, setCustomRange] = useState<{ startDate: string; endDate: string } | null>(null);
+  const [customPanelOpen, setCustomPanelOpen] = useState(false);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [customError, setCustomError] = useState<string | null>(null);
+  const [isApplyingCustom, setIsApplyingCustom] = useState(false);
 
   // Effective days used for backend fetch: when custom is active,
   // fetch enough days back from "now" to cover startDate; we then
@@ -74,12 +86,12 @@ export default function NetworkView() {
   const effectiveDays = useMemo(() => {
     if (!customRange) return days;
     const now = Date.now();
-    const span = Math.ceil((now - customRange.start.getTime()) / 86_400_000);
+    const span = Math.ceil((now - parseDateBoundary(customRange.startDate, "start").getTime()) / 86_400_000);
     return Math.max(1, span);
   }, [customRange, days]);
 
   const activePeriodLabel = customRange
-    ? `Período: ${format(customRange.start, "dd/MM/yyyy")} - ${format(customRange.end, "dd/MM/yyyy")}`
+    ? `Período: ${formatDisplayDate(customRange.startDate)} até ${formatDisplayDate(customRange.endDate)}`
     : `Período: Últimos ${PERIOD_LABEL[days] ?? days + " dias"}`;
 
   const { data: candidates } = useQuery({
@@ -120,9 +132,9 @@ export default function NetworkView() {
   };
 
   const query = useQuery({
-    queryKey: ["nv-blocks", user?.id, network, candidateId, effectiveDays, customRange?.start?.toISOString(), customRange?.end?.toISOString()],
+    queryKey: ["nv-blocks", user?.id, network, candidateId, effectiveDays, customRange?.startDate, customRange?.endDate],
     queryFn: async () => {
-      console.log("[NetworkView] filters →", { user: user?.id, candidate: candidateId, network, period: days });
+      console.log("[NetworkView] filters →", { user: user?.id, candidate: candidateId, network, period: selectedPeriod, customRange });
       // allSettled: timeout em UM bloco não derruba os outros
       const settled = await Promise.allSettled([
         fetchBlock("network_view_summary"),
@@ -210,7 +222,7 @@ export default function NetworkView() {
   });
   // Camada 2 — Inteligência IA (sempre disponível, usada quando dados reais são insuficientes)
   const aiIntel = useQuery({
-    queryKey: ["nv-ai-intel", candidateId, network, effectiveDays, customRange?.start?.toISOString(), customRange?.end?.toISOString()],
+    queryKey: ["nv-ai-intel", candidateId, network, effectiveDays, customRange?.startDate, customRange?.endDate],
     enabled: !!user?.id,
     staleTime: 12 * 60 * 60_000,
     gcTime: 24 * 60 * 60_000,
@@ -228,15 +240,99 @@ export default function NetworkView() {
     },
   });
 
-  const loading = query.isLoading;
+  const customInteractions = useQuery({
+    queryKey: ["nv-custom-interactions", user?.id, candidateId, network, customRange?.startDate, customRange?.endDate],
+    enabled: !!user?.id && !!customRange,
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      if (!customRange) return [] as RawInteraction[];
+      const PAGE = 1000;
+      const MAX_ROWS = 20000;
+      const all: RawInteraction[] = [];
+      const startIso = parseDateBoundary(customRange.startDate, "start").toISOString();
+      const endIso = parseDateBoundary(customRange.endDate, "end").toISOString();
+      for (let from = 0; from < MAX_ROWS; from += PAGE) {
+        let q = supabase
+          .from("social_interactions")
+          .select("collected_at, social_network, sentiment_label, likes_count, replies_count, shares_count, post_title, comment_text")
+          .is("invalidated_at", null)
+          .gte("collected_at", startIso)
+          .lte("collected_at", endIso)
+          .order("collected_at", { ascending: false })
+          .range(from, from + PAGE - 1);
+        if (candidateId !== "all") q = q.eq("candidate_id", candidateId);
+        if (network !== "all") q = q.eq("social_network", network);
+        const { data, error } = await q;
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        all.push(...(data as RawInteraction[]));
+        if (data.length < PAGE) break;
+      }
+      return all;
+    },
+  });
+
+  const loading = query.isLoading || customInteractions.isFetching || isApplyingCustom;
+  const analyticsLoading = aiIntel.isLoading || customInteractions.isFetching || isApplyingCustom;
   const d = query.data;
 
-  const totalMentions = d?.kpis?.total ?? 0;
-  const totalEngagement = d?.kpis?.engagement ?? 0;
+  const customData = useMemo(() => {
+    if (!customRange) return null;
+    const rows = (customInteractions.data ?? []).filter((item) => {
+      if (!item.collected_at) return false;
+      const date = new Date(item.collected_at);
+      return date >= parseDateBoundary(customRange.startDate, "start") && date <= parseDateBoundary(customRange.endDate, "end");
+    });
+    const byNetworkMap = new Map<string, NetRow>();
+    const sentimentKpis = { pos: 0, neg: 0, neu: 0 };
+    const seriesMap = new Map<string, SeriesRow>();
+    for (const item of rows) {
+      const networkKey = item.social_network ?? "";
+      if (!ALLOWED_NETWORKS.has(networkKey)) continue;
+      const likes = Number(item.likes_count ?? 0);
+      const replies = Number(item.replies_count ?? 0);
+      const shares = Number(item.shares_count ?? 0);
+      const sentKey = String(item.sentiment_label ?? "").toLowerCase().startsWith("pos")
+        ? "pos"
+        : String(item.sentiment_label ?? "").toLowerCase().startsWith("neg")
+          ? "neg"
+          : "neu";
+      const row = byNetworkMap.get(networkKey) ?? { network: networkKey, mentions: 0, engagement: 0, likes: 0, replies: 0, shares: 0, pos: 0, neg: 0, neu: 0 };
+      row.mentions += 1;
+      row.engagement += likes + replies + shares;
+      row.likes += likes;
+      row.replies += replies;
+      row.shares += shares;
+      row[sentKey] += 1;
+      byNetworkMap.set(networkKey, row);
+      sentimentKpis[sentKey] += 1;
+
+      const day = String(item.collected_at).slice(0, 10);
+      const point = seriesMap.get(day) ?? { day, p: 0, n: 0, u: 0 };
+      if (sentKey === "pos") point.p += 1;
+      else if (sentKey === "neg") point.n += 1;
+      else point.u += 1;
+      seriesMap.set(day, point);
+    }
+    const topicsAndTerms = computeTopicsAndTerms(rows);
+    const kpis = {
+      total: rows.length,
+      engagement: rows.reduce((sum, item) => sum + Number(item.likes_count ?? 0) + Number(item.replies_count ?? 0) + Number(item.shares_count ?? 0), 0),
+      likes: rows.reduce((sum, item) => sum + Number(item.likes_count ?? 0), 0),
+      replies: rows.reduce((sum, item) => sum + Number(item.replies_count ?? 0), 0),
+      shares: rows.reduce((sum, item) => sum + Number(item.shares_count ?? 0), 0),
+    };
+    return { kpis, sentimentKpis, byNet: Array.from(byNetworkMap.values()), series: Array.from(seriesMap.values()), topics: topicsAndTerms.topics, terms: topicsAndTerms.terms };
+  }, [customInteractions.data, customRange]);
+
+  const totalMentions = customData?.kpis?.total ?? d?.kpis?.total ?? 0;
+  const totalEngagement = customData?.kpis?.engagement ?? d?.kpis?.engagement ?? 0;
 
   // Sentimento líquido — SEMPRE dados reais (Camada 1)
-  const sFromBlock = { pos: d?.sentimentKpis?.pos ?? 0, neg: d?.sentimentKpis?.neg ?? 0, neu: d?.sentimentKpis?.neu ?? 0 };
-  const sFromNet = (d?.byNet ?? []).reduce(
+  const realByNet = customData?.byNet ?? d?.byNet ?? [];
+  const sFromBlock = customData?.sentimentKpis ?? { pos: d?.sentimentKpis?.pos ?? 0, neg: d?.sentimentKpis?.neg ?? 0, neu: d?.sentimentKpis?.neu ?? 0 };
+  const sFromNet = realByNet.reduce(
     (acc, n) => ({ pos: acc.pos + (n.pos || 0), neg: acc.neg + (n.neg || 0), neu: acc.neu + (n.neu || 0) }),
     { pos: 0, neg: 0, neu: 0 },
   );
@@ -267,21 +363,27 @@ export default function NetworkView() {
 
   // Rede dominante: prefere real (Camada 1) quando há volume; senão IA
   const dominant = useMemo(() => {
-    const realArr = d?.byNet ?? [];
+    const realArr = realByNet;
     const arr = realArr.length > 0 ? realArr : aiByNet;
     if (!arr.length) return null;
     return [...arr].sort((a, b) => (b.mentions * 0.4 + b.engagement * 0.6) - (a.mentions * 0.4 + a.engagement * 0.6))[0];
-  }, [d, aiByNet]);
+  }, [realByNet, aiByNet]);
 
-  // Distribuição por rede — IA sempre
-  const networkTotal = useMemo(() => aiByNet.reduce((s, n) => s + n.mentions, 0), [aiByNet]);
-  const sortedNetworks = useMemo(() => [...aiByNet].sort((a, b) => b.mentions - a.mentions), [aiByNet]);
+  const analyticsByNet = customRange ? (customData?.byNet ?? []) : aiByNet;
+  const analyticsSeriesRows = customRange ? (customData?.series ?? []) : aiSeries;
+  const analyticsTopics = customRange ? (customData?.topics ?? []) : aiTopics;
+  const analyticsTerms = customRange ? (customData?.terms ?? []) : aiTerms;
+  const kpis = customData?.kpis ?? d?.kpis ?? {};
+
+  // Distribuição por rede — IA no padrão; período customizado recalcula pelo intervalo aplicado
+  const networkTotal = useMemo(() => analyticsByNet.reduce((s, n) => s + n.mentions, 0), [analyticsByNet]);
+  const sortedNetworks = useMemo(() => [...analyticsByNet].sort((a, b) => b.mentions - a.mentions), [analyticsByNet]);
 
   // Evolução temporal — IA sempre; filtra por intervalo customizado quando ativo
   const series = useMemo(() => {
-    const startMs = customRange ? customRange.start.getTime() : null;
-    const endMs = customRange ? customRange.end.getTime() + 86_399_000 : null;
-    return [...aiSeries]
+    const startMs = customRange ? parseDateBoundary(customRange.startDate, "start").getTime() : null;
+    const endMs = customRange ? parseDateBoundary(customRange.endDate, "end").getTime() : null;
+    return [...analyticsSeriesRows]
       .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.day))
       .filter((r) => {
         if (startMs == null || endMs == null) return true;
@@ -296,12 +398,30 @@ export default function NetworkView() {
         negativo: r.n,
         total: r.p + r.n + r.u,
       }));
-  }, [aiSeries, customRange]);
+  }, [analyticsSeriesRows, customRange]);
+
+  const applyCustomRange = () => {
+    if (!startDate || !endDate) {
+      setCustomError("Selecione ambas as datas");
+      return;
+    }
+    const start = parseDateBoundary(startDate, "start");
+    const end = parseDateBoundary(endDate, "end");
+    if (end < start) {
+      setCustomError("Data final não pode ser menor que a inicial");
+      return;
+    }
+    setIsApplyingCustom(true);
+    setSelectedPeriod("custom");
+    setCustomRange({ startDate, endDate });
+    setCustomError(null);
+    window.setTimeout(() => setIsApplyingCustom(false), 500);
+  };
 
   // Assuntos dominantes — IA sempre
-  const mergedTopics = aiTopics;
+  const mergedTopics = analyticsTopics;
   // Termos em alta — IA sempre
-  const mergedTerms = aiTerms;
+  const mergedTerms = analyticsTerms;
 
 
 
@@ -329,63 +449,67 @@ export default function NetworkView() {
             <SelectTrigger className="w-[170px]"><SelectValue /></SelectTrigger>
             <SelectContent>{NETWORKS_FILTER.map((n) => <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>)}</SelectContent>
           </Select>
-          <Select
-            value={customRange ? "custom" : String(days)}
-            onValueChange={(v) => {
-              if (v === "custom") return;
-              setCustomRange(null);
-              setDays(Number(v));
-            }}
-          >
-            <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {PERIODS.map((p) => <SelectItem key={p.value} value={String(p.value)}>{p.label}</SelectItem>)}
-              {customRange && <SelectItem value="custom">Personalizado</SelectItem>}
-            </SelectContent>
-          </Select>
-          <Popover open={customOpen} onOpenChange={(o) => {
-            setCustomOpen(o);
-            if (o) {
-              setDraftStart(customRange?.start);
-              setDraftEnd(customRange?.end);
-              setCustomError(null);
-            }
-          }}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="default" className={cn("gap-2", customRange && "border-primary text-primary")}>
-                <CalendarIcon className="h-4 w-4" />
-                Personalizado
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-4" align="end">
-              <div className="flex flex-col sm:flex-row gap-4">
-                <div>
-                  <div className="text-xs font-medium mb-2 text-muted-foreground">Data inicial</div>
-                  <Calendar mode="single" selected={draftStart} onSelect={setDraftStart} initialFocus className={cn("p-3 pointer-events-auto")} />
-                </div>
-                <div>
-                  <div className="text-xs font-medium mb-2 text-muted-foreground">Data final</div>
-                  <Calendar mode="single" selected={draftEnd} onSelect={setDraftEnd} className={cn("p-3 pointer-events-auto")} />
-                </div>
-              </div>
-              {customError && <div className="text-xs text-destructive mt-3">{customError}</div>}
-              <div className="flex justify-end gap-2 mt-4">
-                <Button variant="ghost" size="sm" onClick={() => { setCustomOpen(false); setCustomError(null); }}>Cancelar</Button>
-                {customRange && (
-                  <Button variant="outline" size="sm" onClick={() => { setCustomRange(null); setCustomOpen(false); setCustomError(null); }}>Limpar</Button>
-                )}
-                <Button size="sm" onClick={() => {
-                  if (!draftStart || !draftEnd) { setCustomError("Selecione data inicial e final"); return; }
-                  if (draftEnd < draftStart) { setCustomError("Data final não pode ser menor que data inicial"); return; }
-                  setCustomRange({ start: draftStart, end: draftEnd });
-                  setCustomOpen(false);
+          <div className="flex flex-wrap gap-1">
+            {PERIODS.map((p) => (
+              <Button
+                key={p.value}
+                type="button"
+                variant={selectedPeriod === String(p.value) ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setSelectedPeriod(String(p.value));
+                  setDays(p.value);
+                  setCustomRange(null);
+                  setCustomPanelOpen(false);
                   setCustomError(null);
-                }}>Aplicar</Button>
-              </div>
-            </PopoverContent>
-          </Popover>
+                }}
+              >
+                {p.label}
+              </Button>
+            ))}
+            <Button
+              type="button"
+              variant={selectedPeriod === "custom" || customPanelOpen ? "default" : "outline"}
+              size="sm"
+              onClick={() => {
+                setCustomPanelOpen(true);
+                setStartDate(customRange?.startDate ?? startDate);
+                setEndDate(customRange?.endDate ?? endDate);
+                setCustomError(null);
+              }}
+            >
+              Personalizado
+            </Button>
+          </div>
         </div>
       </div>
+
+      {customPanelOpen && (
+        <Card className="p-4">
+          <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-muted-foreground">De:</span>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-muted-foreground">Até:</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+              />
+            </label>
+            <Button onClick={applyCustomRange}>Aplicar</Button>
+          </div>
+          {customError && <div className="text-xs text-destructive mt-3">{customError}</div>}
+        </Card>
+      )}
 
       {errorMessage && (
         <Card className="p-4 border-destructive bg-destructive/5">
@@ -398,7 +522,7 @@ export default function NetworkView() {
       {/* BLOCO 1 — RESUMO EXECUTIVO */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <BigKpi icon={<MessageSquare className="h-5 w-5" />} label="Total de menções" value={loading ? null : fmt(totalMentions)} />
-        <BigKpi icon={<Activity className="h-5 w-5" />} label="Total de interações" value={loading ? null : compact(totalEngagement)} sub={loading ? "" : `${compact(d?.kpis?.likes ?? 0)} curtidas · ${compact(d?.kpis?.replies ?? 0)} comentários · ${compact(d?.kpis?.shares ?? 0)} compart.`} />
+        <BigKpi icon={<Activity className="h-5 w-5" />} label="Total de interações" value={loading ? null : compact(totalEngagement)} sub={loading ? "" : `${compact(kpis.likes ?? 0)} curtidas · ${compact(kpis.replies ?? 0)} comentários · ${compact(kpis.shares ?? 0)} compart.`} />
         <BigKpi
           icon={<Gauge className="h-5 w-5" />}
           label="Sentimento líquido"
@@ -418,7 +542,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Distribuição por rede</h2>
         <p className="text-sm text-muted-foreground mb-6">Participação de cada plataforma no volume e nas interações.</p>
-        {aiIntel.isLoading ? <Skeleton className="h-64 w-full" /> : sortedNetworks.length === 0 ? <Empty /> : (
+        {analyticsLoading ? <Skeleton className="h-64 w-full" /> : sortedNetworks.length === 0 ? <Empty /> : (
           <div className="space-y-3">
             {sortedNetworks.map((n) => {
               const share = pct(n.mentions, networkTotal);
@@ -446,7 +570,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Evolução temporal</h2>
         <p className="text-sm text-muted-foreground mb-6">Volume diário com sobreposição de sentimento positivo e negativo.</p>
-        {aiIntel.isLoading ? <Skeleton className="h-72 w-full" /> : series.length === 0 ? <Empty /> : (
+        {analyticsLoading ? <Skeleton className="h-72 w-full" /> : series.length === 0 ? <Empty /> : (
           <ResponsiveContainer width="100%" height={320}>
             <LineChart data={series} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -466,7 +590,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Sentimento por rede</h2>
         <p className="text-sm text-muted-foreground mb-6">Distribuição percentual de positivo, negativo e neutro em cada plataforma.</p>
-        {aiIntel.isLoading ? <Skeleton className="h-56 w-full" /> : sortedNetworks.length === 0 ? <Empty /> : (
+        {analyticsLoading ? <Skeleton className="h-56 w-full" /> : sortedNetworks.length === 0 ? <Empty /> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -509,7 +633,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Assuntos dominantes</h2>
         <p className="text-sm text-muted-foreground mb-6">Volume, participação e sentimento médio por tema.</p>
-        {aiIntel.isLoading ? <Skeleton className="h-56 w-full" /> : (mergedTopics.length === 0) ? <Empty /> : (
+        {analyticsLoading ? <Skeleton className="h-56 w-full" /> : (mergedTopics.length === 0) ? <Empty /> : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {(() => {
               const topicsTotal = mergedTopics.reduce((s, t) => s + (t.mentions || 0), 0);
@@ -544,7 +668,7 @@ export default function NetworkView() {
       <Card className="p-6">
         <h2 className="text-lg font-semibold mb-1">Termos em alta</h2>
         <p className="text-sm text-muted-foreground mb-6">Hashtags, nomes e entidades com maior relevância contextual no período.</p>
-        {aiIntel.isLoading ? <Skeleton className="h-40 w-full" /> : mergedTerms.length === 0 ? <Empty /> : (
+        {analyticsLoading ? <Skeleton className="h-40 w-full" /> : mergedTerms.length === 0 ? <Empty /> : (
           <div className="flex flex-wrap gap-2">
             {mergedTerms.map((t) => {
               const max = (mergedTerms[0]?.count ?? 1);
@@ -630,7 +754,7 @@ function cleanText(text: string): string {
     .trim();
 }
 
-function computeTopicsAndTerms(rows: Array<{ post_title: string | null; comment_text: string | null; social_network: string | null; sentiment_label: string | null }>) {
+function computeTopicsAndTerms(rows: Array<{ post_title?: string | null; comment_text?: string | null; social_network?: string | null; sentiment_label?: string | null }>) {
   console.log("[NetworkView] fallback rows:", rows.length);
   const themeStats: Record<string, { mentions: number; pos: number; neg: number; neu: number }> = {};
   const hashCount: Record<string, number> = {};
