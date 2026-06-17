@@ -421,10 +421,26 @@ export default function NetworkView() {
     window.setTimeout(() => setIsApplyingCustom(false), 500);
   };
 
-  // Assuntos dominantes — IA sempre
   const mergedTopics = analyticsTopics;
-  // Termos em alta — IA sempre
   const mergedTerms = analyticsTerms;
+
+  // KPIs derivados
+  const totalMentions = kpis.total ?? 0;
+  const totalEngagement = kpis.engagement ?? 0;
+
+  // Sentimento líquido — derivado do dataset ativo (real ou IA)
+  const sentAgg = analyticsByNet.reduce(
+    (acc, n) => ({ pos: acc.pos + (n.pos || 0), neg: acc.neg + (n.neg || 0), neu: acc.neu + (n.neu || 0) }),
+    { pos: 0, neg: 0, neu: 0 },
+  );
+  const sentLabeled = sentAgg.pos + sentAgg.neg + sentAgg.neu;
+  const netSentiment = sentLabeled > 0 ? Math.round(((sentAgg.pos - sentAgg.neg) / sentLabeled) * 100) : 0;
+  const netLabel =
+    netSentiment >= 40 ? "Muito favorável" :
+    netSentiment >= 10 ? "Favorável" :
+    netSentiment <= -40 ? "Muito desfavorável" :
+    netSentiment <= -10 ? "Desfavorável" : "Neutro";
+  const netTone = netSentiment >= 10 ? "text-success" : netSentiment <= -10 ? "text-destructive" : "text-muted-foreground";
 
 
 
