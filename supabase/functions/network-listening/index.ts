@@ -357,12 +357,30 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify(out), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (e) {
+  } catch (e: any) {
     const msg = e instanceof Error ? e.message : "erro";
+    const status = e?.status ?? 0;
     console.error("[network-listening]", msg);
-    return new Response(JSON.stringify({ error: msg }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const rateLimited = status === 429;
+    const noCredits = status === 402;
+    return new Response(
+      JSON.stringify({
+        error: rateLimited
+          ? "RATE_LIMITED"
+          : noCredits
+            ? "NO_CREDITS"
+            : "SERVICE_UNAVAILABLE",
+        message: rateLimited
+          ? "Muitas requisições no momento. Tente novamente em alguns instantes."
+          : noCredits
+            ? "Créditos de IA esgotados no workspace. Adicione créditos para continuar."
+            : msg,
+        fallback: true,
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   }
 });
