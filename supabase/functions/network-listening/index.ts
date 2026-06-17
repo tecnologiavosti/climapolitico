@@ -201,8 +201,8 @@ INSTRUÇÕES:
 const RESPONSE_SCHEMA = {
   type: "object",
   properties: {
-    total_mentions: { type: ["number", "null"] },
-    total_interactions: { type: ["number", "null"] },
+    total_mentions: { type: "number" },
+    total_interactions: { type: "number" },
     sentiment: {
       type: "object",
       properties: { pos: { type: "number" }, neg: { type: "number" }, neu: { type: "number" } },
@@ -210,7 +210,7 @@ const RESPONSE_SCHEMA = {
     },
     net_sentiment: { type: "number" },
     net_label: { type: "string" },
-    dominant_network: { type: ["string", "null"] },
+    dominant_network: { type: "string" },
     distribution: {
       type: "array",
       items: {
