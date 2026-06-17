@@ -455,6 +455,20 @@ async function processJob(jobId: string, body: Body) {
     if (samples.length < minHits) {
       backfillUsed = true;
       pipelineUsed = "collector_backfill_then_historical_index";
+      const existingRun = await latestCollectorRun(admin, body, jobId).catch(() => null);
+      if (existingRun && ["running", "queued"].includes(existingRun.status)) {
+        await updateJob(admin, jobId, {
+          status: "running",
+          progress: Math.min(66, 12 + Math.round(((existingRun.current_chunk ?? 0) / Math.max(1, existingRun.total_chunks ?? 1)) * 52)),
+          stage: `Coletando histórico... Janela ${existingRun.current_chunk ?? 0}/${existingRun.total_chunks ?? 0} · ${Number(existingRun.mentions_found ?? 0).toLocaleString("pt-BR")} menções encontradas`,
+          logs,
+        });
+        return;
+      }
+      if (existingRun?.status === "completed") {
+        backfillHits = Number(existingRun.mentions_found ?? existingRun.inserted_count ?? 0);
+        log("collector_run_completed", { hits: backfillHits, run_id: existingRun.id });
+      } else {
       await updateJob(admin, jobId, { progress: 10, stage: "Histórico ainda não coletado para este candidato. Iniciando backfill...", logs });
       try {
         const collectorMode = days > 90 ? "backfill" : "on_demand";
@@ -482,6 +496,7 @@ async function processJob(jobId: string, body: Body) {
           await updateJob(admin, jobId, { status: "running", progress: Math.min(66, 12 + Math.round(((run.current_chunk ?? 0) / Math.max(1, run.total_chunks ?? 1)) * 52)), stage: `Coletando histórico... Janela ${run.current_chunk ?? 0}/${run.total_chunks ?? 0} · ${Number(run.mentions_found ?? 0).toLocaleString("pt-BR")} menções encontradas`, logs });
           return;
         }
+      }
       }
     }
 
