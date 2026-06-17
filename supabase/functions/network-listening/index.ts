@@ -468,6 +468,9 @@ async function processJob(jobId: string, body: Body) {
       if (existingRun?.status === "completed") {
         backfillHits = Number(existingRun.mentions_found ?? existingRun.inserted_count ?? 0);
         log("collector_run_completed", { hits: backfillHits, run_id: existingRun.id });
+        evidence = await loadHistoricalEvidence(admin, body);
+        sourceStatuses = buildSourceStatuses(evidence);
+        samples = preprocessEvidence(evidence);
       } else {
       await updateJob(admin, jobId, { progress: 10, stage: "Histórico ainda não coletado para este candidato. Iniciando backfill...", logs });
       try {
