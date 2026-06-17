@@ -213,7 +213,7 @@ function buildSourceStatuses(evidence: Array<{ net: Network; source: string; hit
   return evidence.map((e) => ({ source: `historical:${e.source}`, network: e.net, batch: 0, status: e.hits.length ? "ok" : "empty", duration_ms: 0, hits: e.hits.length }));
 }
 
-async function latestCollectorRun(admin: any, body: Body) {
+async function latestCollectorRun(admin: any, body: Body, jobId?: string) {
   let q = admin
     .from("historical_social_collector_runs")
     .select("id,job_id,status,current_chunk,total_chunks,mentions_found,inserted_count,source_count,error,started_at,completed_at,finished_at,created_at")
@@ -221,6 +221,7 @@ async function latestCollectorRun(admin: any, body: Body) {
     .order("created_at", { ascending: false })
     .limit(1);
   if (body.candidate_id) q = q.eq("candidate_id", body.candidate_id);
+  if (jobId) q = q.eq("job_id", jobId);
   const { data } = await q.maybeSingle();
   return data;
 }
