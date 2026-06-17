@@ -231,8 +231,41 @@ export default function NetworkView() {
     },
   });
 
-  const loading = query.isLoading || isApplyingCustom;
-  const analyticsLoading = aiIntel.isLoading || isApplyingCustom;
+  const customInteractions = useQuery({
+    queryKey: ["nv-custom-interactions", user?.id, candidateId, network, customRange?.startDate, customRange?.endDate],
+    enabled: !!user?.id && !!customRange,
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      if (!customRange) return [] as RawInteraction[];
+      const PAGE = 1000;
+      const MAX_ROWS = 20000;
+      const all: RawInteraction[] = [];
+      const startIso = parseDateBoundary(customRange.startDate, "start").toISOString();
+      const endIso = parseDateBoundary(customRange.endDate, "end").toISOString();
+      for (let from = 0; from < MAX_ROWS; from += PAGE) {
+        let q = supabase
+          .from("social_interactions")
+          .select("collected_at, social_network, sentiment_label, likes_count, replies_count, shares_count, post_title, comment_text")
+          .is("invalidated_at", null)
+          .gte("collected_at", startIso)
+          .lte("collected_at", endIso)
+          .order("collected_at", { ascending: false })
+          .range(from, from + PAGE - 1);
+        if (candidateId !== "all") q = q.eq("candidate_id", candidateId);
+        if (network !== "all") q = q.eq("social_network", network);
+        const { data, error } = await q;
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        all.push(...(data as RawInteraction[]));
+        if (data.length < PAGE) break;
+      }
+      return all;
+    },
+  });
+
+  const loading = query.isLoading || customInteractions.isFetching || isApplyingCustom;
+  const analyticsLoading = aiIntel.isLoading || customInteractions.isFetching || isApplyingCustom;
   const d = query.data;
 
   const totalMentions = d?.kpis?.total ?? 0;
