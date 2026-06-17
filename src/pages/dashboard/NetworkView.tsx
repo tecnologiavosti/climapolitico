@@ -459,12 +459,13 @@ export default function NetworkView() {
             {loading || !data ? <Skeleton className="h-64 w-full" /> : distribution.length === 0 ? <Empty /> : (
               <div className="space-y-3">
                 {distribution.map((n) => {
-                  const dst = (n.data_source_type ?? "unavailable") as DataSourceType;
                   const badge: Record<DataSourceType, { label: string; cls: string }> = {
                     direct:      { label: "Direct",      cls: "bg-success/15 text-success border-success/30" },
                     proxy:       { label: "Proxy",       cls: "bg-warning/15 text-warning border-warning/30" },
                     unavailable: { label: "Sem dados",   cls: "bg-muted text-muted-foreground border-border" },
                   };
+                  const rawDst = String(n.data_source_type ?? "unavailable") as DataSourceType;
+                  const dst = rawDst in badge ? rawDst : "unavailable";
                   const hideNumbers = data.qualitative_only || dst === "unavailable";
                   return (
                     <div key={n.network} className="grid grid-cols-12 items-center gap-3">
