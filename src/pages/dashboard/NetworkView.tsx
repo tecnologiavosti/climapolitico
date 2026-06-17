@@ -183,6 +183,25 @@ export default function NetworkView() {
     },
 
   });
+  // Camada 2 — Inteligência IA (sempre disponível, usada quando dados reais são insuficientes)
+  const aiIntel = useQuery({
+    queryKey: ["nv-ai-intel", candidateId, network, days],
+    enabled: !!user?.id,
+    staleTime: 12 * 60 * 60_000,
+    gcTime: 24 * 60 * 60_000,
+    retry: 1,
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("network-view-intelligence", {
+        body: {
+          candidate_id: candidateId === "all" ? null : candidateId,
+          network: network === "all" ? null : network,
+          days,
+        },
+      });
+      if (error) throw error;
+      return data as { by_network: NetRow[]; series: SeriesRow[]; topics: TopicRow[]; terms: TermRow[]; period: string };
+    },
+  });
 
   const loading = query.isLoading;
   const d = query.data;
@@ -190,7 +209,7 @@ export default function NetworkView() {
   const totalMentions = d?.kpis?.total ?? 0;
   const totalEngagement = d?.kpis?.engagement ?? 0;
 
-  // Sentimento líquido — usa bloco sentiment; se vazio, agrega de byNet
+  // Sentimento líquido — SEMPRE dados reais (Camada 1)
   const sFromBlock = { pos: d?.sentimentKpis?.pos ?? 0, neg: d?.sentimentKpis?.neg ?? 0, neu: d?.sentimentKpis?.neu ?? 0 };
   const sFromNet = (d?.byNet ?? []).reduce(
     (acc, n) => ({ pos: acc.pos + (n.pos || 0), neg: acc.neg + (n.neg || 0), neu: acc.neu + (n.neu || 0) }),
@@ -207,21 +226,32 @@ export default function NetworkView() {
     netSentiment <= -10 ? "Desfavorável" : "Neutro";
   const netTone = netSentiment >= 10 ? "text-success" : netSentiment <= -10 ? "text-destructive" : "text-muted-foreground";
 
+  // Camada 2: rede dominante — prefere real, senão IA
   const dominant = useMemo(() => {
-    const arr = d?.byNet ?? [];
+    const realArr = d?.byNet ?? [];
+    const arr = realArr.length > 0
+      ? realArr
+      : ((aiIntel.data?.by_network ?? []) as NetRow[]).filter((n) => ALLOWED_NETWORKS.has(n.network));
     if (!arr.length) return null;
     return [...arr].sort((a, b) => (b.mentions * 0.4 + b.engagement * 0.6) - (a.mentions * 0.4 + a.engagement * 0.6))[0];
-  }, [d]);
+  }, [d, aiIntel.data]);
 
-  const networkTotal = useMemo(() => (d?.byNet ?? []).reduce((s, n) => s + n.mentions, 0), [d]);
+  // Camada 2: distribuição por rede — real se houver volume, senão IA
+  const REAL_MENTIONS_THRESHOLD = 30;
+  const realByNet = d?.byNet ?? [];
+  const realTotalMentions = realByNet.reduce((s, n) => s + n.mentions, 0);
+  const useAIForNetworks = realTotalMentions < REAL_MENTIONS_THRESHOLD;
+  const effectiveByNet: NetRow[] = useAIForNetworks
+    ? ((aiIntel.data?.by_network ?? []) as NetRow[]).filter((n) => ALLOWED_NETWORKS.has(n.network))
+    : realByNet;
+  const networkTotal = useMemo(() => effectiveByNet.reduce((s, n) => s + n.mentions, 0), [effectiveByNet]);
+  const sortedNetworks = useMemo(() => [...effectiveByNet].sort((a, b) => b.mentions - a.mentions), [effectiveByNet]);
 
-  const sortedNetworks = useMemo(() => {
-    return [...(d?.byNet ?? [])].sort((a, b) => b.mentions - a.mentions);
-  }, [d]);
-
-  // Série temporal ordenada por timestamp ISO real
+  // Camada 2: série temporal — real se suficiente, senão IA
+  const realSeries = d?.series ?? [];
+  const seriesSource: SeriesRow[] = realSeries.length >= 3 ? realSeries : ((aiIntel.data?.series ?? []) as SeriesRow[]);
   const series = useMemo(() => {
-    return [...(d?.series ?? [])]
+    return [...seriesSource]
       .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.day))
       .sort((a, b) => new Date(a.day + "T00:00:00Z").getTime() - new Date(b.day + "T00:00:00Z").getTime())
       .map((r) => ({
@@ -231,17 +261,27 @@ export default function NetworkView() {
         negativo: r.n,
         total: r.p + r.n + r.u,
       }));
-  }, [d]);
+  }, [seriesSource]);
 
+  // Camada 2: assuntos dominantes — real → fallback JS → IA
   const mergedTopics = useMemo(() => {
     const fromRpc = d?.topics ?? [];
-    return fromRpc.length > 0 ? fromRpc : (fallback.data?.topics ?? []);
-  }, [d, fallback.data]);
+    if (fromRpc.length > 0) return fromRpc;
+    const fromJs = fallback.data?.topics ?? [];
+    if (fromJs.length > 0) return fromJs;
+    return (aiIntel.data?.topics ?? []) as TopicRow[];
+  }, [d, fallback.data, aiIntel.data]);
 
+  // Camada 2: termos em alta — real → fallback JS → IA
   const mergedTerms = useMemo(() => {
     const fromRpc = d?.terms ?? [];
-    return fromRpc.length > 0 ? fromRpc : (fallback.data?.terms ?? []);
-  }, [d, fallback.data]);
+    if (fromRpc.length > 0) return fromRpc;
+    const fromJs = fallback.data?.terms ?? [];
+    if (fromJs.length > 0) return fromJs;
+    return (aiIntel.data?.terms ?? []) as TermRow[];
+  }, [d, fallback.data, aiIntel.data]);
+
+
 
 
   return (
