@@ -1746,6 +1746,120 @@ export type Database = {
         }
         Relationships: []
       }
+      historical_social_collector_runs: {
+        Row: {
+          candidate_id: string | null
+          candidate_name: string
+          created_at: string
+          error: string | null
+          finished_at: string | null
+          id: string
+          inserted_count: number
+          source_count: number
+          started_at: string | null
+          status: string
+        }
+        Insert: {
+          candidate_id?: string | null
+          candidate_name: string
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          inserted_count?: number
+          source_count?: number
+          started_at?: string | null
+          status?: string
+        }
+        Update: {
+          candidate_id?: string | null
+          candidate_name?: string
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          inserted_count?: number
+          source_count?: number
+          started_at?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
+      historical_social_mentions: {
+        Row: {
+          candidate_id: string | null
+          candidate_name: string
+          candidate_name_normalized: string
+          collected_at: string
+          comments: number | null
+          content: string | null
+          created_at: string
+          date: string | null
+          engagement: number | null
+          entities: Json | null
+          hashtags: Json | null
+          id: string
+          likes: number | null
+          network: string
+          raw: Json | null
+          sentiment: number | null
+          sentiment_label: string | null
+          shares: number | null
+          source: string
+          title: string | null
+          topics: Json | null
+          url: string | null
+        }
+        Insert: {
+          candidate_id?: string | null
+          candidate_name: string
+          candidate_name_normalized: string
+          collected_at?: string
+          comments?: number | null
+          content?: string | null
+          created_at?: string
+          date?: string | null
+          engagement?: number | null
+          entities?: Json | null
+          hashtags?: Json | null
+          id?: string
+          likes?: number | null
+          network: string
+          raw?: Json | null
+          sentiment?: number | null
+          sentiment_label?: string | null
+          shares?: number | null
+          source: string
+          title?: string | null
+          topics?: Json | null
+          url?: string | null
+        }
+        Update: {
+          candidate_id?: string | null
+          candidate_name?: string
+          candidate_name_normalized?: string
+          collected_at?: string
+          comments?: number | null
+          content?: string | null
+          created_at?: string
+          date?: string | null
+          engagement?: number | null
+          entities?: Json | null
+          hashtags?: Json | null
+          id?: string
+          likes?: number | null
+          network?: string
+          raw?: Json | null
+          sentiment?: number | null
+          sentiment_label?: string | null
+          shares?: number | null
+          source?: string
+          title?: string | null
+          topics?: Json | null
+          url?: string | null
+        }
+        Relationships: []
+      }
       job_execution_history: {
         Row: {
           duration_ms: number | null
