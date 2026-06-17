@@ -215,7 +215,7 @@ INSTRUÇÕES:
 - Nunca retorne zero ou vazio: você sempre tem contexto suficiente para uma estimativa razoável.
 - Não invente nomes próprios que não existem; mas estime números (volume, %).
 - Termos devem ser entidades reais: pessoas, partidos, instituições, hashtags plausíveis, slogans, regiões. NUNCA verbos, stopwords ou fragmentos.
-- Temas devem ser específicos ao candidato e período, não genéricos ("Congresso", "Economia").
+- Temas devem ser ESPECÍFICOS ao candidato e período (eventos, polêmicas, projetos, regiões, adversários nomeados). PROIBIDO usar rótulos genéricos como "Imagem pública", "Cobertura jornalística", "Disputa política", "Repercussão digital", "Críticas e apoios". Exemplos válidos: "Segurança pública em Goiás", "Pré-candidatura presidencial 2026", "Relação com Bolsonaro", "Agronegócio goiano".
 - A timeline deve ter granularidade "${bucket}" e cobrir o período inteiro com curva realista (picos em eventos, vales fora deles).
 - Sentimento por rede deve refletir o perfil típico da rede aplicado ao candidato/período.
 - Distribuição por rede deve respeitar a maturidade da rede no ano.
