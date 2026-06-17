@@ -240,18 +240,31 @@ export default function NetworkView() {
     },
   });
 
+  // Range efetivo: customRange ou [now - days, now]. Sempre ativo.
+  const effectiveRange = useMemo(() => {
+    if (customRange) {
+      return {
+        start: parseDateBoundary(customRange.startDate, "start"),
+        end: parseDateBoundary(customRange.endDate, "end"),
+        key: `${customRange.startDate}_${customRange.endDate}`,
+      };
+    }
+    const end = new Date();
+    const start = new Date(end.getTime() - days * 86_400_000);
+    return { start, end, key: `last_${days}` };
+  }, [customRange, days]);
+
   const customInteractions = useQuery({
-    queryKey: ["nv-custom-interactions", user?.id, candidateId, network, customRange?.startDate, customRange?.endDate],
-    enabled: !!user?.id && !!customRange,
+    queryKey: ["nv-range-interactions", user?.id, candidateId, network, effectiveRange.key],
+    enabled: !!user?.id,
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
     queryFn: async () => {
-      if (!customRange) return [] as RawInteraction[];
       const PAGE = 1000;
       const MAX_ROWS = 20000;
       const all: RawInteraction[] = [];
-      const startIso = parseDateBoundary(customRange.startDate, "start").toISOString();
-      const endIso = parseDateBoundary(customRange.endDate, "end").toISOString();
+      const startIso = effectiveRange.start.toISOString();
+      const endIso = effectiveRange.end.toISOString();
       for (let from = 0; from < MAX_ROWS; from += PAGE) {
         let q = supabase
           .from("social_interactions")
@@ -274,15 +287,14 @@ export default function NetworkView() {
   });
 
   const loading = query.isLoading || customInteractions.isFetching || isApplyingCustom;
-  const analyticsLoading = aiIntel.isLoading || customInteractions.isFetching || isApplyingCustom;
+  const analyticsLoading = customInteractions.isFetching || isApplyingCustom;
   const d = query.data;
 
   const customData = useMemo(() => {
-    if (!customRange) return null;
     const rows = (customInteractions.data ?? []).filter((item) => {
       if (!item.collected_at) return false;
       const date = new Date(item.collected_at);
-      return date >= parseDateBoundary(customRange.startDate, "start") && date <= parseDateBoundary(customRange.endDate, "end");
+      return date >= effectiveRange.start && date <= effectiveRange.end;
     });
     const byNetworkMap = new Map<string, NetRow>();
     const sentimentKpis = { pos: 0, neg: 0, neu: 0 };
@@ -369,27 +381,21 @@ export default function NetworkView() {
     return [...arr].sort((a, b) => (b.mentions * 0.4 + b.engagement * 0.6) - (a.mentions * 0.4 + a.engagement * 0.6))[0];
   }, [realByNet, aiByNet]);
 
-  const analyticsByNet = customRange ? (customData?.byNet ?? []) : aiByNet;
-  const analyticsSeriesRows = customRange ? (customData?.series ?? []) : aiSeries;
-  const analyticsTopics = customRange ? (customData?.topics ?? []) : aiTopics;
-  const analyticsTerms = customRange ? (customData?.terms ?? []) : aiTerms;
-  const kpis = customData?.kpis ?? d?.kpis ?? {};
+  const analyticsByNet = customData?.byNet ?? [];
+  const analyticsSeriesRows = customData?.series ?? [];
+  const analyticsTopics = customData?.topics ?? [];
+  const analyticsTerms = customData?.terms ?? [];
+  const kpis: { total?: number; engagement?: number; likes?: number; replies?: number; shares?: number } = customData?.kpis ?? {};
+  const insufficient = (customData?.kpis?.total ?? 0) < 10;
 
-  // Distribuição por rede — IA no padrão; período customizado recalcula pelo intervalo aplicado
+  // Distribuição por rede — sempre recalculada do período
   const networkTotal = useMemo(() => analyticsByNet.reduce((s, n) => s + n.mentions, 0), [analyticsByNet]);
   const sortedNetworks = useMemo(() => [...analyticsByNet].sort((a, b) => b.mentions - a.mentions), [analyticsByNet]);
 
-  // Evolução temporal — IA sempre; filtra por intervalo customizado quando ativo
+  // Evolução temporal — sempre do período
   const series = useMemo(() => {
-    const startMs = customRange ? parseDateBoundary(customRange.startDate, "start").getTime() : null;
-    const endMs = customRange ? parseDateBoundary(customRange.endDate, "end").getTime() : null;
     return [...analyticsSeriesRows]
       .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.day))
-      .filter((r) => {
-        if (startMs == null || endMs == null) return true;
-        const t = new Date(r.day + "T00:00:00Z").getTime();
-        return t >= startMs && t <= endMs;
-      })
       .sort((a, b) => new Date(a.day + "T00:00:00Z").getTime() - new Date(b.day + "T00:00:00Z").getTime())
       .map((r) => ({
         iso: r.day,
@@ -514,6 +520,14 @@ export default function NetworkView() {
       {errorMessage && (
         <Card className="p-4 border-destructive bg-destructive/5">
           <div className="text-sm text-destructive font-medium">{errorMessage}</div>
+        </Card>
+      )}
+
+      {!loading && insufficient && (
+        <Card className="p-4 border-amber-500/40 bg-amber-500/5">
+          <div className="text-sm text-amber-700 dark:text-amber-400">
+            Dados insuficientes para análise temática precisa neste período.
+          </div>
         </Card>
       )}
 
@@ -642,7 +656,7 @@ export default function NetworkView() {
                 const shareNum = topicsTotal > 0 ? (t.mentions / topicsTotal) * 100 : 0;
                 const shareLabel = `${shareNum.toFixed(1)}%`;
                 const posP = pct(t.pos, lab);
-                const topicLabel = t.label ?? t.topic ?? t.theme;
+                const topicLabel = (t as TopicRow).label ?? (t as TopicRow).topic ?? t.theme;
                 return (
                   <div key={topicLabel} className="rounded-lg border border-border p-4 bg-card/50">
                     <div className="flex items-center justify-between mb-2">
