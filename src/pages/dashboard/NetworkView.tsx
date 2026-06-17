@@ -449,29 +449,38 @@ export default function NetworkView() {
             <SelectTrigger className="w-[170px]"><SelectValue /></SelectTrigger>
             <SelectContent>{NETWORKS_FILTER.map((n) => <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>)}</SelectContent>
           </Select>
-          <Select
-            value={selectedPeriod}
-            onValueChange={(v) => {
-              setSelectedPeriod(v);
-              if (v === "custom") {
+          <div className="flex flex-wrap gap-1">
+            {PERIODS.map((p) => (
+              <Button
+                key={p.value}
+                type="button"
+                variant={selectedPeriod === String(p.value) ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setSelectedPeriod(String(p.value));
+                  setDays(p.value);
+                  setCustomRange(null);
+                  setCustomPanelOpen(false);
+                  setCustomError(null);
+                }}
+              >
+                {p.label}
+              </Button>
+            ))}
+            <Button
+              type="button"
+              variant={selectedPeriod === "custom" || customPanelOpen ? "default" : "outline"}
+              size="sm"
+              onClick={() => {
                 setCustomPanelOpen(true);
                 setStartDate(customRange?.startDate ?? startDate);
                 setEndDate(customRange?.endDate ?? endDate);
                 setCustomError(null);
-                return;
-              }
-              setCustomRange(null);
-              setCustomPanelOpen(false);
-              setCustomError(null);
-              setDays(Number(v));
-            }}
-          >
-            <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {PERIODS.map((p) => <SelectItem key={p.value} value={String(p.value)}>{p.label}</SelectItem>)}
-              <SelectItem value="custom">Personalizado</SelectItem>
-            </SelectContent>
-          </Select>
+              }}
+            >
+              Personalizado
+            </Button>
+          </div>
         </div>
       </div>
 
