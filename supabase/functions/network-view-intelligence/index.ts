@@ -79,7 +79,7 @@ Retorne JSON com este schema EXATO:
     {"day":"YYYY-MM-DD","p":<int>,"n":<int>,"u":<int>}
   ],
   "topics": [
-    {"theme":"<tema curto>","mentions":<int>,"pos":<int>,"neg":<int>,"neu":<int>}
+    {"topic":"<tema específico>","mentions":<int>,"pos":<int>,"neg":<int>,"neu":<int>}
   ],
   "terms": [
     {"term":"<termo ou #hashtag>","count":<int>,"kind":"hashtag|entity"}
@@ -89,8 +89,8 @@ Retorne JSON com este schema EXATO:
 Regras:
 - by_network: 6-8 redes, valores proporcionais à força real do candidato em cada plataforma.
 - series: ${Math.min(days, 30)} dias terminando hoje (${new Date().toISOString().slice(0,10)}), com variação realista.
-- topics: 6-8 temas dominantes específicos para esse candidato/contexto.
-- terms: 10-15 termos (hashtags e entidades) realmente associados a esse candidato.
+- topics: 6-8 temas ESPECÍFICOS ao candidato (ex.: "Segurança Pública", "Agronegócio", "Oposição ao PT", "Presidência 2026", o estado dele). PROIBIDO: "Político", "Brasil", "Notícia", "Candidato", "Governo", "Eleição", "-", "—", vazio.
+- terms: 10-15 termos específicos (hashtags e entidades). Evite genéricos como "político", "brasil", "notícia", "candidato".
 - pos+neg+neu deve refletir sentimento plausível (não sempre balanceado).`;
 
   try {
