@@ -120,7 +120,7 @@ export default function NetworkView() {
   };
 
   const query = useQuery({
-    queryKey: ["nv-blocks", user?.id, network, candidateId, days],
+    queryKey: ["nv-blocks", user?.id, network, candidateId, effectiveDays, customRange?.start?.toISOString(), customRange?.end?.toISOString()],
     queryFn: async () => {
       console.log("[NetworkView] filters →", { user: user?.id, candidate: candidateId, network, period: days });
       // allSettled: timeout em UM bloco não derruba os outros
