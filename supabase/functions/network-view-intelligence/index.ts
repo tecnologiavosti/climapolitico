@@ -21,10 +21,19 @@ const TOPIC_BLACKLIST = new Set([
   "", "-", "—", "politico", "politica", "brasil", "noticia", "noticias",
   "candidato", "candidatos", "governo", "eleicao", "eleicoes", "geral",
   "outros", "diversos", "cenario", "contexto", "atuacao politica", "atuacao", "partido",
+  "congresso", "oposicao", "economia", "situacao", "atualidade", "debate",
+  "midia", "redes sociais", "internet", "discurso", "declaracao", "entrevista",
 ]);
 const TERM_BLACKLIST = new Set([
   "", "-", "—", "politico", "politica", "brasil", "noticia", "noticias",
   "candidato", "governo", "cenario", "contexto", "eleicoes2026",
+  "afirmou", "disse", "declarou", "falou", "comentou", "explicou", "destacou",
+  "informou", "respondeu", "criticou", "defendeu", "ressaltou", "garantiu",
+  "hoje", "ontem", "amanha", "agora", "esta", "este", "isso", "aquilo",
+  "ano", "anos", "mes", "meses", "dia", "dias", "semana", "tempo",
+  "pessoas", "todos", "alguns", "muitos", "outros", "outras", "novo", "nova",
+  "mato", "grosso", "varzea", "grande", "rio", "janeiro", "sao", "paulo",
+  "minas", "gerais", "espirito", "santo", "porto", "alegre", "belo", "horizonte",
 ]);
 
 const norm = (s: string) =>
@@ -46,29 +55,82 @@ function toNetworkKey(value: any) {
   return NETWORK_KEY[k] || String(value || "").toLowerCase().trim();
 }
 
+type Persona = "digital_native" | "traditional_regional" | "institutional" | "activist" | "executive" | "parliamentary";
+
+// shares aligned with labels order:
+// ["google_news","twitter","facebook","youtube","instagram","telegram","tiktok","reddit"]
+const PERSONA_SHARES: Record<Persona, number[]> = {
+  digital_native:       [10, 22,  8, 14, 18,  6, 18,  4],
+  traditional_regional: [28, 18, 18, 14, 11,  5,  4,  2],
+  institutional:        [32, 22, 12, 14, 10,  4,  4,  2],
+  activist:             [12, 28, 10,  8, 14, 14,  8,  6],
+  executive:            [30, 24, 11, 14, 12,  4,  3,  2],
+  parliamentary:        [22, 26, 13, 11, 14,  6,  6,  2],
+};
+
+function detectPersona(name: string, party: string, position: string, state: string): Persona {
+  const p = norm(position);
+  const full = norm(`${name} ${party} ${position} ${state}`);
+  if (/marcal|nikolas|janones|boulos|datena/.test(full)) return "digital_native";
+  if (/governador|prefeito/.test(p)) return "executive";
+  if (/senador/.test(p)) return "traditional_regional";
+  if (/deputad|vereador/.test(p)) return "parliamentary";
+  if (/presiden|ministr/.test(p)) return "institutional";
+  if (/ativist|movimento/.test(p)) return "activist";
+  return "traditional_regional";
+}
+
 function profileFromCandidate(name: string, party: string, position: string, state: string) {
   const full = norm(`${name} ${party} ${position} ${state}`);
   const labels = ["google_news", "twitter", "facebook", "youtube", "instagram", "telegram", "tiktok", "reddit"];
-  let shares = [24, 22, 15, 14, 11, 6, 5, 3];
+  const persona = detectPersona(name, party, position, state);
+  let shares = PERSONA_SHARES[persona].slice();
+  const stateLabel = state && norm(state) !== "brasil" ? state : "âmbito estadual";
+  const firstName = name.split(" ")[0] || name;
   let topics = [
-    `Atuação em ${state && norm(state) !== "brasil" ? state : "âmbito estadual"}`,
+    `Atuação em ${stateLabel}`,
     `${party && party !== "—" ? party : "Partido"} e alianças`,
     "Segurança Pública", "Economia e Emprego", "Presidência 2026", "Oposição ao PT",
   ];
-  let terms = [name.split(" ")[0], state, party, "Lula", "Bolsonaro"];
+  let terms = [firstName, state, party, "Lula", "Bolsonaro"];
 
   if (full.includes("ronaldo caiado") || full.includes("goias")) {
     shares = [28, 24, 14, 13, 9, 5, 5, 2];
     topics = ["Segurança Pública", "Agronegócio", "Goiás", "Presidência 2026", "União Brasil", "Centro-Oeste", "Oposição ao PT", "Governo de Goiás"];
     terms = ["Caiado", "Goiás", "Agronegócio", "União Brasil", "Centro-Oeste", "Segurança Pública", "Presidência 2026", "Lula", "Bolsonaro"];
-  } else if (/governador|prefeito|senador/.test(norm(position))) {
-    shares = [27, 23, 15, 13, 10, 5, 5, 2];
-  } else if (/presiden/.test(norm(position))) {
-    shares = [25, 26, 11, 16, 13, 4, 8, 3];
-  } else if (/deputad/.test(norm(position))) {
-    shares = [18, 25, 17, 13, 15, 5, 9, 3];
+  } else if (full.includes("jayme campos") || (full.includes("mato grosso") && /senador/.test(norm(position)))) {
+    topics = ["Agronegócio em Mato Grosso", "BR-163", "Senado Federal", "Bancada ruralista", "Cuiabá e Várzea Grande", "Infraestrutura logística", "União Brasil em MT", "Relação com governo federal"];
+    terms = ["Jayme Campos", "Mato Grosso", "União Brasil", "Senado Federal", "Bancada Ruralista", "Cuiabá", "Várzea Grande", "Agronegócio", "BR-163", "Bolsonaro"];
   }
-  return { labels, shares, topics, terms };
+  return { labels, shares, topics, terms, persona };
+}
+
+function pickGranularity(days: number): { bucketDays: number; count: number; label: string } {
+  if (days <= 30)   return { bucketDays: 1,   count: days,                  label: "diário" };
+  if (days <= 90)   return { bucketDays: 7,   count: Math.ceil(days / 7),   label: "semanal" };
+  if (days <= 365)  return { bucketDays: 30,  count: Math.ceil(days / 30),  label: "mensal" };
+  if (days <= 1460) return { bucketDays: 90,  count: Math.ceil(days / 90),  label: "trimestral" };
+  return              { bucketDays: 180, count: Math.ceil(days / 180), label: "semestral" };
+}
+
+function generateTimelineByPeriod(days: number) {
+  const { bucketDays, count } = pickGranularity(days);
+  const today = new Date();
+  const series: any[] = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i * bucketDays);
+    const peak = (i % 5 === 0) ? Math.round(8 * Math.max(1, bucketDays / 3)) :
+                 (i % 3 === 0) ? Math.round(4 * Math.max(1, bucketDays / 3)) : 0;
+    const base = Math.max(1, Math.round(bucketDays * 1.5));
+    series.push({
+      day: d.toISOString().slice(0, 10),
+      p: base + (i % 4) + peak,
+      n: Math.max(1, Math.round(base * 0.6)) + (i % 3) + Math.round(peak / 2),
+      u: Math.max(1, Math.round(base * 0.4)) + (i % 2),
+    });
+  }
+  return series;
 }
 
 function deterministicFallback(name: string, party: string, position: string, state: string, days: number) {
@@ -79,27 +141,12 @@ function deterministicFallback(name: string, party: string, position: string, st
     const negRate = [29, 36, 24, 31, 21, 33, 18, 41][i];
     const neuRate = 100 - posRate - negRate;
     return {
-      network: n,
-      mentions: m,
-      engagement: m * 120,
+      network: n, mentions: m, engagement: m * 120,
       likes: m * 80, replies: m * 25, shares: m * 15,
       pos: posRate, neg: negRate, neu: neuRate,
     };
   });
-  const series: any[] = [];
-  const today = new Date();
-  const pts = Math.min(days, 30);
-  for (let i = pts - 1; i >= 0; i--) {
-    const d = new Date(today); d.setDate(d.getDate() - i);
-    // picos/vales em vez de curva suave
-    const peak = (i % 7 === 0) ? 8 : (i % 5 === 0 ? 5 : 0);
-    series.push({
-      day: d.toISOString().slice(0, 10),
-      p: 3 + (i % 4) + peak,
-      n: 1 + (i % 3) + Math.round(peak / 2),
-      u: 2 + (i % 2),
-    });
-  }
+  const series = generateTimelineByPeriod(days);
   const topicWeights = [31, 24, 18, 13, 8, 6, 5, 4];
   const topics = fallbackTopics.map((label, i) => {
     const mentions = topicWeights[i] ?? Math.max(4, 12 - i);
@@ -185,12 +232,14 @@ Retorne JSON com este schema EXATO:
   ]
 }
 
+Perfil detectado: ${profileFromCandidate(name, party, position, state).persona}. Use esse perfil como REFERÊNCIA para a distribuição: traditional_regional concentra em News/Facebook/Instagram/YouTube (TikTok/Telegram baixos); digital_native concentra em TikTok/Instagram/X; institutional/executive concentram em News/X/YouTube; parliamentary concentra em X/Instagram.
+
 Regras OBRIGATÓRIAS:
-- networks: 6-8 redes, soma aproximada 100, distribuição NÃO uniforme; diferença mínima de 8 pontos entre a maior e a 3ª rede; reflita o perfil real (ex.: governador tradicional tem News/X altos, TikTok/Reddit baixos). Proibido sequência template 19/17/14/14/14.
-- series: ${Math.min(days, 30)} dias terminando hoje (${new Date().toISOString().slice(0,10)}). DEVE ter picos e vales claros associados a eventos plausíveis (entrevistas, declarações, crises). PROIBIDO curva suave/uniforme.
-- sentiment: cada rede precisa ter positivo/negativo/neutro claramente diferente; proibido repetir 44/31/25 ou variações de 1 ponto.
-- topics: usar OBRIGATORIAMENTE o campo label. 6-8 temas ESPECÍFICOS do candidato — bandeiras, pautas, palcos políticos, região. Exemplo p/ Ronaldo Caiado: "Segurança Pública", "Agronegócio", "Goiás", "Presidência 2026", "União Brasil", "Centro-Oeste". PROIBIDO: "Político", "Política", "Brasil", "Cenário", "Contexto", "Governo" (sozinho), "Notícia", "Notícias", "Candidato", "Eleição/Eleições" (sozinho), "Geral", "—", "-", "", null.
-- terms: 10-15 termos REAIS (nomes próprios, entidades, lugares, partidos, aliados/adversários). PROIBIDO: "cenário", "política", "brasil" sozinho, "governo" sozinho, "#—", "#-".
+- networks: 6-8 redes, soma aproximada 100, distribuição NÃO uniforme; diferença mínima de 8 pontos entre a maior e a 3ª rede. PROIBIDO senador/governador tradicional ter TikTok ou Telegram acima de 10%. PROIBIDO sequência template 19/17/14/14/14 ou 42/33/25.
+- series: gerar pontos respeitando granularidade "${pickGranularity(days).label}" (${pickGranularity(days).count} buckets). PROIBIDO retornar apenas 1-2 pontos. DEVE ter picos e vales ligados a eventos plausíveis do período.
+- sentiment: cada rede com positivo/negativo/neutro claramente diferentes; proibido repetir 44/31/25.
+- topics: 6-8 temas ULTRA ESPECÍFICOS — bandeiras, obras, regiões, palcos políticos do candidato. Exemplo Jayme Campos: "Agronegócio em Mato Grosso", "BR-163", "Bancada ruralista", "Cuiabá e Várzea Grande", "Senado Federal". PROIBIDO: "Político", "Política", "Brasil", "Cenário", "Contexto", "Governo" sozinho, "Notícia", "Notícias", "Candidato", "Eleição/Eleições" sozinho, "Congresso" sozinho, "Oposição" sozinho, "Economia" sozinho, "Geral", "—", "-", "", null.
+- terms: 10-15 entidades REAIS preservando NOMES COMPOSTOS como uma única string ("Mato Grosso", "Várzea Grande", "União Brasil", "Jayme Campos", "BR-163"). PROIBIDO quebrar nomes ("mato", "grosso", "varzea"). PROIBIDO verbos/preenchedores ("afirmou", "disse", "cenário", "política", "brasil" sozinho, "governo" sozinho).
 
 Se não tiver certeza do tema específico, OMITA — nunca preencha com genérico.`;
 
@@ -221,9 +270,14 @@ Se não tiver certeza do tema específico, OMITA — nunca preencha com genéric
       })
       .filter((n: any) => profile.labels.includes(n.network));
 
+    // Clamp distribuição ao perfil: se o AI gerou redes incoerentes com o persona, recai no determinístico
+    const personaShares = profile.shares;
+    const personaMaxByLabel: Record<string, number> = {};
+    profile.labels.forEach((lab, i) => { personaMaxByLabel[lab] = personaShares[i] + 8; });
+    const offProfile = by_network.some((n: any) => n.mentions > (personaMaxByLabel[n.network] ?? 100));
     const topShares = [...by_network].sort((a, b) => b.mentions - a.mentions).map((n) => n.mentions);
     const uniform = topShares.length < 6 || (topShares[0] - (topShares[2] ?? topShares[0]) < 8) || (Math.max(...topShares) - Math.min(...topShares) < 14);
-    if (uniform) by_network = deterministicFallback(name, party, position, state, days).by_network;
+    if (uniform || offProfile) by_network = deterministicFallback(name, party, position, state, days).by_network;
 
     const rawTopics = Array.isArray(parsed.topics) ? parsed.topics : [];
     const topics = rawTopics
@@ -253,9 +307,15 @@ Se não tiver certeza do tema específico, OMITA — nunca preencha com genéric
       return true;
     });
 
+    // Timeline sempre bucketizada por período (AI não é confiável aqui)
+    const aiSeries = Array.isArray(parsed.series) ? parsed.series : [];
+    const series = aiSeries.length >= pickGranularity(days).count * 0.7
+      ? aiSeries
+      : generateTimelineByPeriod(days);
+
     return {
       by_network,
-      series: Array.isArray(parsed.series) ? parsed.series : [],
+      series,
       topics: topics.length ? topics : deterministicFallback(name, party, position, state, days).topics,
       terms: terms.length ? terms : deterministicFallback(name, party, position, state, days).terms,
       model_used: `${res.provider}/${res.model}`,
