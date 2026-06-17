@@ -92,12 +92,12 @@ function bucketFor(days: number): "day" | "week" | "month" | "quarter" | "semest
   return "semester";
 }
 
-// Constrói queries Firecrawl direcionadas por rede e período
-function buildQueries(b: Body): Array<{ q: string; net: Network; tbs?: string }> {
+// Constrói tarefas Firecrawl em 3 lotes: notícias/web, redes textuais, redes audiovisuais/comunidades.
+function buildSourceTasks(b: Body): SourceTask[] {
   const name = b.candidate_name;
   const ctx = [b.party, b.state].filter(Boolean).join(" ");
   const base = `${name} ${ctx}`.trim();
-  const out: Array<{ q: string; net: Network; tbs?: string }> = [];
+  const out: SourceTask[] = [];
 
   const wantAll = !b.network || b.network === "all";
   const want = (n: Network) => wantAll || b.network === n;
@@ -105,19 +105,26 @@ function buildQueries(b: Body): Array<{ q: string; net: Network; tbs?: string }>
   // Recorte temporal — limitamos via after:/before: nas queries
   const dateRange = `after:${b.start_date} before:${b.end_date}`;
 
-  if (want("news")) out.push({ q: `${base} ${dateRange}`, net: "news" });
-  if (want("twitter")) out.push({ q: `${base} site:twitter.com OR site:x.com ${dateRange}`, net: "twitter" });
-  if (want("youtube")) out.push({ q: `${base} site:youtube.com ${dateRange}`, net: "youtube" });
-  if (want("reddit")) out.push({ q: `${base} site:reddit.com ${dateRange}`, net: "reddit" });
-  if (want("facebook")) out.push({ q: `${base} site:facebook.com ${dateRange}`, net: "facebook" });
-  if (want("instagram")) out.push({ q: `${base} site:instagram.com ${dateRange}`, net: "instagram" });
-  if (want("tiktok")) out.push({ q: `${base} site:tiktok.com ${dateRange}`, net: "tiktok" });
-  if (want("telegram")) out.push({ q: `${base} site:t.me ${dateRange}`, net: "telegram" });
+  if (want("news")) {
+    out.push({ source: "google_news", batch: 1, q: `${base} política ${dateRange}`, net: "news" });
+    out.push({ source: "blogs", batch: 1, q: `${base} blog política opinião ${dateRange}`, net: "news" });
+    out.push({ source: "portais", batch: 1, q: `${base} jornal portal política ${dateRange}`, net: "news" });
+  }
+  if (want("twitter")) out.push({ source: "twitter", batch: 2, q: `${base} site:twitter.com OR site:x.com ${dateRange}`, net: "twitter" });
+  if (want("reddit")) out.push({ source: "reddit", batch: 2, q: `${base} site:reddit.com ${dateRange}`, net: "reddit" });
+  if (want("youtube")) out.push({ source: "youtube", batch: 3, q: `${base} site:youtube.com ${dateRange}`, net: "youtube" });
+  if (want("tiktok")) out.push({ source: "tiktok", batch: 3, q: `${base} site:tiktok.com ${dateRange}`, net: "tiktok" });
+  if (want("telegram")) out.push({ source: "telegram", batch: 3, q: `${base} site:t.me ${dateRange}`, net: "telegram" });
+  if (want("facebook")) out.push({ source: "facebook", batch: 3, q: `${base} site:facebook.com ${dateRange}`, net: "facebook" });
+  if (want("instagram")) out.push({ source: "instagram", batch: 3, q: `${base} site:instagram.com ${dateRange}`, net: "instagram" });
   return out;
 }
 
-async function firecrawlSearch(query: string, limit = 8): Promise<SearchHit[]> {
-  if (!FIRECRAWL_KEY) return [];
+async function firecrawlSearch(task: SourceTask, limit = 8): Promise<{ hits: SearchHit[]; status: SourceStatus }> {
+  const started = Date.now();
+  if (!FIRECRAWL_KEY) {
+    return { hits: [], status: { source: task.source, batch: task.batch, status: "skipped", duration_ms: 0, hits: 0, error: "FIRECRAWL_API_KEY ausente" } };
+  }
   try {
     const r = await fetch("https://api.firecrawl.dev/v2/search", {
       method: "POST",
@@ -125,25 +132,44 @@ async function firecrawlSearch(query: string, limit = 8): Promise<SearchHit[]> {
         Authorization: `Bearer ${FIRECRAWL_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ query, limit }),
+      body: JSON.stringify({ query: task.q, limit, lang: "pt", country: "br" }),
+      signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
     });
     if (!r.ok) {
-      console.warn("[network-listening] firecrawl", r.status, await r.text().catch(() => ""));
-      return [];
+      const detail = (await r.text().catch(() => "")).slice(0, 240);
+      const sourceStatus: SourceStatus["status"] = r.status === 429 ? "rate_limited" : "error";
+      console.warn("[network-listening] source", task.source, sourceStatus, r.status, detail);
+      return { hits: [], status: { source: task.source, batch: task.batch, status: sourceStatus, duration_ms: Date.now() - started, hits: 0, error: detail } };
     }
     const j = await r.json();
     const raw: any[] = j?.data?.web ?? j?.data ?? j?.results ?? [];
-    return raw.slice(0, limit).map((x) => ({
+    const hits = raw.slice(0, limit).map((x) => ({
       url: x.url,
       title: x.title,
       description: x.description ?? x.snippet ?? "",
       source: x.source ?? x.url,
       date: x.publishedDate ?? x.date ?? undefined,
     }));
+    return { hits, status: { source: task.source, batch: task.batch, status: hits.length ? "ok" : "empty", duration_ms: Date.now() - started, hits: hits.length } };
   } catch (e) {
-    console.warn("[network-listening] firecrawl exception", e);
-    return [];
+    const message = (e as Error)?.message ?? String(e);
+    const timedOut = /timeout|aborted|signal/i.test(message);
+    console.warn("[network-listening] source exception", task.source, message);
+    return { hits: [], status: { source: task.source, batch: task.batch, status: timedOut ? "timeout" : "error", duration_ms: Date.now() - started, hits: 0, error: message.slice(0, 180) } };
   }
+}
+
+async function runLimited<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = [];
+  let index = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (index < items.length) {
+      const current = index++;
+      results[current] = await fn(items[current]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 function systemPrompt(b: Body, days: number) {
