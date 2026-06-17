@@ -233,6 +233,8 @@ export default function NetworkView() {
           candidate_id: candidateId === "all" ? null : candidateId,
           network: network === "all" ? null : network,
           days: effectiveDays,
+          start_date: customRange?.startDate ?? null,
+          end_date: customRange?.endDate ?? null,
         },
       });
       if (error) throw error;
