@@ -310,13 +310,15 @@ const RESPONSE_SCHEMA = {
   ],
 };
 
-async function callAIWithModel(model: string, systemMsg: string, userMsg: string) {
+async function callAIWithModel(model: string, systemMsg: string, userMsg: string, signal: AbortSignal) {
   return await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${LOVABLE_KEY}`,
+      "Lovable-API-Key": LOVABLE_KEY ?? "",
+      "X-Lovable-AIG-SDK": "vercel-ai-sdk",
       "Content-Type": "application/json",
     },
+    signal,
     body: JSON.stringify({
       model,
       messages: [
@@ -341,14 +343,15 @@ async function callAIWithModel(model: string, systemMsg: string, userMsg: string
 async function callAI(systemMsg: string, userMsg: string) {
   if (!LOVABLE_KEY) throw new Error("LOVABLE_API_KEY ausente");
   const models = [
-    "google/gemini-2.5-flash",
-    "google/gemini-2.5-flash-lite",
     "google/gemini-3-flash-preview",
+    "google/gemini-2.5-flash-lite",
+    "google/gemini-2.5-flash",
   ];
   let lastStatus = 0;
   let lastErr = "";
+  const signal = AbortSignal.timeout(AI_TIMEOUT_MS);
   for (const m of models) {
-    const r = await callAIWithModel(m, systemMsg, userMsg);
+    const r = await callAIWithModel(m, systemMsg, userMsg, signal);
     if (r.ok) {
       const j = await r.json();
       const call = j?.choices?.[0]?.message?.tool_calls?.[0];
