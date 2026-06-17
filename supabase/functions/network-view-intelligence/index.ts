@@ -294,7 +294,7 @@ serve(async (req) => {
       });
     }
 
-    const payload = await generateAI(candidate ? { ...candidate, state: candidate.region } : { full_name: "Cenário agregado" }, days);
+    const payload = await generateAI(candidate ? { ...candidate, state: candidate.region } : { full_name: "Cenário agregado" }, days, start_date, end_date);
     if (payload.model_used !== "deterministic") {
       CACHE.set(cacheKey, { ts: Date.now(), payload });
     }
