@@ -1,117 +1,57 @@
-# Overhaul completo da aba `network-view`
+## Objetivo
 
-Escopo grande (12 frentes). Vou executar em **3 fases** para entregar valor incremental e permitir validação intermediária.
-
----
-
-## FASE 1 — Correções críticas de dados (prioridade máxima)
-
-Objetivo: parar de mostrar números irreais e quebrar a credibilidade.
-
-### 1.1 Top Posts funcionando
-- Corrigir a invocação `supabase.functions.invoke("social/top-posts")` — hoje retorna erro.
-- Refatorar edge function `social/index.ts` rota `top-posts`:
-  - Buscar de `social_interactions` (SSOT) por rede.
-  - Score: `likes*1 + comments*2 + shares*3 + views*0.1`.
-  - Retornar top 10 com thumbnail, autor, rede, métricas, sentimento, link original.
-- Fallback elegante (empty state) em vez de erro vermelho.
-
-### 1.2 Hashtags lixo removidas
-- Endurecer `isValidHashtag()` no frontend + replicar no RPC `network_view_content_metrics`:
-  - bloquear `length > 40`
-  - bloquear `/(.)\1{6,}/` (caracteres repetidos)
-  - blocklist: `fyp, fypp, fyppp..., viral, funny, funnyvideos, foryou, foryoupage, parati, viral2024, trending`
-- Só hashtags politicamente relevantes (mínimo 1 letra, sem spam).
-
-### 1.3 Crescimento sem explodir
-- Regra dura: `if (previous < 10) return null` → exibir **"Sem base histórica suficiente"**.
-- Aplicar em KPI de crescimento, hashtags (prev_c), e tópicos (prev_mentions).
-- Cap visual em ±500% para casos de borda já válidos.
-
-### 1.4 Fallback de baixo volume
-- Se `total < 50`: ocultar heatmap, hashtags, dominant topics e mostrar mensagem "Dados insuficientes para análise estatística confiável."
+Refatorar a aba **Visão por Rede Social** para funcionar igual ao **Radar Político**: o período controla a coleta real, e a IA apenas analisa o material coletado. Acabar com simulações genéricas.
 
 ---
 
-## FASE 2 — Qualidade analítica (sentimento, temas, interações)
+## Mudanças no frontend (`src/pages/dashboard/NetworkView.tsx`)
 
-### 2.1 Sentimento ponderado por engajamento
-- Novo campo no RPC: `weighted_sentiment = sentiment_score * ln(engagement + 1)`.
-- Recalcular `pos/neg/neu` agregados ponderados (mantém contagens brutas para tooltip).
-- Posts virais pesam mais → sai do 72% neutro artificial.
-
-### 2.2 Temas dominantes com categorias fixas
-- Trocar clustering livre por classificação em 10 categorias políticas fixas:
-  `eleições, segurança pública, economia, saúde, infraestrutura, corrupção, educação, transporte, STF/Judiciário, governo estadual`.
-- Edge function `classify-topics` (nova) usando Lovable AI Gateway (`google/gemini-3-flash-preview`), com cache em `embedding_cache`.
-- Prompt restrito: "Classifique em até 2 temas reais. Nunca invente temas vagos."
-
-### 2.3 Interações reais separadas
-- KPI dividido: `likes / comments / shares / views` separados.
-- Total interações = `likes + comments + shares` (views NÃO entram).
-- Card de "Interações" mostra breakdown.
-
-### 2.4 Rede dominante por score composto
-- `dominanceScore = posts*0.5 + engagement*0.5` (normalizados).
-- Substituir ordenação por mentions cruas em `by_network[0]`.
+1. **Remover a camada de IA generativa (`aiIntel`)** que inventa distribuição, séries, tópicos e termos.
+2. **Tornar `customInteractions` a única fonte primária**, sempre ativa (já está), recalculada a cada mudança de `period | startDate | endDate | candidate | network`.
+3. **Remover `useAI` / `REAL_THRESHOLD`** — não há mais fallback para dados sintéticos.
+4. **Estado vazio honesto**: se o intervalo não tiver dados, renderizar mensagem "Sem dados no período selecionado" em cada bloco (gráficos, tabelas, termos, assuntos). Sem inventar.
+5. **Bucketing dinâmico de timeline** no `useMemo` do `series`:
+   - ≤30d → diário
+   - 31–90d → semanal (ISO week)
+   - 91–365d → mensal
+   - 366–1460d → trimestral
+   - >1460d → semestral
+6. **Topics/Terms** vêm de duas vias, nessa ordem:
+   - a) extração JS local (`computeTopicsAndTerms`) sobre as linhas reais do período;
+   - b) chamada à nova edge function `network-view-analyze` (abaixo) que recebe **somente os textos coletados** e devolve tópicos + termos refinados por IA. Se a IA falhar, exibe a versão local.
+7. Loading: usar `customInteractions.isFetching || analyzeQuery.isFetching` para skeletons.
+8. KPIs (`total`, `engagement`, `likes`, `replies`, `shares`, sentimentos, rede dominante) sempre derivados de `customData`.
 
 ---
 
-## FASE 3 — UX premium + IA + alertas
+## Mudanças no backend
 
-### 3.1 Resumo IA executivo
-- Nova edge function `network-view-summary` ou expandir `generate-insights`:
-  - Prompt: forte, sênior, executivo, máx 120 palavras.
-  - Output estruturado: forte_em, sofre_em, narrativas, crise_ou_crescimento.
-- Renderizar em 4 bullets curtos no card de IA (substituir parágrafo mecânico).
-
-### 3.2 Alertas IA no topo
-- Novo bloco `<NetworkAlerts />` acima dos KPIs.
-- Regras:
-  - `variation > 30%` em qualquer rede → alerta de crescimento/queda
-  - Aumento de sentimento negativo > 15pp → alerta de crise
-  - Pico de menções em horário eleitoral (17-22h) → alerta de janela
-- Badges coloridos (success / warning / destructive).
-
-### 3.3 Heatmap aprimorado
-- 4 níveis de intensidade: baixo → médio → alto → explosivo (gradient HSL).
-- Tooltip: `"Segunda 20h → 327 interações"` (dia por extenso + total).
-
-### 3.4 UI polish
-- Loading skeletons consistentes em todos os cards.
-- Substituir mensagem de erro vermelha por empty states elegantes.
-- Padding/espaçamento padronizado, cards com sombra sutil.
-
----
-
-## Arquivos afetados
-
-**Frontend**
-- `src/pages/dashboard/NetworkView.tsx` (refatoração grande)
-- `src/components/dashboard/NetworkAlerts.tsx` (novo)
-- `src/components/dashboard/NetworkHeatmap.tsx` (extraído)
-- `src/components/dashboard/NetworkAISummary.tsx` (novo)
-
-**Backend (edge functions)**
-- `supabase/functions/social/index.ts` (rota top-posts)
-- `supabase/functions/classify-topics/index.ts` (novo)
-- `supabase/functions/network-view-summary/index.ts` (novo)
-
-**Database (migrations)**
-- Atualizar RPC `network_view_core_metrics` (sentimento ponderado, dominance score, separar interações)
-- Atualizar RPC `network_view_content_metrics` (filtro hashtags backend, tópicos com categorias)
+### `supabase/functions/network-view-intelligence/index.ts`
+Reescrever de "gerador de cenário" para **analisador de conteúdo coletado**, renomeando lógica internamente (manter o nome para não quebrar invokes):
+- Input: `{ candidate_id, network, start_date, end_date, samples: string[] }` (textos curtos: `post_title + comment_text`, deduplicados, máx ~120 amostras).
+- Coleta no servidor (caso o cliente não envie `samples`): query em `social_interactions` no intervalo, paginada como o cliente faz, limitada a ~5k linhas para extração.
+- IA (Lovable AI Gateway, modelo padrão) recebe **apenas** os textos e devolve:
+  - `topics`: temas detectados (label + relevância + sentimento agregado).
+  - `terms`: entidades/hashtags extraídas, com contagem.
+- Sem `PERSONA_SHARES`, sem `generateTimelineByPeriod`, sem `yearHint` de cenário.
+- Cache key passa a ser `${candidate_id}|${network}|${start_date}|${end_date}|${hash(samples)}`.
+- Retorno: `{ topics, terms, period }` — não retorna mais `by_network` nem `series` (esses vêm dos dados reais no frontend).
 
 ---
 
 ## Detalhes técnicos
 
-- **Sem mock data** — todos os dados vêm de `social_interactions` (SSOT).
-- **Multi-tier fallback IA** mantido (Cerebras → Groq → Gemini → Lovable Gateway).
-- **BR-PT** em toda a UI e prompts.
-- **Cache** de 15min em React Query mantido; cache de IA via `embedding_cache`.
+- `pickBucket(days)` no frontend agrupa `series` por chave (`YYYY-MM-DD`, `YYYY-Www`, `YYYY-MM`, `YYYY-Qn`, `YYYY-Sn`) e formata `date` adequadamente para o eixo X.
+- Sanitizar textos antes de enviar à IA (`clean-content.ts` já existe em `_shared`).
+- Manter `network_view_*` RPCs como estão; eles continuam alimentando `query.data` para casos sem custom range, mas o caminho principal vira `customInteractions` (já é hoje na prática).
+- Nenhuma migration; nenhuma mudança em outras abas.
 
 ---
 
-## Confirmação
+## Critérios de aceite
 
-Posso começar pela **Fase 1** (correções críticas: top posts + hashtags lixo + crescimento + fallback) agora? Ou prefere ordem diferente?
+- Trocar 7d ↔ 8a recalcula menções, distribuição, séries, tópicos e termos com valores claramente distintos.
+- Período personalizado refaz toda a aba.
+- Nada de "Estimativa por IA" sobre distribuição/rede dominante — esses números só existem se houver dado real.
+- Timeline muda de granularidade conforme o intervalo.
+- Sem dados ⇒ blocos mostram "Sem dados no período selecionado".
