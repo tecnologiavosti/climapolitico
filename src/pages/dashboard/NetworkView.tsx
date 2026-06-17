@@ -347,8 +347,30 @@ export default function NetworkView() {
       )}
 
       {!needsCandidate && report.isError && (
-        <Card className="p-4 text-sm text-destructive">
-          Falha ao gerar análise: {(report.error as Error)?.message ?? "erro desconhecido"}
+        <Card className="p-4 text-sm text-destructive flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <span>Falha ao gerar análise: {(report.error as Error)?.message ?? "erro desconhecido"}</span>
+          <Button size="sm" variant="outline" onClick={() => { setActiveJobId(null); setReprocessNonce((n) => n + 1); }}>
+            <RefreshCw className="h-4 w-4 mr-2" /> Reprocessar análise
+          </Button>
+        </Card>
+      )}
+
+      {!needsCandidate && isProcessing && (
+        <Card className="p-5 space-y-3">
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="font-medium">{job?.stage ?? "Processando análise..."}</span>
+            <span className="text-muted-foreground tabular-nums">{Math.round(job?.progress ?? 0)}%</span>
+          </div>
+          <Progress value={job?.progress ?? 0} className="h-2" />
+        </Card>
+      )}
+
+      {!needsCandidate && jobFailed && (
+        <Card className="p-4 text-sm border-destructive/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <span className="text-muted-foreground">A análise usou fallback local porque o job falhou: {job?.error ?? "erro desconhecido"}</span>
+          <Button size="sm" variant="outline" onClick={() => { setActiveJobId(null); setReprocessNonce((n) => n + 1); }}>
+            <RefreshCw className="h-4 w-4 mr-2" /> Reprocessar análise
+          </Button>
         </Card>
       )}
 
