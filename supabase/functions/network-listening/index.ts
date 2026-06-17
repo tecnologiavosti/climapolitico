@@ -706,18 +706,28 @@ async function processJob(jobId: string, body: Body, userId: string) {
     // Pós-processamento obrigatório: confiança determinística + remoção de genéricos.
     const deterministicConfidence = computeConfidence(totalHits, sourceStatuses);
     report.confidence = deterministicConfidence;
+
+    // Distribuição SEMPRE recalculada a partir de evidência real (nunca a IA inventa).
+    // Mantém todas as redes visíveis com badge data_source_type.
+    const realDistribution = computeDistribution(evidence, body);
+    report.distribution = realDistribution;
+    report.dominant_network = realDistribution
+      .filter((r) => r.data_source_type !== "unavailable")
+      .sort((a, b) => b.pct - a.pct)[0]?.network ?? (body.network && body.network !== "all" ? body.network : "—");
+
     if (Array.isArray(report.topics)) {
       report.topics = report.topics.filter((t: any) => t?.label && !isGenericTopic(String(t.label)));
     }
+    if (Array.isArray(report.terms)) {
+      report.terms = report.terms.filter((t: any) => t?.term && !isForbiddenTerm(String(t.term)));
+    }
     if (deterministicConfidence === "low") {
-      // Sem base quantitativa real → não exibir números inventados.
+      // Sem base quantitativa real → não exibir números inventados (mas preserva distribution para badges).
       report.qualitative_only = true;
       report.total_mentions = 0;
       report.total_interactions = 0;
-      report.distribution = [];
       report.timeline = [];
       report.sentiment_by_network = [];
-      report.dominant_network = body.network && body.network !== "all" ? body.network : "—";
       const prevReason = report.reasoning ? `${report.reasoning} ` : "";
       report.reasoning = `${prevReason}Dados insuficientes para análise quantitativa precisa (${totalHits} evidências, ${sourceStatuses.filter((s) => s.status === "ok").length} fontes). Exibindo apenas análise qualitativa baseada em contexto histórico.`;
     }
