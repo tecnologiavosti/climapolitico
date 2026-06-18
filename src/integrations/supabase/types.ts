@@ -3036,6 +3036,54 @@ export type Database = {
           },
         ]
       }
+      seo_settings: {
+        Row: {
+          canonical_url: string | null
+          created_at: string
+          description: string | null
+          id: string
+          keywords: string | null
+          noindex: boolean
+          og_description: string | null
+          og_image: string | null
+          og_title: string | null
+          route: string
+          schema_jsonld: Json | null
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          canonical_url?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          keywords?: string | null
+          noindex?: boolean
+          og_description?: string | null
+          og_image?: string | null
+          og_title?: string | null
+          route: string
+          schema_jsonld?: Json | null
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          canonical_url?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          keywords?: string | null
+          noindex?: boolean
+          og_description?: string | null
+          og_image?: string | null
+          og_title?: string | null
+          route?: string
+          schema_jsonld?: Json | null
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       slo_targets: {
         Row: {
           comparator: string
@@ -3672,6 +3720,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      subscription_plans: {
+        Row: {
+          created_at: string
+          display_name: string
+          features: Json
+          id: string
+          is_active: boolean
+          max_candidates: number
+          max_updates_per_month: number
+          price_monthly: number
+          price_yearly: number
+          sort_order: number
+          tier: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_name: string
+          features?: Json
+          id?: string
+          is_active?: boolean
+          max_candidates?: number
+          max_updates_per_month?: number
+          price_monthly?: number
+          price_yearly?: number
+          sort_order?: number
+          tier: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string
+          features?: Json
+          id?: string
+          is_active?: boolean
+          max_candidates?: number
+          max_updates_per_month?: number
+          price_monthly?: number
+          price_yearly?: number
+          sort_order?: number
+          tier?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       subscriptions: {
         Row: {
