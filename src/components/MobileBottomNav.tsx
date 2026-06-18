@@ -273,7 +273,7 @@ export function MobileBottomNav() {
                       </div>
                     </AccordionTrigger>
                     <AccordionContent className="pb-3">
-                      <div className="grid grid-cols-1 gap-1.5">
+                      <div className={cn("grid gap-1.5", section.id === "admin" ? "grid-cols-2" : "grid-cols-1")}>
                         {section.items.map((it) => {
                           const Icon = it.icon;
                           return (
