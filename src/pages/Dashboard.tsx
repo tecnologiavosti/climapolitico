@@ -161,6 +161,9 @@ const Dashboard = () => {
                 <Route path="/admin/logs" element={wrap("AdminLogs", AdminLogs)} />
                 <Route path="/admin/settings" element={wrap("AdminSettings", AdminSettings)} />
                 <Route path="/admin/api-settings" element={wrap("AdminApiSettings", AdminApiSettings)} />
+                <Route path="/admin/subscriptions" element={wrap("AdminSubscriptions", AdminSubscriptions)} />
+                <Route path="/admin/candidates" element={wrap("AdminCandidates", AdminCandidates)} />
+                <Route path="/admin/system" element={wrap("AdminSystem", AdminSystem)} />
                 <Route path="/admin/blog" element={wrap("BlogAdmin", BlogAdmin)} />
 
                 <Route path="/system-health" element={wrap("SystemHealth", SystemHealth)} />
