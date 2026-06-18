@@ -516,7 +516,12 @@ async function processJob(jobId: string, body: Body) {
     await updateJob(admin, jobId, { progress: 70, stage: "Preparando análise do índice...", sources: sourceStatuses, logs });
     const totalHits = samples.length;
     const deterministicConfidence = computeConfidence(totalHits, sourceStatuses);
-    let renderState: "FULL_DATA" | "PARTIAL_DATA" | "NO_DATA" = totalHits === 0 ? "NO_DATA" : deterministicConfidence === "low" ? "PARTIAL_DATA" : "FULL_DATA";
+    let renderState: "FULL_DATA" | "PARTIAL_DATA" | "NO_DATA" =
+      totalHits === 0 ? "NO_DATA" : totalHits < MIN_EVIDENCE_FOR_QUANTITATIVE ? "PARTIAL_DATA" : "FULL_DATA";
+    pipelineUsed = pipelineLabelForDays(days);
+    const okSources = sourceStatuses.filter((s) => s.status === "ok").length;
+    const failedRatio = sourceStatuses.length ? 1 - okSources / sourceStatuses.length : 0;
+    log("evidence_summary", { total_hits: totalHits, ok_sources: okSources, total_sources: sourceStatuses.length, failed_ratio: Number(failedRatio.toFixed(2)), render_state: renderState, pipeline_used: pipelineUsed, days });
     let report: any;
 
     if (renderState === "NO_DATA") {
