@@ -237,6 +237,12 @@ async function latestCollectorRun(admin: any, body: Body, jobId?: string) {
 }
 
 async function invokeCollector(body: Body, jobId: string, mode: "backfill" | "on_demand") {
+  const days = daysBetween(body.start_date, body.end_date);
+  const pipeline = pipelineLabelForDays(days);
+  // Para janelas > 1 ano (historical_archive) só fontes de notícias têm cobertura útil via Firecrawl search.
+  // Restringe a rede para não desperdiçar créditos em twitter/instagram/tiktok que não retornam histórico longo.
+  const wantAll = !body.network || body.network === "all";
+  const networkForCollector = pipeline === "historical_archive" && wantAll ? "news" : (body.network ?? "all");
   const payload = {
     mode,
     parent_job_id: jobId,
@@ -244,7 +250,7 @@ async function invokeCollector(body: Body, jobId: string, mode: "backfill" | "on
     candidate_name: body.candidate_name,
     party: body.party ?? null,
     state: body.state ?? null,
-    network: body.network ?? "all",
+    network: networkForCollector,
     start_date: body.start_date,
     end_date: body.end_date,
     force_refresh: body.force_refresh === true,
