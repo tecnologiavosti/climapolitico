@@ -675,14 +675,26 @@ Deno.serve(async (req) => {
 
     const key = cacheKey(body);
     const days = daysBetween(body.start_date, body.end_date);
+    const isUsableCache = (payload: any) => {
+      const ec = Number((payload as any)?.evidence_count ?? 0);
+      const rs = (payload as any)?.render_state;
+      return ec >= MIN_EVIDENCE_FOR_QUANTITATIVE && rs === "FULL_DATA";
+    };
     const hit = !body.force_refresh ? cache.get(key) : null;
-    if (hit && Date.now() - hit.at < ttlMs(days)) return json({ status: "completed", cached: true, result: { ...(hit.data as object), cached: true }, progress: 100 });
+    if (hit && Date.now() - hit.at < ttlMs(days) && isUsableCache(hit.data)) {
+      return json({ status: "completed", cached: true, result: { ...(hit.data as object), cached: true }, progress: 100 });
+    }
 
     if (!body.force_refresh) {
       const { data: cached } = await admin.from("social_analytics_cache").select("result,expires_at,source_job_id").eq("cache_key", key).gt("expires_at", new Date().toISOString()).maybeSingle();
-      if (cached?.result) {
+      if (cached?.result && isUsableCache(cached.result)) {
         cache.set(key, { at: Date.now(), data: cached.result });
         return json({ status: "completed", cached: true, job_id: cached.source_job_id, result: { ...(cached.result as object), cached: true }, progress: 100 });
+      }
+      if (cached?.result) {
+        // Cache antigo com evidência insuficiente — apaga para forçar nova coleta.
+        await admin.from("social_analytics_cache").delete().eq("cache_key", key);
+        cache.delete(key);
       }
     }
 
