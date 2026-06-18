@@ -1,10 +1,12 @@
 // Historical Social Index collector.
 // Única função autorizada a fazer coleta externa para a aba Visão por Rede Social.
+// Stack 100% gratuita: Google News RSS, Reddit JSON, YouTube Data API, Nitter.
+// Redes sem API gratuita confiável (TikTok, Instagram, Facebook, Telegram) marcam status "unavailable".
 
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { collectByNetwork, type FreeResult } from "../_shared/free-collectors.ts";
 
-const FIRECRAWL_KEY = Deno.env.get("FIRECRAWL_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
