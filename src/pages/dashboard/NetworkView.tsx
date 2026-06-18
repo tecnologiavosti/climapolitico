@@ -9,40 +9,33 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  RefreshCw, Flame, TrendingUp, TrendingDown, Radar as RadarIcon,
-  Network, MessageSquare, Users, Zap, Languages,
+  RefreshCw, Flame, ThumbsUp, ThumbsDown, Radar as RadarIcon,
+  Gauge, Layers, BookText, Siren, Sparkles, AlertOctagon, CheckCircle2,
 } from "lucide-react";
 import { format } from "date-fns";
 
 // ------------------------------------------------------------
-// Visão por Rede Social — Social Listening Qualitativo.
-// Foco em percepção, polarização, gatilhos de engajamento e
-// linguagem associada. Sem resumo executivo, narrativas ou
-// recomendações (esses blocos vivem em outras abas).
+// Visão por Rede Social — Social Listening enterprise.
+// Blocos: Temperatura · Termômetro de Reputação · Vetores de
+// Polarização · Gatilhos Emocionais · Vocabulário da Rede ·
+// Risco de Viralização.
 // ------------------------------------------------------------
 
 type Intensidade = "morna" | "quente" | "fervendo";
-type Polarizacao = "BAIXA" | "MEDIA" | "ALTA";
+type Reputacao = "favoravel" | "neutro" | "desgastado" | "polarizado" | "em_ascensao" | "em_queda";
+type Viralizacao = "alta" | "media" | "baixa";
 
 interface ListeningReport {
-  temperatura: {
-    texto: string;
-    intensidade: Intensidade;
-    temas_dominantes: string[];
+  temperatura: { texto: string; intensidade: Intensidade; temas_dominantes: string[] };
+  reputacao: { status: Reputacao; texto: string };
+  vetores_polarizacao: {
+    ideologica: number; regional: number; geracional: number; tematica: number; nota: string;
   };
-  conversa_por_rede: Array<{ rede: string; papel: string }>;
-  gatilhos: { aumenta: string[]; reduz: string[] };
-  polarizacao: {
-    nivel: Polarizacao;
-    apoiadores: string;
-    criticos: string;
-    neutros: string;
+  gatilhos_emocionais: { apoio: string[]; rejeicao: string[] };
+  vocabulario: {
+    palavras_nucleares: string[]; adjetivos_associados: string[]; frases_recorrentes: string[];
   };
-  linguagem: {
-    palavras_recorrentes: string[];
-    tom_dominante: string[];
-    entidades: string[];
-  };
+  risco_viralizacao: Array<{ tema: string; nivel: Viralizacao; motivo: string }>;
   network: string;
   period: { start: string; end: string };
   evidence_used: number;
@@ -70,16 +63,25 @@ const PERIODS = [
 
 const toIsoDate = (d: Date) => d.toISOString().slice(0, 10);
 
-const INTENSIDADE_META: Record<Intensidade, { label: string; cls: string; bar: string }> = {
-  morna: { label: "Morna", cls: "text-muted-foreground border-muted-foreground/30 bg-muted/40", bar: "w-1/3" },
-  quente: { label: "Quente", cls: "text-amber-500 border-amber-500/40 bg-amber-500/10", bar: "w-2/3" },
-  fervendo: { label: "Fervendo", cls: "text-destructive border-destructive/40 bg-destructive/10", bar: "w-full" },
+const INTENSIDADE_META: Record<Intensidade, { label: string; cls: string }> = {
+  morna: { label: "Morna", cls: "text-muted-foreground border-muted-foreground/30 bg-muted/40" },
+  quente: { label: "Quente", cls: "text-amber-500 border-amber-500/40 bg-amber-500/10" },
+  fervendo: { label: "Fervendo", cls: "text-destructive border-destructive/40 bg-destructive/10" },
 };
 
-const POLARIZACAO_META: Record<Polarizacao, { label: string; cls: string }> = {
-  BAIXA: { label: "BAIXA", cls: "bg-success/15 text-success border-success/30" },
-  MEDIA: { label: "MÉDIA", cls: "bg-amber-500/15 text-amber-500 border-amber-500/30" },
-  ALTA: { label: "ALTA", cls: "bg-destructive/15 text-destructive border-destructive/30" },
+const REPUTACAO_META: Record<Reputacao, { label: string; cls: string }> = {
+  favoravel: { label: "Favorável", cls: "bg-success/15 text-success border-success/40" },
+  neutro: { label: "Neutro", cls: "bg-muted text-muted-foreground border-border" },
+  desgastado: { label: "Desgastado", cls: "bg-destructive/15 text-destructive border-destructive/40" },
+  polarizado: { label: "Polarizado", cls: "bg-amber-500/15 text-amber-500 border-amber-500/40" },
+  em_ascensao: { label: "Em ascensão", cls: "bg-primary/15 text-primary border-primary/40" },
+  em_queda: { label: "Em queda", cls: "bg-destructive/15 text-destructive border-destructive/40" },
+};
+
+const VIRAL_META: Record<Viralizacao, { label: string; emoji: string; cls: string }> = {
+  alta: { label: "Alta chance", emoji: "🔥", cls: "bg-destructive/15 text-destructive border-destructive/40" },
+  media: { label: "Média chance", emoji: "⚠️", cls: "bg-amber-500/15 text-amber-500 border-amber-500/40" },
+  baixa: { label: "Baixa chance", emoji: "✓", cls: "bg-success/15 text-success border-success/40" },
 };
 
 export default function NetworkView() {
@@ -114,7 +116,7 @@ export default function NetworkView() {
   );
 
   const analysis = useQuery({
-    queryKey: ["nv-listening", candidateId, network, range.start_date, range.end_date, nonce],
+    queryKey: ["nv-listening-v3", candidateId, network, range.start_date, range.end_date, nonce],
     enabled: !!candidate,
     retry: false,
     staleTime: 5 * 60 * 1000,
@@ -141,12 +143,11 @@ export default function NetworkView() {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Visão por Rede Social</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Social listening qualitativo — percepção, polarização, gatilhos e linguagem associada.
+            Social listening político — reputação, polarização e gatilhos emocionais por candidato.
           </p>
           {report && (
             <p className="text-xs text-muted-foreground mt-2 font-medium">
@@ -170,13 +171,7 @@ export default function NetworkView() {
           </Select>
           <div className="flex flex-wrap gap-1">
             {PERIODS.map((p) => (
-              <Button
-                key={p.value}
-                type="button"
-                variant={days === p.value ? "default" : "outline"}
-                size="sm"
-                onClick={() => setDays(p.value)}
-              >
+              <Button key={p.value} type="button" variant={days === p.value ? "default" : "outline"} size="sm" onClick={() => setDays(p.value)}>
                 {p.label}
               </Button>
             ))}
@@ -193,9 +188,7 @@ export default function NetworkView() {
         <Card className="p-8 text-center">
           <RadarIcon className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
           <h3 className="text-lg font-semibold mb-1">Selecione um candidato</h3>
-          <p className="text-sm text-muted-foreground">
-            Escolha um candidato para gerar a leitura de social listening.
-          </p>
+          <p className="text-sm text-muted-foreground">Escolha um candidato para gerar a leitura de social listening.</p>
         </Card>
       )}
 
@@ -211,6 +204,7 @@ export default function NetworkView() {
       {!needsCandidate && loading && !report && (
         <div className="space-y-6">
           <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-32 w-full" />
           <Skeleton className="h-48 w-full" />
           <Skeleton className="h-56 w-full" />
         </div>
@@ -218,75 +212,18 @@ export default function NetworkView() {
 
       {!needsCandidate && report && (
         <>
-          {/* 1. TEMPERATURA DA REDE */}
           <TemperaturaCard temperatura={report.temperatura} />
-
-          {/* 2. ONDE A CONVERSA ESTÁ MAIS ATIVA */}
-          <Card className="p-6 space-y-4">
-            <div className="flex items-center gap-2">
-              <Network className="h-5 w-5 text-primary" />
-              <h2 className="text-lg font-semibold">Onde a conversa está mais ativa</h2>
-            </div>
-            {report.conversa_por_rede.length === 0 ? (
-              <Empty />
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {report.conversa_por_rede.map((r, i) => (
-                  <div key={i} className="rounded-lg border border-border p-4 bg-card/50">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <MessageSquare className="h-4 w-4 text-primary" />
-                      <span className="text-sm font-semibold">{r.rede}</span>
-                    </div>
-                    <p className="text-sm leading-relaxed text-muted-foreground">{r.papel}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-
-          {/* 3. GATILHOS DE ENGAJAMENTO */}
-          <Card className="p-6 space-y-4">
-            <div className="flex items-center gap-2">
-              <Zap className="h-5 w-5 text-primary" />
-              <h2 className="text-lg font-semibold">Gatilhos de engajamento</h2>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <GatilhoBlock
-                title="O que aumenta comentários"
-                items={report.gatilhos.aumenta}
-                icon={<TrendingUp className="h-4 w-4" />}
-                tone="success"
-              />
-              <GatilhoBlock
-                title="O que reduz comentários"
-                items={report.gatilhos.reduz}
-                icon={<TrendingDown className="h-4 w-4" />}
-                tone="muted"
-              />
-            </div>
-          </Card>
-
-          {/* 4. POLARIZAÇÃO */}
-          <PolarizacaoCard polarizacao={report.polarizacao} />
-
-          {/* 5. LINGUAGEM ASSOCIADA */}
-          <Card className="p-6 space-y-4">
-            <div className="flex items-center gap-2">
-              <Languages className="h-5 w-5 text-primary" />
-              <h2 className="text-lg font-semibold">Linguagem associada</h2>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <LinguagemGroup title="Palavras recorrentes" items={report.linguagem.palavras_recorrentes} variant="secondary" />
-              <LinguagemGroup title="Tom dominante" items={report.linguagem.tom_dominante} variant="outline" />
-              <LinguagemGroup title="Entidades relacionadas" items={report.linguagem.entidades} variant="default" />
-            </div>
-          </Card>
+          <ReputacaoCard reputacao={report.reputacao} />
+          <VetoresCard vetores={report.vetores_polarizacao} />
+          <GatilhosCard gatilhos={report.gatilhos_emocionais} />
+          <VocabularioCard vocabulario={report.vocabulario} />
+          <ViralizacaoCard temas={report.risco_viralizacao} />
 
           <p className="text-xs text-muted-foreground">
             Leitura gerada por IA em {format(new Date(report.generated_at), "dd/MM/yyyy HH:mm")} ·
             {report.evidence_used > 0
               ? ` ${report.evidence_used} evidências web consultadas como contexto.`
-              : " sem evidências web recentes — interpretação baseada em conhecimento geral."}
+              : " interpretação baseada em conhecimento político geral."}
           </p>
         </>
       )}
@@ -303,30 +240,11 @@ function TemperaturaCard({ temperatura }: { temperatura: ListeningReport["temper
           <Flame className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold">Temperatura da rede</h2>
         </div>
-        <Badge variant="outline" className={`text-xs uppercase tracking-wider px-3 py-1 ${meta.cls}`}>
-          {meta.label}
-        </Badge>
+        <Badge variant="outline" className={`text-xs uppercase tracking-wider px-3 py-1 ${meta.cls}`}>{meta.label}</Badge>
       </div>
-
-      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-        <div
-          className={`h-full ${meta.bar} transition-all`}
-          style={{
-            background: temperatura.intensidade === "fervendo"
-              ? "linear-gradient(90deg, hsl(var(--success)), hsl(var(--warning, 38 92% 50%)), hsl(var(--destructive)))"
-              : temperatura.intensidade === "quente"
-              ? "linear-gradient(90deg, hsl(var(--success)), hsl(var(--warning, 38 92% 50%)))"
-              : "hsl(var(--muted-foreground))",
-          }}
-        />
-      </div>
-
-      <p className="text-sm leading-relaxed text-foreground whitespace-pre-line">
-        {temperatura.texto || "—"}
-      </p>
-
+      <p className="text-sm leading-relaxed whitespace-pre-line">{temperatura.texto || "—"}</p>
       {temperatura.temas_dominantes.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 pt-1">
+        <div className="flex flex-wrap gap-1.5">
           {temperatura.temas_dominantes.map((t, i) => (
             <Badge key={i} variant="secondary" className="text-xs">{t}</Badge>
           ))}
@@ -336,43 +254,85 @@ function TemperaturaCard({ temperatura }: { temperatura: ListeningReport["temper
   );
 }
 
-function PolarizacaoCard({ polarizacao }: { polarizacao: ListeningReport["polarizacao"] }) {
-  const meta = POLARIZACAO_META[polarizacao.nivel];
+function ReputacaoCard({ reputacao }: { reputacao: ListeningReport["reputacao"] }) {
+  const meta = REPUTACAO_META[reputacao.status];
   return (
     <Card className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-2">
-          <Users className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-semibold">Polarização</h2>
+          <Gauge className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-semibold">Termômetro de reputação</h2>
         </div>
-        <Badge className={`text-xs font-bold tracking-wider px-3 py-1 border ${meta.cls}`}>
-          {meta.label}
-        </Badge>
+        <Badge className={`text-xs font-bold tracking-wider px-3 py-1 border ${meta.cls}`}>{meta.label.toUpperCase()}</Badge>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <PolBlock label="Quem apoia" text={polarizacao.apoiadores} tone="success" />
-        <PolBlock label="Quem critica" text={polarizacao.criticos} tone="destructive" />
-        <PolBlock label="Quem observa" text={polarizacao.neutros} tone="muted" />
+      <p className="text-sm leading-relaxed">{reputacao.texto || "—"}</p>
+    </Card>
+  );
+}
+
+function VetoresCard({ vetores }: { vetores: ListeningReport["vetores_polarizacao"] }) {
+  const items: Array<{ label: string; value: number }> = [
+    { label: "Polarização ideológica", value: vetores.ideologica },
+    { label: "Polarização regional", value: vetores.regional },
+    { label: "Polarização geracional", value: vetores.geracional },
+    { label: "Polarização temática", value: vetores.tematica },
+  ];
+  return (
+    <Card className="p-6 space-y-5">
+      <div className="flex items-center gap-2">
+        <Layers className="h-5 w-5 text-primary" />
+        <h2 className="text-lg font-semibold">Vetores de polarização</h2>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+        {items.map((it) => (
+          <div key={it.label} className="space-y-1.5">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">{it.label}</span>
+              <span className="font-semibold tabular-nums">{it.value}</span>
+            </div>
+            <div className="h-2 rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all"
+                style={{
+                  width: `${it.value}%`,
+                  background: it.value >= 75
+                    ? "hsl(var(--destructive))"
+                    : it.value >= 50
+                    ? "hsl(38 92% 50%)"
+                    : "hsl(var(--primary))",
+                }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+      {vetores.nota && (
+        <p className="text-xs text-muted-foreground italic border-l-2 border-primary/40 pl-3">{vetores.nota}</p>
+      )}
+    </Card>
+  );
+}
+
+function GatilhosCard({ gatilhos }: { gatilhos: ListeningReport["gatilhos_emocionais"] }) {
+  return (
+    <Card className="p-6 space-y-4">
+      <div className="flex items-center gap-2">
+        <Sparkles className="h-5 w-5 text-primary" />
+        <h2 className="text-lg font-semibold">Gatilhos emocionais</h2>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <GatilhoBlock title="O que gera APOIO" items={gatilhos.apoio} tone="success" icon={<ThumbsUp className="h-4 w-4" />} />
+        <GatilhoBlock title="O que gera REJEIÇÃO" items={gatilhos.rejeicao} tone="destructive" icon={<ThumbsDown className="h-4 w-4" />} />
       </div>
     </Card>
   );
 }
 
-function PolBlock({ label, text, tone }: { label: string; text: string; tone: "success" | "destructive" | "muted" }) {
-  const cls = tone === "success" ? "text-success" : tone === "destructive" ? "text-destructive" : "text-muted-foreground";
+function GatilhoBlock({ title, items, tone, icon }: { title: string; items: string[]; tone: "success" | "destructive"; icon: React.ReactNode }) {
+  const cls = tone === "success" ? "text-success" : "text-destructive";
   return (
-    <div className="rounded-lg border border-border p-4 bg-card/50 space-y-2">
-      <div className={`text-xs uppercase tracking-wider font-semibold ${cls}`}>{label}</div>
-      <p className="text-sm leading-relaxed">{text || "—"}</p>
-    </div>
-  );
-}
-
-function GatilhoBlock({ title, items, icon, tone }: { title: string; items: string[]; icon: React.ReactNode; tone: "success" | "muted" }) {
-  const cls = tone === "success" ? "text-success" : "text-muted-foreground";
-  return (
-    <div className="rounded-lg border border-border p-4 bg-card/50 space-y-3">
-      <div className={`flex items-center gap-2 text-sm font-semibold ${cls}`}>{icon}{title}</div>
+    <div className={`rounded-lg border p-4 bg-card/50 space-y-3 ${tone === "success" ? "border-success/30" : "border-destructive/30"}`}>
+      <div className={`flex items-center gap-2 text-sm font-semibold uppercase tracking-wider ${cls}`}>{icon}{title}</div>
       {items.length === 0 ? (
         <p className="text-xs text-muted-foreground italic">Nada relevante detectado.</p>
       ) : (
@@ -386,10 +346,29 @@ function GatilhoBlock({ title, items, icon, tone }: { title: string; items: stri
   );
 }
 
-function LinguagemGroup({ title, items, variant }: { title: string; items: string[]; variant: "secondary" | "outline" | "default" }) {
+function VocabularioCard({ vocabulario }: { vocabulario: ListeningReport["vocabulario"] }) {
   return (
-    <div className="rounded-lg border border-border p-4 bg-card/50">
-      <div className="text-xs uppercase tracking-wider text-muted-foreground mb-3 font-semibold">{title}</div>
+    <Card className="p-6 space-y-4">
+      <div className="flex items-center gap-2">
+        <BookText className="h-5 w-5 text-primary" />
+        <h2 className="text-lg font-semibold">Vocabulário da rede</h2>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <VocabGroup title="Palavras nucleares" subtitle="Termos diretamente ligados ao candidato" items={vocabulario.palavras_nucleares} variant="default" />
+        <VocabGroup title="Adjetivos associados" subtitle="Como a rede descreve o candidato" items={vocabulario.adjetivos_associados} variant="secondary" />
+        <VocabGroup title="Frases recorrentes" subtitle="Expressões que aparecem com frequência" items={vocabulario.frases_recorrentes} variant="outline" />
+      </div>
+    </Card>
+  );
+}
+
+function VocabGroup({ title, subtitle, items, variant }: { title: string; subtitle: string; items: string[]; variant: "default" | "secondary" | "outline" }) {
+  return (
+    <div className="rounded-lg border border-border p-4 bg-card/50 space-y-3">
+      <div>
+        <div className="text-sm font-semibold">{title}</div>
+        <div className="text-[11px] text-muted-foreground mt-0.5">{subtitle}</div>
+      </div>
       {items.length === 0 ? (
         <p className="text-xs text-muted-foreground italic">—</p>
       ) : (
@@ -403,6 +382,35 @@ function LinguagemGroup({ title, items, variant }: { title: string; items: strin
   );
 }
 
-function Empty() {
-  return <div className="text-sm text-muted-foreground py-6 text-center">Nada detectado para este período.</div>;
+function ViralizacaoCard({ temas }: { temas: ListeningReport["risco_viralizacao"] }) {
+  return (
+    <Card className="p-6 space-y-4">
+      <div className="flex items-center gap-2">
+        <Siren className="h-5 w-5 text-primary" />
+        <h2 className="text-lg font-semibold">Risco de viralização</h2>
+      </div>
+      {temas.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-4 text-center">Nenhum tema com risco identificado.</p>
+      ) : (
+        <ul className="space-y-2">
+          {temas.map((t, i) => {
+            const meta = VIRAL_META[t.nivel];
+            const Icon = t.nivel === "alta" ? AlertOctagon : t.nivel === "media" ? Siren : CheckCircle2;
+            return (
+              <li key={i} className={`rounded-lg border p-3.5 flex flex-col sm:flex-row sm:items-center gap-3 ${meta.cls}`}>
+                <div className="flex items-center gap-2 sm:min-w-[180px]">
+                  <Icon className="h-4 w-4" />
+                  <span className="text-xs font-bold uppercase tracking-wider">{meta.emoji} {meta.label}</span>
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-semibold text-foreground">{t.tema}</div>
+                  {t.motivo && <div className="text-xs text-muted-foreground mt-0.5">{t.motivo}</div>}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Card>
+  );
 }
