@@ -435,18 +435,6 @@ export default function NetworkView() {
             </Card>
           )}
 
-          {data && renderState === "NO_DATA" && !loading && (
-            <Card className="p-8 text-center border-warning/40 space-y-4">
-              <RadarIcon className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-              <div>
-                <h3 className="text-lg font-semibold mb-1">Histórico ainda não coletado para este candidato.</h3>
-                <p className="text-sm text-muted-foreground">Inicie backfill. Nenhum número, gráfico, assunto ou termo será exibido sem evidências reais no índice.</p>
-              </div>
-              <Button size="sm" variant="outline" onClick={() => { setActiveJobId(null); setReprocessNonce((n) => n + 1); }}>
-                <RefreshCw className="h-4 w-4 mr-2" /> Iniciar backfill
-              </Button>
-            </Card>
-          )}
 
           {data && renderState === "PARTIAL_DATA" && !loading && (
             <Card className="p-6 space-y-4">
