@@ -6,16 +6,26 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Shield, Users, TrendingUp, BarChart3, RotateCcw } from "lucide-react";
+import { Shield, Users, TrendingUp, BarChart3, RotateCcw, Ban, Trash2, ShieldCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { AdminRoute } from "@/components/admin/AdminRoute";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { useState } from "react";
+
 
 interface UserWithDetails {
   id: string;
   full_name: string | null;
   organization: string | null;
   created_at: string;
+  is_banned?: boolean;
+  ban_reason?: string | null;
   subscription: {
     tier: string;
     status: string;
@@ -29,10 +39,13 @@ interface UserWithDetails {
   rankings_count: number;
 }
 
-export default function Admin() {
+
+function AdminUsersInner() {
   const { isAdmin, isLoading: checkingAdmin } = useAdminCheck();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [banReason, setBanReason] = useState<Record<string, string>>({});
+
 
   // Fetch all users with their subscriptions and stats
   const { data: users, isLoading: loadingUsers } = useQuery({
@@ -41,7 +54,8 @@ export default function Admin() {
       // Get profiles
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
-        .select('id, full_name, organization, created_at');
+        .select('id, full_name, organization, created_at, is_banned, ban_reason');
+
 
       if (profilesError) throw profilesError;
 
