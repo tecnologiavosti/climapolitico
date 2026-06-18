@@ -89,8 +89,9 @@ function buildBackfillChunks(startDate: string, endDate: string): Array<{ start:
     return chunks;
   }
 
-  const target = days <= 370 ? 12 : 16;
-  const stepMonths = days <= 370 ? 1 : days <= 1500 ? 3 : 6;
+  // Spec: 1a → 12 mensais · 4a → 16 trimestrais · 8a → 32 trimestrais
+  const target = days <= 370 ? 12 : days <= 1500 ? 16 : 32;
+  const stepMonths = days <= 370 ? 1 : 3; // mensal para 1a, trimestral para 4a+/8a
   let cursor = start;
   while (cursor <= end && chunks.length < target) {
     const nextStart = addUtcMonths(cursor, stepMonths);
