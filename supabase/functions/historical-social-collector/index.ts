@@ -220,50 +220,25 @@ async function setSourceCache(admin: any, key: string, hits: SearchHit[], provid
   }, { onConflict: "cache_key" });
 }
 
-async function firecrawlSearch(admin: any, task: SourceTask, startDate: string, endDate: string, forceRefresh = false): Promise<{ hits: SearchHit[]; status: string; error?: string }> {
-  const cacheKey = `hsi-source-v1|${normalizeText(task.q)}|${task.source}|${startDate}|${endDate}`;
+async function searchSource(admin: any, task: SourceTask, startDate: string, endDate: string, forceRefresh = false): Promise<FreeResult & { provider: string }> {
+  const cacheKey = `hsi-free-v1|${normalizeText(task.q)}|${task.source}|${startDate}|${endDate}`;
   if (!forceRefresh) {
     const cached = await getSourceCache(admin, cacheKey).catch(() => null);
-    if (cached) return { hits: cached, status: cached.length ? "cached" : "cached_empty" };
+    if (cached) return { hits: cached, status: cached.length ? "cached" : "cached_empty", provider: `free:${task.source}` };
   }
-  if (!FIRECRAWL_KEY) return { hits: [], status: "skipped", error: "FIRECRAWL_API_KEY ausente" };
-
-  let lastError = "";
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      const r = await fetch("https://api.firecrawl.dev/v2/search", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${FIRECRAWL_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ query: task.q, limit: 10, lang: "pt", country: "br" }),
-        signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
-      });
-      if (!r.ok) {
-        const detail = (await r.text().catch(() => "")).slice(0, 260);
-        lastError = `${r.status}: ${detail}`;
-        const status = statusFromHttp(r.status);
-        console.warn("[historical-social-collector] source_failed", task.source, status, lastError);
-        if (r.status === 402) return { hits: [], status, error: lastError };
-        await sleep(Math.min(6_000, 600 * 2 ** attempt));
-        continue;
-      }
-      const j = await r.json();
-      const raw: any[] = j?.data?.web ?? j?.data ?? j?.results ?? [];
-      const hits = raw.slice(0, 10).map((x) => ({
-        url: x.url,
-        title: x.title,
-        description: x.description ?? x.snippet ?? "",
-        source: x.source ?? x.url,
-        date: x.publishedDate ?? x.date ?? undefined,
-      }));
-      await setSourceCache(admin, cacheKey, hits, "firecrawl").catch(() => {});
-      return { hits, status: hits.length ? "ok" : "empty" };
-    } catch (e: any) {
-      lastError = e?.message ?? String(e);
-      await sleep(Math.min(6_000, 600 * 2 ** attempt));
+  try {
+    const result = await collectByNetwork(task.net, task.q, startDate, endDate, admin);
+    if (["ok", "empty"].includes(result.status)) {
+      await setSourceCache(admin, cacheKey, result.hits, `free:${task.source}`).catch(() => {});
+    } else {
+      console.warn("[historical-social-collector] source_failed", task.source, result.status, result.error ?? "");
     }
+    return { ...result, provider: `free:${task.source}` };
+  } catch (e: any) {
+    return { hits: [], status: "error", error: e?.message ?? String(e), provider: `free:${task.source}` };
   }
-  return { hits: [], status: /timeout|aborted/i.test(lastError) ? "timeout" : "error", error: lastError };
 }
+
 
 async function updateRun(admin: any, runId: string, patch: Record<string, unknown>) {
   await admin.from("historical_social_collector_runs").update(patch).eq("id", runId);
