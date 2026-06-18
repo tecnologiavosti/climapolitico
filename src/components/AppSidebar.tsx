@@ -151,23 +151,32 @@ const accountGroup: NavGroup = {
 
 const adminGroup: NavGroup = {
   id: "admin",
-  label: "Administração",
+  label: "ADMIN",
   icon: Shield,
   defaultOpen: false,
   items: [
-    { title: "Administração", url: "/dashboard/admin", icon: Shield },
+    { title: "Painel ADM", url: "/dashboard/admin", icon: Shield },
+    { title: "Usuários", url: "/dashboard/admin/users", icon: Users },
+    { title: "Financeiro", url: "/dashboard/admin/finance", icon: BarChart3 },
+    { title: "Planos", url: "/dashboard/admin/plans", icon: BookUser },
+    { title: "SEO", url: "/dashboard/admin/seo", icon: LineChart },
+    { title: "Analytics", url: "/dashboard/admin/analytics", icon: Activity },
+    { title: "Segurança", url: "/dashboard/admin/security", icon: Shield },
+    { title: "Logs", url: "/dashboard/admin/logs", icon: FileText },
+    { title: "Configurações ADM", url: "/dashboard/admin/settings", icon: Settings },
     { title: "APIs & Integrações", url: "/dashboard/admin/api-settings", icon: Key },
     { title: "Blog IA", url: "/dashboard/admin/blog", icon: FileText },
-    { title: "Observabilidade", url: "/dashboard/observability", icon: Shield },
-    { title: "Operations Console", url: "/dashboard/operations", icon: Shield },
-    { title: "SLO & SLA", url: "/dashboard/slo", icon: Shield },
+    { title: "Observabilidade", url: "/dashboard/observability", icon: Eye },
+    { title: "Operations Console", url: "/dashboard/operations", icon: Activity },
+    { title: "SLO & SLA", url: "/dashboard/slo", icon: BarChart3 },
     { title: "Worker Tokens", url: "/dashboard/worker-tokens", icon: Key },
-    { title: "Tenant Analytics", url: "/dashboard/tenant-analytics", icon: Shield },
+    { title: "Tenant Analytics", url: "/dashboard/tenant-analytics", icon: BarChart3 },
     { title: "Diagnóstico de Dados", url: "/dashboard/data-diagnostics", icon: Database },
     { title: "Saúde dos Coletores", url: "/dashboard/collector-health", icon: Activity },
     { title: "Enriquecimento de Dados", url: "/dashboard/data-enrichment", icon: Database },
   ],
 };
+
 
 function BadgePill({ label, variant }: { label: string; variant: "live" | "ai" }) {
   if (variant === "live") {
