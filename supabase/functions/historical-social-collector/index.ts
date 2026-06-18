@@ -346,7 +346,7 @@ async function collectForCandidate(admin: any, input: CollectInput) {
       });
 
       const tasks = buildTasks(input, chunk.start, chunk.end);
-      const results = await runLimited(tasks, MAX_CONCURRENT, async (task) => ({ task, result: await firecrawlSearch(admin, task, chunk.start, chunk.end, input.force_refresh === true) }));
+      const results = await runLimited(tasks, MAX_CONCURRENT, async (task) => ({ task, result: await searchSource(admin, task, chunk.start, chunk.end, input.force_refresh === true) }));
       const rows: any[] = [];
       for (const { task, result } of results) {
         if (["ok", "cached"].includes(result.status) && result.hits.length > 0) sourceOk += 1;
