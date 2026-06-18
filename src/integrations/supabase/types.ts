@@ -422,6 +422,65 @@ export type Database = {
           },
         ]
       }
+      billing_history: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          currency: string
+          description: string | null
+          external_reference: string | null
+          id: string
+          method: string | null
+          paid_at: string | null
+          status: string
+          subscription_id: string | null
+          tier: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          description?: string | null
+          external_reference?: string | null
+          id?: string
+          method?: string | null
+          paid_at?: string | null
+          status?: string
+          subscription_id?: string | null
+          tier?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          description?: string | null
+          external_reference?: string | null
+          id?: string
+          method?: string | null
+          paid_at?: string | null
+          status?: string
+          subscription_id?: string | null
+          tier?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_history_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       blocked_emails: {
         Row: {
           blocked_by: string | null
@@ -2588,6 +2647,7 @@ export type Database = {
       profiles: {
         Row: {
           active_session_id: string | null
+          admin_notes: string | null
           avatar_url: string | null
           ban_reason: string | null
           banned_at: string | null
@@ -2605,12 +2665,15 @@ export type Database = {
           phone: string | null
           role_title: string | null
           show_tooltips: boolean
+          suspended_reason: string | null
+          suspended_until: string | null
           theme: string
           two_factor_enabled: boolean
           updated_at: string
         }
         Insert: {
           active_session_id?: string | null
+          admin_notes?: string | null
           avatar_url?: string | null
           ban_reason?: string | null
           banned_at?: string | null
@@ -2628,12 +2691,15 @@ export type Database = {
           phone?: string | null
           role_title?: string | null
           show_tooltips?: boolean
+          suspended_reason?: string | null
+          suspended_until?: string | null
           theme?: string
           two_factor_enabled?: boolean
           updated_at?: string
         }
         Update: {
           active_session_id?: string | null
+          admin_notes?: string | null
           avatar_url?: string | null
           ban_reason?: string | null
           banned_at?: string | null
@@ -2651,6 +2717,8 @@ export type Database = {
           phone?: string | null
           role_title?: string | null
           show_tooltips?: boolean
+          suspended_reason?: string | null
+          suspended_until?: string | null
           theme?: string
           two_factor_enabled?: boolean
           updated_at?: string
@@ -3859,6 +3927,7 @@ export type Database = {
           id: string
           max_candidates: number
           max_updates_per_month: number
+          notes: string | null
           status: string
           tier: Database["public"]["Enums"]["subscription_tier"]
           updated_at: string
@@ -3873,6 +3942,7 @@ export type Database = {
           id?: string
           max_candidates?: number
           max_updates_per_month?: number
+          notes?: string | null
           status?: string
           tier?: Database["public"]["Enums"]["subscription_tier"]
           updated_at?: string
@@ -3887,6 +3957,7 @@ export type Database = {
           id?: string
           max_candidates?: number
           max_updates_per_month?: number
+          notes?: string | null
           status?: string
           tier?: Database["public"]["Enums"]["subscription_tier"]
           updated_at?: string
@@ -5049,7 +5120,13 @@ export type Database = {
         | "finance_admin"
         | "support_admin"
         | "seo_admin"
-      subscription_tier: "basic" | "pro" | "enterprise" | "lifetime"
+      subscription_tier:
+        | "basic"
+        | "pro"
+        | "enterprise"
+        | "lifetime"
+        | "free"
+        | "starter"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -5186,7 +5263,14 @@ export const Constants = {
         "support_admin",
         "seo_admin",
       ],
-      subscription_tier: ["basic", "pro", "enterprise", "lifetime"],
+      subscription_tier: [
+        "basic",
+        "pro",
+        "enterprise",
+        "lifetime",
+        "free",
+        "starter",
+      ],
     },
   },
 } as const
