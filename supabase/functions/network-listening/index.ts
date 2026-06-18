@@ -97,6 +97,16 @@ function minHistoricalHits(days: number) {
   return 60;
 }
 
+// Limiar de evidência para liberar render quantitativo completo (cards/gráficos/topicos/termos).
+const MIN_EVIDENCE_FOR_QUANTITATIVE = 20;
+
+// Rotula o pipeline esperado por período.
+function pipelineLabelForDays(days: number): "live_listening" | "historical_index" | "historical_archive" {
+  if (days <= 90) return "live_listening";
+  if (days <= 365) return "historical_index";
+  return "historical_archive";
+}
+
 function computeConfidence(samples: number, sourceStatuses: SourceStatus[]): "high" | "medium" | "low" {
   const okSources = sourceStatuses.filter((s) => s.status === "ok").length;
   if (samples >= 200 || okSources >= 30) return "high";
