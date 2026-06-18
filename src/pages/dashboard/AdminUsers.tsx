@@ -365,9 +365,8 @@ function AdminUsersInner() {
                         </AlertDialog>
                       </div>
                     </TableCell>
-
-                    </TableCell>
                   </TableRow>
+
                 ))}
               </TableBody>
             </Table>
