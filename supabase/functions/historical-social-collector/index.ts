@@ -24,6 +24,8 @@ interface SearchHit {
   description?: string;
   source?: string;
   date?: string;
+  author?: string;
+  interactions?: number;
 }
 
 interface CollectInput {
