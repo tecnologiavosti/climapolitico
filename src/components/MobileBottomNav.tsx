@@ -122,16 +122,31 @@ const adminSection: Section = {
   title: "Administração",
   icon: Shield,
   items: [
-    { label: "Admin", icon: Shield, to: "/dashboard/admin" },
-    { label: "APIs", icon: Key, to: "/dashboard/admin/api-settings" },
+    { label: "Painel ADM", icon: Shield, to: "/dashboard/admin" },
+    { label: "Usuários", icon: Users, to: "/dashboard/admin/users" },
+    { label: "Financeiro", icon: BarChart3, to: "/dashboard/admin/finance" },
+    { label: "Planos", icon: BookUser, to: "/dashboard/admin/plans" },
+    { label: "Assinaturas", icon: BookUser, to: "/dashboard/admin/subscriptions" },
+    { label: "Candidatos ADM", icon: Users, to: "/dashboard/admin/candidates" },
+    { label: "Sistema", icon: SettingsIcon, to: "/dashboard/admin/system" },
+    { label: "SEO", icon: LineChart, to: "/dashboard/admin/seo" },
+    { label: "Analytics", icon: BarChart3, to: "/dashboard/admin/analytics" },
+    { label: "Segurança", icon: Shield, to: "/dashboard/admin/security" },
+    { label: "Logs", icon: FileText, to: "/dashboard/admin/logs" },
+    { label: "Configurações ADM", icon: SettingsIcon, to: "/dashboard/admin/settings" },
+    { label: "APIs & Integrações", icon: Key, to: "/dashboard/admin/api-settings" },
+    { label: "Blog IA", icon: FileText, to: "/dashboard/admin/blog" },
     { label: "Observabilidade", icon: Shield, to: "/dashboard/observability" },
     { label: "Operations", icon: Shield, to: "/dashboard/operations" },
     { label: "SLO & SLA", icon: Shield, to: "/dashboard/slo" },
-    { label: "Tokens", icon: Key, to: "/dashboard/worker-tokens" },
-    { label: "Tenants", icon: Shield, to: "/dashboard/tenant-analytics" },
+    { label: "Worker Tokens", icon: Key, to: "/dashboard/worker-tokens" },
+    { label: "Tenant Analytics", icon: BarChart3, to: "/dashboard/tenant-analytics" },
     { label: "Diagnóstico", icon: Database, to: "/dashboard/data-diagnostics" },
+    { label: "Saúde dos Coletores", icon: Shield, to: "/dashboard/collector-health" },
+    { label: "Enriquecimento", icon: Database, to: "/dashboard/data-enrichment" },
   ],
 };
+
 
 function Badge({ variant }: { variant: "live" | "ai" }) {
   if (variant === "live") {
@@ -258,7 +273,7 @@ export function MobileBottomNav() {
                       </div>
                     </AccordionTrigger>
                     <AccordionContent className="pb-3">
-                      <div className="grid grid-cols-1 gap-1.5">
+                      <div className={cn("grid gap-1.5", section.id === "admin" ? "grid-cols-2" : "grid-cols-1")}>
                         {section.items.map((it) => {
                           const Icon = it.icon;
                           return (
