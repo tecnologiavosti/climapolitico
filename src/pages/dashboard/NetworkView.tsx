@@ -240,14 +240,26 @@ export default function NetworkView() {
   const loading = report.isFetching || isProcessing;
   const needsCandidate = candidateId === "all";
   const evidenceCount = data?.evidence_count ?? 0;
-  const renderState = data?.render_state ?? (data ? (evidenceCount === 0 ? "NO_DATA" : data.confidence === "low" || data.qualitative_only ? "PARTIAL_DATA" : "FULL_DATA") : undefined);
+  const MIN_EVIDENCE = 20;
+  // Render state derivado do volume real de evidência (não da confiança da IA).
+  const renderState: "FULL_DATA" | "PARTIAL_DATA" | "NO_DATA" | undefined = data
+    ? evidenceCount === 0
+      ? "NO_DATA"
+      : evidenceCount < MIN_EVIDENCE
+        ? "PARTIAL_DATA"
+        : "FULL_DATA"
+    : undefined;
 
   // Derivações de exibição
   const netSentiment = data?.net_sentiment ?? 0;
   const { label: netLabel, tone: netTone } = netLabelFor(netSentiment);
   const dominant = data?.dominant_network;
+  // Esconde redes sem evidência real do gráfico de distribuição.
   const distribution = useMemo(
-    () => (data?.distribution ?? []).slice().sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0)),
+    () => (data?.distribution ?? [])
+      .filter((d) => (d.data_source_type ?? "unavailable") !== "unavailable" && (d.mentions ?? d.direct_hits ?? 0) > 0)
+      .slice()
+      .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0)),
     [data?.distribution],
   );
   const socialViewDebug = data ? {
