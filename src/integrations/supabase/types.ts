@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_audit_logs: {
+        Row: {
+          action: string
+          admin_email: string | null
+          admin_id: string
+          created_at: string
+          id: string
+          ip_address: string | null
+          metadata: Json
+          target_id: string | null
+          target_type: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          action: string
+          admin_email?: string | null
+          admin_id: string
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          metadata?: Json
+          target_id?: string | null
+          target_type?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          action?: string
+          admin_email?: string | null
+          admin_id?: string
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          metadata?: Json
+          target_id?: string | null
+          target_type?: string | null
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       ai_insights: {
         Row: {
           affected_candidates: Json
@@ -2466,9 +2505,13 @@ export type Database = {
         Row: {
           active_session_id: string | null
           avatar_url: string | null
+          ban_reason: string | null
+          banned_at: string | null
+          banned_by: string | null
           created_at: string
           full_name: string | null
           id: string
+          is_banned: boolean
           language: string
           notification_preferences: Json | null
           onboarding_completed_at: string | null
@@ -2485,9 +2528,13 @@ export type Database = {
         Insert: {
           active_session_id?: string | null
           avatar_url?: string | null
+          ban_reason?: string | null
+          banned_at?: string | null
+          banned_by?: string | null
           created_at?: string
           full_name?: string | null
           id: string
+          is_banned?: boolean
           language?: string
           notification_preferences?: Json | null
           onboarding_completed_at?: string | null
@@ -2504,9 +2551,13 @@ export type Database = {
         Update: {
           active_session_id?: string | null
           avatar_url?: string | null
+          ban_reason?: string | null
+          banned_at?: string | null
+          banned_by?: string | null
           created_at?: string
           full_name?: string | null
           id?: string
+          is_banned?: boolean
           language?: string
           notification_preferences?: Json | null
           onboarding_completed_at?: string | null
@@ -4529,6 +4580,7 @@ export type Database = {
           total_quantity: number
         }[]
       }
+      has_admin_access: { Args: { _user_id: string }; Returns: boolean }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
