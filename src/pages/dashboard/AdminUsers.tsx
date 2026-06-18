@@ -418,3 +418,8 @@ function AdminUsersInner() {
     </div>
   );
 }
+
+export default function AdminUsersPage() {
+  return <AdminRoute><AdminUsersInner /></AdminRoute>;
+}
+
