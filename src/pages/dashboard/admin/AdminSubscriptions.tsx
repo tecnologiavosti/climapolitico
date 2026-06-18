@@ -14,7 +14,7 @@ import { useAdminAudit } from "@/hooks/useAdminAudit";
 
 function Inner() {
   const qc = useQueryClient();
-  const audit = useAdminAudit();
+  const { log: audit } = useAdminAudit();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
@@ -54,7 +54,7 @@ function Inner() {
     const { error } = await supabase.from("subscriptions").update(patch).eq("id", id);
     if (error) return toast.error(error.message);
     toast.success("Assinatura atualizada");
-    await audit(action, { subscription_id: id, ...patch });
+    await audit(action, "subscription", id, patch);
     qc.invalidateQueries({ queryKey: ["admin-subscriptions"] });
   }
 
