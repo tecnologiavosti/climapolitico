@@ -240,14 +240,26 @@ export default function NetworkView() {
   const loading = report.isFetching || isProcessing;
   const needsCandidate = candidateId === "all";
   const evidenceCount = data?.evidence_count ?? 0;
-  const renderState = data?.render_state ?? (data ? (evidenceCount === 0 ? "NO_DATA" : data.confidence === "low" || data.qualitative_only ? "PARTIAL_DATA" : "FULL_DATA") : undefined);
+  const MIN_EVIDENCE = 20;
+  // Render state derivado do volume real de evidência (não da confiança da IA).
+  const renderState: "FULL_DATA" | "PARTIAL_DATA" | "NO_DATA" | undefined = data
+    ? evidenceCount === 0
+      ? "NO_DATA"
+      : evidenceCount < MIN_EVIDENCE
+        ? "PARTIAL_DATA"
+        : "FULL_DATA"
+    : undefined;
 
   // Derivações de exibição
   const netSentiment = data?.net_sentiment ?? 0;
   const { label: netLabel, tone: netTone } = netLabelFor(netSentiment);
   const dominant = data?.dominant_network;
+  // Esconde redes sem evidência real do gráfico de distribuição.
   const distribution = useMemo(
-    () => (data?.distribution ?? []).slice().sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0)),
+    () => (data?.distribution ?? [])
+      .filter((d) => (d.data_source_type ?? "unavailable") !== "unavailable" && (d.mentions ?? d.direct_hits ?? 0) > 0)
+      .slice()
+      .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0)),
     [data?.distribution],
   );
   const socialViewDebug = data ? {
@@ -401,10 +413,9 @@ export default function NetworkView() {
               <div className="flex items-start gap-2">
                 <Sparkles className="h-4 w-4 text-warning shrink-0 mt-0.5" />
                 <div>
-                  <div className="font-semibold mb-1">Dados insuficientes para análise quantitativa precisa</div>
+                  <div className="font-semibold mb-1">Histórico insuficiente para análise quantitativa neste período.</div>
                   <div className="text-muted-foreground">
-                    Números, gráficos, assuntos e termos foram ocultados para não mostrar valores artificiais.
-                    {` (${evidenceCount} evidências coletadas)`}
+                    Foram encontradas {evidenceCount} evidências reais (mínimo {MIN_EVIDENCE} para liberar números, gráficos, assuntos e termos).
                   </div>
                 </div>
               </div>
@@ -415,14 +426,15 @@ export default function NetworkView() {
             <Card className="p-8 text-center border-warning/40 space-y-4">
               <RadarIcon className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
               <div>
-                <h3 className="text-lg font-semibold mb-1">Histórico ainda não coletado para este candidato.</h3>
-                <p className="text-sm text-muted-foreground">Inicie backfill. Nenhum número, gráfico, assunto ou termo será exibido sem evidências reais no índice.</p>
+                <h3 className="text-lg font-semibold mb-1">Histórico insuficiente para análise quantitativa neste período.</h3>
+                <p className="text-sm text-muted-foreground">Nenhuma evidência real foi encontrada. Tente novamente para iniciar uma nova coleta.</p>
               </div>
               <Button size="sm" variant="outline" onClick={() => { setActiveJobId(null); setReprocessNonce((n) => n + 1); }}>
-                <RefreshCw className="h-4 w-4 mr-2" /> Iniciar backfill
+                <RefreshCw className="h-4 w-4 mr-2" /> Tentar novamente
               </Button>
             </Card>
           )}
+
 
           {data && renderState === "PARTIAL_DATA" && !loading && (
             <Card className="p-6 space-y-4">

@@ -97,6 +97,16 @@ function minHistoricalHits(days: number) {
   return 60;
 }
 
+// Limiar de evidência para liberar render quantitativo completo (cards/gráficos/topicos/termos).
+const MIN_EVIDENCE_FOR_QUANTITATIVE = 20;
+
+// Rotula o pipeline esperado por período.
+function pipelineLabelForDays(days: number): "live_listening" | "historical_index" | "historical_archive" {
+  if (days <= 90) return "live_listening";
+  if (days <= 365) return "historical_index";
+  return "historical_archive";
+}
+
 function computeConfidence(samples: number, sourceStatuses: SourceStatus[]): "high" | "medium" | "low" {
   const okSources = sourceStatuses.filter((s) => s.status === "ok").length;
   if (samples >= 200 || okSources >= 30) return "high";
@@ -506,7 +516,12 @@ async function processJob(jobId: string, body: Body) {
     await updateJob(admin, jobId, { progress: 70, stage: "Preparando análise do índice...", sources: sourceStatuses, logs });
     const totalHits = samples.length;
     const deterministicConfidence = computeConfidence(totalHits, sourceStatuses);
-    let renderState: "FULL_DATA" | "PARTIAL_DATA" | "NO_DATA" = totalHits === 0 ? "NO_DATA" : deterministicConfidence === "low" ? "PARTIAL_DATA" : "FULL_DATA";
+    let renderState: "FULL_DATA" | "PARTIAL_DATA" | "NO_DATA" =
+      totalHits === 0 ? "NO_DATA" : totalHits < MIN_EVIDENCE_FOR_QUANTITATIVE ? "PARTIAL_DATA" : "FULL_DATA";
+    pipelineUsed = pipelineLabelForDays(days);
+    const okSources = sourceStatuses.filter((s) => s.status === "ok").length;
+    const failedRatio = sourceStatuses.length ? 1 - okSources / sourceStatuses.length : 0;
+    log("evidence_summary", { total_hits: totalHits, ok_sources: okSources, total_sources: sourceStatuses.length, failed_ratio: Number(failedRatio.toFixed(2)), render_state: renderState, pipeline_used: pipelineUsed, days });
     let report: any;
 
     if (renderState === "NO_DATA") {
@@ -580,19 +595,30 @@ async function processJob(jobId: string, body: Body) {
 
     const debug = { evidence_count: totalHits, source_count: report.source_count, pipeline_used: pipelineUsed, fallback_used: false, confidence: report.confidence };
     const out = { ...report, cached: false, sources: sourceStatuses, social_view_debug: debug, job_id: jobId };
-    cache.set(cacheKey(body), { at: Date.now(), data: out });
-    const expiresAt = new Date(Date.now() + ttlMs(days)).toISOString();
-    await admin.from("social_analytics_cache").upsert({
-      cache_key: cacheKey(body),
-      candidate_id: body.candidate_id ?? "unknown",
-      network: body.network ?? "all",
-      period_start: body.start_date,
-      period_end: body.end_date,
-      result: out,
-      source_job_id: jobId,
-      expires_at: expiresAt,
-    }, { onConflict: "cache_key" });
-    log("job_done", { duration_ms: Date.now() - started, cache_expires_at: expiresAt, pipeline_used: pipelineUsed });
+
+    // Só cacheia quando há evidência suficiente para análise quantitativa.
+    // Evita travar nova coleta quando o resultado anterior foi NO_DATA / qualitativo.
+    const shouldCache = totalHits >= MIN_EVIDENCE_FOR_QUANTITATIVE && renderState === "FULL_DATA";
+    if (shouldCache) {
+      cache.set(cacheKey(body), { at: Date.now(), data: out });
+      const expiresAt = new Date(Date.now() + ttlMs(days)).toISOString();
+      await admin.from("social_analytics_cache").upsert({
+        cache_key: cacheKey(body),
+        candidate_id: body.candidate_id ?? "unknown",
+        network: body.network ?? "all",
+        period_start: body.start_date,
+        period_end: body.end_date,
+        result: out,
+        source_job_id: jobId,
+        expires_at: expiresAt,
+      }, { onConflict: "cache_key" });
+      log("job_done", { duration_ms: Date.now() - started, cache_expires_at: expiresAt, pipeline_used: pipelineUsed, cached: true });
+    } else {
+      // Limpa entradas antigas para o mesmo cache_key para forçar nova coleta no próximo acesso.
+      cache.delete(cacheKey(body));
+      await admin.from("social_analytics_cache").delete().eq("cache_key", cacheKey(body));
+      log("job_done", { duration_ms: Date.now() - started, pipeline_used: pipelineUsed, cached: false, reason: "insufficient_evidence", evidence_count: totalHits });
+    }
     await updateJob(admin, jobId, { status: "completed", progress: 100, stage: "Análise concluída", result: out, sources: sourceStatuses, logs, completed_at: new Date().toISOString() });
   } catch (e) {
     const message = (e as Error)?.message ?? String(e);
@@ -649,14 +675,26 @@ Deno.serve(async (req) => {
 
     const key = cacheKey(body);
     const days = daysBetween(body.start_date, body.end_date);
+    const isUsableCache = (payload: any) => {
+      const ec = Number((payload as any)?.evidence_count ?? 0);
+      const rs = (payload as any)?.render_state;
+      return ec >= MIN_EVIDENCE_FOR_QUANTITATIVE && rs === "FULL_DATA";
+    };
     const hit = !body.force_refresh ? cache.get(key) : null;
-    if (hit && Date.now() - hit.at < ttlMs(days)) return json({ status: "completed", cached: true, result: { ...(hit.data as object), cached: true }, progress: 100 });
+    if (hit && Date.now() - hit.at < ttlMs(days) && isUsableCache(hit.data)) {
+      return json({ status: "completed", cached: true, result: { ...(hit.data as object), cached: true }, progress: 100 });
+    }
 
     if (!body.force_refresh) {
       const { data: cached } = await admin.from("social_analytics_cache").select("result,expires_at,source_job_id").eq("cache_key", key).gt("expires_at", new Date().toISOString()).maybeSingle();
-      if (cached?.result) {
+      if (cached?.result && isUsableCache(cached.result)) {
         cache.set(key, { at: Date.now(), data: cached.result });
         return json({ status: "completed", cached: true, job_id: cached.source_job_id, result: { ...(cached.result as object), cached: true }, progress: 100 });
+      }
+      if (cached?.result) {
+        // Cache antigo com evidência insuficiente — apaga para forçar nova coleta.
+        await admin.from("social_analytics_cache").delete().eq("cache_key", key);
+        cache.delete(key);
       }
     }
 
