@@ -595,19 +595,30 @@ async function processJob(jobId: string, body: Body) {
 
     const debug = { evidence_count: totalHits, source_count: report.source_count, pipeline_used: pipelineUsed, fallback_used: false, confidence: report.confidence };
     const out = { ...report, cached: false, sources: sourceStatuses, social_view_debug: debug, job_id: jobId };
-    cache.set(cacheKey(body), { at: Date.now(), data: out });
-    const expiresAt = new Date(Date.now() + ttlMs(days)).toISOString();
-    await admin.from("social_analytics_cache").upsert({
-      cache_key: cacheKey(body),
-      candidate_id: body.candidate_id ?? "unknown",
-      network: body.network ?? "all",
-      period_start: body.start_date,
-      period_end: body.end_date,
-      result: out,
-      source_job_id: jobId,
-      expires_at: expiresAt,
-    }, { onConflict: "cache_key" });
-    log("job_done", { duration_ms: Date.now() - started, cache_expires_at: expiresAt, pipeline_used: pipelineUsed });
+
+    // Só cacheia quando há evidência suficiente para análise quantitativa.
+    // Evita travar nova coleta quando o resultado anterior foi NO_DATA / qualitativo.
+    const shouldCache = totalHits >= MIN_EVIDENCE_FOR_QUANTITATIVE && renderState === "FULL_DATA";
+    if (shouldCache) {
+      cache.set(cacheKey(body), { at: Date.now(), data: out });
+      const expiresAt = new Date(Date.now() + ttlMs(days)).toISOString();
+      await admin.from("social_analytics_cache").upsert({
+        cache_key: cacheKey(body),
+        candidate_id: body.candidate_id ?? "unknown",
+        network: body.network ?? "all",
+        period_start: body.start_date,
+        period_end: body.end_date,
+        result: out,
+        source_job_id: jobId,
+        expires_at: expiresAt,
+      }, { onConflict: "cache_key" });
+      log("job_done", { duration_ms: Date.now() - started, cache_expires_at: expiresAt, pipeline_used: pipelineUsed, cached: true });
+    } else {
+      // Limpa entradas antigas para o mesmo cache_key para forçar nova coleta no próximo acesso.
+      cache.delete(cacheKey(body));
+      await admin.from("social_analytics_cache").delete().eq("cache_key", cacheKey(body));
+      log("job_done", { duration_ms: Date.now() - started, pipeline_used: pipelineUsed, cached: false, reason: "insufficient_evidence", evidence_count: totalHits });
+    }
     await updateJob(admin, jobId, { status: "completed", progress: 100, stage: "Análise concluída", result: out, sources: sourceStatuses, logs, completed_at: new Date().toISOString() });
   } catch (e) {
     const message = (e as Error)?.message ?? String(e);
