@@ -239,10 +239,10 @@ async function latestCollectorRun(admin: any, body: Body, jobId?: string) {
 async function invokeCollector(body: Body, jobId: string, mode: "backfill" | "on_demand") {
   const days = daysBetween(body.start_date, body.end_date);
   const pipeline = pipelineLabelForDays(days);
-  // Para janelas > 1 ano (historical_archive) só fontes de notícias têm cobertura útil via Firecrawl search.
-  // Restringe a rede para não desperdiçar créditos em twitter/instagram/tiktok que não retornam histórico longo.
-  const wantAll = !body.network || body.network === "all";
-  const networkForCollector = pipeline === "historical_archive" && wantAll ? "news" : (body.network ?? "all");
+  // Stack 100% gratuita: todas as redes são tentadas em qualquer período.
+  // Redes sem coletor gratuito retornam status "unavailable" sem quebrar o pipeline.
+  const networkForCollector = body.network ?? "all";
+  void pipeline;
   const payload = {
     mode,
     parent_job_id: jobId,

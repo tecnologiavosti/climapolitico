@@ -1,10 +1,12 @@
 // Historical Social Index collector.
 // Única função autorizada a fazer coleta externa para a aba Visão por Rede Social.
+// Stack 100% gratuita: Google News RSS, Reddit JSON, YouTube Data API, Nitter.
+// Redes sem API gratuita confiável (TikTok, Instagram, Facebook, Telegram) marcam status "unavailable".
 
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { collectByNetwork, type FreeResult } from "../_shared/free-collectors.ts";
 
-const FIRECRAWL_KEY = Deno.env.get("FIRECRAWL_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -22,6 +24,8 @@ interface SearchHit {
   description?: string;
   source?: string;
   date?: string;
+  author?: string;
+  interactions?: number;
 }
 
 interface CollectInput {
@@ -110,20 +114,19 @@ function buildSingleChunk(input: CollectInput): Array<{ start: string; end: stri
   return [{ start: isoDay(start), end: isoDay(end) }];
 }
 
-function buildTasks(input: CollectInput, startDate: string, endDate: string): SourceTask[] {
+function buildTasks(input: CollectInput, _startDate: string, _endDate: string): SourceTask[] {
   const base = `${input.candidate_name} ${[input.party, input.state].filter(Boolean).join(" ")}`.trim();
-  const dateRange = `after:${startDate} before:${endDate}`;
   const tasks: SourceTask[] = [
-    { source: "google_news", sourceName: "Google News", net: "news", priority: 1, q: `${base} política ${dateRange}` },
-    { source: "youtube", sourceName: "YouTube", net: "youtube", priority: 2, q: `${base} site:youtube.com ${dateRange}` },
-    { source: "reddit", sourceName: "Reddit", net: "reddit", priority: 3, q: `${base} site:reddit.com ${dateRange}` },
-    { source: "twitter", sourceName: "X / Twitter", net: "twitter", priority: 4, q: `${base} site:twitter.com OR site:x.com ${dateRange}` },
-    { source: "telegram", sourceName: "Telegram", net: "telegram", priority: 5, q: `${base} site:t.me ${dateRange}` },
-    { source: "tiktok", sourceName: "TikTok", net: "tiktok", priority: 6, q: `${base} site:tiktok.com ${dateRange}` },
-    { source: "facebook", sourceName: "Facebook", net: "facebook", priority: 7, q: `${base} site:facebook.com ${dateRange}` },
-    { source: "instagram", sourceName: "Instagram", net: "instagram", priority: 8, q: `${base} site:instagram.com ${dateRange}` },
-    { source: "blogs", sourceName: "Blogs políticos", net: "news", priority: 9, q: `${base} blog política opinião ${dateRange}` },
-    { source: "portais_regionais", sourceName: "Portais regionais", net: "news", priority: 10, q: `${base} jornal portal política ${input.state ?? "Brasil"} ${dateRange}` },
+    { source: "google_news", sourceName: "Google News", net: "news", priority: 1, q: `${base} política` },
+    { source: "youtube", sourceName: "YouTube", net: "youtube", priority: 2, q: base },
+    { source: "reddit", sourceName: "Reddit", net: "reddit", priority: 3, q: base },
+    { source: "twitter", sourceName: "X / Twitter", net: "twitter", priority: 4, q: base },
+    { source: "telegram", sourceName: "Telegram", net: "telegram", priority: 5, q: base },
+    { source: "tiktok", sourceName: "TikTok", net: "tiktok", priority: 6, q: base },
+    { source: "facebook", sourceName: "Facebook", net: "facebook", priority: 7, q: base },
+    { source: "instagram", sourceName: "Instagram", net: "instagram", priority: 8, q: base },
+    { source: "blogs", sourceName: "Blogs políticos", net: "news", priority: 9, q: `${base} blog opinião` },
+    { source: "portais_regionais", sourceName: "Portais regionais", net: "news", priority: 10, q: `${base} ${input.state ?? "Brasil"} jornal portal` },
   ];
   const wantAll = !input.network || input.network === "all";
   return tasks
@@ -219,50 +222,25 @@ async function setSourceCache(admin: any, key: string, hits: SearchHit[], provid
   }, { onConflict: "cache_key" });
 }
 
-async function firecrawlSearch(admin: any, task: SourceTask, startDate: string, endDate: string, forceRefresh = false): Promise<{ hits: SearchHit[]; status: string; error?: string }> {
-  const cacheKey = `hsi-source-v1|${normalizeText(task.q)}|${task.source}|${startDate}|${endDate}`;
+async function searchSource(admin: any, task: SourceTask, startDate: string, endDate: string, forceRefresh = false): Promise<FreeResult & { provider: string }> {
+  const cacheKey = `hsi-free-v1|${normalizeText(task.q)}|${task.source}|${startDate}|${endDate}`;
   if (!forceRefresh) {
     const cached = await getSourceCache(admin, cacheKey).catch(() => null);
-    if (cached) return { hits: cached, status: cached.length ? "cached" : "cached_empty" };
+    if (cached) return { hits: cached, status: cached.length ? "cached" : "cached_empty", provider: `free:${task.source}` };
   }
-  if (!FIRECRAWL_KEY) return { hits: [], status: "skipped", error: "FIRECRAWL_API_KEY ausente" };
-
-  let lastError = "";
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      const r = await fetch("https://api.firecrawl.dev/v2/search", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${FIRECRAWL_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ query: task.q, limit: 10, lang: "pt", country: "br" }),
-        signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
-      });
-      if (!r.ok) {
-        const detail = (await r.text().catch(() => "")).slice(0, 260);
-        lastError = `${r.status}: ${detail}`;
-        const status = statusFromHttp(r.status);
-        console.warn("[historical-social-collector] source_failed", task.source, status, lastError);
-        if (r.status === 402) return { hits: [], status, error: lastError };
-        await sleep(Math.min(6_000, 600 * 2 ** attempt));
-        continue;
-      }
-      const j = await r.json();
-      const raw: any[] = j?.data?.web ?? j?.data ?? j?.results ?? [];
-      const hits = raw.slice(0, 10).map((x) => ({
-        url: x.url,
-        title: x.title,
-        description: x.description ?? x.snippet ?? "",
-        source: x.source ?? x.url,
-        date: x.publishedDate ?? x.date ?? undefined,
-      }));
-      await setSourceCache(admin, cacheKey, hits, "firecrawl").catch(() => {});
-      return { hits, status: hits.length ? "ok" : "empty" };
-    } catch (e: any) {
-      lastError = e?.message ?? String(e);
-      await sleep(Math.min(6_000, 600 * 2 ** attempt));
+  try {
+    const result = await collectByNetwork(task.net, task.q, startDate, endDate, admin);
+    if (["ok", "empty"].includes(result.status)) {
+      await setSourceCache(admin, cacheKey, result.hits, `free:${task.source}`).catch(() => {});
+    } else {
+      console.warn("[historical-social-collector] source_failed", task.source, result.status, result.error ?? "");
     }
+    return { ...result, provider: `free:${task.source}` };
+  } catch (e: any) {
+    return { hits: [], status: "error", error: e?.message ?? String(e), provider: `free:${task.source}` };
   }
-  return { hits: [], status: /timeout|aborted/i.test(lastError) ? "timeout" : "error", error: lastError };
 }
+
 
 async function updateRun(admin: any, runId: string, patch: Record<string, unknown>) {
   await admin.from("historical_social_collector_runs").update(patch).eq("id", runId);
@@ -296,15 +274,16 @@ function buildRows(input: CollectInput, task: SourceTask, hits: SearchHit[], chu
       content: (h.description ?? "").slice(0, 2000),
       date: mentionDate,
       mention_date: mentionDate,
-      interactions: 0,
-      engagement: 0,
+      interactions: Number(h.interactions ?? 0),
+      engagement: Number(h.interactions ?? 0),
       sentiment: sentiment.score,
       sentiment_label: sentiment.label,
+      author: h.author ?? null,
       entities: extractEntities(text, input.candidate_name ?? ""),
       hashtags: extractHashtags(text),
       themes: extractThemes(text),
       topics: extractThemes(text),
-      raw: { provider: "firecrawl", date_inferred_from_query_window: !h.date, source_priority: task.priority },
+      raw: { provider: `free:${task.source}`, date_inferred_from_query_window: !h.date, source_priority: task.priority, author: h.author ?? null },
       source_key: `${normalizedName}:${task.source}:${normalizeText(dedupeSource).slice(0, 220)}`,
       collected_at: new Date().toISOString(),
     });
@@ -367,7 +346,7 @@ async function collectForCandidate(admin: any, input: CollectInput) {
       });
 
       const tasks = buildTasks(input, chunk.start, chunk.end);
-      const results = await runLimited(tasks, MAX_CONCURRENT, async (task) => ({ task, result: await firecrawlSearch(admin, task, chunk.start, chunk.end, input.force_refresh === true) }));
+      const results = await runLimited(tasks, MAX_CONCURRENT, async (task) => ({ task, result: await searchSource(admin, task, chunk.start, chunk.end, input.force_refresh === true) }));
       const rows: any[] = [];
       for (const { task, result } of results) {
         if (["ok", "cached"].includes(result.status) && result.hits.length > 0) sourceOk += 1;
