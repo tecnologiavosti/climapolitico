@@ -112,20 +112,19 @@ function buildSingleChunk(input: CollectInput): Array<{ start: string; end: stri
   return [{ start: isoDay(start), end: isoDay(end) }];
 }
 
-function buildTasks(input: CollectInput, startDate: string, endDate: string): SourceTask[] {
+function buildTasks(input: CollectInput, _startDate: string, _endDate: string): SourceTask[] {
   const base = `${input.candidate_name} ${[input.party, input.state].filter(Boolean).join(" ")}`.trim();
-  const dateRange = `after:${startDate} before:${endDate}`;
   const tasks: SourceTask[] = [
-    { source: "google_news", sourceName: "Google News", net: "news", priority: 1, q: `${base} política ${dateRange}` },
-    { source: "youtube", sourceName: "YouTube", net: "youtube", priority: 2, q: `${base} site:youtube.com ${dateRange}` },
-    { source: "reddit", sourceName: "Reddit", net: "reddit", priority: 3, q: `${base} site:reddit.com ${dateRange}` },
-    { source: "twitter", sourceName: "X / Twitter", net: "twitter", priority: 4, q: `${base} site:twitter.com OR site:x.com ${dateRange}` },
-    { source: "telegram", sourceName: "Telegram", net: "telegram", priority: 5, q: `${base} site:t.me ${dateRange}` },
-    { source: "tiktok", sourceName: "TikTok", net: "tiktok", priority: 6, q: `${base} site:tiktok.com ${dateRange}` },
-    { source: "facebook", sourceName: "Facebook", net: "facebook", priority: 7, q: `${base} site:facebook.com ${dateRange}` },
-    { source: "instagram", sourceName: "Instagram", net: "instagram", priority: 8, q: `${base} site:instagram.com ${dateRange}` },
-    { source: "blogs", sourceName: "Blogs políticos", net: "news", priority: 9, q: `${base} blog política opinião ${dateRange}` },
-    { source: "portais_regionais", sourceName: "Portais regionais", net: "news", priority: 10, q: `${base} jornal portal política ${input.state ?? "Brasil"} ${dateRange}` },
+    { source: "google_news", sourceName: "Google News", net: "news", priority: 1, q: `${base} política` },
+    { source: "youtube", sourceName: "YouTube", net: "youtube", priority: 2, q: base },
+    { source: "reddit", sourceName: "Reddit", net: "reddit", priority: 3, q: base },
+    { source: "twitter", sourceName: "X / Twitter", net: "twitter", priority: 4, q: base },
+    { source: "telegram", sourceName: "Telegram", net: "telegram", priority: 5, q: base },
+    { source: "tiktok", sourceName: "TikTok", net: "tiktok", priority: 6, q: base },
+    { source: "facebook", sourceName: "Facebook", net: "facebook", priority: 7, q: base },
+    { source: "instagram", sourceName: "Instagram", net: "instagram", priority: 8, q: base },
+    { source: "blogs", sourceName: "Blogs políticos", net: "news", priority: 9, q: `${base} blog opinião` },
+    { source: "portais_regionais", sourceName: "Portais regionais", net: "news", priority: 10, q: `${base} ${input.state ?? "Brasil"} jornal portal` },
   ];
   const wantAll = !input.network || input.network === "all";
   return tasks
