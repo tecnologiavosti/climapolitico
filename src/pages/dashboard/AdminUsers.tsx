@@ -140,13 +140,43 @@ function AdminUsersInner() {
       toast({ title: "Contador resetado com sucesso" });
     },
     onError: (error) => {
-      toast({ 
-        title: "Erro ao resetar contador", 
+      toast({
+        title: "Erro ao resetar contador",
         description: error.message,
-        variant: "destructive" 
+        variant: "destructive"
       });
     },
   });
+
+  const callAction = async (payload: Record<string, any>) => {
+    const { data, error } = await supabase.functions.invoke("admin-user-actions", { body: payload });
+    if (error || (data as any)?.error) throw new Error((error?.message) || (data as any)?.error || "Falha");
+    return data;
+  };
+
+  const banMutation = useMutation({
+    mutationFn: ({ userId, reason }: { userId: string; reason: string }) =>
+      callAction({ action: "ban", target_user_id: userId, reason }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-users'] }); toast({ title: "Usuário banido" }); },
+    onError: (e: any) => toast({ title: "Erro ao banir", description: e.message, variant: "destructive" }),
+  });
+  const unbanMutation = useMutation({
+    mutationFn: (userId: string) => callAction({ action: "unban", target_user_id: userId }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-users'] }); toast({ title: "Banimento removido" }); },
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (userId: string) => callAction({ action: "hard_delete", target_user_id: userId }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-users'] }); toast({ title: "Usuário excluído" }); },
+    onError: (e: any) => toast({ title: "Erro ao excluir", description: e.message, variant: "destructive" }),
+  });
+  const planMutation = useMutation({
+    mutationFn: ({ userId, tier }: { userId: string; tier: string }) =>
+      callAction({ action: "change_plan", target_user_id: userId, tier }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-users'] }); toast({ title: "Plano atualizado" }); },
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
 
   if (checkingAdmin) {
     return (
@@ -258,25 +288,28 @@ function AdminUsersInner() {
                     <TableCell>{user.organization || '-'}</TableCell>
                     <TableCell>
                       <Select
-                        value={user.subscription?.tier || 'basic'}
-                        onValueChange={(value) => 
-                          updateTierMutation.mutate({ userId: user.id, tier: value as 'basic' | 'pro' | 'enterprise' })
-                        }
+                        value={user.subscription?.tier || 'free'}
+                        onValueChange={(value) => planMutation.mutate({ userId: user.id, tier: value })}
                       >
-                        <SelectTrigger className="w-[120px]">
+                        <SelectTrigger className="w-[130px]">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="basic">Basic</SelectItem>
+                          <SelectItem value="free">Free</SelectItem>
                           <SelectItem value="pro">Pro</SelectItem>
                           <SelectItem value="enterprise">Enterprise</SelectItem>
+                          <SelectItem value="lifetime">Vitalício</SelectItem>
                         </SelectContent>
                       </Select>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={user.subscription?.status === 'active' ? 'default' : 'secondary'}>
-                        {user.subscription?.status || 'inactive'}
-                      </Badge>
+                      {user.is_banned ? (
+                        <Badge variant="destructive">Banido</Badge>
+                      ) : (
+                        <Badge variant={user.subscription?.status === 'active' ? 'default' : 'secondary'}>
+                          {user.subscription?.status || 'inactive'}
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell>
                       <span className="text-sm">
@@ -289,15 +322,50 @@ function AdminUsersInner() {
                       </span>
                     </TableCell>
                     <TableCell>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => resetUsageMutation.mutate(user.id)}
-                        disabled={resetUsageMutation.isPending}
-                      >
-                        <RotateCcw className="h-3 w-3 mr-1" />
-                        Resetar
-                      </Button>
+                      <div className="flex gap-1 flex-wrap">
+                        <Button variant="outline" size="sm" onClick={() => resetUsageMutation.mutate(user.id)} disabled={resetUsageMutation.isPending}>
+                          <RotateCcw className="h-3 w-3" />
+                        </Button>
+                        {user.is_banned ? (
+                          <Button variant="outline" size="sm" onClick={() => unbanMutation.mutate(user.id)} disabled={unbanMutation.isPending}>
+                            <ShieldCheck className="h-3 w-3" />
+                          </Button>
+                        ) : (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="outline" size="sm"><Ban className="h-3 w-3" /></Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Banir {user.full_name ?? "usuário"}?</AlertDialogTitle>
+                                <AlertDialogDescription>Sessões serão encerradas e o login será bloqueado.</AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <Input placeholder="Motivo do banimento" value={banReason[user.id] ?? ""} onChange={e => setBanReason(s => ({ ...s, [user.id]: e.target.value }))} />
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => banMutation.mutate({ userId: user.id, reason: banReason[user.id] ?? "" })}>Banir</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="destructive" size="sm"><Trash2 className="h-3 w-3" /></Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Excluir definitivamente?</AlertDialogTitle>
+                              <AlertDialogDescription>Remove o usuário e todos os dados associados (candidatos, análises, assinaturas). Esta ação é irreversível.</AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => deleteMutation.mutate(user.id)}>Excluir</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </TableCell>
+
                     </TableCell>
                   </TableRow>
                 ))}
