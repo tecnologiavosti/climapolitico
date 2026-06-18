@@ -21,8 +21,17 @@ const Overview = lazy(() => import("./dashboard/Overview"));
 const Candidates = lazy(() => import("./dashboard/Candidates"));
 const Analytics = lazy(() => import("./dashboard/Analytics"));
 const CandidateRanking = lazy(() => import("./dashboard/CandidateRanking"));
-const Admin = lazy(() => import("./dashboard/Admin"));
+const AdminDashboard = lazy(() => import("./dashboard/admin/AdminDashboard"));
+const AdminUsers = lazy(() => import("./dashboard/AdminUsers"));
+const AdminFinance = lazy(() => import("./dashboard/admin/AdminFinance"));
+const AdminPlans = lazy(() => import("./dashboard/admin/AdminPlans"));
+const AdminSeo = lazy(() => import("./dashboard/admin/AdminSeo"));
+const AdminAnalytics = lazy(() => import("./dashboard/admin/AdminAnalytics"));
+const AdminSecurity = lazy(() => import("./dashboard/admin/AdminSecurity"));
+const AdminLogs = lazy(() => import("./dashboard/admin/AdminLogs"));
+const AdminSettings = lazy(() => import("./dashboard/admin/AdminSettings"));
 const AdminApiSettings = lazy(() => import("./dashboard/AdminApiSettings"));
+
 const BlogAdmin = lazy(() => import("./dashboard/BlogAdmin"));
 const AIInsights = lazy(() => import("./dashboard/AIInsights"));
 const CollectionStatus = lazy(() => import("./dashboard/CollectionStatus"));
@@ -139,9 +148,18 @@ const Dashboard = () => {
                 <Route path="/realtime-monitor" element={wrap("RealTimeMonitor", RealTimeMonitor)} />
                 <Route path="/brand24-collector" element={wrap("Brand24Collector", Brand24Collector)} />
                 <Route path="/ai-insights" element={wrap("AIInsights", AIInsights)} />
-                <Route path="/admin" element={wrap("Admin", Admin)} />
+                <Route path="/admin" element={wrap("AdminDashboard", AdminDashboard)} />
+                <Route path="/admin/users" element={wrap("AdminUsers", AdminUsers)} />
+                <Route path="/admin/finance" element={wrap("AdminFinance", AdminFinance)} />
+                <Route path="/admin/plans" element={wrap("AdminPlans", AdminPlans)} />
+                <Route path="/admin/seo" element={wrap("AdminSeo", AdminSeo)} />
+                <Route path="/admin/analytics" element={wrap("AdminAnalytics", AdminAnalytics)} />
+                <Route path="/admin/security" element={wrap("AdminSecurity", AdminSecurity)} />
+                <Route path="/admin/logs" element={wrap("AdminLogs", AdminLogs)} />
+                <Route path="/admin/settings" element={wrap("AdminSettings", AdminSettings)} />
                 <Route path="/admin/api-settings" element={wrap("AdminApiSettings", AdminApiSettings)} />
                 <Route path="/admin/blog" element={wrap("BlogAdmin", BlogAdmin)} />
+
                 <Route path="/system-health" element={wrap("SystemHealth", SystemHealth)} />
                 <Route path="/observability" element={wrap("Observability", Observability)} />
                 <Route path="/operations" element={wrap("Operations", Operations)} />
