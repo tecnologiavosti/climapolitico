@@ -1,8 +1,9 @@
-// Visão por Rede Social — Análise Qualitativa por IA.
-// Não retorna métricas quantitativas frágeis. Apenas texto/listas geradas pela IA
-// a partir de busca web leve + conhecimento geral do modelo.
+// Visão por Rede Social — Social Listening Qualitativo por IA.
+// Foco em percepção, polarização, gatilhos de engajamento e linguagem associada.
+// NÃO retorna resumo executivo, narrativas detectadas ou recomendações estratégicas
+// (esses blocos vivem em outras abas — evitar redundância).
 
-import { corsHeaders, handleOptions, jsonResponse } from "../_shared/cors.ts";
+import { handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 import { collectGoogleNews, collectReddit, type FreeHit } from "../_shared/free-collectors.ts";
 
@@ -15,19 +16,31 @@ interface RequestBody {
   end_date: string;
 }
 
-interface QualitativeReport {
-  summary: string;
-  sentiment: { positive: number; neutral: number; negative: number };
-  narratives: { positive: string[]; negative: string[]; neutral: string[] };
-  hashtags: string[];
-  terms: {
-    pessoas: string[];
-    partidos: string[];
-    estados: string[];
-    instituicoes: string[];
-    slogans: string[];
+type Intensidade = "morna" | "quente" | "fervendo";
+type Polarizacao = "BAIXA" | "MEDIA" | "ALTA";
+
+interface ListeningReport {
+  temperatura: {
+    texto: string;
+    intensidade: Intensidade;
+    temas_dominantes: string[];
   };
-  recommendations: { riscos: string[]; oportunidades: string[]; comunicacao: string[] };
+  conversa_por_rede: Array<{ rede: string; papel: string }>;
+  gatilhos: {
+    aumenta: string[];
+    reduz: string[];
+  };
+  polarizacao: {
+    nivel: Polarizacao;
+    apoiadores: string;
+    criticos: string;
+    neutros: string;
+  };
+  linguagem: {
+    palavras_recorrentes: string[];
+    tom_dominante: string[];
+    entidades: string[];
+  };
   network: string;
   period: { start: string; end: string };
   evidence_used: number;
@@ -62,15 +75,18 @@ function buildContext(hits: FreeHit[], limit = 25): string {
   }).join("\n");
 }
 
-function clampPercent(report: QualitativeReport): QualitativeReport {
-  const s = report.sentiment ?? { positive: 33, neutral: 34, negative: 33 };
-  const p = Math.max(0, Math.min(100, Math.round(s.positive ?? 0)));
-  const n = Math.max(0, Math.min(100, Math.round(s.negative ?? 0)));
-  let u = Math.max(0, Math.min(100, Math.round(s.neutral ?? 0)));
-  const sum = p + n + u;
-  if (sum === 0) return { ...report, sentiment: { positive: 33, neutral: 34, negative: 33 } };
-  if (sum !== 100) u = Math.max(0, 100 - p - n);
-  return { ...report, sentiment: { positive: p, neutral: u, negative: n } };
+function normalizeIntensidade(v: unknown): Intensidade {
+  const s = String(v ?? "").toLowerCase();
+  if (s.includes("ferv")) return "fervendo";
+  if (s.includes("quent")) return "quente";
+  return "morna";
+}
+
+function normalizePolarizacao(v: unknown): Polarizacao {
+  const s = String(v ?? "").toUpperCase();
+  if (s.startsWith("A")) return "ALTA";
+  if (s.startsWith("B")) return "BAIXA";
+  return "MEDIA";
 }
 
 Deno.serve(async (req) => {
@@ -86,7 +102,6 @@ Deno.serve(async (req) => {
     const networkLabel = NETWORK_LABEL[network] ?? network;
     const query = [body.candidate_name, body.party].filter(Boolean).join(" ");
 
-    // Contexto leve: Google News + Reddit. Falhas não derrubam o pipeline.
     const [news, reddit] = await Promise.allSettled([
       collectGoogleNews(query, body.start_date, body.end_date),
       collectReddit(query, body.start_date, body.end_date),
@@ -97,10 +112,12 @@ Deno.serve(async (req) => {
 
     const context = buildContext(hits);
 
-    const systemMsg = `Você é um analista político brasileiro especializado em escuta digital qualitativa.
-Sua missão é produzir análise interpretativa em PT-BR sobre como um candidato é percebido em ${networkLabel}.
-NUNCA invente números absolutos de menções ou interações. Use apenas estimativas percentuais de sentimento (0–100, soma 100).
-Foque em narrativas, temas e tom. Mesmo com poucos dados, gere análise qualitativa baseada em conhecimento político geral.`;
+    const systemMsg = `Você é um analista de social listening profissional (padrão Brandwatch/Meltwater/Sprinklr) especializado em política brasileira.
+Sua missão: produzir leitura qualitativa de PERCEPÇÃO em ${networkLabel}.
+NUNCA invente hashtags artificiais, números absolutos de menções ou interações.
+NUNCA escreva resumo executivo, narrativas detectadas ou recomendações estratégicas — esses blocos existem em outras abas.
+Foque exclusivamente em: temperatura da conversa, papel de cada rede, gatilhos de engajamento, polarização e linguagem associada.
+Escreva em PT-BR claro, conciso e analítico.`;
 
     const userPrompt = `Candidato: ${body.candidate_name}
 Partido: ${body.party ?? "não informado"}
@@ -108,40 +125,45 @@ Estado/Região: ${body.region ?? "não informado"}
 Rede analisada: ${networkLabel}
 Período: ${body.start_date} a ${body.end_date}
 
-Evidências web recentes coletadas:
+Evidências web recentes:
 ${context}
 
-Produza um JSON estrito com este schema (em PT-BR, sem comentários):
+Produza um JSON estrito (sem comentários) com este schema:
 {
-  "summary": "1 a 2 parágrafos sobre como o candidato é percebido na rede, principais temas e tom geral",
-  "sentiment": { "positive": int 0-100, "neutral": int 0-100, "negative": int 0-100 },
-  "narratives": {
-    "positive": ["narrativa 1", "narrativa 2", ...],
-    "negative": ["..."],
-    "neutral": ["..."]
+  "temperatura": {
+    "texto": "2 a 4 frases explicando como o candidato está sendo percebido, se a conversa está morna/quente/fervendo, e quais temas dominam",
+    "intensidade": "morna" | "quente" | "fervendo",
+    "temas_dominantes": ["tema 1", "tema 2", "tema 3"]
   },
-  "hashtags": ["#exemplo1", "#exemplo2", ...],
-  "terms": {
-    "pessoas": ["nome de pessoa", ...],
-    "partidos": ["sigla ou nome", ...],
-    "estados": ["UF ou nome", ...],
-    "instituicoes": ["STF, Congresso, ...", ...],
-    "slogans": ["slogan/lema", ...]
+  "conversa_por_rede": [
+    { "rede": "X/Twitter", "papel": "papel interpretado dessa rede para o candidato" },
+    { "rede": "YouTube", "papel": "..." },
+    { "rede": "Instagram", "papel": "..." },
+    { "rede": "Telegram", "papel": "..." }
+  ],
+  "gatilhos": {
+    "aumenta": ["o que aumenta comentários/engajamento — 3 a 5 itens curtos"],
+    "reduz": ["o que reduz comentários/engajamento — 2 a 4 itens curtos"]
   },
-  "recommendations": {
-    "riscos": ["risco 1", ...],
-    "oportunidades": ["oportunidade 1", ...],
-    "comunicacao": ["sugestão 1", ...]
+  "polarizacao": {
+    "nivel": "BAIXA" | "MEDIA" | "ALTA",
+    "apoiadores": "1 frase descrevendo quem apoia (perfis, bases, regiões)",
+    "criticos": "1 frase descrevendo quem critica",
+    "neutros": "1 frase descrevendo quem observa sem se posicionar"
+  },
+  "linguagem": {
+    "palavras_recorrentes": ["palavra/expressão 1", ... 6 a 12 itens, SEM hashtags inventadas, SEM verbos"],
+    "tom_dominante": ["adjetivo de tom 1", ... 3 a 6 itens, ex: combativo, irônico, institucional, mobilizador"],
+    "entidades": ["pessoa/partido/instituição/estado 1", ... 4 a 10 nomes próprios relevantes"]
   }
 }
 
 Regras obrigatórias:
-- Soma de sentiment.positive + neutral + negative = 100.
-- Em "terms", NUNCA inclua verbos. Apenas substantivos próprios e nomes.
-- Cada lista de narrativas deve ter 2 a 5 itens curtos (1 frase cada).
-- Cada lista de recomendações deve ter 2 a 4 itens acionáveis.
-- Hashtags com #. Máximo 12.
-- Se faltar evidência, ainda assim produza análise plausível baseada em contexto político brasileiro.`;
+- NUNCA invente hashtags como #CaiadoNoCerrado. Só liste palavras/expressões reais usadas no debate.
+- Em "entidades" só substantivos próprios (pessoas, partidos, instituições, estados). Sem verbos.
+- "tom_dominante" são adjetivos curtos descrevendo o tom da conversa.
+- Sempre liste as 4 redes principais (X/Twitter, YouTube, Instagram, Telegram) em conversa_por_rede, mesmo que o foco seja ${networkLabel}.
+- Mesmo com poucas evidências, produza leitura plausível baseada em contexto político brasileiro.`;
 
     const ai = await callAICerebrasFirst({
       systemMsg,
@@ -149,10 +171,10 @@ Regras obrigatórias:
       jsonMode: true,
       maxTokens: 2200,
       temperature: 0.5,
-      tag: "network-qualitative",
+      tag: "network-listening-qualitative",
     });
 
-    let parsed: QualitativeReport;
+    let parsed: any;
     try {
       parsed = JSON.parse(ai.content);
     } catch {
@@ -161,32 +183,46 @@ Regras obrigatórias:
       parsed = JSON.parse(m[0]);
     }
 
-    const report: QualitativeReport = clampPercent({
-      summary: String(parsed.summary ?? ""),
-      sentiment: parsed.sentiment ?? { positive: 33, neutral: 34, negative: 33 },
-      narratives: {
-        positive: parsed.narratives?.positive ?? [],
-        negative: parsed.narratives?.negative ?? [],
-        neutral: parsed.narratives?.neutral ?? [],
+    const report: ListeningReport = {
+      temperatura: {
+        texto: String(parsed?.temperatura?.texto ?? ""),
+        intensidade: normalizeIntensidade(parsed?.temperatura?.intensidade),
+        temas_dominantes: Array.isArray(parsed?.temperatura?.temas_dominantes)
+          ? parsed.temperatura.temas_dominantes.slice(0, 8)
+          : [],
       },
-      hashtags: (parsed.hashtags ?? []).slice(0, 12),
-      terms: {
-        pessoas: parsed.terms?.pessoas ?? [],
-        partidos: parsed.terms?.partidos ?? [],
-        estados: parsed.terms?.estados ?? [],
-        instituicoes: parsed.terms?.instituicoes ?? [],
-        slogans: parsed.terms?.slogans ?? [],
+      conversa_por_rede: Array.isArray(parsed?.conversa_por_rede)
+        ? parsed.conversa_por_rede
+            .filter((r: any) => r && r.rede && r.papel)
+            .slice(0, 8)
+            .map((r: any) => ({ rede: String(r.rede), papel: String(r.papel) }))
+        : [],
+      gatilhos: {
+        aumenta: Array.isArray(parsed?.gatilhos?.aumenta) ? parsed.gatilhos.aumenta.slice(0, 6) : [],
+        reduz: Array.isArray(parsed?.gatilhos?.reduz) ? parsed.gatilhos.reduz.slice(0, 6) : [],
       },
-      recommendations: {
-        riscos: parsed.recommendations?.riscos ?? [],
-        oportunidades: parsed.recommendations?.oportunidades ?? [],
-        comunicacao: parsed.recommendations?.comunicacao ?? [],
+      polarizacao: {
+        nivel: normalizePolarizacao(parsed?.polarizacao?.nivel),
+        apoiadores: String(parsed?.polarizacao?.apoiadores ?? ""),
+        criticos: String(parsed?.polarizacao?.criticos ?? ""),
+        neutros: String(parsed?.polarizacao?.neutros ?? ""),
+      },
+      linguagem: {
+        palavras_recorrentes: Array.isArray(parsed?.linguagem?.palavras_recorrentes)
+          ? parsed.linguagem.palavras_recorrentes.slice(0, 14)
+          : [],
+        tom_dominante: Array.isArray(parsed?.linguagem?.tom_dominante)
+          ? parsed.linguagem.tom_dominante.slice(0, 8)
+          : [],
+        entidades: Array.isArray(parsed?.linguagem?.entidades)
+          ? parsed.linguagem.entidades.slice(0, 12)
+          : [],
       },
       network,
       period: { start: body.start_date, end: body.end_date },
       evidence_used: hits.length,
       generated_at: new Date().toISOString(),
-    });
+    };
 
     return jsonResponse({ report, provider: ai.provider, model: ai.model });
   } catch (err) {
