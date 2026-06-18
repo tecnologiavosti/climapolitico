@@ -422,6 +422,30 @@ export type Database = {
           },
         ]
       }
+      blocked_emails: {
+        Row: {
+          blocked_by: string | null
+          created_at: string
+          email: string
+          id: string
+          reason: string | null
+        }
+        Insert: {
+          blocked_by?: string | null
+          created_at?: string
+          email: string
+          id?: string
+          reason?: string | null
+        }
+        Update: {
+          blocked_by?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          reason?: string | null
+        }
+        Relationships: []
+      }
       blog_posts: {
         Row: {
           content: string
@@ -1932,6 +1956,33 @@ export type Database = {
         }
         Relationships: []
       }
+      ip_bans: {
+        Row: {
+          banned_by: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          ip_address: unknown
+          reason: string | null
+        }
+        Insert: {
+          banned_by?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          ip_address: unknown
+          reason?: string | null
+        }
+        Update: {
+          banned_by?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          ip_address?: unknown
+          reason?: string | null
+        }
+        Relationships: []
+      }
       job_execution_history: {
         Row: {
           duration_ms: number | null
@@ -1965,6 +2016,39 @@ export type Database = {
           started_at?: string
           status?: string
           worker_id?: string | null
+        }
+        Relationships: []
+      }
+      login_attempts: {
+        Row: {
+          created_at: string
+          email: string | null
+          failure_reason: string | null
+          id: string
+          ip_address: unknown
+          success: boolean
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          failure_reason?: string | null
+          id?: string
+          ip_address?: unknown
+          success?: boolean
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          failure_reason?: string | null
+          id?: string
+          ip_address?: unknown
+          success?: boolean
+          user_agent?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -3847,6 +3931,30 @@ export type Database = {
           resolved_at?: string | null
           severity?: string
           title?: string
+        }
+        Relationships: []
+      }
+      system_settings: {
+        Row: {
+          description: string | null
+          key: string
+          updated_at: string
+          updated_by: string | null
+          value: Json
+        }
+        Insert: {
+          description?: string | null
+          key: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: Json
+        }
+        Update: {
+          description?: string | null
+          key?: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: Json
         }
         Relationships: []
       }

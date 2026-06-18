@@ -31,6 +31,9 @@ const AdminSecurity = lazy(() => import("./dashboard/admin/AdminSecurity"));
 const AdminLogs = lazy(() => import("./dashboard/admin/AdminLogs"));
 const AdminSettings = lazy(() => import("./dashboard/admin/AdminSettings"));
 const AdminApiSettings = lazy(() => import("./dashboard/AdminApiSettings"));
+const AdminSubscriptions = lazy(() => import("./dashboard/admin/AdminSubscriptions"));
+const AdminCandidates = lazy(() => import("./dashboard/admin/AdminCandidates"));
+const AdminSystem = lazy(() => import("./dashboard/admin/AdminSystem"));
 
 const BlogAdmin = lazy(() => import("./dashboard/BlogAdmin"));
 const AIInsights = lazy(() => import("./dashboard/AIInsights"));
@@ -158,6 +161,9 @@ const Dashboard = () => {
                 <Route path="/admin/logs" element={wrap("AdminLogs", AdminLogs)} />
                 <Route path="/admin/settings" element={wrap("AdminSettings", AdminSettings)} />
                 <Route path="/admin/api-settings" element={wrap("AdminApiSettings", AdminApiSettings)} />
+                <Route path="/admin/subscriptions" element={wrap("AdminSubscriptions", AdminSubscriptions)} />
+                <Route path="/admin/candidates" element={wrap("AdminCandidates", AdminCandidates)} />
+                <Route path="/admin/system" element={wrap("AdminSystem", AdminSystem)} />
                 <Route path="/admin/blog" element={wrap("BlogAdmin", BlogAdmin)} />
 
                 <Route path="/system-health" element={wrap("SystemHealth", SystemHealth)} />
