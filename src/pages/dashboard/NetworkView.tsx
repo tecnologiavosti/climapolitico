@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -7,67 +7,38 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
-} from "recharts";
-import { MessageSquare, Activity, Gauge, Crown, Radar as RadarIcon, Sparkles, RefreshCw } from "lucide-react";
+  Sparkles, RefreshCw, ThumbsUp, ThumbsDown, Minus, Hash, Tag,
+  AlertTriangle, Lightbulb, MessageCircle, Radar as RadarIcon,
+} from "lucide-react";
 import { format } from "date-fns";
 
 // ------------------------------------------------------------
-// Visão por Rede Social — pipeline histórico externo + IA.
-// Independente do Radar Político e do banco interno.
-// Toda a análise vem de supabase.functions.invoke('network-listening').
+// Visão por Rede Social — Análise Qualitativa por IA.
+// Sem números absolutos de menções/interações. Apenas leitura
+// interpretativa: resumo, sentimento %, narrativas, hashtags,
+// termos e recomendações estratégicas.
 // ------------------------------------------------------------
 
-type DataSourceType = "direct" | "proxy" | "unavailable";
-interface Distribution { network: string; pct: number; mentions?: number; data_source_type?: DataSourceType; direct_hits?: number; external_hits?: number }
-interface TimelinePoint { date: string; total: number; positivo: number; negativo: number }
-interface SentByNetwork { network: string; pos: number; neg: number; neu: number }
-interface Topic { label: string; mentions: number; pos?: number; neg?: number; neu?: number }
-interface Term { term: string; kind: "pessoa" | "partido" | "instituicao" | "hashtag" | "slogan" | "regiao"; count: number }
-interface ListeningReport {
-  total_mentions: number | null;
-  total_interactions: number | null;
-  sentiment: { pos: number; neg: number; neu: number };
-  net_sentiment: number;
-  net_label?: string;
-  dominant_network: string | null;
-  distribution: Distribution[];
-  timeline: TimelinePoint[];
-  sentiment_by_network: SentByNetwork[];
-  topics: Topic[];
-  terms: Term[];
-  confidence: "high" | "medium" | "low";
-  render_state?: "FULL_DATA" | "PARTIAL_DATA" | "NO_DATA";
-  qualitative_only?: boolean;
-  reasoning?: string;
-  evidence_count?: number;
-  source_count?: number;
-  pipeline_used?: string;
-  fallback_used?: boolean;
-  backfill_used?: boolean;
-  backfill_hits?: number;
-  bucket?: string;
-  cached?: boolean;
-  fallback?: boolean;
+interface QualitativeReport {
+  summary: string;
+  sentiment: { positive: number; neutral: number; negative: number };
+  narratives: { positive: string[]; negative: string[]; neutral: string[] };
+  hashtags: string[];
+  terms: {
+    pessoas: string[];
+    partidos: string[];
+    estados: string[];
+    instituicoes: string[];
+    slogans: string[];
+  };
+  recommendations: { riscos: string[]; oportunidades: string[]; comunicacao: string[] };
+  network: string;
+  period: { start: string; end: string };
+  evidence_used: number;
+  generated_at: string;
 }
-
-interface JobResponse {
-  status: "processing" | "queued" | "running" | "completed" | "failed";
-  job_id?: string;
-  progress?: number;
-  stage?: string;
-  result?: ListeningReport;
-  cached?: boolean;
-  error?: string;
-}
-
-const NETWORK_LABEL: Record<string, string> = {
-  youtube: "YouTube", facebook: "Facebook", tiktok: "TikTok", telegram: "Telegram",
-  twitter: "X / Twitter", x: "X / Twitter", news: "Notícias", linkedin: "LinkedIn",
-  reddit: "Reddit", instagram: "Instagram", bluesky: "Bluesky",
-};
 
 const NETWORKS_FILTER = [
   { value: "all", label: "Todas as redes" },
@@ -86,75 +57,23 @@ const PERIODS = [
   { value: 30, label: "30 dias" },
   { value: 90, label: "90 dias" },
   { value: 365, label: "1 ano" },
-  { value: 1460, label: "4 anos" },
-  { value: 2920, label: "8 anos" },
 ];
-const PERIOD_LABEL: Record<number, string> = Object.fromEntries(PERIODS.map((p) => [p.value, p.label]));
 
-const COLORS = {
-  positive: "hsl(var(--success))",
-  negative: "hsl(var(--destructive))",
-  neutral: "hsl(var(--muted-foreground))",
-  primary: "hsl(var(--primary))",
-};
-
-const fmt = (n: number) => Number(n ?? 0).toLocaleString("pt-BR");
-const compact = (n: number) =>
-  Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 }).format(n ?? 0);
-const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
-const parseDateBoundary = (value: string, boundary: "start" | "end") =>
-  new Date(`${value}T${boundary === "end" ? "23:59:59.999" : "00:00:00"}`);
-const formatDisplayDate = (value: string) => format(parseDateBoundary(value, "start"), "dd/MM/yyyy");
 const toIsoDate = (d: Date) => d.toISOString().slice(0, 10);
-
-function netLabelFor(score: number): { label: string; tone: string } {
-  if (score >= 30) return { label: "Muito favorável", tone: "text-success" };
-  if (score >= 10) return { label: "Favorável", tone: "text-success" };
-  if (score <= -30) return { label: "Muito desfavorável", tone: "text-destructive" };
-  if (score <= -10) return { label: "Desfavorável", tone: "text-destructive" };
-  return { label: "Neutro", tone: "text-muted-foreground" };
-}
-
-const TERM_KIND_COLOR: Record<Term["kind"], string> = {
-  hashtag: "text-primary",
-  pessoa: "text-foreground",
-  partido: "text-warning",
-  instituicao: "text-foreground",
-  slogan: "text-accent",
-  regiao: "text-muted-foreground",
-};
 
 export default function NetworkView() {
   const { user } = useAuth();
   const { isAdmin } = useAdminCheck();
   const [network, setNetwork] = useState("all");
   const [candidateId, setCandidateId] = useState<string>("all");
-  const [days, setDays] = useState(365);
-  const [selectedPeriod, setSelectedPeriod] = useState<string>("365");
-  const [customRange, setCustomRange] = useState<{ startDate: string; endDate: string } | null>(null);
-  const [customPanelOpen, setCustomPanelOpen] = useState(false);
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [customError, setCustomError] = useState<string | null>(null);
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const [reprocessNonce, setReprocessNonce] = useState(0);
+  const [days, setDays] = useState(30);
+  const [nonce, setNonce] = useState(0);
 
-  const effectiveRange = useMemo(() => {
-    if (customRange) {
-      return {
-        start: parseDateBoundary(customRange.startDate, "start"),
-        end: parseDateBoundary(customRange.endDate, "end"),
-        key: `${customRange.startDate}_${customRange.endDate}`,
-      };
-    }
+  const range = useMemo(() => {
     const end = new Date();
     const start = new Date(end.getTime() - days * 86_400_000);
-    return { start, end, key: `last_${days}` };
-  }, [customRange, days]);
-
-  const activePeriodLabel = customRange
-    ? `Período: ${formatDisplayDate(customRange.startDate)} até ${formatDisplayDate(customRange.endDate)}`
-    : `Período: Últimos ${PERIOD_LABEL[days] ?? days + " dias"}`;
+    return { start_date: toIsoDate(start), end_date: toIsoDate(end) };
+  }, [days]);
 
   const { data: candidates } = useQuery({
     queryKey: ["nv-candidates", user?.id, isAdmin],
@@ -173,114 +92,31 @@ export default function NetworkView() {
     [candidates, candidateId],
   );
 
-  const start_date = toIsoDate(effectiveRange.start);
-  const end_date = toIsoDate(effectiveRange.end);
-  const filterKey = `${candidateId}|${start_date}|${end_date}|${network}`;
-  const requestKey = `${filterKey}|${reprocessNonce}`;
-
-  useEffect(() => {
-    setActiveJobId(null);
-  }, [requestKey]);
-
-  useEffect(() => {
-    setReprocessNonce(0);
-  }, [filterKey]);
-
-  const report = useQuery<JobResponse>({
-    queryKey: ["nv-listening-job", candidateId, start_date, end_date, network, reprocessNonce, activeJobId],
-    enabled: !!user && candidateId !== "all" && !!candidate?.full_name,
-    staleTime: 0,
+  const analysis = useQuery({
+    queryKey: ["nv-qualitative", candidateId, network, range.start_date, range.end_date, nonce],
+    enabled: !!candidate,
     retry: false,
-    refetchInterval: (query) => {
-      const state = query.state.data as JobResponse | undefined;
-      return state?.status === "processing" || state?.status === "queued" || state?.status === "running" ? 1200 : false;
-    },
+    staleTime: 5 * 60 * 1000,
     queryFn: async () => {
-      if (activeJobId) {
-        const { data, error } = await supabase.functions.invoke("network-listening", {
-          body: { action: "status", job_id: activeJobId },
-        });
-        if (error) throw error;
-        return data as JobResponse;
-      }
-
-      const { data, error } = await supabase.functions.invoke("network-listening", {
+      const { data, error } = await supabase.functions.invoke("network-qualitative-analysis", {
         body: {
-          action: "create",
-          candidate_id: candidateId,
           candidate_name: (candidate as any).full_name,
           party: (candidate as any).party ?? null,
-          office: null,
-          state: (candidate as any).region ?? null,
-          start_date,
-          end_date,
+          region: (candidate as any).region ?? null,
           network,
-          force_refresh: reprocessNonce > 0,
+          start_date: range.start_date,
+          end_date: range.end_date,
         },
       });
       if (error) throw error;
-      const d = data as any;
-      if (d?.error) {
-        const map: Record<string, string> = {
-          RATE_LIMITED: "Muitas requisições agora. Aguarde alguns instantes e tente novamente.",
-          NO_CREDITS: "Créditos de IA esgotados. Adicione créditos no workspace para continuar.",
-          SERVICE_UNAVAILABLE: "Serviço de análise temporariamente indisponível. Tente novamente.",
-        };
-        throw new Error(map[d.error] ?? d.message ?? d.error);
-      }
-      if (d?.job_id) setActiveJobId(d.job_id);
-      return data as JobResponse;
+      if ((data as any)?.error) throw new Error((data as any).message ?? (data as any).error);
+      return (data as any).report as QualitativeReport;
     },
   });
 
-  const job = report.data;
-  const data = job?.result;
-  const isProcessing = job?.status === "processing" || job?.status === "queued" || job?.status === "running";
-  const jobFailed = job?.status === "failed";
-  const loading = report.isFetching || isProcessing;
+  const report = analysis.data;
+  const loading = analysis.isFetching;
   const needsCandidate = candidateId === "all";
-  const evidenceCount = data?.evidence_count ?? 0;
-  const MIN_EVIDENCE = 20;
-  // Render state derivado do volume real de evidência (não da confiança da IA).
-  const renderState: "FULL_DATA" | "PARTIAL_DATA" | "NO_DATA" | undefined = data
-    ? evidenceCount === 0
-      ? "NO_DATA"
-      : evidenceCount < MIN_EVIDENCE
-        ? "PARTIAL_DATA"
-        : "FULL_DATA"
-    : undefined;
-
-  // Derivações de exibição
-  const netSentiment = data?.net_sentiment ?? 0;
-  const { label: netLabel, tone: netTone } = netLabelFor(netSentiment);
-  const dominant = data?.dominant_network;
-  // Esconde redes sem evidência real do gráfico de distribuição.
-  const distribution = useMemo(
-    () => (data?.distribution ?? [])
-      .filter((d) => (d.data_source_type ?? "unavailable") !== "unavailable" && (d.mentions ?? d.direct_hits ?? 0) > 0)
-      .slice()
-      .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0)),
-    [data?.distribution],
-  );
-  const socialViewDebug = data ? {
-    evidence_count: evidenceCount,
-    source_count: data.source_count ?? 0,
-    pipeline_used: data.pipeline_used ?? "external_evidence_only",
-    fallback_used: false,
-    backfill_used: data.backfill_used === true,
-    backfill_hits: data.backfill_hits ?? 0,
-    confidence: data.confidence ?? "low",
-  } : null;
-
-  const applyCustomRange = () => {
-    if (!startDate || !endDate) { setCustomError("Selecione ambas as datas"); return; }
-    const s = parseDateBoundary(startDate, "start");
-    const e = parseDateBoundary(endDate, "end");
-    if (e < s) { setCustomError("Data final não pode ser menor que a inicial"); return; }
-    setSelectedPeriod("custom");
-    setCustomRange({ startDate, endDate });
-    setCustomError(null);
-  };
 
   return (
     <div className="space-y-8">
@@ -289,9 +125,13 @@ export default function NetworkView() {
         <div>
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Visão por Rede Social</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Social listening histórico — leitura do índice persistido + análise por IA. A coleta roda em background.
+            Análise qualitativa por IA — leitura interpretativa de como o candidato é percebido na rede selecionada.
           </p>
-          <p className="text-xs text-muted-foreground mt-2 font-medium">{activePeriodLabel}</p>
+          {report && (
+            <p className="text-xs text-muted-foreground mt-2 font-medium">
+              Período: {format(new Date(report.period.start), "dd/MM/yyyy")} até {format(new Date(report.period.end), "dd/MM/yyyy")}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <Select value={candidateId} onValueChange={setCandidateId}>
@@ -303,379 +143,215 @@ export default function NetworkView() {
           </Select>
           <Select value={network} onValueChange={setNetwork}>
             <SelectTrigger className="w-[170px]"><SelectValue /></SelectTrigger>
-            <SelectContent>{NETWORKS_FILTER.map((n) => <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>)}</SelectContent>
+            <SelectContent>
+              {NETWORKS_FILTER.map((n) => <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>)}
+            </SelectContent>
           </Select>
           <div className="flex flex-wrap gap-1">
             {PERIODS.map((p) => (
               <Button
                 key={p.value}
                 type="button"
-                variant={selectedPeriod === String(p.value) ? "default" : "outline"}
+                variant={days === p.value ? "default" : "outline"}
                 size="sm"
-                onClick={() => {
-                  setSelectedPeriod(String(p.value));
-                  setDays(p.value);
-                  setCustomRange(null);
-                  setCustomPanelOpen(false);
-                  setCustomError(null);
-                }}
+                onClick={() => setDays(p.value)}
               >
                 {p.label}
               </Button>
             ))}
-            <Button
-              type="button"
-              variant={selectedPeriod === "custom" || customPanelOpen ? "default" : "outline"}
-              size="sm"
-              onClick={() => {
-                setCustomPanelOpen(true);
-                setStartDate(customRange?.startDate ?? startDate);
-                setEndDate(customRange?.endDate ?? endDate);
-                setCustomError(null);
-              }}
-            >
-              Personalizado
-            </Button>
           </div>
+          {report && (
+            <Button variant="outline" size="sm" onClick={() => setNonce((n) => n + 1)} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} /> Reanalisar
+            </Button>
+          )}
         </div>
       </div>
-
-      {customPanelOpen && (
-        <Card className="p-4">
-          <div className="flex flex-col sm:flex-row sm:items-end gap-3">
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-muted-foreground">De:</span>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-muted-foreground">Até:</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
-              />
-            </label>
-            <Button onClick={applyCustomRange}>Aplicar período</Button>
-          </div>
-          {customError && <div className="text-xs text-destructive mt-3">{customError}</div>}
-        </Card>
-      )}
 
       {needsCandidate && (
         <Card className="p-8 text-center">
           <RadarIcon className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
           <h3 className="text-lg font-semibold mb-1">Selecione um candidato</h3>
           <p className="text-sm text-muted-foreground">
-            Escolha um candidato para rodar a análise histórica de social listening.
+            Escolha um candidato para gerar a análise qualitativa por IA.
           </p>
         </Card>
       )}
 
-      {!needsCandidate && report.isError && (
+      {!needsCandidate && analysis.isError && (
         <Card className="p-4 text-sm text-destructive flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <span>Falha ao gerar análise: {(report.error as Error)?.message ?? "erro desconhecido"}</span>
-          <Button size="sm" variant="outline" onClick={() => { setActiveJobId(null); setReprocessNonce((n) => n + 1); }}>
-            <RefreshCw className="h-4 w-4 mr-2" /> Reprocessar análise
+          <span>Falha ao gerar análise: {(analysis.error as Error)?.message ?? "erro desconhecido"}</span>
+          <Button size="sm" variant="outline" onClick={() => setNonce((n) => n + 1)}>
+            <RefreshCw className="h-4 w-4 mr-2" /> Tentar novamente
           </Button>
         </Card>
       )}
 
-      {!needsCandidate && isProcessing && (
-        <Card className="p-5 space-y-3">
-          <div className="flex items-center justify-between gap-3 text-sm">
-            <span className="font-medium">{job?.stage ?? "Processando análise..."}</span>
-            <span className="text-muted-foreground tabular-nums">{Math.round(job?.progress ?? 0)}%</span>
-          </div>
-          <Progress value={job?.progress ?? 0} className="h-2" />
-        </Card>
+      {!needsCandidate && loading && !report && (
+        <div className="space-y-6">
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-56 w-full" />
+        </div>
       )}
 
-      {!needsCandidate && jobFailed && !data && (
-        <Card className="p-4 text-sm border-destructive/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <span className="text-muted-foreground">A análise falhou e nenhum fallback artificial foi aplicado: {job?.error ?? "erro desconhecido"}</span>
-          <Button size="sm" variant="outline" onClick={() => { setActiveJobId(null); setReprocessNonce((n) => n + 1); }}>
-            <RefreshCw className="h-4 w-4 mr-2" /> Reprocessar análise
-          </Button>
-        </Card>
-      )}
-
-      {!needsCandidate && (
+      {!needsCandidate && report && (
         <>
-          {/* Banner qualitativo quando confiança baixa */}
-          {data && renderState === "PARTIAL_DATA" && (
-            <Card className="p-4 border-warning/40 bg-warning/5 text-sm">
-              <div className="flex items-start gap-2">
-                <Sparkles className="h-4 w-4 text-warning shrink-0 mt-0.5" />
-                <div>
-                  <div className="font-semibold mb-1">Histórico insuficiente para análise quantitativa neste período.</div>
-                  <div className="text-muted-foreground">
-                    Foram encontradas {evidenceCount} evidências reais (mínimo {MIN_EVIDENCE} para liberar números, gráficos, assuntos e termos).
-                  </div>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {data && renderState === "NO_DATA" && !loading && (
-            <Card className="p-8 text-center border-warning/40 space-y-4">
-              <RadarIcon className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-              <div>
-                <h3 className="text-lg font-semibold mb-1">Histórico insuficiente para análise quantitativa neste período.</h3>
-                <p className="text-sm text-muted-foreground">Nenhuma evidência real foi encontrada. Tente novamente para iniciar uma nova coleta.</p>
-              </div>
-              <Button size="sm" variant="outline" onClick={() => { setActiveJobId(null); setReprocessNonce((n) => n + 1); }}>
-                <RefreshCw className="h-4 w-4 mr-2" /> Tentar novamente
-              </Button>
-            </Card>
-          )}
-
-
-          {data && renderState === "PARTIAL_DATA" && !loading && (
-            <Card className="p-6 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold">Resumo qualitativo</h2>
-                  <p className="text-sm text-muted-foreground">Poucas evidências reais foram encontradas; a análise permanece sem números estimados.</p>
-                </div>
-                <div className="text-sm font-semibold text-warning">Confiança {(data.confidence ?? "low").toUpperCase()}</div>
-              </div>
-              {data.reasoning && <p className="text-sm text-muted-foreground leading-relaxed">{data.reasoning}</p>}
-            </Card>
-          )}
-
-          {(loading || !data || renderState === "FULL_DATA") && (<>
-
-          {/* RESUMO EXECUTIVO */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <BigKpi icon={<MessageSquare className="h-5 w-5" />} label="Total de menções" value={loading || !data ? null : data.total_mentions == null ? "—" : compact(data.total_mentions)} />
-            <BigKpi icon={<Activity className="h-5 w-5" />} label="Total de interações" value={loading || !data ? null : data.total_interactions == null ? "—" : compact(data.total_interactions)} sub={loading || !data || data.total_interactions == null ? "" : "curtidas + shares + replies derivados das evidências"} />
-            <BigKpi
-              icon={<Gauge className="h-5 w-5" />}
-              label="Sentimento líquido"
-              value={loading || !data ? null : data.qualitative_only ? "—" : `${netSentiment > 0 ? "+" : ""}${netSentiment}`}
-              sub={loading || !data || data.qualitative_only ? "" : (data.net_label ?? netLabel)}
-              valueClassName={netTone}
-            />
-            <BigKpi
-              icon={<Crown className="h-5 w-5" />}
-              label="Confiança"
-              value={loading || !data ? null : (data.confidence ?? "low").toUpperCase()}
-              sub={loading || !data ? "" : dominant && !data.qualitative_only ? `Rede dominante: ${NETWORK_LABEL[dominant.toLowerCase()] ?? dominant}` : ""}
-              valueClassName={data?.confidence === "high" ? "text-success" : data?.confidence === "medium" ? "text-warning" : "text-muted-foreground"}
-            />
-          </div>
-
-          {/* DISTRIBUIÇÃO POR REDE — sempre visível, com badge data_source_type */}
-          <Card className="p-6">
-            <h2 className="text-lg font-semibold mb-1">Distribuição por rede</h2>
-            <p className="text-sm text-muted-foreground mb-6">
-              Peso calculado a partir das evidências reais coletadas (direct + proxy). Redes sem coleta direta exibem o tipo de fonte usada.
+          {/* 1. RESUMO EXECUTIVO */}
+          <Card className="p-6 space-y-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold">Resumo executivo da rede</h2>
+            </div>
+            <p className="text-sm leading-relaxed text-foreground whitespace-pre-line">
+              {report.summary || "—"}
             </p>
-            {loading || !data ? <Skeleton className="h-64 w-full" /> : distribution.length === 0 ? <Empty /> : (
-              <div className="space-y-3">
-                {distribution.map((n) => {
-                  const badge: Record<DataSourceType, { label: string; cls: string }> = {
-                    direct:      { label: "Direct",      cls: "bg-success/15 text-success border-success/30" },
-                    proxy:       { label: "Proxy",       cls: "bg-warning/15 text-warning border-warning/30" },
-                    unavailable: { label: "Sem dados",   cls: "bg-muted text-muted-foreground border-border" },
-                  };
-                  const rawDst = String(n.data_source_type ?? "unavailable") as DataSourceType;
-                  const dst = rawDst in badge ? rawDst : "unavailable";
-                  const hideNumbers = data.qualitative_only || dst === "unavailable";
-                  return (
-                    <div key={n.network} className="grid grid-cols-12 items-center gap-3">
-                      <div className="col-span-4 md:col-span-3 flex items-center gap-2 text-sm font-medium">
-                        <span>{NETWORK_LABEL[n.network.toLowerCase()] ?? n.network}</span>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${badge[dst].cls}`}>{badge[dst].label}</span>
-                      </div>
-                      <div className="col-span-5 md:col-span-6">
-                        <div className="h-3 rounded-full bg-muted overflow-hidden">
-                          {!hideNumbers && <div className="h-full bg-gradient-to-r from-primary to-primary/60" style={{ width: `${Math.min(100, n.pct)}%` }} />}
-                        </div>
-                      </div>
-                      <div className="col-span-3 md:col-span-3 flex items-center justify-end gap-3 text-xs tabular-nums">
-                        {!hideNumbers && n.direct_hits != null && (
-                          <span className="text-muted-foreground hidden md:inline">{n.direct_hits} direct · {n.external_hits ?? 0} proxy</span>
-                        )}
-                        <span className="w-12 text-right text-foreground font-medium">
-                          {hideNumbers ? "—" : `${n.pct}%`}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </Card>
 
-          {!data?.qualitative_only && (<>
-          {/* EVOLUÇÃO TEMPORAL */}
-          <Card className="p-6">
-            <h2 className="text-lg font-semibold mb-1">Evolução temporal</h2>
-            <p className="text-sm text-muted-foreground mb-6">
-              Volume por bucket dinâmico {data?.bucket ? `(${data.bucket})` : ""} com sobreposição de sentimento.
-            </p>
-            {loading || !data ? <Skeleton className="h-72 w-full" /> : (data.timeline ?? []).length === 0 ? <Empty /> : (
-              <ResponsiveContainer width="100%" height={320}>
-                <LineChart data={data.timeline} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="date" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
-                  <YAxis className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
-                  <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Line type="monotone" dataKey="total" name="Volume" stroke={COLORS.primary} strokeWidth={2.5} dot={false} />
-                  <Line type="monotone" dataKey="positivo" name="Positivo" stroke={COLORS.positive} strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
-                  <Line type="monotone" dataKey="negativo" name="Negativo" stroke={COLORS.negative} strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
+          {/* 2. SENTIMENTO GERAL */}
+          <Card className="p-6 space-y-4">
+            <h2 className="text-lg font-semibold">Sentimento geral</h2>
+            <div className="grid grid-cols-3 gap-4">
+              <SentimentBlock label="Positivo" value={report.sentiment.positive} tone="success" icon={<ThumbsUp className="h-4 w-4" />} />
+              <SentimentBlock label="Neutro" value={report.sentiment.neutral} tone="muted" icon={<Minus className="h-4 w-4" />} />
+              <SentimentBlock label="Negativo" value={report.sentiment.negative} tone="destructive" icon={<ThumbsDown className="h-4 w-4" />} />
+            </div>
+            <div className="flex h-2.5 rounded-full overflow-hidden bg-muted">
+              <div style={{ width: `${report.sentiment.positive}%`, backgroundColor: "hsl(var(--success))" }} />
+              <div style={{ width: `${report.sentiment.neutral}%`, backgroundColor: "hsl(var(--muted-foreground))" }} />
+              <div style={{ width: `${report.sentiment.negative}%`, backgroundColor: "hsl(var(--destructive))" }} />
+            </div>
           </Card>
 
-          {/* SENTIMENTO POR REDE */}
-          <Card className="p-6">
-            <h2 className="text-lg font-semibold mb-1">Sentimento por rede</h2>
-            <p className="text-sm text-muted-foreground mb-6">Somente redes com evidência mínima; caso contrário, os percentuais ficam ocultos.</p>
-            {loading || !data ? <Skeleton className="h-56 w-full" /> : (data.sentiment_by_network ?? []).length === 0 ? <Empty /> : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b border-border">
-                      <th className="py-2 pr-4">Rede</th>
-                      <th className="py-2 pr-4">Distribuição</th>
-                      <th className="py-2 pr-4 text-right w-20">+ %</th>
-                      <th className="py-2 pr-4 text-right w-20">− %</th>
-                      <th className="py-2 text-right w-20">~ %</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.sentiment_by_network.map((n) => {
-                      const lab = n.pos + n.neg + n.neu;
-                      const p = pct(n.pos, lab), ng = pct(n.neg, lab), nu = pct(n.neu, lab);
-                      return (
-                        <tr key={n.network} className="border-b border-border/40 last:border-0">
-                          <td className="py-3 pr-4 font-medium">{NETWORK_LABEL[n.network.toLowerCase()] ?? n.network}</td>
-                          <td className="py-3 pr-4">
-                            <div className="flex h-2.5 rounded-full overflow-hidden bg-muted min-w-[140px]">
-                              <div style={{ width: `${p}%`, backgroundColor: COLORS.positive }} />
-                              <div style={{ width: `${ng}%`, backgroundColor: COLORS.negative }} />
-                              <div style={{ width: `${nu}%`, backgroundColor: COLORS.neutral }} />
-                            </div>
-                          </td>
-                          <td className="py-3 pr-4 text-right tabular-nums text-success">{p}%</td>
-                          <td className="py-3 pr-4 text-right tabular-nums text-destructive">{ng}%</td>
-                          <td className="py-3 text-right tabular-nums text-muted-foreground">{nu}%</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+          {/* 3. NARRATIVAS DETECTADAS */}
+          <Card className="p-6 space-y-4">
+            <h2 className="text-lg font-semibold">Narrativas detectadas</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <NarrativeColumn title="Positivas" items={report.narratives.positive} tone="success" icon={<ThumbsUp className="h-4 w-4" />} />
+              <NarrativeColumn title="Neutras" items={report.narratives.neutral} tone="muted" icon={<Minus className="h-4 w-4" />} />
+              <NarrativeColumn title="Negativas" items={report.narratives.negative} tone="destructive" icon={<ThumbsDown className="h-4 w-4" />} />
+            </div>
           </Card>
-          </>
-          )}
 
-          {/* ASSUNTOS DOMINANTES */}
-          {(loading || !data || (data.topics ?? []).length >= 3) && (
-          <Card className="p-6">
-            <h2 className="text-lg font-semibold mb-1">Assuntos dominantes</h2>
-            <p className="text-sm text-muted-foreground mb-6">Temas específicos extraídos por agrupamento das evidências coletadas.</p>
-            {loading || !data ? <Skeleton className="h-56 w-full" /> : (data.topics ?? []).length === 0 ? <Empty /> : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {(() => {
-                  const total = data.topics.reduce((s, t) => s + (t.mentions || 0), 0);
-                  return data.topics.map((t) => {
-                    const lab = (t.pos ?? 0) + (t.neg ?? 0) + (t.neu ?? 0);
-                    const share = total > 0 ? (t.mentions / total) * 100 : 0;
-                    return (
-                      <div key={t.label} className="rounded-lg border border-border p-4 bg-card/50">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-semibold">{t.label}</span>
-                          <span className="text-xs text-muted-foreground tabular-nums">{share.toFixed(1)}% relevância</span>
-                        </div>
-                        {lab > 0 && (
-                          <div className="flex h-1.5 rounded-full overflow-hidden bg-muted mb-2">
-                            <div style={{ width: `${pct(t.pos ?? 0, lab)}%`, backgroundColor: COLORS.positive }} />
-                            <div style={{ width: `${pct(t.neg ?? 0, lab)}%`, backgroundColor: COLORS.negative }} />
-                            <div style={{ width: `${pct(t.neu ?? 0, lab)}%`, backgroundColor: COLORS.neutral }} />
-                          </div>
-                        )}
-                        <div className="text-[11px] text-muted-foreground">{compact(t.mentions)} evidências relacionadas</div>
-                      </div>
-                    );
-                  });
-                })()}
-              </div>
-            )}
-          </Card>
-          )}
-
-          {/* TERMOS EM ALTA */}
-          <Card className="p-6">
-            <h2 className="text-lg font-semibold mb-1">Termos em alta</h2>
-            <p className="text-sm text-muted-foreground mb-6">Entidades (pessoas, partidos, instituições), hashtags, slogans e regiões. Sem verbos ou stopwords.</p>
-            {loading || !data ? <Skeleton className="h-40 w-full" /> : (data.terms ?? []).length === 0 ? <Empty /> : (
+          {/* 4. HASHTAGS EM ALTA */}
+          <Card className="p-6 space-y-3">
+            <div className="flex items-center gap-2">
+              <Hash className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold">Hashtags em alta</h2>
+            </div>
+            {report.hashtags.length === 0 ? (
+              <Empty />
+            ) : (
               <div className="flex flex-wrap gap-2">
-                {data.terms.map((t) => {
-                  const max = data.terms[0]?.count ?? 1;
-                  const intensity = Math.max(0.3, Math.min(1, t.count / max));
-                  return (
-                    <div
-                      key={`${t.kind}-${t.term}`}
-                      className="rounded-full px-4 py-2 text-sm border border-border flex items-center gap-2 bg-card"
-                      style={{ fontSize: `${0.85 + intensity * 0.35}rem`, opacity: 0.6 + intensity * 0.4 }}
-                      title={`${t.kind} · ${compact(t.count)}`}
-                    >
-                      <span className={`${TERM_KIND_COLOR[t.kind] ?? "font-semibold"} font-semibold`}>
-                        {t.term}
-                      </span>
-                      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{t.kind}</span>
-                    </div>
-                  );
-                })}
+                {report.hashtags.map((h) => (
+                  <Badge key={h} variant="secondary" className="text-sm py-1.5 px-3">{h}</Badge>
+                ))}
               </div>
             )}
           </Card>
 
-          {data?.reasoning && (
-            <Card className="p-4 text-xs text-muted-foreground flex gap-2">
-              <Sparkles className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-              <span>{data.reasoning}</span>
-            </Card>
-          )}
-          </>)}
+          {/* 5. TERMOS EM ALTA */}
+          <Card className="p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <Tag className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold">Termos em alta</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <TermGroup title="Pessoas" items={report.terms.pessoas} />
+              <TermGroup title="Partidos" items={report.terms.partidos} />
+              <TermGroup title="Estados" items={report.terms.estados} />
+              <TermGroup title="Instituições" items={report.terms.instituicoes} />
+              <TermGroup title="Slogans" items={report.terms.slogans} />
+            </div>
+          </Card>
 
-          {socialViewDebug && (
-            <pre id="social_view_debug" className="hidden" aria-hidden="true">
-              {JSON.stringify(socialViewDebug)}
-            </pre>
-          )}
+          {/* 6. RECOMENDAÇÕES ESTRATÉGICAS */}
+          <Card className="p-6 space-y-4">
+            <h2 className="text-lg font-semibold">Recomendações estratégicas</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <RecommendationColumn title="Riscos" items={report.recommendations.riscos} tone="destructive" icon={<AlertTriangle className="h-4 w-4" />} />
+              <RecommendationColumn title="Oportunidades" items={report.recommendations.oportunidades} tone="success" icon={<Lightbulb className="h-4 w-4" />} />
+              <RecommendationColumn title="Comunicação" items={report.recommendations.comunicacao} tone="primary" icon={<MessageCircle className="h-4 w-4" />} />
+            </div>
+          </Card>
+
+          <p className="text-xs text-muted-foreground">
+            Análise gerada por IA em {format(new Date(report.generated_at), "dd/MM/yyyy HH:mm")} ·
+            {report.evidence_used > 0
+              ? ` ${report.evidence_used} evidências web consultadas como contexto.`
+              : " sem evidências web recentes — interpretação baseada em conhecimento geral."}
+          </p>
         </>
       )}
     </div>
   );
 }
 
-function BigKpi({ icon, label, value, sub, valueClassName }: { icon: React.ReactNode; label: string; value: string | null; sub?: string; valueClassName?: string }) {
+function SentimentBlock({ label, value, tone, icon }: { label: string; value: number; tone: "success" | "muted" | "destructive"; icon: React.ReactNode }) {
+  const cls = tone === "success" ? "text-success" : tone === "destructive" ? "text-destructive" : "text-muted-foreground";
   return (
-    <Card className="p-5">
-      <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground mb-3">
-        <span className="text-primary">{icon}</span>{label}
+    <div className="rounded-lg border border-border p-4 bg-card/50">
+      <div className={`flex items-center gap-2 text-xs uppercase tracking-wider ${cls} mb-2`}>
+        {icon}{label}
       </div>
-      {value === null ? <Skeleton className="h-9 w-32" /> : (
-        <div className={`text-3xl font-bold tabular-nums ${valueClassName ?? ""}`}>{value}</div>
+      <div className={`text-3xl font-bold tabular-nums ${cls}`}>{value}%</div>
+    </div>
+  );
+}
+
+function NarrativeColumn({ title, items, tone, icon }: { title: string; items: string[]; tone: "success" | "muted" | "destructive"; icon: React.ReactNode }) {
+  const cls = tone === "success" ? "text-success" : tone === "destructive" ? "text-destructive" : "text-muted-foreground";
+  return (
+    <div className="rounded-lg border border-border p-4 bg-card/50 space-y-3">
+      <div className={`flex items-center gap-2 text-sm font-semibold ${cls}`}>{icon}{title}</div>
+      {items.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic">Nada relevante detectado.</p>
+      ) : (
+        <ul className="space-y-2 text-sm leading-relaxed">
+          {items.map((i, idx) => (
+            <li key={idx} className="flex gap-2"><span className={cls}>•</span><span>{i}</span></li>
+          ))}
+        </ul>
       )}
-      {sub && <div className="text-xs text-muted-foreground mt-2">{sub}</div>}
-    </Card>
+    </div>
+  );
+}
+
+function TermGroup({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className="rounded-lg border border-border p-4 bg-card/50">
+      <div className="text-xs uppercase tracking-wider text-muted-foreground mb-3">{title}</div>
+      {items.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic">—</p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {items.map((t, i) => (
+            <Badge key={`${title}-${i}`} variant="outline" className="text-xs">{t}</Badge>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RecommendationColumn({ title, items, tone, icon }: { title: string; items: string[]; tone: "success" | "destructive" | "primary"; icon: React.ReactNode }) {
+  const cls = tone === "success" ? "text-success" : tone === "destructive" ? "text-destructive" : "text-primary";
+  return (
+    <div className="rounded-lg border border-border p-4 bg-card/50 space-y-3">
+      <div className={`flex items-center gap-2 text-sm font-semibold ${cls}`}>{icon}{title}</div>
+      {items.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic">Nenhuma recomendação no momento.</p>
+      ) : (
+        <ul className="space-y-2 text-sm leading-relaxed">
+          {items.map((i, idx) => (
+            <li key={idx} className="flex gap-2"><span className={cls}>›</span><span>{i}</span></li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
 function Empty() {
-  return <div className="text-sm text-muted-foreground py-10 text-center">Sem dados suficientes para este período.</div>;
+  return <div className="text-sm text-muted-foreground py-6 text-center">Nada detectado para este período.</div>;
 }
