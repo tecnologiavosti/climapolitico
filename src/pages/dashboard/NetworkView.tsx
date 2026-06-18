@@ -413,13 +413,25 @@ export default function NetworkView() {
               <div className="flex items-start gap-2">
                 <Sparkles className="h-4 w-4 text-warning shrink-0 mt-0.5" />
                 <div>
-                  <div className="font-semibold mb-1">Dados insuficientes para análise quantitativa precisa</div>
+                  <div className="font-semibold mb-1">Histórico insuficiente para análise quantitativa neste período.</div>
                   <div className="text-muted-foreground">
-                    Números, gráficos, assuntos e termos foram ocultados para não mostrar valores artificiais.
-                    {` (${evidenceCount} evidências coletadas)`}
+                    Foram encontradas {evidenceCount} evidências reais (mínimo {MIN_EVIDENCE} para liberar números, gráficos, assuntos e termos).
                   </div>
                 </div>
               </div>
+            </Card>
+          )}
+
+          {data && renderState === "NO_DATA" && !loading && (
+            <Card className="p-8 text-center border-warning/40 space-y-4">
+              <RadarIcon className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+              <div>
+                <h3 className="text-lg font-semibold mb-1">Histórico insuficiente para análise quantitativa neste período.</h3>
+                <p className="text-sm text-muted-foreground">Nenhuma evidência real foi encontrada. Tente novamente para iniciar uma nova coleta.</p>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => { setActiveJobId(null); setReprocessNonce((n) => n + 1); }}>
+                <RefreshCw className="h-4 w-4 mr-2" /> Tentar novamente
+              </Button>
             </Card>
           )}
 
