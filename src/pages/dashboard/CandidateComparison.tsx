@@ -549,22 +549,49 @@ const CandidateComparisonPage = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-[440px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RadarChart data={radarData} outerRadius="75%">
-                      <PolarGrid stroke="hsl(var(--border))" />
-                      <PolarAngleAxis dataKey="metric" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
-                      <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-                      <RTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
-                      <Legend wrapperStyle={{ fontSize: 12 }} />
-                      {candidates.slice(0, 6).map((c, i) => (
-                        <Radar key={c.id} name={c.name} dataKey={c.name}
-                          stroke={PALETTE[i % PALETTE.length]} fill={PALETTE[i % PALETTE.length]}
-                          fillOpacity={0.18} strokeWidth={2} />
-                      ))}
-                    </RadarChart>
-                  </ResponsiveContainer>
-                </div>
+                {(() => {
+                  const DIM_HELP: Record<string, string> = {
+                    "Lembrança": "Percentual estimado de eleitores que reconhecem espontaneamente o nome do candidato. 100 = amplamente conhecido.",
+                    "Aprovação": "Nível de percepção positiva com base em sentimento, apoio e comentários favoráveis.",
+                    "Resistência Eleitoral": "Mede o quão pouco rejeitado o candidato é. 100 = baixa rejeição.",
+                    "Viralização": "Capacidade de gerar repercussão rápida nas redes sociais.",
+                    "Penetração": "Capacidade de alcançar diferentes grupos eleitorais (jovens, agro, evangélicos, urbano, etc).",
+                    "Crescimento": "Velocidade de evolução política recente em relevância e apoio.",
+                    "Autoridade": "Percepção de competência, preparo e liderança política.",
+                    "Expansão": "Potencial de crescer em regiões ou públicos onde ainda é fraco.",
+                  };
+                  return (
+                    <>
+                      <div className="mb-3 flex flex-wrap gap-1.5">
+                        {Object.entries(DIM_HELP).map(([dim, desc]) => (
+                          <span key={dim} className="inline-flex items-center gap-1 rounded-full border border-border/40 bg-card/40 px-2 py-0.5 text-[11px] text-muted-foreground">
+                            {dim}
+                            <InfoTip text={desc} iconClassName="h-3 w-3" />
+                          </span>
+                        ))}
+                      </div>
+                      <div className="h-[440px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RadarChart data={radarData} outerRadius="75%">
+                            <PolarGrid stroke="hsl(var(--border))" />
+                            <PolarAngleAxis dataKey="metric" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+                            <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+                            <RTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
+                            <Legend wrapperStyle={{ fontSize: 12 }} />
+                            {candidates.slice(0, 6).map((c, i) => (
+                              <Radar key={c.id} name={c.name} dataKey={c.name}
+                                stroke={PALETTE[i % PALETTE.length]} fill={PALETTE[i % PALETTE.length]}
+                                fillOpacity={0.18} strokeWidth={2} />
+                            ))}
+                          </RadarChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <p className="mt-3 text-center text-xs text-muted-foreground">
+                        Quanto maior a área preenchida, mais robusto e competitivo é o candidato em múltiplas dimensões.
+                      </p>
+                    </>
+                  );
+                })()}
               </CardContent>
             </Card>
           </motion.div>
