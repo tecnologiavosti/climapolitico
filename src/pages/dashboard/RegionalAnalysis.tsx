@@ -526,6 +526,7 @@ export default function RegionalAnalysis() {
               <div className="flex items-center gap-2 mb-3">
                 <Sparkles className="h-5 w-5 text-primary" />
                 <h2 className="text-xl font-semibold">Radar Nacional</h2>
+                <InfoTip text={TIPS.forca_nacional} />
               </div>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <KpiCard tip={TIPS.forca_nacional} icon={<TrendingUp />} label="Força Nacional" value={`${analysis.national.forca_nacional}`} suffix="/100" tint="primary" />
