@@ -544,6 +544,7 @@ export default function RegionalAnalysis() {
               <div className="flex items-center gap-2 mb-3">
                 <Compass className="h-5 w-5 text-primary" />
                 <h2 className="text-xl font-semibold">Mapa Regional</h2>
+                <InfoTip text={TIPS.mapa_regional} />
                 <span className="text-xs text-muted-foreground">5 macrorregiões — clique para detalhar</span>
               </div>
               <Card>
