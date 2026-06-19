@@ -87,7 +87,14 @@ Deno.serve(async (req) => {
       ? `${period_from} a ${period_to}`
       : period_label || "últimos 30 dias";
 
-    const prompt = `Você é um estrategista político brasileiro sênior. Faça uma análise política regional HÍBRIDA (5 macrorregiões + 27 estados) do candidato abaixo. Use seu conhecimento de: histórico eleitoral, perfil demográfico regional, comportamento ideológico, perfil partidário, capitais x interior, agro x urbano, evangélicos, classe média, servidor público, etc.
+    const prompt = `Você é um estrategista político brasileiro sênior, com domínio de:
+- histórico eleitoral por UF (TSE, eleições 2018/2020/2022/2024)
+- densidade partidária e bases organizadas
+- perfil socioeconômico (PIB per capita, IDH, urbanização)
+- religiosidade (evangélicos/católicos), agro x urbano, capitais x interior
+- ideologia dominante e fissuras locais
+
+Faça uma análise política HÍBRIDA (5 macrorregiões + 27 estados) do candidato abaixo. Cada estado deve ter análise ESPECÍFICA E CONCRETA, citando fatos, atores políticos locais, demografia e dinâmicas reais — JAMAIS frases genéricas.
 
 CANDIDATO:
 - Nome: ${cand.full_name}
@@ -95,7 +102,22 @@ CANDIDATO:
 - Região-base: ${cand.region || "não informada"}
 PERÍODO: ${periodText}
 
-NUNCA use scores genéricos (50/50). Diferencie cada UF com base no perfil real. Mesmo sem menções, gere análise contextual via inteligência política.
+PROIBIDO usar termos vagos como:
+- "perfil agropecuarista"
+- "base partidária local"
+- "oposição organizada"
+- "pode gerar adesão"
+- "região desafiadora"
+- "perfil conservador" (sem dizer qual conservadorismo, em que cidade, com que base)
+- "ampliar presença digital"
+- "aliança com lideranças locais" (sem nomear contexto real)
+
+OBRIGATÓRIO em cada estado:
+- "perfil_eleitor_dominante": frase concreta citando cidades, faixa etária ou grupo (ex: "Classe média B/C da Grande SP e ABC, eleitor 35-55 anos com peso evangélico em Guarulhos e Osasco").
+- "riscos": nomear o RISCO REAL (ex: "Bolsão petista em Diadema e Mauá", "Lula 60%+ no semiárido baiano").
+- "oportunidades": ações concretas e específicas (ex: "Disputar voto evangélico em Cariri-CE via pauta de costumes", não "ampliar presença digital").
+
+NUNCA use scores genéricos (50/50). Diferencie cada UF com base no perfil real e no candidato específico.
 
 Responda APENAS JSON válido neste formato exato:
 
@@ -105,10 +127,10 @@ Responda APENAS JSON válido neste formato exato:
     "melhor_uf": "SP",
     "uf_risco": "BA",
     "expansao_potencial": "MG",
-    "sintese": "..."
+    "sintese": "Síntese estratégica nacional em 3-4 frases citando estados-chave."
   },
   "regions": [
-    {"region":"Norte","temperatura":"Competitiva","regional_strength_score":0,"rejection_score":0,"percepcao":"3 a 4 frases densas sobre como o candidato é percebido nessa região"}
+    {"region":"Norte","temperatura":"Competitiva","regional_strength_score":0,"rejection_score":0,"percepcao":"3 a 4 frases densas e específicas sobre como o candidato é percebido nessa região, citando estados, polos e clivagens reais"}
   ],
   "states": [
     {
@@ -116,7 +138,7 @@ Responda APENAS JSON válido neste formato exato:
       "temperatura":"Favorável|Competitiva|Hostil|Neutra",
       "electoral_strength":0,
       "rejection_score":0,
-      "perfil_eleitor_dominante":"ex: classe média urbana paulistana, evangélico conservador da Zona Leste",
+      "perfil_eleitor_dominante":"frase específica com cidade/região, faixa etária e clivagem",
       "temas_sensibilidade":[
         {"tema":"seguranca","score":0},
         {"tema":"economia","score":0},
@@ -126,8 +148,8 @@ Responda APENAS JSON válido neste formato exato:
         {"tema":"saude","score":0}
       ],
       "penetracao":{"capitais":0,"cidades_medias":0,"interior":0,"rural_profundo":0},
-      "riscos":[{"titulo":"...","severidade":"média"}],
-      "oportunidades":["...","..."]
+      "riscos":[{"titulo":"risco concreto com cidade/ator","severidade":"média"}],
+      "oportunidades":["ação concreta e específica","outra ação concreta"]
     }
   ]
 }
@@ -135,7 +157,6 @@ Responda APENAS JSON válido neste formato exato:
 REGRAS OBRIGATÓRIAS:
 - "regions": EXATAMENTE 5 itens (Norte, Nordeste, Centro-Oeste, Sudeste, Sul).
 - "states": EXATAMENTE 27 itens, um para cada UF: ${UFS.join(", ")}.
-- "perfil_eleitor_dominante": frase curta e específica por estado (NUNCA "base partidária local").
 - Todos os scores 0-100, diferenciados.
 - "temas_sensibilidade": sempre os 6 temas: ${TEMAS.join(", ")}.
 - Português brasileiro. Sem markdown. Apenas JSON.`;
