@@ -185,6 +185,116 @@ function MomentumBadge({ momentum }: { momentum: CandidateOut["momentum"] }) {
   );
 }
 
+function clampScore(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function normalizeMax(value: number, max: number): number {
+  if (max <= 0) return 0;
+  return clampScore((value / max) * 100);
+}
+
+function statusFromScore(score: number): CandidateOut["status"] {
+  if (score >= 75) return "Dominante";
+  if (score >= 55) return "Forte";
+  if (score >= 35) return "Competitivo";
+  return "Fraco";
+}
+
+function momentumFromGrowth(growth: number): CandidateOut["momentum"] {
+  if (growth >= 15) return "up";
+  if (growth <= -15) return "down";
+  return "stable";
+}
+
+function buildComparisonFromMetrics(candidatesRaw: RawCandidate[], metricsRaw: RawMetrics[]): ApiResponse {
+  const metricsByCandidate = new Map(metricsRaw.map((m) => [m.candidate_id, m]));
+  const maxMentions = Math.max(1, ...candidatesRaw.map((c) => metricsByCandidate.get(c.id)?.total_mentions ?? 0));
+  const maxAuthors = Math.max(1, ...candidatesRaw.map((c) => metricsByCandidate.get(c.id)?.unique_authors ?? 0));
+  const maxEngagement = Math.max(1, ...candidatesRaw.map((c) => metricsByCandidate.get(c.id)?.total_engagement ?? 0));
+
+  const candidates: CandidateOut[] = candidatesRaw
+    .map((candidate) => {
+      const metrics = metricsByCandidate.get(candidate.id);
+      const mentions = metrics?.total_mentions ?? 0;
+      const authors = metrics?.unique_authors ?? 0;
+      const engagement = metrics?.total_engagement ?? 0;
+      const positive = metrics?.positive_count ?? 0;
+      const negative = metrics?.negative_count ?? 0;
+      const neutral = metrics?.neutral_count ?? 0;
+      const totalSentiment = positive + negative + neutral;
+      const approval = totalSentiment > 0 ? (positive / totalSentiment) * 100 : 50;
+      const rejection = totalSentiment > 0 ? (negative / totalSentiment) * 100 : 30;
+      const recall = normalizeMax(mentions, maxMentions);
+      const dominance = normalizeMax(authors, maxAuthors);
+      const virality = mentions > 0 ? normalizeMax(engagement / Math.max(1, mentions), maxEngagement / Math.max(1, maxMentions)) : 0;
+      const sentiment = Number(metrics?.average_sentiment ?? 0);
+      const growth = clampScore((sentiment + 100) / 2) - 50;
+      const growthNorm = (growth + 100) / 2;
+      const regionalForce = clampScore(recall * 0.6 + dominance * 0.4);
+      const strength = clampScore(regionalForce * 0.25 + approval * 0.2 + (100 - rejection) * 0.2 + virality * 0.15 + growthNorm * 0.1 + dominance * 0.1);
+      const highRejection = rejection >= 50;
+      const highRegional = regionalForce >= 65;
+
+      return {
+        id: candidate.id,
+        name: candidate.full_name,
+        party: candidate.party,
+        state: candidate.region,
+        scores: {
+          strength,
+          recall,
+          approval: clampScore(approval),
+          rejection: clampScore(rejection),
+          virality,
+          regionalForce,
+          growth: Math.max(-100, Math.min(100, Math.round(growth))),
+          dominance,
+        },
+        status: statusFromScore(strength),
+        momentum: momentumFromGrowth(growth),
+        narrativas: {
+          temas: [
+            highRegional ? "força regional" : "presença regional",
+            highRejection ? "rejeição" : "aprovação relativa",
+            virality >= 60 ? "tração digital" : "alcance orgânico",
+            candidate.region ?? "base nacional",
+          ].slice(0, 4),
+          tom: highRejection ? "polarizado" : growth >= 15 ? "ascendente" : "competitivo",
+          arquetipo: highRegional ? "Liderança regional consolidada" : highRejection ? "Polarizador competitivo" : "Competidor em consolidação",
+        },
+        momentumNota: growth >= 15 ? "Indicadores locais sugerem aceleração recente." : growth <= -15 ? "Indicadores locais sugerem perda de ritmo." : "Indicadores locais sugerem estabilidade competitiva.",
+      };
+    })
+    .sort((a, b) => b.scores.strength - a.scores.strength);
+
+  const leader = candidates[0];
+  const fastestGrowth = [...candidates].sort((a, b) => b.scores.growth - a.scores.growth)[0];
+  const highestRejection = [...candidates].sort((a, b) => b.scores.rejection - a.scores.rejection)[0];
+  const stagnant = [...candidates].sort((a, b) => Math.abs(a.scores.growth) - Math.abs(b.scores.growth))[0];
+
+  return {
+    success: true,
+    empty: candidates.length === 0,
+    message: "Comparação gerada com fallback local.",
+    candidates,
+    bestInClass: {
+      traction: [...candidates].sort((a, b) => b.scores.virality - a.scores.virality)[0] ? { name: [...candidates].sort((a, b) => b.scores.virality - a.scores.virality)[0].name, value: [...candidates].sort((a, b) => b.scores.virality - a.scores.virality)[0].scores.virality } : null,
+      lowestRejection: [...candidates].sort((a, b) => a.scores.rejection - b.scores.rejection)[0] ? { name: [...candidates].sort((a, b) => a.scores.rejection - b.scores.rejection)[0].name, value: [...candidates].sort((a, b) => a.scores.rejection - b.scores.rejection)[0].scores.rejection } : null,
+      growth: fastestGrowth ? { name: fastestGrowth.name, value: fastestGrowth.scores.growth } : null,
+      centroOeste: leader ? { nome: leader.name, justificativa: "Fallback local: melhor score ponderado com os dados disponíveis." } : null,
+      overall: leader ? { name: leader.name, value: leader.scores.strength } : null,
+    },
+    summary: {
+      lidera: leader ? `${leader.name} lidera pelo melhor score estratégico local (${leader.scores.strength}/100).` : "Sem liderança definida.",
+      cresce: fastestGrowth ? `${fastestGrowth.name} tem o maior sinal relativo de crescimento.` : "Sem crescimento detectado.",
+      estagnou: stagnant ? `${stagnant.name} apresenta menor oscilação nos indicadores disponíveis.` : "Sem estagnação clara.",
+      preocupa: highestRejection ? `${highestRejection.name} concentra a maior rejeição relativa (${highestRejection.scores.rejection}/100).` : "Sem risco dominante mapeado.",
+    },
+  };
+}
+
 const CandidateComparisonPage = () => {
   const { user } = useAuth();
   const [headA, setHeadA] = useState<string | null>(null);
