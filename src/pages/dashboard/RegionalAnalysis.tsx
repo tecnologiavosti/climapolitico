@@ -657,6 +657,7 @@ export default function RegionalAnalysis() {
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base flex items-center gap-2">
                     <ShieldAlert className="h-4 w-4 text-red-600" /> Mapa de Rejeição
+                    <InfoTip text={TIPS.mapa_rejeicao} />
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
