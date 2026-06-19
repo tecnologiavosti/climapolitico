@@ -793,8 +793,8 @@ function StatePanel({ base, deep, loading, error, onRetry }: { base: StateBase; 
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <ScorePill label="Força eleitoral" value={base.electoral_strength} positive />
-            <ScorePill label="Rejeição" value={base.rejection_score} />
+            <ScorePill label="Força eleitoral" value={base.electoral_strength} positive tip={TIPS.forca_regional} />
+            <ScorePill label="Rejeição" value={base.rejection_score} tip={TIPS.rejeicao_regional} />
           </div>
         </CardContent>
       </Card>
@@ -813,11 +813,11 @@ function StatePanel({ base, deep, loading, error, onRetry }: { base: StateBase; 
 
       {!loading && deep && (
         <>
-          <SectionCard icon={<Users className="h-4 w-4 text-primary" />} title="Perfil do eleitor dominante">
+          <SectionCard icon={<Users className="h-4 w-4 text-primary" />} title="Perfil do eleitor dominante" tip={TIPS.perfil_eleitor}>
             <p className="text-sm leading-relaxed">{deep.perfil_eleitor_dominante}</p>
           </SectionCard>
 
-          <SectionCard icon={<Sparkles className="h-4 w-4 text-amber-500" />} title="DNA Eleitoral">
+          <SectionCard icon={<Sparkles className="h-4 w-4 text-amber-500" />} title="DNA Eleitoral" tip={TIPS.dna_eleitoral}>
             <div className="space-y-2">
               {deep.dna_eleitoral.map((t) => (
                 <div key={t.tema} className="flex items-center gap-3">
@@ -829,7 +829,7 @@ function StatePanel({ base, deep, loading, error, onRetry }: { base: StateBase; 
             </div>
           </SectionCard>
 
-          <SectionCard icon={<Users className="h-4 w-4 text-blue-600" />} title="Segmentos de Voto">
+          <SectionCard icon={<Users className="h-4 w-4 text-blue-600" />} title="Segmentos de Voto" tip={TIPS.segmentos_voto}>
             <div className="space-y-2">
               {deep.segmentos_voto.map((s) => (
                 <div key={s.segmento} className="flex items-center gap-3">
@@ -842,7 +842,7 @@ function StatePanel({ base, deep, loading, error, onRetry }: { base: StateBase; 
           </SectionCard>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <SectionCard icon={<ShieldAlert className="h-4 w-4 text-red-600" />} title="Fragilidade Eleitoral">
+            <SectionCard icon={<ShieldAlert className="h-4 w-4 text-red-600" />} title="Fragilidade Eleitoral" tip={TIPS.fragilidade}>
               <div className="space-y-1">
                 <p className="text-sm font-semibold">{deep.fragilidade.titulo}</p>
                 {deep.fragilidade.descricao && (
@@ -850,7 +850,7 @@ function StatePanel({ base, deep, loading, error, onRetry }: { base: StateBase; 
                 )}
               </div>
             </SectionCard>
-            <SectionCard icon={<TrendingUp className="h-4 w-4 text-green-600" />} title="Potencial de Crescimento">
+            <SectionCard icon={<TrendingUp className="h-4 w-4 text-green-600" />} title="Potencial de Crescimento" tip={TIPS.crescimento}>
               <div className="space-y-1">
                 <p className="text-sm font-semibold">{deep.crescimento.titulo}</p>
                 {deep.crescimento.descricao && (
@@ -860,16 +860,16 @@ function StatePanel({ base, deep, loading, error, onRetry }: { base: StateBase; 
             </SectionCard>
           </div>
 
-          <SectionCard icon={<Building2 className="h-4 w-4 text-blue-600" />} title="Penetração eleitoral">
+          <SectionCard icon={<Building2 className="h-4 w-4 text-blue-600" />} title="Penetração eleitoral" tip={TIPS.penetracao}>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <PenCell label="Capitais" value={deep.penetracao.capitais} />
-              <PenCell label="Cidades médias" value={deep.penetracao.cidades_medias} />
-              <PenCell label="Interior" value={deep.penetracao.interior} />
-              <PenCell label="Rural profundo" value={deep.penetracao.rural_profundo} />
+              <PenCell label="Capitais" value={deep.penetracao.capitais} tip="Grandes centros urbanos (capitais estaduais)." />
+              <PenCell label="Cidades médias" value={deep.penetracao.cidades_medias} tip="Polos regionais e cidades de médio porte." />
+              <PenCell label="Interior" value={deep.penetracao.interior} tip="Cidades pequenas do interior." />
+              <PenCell label="Rural profundo" value={deep.penetracao.rural_profundo} tip="Zonas rurais e regiões agropecuárias afastadas." />
             </div>
           </SectionCard>
 
-          <SectionCard icon={<ShieldAlert className="h-4 w-4 text-amber-600" />} title="Riscos">
+          <SectionCard icon={<ShieldAlert className="h-4 w-4 text-amber-600" />} title="Riscos" tip={TIPS.riscos}>
             <div className="space-y-2">
               {deep.riscos.map((r, i) => (
                 <div key={i} className="flex items-center justify-between gap-2 p-2 rounded-md bg-muted/40">
@@ -881,7 +881,7 @@ function StatePanel({ base, deep, loading, error, onRetry }: { base: StateBase; 
             </div>
           </SectionCard>
 
-          <SectionCard icon={<Lightbulb className="h-4 w-4 text-primary" />} title="Oportunidades">
+          <SectionCard icon={<Lightbulb className="h-4 w-4 text-primary" />} title="Oportunidades" tip={TIPS.oportunidades}>
             {deep.oportunidades.length ? (
               <ul className="space-y-1.5">
                 {deep.oportunidades.map((o, i) => (
@@ -982,8 +982,8 @@ function RegionPanel({ data, onPickUf }: { data: RegionAggregate; onPickUf: (uf:
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <ScorePill label="Força regional" value={data.electoral_strength} positive />
-            <ScorePill label="Rejeição regional" value={data.rejection_score} />
+            <ScorePill label="Força regional" value={data.electoral_strength} positive tip={TIPS.forca_regional} />
+            <ScorePill label="Rejeição regional" value={data.rejection_score} tip={TIPS.rejeicao_regional} />
           </div>
           {data.percepcao && (
             <p className="text-sm leading-relaxed text-muted-foreground italic border-l-2 border-primary/40 pl-3">
