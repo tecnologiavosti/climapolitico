@@ -158,11 +158,11 @@ Inclua EXATAMENTE 5 regiões: Norte, Nordeste, Centro-Oeste, Sudeste, Sul. Em po
 
     try {
       const aiRes = await callAICerebrasFirst({
-        systemMsg: "Você é um estrategista político brasileiro. Sempre responda JSON válido em português.",
+        systemMsg: "Você é um estrategista político brasileiro sênior. Cada candidato tem perfil próprio: nunca use scores genéricos (ex.: 50/50/50). Sempre diferencie regiões. Responda APENAS JSON válido em português.",
         userPrompt: prompt,
         jsonMode: true,
-        maxTokens: 4500,
-        temperature: 0.5,
+        maxTokens: 6000,
+        temperature: 0.7,
         tag: "regional-ai-analysis",
       });
 
