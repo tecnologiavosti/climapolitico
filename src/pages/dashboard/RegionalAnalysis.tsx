@@ -419,7 +419,7 @@ export default function RegionalAnalysis() {
           <Card className="border-destructive/30 bg-destructive/5">
             <CardContent className="py-10 text-center space-y-3">
               <AlertTriangle className="h-8 w-8 text-destructive mx-auto" />
-              <h3 className="font-semibold">A IA está temporariamente indisponível</h3>
+              <h3 className="font-semibold">Análise em processamento</h3>
               <p className="text-sm text-muted-foreground max-w-md mx-auto">{error}</p>
               <Button onClick={runAnalysis}>Tentar novamente</Button>
             </CardContent>
