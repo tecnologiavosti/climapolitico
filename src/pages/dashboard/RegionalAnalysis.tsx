@@ -20,6 +20,41 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
 import { cn } from "@/lib/utils";
+import { InfoTip } from "@/components/ui/info-tip";
+
+// ---------- Tooltips (legendas explicativas) ----------
+const TIPS = {
+  forca_nacional:
+    "Índice geral de competitividade eleitoral do candidato no país (0–100), calculado a partir de afinidade ideológica regional, presença digital, potencial de voto e rejeição.\n\nEscala:\n0–30 muito fraco · 31–50 fraco · 51–70 competitivo · 71–85 forte · 86–100 dominante.",
+  melhor_estado:
+    "Estado onde o candidato apresenta maior combinação entre força eleitoral, baixa rejeição e maior potencial de conversão de voto.",
+  maior_risco:
+    "Estado onde a rejeição é mais alta ou onde narrativas negativas possuem maior capacidade de viralização.",
+  expansao_potencial:
+    "Estado com espaço estratégico para crescimento eleitoral, mesmo sem liderança atual.",
+  mapa_regional:
+    "Mapa agregado das 5 macrorregiões brasileiras.\n\nFavorável = alta chance de adesão\nCompetitiva = disputa equilibrada\nNeutra = baixa presença política\nHostil = alta resistência eleitoral.",
+  forca_regional: "Potencial bruto de voto naquela região.",
+  rejeicao_regional: "Nível de resistência política ao candidato na região.",
+  mapa_forca:
+    "Mapa por estado mostrando competitividade eleitoral.\n\nVerde = forte (65+) · Amarelo = moderada (40–64) · Vermelho = fraca (<40).",
+  mapa_rejeicao:
+    "Mapa por estado mostrando resistência eleitoral.\n\nVerde = baixa rejeição · Amarelo = média · Vermelho = alta.",
+  perfil_eleitor:
+    "Perfil demográfico e socioeconômico do eleitor mais receptivo ao candidato naquele estado.",
+  dna_eleitoral:
+    "Temas com maior peso na decisão de voto local.\n\nAgro → importância do agronegócio\nSegurança → peso da criminalidade\nEconomia → peso da renda/emprego\nCorrupção → sensibilidade ética\nCostumes → conservadorismo/liberalismo\nSaúde → relevância de SUS/hospitais.",
+  segmentos_voto:
+    "Força de conexão do candidato com cada grupo social (agro, evangélicos, empresários, jovens urbanos, servidores, classe média).",
+  fragilidade:
+    "Principal ponto geográfico ou político onde o candidato encontra resistência.",
+  crescimento:
+    "Microrregião onde existe oportunidade de avanço eleitoral.",
+  penetracao:
+    "Nível de alcance do candidato em cada tipo de território.\n\nCapitais = grandes centros urbanos\nCidades médias = polos regionais\nInterior = cidades pequenas\nRural profundo = zonas rurais/agro.",
+  riscos: "Eventos ou narrativas que podem piorar a imagem do candidato.",
+  oportunidades: "Ações que podem melhorar a performance regional.",
+} as const;
 
 // ---------- Constantes ----------
 const REGIONS = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"] as const;
