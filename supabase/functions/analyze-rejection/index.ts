@@ -79,33 +79,28 @@ serve(async (req) => {
     }
 
     const evidenceCount = negativeComments.length;
-
-    if (evidenceCount === 0) {
-      return new Response(JSON.stringify({
-        analysis: null,
-        insufficient: true,
-        evidenceCount: 0,
-        confidence: 'baixa',
-        message: 'Sem evidências negativas encontradas neste período.',
-      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-
     const confidence = getConfidence(evidenceCount);
     const lowSample = evidenceCount < 30;
+    const noEvidence = evidenceCount === 0;
 
     const sampleForAI = negativeComments
       .filter(c => c.comment_text)
       .slice(0, 250)
       .map(c => c.comment_text.substring(0, 280));
 
-    const systemMsg = `Você é um estrategista político sênior brasileiro, especializado em reputação eleitoral, war room e mitigação de rejeição. Analise SOMENTE as evidências reais fornecidas. Não use conhecimento histórico do candidato. Não invente acusações, críticas ou narrativas. Não recuse análise por baixo volume de evidências — adapte a profundidade à amostragem. Responda em português do Brasil.`;
+    const systemMsg = `Você é um estrategista político sênior brasileiro, especializado em reputação eleitoral, war room e mitigação de rejeição. Você SEMPRE gera uma análise reputacional plausível. Quando não houver comentários coletados, baseie a análise no perfil público do candidato (nome, partido, região), no contexto político brasileiro contemporâneo e em padrões reputacionais típicos do espectro ao qual ele pertence — SEM inventar escândalos, falas, citações ou estatísticas específicas. Toda inferência deve ser interpretativa e clara como tal. Nunca recuse a análise por baixo volume. Responda em português do Brasil.`;
 
-    const userPrompt = `CANDIDATO: ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}
+    const evidenceBlock = noEvidence
+      ? `EVIDÊNCIAS REAIS: nenhuma menção negativa foi coletada nesta janela.
+Gere uma análise reputacional baseada APENAS em: perfil partidário, região, espectro ideológico provável, posicionamento histórico público amplamente conhecido e padrões de rejeição típicos desse perfil no Brasil. NÃO invente escândalos ou citações específicas. Em "comment_clusters" e "rejection_language" use exemplos representativos plausíveis marcados como inferência (ex.: "(inferência)").`
+      : `EVIDÊNCIAS REAIS (${sampleForAI.length} comentários negativos${lowSample ? ' — amostragem pequena, extraia o máximo possível mesmo assim' : ''}):
+${sampleForAI.map((c, i) => `${i + 1}. ${c}`).join('\n')}`;
+
+    const userPrompt = `CANDIDATO: ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}${candidate.region ? ` — ${candidate.region}` : ''}
 JANELA: últimos ${daysBack} dias
-EVIDÊNCIAS REAIS (${sampleForAI.length} comentários negativos${lowSample ? ' — amostragem pequena, extraia o máximo possível mesmo assim' : ''}):
-${sampleForAI.map((c, i) => `${i + 1}. ${c}`).join('\n')}
+${evidenceBlock}
 
-Sua tarefa, com base SOMENTE nessas evidências:
+Sua tarefa:
 - Por que ele é rejeitado?
 - Por quem?
 - Com qual intensidade?
@@ -127,7 +122,7 @@ Responda EXCLUSIVAMENTE em JSON válido no formato:
   "mitigation": {"comunicacao":["..."],"posicionamento":["..."],"crise":["..."],"narrativa":["..."]}
 }
 
-Regras: máximo 8 vetores, máximo 5 clusters, palavras de linguagem devem ser extraídas das evidências (não inventadas).`;
+Regras: máximo 8 vetores, máximo 5 clusters. SEMPRE retorne o JSON completo, mesmo sem evidências.`;
 
     function safeParse(raw: string | null | undefined): any | null {
       if (!raw) return null;
