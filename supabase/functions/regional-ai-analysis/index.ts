@@ -192,6 +192,127 @@ function clamp(n: number): number {
   return Math.max(0, Math.min(100, Math.round(n)));
 }
 
+async function callAIJson(userPrompt: string, tag: string, maxTokens: number): Promise<any> {
+  const aiRes = await callAICerebrasFirst({
+    systemMsg: "Você é estrategista político brasileiro sênior. Responda APENAS JSON válido em português brasileiro. Não use markdown. Não invente estatísticas, percentuais ou resultados eleitorais sem fonte; use linguagem contextual.",
+    userPrompt,
+    jsonMode: true,
+    maxTokens,
+    temperature: 0.45,
+    cerebrasModels: ["llama-3.3-70b", "qwen-3-235b-a22b-instruct-2507", "llama3.1-8b"],
+    tag: `regional-ai-analysis:${tag}`,
+  });
+
+  try {
+    return parseAIJson(aiRes.content || "{}");
+  } catch (e) {
+    console.error(`[regional-ai-analysis] JSON parse failed in ${tag} (${aiRes.provider}:${aiRes.model}):`, (e as Error).message);
+    throw e;
+  }
+}
+
+function parseAIJson(raw: string): any {
+  const source = String(raw || "").trim();
+  if (!source) throw new Error("AI_EMPTY_JSON");
+
+  const cleaned = source
+    .replace(/^```(?:json|jsonc|javascript|js)?\s*/i, "")
+    .replace(/```$/i, "")
+    .replace(/^\uFEFF/, "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .trim();
+
+  const candidate = extractJsonBlock(cleaned);
+  const attempts = [candidate, candidate.replace(/,\s*([}\]])/g, "$1")];
+
+  for (const attempt of attempts) {
+    try { return JSON.parse(attempt); } catch { /* tenta reparar abaixo */ }
+  }
+
+  try {
+    return JSON.parse(jsonrepair(candidate));
+  } catch (e) {
+    const openCurly = (candidate.match(/\{/g) || []).length;
+    const closeCurly = (candidate.match(/\}/g) || []).length;
+    const openSquare = (candidate.match(/\[/g) || []).length;
+    const closeSquare = (candidate.match(/\]/g) || []).length;
+    const truncated = openCurly !== closeCurly || openSquare !== closeSquare;
+    throw new Error(`${truncated ? "AI_JSON_TRUNCATED" : "AI_JSON_INVALID"}: ${(e as Error).message}`);
+  }
+}
+
+function extractJsonBlock(text: string): string {
+  const firstObject = text.indexOf("{");
+  const firstArray = text.indexOf("[");
+  const starts = [firstObject, firstArray].filter((n) => n >= 0);
+  if (!starts.length) throw new Error("AI_NO_JSON_BLOCK");
+  const start = Math.min(...starts);
+  const open = text[start];
+  const close = open === "{" ? "}" : "]";
+  const end = text.lastIndexOf(close);
+  if (end <= start) throw new Error("AI_JSON_BLOCK_INCOMPLETE");
+  return text.slice(start, end + 1).trim();
+}
+
+function normalizeState(rawStates: any[], uf: string): StateAnalysis {
+  const found = rawStates.find((x: any) => String(x.uf || "").toUpperCase() === uf);
+  if (!found) throw new Error(`AI_MISSING_STATE:${uf}`);
+  const dnaRaw = Array.isArray(found.dna_eleitoral) ? found.dna_eleitoral
+    : (Array.isArray(found.temas_sensibilidade) ? found.temas_sensibilidade : []);
+  const dna = TEMAS.map((t) => {
+    const hit = dnaRaw.find((x: any) => String(x.tema || "").toLowerCase().includes(t.slice(0, 4)));
+    return { tema: t, score: clamp(Number(hit?.score)) };
+  });
+  const segRaw = Array.isArray(found.segmentos_voto) ? found.segmentos_voto : [];
+  const segs = SEGMENTOS.map((s) => {
+    const hit = segRaw.find((x: any) => String(x.segmento || "").toLowerCase().includes(s.slice(0, 4)));
+    return { segmento: s, score: clamp(Number(hit?.score)) };
+  });
+  const pen = found.penetracao || {};
+  const fr = found.fragilidade || {};
+  const cr = found.crescimento || {};
+  return {
+    uf,
+    region: UF_TO_REGION[uf],
+    temperatura: String(found.temperatura || "Neutra").trim() || "Neutra",
+    electoral_strength: clamp(Number(found.electoral_strength)),
+    rejection_score: clamp(Number(found.rejection_score)),
+    perfil_eleitor_dominante: String(found.perfil_eleitor_dominante || "").trim() || `Perfil contextual de ${uf} pendente de refinamento pela IA`,
+    dna_eleitoral: dna,
+    segmentos_voto: segs,
+    penetracao: {
+      capitais: clamp(Number(pen.capitais)),
+      cidades_medias: clamp(Number(pen.cidades_medias)),
+      interior: clamp(Number(pen.interior)),
+      rural_profundo: clamp(Number(pen.rural_profundo)),
+    },
+    fragilidade: {
+      titulo: String(fr.titulo || "").trim() || "Fragilidade contextual em refinamento",
+      descricao: String(fr.descricao || "").trim(),
+    },
+    crescimento: {
+      titulo: String(cr.titulo || "").trim() || "Potencial territorial em refinamento",
+      descricao: String(cr.descricao || "").trim(),
+    },
+    riscos: Array.isArray(found.riscos) ? found.riscos.slice(0, 4).map((r: any) => ({
+      titulo: String(r.titulo || "").trim(),
+      severidade: String(r.severidade || "média").toLowerCase(),
+    })).filter((r: any) => r.titulo) : [],
+    oportunidades: Array.isArray(found.oportunidades)
+      ? found.oportunidades.slice(0, 5).map((s: any) => String(s).trim()).filter(Boolean)
+      : [],
+  };
+}
+
+function processingResponse(detail: string) {
+  return json({
+    success: false,
+    fallback: true,
+    message: "A análise está sendo processada. Tente novamente em instantes.",
+    detail,
+  }, 200);
+}
+
 function json(body: any, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
