@@ -1,5 +1,4 @@
-// Análise Regional 100% IA — Híbrida (Região + Estado)
-// Gera inteligência política contextual para 5 macrorregiões + 27 UFs, sem depender de menções.
+// Análise Regional 100% IA — Híbrida (Região + Estado) com DNA eleitoral, segmentos, fragilidade e crescimento
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 
@@ -24,35 +23,23 @@ const UF_TO_REGION: Record<string, Region> = {
   PR:"Sul",RS:"Sul",SC:"Sul",
 };
 
-const TEMAS = ["seguranca","economia","corrupcao","agro","meio_ambiente","saude"] as const;
+const TEMAS = ["agro","seguranca","economia","corrupcao","costumes","saude"] as const;
+const SEGMENTOS = ["agro","evangelicos","empresarios","jovens_urbanos","servidores","classe_media"] as const;
 
 interface StateAnalysis {
   uf: string;
   region: Region;
-  temperatura: "Favorável" | "Competitiva" | "Hostil" | "Neutra";
-  electoral_strength: number; // 0-100
-  rejection_score: number;    // 0-100
-  perfil_eleitor_dominante: string;
-  temas_sensibilidade: { tema: string; score: number }[];
-  penetracao: { capitais: number; cidades_medias: number; interior: number; rural_profundo: number };
-  riscos: { titulo: string; severidade: "baixa" | "média" | "alta" | "crítica" }[];
-  oportunidades: string[];
-}
-
-interface RegionSummary {
-  region: Region;
   temperatura: string;
-  regional_strength_score: number;
+  electoral_strength: number;
   rejection_score: number;
-  percepcao: string;
-}
-
-interface NationalKPIs {
-  forca_nacional: number;
-  melhor_uf: string;
-  uf_risco: string;
-  expansao_potencial: string;
-  sintese: string;
+  perfil_eleitor_dominante: string;
+  dna_eleitoral: { tema: string; score: number }[];
+  segmentos_voto: { segmento: string; score: number }[];
+  penetracao: { capitais: number; cidades_medias: number; interior: number; rural_profundo: number };
+  fragilidade: { titulo: string; descricao: string };
+  crescimento: { titulo: string; descricao: string };
+  riscos: { titulo: string; severidade: string }[];
+  oportunidades: string[];
 }
 
 Deno.serve(async (req) => {
@@ -74,27 +61,19 @@ Deno.serve(async (req) => {
     const { candidate_id, period_label, period_from, period_to } = body;
     if (!candidate_id) return json({ error: "missing candidate_id" }, 400);
 
-    const { data: cand, error: candErr } = await admin
+    const { data: cand } = await admin
       .from("candidates")
       .select("full_name, party, region")
       .eq("id", candidate_id)
       .eq("user_id", userId)
       .maybeSingle();
-    if (candErr) console.error("[regional-ai-analysis] candidate query error:", candErr.message);
     if (!cand) return json({ error: "candidate not found" }, 404);
 
     const periodText = period_from && period_to
       ? `${period_from} a ${period_to}`
       : period_label || "últimos 30 dias";
 
-    const prompt = `Você é um estrategista político brasileiro sênior, com domínio de:
-- histórico eleitoral por UF (TSE, eleições 2018/2020/2022/2024)
-- densidade partidária e bases organizadas
-- perfil socioeconômico (PIB per capita, IDH, urbanização)
-- religiosidade (evangélicos/católicos), agro x urbano, capitais x interior
-- ideologia dominante e fissuras locais
-
-Faça uma análise política HÍBRIDA (5 macrorregiões + 27 estados) do candidato abaixo. Cada estado deve ter análise ESPECÍFICA E CONCRETA, citando fatos, atores políticos locais, demografia e dinâmicas reais — JAMAIS frases genéricas.
+    const prompt = `Você é um estrategista político brasileiro sênior. Faça uma análise híbrida (5 macrorregiões + 27 UFs) do candidato abaixo.
 
 CANDIDATO:
 - Nome: ${cand.full_name}
@@ -102,24 +81,22 @@ CANDIDATO:
 - Região-base: ${cand.region || "não informada"}
 PERÍODO: ${periodText}
 
-PROIBIDO usar termos vagos como:
-- "perfil agropecuarista"
-- "base partidária local"
-- "oposição organizada"
-- "pode gerar adesão"
-- "região desafiadora"
-- "perfil conservador" (sem dizer qual conservadorismo, em que cidade, com que base)
-- "ampliar presença digital"
-- "aliança com lideranças locais" (sem nomear contexto real)
+REGRAS ANTI-INVENÇÃO (CRÍTICO):
+- PROIBIDO citar percentuais eleitorais específicos sem fonte (ex: "47% em 2022", "ganhou com 53%").
+- PROIBIDO inventar número de prefeituras, vereadores ou cadeiras.
+- PROIBIDO inventar resultados de eleição específicos.
+- Se NÃO houver dado verificável, use linguagem CONTEXTUAL: "historicamente", "tende a", "costuma", "tradicionalmente", "perfil que costuma rejeitar/apoiar".
+- Sempre que possível, cite NOMES REAIS de cidades, regiões metropolitanas, polos econômicos ou clivagens (ex: "Grande SP", "ABC", "Cariri-CE", "semiárido baiano", "agronegócio do MT").
 
-OBRIGATÓRIO em cada estado:
-- "perfil_eleitor_dominante": frase concreta citando cidades, faixa etária ou grupo (ex: "Classe média B/C da Grande SP e ABC, eleitor 35-55 anos com peso evangélico em Guarulhos e Osasco").
-- "riscos": nomear o RISCO REAL (ex: "Bolsão petista em Diadema e Mauá", "Lula 60%+ no semiárido baiano").
-- "oportunidades": ações concretas e específicas (ex: "Disputar voto evangélico em Cariri-CE via pauta de costumes", não "ampliar presença digital").
+PROIBIDO frases genéricas como "perfil agropecuarista", "base partidária local", "oposição organizada", "ampliar presença digital", "aliança com lideranças locais".
 
-NUNCA use scores genéricos (50/50). Diferencie cada UF com base no perfil real e no candidato específico.
+OBRIGATÓRIO por estado:
+- "perfil_eleitor_dominante": frase específica com cidades + clivagem ideológica + faixa demográfica.
+- "fragilidade": maior vulnerabilidade eleitoral do candidato naquele estado (com contexto).
+- "crescimento": cidade/região concreta com potencial real de expansão (e por quê).
+- Scores diferenciados por UF (jamais 50/50/50 em todos).
 
-Responda APENAS JSON válido neste formato exato:
+Responda APENAS JSON válido neste formato:
 
 {
   "national": {
@@ -127,10 +104,10 @@ Responda APENAS JSON válido neste formato exato:
     "melhor_uf": "SP",
     "uf_risco": "BA",
     "expansao_potencial": "MG",
-    "sintese": "Síntese estratégica nacional em 3-4 frases citando estados-chave."
+    "sintese": "Síntese estratégica em 3-4 frases citando estados e clivagens."
   },
   "regions": [
-    {"region":"Norte","temperatura":"Competitiva","regional_strength_score":0,"rejection_score":0,"percepcao":"3 a 4 frases densas e específicas sobre como o candidato é percebido nessa região, citando estados, polos e clivagens reais"}
+    {"region":"Norte","temperatura":"Competitiva","regional_strength_score":0,"rejection_score":0,"percepcao":"3-4 frases densas citando estados, polos e clivagens reais"}
   ],
   "states": [
     {
@@ -138,35 +115,45 @@ Responda APENAS JSON válido neste formato exato:
       "temperatura":"Favorável|Competitiva|Hostil|Neutra",
       "electoral_strength":0,
       "rejection_score":0,
-      "perfil_eleitor_dominante":"frase específica com cidade/região, faixa etária e clivagem",
-      "temas_sensibilidade":[
+      "perfil_eleitor_dominante":"frase específica com cidade/região e clivagem",
+      "dna_eleitoral":[
+        {"tema":"agro","score":0},
         {"tema":"seguranca","score":0},
         {"tema":"economia","score":0},
         {"tema":"corrupcao","score":0},
-        {"tema":"agro","score":0},
-        {"tema":"meio_ambiente","score":0},
+        {"tema":"costumes","score":0},
         {"tema":"saude","score":0}
       ],
+      "segmentos_voto":[
+        {"segmento":"agro","score":0},
+        {"segmento":"evangelicos","score":0},
+        {"segmento":"empresarios","score":0},
+        {"segmento":"jovens_urbanos","score":0},
+        {"segmento":"servidores","score":0},
+        {"segmento":"classe_media","score":0}
+      ],
       "penetracao":{"capitais":0,"cidades_medias":0,"interior":0,"rural_profundo":0},
+      "fragilidade":{"titulo":"título curto da vulnerabilidade","descricao":"contexto específico com cidade/grupo"},
+      "crescimento":{"titulo":"cidade ou microrregião concreta","descricao":"por que há potencial real de expansão ali"},
       "riscos":[{"titulo":"risco concreto com cidade/ator","severidade":"média"}],
       "oportunidades":["ação concreta e específica","outra ação concreta"]
     }
   ]
 }
 
-REGRAS OBRIGATÓRIAS:
-- "regions": EXATAMENTE 5 itens (Norte, Nordeste, Centro-Oeste, Sudeste, Sul).
-- "states": EXATAMENTE 27 itens, um para cada UF: ${UFS.join(", ")}.
-- Todos os scores 0-100, diferenciados.
-- "temas_sensibilidade": sempre os 6 temas: ${TEMAS.join(", ")}.
+REGRAS:
+- "regions": EXATAMENTE 5 (${REGIONS.join(", ")}).
+- "states": EXATAMENTE 27 (${UFS.join(", ")}).
+- "dna_eleitoral": sempre os 6 temas ${TEMAS.join(", ")}.
+- "segmentos_voto": sempre os 6 segmentos ${SEGMENTOS.join(", ")}.
 - Português brasileiro. Sem markdown. Apenas JSON.`;
 
     try {
       const aiRes = await callAICerebrasFirst({
-        systemMsg: "Você é estrategista político brasileiro sênior. Responda APENAS JSON válido, em português, com dados diferenciados por UF (jamais scores idênticos).",
+        systemMsg: "Você é estrategista político brasileiro sênior. Responda APENAS JSON válido, em português, com dados diferenciados por UF (jamais scores idênticos). Nunca invente percentuais eleitorais ou estatísticas sem fonte — use linguagem contextual.",
         userPrompt: prompt,
         jsonMode: true,
-        maxTokens: 12000,
+        maxTokens: 14000,
         temperature: 0.65,
         tag: "regional-ai-analysis",
       });
@@ -178,35 +165,48 @@ REGRAS OBRIGATÓRIAS:
         if (m) parsed = JSON.parse(m[0]);
       }
 
-      if (!Array.isArray(parsed.states) || parsed.states.length < 20) {
-        throw new Error("AI_INCOMPLETE_STATES");
-      }
-      if (!Array.isArray(parsed.regions) || parsed.regions.length < 5) {
-        throw new Error("AI_INCOMPLETE_REGIONS");
-      }
+      if (!Array.isArray(parsed.states) || parsed.states.length < 20) throw new Error("AI_INCOMPLETE_STATES");
+      if (!Array.isArray(parsed.regions) || parsed.regions.length < 5) throw new Error("AI_INCOMPLETE_REGIONS");
 
       const statesOut: StateAnalysis[] = UFS.map((uf) => {
         const found = parsed.states.find((x: any) => String(x.uf || "").toUpperCase() === uf);
         if (!found) throw new Error(`AI_MISSING_STATE:${uf}`);
-        const temas = Array.isArray(found.temas_sensibilidade) ? found.temas_sensibilidade : [];
-        const normTemas = TEMAS.map((t) => {
-          const hit = temas.find((x: any) => String(x.tema || "").toLowerCase().includes(t.slice(0, 4)));
+        const dnaRaw = Array.isArray(found.dna_eleitoral) ? found.dna_eleitoral
+          : (Array.isArray(found.temas_sensibilidade) ? found.temas_sensibilidade : []);
+        const dna = TEMAS.map((t) => {
+          const hit = dnaRaw.find((x: any) => String(x.tema || "").toLowerCase().includes(t.slice(0, 4)));
           return { tema: t, score: clamp(Number(hit?.score)) };
         });
+        const segRaw = Array.isArray(found.segmentos_voto) ? found.segmentos_voto : [];
+        const segs = SEGMENTOS.map((s) => {
+          const hit = segRaw.find((x: any) => String(x.segmento || "").toLowerCase().includes(s.slice(0, 4)));
+          return { segmento: s, score: clamp(Number(hit?.score)) };
+        });
         const pen = found.penetracao || {};
+        const fr = found.fragilidade || {};
+        const cr = found.crescimento || {};
         return {
           uf,
           region: UF_TO_REGION[uf],
-          temperatura: (String(found.temperatura || "").trim() || "Neutra") as any,
+          temperatura: (String(found.temperatura || "").trim() || "Neutra"),
           electoral_strength: clamp(Number(found.electoral_strength)),
           rejection_score: clamp(Number(found.rejection_score)),
           perfil_eleitor_dominante: String(found.perfil_eleitor_dominante || "").trim() || "Perfil regional não mapeado",
-          temas_sensibilidade: normTemas,
+          dna_eleitoral: dna,
+          segmentos_voto: segs,
           penetracao: {
             capitais: clamp(Number(pen.capitais)),
             cidades_medias: clamp(Number(pen.cidades_medias)),
             interior: clamp(Number(pen.interior)),
             rural_profundo: clamp(Number(pen.rural_profundo)),
+          },
+          fragilidade: {
+            titulo: String(fr.titulo || "").trim() || "Vulnerabilidade não mapeada",
+            descricao: String(fr.descricao || "").trim(),
+          },
+          crescimento: {
+            titulo: String(cr.titulo || "").trim() || "Potencial não mapeado",
+            descricao: String(cr.descricao || "").trim(),
           },
           riscos: Array.isArray(found.riscos) ? found.riscos.slice(0, 4).map((r: any) => ({
             titulo: String(r.titulo || "").trim(),
@@ -218,11 +218,10 @@ REGRAS OBRIGATÓRIAS:
         };
       });
 
-      // Bloquear scores totalmente genéricos
       const strengths = statesOut.map((s) => s.electoral_strength);
       if (strengths.every((s) => s === strengths[0])) throw new Error("AI_GENERIC_SCORES");
 
-      const regionsOut: RegionSummary[] = REGIONS.map((rg) => {
+      const regionsOut = REGIONS.map((rg) => {
         const found = parsed.regions.find((x: any) =>
           String(x.region || "").toLowerCase().includes(rg.toLowerCase().slice(0, 4))
         );
@@ -236,7 +235,7 @@ REGRAS OBRIGATÓRIAS:
       });
 
       const nat = parsed.national || {};
-      const national: NationalKPIs = {
+      const national = {
         forca_nacional: clamp(Number(nat.forca_nacional)),
         melhor_uf: String(nat.melhor_uf || statesOut.reduce((a, b) => a.electoral_strength > b.electoral_strength ? a : b).uf).toUpperCase(),
         uf_risco: String(nat.uf_risco || statesOut.reduce((a, b) => a.rejection_score > b.rejection_score ? a : b).uf).toUpperCase(),

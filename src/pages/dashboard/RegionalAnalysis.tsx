@@ -43,12 +43,21 @@ const UF_REGION: Record<string, Region> = {
 };
 
 const TEMA_LABELS: Record<string, string> = {
+  agro: "Agro",
   seguranca: "Segurança",
   economia: "Economia",
   corrupcao: "Corrupção",
-  agro: "Agro",
-  meio_ambiente: "Meio Ambiente",
+  costumes: "Costumes",
   saude: "Saúde",
+};
+
+const SEGMENTO_LABELS: Record<string, string> = {
+  agro: "Agro",
+  evangelicos: "Evangélicos",
+  empresarios: "Empresários",
+  jovens_urbanos: "Jovens urbanos",
+  servidores: "Servidores",
+  classe_media: "Classe média",
 };
 
 type PeriodKey = "7d" | "30d" | "90d" | "1y" | "custom";
@@ -78,8 +87,11 @@ interface StateAnalysis {
   electoral_strength: number;
   rejection_score: number;
   perfil_eleitor_dominante: string;
-  temas_sensibilidade: { tema: string; score: number }[];
+  dna_eleitoral: { tema: string; score: number }[];
+  segmentos_voto: { segmento: string; score: number }[];
   penetracao: { capitais: number; cidades_medias: number; interior: number; rural_profundo: number };
+  fragilidade: { titulo: string; descricao: string };
+  crescimento: { titulo: string; descricao: string };
   riscos: { titulo: string; severidade: string }[];
   oportunidades: string[];
 }
@@ -130,6 +142,18 @@ function tempColor(t: string): string {
   if (k.includes("favor")) return "hsl(142 76% 36%)";
   if (k.includes("compet")) return "hsl(48 96% 53%)";
   if (k.includes("hostil")) return "hsl(0 84% 60%)";
+  return "hsl(220 9% 60%)";
+}
+
+function strengthColor(v: number): string {
+  if (v >= 65) return "hsl(142 76% 36%)";
+  if (v >= 40) return "hsl(142 50% 55%)";
+  return "hsl(220 9% 60%)";
+}
+
+function rejectionColor(v: number): string {
+  if (v >= 65) return "hsl(0 84% 60%)";
+  if (v >= 40) return "hsl(38 92% 55%)";
   return "hsl(220 9% 60%)";
 }
 
@@ -301,7 +325,7 @@ export default function RegionalAnalysis() {
       const summary = analysis.regions.find((r) => r.region === rg);
       const avg = (arr: number[]) => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
       const temas: Record<string, number[]> = {};
-      sts.forEach((s) => s.temas_sensibilidade.forEach((t) => {
+      sts.forEach((s) => s.dna_eleitoral.forEach((t) => {
         (temas[t.tema] ||= []).push(t.score);
       }));
       const temasAgg = Object.entries(temas).map(([tema, arr]) => ({ tema, score: avg(arr) }))
@@ -488,20 +512,19 @@ export default function RegionalAnalysis() {
               </Card>
             </div>
 
-            {/* Mapa por Estado (27 UFs) + detalhe */}
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-              <Card className="lg:col-span-2">
+            {/* Dois mapas: Força e Rejeição */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base flex items-center gap-2">
-                    <MapPinned className="h-4 w-4 text-primary" /> Mapa por Estado
+                    <TrendingUp className="h-4 w-4 text-green-600" /> Mapa de Força Eleitoral
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <svg viewBox={BR_STATES_MAP.viewBox} className="w-full h-auto">
                     {Object.entries(BR_STATES_MAP.states).map(([uf, data]) => {
                       const s = stateMap[uf];
-                      const temp = s ? temperatureFromStrength(s.electoral_strength, s.rejection_score) : "Neutra";
-                      const fill = s ? tempColor(temp) : "hsl(220 9% 75%)";
+                      const fill = s ? strengthColor(s.electoral_strength) : "hsl(220 9% 75%)";
                       const isSel = uf === selectedUf && detailMode === "state";
                       const isHover = uf === hoverUf;
                       return (
@@ -516,33 +539,71 @@ export default function RegionalAnalysis() {
                           onClick={() => { setSelectedUf(uf); setDetailMode("state"); }}
                           onMouseEnter={() => setHoverUf(uf)}
                           onMouseLeave={() => setHoverUf(null)}
-                          style={{ filter: isSel ? "drop-shadow(0 0 6px hsl(var(--primary) / 0.55))" : undefined }}
                         >
-                          <title>{UF_NAMES[uf]} — Força {s?.electoral_strength ?? 0} · Rejeição {s?.rejection_score ?? 0}</title>
+                          <title>{UF_NAMES[uf]} — Força {s?.electoral_strength ?? 0}/100</title>
                         </path>
                       );
                     })}
                   </svg>
                   <div className="flex flex-wrap gap-2 mt-3 text-xs">
-                    <Legend color="hsl(142 76% 36%)" label="Favorável" />
-                    <Legend color="hsl(48 96% 53%)" label="Competitivo" />
-                    <Legend color="hsl(0 84% 60%)" label="Desfavorável" />
-                    <Legend color="hsl(220 9% 60%)" label="Neutro" />
+                    <Legend color="hsl(142 76% 36%)" label="Forte (65+)" />
+                    <Legend color="hsl(142 50% 55%)" label="Moderada (40-64)" />
+                    <Legend color="hsl(220 9% 60%)" label="Fraca (<40)" />
                   </div>
                 </CardContent>
               </Card>
 
-              <div className="lg:col-span-3 transition-all duration-300" key={`${detailMode}-${detailMode === "state" ? selectedUf : selectedRegion}`}>
-                {detailMode === "region" && currentRegion ? (
-                  <RegionPanel data={currentRegion} onPickUf={(uf) => { setSelectedUf(uf); setDetailMode("state"); }} />
-                ) : currentState ? (
-                  <StatePanel data={currentState} />
-                ) : (
-                  <Card><CardContent className="py-10 text-center text-muted-foreground">
-                    Selecione um estado ou região no mapa.
-                  </CardContent></Card>
-                )}
-              </div>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <ShieldAlert className="h-4 w-4 text-red-600" /> Mapa de Rejeição
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <svg viewBox={BR_STATES_MAP.viewBox} className="w-full h-auto">
+                    {Object.entries(BR_STATES_MAP.states).map(([uf, data]) => {
+                      const s = stateMap[uf];
+                      const fill = s ? rejectionColor(s.rejection_score) : "hsl(220 9% 75%)";
+                      const isSel = uf === selectedUf && detailMode === "state";
+                      const isHover = uf === hoverUf;
+                      return (
+                        <path
+                          key={uf}
+                          d={(data as any).path}
+                          fill={fill}
+                          stroke={isSel ? "hsl(var(--primary))" : "hsl(var(--background))"}
+                          strokeWidth={isSel ? 1.8 : 0.6}
+                          opacity={isHover && !isSel ? 0.85 : 1}
+                          className="cursor-pointer transition-all duration-300"
+                          onClick={() => { setSelectedUf(uf); setDetailMode("state"); }}
+                          onMouseEnter={() => setHoverUf(uf)}
+                          onMouseLeave={() => setHoverUf(null)}
+                        >
+                          <title>{UF_NAMES[uf]} — Rejeição {s?.rejection_score ?? 0}/100</title>
+                        </path>
+                      );
+                    })}
+                  </svg>
+                  <div className="flex flex-wrap gap-2 mt-3 text-xs">
+                    <Legend color="hsl(0 84% 60%)" label="Alta (65+)" />
+                    <Legend color="hsl(38 92% 55%)" label="Média (40-64)" />
+                    <Legend color="hsl(220 9% 60%)" label="Baixa (<40)" />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Detalhe (estado ou região) */}
+            <div className="transition-all duration-300" key={`${detailMode}-${detailMode === "state" ? selectedUf : selectedRegion}`}>
+              {detailMode === "region" && currentRegion ? (
+                <RegionPanel data={currentRegion} onPickUf={(uf) => { setSelectedUf(uf); setDetailMode("state"); }} />
+              ) : currentState ? (
+                <StatePanel data={currentState} />
+              ) : (
+                <Card><CardContent className="py-10 text-center text-muted-foreground">
+                  Selecione um estado no mapa.
+                </CardContent></Card>
+              )}
             </div>
           </>
         )}
@@ -640,9 +701,9 @@ function StatePanel({ data }: { data: StateAnalysis }) {
         <p className="text-sm leading-relaxed">{data.perfil_eleitor_dominante}</p>
       </SectionCard>
 
-      <SectionCard icon={<Sparkles className="h-4 w-4 text-amber-500" />} title="Sensibilidade temática">
+      <SectionCard icon={<Sparkles className="h-4 w-4 text-amber-500" />} title="DNA Eleitoral">
         <div className="space-y-2">
-          {data.temas_sensibilidade.map((t) => (
+          {data.dna_eleitoral.map((t) => (
             <div key={t.tema} className="flex items-center gap-3">
               <span className="text-xs w-28 text-muted-foreground">{TEMA_LABELS[t.tema] || t.tema}</span>
               <Progress value={t.score} className="h-2 flex-1" />
@@ -651,6 +712,37 @@ function StatePanel({ data }: { data: StateAnalysis }) {
           ))}
         </div>
       </SectionCard>
+
+      <SectionCard icon={<Users className="h-4 w-4 text-blue-600" />} title="Segmentos de Voto">
+        <div className="space-y-2">
+          {data.segmentos_voto.map((s) => (
+            <div key={s.segmento} className="flex items-center gap-3">
+              <span className="text-xs w-28 text-muted-foreground">{SEGMENTO_LABELS[s.segmento] || s.segmento}</span>
+              <Progress value={s.score} className="h-2 flex-1" />
+              <span className="text-xs font-medium w-10 text-right tabular-nums">{s.score}</span>
+            </div>
+          ))}
+        </div>
+      </SectionCard>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <SectionCard icon={<ShieldAlert className="h-4 w-4 text-red-600" />} title="Fragilidade Eleitoral">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold">{data.fragilidade.titulo}</p>
+            {data.fragilidade.descricao && (
+              <p className="text-sm text-muted-foreground leading-relaxed">{data.fragilidade.descricao}</p>
+            )}
+          </div>
+        </SectionCard>
+        <SectionCard icon={<TrendingUp className="h-4 w-4 text-green-600" />} title="Potencial de Crescimento">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold">{data.crescimento.titulo}</p>
+            {data.crescimento.descricao && (
+              <p className="text-sm text-muted-foreground leading-relaxed">{data.crescimento.descricao}</p>
+            )}
+          </div>
+        </SectionCard>
+      </div>
 
       <SectionCard icon={<Building2 className="h-4 w-4 text-blue-600" />} title="Penetração eleitoral">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
