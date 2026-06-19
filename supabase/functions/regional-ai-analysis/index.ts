@@ -1,4 +1,5 @@
-// Análise Regional 100% IA — Híbrida (Região + Estado) com DNA eleitoral, segmentos, fragilidade e crescimento
+// Análise Regional — Modo OVERVIEW: IA gera só 5 regiões; 27 estados são calculados por algoritmo.
+// Modo STATE_DEEP: IA gera análise profunda de UM estado quando o usuário clica.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { jsonrepair } from "npm:jsonrepair@3.13.1";
 import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
@@ -24,24 +25,31 @@ const UF_TO_REGION: Record<string, Region> = {
   PR:"Sul",RS:"Sul",SC:"Sul",
 };
 
+// Perfil eleitoral simplificado por UF (-1 esquerda ... +1 direita) e profile dominante
+const UF_PROFILE: Record<string, { leaning: number; profile: "agro"|"urbano"|"industrial"|"servicos"|"misto"; weight: number }> = {
+  AC:{leaning:0.6,profile:"agro",weight:0.4}, AM:{leaning:0.3,profile:"misto",weight:0.6},
+  AP:{leaning:0.1,profile:"misto",weight:0.4}, PA:{leaning:0.0,profile:"agro",weight:0.7},
+  RO:{leaning:0.7,profile:"agro",weight:0.5}, RR:{leaning:0.6,profile:"agro",weight:0.3}, TO:{leaning:0.4,profile:"agro",weight:0.4},
+  AL:{leaning:-0.2,profile:"misto",weight:0.5}, BA:{leaning:-0.5,profile:"misto",weight:0.8},
+  CE:{leaning:-0.4,profile:"servicos",weight:0.7}, MA:{leaning:-0.5,profile:"agro",weight:0.6},
+  PB:{leaning:-0.3,profile:"misto",weight:0.5}, PE:{leaning:-0.4,profile:"industrial",weight:0.7},
+  PI:{leaning:-0.4,profile:"agro",weight:0.5}, RN:{leaning:-0.2,profile:"servicos",weight:0.5}, SE:{leaning:-0.2,profile:"misto",weight:0.4},
+  DF:{leaning:0.2,profile:"servicos",weight:0.6}, GO:{leaning:0.6,profile:"agro",weight:0.7},
+  MT:{leaning:0.8,profile:"agro",weight:0.7}, MS:{leaning:0.7,profile:"agro",weight:0.6},
+  ES:{leaning:0.4,profile:"industrial",weight:0.6}, MG:{leaning:0.2,profile:"misto",weight:0.9},
+  RJ:{leaning:0.1,profile:"servicos",weight:0.9}, SP:{leaning:0.3,profile:"industrial",weight:1.0},
+  PR:{leaning:0.6,profile:"agro",weight:0.8}, RS:{leaning:0.3,profile:"agro",weight:0.8}, SC:{leaning:0.7,profile:"industrial",weight:0.7},
+};
+
+const PARTY_IDEOLOGY: Record<string, number> = {
+  PT:-0.8, PSOL:-0.9, PCDOB:-0.8, PDT:-0.4, PSB:-0.4, REDE:-0.3,
+  MDB:0.0, PSDB:0.1, PSD:0.1, CIDADANIA:0.0, AGIR:0.1, AVANTE:0.1, SOLIDARIEDADE:0.0,
+  UNIAO:0.5, "UNIÃO":0.5, UB:0.5, PP:0.5, REPUBLICANOS:0.6, REP:0.6, PL:0.7,
+  NOVO:0.7, PRTB:0.7, PATRIOTA:0.6, PMB:0.3, PODE:0.3, PODEMOS:0.3,
+};
+
 const TEMAS = ["agro","seguranca","economia","corrupcao","costumes","saude"] as const;
 const SEGMENTOS = ["agro","evangelicos","empresarios","jovens_urbanos","servidores","classe_media"] as const;
-
-interface StateAnalysis {
-  uf: string;
-  region: Region;
-  temperatura: string;
-  electoral_strength: number;
-  rejection_score: number;
-  perfil_eleitor_dominante: string;
-  dna_eleitoral: { tema: string; score: number }[];
-  segmentos_voto: { segmento: string; score: number }[];
-  penetracao: { capitais: number; cidades_medias: number; interior: number; rural_profundo: number };
-  fragilidade: { titulo: string; descricao: string };
-  crescimento: { titulo: string; descricao: string };
-  riscos: { titulo: string; severidade: string }[];
-  oportunidades: string[];
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -50,16 +58,13 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return processingResponse("Sessão não validada. Atualize a página e tente novamente.");
 
-    const admin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { data: userData } = await admin.auth.getUser(authHeader.replace("Bearer ", ""));
     const userId = userData?.user?.id;
     if (!userId) return processingResponse("Sessão não validada. Atualize a página e tente novamente.");
 
     const body = await req.json();
-    const { candidate_id, period_label, period_from, period_to } = body || {};
+    const { candidate_id, period_label, period_from, period_to, mode = "overview", uf: ufParam } = body || {};
     if (!candidate_id) return processingResponse("Selecione um candidato para gerar a análise regional.");
 
     const { data: cand } = await admin
@@ -68,135 +73,248 @@ Deno.serve(async (req) => {
       .eq("id", candidate_id)
       .eq("user_id", userId)
       .maybeSingle();
-    if (!cand) return processingResponse("Não foi possível localizar o candidato selecionado. Atualize a lista e tente novamente.");
+    if (!cand) return processingResponse("Não foi possível localizar o candidato selecionado.");
 
-    const periodText = period_from && period_to
-      ? `${period_from} a ${period_to}`
-      : period_label || "últimos 30 dias";
+    const periodText = period_from && period_to ? `${period_from} a ${period_to}` : period_label || "últimos 30 dias";
 
-    const baseContext = `Você é um estrategista político brasileiro sênior. Faça uma análise regional estratégica do candidato abaixo.
-
-CANDIDATO:
-- Nome: ${cand.full_name}
-- Partido: ${cand.party || "não informado"}
-- Região-base: ${cand.region || "não informada"}
-PERÍODO: ${periodText}
-
-REGRAS ANTI-INVENÇÃO (CRÍTICO):
-- PROIBIDO citar percentuais eleitorais específicos sem fonte (ex: "47% em 2022", "ganhou com 53%").
-- PROIBIDO inventar número de prefeituras, vereadores ou cadeiras.
-- PROIBIDO inventar resultados de eleição específicos.
-- Se NÃO houver dado verificável, use linguagem CONTEXTUAL: "historicamente", "tende a", "costuma", "tradicionalmente", "perfil que costuma rejeitar/apoiar".
-- Sempre que possível, cite NOMES REAIS de cidades, regiões metropolitanas, polos econômicos ou clivagens (ex: "Grande SP", "ABC", "Cariri-CE", "semiárido baiano", "agronegócio do MT").
-
-PROIBIDO frases genéricas como "perfil agropecuarista", "base partidária local", "oposição organizada", "ampliar presença digital", "aliança com lideranças locais".
-
-OBRIGATÓRIO por estado:
-- "perfil_eleitor_dominante": frase específica com cidades + clivagem ideológica + faixa demográfica.
-- "fragilidade": maior vulnerabilidade eleitoral do candidato naquele estado (com contexto).
-- "crescimento": cidade/região concreta com potencial real de expansão (e por quê).
-- Scores diferenciados por UF (jamais 50/50/50 em todos).
-
-REGRAS:
-- "dna_eleitoral": sempre os 6 temas ${TEMAS.join(", ")}.
-- "segmentos_voto": sempre os 6 segmentos ${SEGMENTOS.join(", ")}.
-- Português brasileiro. Sem markdown. Apenas JSON válido.
-- Não use aspas duplas dentro de textos; se precisar destacar termo, use aspas simples.`;
-
-    try {
-      const nationalPrompt = `${baseContext}
-
-Gere SOMENTE este JSON:
-{"national":{"forca_nacional":0,"melhor_uf":"SP","uf_risco":"BA","expansao_potencial":"MG","sintese":"Síntese estratégica em 3-4 frases citando estados e clivagens."}}`;
-
-      const regionsPrompt = `${baseContext}
-
-Gere EXATAMENTE as 5 macrorregiões (${REGIONS.join(", ")}), sem omitir nenhuma, SOMENTE neste JSON:
-{"regions":[{"region":"Norte","temperatura":"Competitiva","regional_strength_score":0,"rejection_score":0,"percepcao":"3-4 frases densas citando estados, polos e clivagens reais"},{"region":"Nordeste","temperatura":"Competitiva","regional_strength_score":0,"rejection_score":0,"percepcao":"3-4 frases densas"},{"region":"Centro-Oeste","temperatura":"Competitiva","regional_strength_score":0,"rejection_score":0,"percepcao":"3-4 frases densas"},{"region":"Sudeste","temperatura":"Competitiva","regional_strength_score":0,"rejection_score":0,"percepcao":"3-4 frases densas"},{"region":"Sul","temperatura":"Competitiva","regional_strength_score":0,"rejection_score":0,"percepcao":"3-4 frases densas"}]}`;
-
-      const statePrompt = (region: Region, ufs: string[]) => `${baseContext}
-
-Gere análise estadual APENAS para a região ${region}, com EXATAMENTE estes estados: ${ufs.join(", ")}.
-O array "states" deve conter ${ufs.length} objetos, um para cada UF listada, sem omitir nenhuma.
-Responda SOMENTE este JSON:
-{"states":[{"uf":"${ufs[0]}","temperatura":"Favorável|Competitiva|Hostil|Neutra","electoral_strength":0,"rejection_score":0,"perfil_eleitor_dominante":"frase específica com cidade/região e clivagem","dna_eleitoral":[{"tema":"agro","score":0},{"tema":"seguranca","score":0},{"tema":"economia","score":0},{"tema":"corrupcao","score":0},{"tema":"costumes","score":0},{"tema":"saude","score":0}],"segmentos_voto":[{"segmento":"agro","score":0},{"segmento":"evangelicos","score":0},{"segmento":"empresarios","score":0},{"segmento":"jovens_urbanos","score":0},{"segmento":"servidores","score":0},{"segmento":"classe_media","score":0}],"penetracao":{"capitais":0,"cidades_medias":0,"interior":0,"rural_profundo":0},"fragilidade":{"titulo":"título curto da vulnerabilidade","descricao":"contexto específico com cidade/grupo"},"crescimento":{"titulo":"cidade ou microrregião concreta","descricao":"por que há potencial real de expansão ali"},"riscos":[{"titulo":"risco concreto com cidade/ator","severidade":"média"}],"oportunidades":["ação concreta e específica","outra ação concreta"]}]}`;
-
-      const byRegion = REGIONS.map((rg) => ({ region: rg, ufs: UFS.filter((uf) => UF_TO_REGION[uf] === rg) }));
-      const [nationalParsed, regionsParsed, ...stateParts] = await Promise.all([
-        callAIJson(nationalPrompt, "national_radar", 1200),
-        callAIJson(regionsPrompt, "macro_regions", 3800),
-        ...byRegion.map(({ region, ufs }) => callAIJson(statePrompt(region, ufs), `states_${region}`, 5200)),
-      ]);
-
-      let allRawStates = stateParts.flatMap((part: any) => Array.isArray(part.states) ? part.states : []);
-      const missingAfterBatch = UFS.filter((uf) => !allRawStates.some((x: any) => String(x.uf || "").toUpperCase() === uf));
-      if (missingAfterBatch.length) {
-        console.warn(`[regional-ai-analysis] complementando UFs ausentes: ${missingAfterBatch.join(",")}`);
-        const complements = await Promise.all(missingAfterBatch.map((uf) => callAIJson(statePrompt(UF_TO_REGION[uf], [uf]), `state_retry_${uf}`, 2200)));
-        allRawStates = allRawStates.concat(complements.flatMap((part: any) => Array.isArray(part.states) ? part.states : []));
+    // ============ MODE: STATE_DEEP ============
+    if (mode === "state_deep") {
+      const uf = String(ufParam || "").toUpperCase();
+      if (!UFS.includes(uf as any)) return processingResponse("UF inválida.");
+      try {
+        const deep = await generateStateDeep(cand, periodText, uf);
+        return json({ success: true, mode: "state_deep", uf, state: deep, generated_at: new Date().toISOString() });
+      } catch (e) {
+        return json({ success: false, fallback: true, message: "A análise está sendo processada. Tente novamente em instantes.", detail: (e as Error).message });
       }
-      const stillMissing = UFS.filter((uf) => !allRawStates.some((x: any) => String(x.uf || "").toUpperCase() === uf));
-      if (stillMissing.length) throw new Error(`AI_MISSING_STATES:${stillMissing.join(",")}`);
+    }
 
-      const statesOut: StateAnalysis[] = UFS.map((uf) => normalizeState(allRawStates, uf));
-
-      const strengths = statesOut.map((s) => s.electoral_strength);
-      if (strengths.every((s) => s === strengths[0])) throw new Error("AI_GENERIC_SCORES");
-
+    // ============ MODE: OVERVIEW ============
+    try {
+      const regionsParsed = await callAIJson(regionsPrompt(cand, periodText), "macro_regions", 3200);
       const rawRegions = Array.isArray((regionsParsed as any).regions) ? (regionsParsed as any).regions : [];
-      const regionsOut = REGIONS.map((rg) => {
-        const found = rawRegions.find((x: any) =>
-          String(x.region || "").toLowerCase().includes(rg.toLowerCase().slice(0, 4))
-        );
-        const regionStates = statesOut.filter((s) => s.region === rg);
-        const avg = (arr: number[]) => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
-        const top = regionStates.reduce((a, b) => a.electoral_strength > b.electoral_strength ? a : b, regionStates[0]);
-        const risk = regionStates.reduce((a, b) => a.rejection_score > b.rejection_score ? a : b, regionStates[0]);
+
+      // normaliza regiões (com rescale 0-10 -> 0-100 + diferenciação forçada)
+      let regionsOut = REGIONS.map((rg) => {
+        const found = rawRegions.find((x: any) => String(x.region || "").toLowerCase().includes(rg.toLowerCase().slice(0, 4)));
         return {
           region: rg,
-          temperatura: String(found?.temperatura || top?.temperatura || "Neutra"),
-          regional_strength_score: clamp(Number(found?.regional_strength_score ?? avg(regionStates.map((s) => s.electoral_strength)))),
-          rejection_score: clamp(Number(found?.rejection_score ?? avg(regionStates.map((s) => s.rejection_score)))),
-          percepcao: String(found?.percepcao || `Na região ${rg}, a leitura estadual aponta melhor tração em ${top?.uf || "UF competitiva"} e maior vulnerabilidade em ${risk?.uf || "UF de atenção"}. O padrão combina ${top?.perfil_eleitor_dominante || "clivagens locais"} com riscos territoriais que exigem abordagem diferenciada por capital, interior e polos econômicos.`).trim(),
+          regional_strength_score: rescale(Number(found?.regional_strength_score ?? found?.forca ?? 50)),
+          rejection_score: rescale(Number(found?.rejection_score ?? found?.rejeicao ?? 35)),
+          percepcao: String(found?.percepcao || found?.resumo || "").trim(),
+          temperatura: String(found?.temperatura || "").trim(),
         };
       });
+      regionsOut = differentiateRegions(regionsOut);
 
-      const nat = (nationalParsed as any).national || {};
+      // calcula 27 estados algoritmicamente
+      const statesOut = UFS.map((uf) => computeStateScore(uf, cand, regionsOut));
+
+      // national síntese
+      const best = statesOut.reduce((a, b) => a.electoral_strength > b.electoral_strength ? a : b);
+      const worst = statesOut.reduce((a, b) => a.rejection_score > b.rejection_score ? a : b);
+      const expansion = statesOut
+        .filter((s) => s.electoral_strength >= 40 && s.electoral_strength < 65)
+        .sort((a, b) => b.electoral_strength - a.electoral_strength)[0];
       const national = {
-        forca_nacional: clamp(Number(nat.forca_nacional)),
-        melhor_uf: String(nat.melhor_uf || statesOut.reduce((a, b) => a.electoral_strength > b.electoral_strength ? a : b).uf).toUpperCase(),
-        uf_risco: String(nat.uf_risco || statesOut.reduce((a, b) => a.rejection_score > b.rejection_score ? a : b).uf).toUpperCase(),
-        expansao_potencial: String(nat.expansao_potencial || "").toUpperCase(),
-        sintese: String(nat.sintese || "").trim(),
+        forca_nacional: Math.round(statesOut.reduce((a, b) => a + b.electoral_strength, 0) / statesOut.length),
+        melhor_uf: best.uf,
+        uf_risco: worst.uf,
+        expansao_potencial: expansion?.uf || best.uf,
+        sintese: `Cenário híbrido: ${cand.full_name} apresenta maior tração em ${best.uf} e maior vulnerabilidade em ${worst.uf}. Potencial real de expansão concentrado em ${expansion?.uf || best.uf}.`,
       };
 
-      console.log(`[regional-ai-analysis] ✅ split-generation national+regions+${stateParts.length} state batches`);
       return json({
+        success: true,
+        mode: "overview",
         national,
         regions: regionsOut,
         states: statesOut,
         generated_at: new Date().toISOString(),
       });
     } catch (e) {
-      const msg = (e as Error).message || "AI_UNAVAILABLE";
-      console.error("[regional-ai-analysis] AI failed:", msg);
-      return json({
-        success: false,
-        fallback: true,
-        message: "A análise está sendo processada. Tente novamente em instantes.",
-        detail: msg,
-      }, 200);
+      console.error("[regional-ai-analysis] overview AI failed:", (e as Error).message);
+      return json({ success: false, fallback: true, message: "A análise está sendo processada. Tente novamente em instantes.", detail: (e as Error).message });
     }
   } catch (e) {
     console.error("regional-ai-analysis error:", (e as Error).message);
-    return json({
-      success: false,
-      fallback: true,
-      message: "A análise está sendo processada. Tente novamente em instantes.",
-      detail: (e as Error).message,
-    }, 200);
+    return json({ success: false, fallback: true, message: "A análise está sendo processada. Tente novamente em instantes.", detail: (e as Error).message });
   }
 });
+
+// =========================================================
+// PROMPTS
+// =========================================================
+function baseContext(cand: any, periodText: string) {
+  return `Você é estrategista político brasileiro sênior. Analise:
+- Candidato: ${cand.full_name}
+- Partido: ${cand.party || "não informado"}
+- Região-base: ${cand.region || "não informada"}
+- Período: ${periodText}
+
+REGRAS ANTI-INVENÇÃO (CRÍTICO):
+- PROIBIDO percentuais eleitorais específicos sem fonte (ex: "47% em 2022").
+- PROIBIDO inventar nº de prefeituras, vereadores, cadeiras ou resultados eleitorais.
+- Use linguagem CONTEXTUAL: "historicamente", "tende a", "costuma", "tradicionalmente".
+- Sempre que possível, cite NOMES REAIS (Grande SP, ABC, Cariri, semiárido, agro do MT etc).
+- PROIBIDO frases genéricas: "perfil agropecuarista", "base partidária local", "oposição organizada", "ampliar presença digital", "aliança com lideranças locais", "conflito com logística de SP", "fragilidade em toda região metropolitana".
+
+Português brasileiro. Sem markdown. Apenas JSON válido.`;
+}
+
+function regionsPrompt(cand: any, periodText: string) {
+  return `${baseContext(cand, periodText)}
+
+Gere análise das 5 macrorregiões. Cada uma com força (0-100), rejeição (0-100) e percepção (3 frases densas, com clivagens reais).
+NÃO classifique todas como "Competitiva". Diferencie usando: Favorável / Competitiva / Hostil / Neutra.
+SOMENTE este JSON:
+{"regions":[
+{"region":"Norte","regional_strength_score":0,"rejection_score":0,"percepcao":"...","temperatura":"Competitiva"},
+{"region":"Nordeste","regional_strength_score":0,"rejection_score":0,"percepcao":"...","temperatura":"Hostil"},
+{"region":"Centro-Oeste","regional_strength_score":0,"rejection_score":0,"percepcao":"...","temperatura":"Favorável"},
+{"region":"Sudeste","regional_strength_score":0,"rejection_score":0,"percepcao":"...","temperatura":"Competitiva"},
+{"region":"Sul","regional_strength_score":0,"rejection_score":0,"percepcao":"...","temperatura":"Favorável"}
+]}`;
+}
+
+async function generateStateDeep(cand: any, periodText: string, uf: string) {
+  const region = UF_TO_REGION[uf];
+  const prompt = `${baseContext(cand, periodText)}
+
+Análise PROFUNDA do estado ${uf} (região ${region}).
+Cite cidades reais, clivagens locais, polos econômicos do ${uf}. Scores 0-100 (não 0-10).
+
+SOMENTE este JSON:
+{"perfil_eleitor_dominante":"frase específica com cidades de ${uf} + clivagem ideológica + faixa demográfica",
+"dna_eleitoral":[{"tema":"agro","score":0},{"tema":"seguranca","score":0},{"tema":"economia","score":0},{"tema":"corrupcao","score":0},{"tema":"costumes","score":0},{"tema":"saude","score":0}],
+"segmentos_voto":[{"segmento":"agro","score":0},{"segmento":"evangelicos","score":0},{"segmento":"empresarios","score":0},{"segmento":"jovens_urbanos","score":0},{"segmento":"servidores","score":0},{"segmento":"classe_media","score":0}],
+"penetracao":{"capitais":0,"cidades_medias":0,"interior":0,"rural_profundo":0},
+"fragilidade":{"titulo":"título curto","descricao":"contexto específico com cidade/grupo de ${uf}"},
+"crescimento":{"titulo":"cidade/microrregião concreta de ${uf}","descricao":"por que há potencial real ali"},
+"riscos":[{"titulo":"risco concreto em cidade/ator de ${uf}","severidade":"média"}],
+"oportunidades":["ação concreta e específica em ${uf}","outra ação"],
+"temas_dominantes":["tema 1 com contexto","tema 2"]}`;
+
+  const parsed = await callAIJson(prompt, `state_deep_${uf}`, 2800);
+  const dnaRaw = Array.isArray(parsed.dna_eleitoral) ? parsed.dna_eleitoral : [];
+  const segRaw = Array.isArray(parsed.segmentos_voto) ? parsed.segmentos_voto : [];
+  const pen = parsed.penetracao || {};
+  const fr = parsed.fragilidade || {};
+  const cr = parsed.crescimento || {};
+  return {
+    uf, region,
+    perfil_eleitor_dominante: String(parsed.perfil_eleitor_dominante || "").trim(),
+    dna_eleitoral: TEMAS.map((t) => {
+      const hit = dnaRaw.find((x: any) => String(x.tema || "").toLowerCase().includes(t.slice(0, 4)));
+      return { tema: t, score: rescale(Number(hit?.score)) };
+    }),
+    segmentos_voto: SEGMENTOS.map((s) => {
+      const hit = segRaw.find((x: any) => String(x.segmento || "").toLowerCase().includes(s.slice(0, 4)));
+      return { segmento: s, score: rescale(Number(hit?.score)) };
+    }),
+    penetracao: {
+      capitais: rescale(Number(pen.capitais)),
+      cidades_medias: rescale(Number(pen.cidades_medias)),
+      interior: rescale(Number(pen.interior)),
+      rural_profundo: rescale(Number(pen.rural_profundo)),
+    },
+    fragilidade: { titulo: String(fr.titulo || "").trim(), descricao: String(fr.descricao || "").trim() },
+    crescimento: { titulo: String(cr.titulo || "").trim(), descricao: String(cr.descricao || "").trim() },
+    riscos: Array.isArray(parsed.riscos) ? parsed.riscos.slice(0, 4).map((r: any) => ({
+      titulo: String(r.titulo || "").trim(),
+      severidade: String(r.severidade || "média").toLowerCase(),
+    })).filter((r: any) => r.titulo) : [],
+    oportunidades: Array.isArray(parsed.oportunidades)
+      ? parsed.oportunidades.slice(0, 5).map((s: any) => String(s).trim()).filter(Boolean) : [],
+    temas_dominantes: Array.isArray(parsed.temas_dominantes)
+      ? parsed.temas_dominantes.slice(0, 5).map((s: any) => String(s).trim()).filter(Boolean) : [],
+  };
+}
+
+// =========================================================
+// ALGORITMO ESTADUAL
+// =========================================================
+function computeStateScore(uf: string, cand: any, regions: { region: Region; regional_strength_score: number; rejection_score: number }[]) {
+  const region = UF_TO_REGION[uf];
+  const reg = regions.find((r) => r.region === region)!;
+  const prof = UF_PROFILE[uf];
+  const candIdeo = ideologyOf(cand.party);
+  const candRegion = String(cand.region || "").trim();
+
+  // 1) afinidade regional (0-100)
+  const region_affinity = reg.regional_strength_score;
+
+  // 2) ideológica: quanto menor a distância, melhor
+  const ideoDist = Math.abs(prof.leaning - candIdeo); // 0..2
+  const ideological_fit = clamp(100 - ideoDist * 45);
+
+  // 3) econômica: agro+agro casa bem; etc.
+  const candProfile = profileOf(cand.party);
+  const economic_fit = prof.profile === candProfile ? 80 : (prof.profile === "misto" ? 60 : 50);
+
+  // 4) digital — depende do peso/urbanização da UF
+  const digital_presence = clamp(40 + prof.weight * 40);
+
+  // 5) força local — bônus se UF estiver na região-base do candidato
+  const sameRegion = candRegion && (candRegion.toLowerCase().includes(region.toLowerCase()) || candRegion.toUpperCase() === uf);
+  const local_strength = sameRegion ? 85 : 45;
+
+  const electoral_strength = clamp(
+    0.30 * region_affinity +
+    0.25 * ideological_fit +
+    0.20 * economic_fit +
+    0.15 * digital_presence +
+    0.10 * local_strength
+  );
+
+  // rejeição: regional + atrito ideológico
+  const rejection_score = clamp(
+    0.55 * reg.rejection_score +
+    0.30 * (ideoDist * 50) +
+    0.15 * (100 - digital_presence)
+  );
+
+  const temperatura =
+    electoral_strength >= 65 ? "Favorável" :
+    electoral_strength >= 40 ? "Competitiva" : "Desfavorável";
+
+  return { uf, region, electoral_strength, rejection_score, temperatura };
+}
+
+function ideologyOf(party?: string | null): number {
+  const k = String(party || "").toUpperCase().trim().replace(/[^A-ZÀ-Ú]/g, "");
+  if (PARTY_IDEOLOGY[k] !== undefined) return PARTY_IDEOLOGY[k];
+  return 0;
+}
+function profileOf(_party?: string | null): "agro"|"urbano"|"industrial"|"servicos"|"misto" {
+  return "misto";
+}
+
+// =========================================================
+// HELPERS
+// =========================================================
+function differentiateRegions(regions: { region: Region; regional_strength_score: number; rejection_score: number; temperatura: string; percepcao: string }[]) {
+  // Se todas iguais ou todas "Competitiva", força diferenciação por strength/rejection
+  return regions.map((r) => {
+    const s = r.regional_strength_score;
+    const rej = r.rejection_score;
+    let temp = r.temperatura;
+    if (!temp || temp.toLowerCase() === "competitiva") {
+      if (s >= 60 && rej < 45) temp = "Favorável";
+      else if (rej >= 55) temp = "Hostil";
+      else if (s < 35) temp = "Hostil";
+      else temp = "Competitiva";
+    }
+    return { ...r, temperatura: temp };
+  });
+}
+
+function rescale(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  // Se IA respondeu em escala 0-10, multiplica por 10
+  if (n > 0 && n <= 10) n = n * 10;
+  return clamp(n);
+}
 
 function clamp(n: number): number {
   if (!Number.isFinite(n)) return 0;
@@ -205,7 +323,7 @@ function clamp(n: number): number {
 
 async function callAIJson(userPrompt: string, tag: string, maxTokens: number): Promise<any> {
   const aiRes = await callAICerebrasFirst({
-    systemMsg: "Você é estrategista político brasileiro sênior. Responda APENAS JSON válido em português brasileiro. Não use markdown. Não invente estatísticas, percentuais ou resultados eleitorais sem fonte; use linguagem contextual.",
+    systemMsg: "Você é estrategista político brasileiro sênior. Responda APENAS JSON válido em português brasileiro. Não invente estatísticas ou resultados eleitorais; use linguagem contextual.",
     userPrompt,
     jsonMode: true,
     maxTokens,
@@ -213,11 +331,10 @@ async function callAIJson(userPrompt: string, tag: string, maxTokens: number): P
     cerebrasModels: ["llama-3.3-70b", "qwen-3-235b-a22b-instruct-2507", "llama3.1-8b"],
     tag: `regional-ai-analysis:${tag}`,
   });
-
   try {
     return parseAIJson(aiRes.content || "{}");
   } catch (e) {
-    console.error(`[regional-ai-analysis] JSON parse failed in ${tag} (${aiRes.provider}:${aiRes.model}):`, (e as Error).message);
+    console.error(`[regional-ai-analysis] JSON parse failed in ${tag}:`, (e as Error).message);
     throw e;
   }
 }
@@ -225,31 +342,17 @@ async function callAIJson(userPrompt: string, tag: string, maxTokens: number): P
 function parseAIJson(raw: string): any {
   const source = String(raw || "").trim();
   if (!source) throw new Error("AI_EMPTY_JSON");
-
   const cleaned = source
     .replace(/^```(?:json|jsonc|javascript|js)?\s*/i, "")
     .replace(/```$/i, "")
     .replace(/^\uFEFF/, "")
     .replace(/[\u200B-\u200D\uFEFF]/g, "")
     .trim();
-
   const candidate = extractJsonBlock(cleaned);
-  const attempts = [candidate, candidate.replace(/,\s*([}\]])/g, "$1")];
-
-  for (const attempt of attempts) {
-    try { return JSON.parse(attempt); } catch { /* tenta reparar abaixo */ }
+  for (const attempt of [candidate, candidate.replace(/,\s*([}\]])/g, "$1")]) {
+    try { return JSON.parse(attempt); } catch { /* try repair */ }
   }
-
-  try {
-    return JSON.parse(jsonrepair(candidate));
-  } catch (e) {
-    const openCurly = (candidate.match(/\{/g) || []).length;
-    const closeCurly = (candidate.match(/\}/g) || []).length;
-    const openSquare = (candidate.match(/\[/g) || []).length;
-    const closeSquare = (candidate.match(/\]/g) || []).length;
-    const truncated = openCurly !== closeCurly || openSquare !== closeSquare;
-    throw new Error(`${truncated ? "AI_JSON_TRUNCATED" : "AI_JSON_INVALID"}: ${(e as Error).message}`);
-  }
+  return JSON.parse(jsonrepair(candidate));
 }
 
 function extractJsonBlock(text: string): string {
@@ -265,63 +368,8 @@ function extractJsonBlock(text: string): string {
   return text.slice(start, end + 1).trim();
 }
 
-function normalizeState(rawStates: any[], uf: string): StateAnalysis {
-  const found = rawStates.find((x: any) => String(x.uf || "").toUpperCase() === uf);
-  if (!found) throw new Error(`AI_MISSING_STATE:${uf}`);
-  const dnaRaw = Array.isArray(found.dna_eleitoral) ? found.dna_eleitoral
-    : (Array.isArray(found.temas_sensibilidade) ? found.temas_sensibilidade : []);
-  const dna = TEMAS.map((t) => {
-    const hit = dnaRaw.find((x: any) => String(x.tema || "").toLowerCase().includes(t.slice(0, 4)));
-    return { tema: t, score: clamp(Number(hit?.score)) };
-  });
-  const segRaw = Array.isArray(found.segmentos_voto) ? found.segmentos_voto : [];
-  const segs = SEGMENTOS.map((s) => {
-    const hit = segRaw.find((x: any) => String(x.segmento || "").toLowerCase().includes(s.slice(0, 4)));
-    return { segmento: s, score: clamp(Number(hit?.score)) };
-  });
-  const pen = found.penetracao || {};
-  const fr = found.fragilidade || {};
-  const cr = found.crescimento || {};
-  return {
-    uf,
-    region: UF_TO_REGION[uf],
-    temperatura: String(found.temperatura || "Neutra").trim() || "Neutra",
-    electoral_strength: clamp(Number(found.electoral_strength)),
-    rejection_score: clamp(Number(found.rejection_score)),
-    perfil_eleitor_dominante: String(found.perfil_eleitor_dominante || "").trim() || `Perfil contextual de ${uf} pendente de refinamento pela IA`,
-    dna_eleitoral: dna,
-    segmentos_voto: segs,
-    penetracao: {
-      capitais: clamp(Number(pen.capitais)),
-      cidades_medias: clamp(Number(pen.cidades_medias)),
-      interior: clamp(Number(pen.interior)),
-      rural_profundo: clamp(Number(pen.rural_profundo)),
-    },
-    fragilidade: {
-      titulo: String(fr.titulo || "").trim() || "Fragilidade contextual em refinamento",
-      descricao: String(fr.descricao || "").trim(),
-    },
-    crescimento: {
-      titulo: String(cr.titulo || "").trim() || "Potencial territorial em refinamento",
-      descricao: String(cr.descricao || "").trim(),
-    },
-    riscos: Array.isArray(found.riscos) ? found.riscos.slice(0, 4).map((r: any) => ({
-      titulo: String(r.titulo || "").trim(),
-      severidade: String(r.severidade || "média").toLowerCase(),
-    })).filter((r: any) => r.titulo) : [],
-    oportunidades: Array.isArray(found.oportunidades)
-      ? found.oportunidades.slice(0, 5).map((s: any) => String(s).trim()).filter(Boolean)
-      : [],
-  };
-}
-
 function processingResponse(detail: string) {
-  return json({
-    success: false,
-    fallback: true,
-    message: "A análise está sendo processada. Tente novamente em instantes.",
-    detail,
-  }, 200);
+  return json({ success: false, fallback: true, message: "A análise está sendo processada. Tente novamente em instantes.", detail });
 }
 
 function json(body: any, status = 200) {
