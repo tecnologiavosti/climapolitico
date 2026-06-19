@@ -224,11 +224,14 @@ export default function RegionalAnalysis() {
   const [loadMsg, setLoadMsg] = useState(LOADING_MESSAGES[0]);
   const [error, setError] = useState<string | null>(null);
 
-    const [selectedUf, setSelectedUf] = useState<string>("SP");
+  const [selectedUf, setSelectedUf] = useState<string>("MT");
   const [hoverUf, setHoverUf] = useState<string | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<Region | null>(null);
   const [hoverRegion, setHoverRegion] = useState<Region | null>(null);
   const [detailMode, setDetailMode] = useState<"state" | "region">("state");
+  const [deepCache, setDeepCache] = useState<Record<string, StateDeep>>({});
+  const [deepLoading, setDeepLoading] = useState<string | null>(null);
+  const [deepError, setDeepError] = useState<string | null>(null);
 
   // Loading animation
   useEffect(() => {
