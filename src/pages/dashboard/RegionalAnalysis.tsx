@@ -707,8 +707,8 @@ function Legend({ color, label }: { color: string; label: string }) {
   );
 }
 
-function StatePanel({ data }: { data: StateAnalysis }) {
-  const temp = temperatureFromStrength(data.electoral_strength, data.rejection_score);
+function StatePanel({ base, deep, loading, error, onRetry }: { base: StateBase; deep?: StateDeep; loading: boolean; error: string | null; onRetry: () => void }) {
+  const temp = base.temperatura || temperatureFromStrength(base.electoral_strength, base.rejection_score);
   return (
     <div className="space-y-4 animate-fade-in">
       <Card>
@@ -716,102 +716,139 @@ function StatePanel({ data }: { data: StateAnalysis }) {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <CardTitle className="text-lg flex items-center gap-2">
-                {UF_NAMES[data.uf]} <Badge variant="outline" className="text-xs">{data.uf}</Badge>
+                {UF_NAMES[base.uf]} <Badge variant="outline" className="text-xs">{base.uf}</Badge>
               </CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">Região {UF_REGION[data.uf]}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Região {UF_REGION[base.uf]}</p>
             </div>
             <Badge className={cn("border", tempBadge(temp))}>{temp}</Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <ScorePill label="Força eleitoral" value={data.electoral_strength} positive />
-            <ScorePill label="Rejeição" value={data.rejection_score} />
+            <ScorePill label="Força eleitoral" value={base.electoral_strength} positive />
+            <ScorePill label="Rejeição" value={base.rejection_score} />
           </div>
         </CardContent>
       </Card>
 
-      <SectionCard icon={<Users className="h-4 w-4 text-primary" />} title="Perfil do eleitor dominante">
-        <p className="text-sm leading-relaxed">{data.perfil_eleitor_dominante}</p>
-      </SectionCard>
+      {loading && <DeepSkeleton uf={base.uf} />}
 
-      <SectionCard icon={<Sparkles className="h-4 w-4 text-amber-500" />} title="DNA Eleitoral">
-        <div className="space-y-2">
-          {data.dna_eleitoral.map((t) => (
-            <div key={t.tema} className="flex items-center gap-3">
-              <span className="text-xs w-28 text-muted-foreground">{TEMA_LABELS[t.tema] || t.tema}</span>
-              <Progress value={t.score} className="h-2 flex-1" />
-              <span className="text-xs font-medium w-10 text-right tabular-nums">{t.score}</span>
+      {!loading && error && !deep && (
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardContent className="py-8 text-center space-y-3">
+            <AlertTriangle className="h-7 w-7 text-destructive mx-auto" />
+            <p className="text-sm text-muted-foreground">{error}</p>
+            <Button size="sm" onClick={onRetry}>Tentar novamente</Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {!loading && deep && (
+        <>
+          <SectionCard icon={<Users className="h-4 w-4 text-primary" />} title="Perfil do eleitor dominante">
+            <p className="text-sm leading-relaxed">{deep.perfil_eleitor_dominante}</p>
+          </SectionCard>
+
+          <SectionCard icon={<Sparkles className="h-4 w-4 text-amber-500" />} title="DNA Eleitoral">
+            <div className="space-y-2">
+              {deep.dna_eleitoral.map((t) => (
+                <div key={t.tema} className="flex items-center gap-3">
+                  <span className="text-xs w-28 text-muted-foreground">{TEMA_LABELS[t.tema] || t.tema}</span>
+                  <Progress value={t.score} className="h-2 flex-1" />
+                  <span className="text-xs font-medium w-10 text-right tabular-nums">{t.score}</span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </SectionCard>
+          </SectionCard>
 
-      <SectionCard icon={<Users className="h-4 w-4 text-blue-600" />} title="Segmentos de Voto">
-        <div className="space-y-2">
-          {data.segmentos_voto.map((s) => (
-            <div key={s.segmento} className="flex items-center gap-3">
-              <span className="text-xs w-28 text-muted-foreground">{SEGMENTO_LABELS[s.segmento] || s.segmento}</span>
-              <Progress value={s.score} className="h-2 flex-1" />
-              <span className="text-xs font-medium w-10 text-right tabular-nums">{s.score}</span>
+          <SectionCard icon={<Users className="h-4 w-4 text-blue-600" />} title="Segmentos de Voto">
+            <div className="space-y-2">
+              {deep.segmentos_voto.map((s) => (
+                <div key={s.segmento} className="flex items-center gap-3">
+                  <span className="text-xs w-28 text-muted-foreground">{SEGMENTO_LABELS[s.segmento] || s.segmento}</span>
+                  <Progress value={s.score} className="h-2 flex-1" />
+                  <span className="text-xs font-medium w-10 text-right tabular-nums">{s.score}</span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </SectionCard>
+          </SectionCard>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <SectionCard icon={<ShieldAlert className="h-4 w-4 text-red-600" />} title="Fragilidade Eleitoral">
-          <div className="space-y-1">
-            <p className="text-sm font-semibold">{data.fragilidade.titulo}</p>
-            {data.fragilidade.descricao && (
-              <p className="text-sm text-muted-foreground leading-relaxed">{data.fragilidade.descricao}</p>
-            )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <SectionCard icon={<ShieldAlert className="h-4 w-4 text-red-600" />} title="Fragilidade Eleitoral">
+              <div className="space-y-1">
+                <p className="text-sm font-semibold">{deep.fragilidade.titulo}</p>
+                {deep.fragilidade.descricao && (
+                  <p className="text-sm text-muted-foreground leading-relaxed">{deep.fragilidade.descricao}</p>
+                )}
+              </div>
+            </SectionCard>
+            <SectionCard icon={<TrendingUp className="h-4 w-4 text-green-600" />} title="Potencial de Crescimento">
+              <div className="space-y-1">
+                <p className="text-sm font-semibold">{deep.crescimento.titulo}</p>
+                {deep.crescimento.descricao && (
+                  <p className="text-sm text-muted-foreground leading-relaxed">{deep.crescimento.descricao}</p>
+                )}
+              </div>
+            </SectionCard>
           </div>
-        </SectionCard>
-        <SectionCard icon={<TrendingUp className="h-4 w-4 text-green-600" />} title="Potencial de Crescimento">
-          <div className="space-y-1">
-            <p className="text-sm font-semibold">{data.crescimento.titulo}</p>
-            {data.crescimento.descricao && (
-              <p className="text-sm text-muted-foreground leading-relaxed">{data.crescimento.descricao}</p>
-            )}
-          </div>
-        </SectionCard>
-      </div>
 
-      <SectionCard icon={<Building2 className="h-4 w-4 text-blue-600" />} title="Penetração eleitoral">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <PenCell label="Capitais" value={data.penetracao.capitais} />
-          <PenCell label="Cidades médias" value={data.penetracao.cidades_medias} />
-          <PenCell label="Interior" value={data.penetracao.interior} />
-          <PenCell label="Rural profundo" value={data.penetracao.rural_profundo} />
-        </div>
-      </SectionCard>
-
-      <SectionCard icon={<ShieldAlert className="h-4 w-4 text-amber-600" />} title="Riscos">
-        <div className="space-y-2">
-          {data.riscos.map((r, i) => (
-            <div key={i} className="flex items-center justify-between gap-2 p-2 rounded-md bg-muted/40">
-              <span className="text-sm">{r.titulo}</span>
-              <Badge className={cn("border text-xs", sevBadge(r.severidade))}>{r.severidade}</Badge>
+          <SectionCard icon={<Building2 className="h-4 w-4 text-blue-600" />} title="Penetração eleitoral">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <PenCell label="Capitais" value={deep.penetracao.capitais} />
+              <PenCell label="Cidades médias" value={deep.penetracao.cidades_medias} />
+              <PenCell label="Interior" value={deep.penetracao.interior} />
+              <PenCell label="Rural profundo" value={deep.penetracao.rural_profundo} />
             </div>
-          ))}
-          {!data.riscos.length && <p className="text-sm text-muted-foreground">Sem riscos relevantes mapeados.</p>}
-        </div>
-      </SectionCard>
+          </SectionCard>
 
-      <SectionCard icon={<Lightbulb className="h-4 w-4 text-primary" />} title="Oportunidades">
-        {data.oportunidades.length ? (
-          <ul className="space-y-1.5">
-            {data.oportunidades.map((o, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm">
-                <span className="w-1.5 h-1.5 rounded-full mt-2 shrink-0 bg-primary" />
-                <span className="leading-relaxed">{o}</span>
-              </li>
-            ))}
-          </ul>
-        ) : <p className="text-sm text-muted-foreground">Sem oportunidades mapeadas.</p>}
-      </SectionCard>
+          <SectionCard icon={<ShieldAlert className="h-4 w-4 text-amber-600" />} title="Riscos">
+            <div className="space-y-2">
+              {deep.riscos.map((r, i) => (
+                <div key={i} className="flex items-center justify-between gap-2 p-2 rounded-md bg-muted/40">
+                  <span className="text-sm">{r.titulo}</span>
+                  <Badge className={cn("border text-xs", sevBadge(r.severidade))}>{r.severidade}</Badge>
+                </div>
+              ))}
+              {!deep.riscos.length && <p className="text-sm text-muted-foreground">Sem riscos relevantes mapeados.</p>}
+            </div>
+          </SectionCard>
+
+          <SectionCard icon={<Lightbulb className="h-4 w-4 text-primary" />} title="Oportunidades">
+            {deep.oportunidades.length ? (
+              <ul className="space-y-1.5">
+                {deep.oportunidades.map((o, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm">
+                    <span className="w-1.5 h-1.5 rounded-full mt-2 shrink-0 bg-primary" />
+                    <span className="leading-relaxed">{o}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="text-sm text-muted-foreground">Sem oportunidades mapeadas.</p>}
+          </SectionCard>
+        </>
+      )}
     </div>
+  );
+}
+
+function DeepSkeleton({ uf }: { uf: string }) {
+  return (
+    <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-background to-primary/5">
+      <CardContent className="py-10 text-center space-y-4">
+        <div className="relative w-12 h-12 mx-auto">
+          <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
+          <div className="relative w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+            <Sparkles className="h-6 w-6 text-primary animate-pulse" />
+          </div>
+        </div>
+        <p className="text-sm text-muted-foreground">Gerando análise profunda de <b>{uf}</b>…</p>
+        <div className="max-w-sm mx-auto space-y-2">
+          <div className="h-2 rounded-full bg-muted animate-pulse" />
+          <div className="h-2 rounded-full bg-muted animate-pulse w-5/6 mx-auto" />
+          <div className="h-2 rounded-full bg-muted animate-pulse w-4/6 mx-auto" />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
