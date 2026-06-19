@@ -417,30 +417,83 @@ export default function RegionalAnalysis() {
               )}
             </div>
 
-            {/* Region pills */}
-            <div className="flex flex-wrap gap-2">
-              {analysis.regions.map((r) => (
-                <Tooltip key={r.region}>
-                  <TooltipTrigger asChild>
-                    <div className={cn(
-                      "px-3 py-1.5 rounded-full border text-xs flex items-center gap-2 cursor-default",
-                      tempBadge(r.temperatura),
-                    )}>
-                      <span className="font-semibold">{r.region}</span>
-                      <span className="opacity-80">F {r.regional_strength_score}/100 · R {r.rejection_score}/100</span>
+            {/* Region map (5 macrorregiões) */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Compass className="h-5 w-5 text-primary" />
+                <h2 className="text-xl font-semibold">Mapa Regional</h2>
+                <span className="text-xs text-muted-foreground">5 macrorregiões — clique para detalhar</span>
+              </div>
+              <Card>
+                <CardContent className="pt-5">
+                  <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+                    <div className="lg:col-span-2">
+                      <svg viewBox={(BR_REGIONS_MAP as any).viewBox} className="w-full h-auto">
+                        {REGIONS.map((rg) => {
+                          const path = (BR_REGIONS_MAP as any).regions?.[rg];
+                          if (!path) return null;
+                          const agg = regionAggregates[rg];
+                          const temp = agg ? temperatureFromStrength(agg.electoral_strength, agg.rejection_score) : "Neutra";
+                          const fill = agg ? tempColor(temp) : "hsl(220 9% 75%)";
+                          const isSel = selectedRegion === rg;
+                          const isHover = hoverRegion === rg;
+                          return (
+                            <path
+                              key={rg}
+                              d={path}
+                              fill={fill}
+                              stroke={isSel ? "hsl(var(--primary))" : "hsl(var(--background))"}
+                              strokeWidth={isSel ? 2 : 0.8}
+                              opacity={isHover && !isSel ? 0.85 : 1}
+                              className="cursor-pointer transition-all duration-300"
+                              onClick={() => { setSelectedRegion(rg); setDetailMode("region"); }}
+                              onMouseEnter={() => setHoverRegion(rg)}
+                              onMouseLeave={() => setHoverRegion(null)}
+                              style={{ filter: isSel ? "drop-shadow(0 0 8px hsl(var(--primary) / 0.55))" : undefined }}
+                            >
+                              <title>{rg} — Força {agg?.electoral_strength ?? 0} · Rejeição {agg?.rejection_score ?? 0}</title>
+                            </path>
+                          );
+                        })}
+                      </svg>
                     </div>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs"><p className="text-xs leading-relaxed">{r.percepcao || "Sem percepção registrada."}</p></TooltipContent>
-                </Tooltip>
-              ))}
+                    <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {REGIONS.map((rg) => {
+                        const agg = regionAggregates[rg];
+                        const temp = agg ? temperatureFromStrength(agg.electoral_strength, agg.rejection_score) : "Neutra";
+                        const isSel = selectedRegion === rg;
+                        return (
+                          <button
+                            key={rg}
+                            onClick={() => { setSelectedRegion(rg); setDetailMode("region"); }}
+                            className={cn(
+                              "text-left p-3 rounded-lg border transition-all duration-300 hover:scale-[1.02]",
+                              isSel ? "border-primary bg-primary/5" : "border-border bg-muted/30",
+                            )}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-semibold text-sm">{rg}</span>
+                              <Badge className={cn("border text-[10px]", tempBadge(temp))}>{temp}</Badge>
+                            </div>
+                            <div className="flex gap-3 text-xs text-muted-foreground">
+                              <span>Força <b className="text-foreground">{agg?.electoral_strength ?? 0}</b></span>
+                              <span>Rejeição <b className="text-foreground">{agg?.rejection_score ?? 0}</b></span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
 
-            {/* Map + state detail */}
+            {/* Mapa por Estado (27 UFs) + detalhe */}
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
               <Card className="lg:col-span-2">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base flex items-center gap-2">
-                    <MapPinned className="h-4 w-4 text-primary" /> Mapa por estado
+                    <MapPinned className="h-4 w-4 text-primary" /> Mapa por Estado
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -449,7 +502,7 @@ export default function RegionalAnalysis() {
                       const s = stateMap[uf];
                       const temp = s ? temperatureFromStrength(s.electoral_strength, s.rejection_score) : "Neutra";
                       const fill = s ? tempColor(temp) : "hsl(220 9% 75%)";
-                      const isSel = uf === selectedUf;
+                      const isSel = uf === selectedUf && detailMode === "state";
                       const isHover = uf === hoverUf;
                       return (
                         <path
@@ -460,7 +513,7 @@ export default function RegionalAnalysis() {
                           strokeWidth={isSel ? 1.8 : 0.6}
                           opacity={isHover && !isSel ? 0.85 : 1}
                           className="cursor-pointer transition-all duration-300"
-                          onClick={() => setSelectedUf(uf)}
+                          onClick={() => { setSelectedUf(uf); setDetailMode("state"); }}
                           onMouseEnter={() => setHoverUf(uf)}
                           onMouseLeave={() => setHoverUf(null)}
                           style={{ filter: isSel ? "drop-shadow(0 0 6px hsl(var(--primary) / 0.55))" : undefined }}
@@ -479,12 +532,14 @@ export default function RegionalAnalysis() {
                 </CardContent>
               </Card>
 
-              <div className="lg:col-span-3 transition-all duration-300" key={selectedUf}>
-                {currentState ? (
+              <div className="lg:col-span-3 transition-all duration-300" key={`${detailMode}-${detailMode === "state" ? selectedUf : selectedRegion}`}>
+                {detailMode === "region" && currentRegion ? (
+                  <RegionPanel data={currentRegion} onPickUf={(uf) => { setSelectedUf(uf); setDetailMode("state"); }} />
+                ) : currentState ? (
                   <StatePanel data={currentState} />
                 ) : (
                   <Card><CardContent className="py-10 text-center text-muted-foreground">
-                    Sem dados para {UF_NAMES[selectedUf] || selectedUf}.
+                    Selecione um estado ou região no mapa.
                   </CardContent></Card>
                 )}
               </div>
