@@ -508,6 +508,12 @@ const CandidateComparisonPage = () => {
                       <div className="font-semibold truncate flex items-center gap-2">
                         {c.name}
                         <ConfidenceBadge value={c.confidence} />
+                        <Badge variant="outline" className="text-[10px] border-primary/30 text-primary/90">
+                          Confiança IA {Math.round((c.confidence ?? 0) * 100)}%
+                        </Badge>
+                        <InfoTip
+                          text={`Por que a IA concluiu isso?\n\nArquétipo: ${c.narrativas?.arquetipo ?? "—"}\nTom dominante: ${c.narrativas?.tom ?? "—"}\nStatus: ${c.status} · Momentum: ${c.momentum}\n\nScore final ${c.scores.strength}/100 combina força regional (${c.scores.regionalForce}), aprovação (${c.scores.approval}), resistência (${100 - c.scores.rejection}), viralização (${c.scores.virality}), crescimento (${c.scores.growth >= 0 ? "+" : ""}${c.scores.growth}) e dominância (${c.scores.dominance}).`}
+                        />
                       </div>
                       <div className="text-xs text-muted-foreground truncate">
                         {resolveParty(c.name, c.party)}{c.state ? ` · ${c.state}` : ""}
