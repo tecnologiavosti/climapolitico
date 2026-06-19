@@ -22,7 +22,7 @@ interface Cand {
   id: string;
   name: string;
   party: string | null;
-  state: string | null;
+  region: string | null;
   mentions: number;
   authors: number;
   engagement: number;
@@ -55,8 +55,9 @@ function momentumLabel(growth: number): "up" | "down" | "stable" {
 function safeParseJson(raw: string): any | null {
   if (!raw) return null;
   const cleaned = raw
-    .replace(/^```(?:json)?/i, "")
-    .replace(/```$/i, "")
+    .replace(/```json\s*/gi, "")
+    .replace(/```/g, "")
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
     .trim();
   try {
     return JSON.parse(cleaned);
@@ -75,6 +76,71 @@ function safeParseJson(raw: string): any | null {
       return null;
     }
   }
+}
+
+function safeScore(value: unknown, fallback = 0): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function fallbackThemes(candidate: Cand & { scores: any; momentum: string }): string[] {
+  const themes = new Set<string>();
+  if (candidate.scores.regionalForce >= 65) themes.add("força regional");
+  if (candidate.scores.approval >= 55) themes.add("aprovação");
+  if (candidate.scores.rejection >= 45) themes.add("rejeição");
+  if (candidate.scores.virality >= 60) themes.add("tração digital");
+  if (candidate.scores.growth > 15) themes.add("crescimento");
+  if (candidate.region) themes.add(candidate.region);
+  return Array.from(themes).slice(0, 4).length ? Array.from(themes).slice(0, 4) : ["presença digital", "competitividade", "sentimento", "base eleitoral"];
+}
+
+function fallbackArchetype(candidate: Cand & { scores: any }): string {
+  if (candidate.scores.rejection >= 55) return "Polarizador de alta rejeição";
+  if (candidate.scores.regionalForce >= 70) return "Liderança regional consolidada";
+  if (candidate.scores.virality >= 65) return "Competidor digital";
+  if (candidate.scores.approval >= 60) return "Perfil de aprovação ampla";
+  return "Competidor em consolidação";
+}
+
+function buildStrategicFallback(enriched: Array<Cand & { scores: any; status: string; momentum: string }>) {
+  const ordered = [...enriched].sort((a, b) => b.scores.strength - a.scores.strength);
+  const leader = ordered[0];
+  const fastest = [...enriched].sort((a, b) => b.scores.growth - a.scores.growth)[0] ?? leader;
+  const stagnant = [...enriched].sort((a, b) => Math.abs(a.scores.growth) - Math.abs(b.scores.growth))[0] ?? leader;
+  const rejection = [...enriched].sort((a, b) => b.scores.rejection - a.scores.rejection)[0] ?? leader;
+
+  return {
+    narrativas: enriched.map((c) => ({
+      id: c.name,
+      temas: fallbackThemes(c),
+      tom: c.scores.rejection >= 50 ? "polarizado" : c.scores.growth > 15 ? "ascendente" : "competitivo",
+      arquetipo: fallbackArchetype(c),
+    })),
+    melhor_centro_oeste:
+      ordered.find((c) => /centro|go|mt|ms|df/i.test(`${c.region ?? ""} ${c.name}`))
+        ? {
+            nome: ordered.find((c) => /centro|go|mt|ms|df/i.test(`${c.region ?? ""} ${c.name}`))!.name,
+            justificativa: "Melhor combinação local entre força regional, presença digital e baixa vulnerabilidade relativa.",
+          }
+        : { nome: leader?.name ?? "—", justificativa: "Melhor score estratégico entre os candidatos disponíveis." },
+    resumo: {
+      lidera: leader ? `${leader.name} lidera pelo maior Political Strength Score (${leader.scores.strength}/100).` : "Sem liderança definida.",
+      cresce: fastest ? `${fastest.name} apresenta o maior vetor recente de crescimento (${fastest.scores.growth >= 0 ? "+" : ""}${fastest.scores.growth}%).` : "Sem crescimento relevante detectado.",
+      estagnou: stagnant ? `${stagnant.name} mostra menor oscilação recente e tende à estabilidade.` : "Sem estagnação clara.",
+      preocupa: rejection ? `${rejection.name} exige atenção pela maior rejeição relativa (${rejection.scores.rejection}/100).` : "Sem risco dominante mapeado.",
+    },
+    momentum_notas: Object.fromEntries(
+      enriched.map((c) => [
+        c.name,
+        c.momentum === "up"
+          ? "Tração recente acima da base anterior."
+          : c.momentum === "down"
+            ? "Perda relativa de intensidade nas menções recentes."
+            : "Movimento estável sem ruptura temporal relevante.",
+      ]),
+    ),
+  };
 }
 
 serve(async (req) => {
