@@ -923,58 +923,11 @@ function RegionPanel({ data, onPickUf }: { data: RegionAggregate; onPickUf: (uf:
         </CardContent>
       </Card>
 
-      {data.perfis.length > 0 && (
-        <SectionCard icon={<Users className="h-4 w-4 text-primary" />} title="Perfis de eleitor dominantes">
-          <ul className="space-y-1.5">
-            {data.perfis.map((p, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm">
-                <span className="w-1.5 h-1.5 rounded-full mt-2 shrink-0 bg-primary" />
-                <span className="leading-relaxed">{p}</span>
-              </li>
-            ))}
-          </ul>
-        </SectionCard>
-      )}
-
-      <SectionCard icon={<Sparkles className="h-4 w-4 text-amber-500" />} title="Temas dominantes na região">
-        <div className="space-y-2">
-          {data.temas.map((t) => (
-            <div key={t.tema} className="flex items-center gap-3">
-              <span className="text-xs w-28 text-muted-foreground">{TEMA_LABELS[t.tema] || t.tema}</span>
-              <Progress value={t.score} className="h-2 flex-1" />
-              <span className="text-xs font-medium w-10 text-right tabular-nums">{t.score}</span>
-            </div>
-          ))}
-        </div>
-      </SectionCard>
-
-      <SectionCard icon={<ShieldAlert className="h-4 w-4 text-amber-600" />} title="Riscos regionais">
-        <div className="space-y-2">
-          {data.riscos.map((r, i) => (
-            <div key={i} className="flex items-center justify-between gap-2 p-2 rounded-md bg-muted/40">
-              <span className="text-sm flex items-center gap-2">
-                <Badge variant="outline" className="text-[10px]">{r.uf}</Badge>
-                {r.titulo}
-              </span>
-              <Badge className={cn("border text-xs", sevBadge(r.severidade))}>{r.severidade}</Badge>
-            </div>
-          ))}
-          {!data.riscos.length && <p className="text-sm text-muted-foreground">Sem riscos relevantes mapeados.</p>}
-        </div>
-      </SectionCard>
-
-      <SectionCard icon={<Lightbulb className="h-4 w-4 text-primary" />} title="Oportunidades eleitorais">
-        {data.oportunidades.length ? (
-          <ul className="space-y-1.5">
-            {data.oportunidades.map((o, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm">
-                <span className="w-1.5 h-1.5 rounded-full mt-2 shrink-0 bg-primary" />
-                <span className="leading-relaxed">{o}</span>
-              </li>
-            ))}
-          </ul>
-        ) : <p className="text-sm text-muted-foreground">Sem oportunidades mapeadas.</p>}
-      </SectionCard>
+      <Card className="bg-muted/30">
+        <CardContent className="py-4 text-sm text-muted-foreground">
+          Clique em um dos estados acima para abrir a análise estratégica detalhada (perfil do eleitor, DNA, segmentos, riscos e oportunidades).
+        </CardContent>
+      </Card>
     </div>
   );
 }
