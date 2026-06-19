@@ -200,8 +200,28 @@ serve(async (req) => {
 
     let body: any = {};
     try { body = await req.json(); } catch {}
-    const period: Period = (["7d", "30d", "90d", "1y"].includes(body?.period) ? body.period : "30d") as Period;
-    const days = periodDays[period];
+    const allowed = ["7d", "30d", "90d", "1y", "custom"];
+    const period: Period = (allowed.includes(body?.period) ? body.period : "30d") as Period;
+
+    const now = Date.now();
+    let dRecent: string;
+    let dPrev: string;
+    let days = periodDays[period as Exclude<Period, "custom">] ?? 30;
+
+    if (period === "custom" && body?.startDate && body?.endDate) {
+      const start = new Date(body.startDate).getTime();
+      const end = new Date(body.endDate).getTime();
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        return ok({ success: false, message: "Intervalo personalizado inválido." });
+      }
+      const span = end - start;
+      days = Math.max(1, Math.round(span / 86400000));
+      dRecent = new Date(start).toISOString();
+      dPrev = new Date(start - span).toISOString();
+    } else {
+      dRecent = new Date(now - days * 86400000).toISOString();
+      dPrev = new Date(now - 2 * days * 86400000).toISOString();
+    }
 
     const { data: cands, error: candErr } = await supabase
       .from("candidates")
@@ -218,10 +238,6 @@ serve(async (req) => {
       .select("candidate_id, total_mentions, unique_authors, total_engagement, average_sentiment, positive_count, negative_count, neutral_count")
       .in("candidate_id", ids);
     const mMap = new Map<string, any>((metrics ?? []).map((m: any) => [m.candidate_id, m]));
-
-    const now = Date.now();
-    const dRecent = new Date(now - days * 86400000).toISOString();
-    const dPrev = new Date(now - 2 * days * 86400000).toISOString();
 
     const growthRows = await Promise.all(
       cands.map(async (c: any) => {
