@@ -7,7 +7,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-const MIN_EVIDENCE = 50;
+type Confidence = 'baixa' | 'moderada' | 'boa' | 'alta';
+function getConfidence(n: number): Confidence {
+  if (n < 10) return 'baixa';
+  if (n < 30) return 'moderada';
+  if (n < 80) return 'boa';
+  return 'alta';
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
