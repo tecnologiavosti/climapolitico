@@ -1,158 +1,172 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Progress } from "@/components/ui/progress";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Calendar } from "@/components/ui/calendar";
 import {
-  CheckCircle2,
-  XCircle,
-  MessageSquare,
-  Activity,
-  Instagram,
-  Youtube,
-  Facebook,
-  Twitter,
-  Music2,
-  MapPinned,
-  Sparkles,
-  ThumbsUp,
-  ThumbsDown,
-  Minus,
-  Globe,
-  Newspaper,
-  TrendingUp,
-  TrendingDown,
-  Info,
+  MapPinned, Sparkles, TrendingUp, AlertTriangle, Target, Users, UserX,
+  Lightbulb, MessageCircle, ShieldAlert, CheckCircle2, XCircle, Compass,
+  CalendarRange,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import BrazilStateMap from "@/components/dashboard/BrazilStateMap";
-
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { BR_MAP } from "@/data/brRegionsMap";
-import {
-  REGIONS,
-  NETWORKS,
-  ALL_NETWORKS_VALUE,
-  EMPTY_METRICS,
-  colorByAcceptance,
-  computeMetrics,
-  networkLabel,
-  type RegionLabel,
-  type Metrics,
-} from "./regionalAnalysis.helpers";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import type { DateRange } from "react-day-picker";
+import { cn } from "@/lib/utils";
 
-const REGION_PATHS: Record<RegionLabel, string> = BR_MAP.regions as Record<RegionLabel, string>;
-const REGION_LABEL_POS: Record<RegionLabel, { x: number; y: number }> = BR_MAP.labels as Record<
-  RegionLabel,
-  { x: number; y: number }
->;
+const REGIONS = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"] as const;
+type Region = typeof REGIONS[number];
+
+const REGION_PATHS = BR_MAP.regions as Record<Region, string>;
+const REGION_LABELS = BR_MAP.labels as Record<Region, { x: number; y: number }>;
 const MAP_VIEWBOX = BR_MAP.viewBox;
 
-interface Candidate {
-  id: string;
-  full_name: string;
+interface Candidate { id: string; full_name: string; }
+
+interface RegionAnalysis {
+  region: Region;
+  temperatura: string;
+  regional_strength_score: number;
+  rejection_score: number;
+  percepcao: string;
+  temas: { nome: string; intensidade: string }[];
+  apoia: string[];
+  rejeita: string[];
+  riscos: { titulo: string; severidade: string }[];
+  oportunidades: string[];
+  narrativas_funcionam: string[];
+  narrativas_falham: string[];
+  recomendacoes: string[];
 }
-interface Comment {
-  id: string;
-  comment_text: string;
-  comment_author: string | null;
-  sentiment_label: string | null;
-  created_at: string;
-  social_network: string;
+interface AnalysisResult {
+  national: {
+    forca_nacional: number;
+    melhor_regiao: Region;
+    regiao_risco: Region;
+    expansao_potencial: Region;
+    sintese: string;
+  };
+  regions: RegionAnalysis[];
+  generated_at: string;
+  fallback?: boolean;
 }
 
-const insightCache = new Map<string, { ts: number; data: { pontos_fortes: string[]; como_melhorar: string[] } }>();
+type PeriodKey = "7d" | "30d" | "90d" | "1y" | "custom";
 
-function NetworkIcon({ n, className }: { n: string; className?: string }) {
-  const Icon = NETWORKS.find((x) => x.label === n || x.values.includes(n))?.Icon ?? MessageSquare;
-  return <Icon className={className} />;
+const PERIODS: { key: PeriodKey; label: string }[] = [
+  { key: "7d", label: "7 dias" },
+  { key: "30d", label: "30 dias" },
+  { key: "90d", label: "90 dias" },
+  { key: "1y", label: "1 ano" },
+  { key: "custom", label: "Personalizado" },
+];
+
+const LOADING_MESSAGES = [
+  "Analisando percepção regional...",
+  "Mapeando forças eleitorais...",
+  "Identificando zonas de risco...",
+  "Gerando estratégia regional...",
+  "Cruzando perfil ideológico com regiões...",
+];
+
+function scoreColor(score: number): string {
+  if (score >= 65) return "hsl(142 76% 36%)"; // verde
+  if (score >= 45) return "hsl(48 96% 53%)"; // amarelo
+  if (score >= 25) return "hsl(0 84% 60%)"; // vermelho
+  return "hsl(var(--muted))";
 }
 
-const initials = (name: string | null) =>
-  (name || "??")
-    .split(" ")
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase();
+function temperatureBadge(t: string) {
+  const k = t.toLowerCase();
+  if (k.includes("favor")) return "bg-green-500/15 text-green-600 border-green-500/30";
+  if (k.includes("compet")) return "bg-amber-500/15 text-amber-600 border-amber-500/30";
+  if (k.includes("hostil")) return "bg-red-500/15 text-red-600 border-red-500/30";
+  return "bg-slate-500/15 text-slate-600 border-slate-500/30";
+}
 
-function SentimentBadge({ s }: { s: string | null }) {
-  const k = (s || "").toLowerCase();
-  if (k === "positive" || k === "positivo")
-    return (
-      <Badge className="bg-green-500/15 text-green-600 border-green-500/30 hover:bg-green-500/20">
-        <ThumbsUp className="h-3 w-3 mr-1" />
-        Positivo
-      </Badge>
-    );
-  if (k === "negative" || k === "negativo")
-    return (
-      <Badge className="bg-red-500/15 text-red-600 border-red-500/30 hover:bg-red-500/20">
-        <ThumbsDown className="h-3 w-3 mr-1" />
-        Negativo
-      </Badge>
-    );
+function severityBadge(s: string) {
+  const k = s.toLowerCase();
+  if (k.includes("crít")) return "bg-red-600/20 text-red-700 border-red-600/40";
+  if (k.includes("alta")) return "bg-red-500/15 text-red-600 border-red-500/30";
+  if (k.includes("méd") || k.includes("med")) return "bg-amber-500/15 text-amber-600 border-amber-500/30";
+  return "bg-slate-500/15 text-slate-600 border-slate-500/30";
+}
+
+function intensityBadge(i: string) {
+  const k = i.toLowerCase();
+  if (k.includes("alta")) return "bg-primary/15 text-primary border-primary/30";
+  if (k.includes("méd") || k.includes("med")) return "bg-amber-500/15 text-amber-600 border-amber-500/30";
+  return "bg-muted text-muted-foreground border-border";
+}
+
+function RegionalLoading({ progress, message }: { progress: number; message: string }) {
   return (
-    <Badge variant="secondary">
-      <Minus className="h-3 w-3 mr-1" />
-      Neutro
-    </Badge>
+    <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-background to-primary/5">
+      <CardContent className="py-12">
+        <div className="max-w-md mx-auto space-y-6 text-center">
+          <div className="relative w-16 h-16 mx-auto">
+            <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
+            <div className="relative w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+              <Compass className="h-8 w-8 text-primary animate-spin-slow" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold mb-1">Radar regional em análise</h3>
+            <p className="text-sm text-muted-foreground animate-fade-in" key={message}>{message}</p>
+          </div>
+          <Progress value={progress} className="h-2" />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Página
-// ─────────────────────────────────────────────────────────────────────────────
 export default function RegionalAnalysis() {
   const { user } = useAuth();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [candidateId, setCandidateId] = useState<string>("");
-  const [network, setNetwork] = useState<string>(ALL_NETWORKS_VALUE);
-  const [region, setRegion] = useState<RegionLabel>("Sudeste");
+  const [period, setPeriod] = useState<PeriodKey>("30d");
+  const [customRange, setCustomRange] = useState<DateRange | undefined>();
+  const [customOpen, setCustomOpen] = useState(false);
 
-  const [mapLoading, setMapLoading] = useState(false);
-  const [regionLoading, setRegionLoading] = useState(false);
-  const [insightsLoading, setInsightsLoading] = useState(false);
-  const [loadProgress, setLoadProgress] = useState(0);
-  const [loadStage, setLoadStage] = useState("Carregando mapa regional...");
+  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [loadMsg, setLoadMsg] = useState(LOADING_MESSAGES[0]);
+  const [selectedRegion, setSelectedRegion] = useState<Region>("Sudeste");
+  const [regionPulse, setRegionPulse] = useState(0);
 
+  // Loading animation
   useEffect(() => {
-    if (!mapLoading) {
-      if (loadProgress > 0) {
-        setLoadProgress(100);
-        const t = setTimeout(() => setLoadProgress(0), 400);
+    if (!loading) {
+      if (progress > 0) {
+        setProgress(100);
+        const t = setTimeout(() => setProgress(0), 400);
         return () => clearTimeout(t);
       }
       return;
     }
-    setLoadProgress(8);
-    setLoadStage("Carregando mapa regional...");
-    const started = Date.now();
+    setProgress(5);
+    let i = 0;
+    setLoadMsg(LOADING_MESSAGES[0]);
+    const msgTick = setInterval(() => {
+      i = (i + 1) % LOADING_MESSAGES.length;
+      setLoadMsg(LOADING_MESSAGES[i]);
+    }, 1800);
     const tick = setInterval(() => {
-      setLoadProgress((p) => {
-        const inc = Math.random() * 6 + 2;
-        return Math.min(p + inc, 90);
-      });
-      const elapsed = Date.now() - started;
-      if (elapsed > 8000) setLoadStage("Consulta grande detectada, aguarde...");
-      else if (elapsed > 4000) setLoadStage("Analisando sentimento regional...");
-      else if (elapsed > 1500) setLoadStage("Processando menções por estado...");
-    }, 350);
-    return () => clearInterval(tick);
-  }, [mapLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+      setProgress((p) => Math.min(p + Math.random() * 6 + 2, 92));
+    }, 400);
+    return () => { clearInterval(tick); clearInterval(msgTick); };
+  }, [loading]); // eslint-disable-line
 
-  const [mapData, setMapData] = useState<Record<RegionLabel, Metrics>>({} as Record<RegionLabel, Metrics>);
-  const [unclassifiedTotal, setUnclassifiedTotal] = useState(0);
-  const [networkBreakdown, setNetworkBreakdown] = useState<{ label: string; total: number }[]>([]);
-  const [comments, setComments] = useState<Comment[]>([]);
-  const [insights, setInsights] = useState<{ pontos_fortes: string[]; como_melhorar: string[] } | null>(null);
-
-  const requestSeqRef = useRef(0);
-
-  // ─── Carrega lista de candidatos ──────────────────────────────────────────
+  // Load candidates
   useEffect(() => {
     if (!user) return;
     (async () => {
@@ -166,191 +180,68 @@ export default function RegionalAnalysis() {
       setCandidates(list);
       if (list.length && !candidateId) setCandidateId(list[0].id);
     })();
-  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user]); // eslint-disable-line
 
-  // ─── Carrega o mapa (todas as regiões + breakdown por rede) ───────────────
-  // Roda apenas quando muda candidato OU rede (não quando muda região).
-  const loadMap = useCallback(async () => {
+  const periodPayload = useMemo(() => {
+    if (period === "custom" && customRange?.from && customRange?.to) {
+      return {
+        period_label: "Personalizado",
+        period_from: format(customRange.from, "yyyy-MM-dd"),
+        period_to: format(customRange.to, "yyyy-MM-dd"),
+      };
+    }
+    const map: Record<PeriodKey, string> = {
+      "7d": "últimos 7 dias",
+      "30d": "últimos 30 dias",
+      "90d": "últimos 90 dias",
+      "1y": "último ano",
+      "custom": "personalizado",
+    };
+    return { period_label: map[period] };
+  }, [period, customRange]);
+
+  const runAnalysis = useCallback(async () => {
     if (!user || !candidateId) return;
-    const seq = ++requestSeqRef.current;
-    setMapLoading(true);
+    setLoading(true);
+    setAnalysis(null);
     try {
-      const isAllNetworks = network === ALL_NETWORKS_VALUE;
-      const netCfg = isAllNetworks ? null : NETWORKS.find((n) => n.label === network);
-      const netValues = netCfg ? netCfg.values : null;
-
-      // Paginação completa — sem cap arbitrário
-      const { fetchAllPaginated } = await import("@/lib/supabasePagination");
-      const rows = await fetchAllPaginated<{
-        region: string | null;
-        social_network: string;
-        sentiment_label: string | null;
-        likes_count: number | null;
-        replies_count: number | null;
-        shares_count: number | null;
-      }>((from, to) => {
-        let q = supabase
-          .from("social_interactions")
-          .select("region, social_network, sentiment_label, likes_count, replies_count, shares_count")
-          .eq("user_id", user.id)
-          .eq("candidate_id", candidateId)
-          .not("social_network", "in", "(mastodon,lemmy,pinterest)")
-          .range(from, to);
-        if (netValues) q = q.in("social_network", netValues);
-        return q;
+      const { data, error } = await supabase.functions.invoke("regional-ai-analysis", {
+        body: { candidate_id: candidateId, ...periodPayload },
       });
-
-      if (seq !== requestSeqRef.current) return; // descartar resposta obsoleta
-
-      // Agrupar por região
-      const grouped: Record<string, typeof rows> = {};
-      const undefinedRows: typeof rows = [];
-      for (const r of rows) {
-        const reg = (r.region as string) || "";
-        if (REGIONS.includes(reg as RegionLabel)) {
-          (grouped[reg] = grouped[reg] || []).push(r);
-        } else {
-          undefinedRows.push(r);
-        }
-      }
-      const md = {} as Record<RegionLabel, Metrics>;
-      for (const r of REGIONS) md[r] = computeMetrics(grouped[r] ?? []);
-      setMapData(md);
-      setUnclassifiedTotal(undefinedRows.length);
-
-      // Breakdown por rede (apenas quando "todas as redes")
-      if (isAllNetworks) {
-        const byNet = new Map<string, number>();
-        for (const r of rows) {
-          const lbl = networkLabel(r.social_network);
-          byNet.set(lbl, (byNet.get(lbl) ?? 0) + 1);
-        }
-        const sorted = Array.from(byNet.entries())
-          .map(([label, total]) => ({ label, total }))
-          .sort((a, b) => b.total - a.total);
-        setNetworkBreakdown(sorted);
-      } else {
-        setNetworkBreakdown([]);
-      }
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setAnalysis(data as AnalysisResult);
+      setRegionPulse((n) => n + 1);
+      if (data?.fallback) toast.info("Análise gerada em modo contextual.");
+      else toast.success("Análise regional pronta.");
     } catch (e) {
       console.error(e);
-      toast.error("Falha ao carregar dados regionais");
+      toast.error("Falha ao gerar análise regional");
     } finally {
-      if (seq === requestSeqRef.current) setMapLoading(false);
+      setLoading(false);
     }
-  }, [user, candidateId, network]);
+  }, [user, candidateId, periodPayload]);
 
-  // ─── Carrega detalhes da região (comentários + insights de IA) ────────────
-  const loadRegionDetails = useCallback(
-    async (md: Record<RegionLabel, Metrics>) => {
-      if (!user || !candidateId) return;
-      setRegionLoading(true);
-      setInsights(null);
-      try {
-        const isAllNetworks = network === ALL_NETWORKS_VALUE;
-        const netCfg = isAllNetworks ? null : NETWORKS.find((n) => n.label === network);
-        const netValues = netCfg ? netCfg.values : null;
+  useEffect(() => {
+    if (!candidateId) return;
+    if (period === "custom" && !(customRange?.from && customRange?.to)) return;
+    runAnalysis();
+  }, [candidateId, period, customRange]); // eslint-disable-line
 
-        // Comentários
-        let cmtsQuery = supabase
-          .from("social_interactions")
-          .select("id, comment_text, comment_author, sentiment_label, created_at, social_network")
-          .eq("user_id", user.id)
-          .eq("candidate_id", candidateId)
-          .eq("region", region)
-          .not("social_network", "in", "(mastodon,lemmy,pinterest)")
-          .not("comment_text", "is", null);
-        if (netValues) cmtsQuery = cmtsQuery.in("social_network", netValues);
-        const { data: cmts } = await cmtsQuery
-          .order("created_at", { ascending: false })
-          .limit(40);
-
-        const seenTexts = new Set<string>();
-        const uniqueComments: Comment[] = [];
-        for (const c of (cmts ?? []) as Comment[]) {
-          const key = (c.comment_text || "").trim().toLowerCase();
-          if (!key || seenTexts.has(key)) continue;
-          seenTexts.add(key);
-          uniqueComments.push(c);
-          if (uniqueComments.length >= 6) break;
-        }
-        setComments(uniqueComments);
-
-        // Insights via IA (se há volume mínimo)
-        const key = `${candidateId}|${network}|${region}`;
-        const cached = insightCache.get(key);
-        const fresh = cached && Date.now() - cached.ts < 60 * 60 * 1000;
-        if (fresh) {
-          setInsights(cached!.data);
-        } else if ((md[region]?.total ?? 0) >= 10) {
-          setInsightsLoading(true);
-          try {
-            const { data: ai, error: aiErr } = await supabase.functions.invoke("regional-insights", {
-              body: {
-                candidate_id: candidateId,
-                region,
-                social_network: netCfg ? netCfg.label : "Todas as redes",
-                social_network_values: netValues,
-                totals: {
-                  total: md[region].total,
-                  acceptance: md[region].acceptance,
-                  rejection: md[region].rejection,
-                },
-              },
-            });
-            if (aiErr) throw aiErr;
-            if (ai && Array.isArray(ai.pontos_fortes)) {
-              insightCache.set(key, { ts: Date.now(), data: ai });
-              setInsights(ai);
-            }
-          } catch (e) {
-            console.error(e); // silencioso (créditos esgotados etc.)
-          } finally {
-            setInsightsLoading(false);
-          }
-        }
-      } finally {
-        setRegionLoading(false);
-      }
-    },
-    [user, candidateId, network, region]
+  const currentRegion = useMemo(
+    () => analysis?.regions.find((r) => r.region === selectedRegion),
+    [analysis, selectedRegion]
   );
 
-  // ─── Orquestração: carregar mapa quando muda candidato/rede ───────────────
-  useEffect(() => {
-    if (candidateId) loadMap();
-  }, [candidateId, network]); // eslint-disable-line react-hooks/exhaustive-deps
+  const regionScores = useMemo(() => {
+    const m = {} as Record<Region, number>;
+    for (const r of REGIONS) m[r] = analysis?.regions.find((x) => x.region === r)?.regional_strength_score ?? 0;
+    return m;
+  }, [analysis]);
 
-  // ─── Orquestração: detalhes da região quando mapa pronto ou região muda ──
-  useEffect(() => {
-    if (!candidateId || mapLoading || Object.keys(mapData).length === 0) return;
-    loadRegionDetails(mapData);
-  }, [region, mapData]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Derivações
-  // ─────────────────────────────────────────────────────────────────────────
-  const currentMetrics = mapData[region] ?? EMPTY_METRICS;
-  const classifiedTotal = REGIONS.reduce((s, r) => s + (mapData[r]?.total ?? 0), 0);
-  const grandTotal = classifiedTotal + unclassifiedTotal;
-  const insufficient = currentMetrics.total < 10;
-  const isAllNetworks = network === ALL_NETWORKS_VALUE;
-  const networkLabelText = isAllNetworks ? "todas as redes" : networkLabel(network);
-
-  const ranking = useMemo(
-    () =>
-      REGIONS.map((r) => ({ region: r, ...(mapData[r] ?? EMPTY_METRICS) })).sort(
-        (a, b) => b.total - a.total
-      ),
-    [mapData]
-  );
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* ─── Cabeçalho com seletores ─── */}
+      {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
@@ -358,509 +249,300 @@ export default function RegionalAnalysis() {
             Análise Regional
           </h1>
           <p className="text-muted-foreground mt-1 max-w-2xl">
-            Como o seu candidato é percebido em cada região do Brasil. Selecione a rede e clique numa
-            região do mapa para ver detalhes, comentários reais e recomendações de IA.
+            Inteligência estratégica IA: como o candidato é percebido em cada região do Brasil — temas, apoios, riscos e narrativas.
           </p>
         </div>
-
-        <div className="flex flex-row flex-wrap gap-2 items-end">
-          <div className="min-w-[150px] flex-1">
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Candidato</label>
-            <Select value={candidateId} onValueChange={setCandidateId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione" />
-              </SelectTrigger>
-              <SelectContent>
-                {candidates.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.full_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {/* Filtro de rede removido — análise agora usa TODAS as redes. */}
+        <div className="min-w-[220px]">
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Candidato</label>
+          <Select value={candidateId} onValueChange={setCandidateId}>
+            <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+            <SelectContent>
+              {candidates.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
+      {/* Period pills */}
+      <div className="flex flex-wrap gap-2 items-center">
+        {PERIODS.map((p) => (
+          <Button
+            key={p.key}
+            variant={period === p.key ? "default" : "outline"}
+            size="sm"
+            onClick={() => {
+              if (p.key === "custom") { setCustomOpen(true); setPeriod("custom"); }
+              else setPeriod(p.key);
+            }}
+            className="rounded-full"
+          >
+            {p.key === "custom" && <CalendarRange className="h-3 w-3 mr-1" />}
+            {p.label}
+            {p.key === "custom" && customRange?.from && customRange?.to && (
+              <span className="ml-2 text-xs opacity-80">
+                {format(customRange.from, "dd/MM", { locale: ptBR })}–{format(customRange.to, "dd/MM", { locale: ptBR })}
+              </span>
+            )}
+          </Button>
+        ))}
+      </div>
 
-      {/* ─── Estado vazio: nenhum candidato ─── */}
-      {!candidateId && !mapLoading && (
-        <Card>
-          <CardContent className="py-16 text-center text-muted-foreground">
-            Adicione um candidato em "Candidatos" para começar a analisar regiões.
-          </CardContent>
-        </Card>
+      {!candidateId && !loading && (
+        <Card><CardContent className="py-16 text-center text-muted-foreground">
+          Adicione um candidato em "Candidatos" para começar.
+        </CardContent></Card>
       )}
 
-      {/* ─── Resumo total (transparência sobre os números) ─── */}
-      {candidateId && (
-        <Card className="bg-muted/30">
-          <CardContent className="pt-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-bold">{Number(grandTotal ?? 0).toLocaleString("pt-BR")}</span>
-                <span className="text-sm text-muted-foreground">
-                  menções totais em {networkLabelText}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="secondary">
-                  Com região: {Number(classifiedTotal ?? 0).toLocaleString("pt-BR")}
-                </Badge>
-                {unclassifiedTotal > 0 && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Badge
-                          variant="outline"
-                          className="border-amber-500/50 text-amber-700 dark:text-amber-400 cursor-help"
-                        >
-                          <Info className="h-3 w-3 mr-1" />
-                          Sem região: {Number(unclassifiedTotal ?? 0).toLocaleString("pt-BR")}
-                        </Badge>
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-xs">
-                        Estas menções não têm dados públicos suficientes para identificar a região do
-                        autor. Elas contam no total da Visão Geral, mas não aparecem no mapa.
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
-              </div>
+      {loading && <RegionalLoading progress={progress} message={loadMsg} />}
+
+      {!loading && analysis && (
+        <>
+          {/* National KPIs */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles className="h-5 w-5 text-primary" />
+              <h2 className="text-xl font-semibold">Radar Regional Nacional</h2>
+              {analysis.fallback && <Badge variant="outline" className="border-amber-500/50 text-amber-600">Modo contextual</Badge>}
             </div>
-          </CardContent>
-        </Card>
-      )}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <KpiCard icon={<TrendingUp />} label="Força Nacional" value={`${analysis.national.forca_nacional}`} suffix="/100" tint="primary" />
+              <KpiCard icon={<CheckCircle2 />} label="Melhor Região" value={analysis.national.melhor_regiao} tint="green" />
+              <KpiCard icon={<AlertTriangle />} label="Maior Risco" value={analysis.national.regiao_risco} tint="red" />
+              <KpiCard icon={<Target />} label="Expansão Potencial" value={analysis.national.expansao_potencial} tint="blue" />
+            </div>
+            {analysis.national.sintese && (
+              <p className="text-sm text-muted-foreground mt-3 italic">{analysis.national.sintese}</p>
+            )}
+          </div>
 
-      {/* ─── Mapa + Ranking ─── */}
-      {candidateId && (
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* Mapa */}
-          <Card className="lg:col-span-3">
-            <CardHeader>
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <CardTitle>Mapa de aceitação · {networkLabelText}</CardTitle>
-                  <CardDescription>Clique em uma região para ver os detalhes</CardDescription>
-                </div>
-                <div className="flex gap-1.5 text-xs flex-shrink-0">
-                  <span className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded-sm" style={{ background: "hsl(142, 70%, 45%)" }} />
-                    &gt;65%
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded-sm" style={{ background: "hsl(45, 95%, 55%)" }} />
-                    35-65%
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded-sm" style={{ background: "hsl(0, 75%, 55%)" }} />
-                    &lt;35%
-                  </span>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {mapLoading ? (
-                <div className="space-y-4 animate-fade-in">
-                  <div className="space-y-2">
-                    <Progress value={loadProgress} className="h-1.5 transition-all duration-500" />
-                    <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <MapPinned className="h-4 w-4 animate-pulse text-primary" />
-                        <span className="transition-all">{loadStage}</span>
-                      </div>
-                      <span className="font-mono text-muted-foreground">{Math.round(loadProgress)}%</span>
-                    </div>
-                  </div>
-                  <div className="relative h-[360px] w-full overflow-hidden rounded-md bg-muted/40">
-                    <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-transparent via-muted-foreground/10 to-transparent" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <MapPinned className="h-20 w-20 text-muted-foreground/30 animate-pulse" />
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="animate-fade-in">
-                <TooltipProvider delayDuration={150}>
-                  <div className="w-full flex justify-center">
-                    <svg
-                      viewBox={MAP_VIEWBOX}
-                      className="w-full max-w-md h-auto"
-                      role="img"
-                      aria-label="Mapa do Brasil dividido em 5 regiões"
-                    >
-                      {REGIONS.map((r) => {
-                        const m = mapData[r] ?? EMPTY_METRICS;
-                        const fill = colorByAcceptance(m.acceptance, m.total);
-                        const selected = r === region;
-                        return (
-                          <Tooltip key={r}>
-                            <TooltipTrigger asChild>
-                              <g onClick={() => setRegion(r)} className="cursor-pointer">
-                                <path
-                                  d={REGION_PATHS[r]}
-                                  fill={fill}
-                                  stroke={selected ? "hsl(var(--primary))" : "hsl(var(--background))"}
-                                  strokeWidth={selected ? 4 : 1.5}
-                                  className="transition-all hover:opacity-80"
-                                />
-                                <text
-                                  x={REGION_LABEL_POS[r].x}
-                                  y={REGION_LABEL_POS[r].y}
-                                  textAnchor="middle"
-                                  className="fill-white font-bold pointer-events-none"
-                                  style={{
-                                    fontSize: 28,
-                                    paintOrder: "stroke",
-                                    stroke: "rgba(0,0,0,0.55)",
-                                    strokeWidth: 4,
-                                    strokeLinejoin: "round",
-                                  }}
-                                >
-                                  {r}
-                                </text>
-                              </g>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <div className="text-sm space-y-0.5">
-                                <div className="font-semibold">{r}</div>
-                                <div>Menções: {Number(m.total ?? 0).toLocaleString("pt-BR")}</div>
-                                <div>Aceitação: {m.acceptance}%</div>
-                                <div>Rejeição: {m.rejection}%</div>
-                                {m.total < 10 && (
-                                  <div className="text-muted-foreground text-xs">Poucos dados</div>
-                                )}
-                              </div>
-                            </TooltipContent>
-                          </Tooltip>
-                        );
-                      })}
-                    </svg>
-                  </div>
-                </TooltipProvider>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Ranking de regiões */}
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle>Ranking por região</CardTitle>
-              <CardDescription>Menções, aceitação e rejeição</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {mapLoading
-                ? Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)
-                : ranking.map((r) => {
-                    const selected = r.region === region;
+          {/* Map + Region detail */}
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <MapPinned className="h-4 w-4 text-primary" /> Mapa de força regional
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <svg viewBox={MAP_VIEWBOX} className="w-full h-auto">
+                  {REGIONS.map((r) => {
+                    const isSel = r === selectedRegion;
+                    const fill = scoreColor(regionScores[r] ?? 0);
                     return (
-                      <button
-                        key={r.region}
-                        onClick={() => setRegion(r.region)}
-                        className={`w-full text-left rounded-lg border p-3 transition-all hover:border-primary/60 ${
-                          selected ? "border-primary bg-primary/5" : "border-border bg-card"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="font-medium text-sm">{r.region}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {Number(r.total ?? 0).toLocaleString("pt-BR")} menções
-                          </span>
-                        </div>
-                        {(r.pos + r.neg) >= 10 ? (
-                          (() => {
-                            const opinionated = r.pos + r.neg;
-                            const posPct = Math.round((r.pos / opinionated) * 1000) / 10;
-                            const negPct = Math.round(((100 - posPct) * 10)) / 10;
-                            return (
-                              <>
-                                <div className="flex h-2 rounded-full overflow-hidden bg-muted">
-                                  <div
-                                    className="bg-green-500"
-                                    style={{ width: `${posPct}%` }}
-                                    title={`${r.pos} positivos`}
-                                  />
-                                  <div
-                                    className="bg-red-500"
-                                    style={{ width: `${negPct}%` }}
-                                    title={`${r.neg} negativos`}
-                                  />
-                                </div>
-                                <div className="flex justify-between mt-1 text-xs gap-2">
-                                  <span className="text-green-600" title={`${r.pos} positivos`}>
-                                    {posPct}% aceitação
-                                  </span>
-                                  <span className="text-red-600" title={`${r.neg} negativos`}>
-                                    {negPct}% rejeição
-                                  </span>
-                                </div>
-                                <div className="text-[10px] text-muted-foreground mt-0.5">
-                                  Base: {Number(opinionated ?? 0).toLocaleString("pt-BR")} menções com opinião (neutros excluídos)
-                                </div>
-                              </>
-                            );
-                          })()
-                        ) : (
-                          <div className="text-xs text-muted-foreground italic">Dados insuficientes</div>
-                        )}
-                      </button>
+                      <path
+                        key={r}
+                        d={REGION_PATHS[r]}
+                        fill={fill}
+                        stroke={isSel ? "hsl(var(--primary))" : "hsl(var(--background))"}
+                        strokeWidth={isSel ? 2.5 : 1}
+                        className="cursor-pointer transition-all hover:opacity-80"
+                        onClick={() => setSelectedRegion(r)}
+                        style={{ filter: isSel ? "drop-shadow(0 0 8px hsl(var(--primary) / 0.5))" : undefined }}
+                      />
                     );
                   })}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* ─── Mapa por UF e cidade (drill-down) ─── */}
-      {candidateId && user && (
-        <BrazilStateMap userId={user.id} candidateId={candidateId} network={network} />
-      )}
-
-
-      {/* ─── Detalhe da região selecionada ─── */}
-      {candidateId && !mapLoading && (
-        <Card className="border-primary/30">
-          <CardHeader>
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <MapPinned className="h-5 w-5 text-primary" />
-                  {region}
-                </CardTitle>
-                <CardDescription>
-                  {networkLabelText} · {Number(currentMetrics.total ?? 0).toLocaleString("pt-BR")} menções analisadas
-                </CardDescription>
-              </div>
-              {currentMetrics.total > 0 && (
-                <div className="flex items-center gap-2">
-                  {currentMetrics.acceptance > currentMetrics.rejection ? (
-                    <Badge className="bg-green-500/15 text-green-600 border-green-500/30">
-                      <TrendingUp className="h-3 w-3 mr-1" />
-                      Saldo positivo
-                    </Badge>
-                  ) : currentMetrics.rejection > currentMetrics.acceptance ? (
-                    <Badge className="bg-red-500/15 text-red-600 border-red-500/30">
-                      <TrendingDown className="h-3 w-3 mr-1" />
-                      Saldo negativo
-                    </Badge>
-                  ) : (
-                    <Badge variant="secondary">Equilibrado</Badge>
-                  )}
+                  {REGIONS.map((r) => {
+                    const p = REGION_LABELS[r];
+                    if (!p) return null;
+                    return (
+                      <text key={`l-${r}`} x={p.x} y={p.y} textAnchor="middle"
+                        className="pointer-events-none fill-white font-semibold text-[18px]"
+                        style={{ paintOrder: "stroke", stroke: "rgba(0,0,0,0.4)", strokeWidth: 3 }}>
+                        {r}
+                      </text>
+                    );
+                  })}
+                </svg>
+                <div className="flex flex-wrap gap-2 mt-3 text-xs">
+                  <Legend color="hsl(142 76% 36%)" label="Favorável" />
+                  <Legend color="hsl(48 96% 53%)" label="Competitiva" />
+                  <Legend color="hsl(0 84% 60%)" label="Desfavorável" />
+                  <Legend color="hsl(var(--muted))" label="Neutra" />
                 </div>
-              )}
+              </CardContent>
+            </Card>
+
+            <div className="lg:col-span-3" key={`${selectedRegion}-${regionPulse}`}>
+              {currentRegion && <RegionPanel data={currentRegion} />}
             </div>
-          </CardHeader>
-          <CardContent>
-            {currentMetrics.total === 0 ? (
-              <div className="py-8 text-center text-muted-foreground text-sm">
-                Sem menções coletadas para esta combinação ainda.
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
-                    Aceitação
-                  </div>
-                  <div className="text-2xl font-bold text-green-600">{currentMetrics.acceptance}%</div>
-                  <Progress value={currentMetrics.acceptance} className="h-1.5" />
-                </div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <XCircle className="h-3.5 w-3.5 text-red-500" />
-                    Rejeição
-                  </div>
-                  <div className="text-2xl font-bold text-red-600">{currentMetrics.rejection}%</div>
-                  <Progress value={currentMetrics.rejection} className="h-1.5" />
-                </div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <MessageSquare className="h-3.5 w-3.5 text-blue-500" />
-                    Menções
-                  </div>
-                  <div className="text-2xl font-bold text-blue-600">
-                    {Number(currentMetrics.total ?? 0).toLocaleString("pt-BR")}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {currentMetrics.pos} pos · {currentMetrics.neg} neg · {currentMetrics.neu} neu
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Activity className="h-3.5 w-3.5 text-amber-500" />
-                    Engajamento médio
-                  </div>
-                  <div className="text-2xl font-bold text-amber-600">{currentMetrics.engagement}</div>
-                  <div className="text-xs text-muted-foreground">por menção</div>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          </div>
+        </>
       )}
 
-      {/* ─── Breakdown por rede (só quando "todas as redes") ─── */}
-      {candidateId && isAllNetworks && !mapLoading && networkBreakdown.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Distribuição por rede social</CardTitle>
-            <CardDescription>
-              Onde estão as menções deste candidato (todas as regiões)
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {networkBreakdown.slice(0, 12).map((n) => (
-                <div
-                  key={n.label}
-                  className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2"
-                >
-                  <NetworkIcon n={n.label} className="h-4 w-4 text-primary shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-xs text-muted-foreground truncate">{n.label}</div>
-                    <div className="text-sm font-semibold">{Number(n.total ?? 0).toLocaleString("pt-BR")}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ─── Insights de IA ─── */}
-      {candidateId && !mapLoading && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-green-500" />
-                Pontos fortes em {region}
-              </CardTitle>
-              <CardDescription>O que está funcionando para o candidato nesta região</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {insufficient ? (
-                <p className="text-sm text-muted-foreground">
-                  Poucos dados para esta combinação. Continue coletando para liberar insights da IA.
-                </p>
-              ) : insightsLoading ? (
-                <div className="space-y-2">
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <Skeleton key={i} className="h-4 w-full" />
-                  ))}
-                </div>
-              ) : insights?.pontos_fortes?.length ? (
-                <ul className="space-y-2 text-sm">
-                  {insights.pontos_fortes.map((s, i) => (
-                    <li key={i} className="flex gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
-                      <span>{s}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Insights de IA temporariamente indisponíveis. Tente novamente em alguns instantes.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-amber-500" />
-                Como melhorar em {region}
-              </CardTitle>
-              <CardDescription>
-                Estratégias recomendadas pela IA com base nos comentários reais
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {insufficient ? (
-                <p className="text-sm text-muted-foreground">Poucos dados para esta combinação ainda.</p>
-              ) : insightsLoading ? (
-                <div className="space-y-2">
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <Skeleton key={i} className="h-4 w-full" />
-                  ))}
-                </div>
-              ) : insights?.como_melhorar?.length ? (
-                <ul className="space-y-2 text-sm">
-                  {insights.como_melhorar.map((s, i) => (
-                    <li key={i} className="flex gap-2">
-                      <Sparkles className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
-                      <span>{s}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Recomendações temporariamente indisponíveis.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* ─── Comentários reais ─── */}
-      {candidateId && !mapLoading && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Comentários reais · {region}</CardTitle>
-            <CardDescription>
-              Últimos comentários coletados nesta região ({networkLabelText})
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {regionLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className="h-32 w-full" />
-                ))}
-              </div>
-            ) : comments.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">
-                Sem comentários para esta combinação ainda.
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {comments.map((c) => (
-                  <div key={c.id} className="rounded-lg border bg-muted/30 p-4 space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="h-9 w-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold shrink-0">
-                          {initials(c.comment_author)}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium leading-tight truncate">
-                            {c.comment_author || "Anônimo"}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(c.created_at).toLocaleDateString("pt-BR", {
-                              day: "2-digit",
-                              month: "short",
-                              year: "numeric",
-                            })}
-                          </p>
-                        </div>
-                      </div>
-                      <NetworkIcon n={c.social_network} className="h-4 w-4 text-muted-foreground shrink-0" />
-                    </div>
-                    <p className="text-sm line-clamp-4">{c.comment_text}</p>
-                    <div>
-                      <SentimentBadge s={c.sentiment_label} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {/* Custom date dialog */}
+      <Dialog open={customOpen} onOpenChange={setCustomOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Período personalizado</DialogTitle></DialogHeader>
+          <Calendar
+            mode="range"
+            selected={customRange}
+            onSelect={setCustomRange}
+            numberOfMonths={1}
+            locale={ptBR}
+            className={cn("p-3 pointer-events-auto rounded-md border")}
+          />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCustomOpen(false)}>Cancelar</Button>
+            <Button
+              onClick={() => { setCustomOpen(false); setPeriod("custom"); }}
+              disabled={!(customRange?.from && customRange?.to)}
+            >
+              Aplicar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+function KpiCard({ icon, label, value, suffix, tint }: { icon: React.ReactNode; label: string; value: string; suffix?: string; tint: "primary" | "green" | "red" | "blue" }) {
+  const colors = {
+    primary: "from-primary/10 to-primary/5 text-primary",
+    green: "from-green-500/10 to-green-500/5 text-green-600",
+    red: "from-red-500/10 to-red-500/5 text-red-600",
+    blue: "from-blue-500/10 to-blue-500/5 text-blue-600",
+  }[tint];
+  return (
+    <Card className={cn("bg-gradient-to-br border-0", colors)}>
+      <CardContent className="pt-5">
+        <div className="flex items-center gap-2 text-xs font-medium opacity-80 mb-2">
+          <span className="[&>svg]:h-4 [&>svg]:w-4">{icon}</span>
+          {label}
+        </div>
+        <div className="text-2xl font-bold text-foreground">
+          {value}
+          {suffix && <span className="text-sm text-muted-foreground ml-1">{suffix}</span>}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Legend({ color, label }: { color: string; label: string }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="w-3 h-3 rounded-sm" style={{ background: color }} />
+      <span className="text-muted-foreground">{label}</span>
+    </div>
+  );
+}
+
+function RegionPanel({ data }: { data: RegionAnalysis }) {
+  return (
+    <div className="space-y-4 animate-fade-in">
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle className="text-lg">{data.region}</CardTitle>
+            <Badge className={cn("border", temperatureBadge(data.temperatura))}>{data.temperatura}</Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <ScorePill label="Força regional" value={data.regional_strength_score} positive />
+            <ScorePill label="Rejeição regional" value={data.rejection_score} />
+          </div>
+          {data.percepcao && (
+            <p className="text-sm text-muted-foreground leading-relaxed border-l-2 border-primary/30 pl-3">
+              {data.percepcao}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <SectionCard icon={<MessageCircle className="h-4 w-4" />} title="Temas dominantes">
+        <div className="flex flex-wrap gap-2">
+          {data.temas.map((t, i) => (
+            <Badge key={i} variant="outline" className={cn("border", intensityBadge(t.intensidade))}>
+              {t.nome} · {t.intensidade}
+            </Badge>
+          ))}
+        </div>
+      </SectionCard>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <SectionCard icon={<Users className="h-4 w-4 text-green-600" />} title="Quem apoia">
+          <Bullets items={data.apoia} tone="green" />
+        </SectionCard>
+        <SectionCard icon={<UserX className="h-4 w-4 text-red-600" />} title="Quem rejeita">
+          <Bullets items={data.rejeita} tone="red" />
+        </SectionCard>
+      </div>
+
+      <SectionCard icon={<ShieldAlert className="h-4 w-4 text-amber-600" />} title="Riscos regionais">
+        <div className="space-y-2">
+          {data.riscos.map((r, i) => (
+            <div key={i} className="flex items-center justify-between gap-2 p-2 rounded-md bg-muted/40">
+              <span className="text-sm">{r.titulo}</span>
+              <Badge className={cn("border text-xs", severityBadge(r.severidade))}>{r.severidade}</Badge>
+            </div>
+          ))}
+          {!data.riscos.length && <p className="text-sm text-muted-foreground">Sem riscos relevantes mapeados.</p>}
+        </div>
+      </SectionCard>
+
+      <SectionCard icon={<Target className="h-4 w-4 text-blue-600" />} title="Oportunidades regionais">
+        <Bullets items={data.oportunidades} tone="blue" />
+      </SectionCard>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <SectionCard icon={<CheckCircle2 className="h-4 w-4 text-green-600" />} title="Narrativas que funcionam">
+          <Bullets items={data.narrativas_funcionam} tone="green" quote />
+        </SectionCard>
+        <SectionCard icon={<XCircle className="h-4 w-4 text-red-600" />} title="Narrativas que falham">
+          <Bullets items={data.narrativas_falham} tone="red" quote />
+        </SectionCard>
+      </div>
+
+      <SectionCard icon={<Lightbulb className="h-4 w-4 text-primary" />} title="Recomendações de campanha">
+        <ol className="space-y-2 list-decimal list-inside">
+          {data.recomendacoes.map((r, i) => (
+            <li key={i} className="text-sm leading-relaxed">{r}</li>
+          ))}
+        </ol>
+      </SectionCard>
+    </div>
+  );
+}
+
+function ScorePill({ label, value, positive }: { label: string; value: number; positive?: boolean }) {
+  const color = positive
+    ? (value >= 65 ? "text-green-600" : value >= 40 ? "text-amber-600" : "text-red-600")
+    : (value >= 65 ? "text-red-600" : value >= 40 ? "text-amber-600" : "text-green-600");
+  return (
+    <div className="p-3 rounded-lg bg-muted/40">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className={cn("text-2xl font-bold", color)}>{value}<span className="text-sm text-muted-foreground ml-1">/100</span></div>
+      <Progress value={value} className="h-1.5 mt-1" />
+    </div>
+  );
+}
+
+function SectionCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">{icon}{title}</CardTitle>
+      </CardHeader>
+      <CardContent>{children}</CardContent>
+    </Card>
+  );
+}
+
+function Bullets({ items, tone, quote }: { items: string[]; tone: "green" | "red" | "blue"; quote?: boolean }) {
+  if (!items.length) return <p className="text-sm text-muted-foreground">Sem dados.</p>;
+  const dot = { green: "bg-green-500", red: "bg-red-500", blue: "bg-blue-500" }[tone];
+  return (
+    <ul className="space-y-1.5">
+      {items.map((it, i) => (
+        <li key={i} className="flex items-start gap-2 text-sm">
+          <span className={cn("w-1.5 h-1.5 rounded-full mt-2 shrink-0", dot)} />
+          <span className="leading-relaxed">{quote ? `“${it}”` : it}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
