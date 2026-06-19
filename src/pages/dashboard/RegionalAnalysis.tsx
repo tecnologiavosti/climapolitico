@@ -632,7 +632,7 @@ export default function RegionalAnalysis() {
               {detailMode === "region" && currentRegion ? (
                 <RegionPanel data={currentRegion} onPickUf={(uf) => { setSelectedUf(uf); setDetailMode("state"); }} />
               ) : currentState ? (
-                <StatePanel data={currentState} />
+                <StatePanel base={currentState} deep={currentDeep} loading={deepLoading === selectedUf} error={deepError} onRetry={retryDeep} />
               ) : (
                 <Card><CardContent className="py-10 text-center text-muted-foreground">
                   Selecione um estado no mapa.
