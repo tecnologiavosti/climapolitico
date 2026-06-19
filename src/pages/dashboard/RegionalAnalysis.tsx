@@ -80,12 +80,19 @@ const LOADING_MESSAGES = [
 // ---------- Tipos ----------
 interface Candidate { id: string; full_name: string; }
 
-interface StateAnalysis {
+// Estado base (vem do overview, calculado por algoritmo)
+interface StateBase {
   uf: string;
   region: Region;
   temperatura: string;
   electoral_strength: number;
   rejection_score: number;
+}
+
+// Análise profunda (vem on-demand do mode=state_deep)
+interface StateDeep {
+  uf: string;
+  region: Region;
   perfil_eleitor_dominante: string;
   dna_eleitoral: { tema: string; score: number }[];
   segmentos_voto: { segmento: string; score: number }[];
@@ -94,6 +101,7 @@ interface StateAnalysis {
   crescimento: { titulo: string; descricao: string };
   riscos: { titulo: string; severidade: string }[];
   oportunidades: string[];
+  temas_dominantes?: string[];
 }
 
 interface RegionSummary {
@@ -109,10 +117,7 @@ interface RegionAggregate {
   electoral_strength: number;
   rejection_score: number;
   percepcao: string;
-  perfis: string[];
-  temas: { tema: string; score: number }[];
-  riscos: { titulo: string; severidade: string; uf: string }[];
-  oportunidades: string[];
+  temperatura: string;
   ufs: string[];
 }
 
@@ -125,7 +130,7 @@ interface AnalysisResult {
     sintese: string;
   };
   regions: RegionSummary[];
-  states: StateAnalysis[];
+  states: StateBase[];
   generated_at: string;
 }
 
