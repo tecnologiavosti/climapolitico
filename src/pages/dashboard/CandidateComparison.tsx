@@ -18,7 +18,7 @@ import {
   Activity, Layers, Megaphone, Radar as RadarIcon,
 } from "lucide-react";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
-import { DateRangePicker } from "@/components/DateRangePicker";
+import { InfoTip } from "@/components/ui/info-tip";
 
 type Period = "7d" | "30d" | "90d" | "1y" | "custom";
 const PERIOD_LABEL: Record<Period, string> = {
@@ -377,7 +377,7 @@ const CandidateComparisonPage = () => {
     const keys: { key: keyof Scores; label: string }[] = [
       { key: "recall", label: "Lembrança" },
       { key: "approval", label: "Aprovação" },
-      { key: "rejection", label: "Rejeição inv." },
+      { key: "rejection", label: "Resistência Eleitoral" },
       { key: "virality", label: "Viralização" },
       { key: "regionalForce", label: "Penetração" },
       { key: "growth", label: "Crescimento" },
@@ -417,7 +417,7 @@ const CandidateComparisonPage = () => {
           </HelpTooltip>
           <div className="mt-1 flex flex-col gap-1 text-xs text-muted-foreground">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm">Inteligência política comparativa premium.</span>
+              <span className="text-sm">Baseado em histórico consolidado + sinais recentes.</span>
               {savedAt && (
                 <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">
                   {ageLabel(savedAt)}
@@ -427,30 +427,11 @@ const CandidateComparisonPage = () => {
             {savedAt && (
               <div className="tabular-nums">
                 Última análise: {new Date(savedAt).toLocaleDateString("pt-BR")} {new Date(savedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                <span className="mx-2 opacity-50">·</span>
-                Período: {resolvedRange.from.toLocaleDateString("pt-BR")} → {resolvedRange.to.toLocaleDateString("pt-BR")}
               </div>
             )}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
-            <SelectTrigger className="w-[160px] h-9">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(["7d", "30d", "90d", "1y", "custom"] as Period[]).map((p) => (
-                <SelectItem key={p} value={p}>{PERIOD_LABEL[p]}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {period === "custom" && (
-            <DateRangePicker
-              dateRange={customRange?.from && customRange?.to ? { from: customRange.from, to: customRange.to } : undefined}
-              onDateRangeChange={(r) => setCustomRange(r ? { from: r.from, to: r.to } : undefined)}
-              className="w-[280px]"
-            />
-          )}
           <Button onClick={runComparison} disabled={loading} className="bg-gradient-to-r from-primary to-fuchsia-500 hover:opacity-90">
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Atualizar IA
@@ -508,9 +489,10 @@ const CandidateComparisonPage = () => {
                 <CardTitle className="flex items-center gap-2">
                   <Trophy className="h-5 w-5 text-amber-400" />
                   Ranking de Força Política
+                  <InfoTip text="Score IA 0–100 calculado por modelo híbrido com pesos regionais, sentimentais e competitivos: regional 25% · aprovação 20% · resistência 20% · viralização 15% · crescimento 10% · dominância 10%." />
                 </CardTitle>
                 <CardDescription>
-                  Score IA 0–100: regional 25% · aprovação 20% · rejeição inversa 20% · viralização 15% · crescimento 10% · dominância 10%.
+                  Pontuação consolidada de cada candidato. Hover/tap nos indicadores para entender cada métrica.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
@@ -526,6 +508,12 @@ const CandidateComparisonPage = () => {
                       <div className="font-semibold truncate flex items-center gap-2">
                         {c.name}
                         <ConfidenceBadge value={c.confidence} />
+                        <Badge variant="outline" className="text-[10px] border-primary/30 text-primary/90">
+                          Confiança IA {Math.round((c.confidence ?? 0) * 100)}%
+                        </Badge>
+                        <InfoTip
+                          text={`Por que a IA concluiu isso?\n\nArquétipo: ${c.narrativas?.arquetipo ?? "—"}\nTom dominante: ${c.narrativas?.tom ?? "—"}\nStatus: ${c.status} · Momentum: ${c.momentum}\n\nScore final ${c.scores.strength}/100 combina força regional (${c.scores.regionalForce}), aprovação (${c.scores.approval}), resistência (${100 - c.scores.rejection}), viralização (${c.scores.virality}), crescimento (${c.scores.growth >= 0 ? "+" : ""}${c.scores.growth}) e dominância (${c.scores.dominance}).`}
+                        />
                       </div>
                       <div className="text-xs text-muted-foreground truncate">
                         {resolveParty(c.name, c.party)}{c.state ? ` · ${c.state}` : ""}
@@ -556,7 +544,9 @@ const CandidateComparisonPage = () => {
                   <Compass className="h-5 w-5 text-primary" />
                   Radar Multidimensional
                 </CardTitle>
-                <CardDescription>Perfil em 8 dimensões (0–100). Hover para detalhes.</CardDescription>
+                <CardDescription>
+                  Perfil em 8 dimensões (0–100). Quanto maior a área preenchida, mais robusto o candidato.
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="h-[440px] w-full">
@@ -643,13 +633,22 @@ const CandidateComparisonPage = () => {
                   </ResponsiveContainer>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 text-xs">
-                  {(Object.keys(QUADRANT_COLOR) as Quadrant[]).map((q) => (
+                  {([
+                    { q: "Dominante" as Quadrant, desc: "Alta aprovação + alta força. Liderança consolidada." },
+                    { q: "Polarizador" as Quadrant, desc: "Força alta, mas aprovação dividida. Gera reação." },
+                    { q: "Promissor" as Quadrant, desc: "Boa aprovação, força em construção." },
+                    { q: "Vulnerável" as Quadrant, desc: "Aprovação e força baixas. Risco competitivo." },
+                  ]).map(({ q, desc }) => (
                     <div key={q} className="flex items-center gap-2 rounded border border-border/40 bg-card/40 px-2 py-1.5">
                       <span className="h-2.5 w-2.5 rounded-full" style={{ background: QUADRANT_COLOR[q] }} />
                       <span className="text-muted-foreground">{q}</span>
+                      <InfoTip text={desc} className="ml-auto" />
                     </div>
                   ))}
                 </div>
+                <p className="mt-3 text-[11px] text-muted-foreground">
+                  Eixo X = Aprovação · Eixo Y = Força Política · Tamanho da bolha = Viralização.
+                </p>
               </CardContent>
             </Card>
           </motion.div>
@@ -678,7 +677,7 @@ const CandidateComparisonPage = () => {
                   <div className="rounded-lg border border-border/40 overflow-hidden divide-y divide-border/30">
                     {[
                       { label: "Popularidade", a: headACand.scores.approval, b: headBCand.scores.approval, higherWins: true },
-                      { label: "Rejeição", a: headACand.scores.rejection, b: headBCand.scores.rejection, higherWins: false },
+                      { label: "Resistência Eleitoral", a: 100 - headACand.scores.rejection, b: 100 - headBCand.scores.rejection, higherWins: true },
                       { label: "Penetração regional", a: headACand.scores.regionalForce, b: headBCand.scores.regionalForce, higherWins: true },
                       { label: "Engajamento", a: headACand.scores.virality, b: headBCand.scores.virality, higherWins: true },
                       { label: "Força política", a: headACand.scores.strength, b: headBCand.scores.strength, higherWins: true },
@@ -754,17 +753,32 @@ const CandidateComparisonPage = () => {
                 <CardDescription>Aceleração de engajamento, mudança de sentimento e crescimento de lembrança.</CardDescription>
               </CardHeader>
               <CardContent className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {candidates.map((c) => (
-                  <div key={c.id} className="rounded-lg border border-border/40 bg-card/40 p-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="font-medium truncate">{c.name}</div>
-                      <MomentumBadge m={c.momentum} />
+                {candidates.map((c) => {
+                  const g = Math.max(-100, Math.min(100, c.scores.growth));
+                  const mid = 50;
+                  const width = Math.abs(g) / 2; // 0..50
+                  const positive = g >= 0;
+                  return (
+                    <div key={c.id} className="rounded-lg border border-border/40 bg-card/40 p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="font-medium truncate">{c.name}</div>
+                        <MomentumBadge m={c.momentum} />
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Crescimento {g >= 0 ? "+" : ""}{g}% · Viralização {c.scores.virality}
+                      </div>
+                      <div className="relative h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div className="absolute inset-y-0 left-1/2 w-px bg-border" />
+                        <motion.div
+                          className={`absolute inset-y-0 ${positive ? "bg-emerald-400" : "bg-rose-400"}`}
+                          initial={{ width: 0 }}
+                          animate={{ width: `${width}%`, left: positive ? `${mid}%` : `${mid - width}%` }}
+                          transition={{ duration: 0.7 }}
+                        />
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      Crescimento {c.scores.growth >= 0 ? "+" : ""}{c.scores.growth}% · Viralização {c.scores.virality}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </CardContent>
             </Card>
           </motion.div>
