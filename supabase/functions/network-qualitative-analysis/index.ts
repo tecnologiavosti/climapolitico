@@ -1,6 +1,5 @@
-// Visão por Rede Social — Social Listening Qualitativo (enterprise-grade).
-// Blocos: Temperatura, Termômetro de Reputação, Vetores de Polarização,
-// Gatilhos Emocionais (Apoio/Rejeição), Vocabulário da Rede, Risco de Viralização.
+// Visão por Rede Social — Social Listening Político.
+// Foco: comportamento, viralização, comentários, formatos, audiência e amplificação por plataforma.
 
 import { handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
@@ -15,27 +14,27 @@ interface RequestBody {
   end_date: string;
 }
 
-type Intensidade = "morna" | "quente" | "fervendo";
-type Reputacao = "favoravel" | "neutro" | "desgastado" | "polarizado" | "em_ascensao" | "em_queda";
+type ClimaStatus = "explodindo" | "aquecido" | "estavel" | "frio" | "hostil" | "favoravel" | "polarizado";
+type Tracao = "alta" | "media" | "baixa";
 type Viralizacao = "alta" | "media" | "baixa";
+type TomComentario = "apoio" | "critica" | "neutro" | "ironia";
 
 interface ListeningReport {
-  temperatura: { texto: string; intensidade: Intensidade; temas_dominantes: string[] };
-  reputacao: { status: Reputacao; texto: string };
-  vetores_polarizacao: {
-    ideologica: number;
-    regional: number;
-    geracional: number;
-    tematica: number;
-    nota: string;
-  };
-  gatilhos_emocionais: { apoio: string[]; rejeicao: string[] };
-  vocabulario: {
-    palavras_nucleares: string[];
-    adjetivos_associados: string[];
-    frases_recorrentes: string[];
-  };
+  clima_social: { status: ClimaStatus[]; headline: string; texto: string };
+  reacao_da_rede: { texto: string; sinais: string[] };
+  formatos_que_engajam: { alta_tracao: string[]; media_tracao: string[]; baixa_tracao: string[] };
+  narrativas_dominantes: { positivas: string[]; negativas: string[]; neutras: string[] };
+  comentarios_tipicos: Array<{ texto: string; tom: TomComentario }>;
+  amplificadores: Array<{ categoria: string; papel: string; intensidade: Tracao }>;
   risco_viralizacao: Array<{ tema: string; nivel: Viralizacao; motivo: string }>;
+  score_performance_social: {
+    viralizacao: number;
+    aprovacao: number;
+    rejeicao: number;
+    engajamento: number;
+    shareability: number;
+    meme_potential: number;
+  };
   network: string;
   period: { start: string; end: string };
   evidence_used: number;
@@ -43,8 +42,8 @@ interface ListeningReport {
 }
 
 const NETWORK_LABEL: Record<string, string> = {
-  all: "todas as redes sociais e veículos de notícias",
-  news: "veículos de notícias e portais jornalísticos",
+  all: "todas as redes sociais",
+  news: "Notícias",
   youtube: "YouTube",
   twitter: "X / Twitter",
   x: "X / Twitter",
@@ -53,45 +52,65 @@ const NETWORK_LABEL: Record<string, string> = {
   instagram: "Instagram",
   facebook: "Facebook",
   reddit: "Reddit",
-  linkedin: "LinkedIn",
-  bluesky: "Bluesky",
+};
+
+const PLATFORM_BEHAVIOR: Record<string, string> = {
+  all: "Compare diferenças entre plataformas sem transformar a resposta em resumo político genérico. Aponte onde o candidato cresce, onde apanha e quais formatos puxam a conversa.",
+  twitter: "X / Twitter: ironia, ataques rápidos, threads, jornalistas, militância organizada, disputa narrativa em tempo real e prints/cortes com alto potencial de conflito.",
+  x: "X / Twitter: ironia, ataques rápidos, threads, jornalistas, militância organizada, disputa narrativa em tempo real e prints/cortes com alto potencial de conflito.",
+  instagram: "Instagram: imagem pública, Reels, comentários curtos, apoio de baixa fricção, compartilhamento em stories, estética de bastidor e reação superficial a falas fortes.",
+  tiktok: "TikTok: memes, edits, cortes curtos, áudio reaproveitado, react, legenda provocativa, retenção nos primeiros segundos e viralização veloz fora da bolha política.",
+  youtube: "YouTube: comentários longos, cortes de podcasts, entrevistas, debates, reacts, canais de opinião e audiências que argumentam mais do que apenas curtem.",
+  facebook: "Facebook: comunidades locais, grupos de apoio/rejeição, links de notícias, comentários extensos, público mais velho e compartilhamentos em páginas regionais.",
+  telegram: "Telegram: canais militantes, encaminhamento coordenado, linguagem de mobilização, bolhas ideológicas e baixa visibilidade pública com alta capacidade de ativação.",
+  reddit: "Reddit: discussão em comunidades, ceticismo, perguntas, humor interno, análise de contexto e rejeição a propaganda explícita.",
+  news: "Notícias: manchetes, enquadramento editorial, repercussão em portais, colunistas, clipping político e comentários derivados das matérias.",
 };
 
 function buildContext(hits: FreeHit[], limit = 30): string {
-  if (!hits.length) return "Sem evidências web recentes. Use conhecimento político geral sobre o candidato.";
+  if (!hits.length) return "Sem evidências web recentes. Use conhecimento público, mas deixe claro o comportamento de rede e evite resumo político genérico.";
   return hits.slice(0, limit).map((h, i) => {
     const parts = [
       h.title ? `T: ${h.title}` : "",
       h.source ? `F: ${h.source}` : "",
       h.date ? `D: ${h.date}` : "",
-      h.description ? `R: ${h.description.slice(0, 240)}` : "",
+      h.description ? `R: ${h.description.slice(0, 260)}` : "",
     ].filter(Boolean);
     return `[${i + 1}] ${parts.join(" | ")}`;
   }).join("\n");
 }
 
-function normIntensidade(v: unknown): Intensidade {
-  const s = String(v ?? "").toLowerCase();
-  if (s.includes("ferv")) return "fervendo";
-  if (s.includes("quent")) return "quente";
-  return "morna";
+function normalizeStatus(values: unknown): ClimaStatus[] {
+  const allowed: ClimaStatus[] = ["explodindo", "aquecido", "estavel", "frio", "hostil", "favoravel", "polarizado"];
+  const raw = Array.isArray(values) ? values : [values];
+  const normalized = raw
+    .map((v) => String(v ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "_"))
+    .map((s) => allowed.find((a) => s.includes(a)) ?? null)
+    .filter((s): s is ClimaStatus => Boolean(s));
+  return [...new Set(normalized)].slice(0, 3).length ? [...new Set(normalized)].slice(0, 3) : ["estavel"];
 }
 
-function normReputacao(v: unknown): Reputacao {
-  const s = String(v ?? "").toLowerCase().replace(/\s+/g, "_");
-  if (s.includes("ascens")) return "em_ascensao";
-  if (s.includes("queda")) return "em_queda";
-  if (s.includes("desgast")) return "desgastado";
-  if (s.includes("polariz")) return "polarizado";
-  if (s.includes("favor")) return "favoravel";
-  return "neutro";
-}
-
-function normViralizacao(v: unknown): Viralizacao {
+function normTraction(v: unknown): Tracao {
   const s = String(v ?? "").toLowerCase();
   if (s.startsWith("a")) return "alta";
   if (s.startsWith("b")) return "baixa";
   return "media";
+}
+
+function normViralizacao(v: unknown): Viralizacao {
+  return normTraction(v);
+}
+
+function normTom(v: unknown): TomComentario {
+  const s = String(v ?? "").toLowerCase();
+  if (s.includes("cr") || s.includes("neg") || s.includes("rej")) return "critica";
+  if (s.includes("iron") || s.includes("sarcas")) return "ironia";
+  if (s.includes("apo") || s.includes("pos")) return "apoio";
+  return "neutro";
+}
+
+function strList(value: unknown, limit: number): string[] {
+  return Array.isArray(value) ? value.map(String).filter(Boolean).slice(0, limit) : [];
 }
 
 function clamp(n: unknown): number {
@@ -109,6 +128,7 @@ Deno.serve(async (req) => {
     if (!body.candidate_name || !body.start_date || !body.end_date) {
       return jsonResponse({ error: "MISSING_PARAMS" }, 400);
     }
+
     const network = (body.network ?? "all").toLowerCase();
     const networkLabel = NETWORK_LABEL[network] ?? network;
     const query = [body.candidate_name, body.party].filter(Boolean).join(" ");
@@ -122,74 +142,91 @@ Deno.serve(async (req) => {
     if (reddit.status === "fulfilled") hits.push(...reddit.value.hits);
 
     const context = buildContext(hits);
+    const platformBehavior = PLATFORM_BEHAVIOR[network] ?? `Rede analisada: ${networkLabel}. Diferencie esta plataforma por comportamento, audiência, formatos e linguagem.`;
 
-    const systemMsg = `Você é um analista sênior de social listening político brasileiro (padrão Brandwatch/Meltwater/Sprinklr).
-Sua missão: produzir leitura ESPECÍFICA e PERSONALIZADA sobre o candidato — nunca genérica, nunca template.
-Cada candidato deve ter saída claramente diferente, refletindo trajetória, partido, base, controvérsias e estilo.
+    const systemMsg = `Você é um diretor sênior de social listening político brasileiro, no padrão Brandwatch + Meltwater + Sprinklr.
+Sua única missão é responder: "Como este candidato existe dentro das redes sociais?"
 
-PROIBIÇÕES ABSOLUTAS:
-- NÃO descreva redes sociais de forma estática ("X é polarizado", "YouTube tem vídeos").
-- NÃO invente hashtags artificiais.
-- NÃO use termos sem relação semântica forte com o candidato (ex.: para Caiado, não citar "Amazônia" ou "Vorcaro").
-- NÃO repita templates genéricos.
-- Em "vocabulario.adjetivos_associados" e "palavras_nucleares", só inclua termos que a opinião pública realmente associa àquele candidato específico.
-Escreva em PT-BR analítico e direto.`;
+REGRAS CRÍTICAS:
+- Esta é uma análise de SOCIAL MEDIA intelligence, não um resumo político.
+- Foco total em comportamento, viralização, comentário, percepção, formato e audiência.
+- Não repetir Radar Político, Resumo IA, trajetória legislativa ou análise ideológica genérica.
+- Cada rede precisa soar radicalmente diferente: YouTube != X != TikTok != Instagram.
+- Descreva a rede e sua reação ao candidato; não faça panfleto, biografia ou editorial.
+- Comentários típicos devem ser sintéticos, realistas e plausíveis, como se viessem da plataforma, sem inventar fatos criminosos.
+- Narrativas devem parecer extraídas de comentários reais: curtas, específicas, com linguagem social.
+- Não use hashtags inventadas nem termos genéricos que serviriam para qualquer candidato.
+- Escreva em PT-BR premium, direto, analítico e operacional.`;
 
     const userPrompt = `Candidato: ${body.candidate_name}
 Partido: ${body.party ?? "não informado"}
 Estado/Região: ${body.region ?? "não informado"}
 Rede analisada: ${networkLabel}
-Período: ${body.start_date} a ${body.end_date}
+Período EXATO da análise: ${body.start_date} a ${body.end_date}
 
-Evidências web recentes:
+Comportamento esperado da plataforma:
+${platformBehavior}
+
+Evidências web recentes para contexto:
 ${context}
 
-Produza um JSON estrito (sem comentários) com este schema EXATO:
+Produza um JSON estrito (sem markdown e sem comentários) com este schema EXATO:
 {
-  "temperatura": {
-    "texto": "2-3 frases sobre percepção atual, calor da conversa e temas dominantes ESPECÍFICOS do candidato",
-    "intensidade": "morna" | "quente" | "fervendo",
-    "temas_dominantes": ["3-6 temas concretos ligados ao candidato"]
+  "clima_social": {
+    "status": ["explodindo" | "aquecido" | "estavel" | "frio" | "hostil" | "favoravel" | "polarizado"],
+    "headline": "ex.: CLIMA SOCIAL: POLARIZADO + AQUECIDO",
+    "texto": "2-3 frases descrevendo COMO A REDE está se comportando em torno do candidato; não descreva o candidato isoladamente"
   },
-  "reputacao": {
-    "status": "favoravel" | "neutro" | "desgastado" | "polarizado" | "em_ascensao" | "em_queda",
-    "texto": "1-2 frases explicando reputação ATUAL do candidato com bases concretas (quem apoia, quem rejeita, por quê)"
+  "reacao_da_rede": {
+    "texto": "2-3 frases específicas da plataforma: no YouTube fale de comentários longos/reacts/cortes; no X de ironia/threads/ataques; no TikTok de memes/edits; no Instagram de imagem/reels/stories etc.",
+    "sinais": ["4-6 sinais comportamentais curtos da plataforma"]
   },
-  "vetores_polarizacao": {
-    "ideologica": 0-100 (esquerda vs direita em torno do candidato),
-    "regional": 0-100 (diferença de percepção entre regiões/UFs),
-    "geracional": 0-100 (jovens vs mais velhos),
-    "tematica": 0-100 (concentração em poucos temas polêmicos),
-    "nota": "1 frase explicando o vetor mais forte e por quê"
+  "formatos_que_engajam": {
+    "alta_tracao": ["3-5 formatos concretos que viralizam para este candidato nesta rede"],
+    "media_tracao": ["3-5 formatos de tração média"],
+    "baixa_tracao": ["3-5 formatos de baixa tração"]
   },
-  "gatilhos_emocionais": {
-    "apoio": ["3-5 itens curtos — o que GERA APOIO ao candidato (pautas, posturas, símbolos)"],
-    "rejeicao": ["3-5 itens curtos — o que GERA REJEIÇÃO (controvérsias, falas, associações)"]
+  "narrativas_dominantes": {
+    "positivas": ["3-6 frases/expressões curtas que pareçam comentários reais favoráveis"],
+    "negativas": ["3-6 frases/expressões curtas que pareçam comentários reais críticos"],
+    "neutras": ["3-6 frases/expressões curtas neutras/descritivas"]
   },
-  "vocabulario": {
-    "palavras_nucleares": ["5-10 substantivos/temas DIRETAMENTE ligados ao candidato — nada genérico"],
-    "adjetivos_associados": ["4-8 adjetivos com que a rede DESCREVE esse candidato em específico"],
-    "frases_recorrentes": ["3-6 expressões/bordões/slogans realmente associados a esse candidato"]
-  },
+  "comentarios_tipicos": [
+    { "texto": "comentário sintético realista, curto ou médio, no estilo da rede", "tom": "apoio" | "critica" | "neutro" | "ironia" }
+  ],
+  "amplificadores": [
+    { "categoria": "apoiadores | críticos | imprensa | influenciadores | perfis meme | perfis de cortes | grupos locais", "papel": "como esse grupo faz a conversa crescer", "intensidade": "alta" | "media" | "baixa" }
+  ],
   "risco_viralizacao": [
-    { "tema": "tema específico", "nivel": "alta" | "media" | "baixa", "motivo": "1 frase explicando por que pode (ou não) viralizar" },
-    ... 4 a 6 temas
-  ]
+    { "tema": "gatilho específico que pode explodir", "nivel": "alta" | "media" | "baixa", "motivo": "por que pode ganhar tração nas próximas horas/dias" }
+  ],
+  "score_performance_social": {
+    "viralizacao": 0-100,
+    "aprovacao": 0-100,
+    "rejeicao": 0-100,
+    "engajamento": 0-100,
+    "shareability": 0-100,
+    "meme_potential": 0-100
+  }
 }
 
-REGRAS:
-- Cada bloco deve refletir ESTE candidato, não um candidato genérico.
-- "vocabulario" deve passar no teste: se um leitor político ler, deve dizer "isso é cara desse candidato".
-- "vetores_polarizacao" devem variar entre candidatos (não use sempre 70/70/70/70).
-- Sem hashtags inventadas. Sem entidades sem ligação forte.`;
+Quantidades mínimas:
+- comentarios_tipicos: 5 a 8 itens.
+- amplificadores: 5 a 7 itens.
+- risco_viralizacao: 4 a 6 itens.
+
+Validação editorial antes de responder:
+1. Se trocar o nome do candidato por outro, a análise ainda funciona? Se sim, está genérica demais; reescreva.
+2. A resposta parece social listening, não ciência política? Se não, reescreva.
+3. A plataforma analisada aparece de forma concreta em todos os blocos? Se não, reescreva.`;
 
     const ai = await callAICerebrasFirst({
       systemMsg,
       userPrompt,
       jsonMode: true,
-      maxTokens: 2600,
-      temperature: 0.55,
-      tag: "network-listening-v3",
+      maxTokens: 3600,
+      temperature: 0.65,
+      tag: "network-social-listening-v4",
     });
 
     let parsed: any;
@@ -202,53 +239,50 @@ REGRAS:
     }
 
     const report: ListeningReport = {
-      temperatura: {
-        texto: String(parsed?.temperatura?.texto ?? ""),
-        intensidade: normIntensidade(parsed?.temperatura?.intensidade),
-        temas_dominantes: Array.isArray(parsed?.temperatura?.temas_dominantes)
-          ? parsed.temperatura.temas_dominantes.slice(0, 8).map(String)
-          : [],
+      clima_social: {
+        status: normalizeStatus(parsed?.clima_social?.status),
+        headline: String(parsed?.clima_social?.headline ?? "CLIMA SOCIAL: ESTÁVEL"),
+        texto: String(parsed?.clima_social?.texto ?? ""),
       },
-      reputacao: {
-        status: normReputacao(parsed?.reputacao?.status),
-        texto: String(parsed?.reputacao?.texto ?? ""),
+      reacao_da_rede: {
+        texto: String(parsed?.reacao_da_rede?.texto ?? ""),
+        sinais: strList(parsed?.reacao_da_rede?.sinais, 8),
       },
-      vetores_polarizacao: {
-        ideologica: clamp(parsed?.vetores_polarizacao?.ideologica),
-        regional: clamp(parsed?.vetores_polarizacao?.regional),
-        geracional: clamp(parsed?.vetores_polarizacao?.geracional),
-        tematica: clamp(parsed?.vetores_polarizacao?.tematica),
-        nota: String(parsed?.vetores_polarizacao?.nota ?? ""),
+      formatos_que_engajam: {
+        alta_tracao: strList(parsed?.formatos_que_engajam?.alta_tracao, 6),
+        media_tracao: strList(parsed?.formatos_que_engajam?.media_tracao, 6),
+        baixa_tracao: strList(parsed?.formatos_que_engajam?.baixa_tracao, 6),
       },
-      gatilhos_emocionais: {
-        apoio: Array.isArray(parsed?.gatilhos_emocionais?.apoio)
-          ? parsed.gatilhos_emocionais.apoio.slice(0, 6).map(String)
-          : [],
-        rejeicao: Array.isArray(parsed?.gatilhos_emocionais?.rejeicao)
-          ? parsed.gatilhos_emocionais.rejeicao.slice(0, 6).map(String)
-          : [],
+      narrativas_dominantes: {
+        positivas: strList(parsed?.narrativas_dominantes?.positivas, 8),
+        negativas: strList(parsed?.narrativas_dominantes?.negativas, 8),
+        neutras: strList(parsed?.narrativas_dominantes?.neutras, 8),
       },
-      vocabulario: {
-        palavras_nucleares: Array.isArray(parsed?.vocabulario?.palavras_nucleares)
-          ? parsed.vocabulario.palavras_nucleares.slice(0, 12).map(String)
-          : [],
-        adjetivos_associados: Array.isArray(parsed?.vocabulario?.adjetivos_associados)
-          ? parsed.vocabulario.adjetivos_associados.slice(0, 10).map(String)
-          : [],
-        frases_recorrentes: Array.isArray(parsed?.vocabulario?.frases_recorrentes)
-          ? parsed.vocabulario.frases_recorrentes.slice(0, 8).map(String)
-          : [],
-      },
-      risco_viralizacao: Array.isArray(parsed?.risco_viralizacao)
-        ? parsed.risco_viralizacao
-            .filter((r: any) => r && r.tema)
-            .slice(0, 8)
-            .map((r: any) => ({
-              tema: String(r.tema),
-              nivel: normViralizacao(r.nivel),
-              motivo: String(r.motivo ?? ""),
-            }))
+      comentarios_tipicos: Array.isArray(parsed?.comentarios_tipicos)
+        ? parsed.comentarios_tipicos.slice(0, 8).map((c: any) => ({ texto: String(c?.texto ?? c ?? ""), tom: normTom(c?.tom) })).filter((c: any) => c.texto)
         : [],
+      amplificadores: Array.isArray(parsed?.amplificadores)
+        ? parsed.amplificadores.slice(0, 8).map((a: any) => ({
+          categoria: String(a?.categoria ?? "Grupo de amplificação"),
+          papel: String(a?.papel ?? "Amplifica a conversa por compartilhamento e comentário."),
+          intensidade: normTraction(a?.intensidade),
+        }))
+        : [],
+      risco_viralizacao: Array.isArray(parsed?.risco_viralizacao)
+        ? parsed.risco_viralizacao.filter((r: any) => r && r.tema).slice(0, 8).map((r: any) => ({
+          tema: String(r.tema),
+          nivel: normViralizacao(r.nivel),
+          motivo: String(r.motivo ?? ""),
+        }))
+        : [],
+      score_performance_social: {
+        viralizacao: clamp(parsed?.score_performance_social?.viralizacao),
+        aprovacao: clamp(parsed?.score_performance_social?.aprovacao),
+        rejeicao: clamp(parsed?.score_performance_social?.rejeicao),
+        engajamento: clamp(parsed?.score_performance_social?.engajamento),
+        shareability: clamp(parsed?.score_performance_social?.shareability),
+        meme_potential: clamp(parsed?.score_performance_social?.meme_potential),
+      },
       network,
       period: { start: body.start_date, end: body.end_date },
       evidence_used: hits.length,
