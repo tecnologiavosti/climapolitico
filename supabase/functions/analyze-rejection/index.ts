@@ -80,26 +80,29 @@ serve(async (req) => {
 
     const evidenceCount = negativeComments.length;
 
-    if (evidenceCount < MIN_EVIDENCE) {
+    if (evidenceCount === 0) {
       return new Response(JSON.stringify({
         analysis: null,
         insufficient: true,
-        evidenceCount,
-        minRequired: MIN_EVIDENCE,
-        message: 'Dados insuficientes para análise de rejeição confiável.',
+        evidenceCount: 0,
+        confidence: 'baixa',
+        message: 'Sem evidências negativas encontradas neste período.',
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
+
+    const confidence = getConfidence(evidenceCount);
+    const lowSample = evidenceCount < 30;
 
     const sampleForAI = negativeComments
       .filter(c => c.comment_text)
       .slice(0, 250)
       .map(c => c.comment_text.substring(0, 280));
 
-    const systemMsg = `Você é um estrategista político sênior brasileiro, especializado em reputação eleitoral, war room e mitigação de rejeição. Analise SOMENTE as evidências reais fornecidas. Não use conhecimento histórico do candidato. Não invente acusações, críticas ou narrativas. Responda em português do Brasil.`;
+    const systemMsg = `Você é um estrategista político sênior brasileiro, especializado em reputação eleitoral, war room e mitigação de rejeição. Analise SOMENTE as evidências reais fornecidas. Não use conhecimento histórico do candidato. Não invente acusações, críticas ou narrativas. Não recuse análise por baixo volume de evidências — adapte a profundidade à amostragem. Responda em português do Brasil.`;
 
     const userPrompt = `CANDIDATO: ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}
 JANELA: últimos ${daysBack} dias
-EVIDÊNCIAS REAIS (${sampleForAI.length} comentários negativos):
+EVIDÊNCIAS REAIS (${sampleForAI.length} comentários negativos${lowSample ? ' — amostragem pequena, extraia o máximo possível mesmo assim' : ''}):
 ${sampleForAI.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
 Sua tarefa, com base SOMENTE nessas evidências:
