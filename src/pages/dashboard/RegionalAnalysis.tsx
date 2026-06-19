@@ -92,6 +92,18 @@ interface RegionSummary {
   percepcao: string;
 }
 
+interface RegionAggregate {
+  region: Region;
+  electoral_strength: number;
+  rejection_score: number;
+  percepcao: string;
+  perfis: string[];
+  temas: { tema: string; score: number }[];
+  riscos: { titulo: string; severidade: string; uf: string }[];
+  oportunidades: string[];
+  ufs: string[];
+}
+
 interface AnalysisResult {
   national: {
     forca_nacional: number;
@@ -135,6 +147,14 @@ function sevBadge(s: string) {
   if (k.includes("alta")) return "bg-red-500/15 text-red-600 border-red-500/30";
   if (k.includes("méd") || k.includes("med")) return "bg-amber-500/15 text-amber-600 border-amber-500/30";
   return "bg-slate-500/15 text-slate-600 border-slate-500/30";
+}
+
+function sevRank(s: string): number {
+  const k = s.toLowerCase();
+  if (k.includes("crít")) return 4;
+  if (k.includes("alta")) return 3;
+  if (k.includes("méd") || k.includes("med")) return 2;
+  return 1;
 }
 
 // ---------- Loading ----------
