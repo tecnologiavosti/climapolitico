@@ -376,7 +376,14 @@ export default function RegionalAnalysis() {
 
   const stateMap = useMemo(() => {
     const m: Record<string, StateBase> = {};
-    analysis?.states.forEach((s) => { m[s.uf] = s; });
+    analysis?.states.forEach((s) => {
+      const temperatura = temperatureFromStrength(s.electoral_strength, s.rejection_score);
+      m[s.uf] = {
+        ...s,
+        temperatura,
+        electoral_strength: coerceStrength(s.electoral_strength, temperatura),
+      };
+    });
     return m;
   }, [analysis]);
 
