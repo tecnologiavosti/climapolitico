@@ -916,34 +916,44 @@ function DeepSkeleton({ uf }: { uf: string }) {
   );
 }
 
-function ScorePill({ label, value, positive }: { label: string; value: number; positive?: boolean }) {
+function ScorePill({ label, value, positive, tip }: { label: string; value: number; positive?: boolean; tip?: string }) {
   const color = positive
     ? (value >= 65 ? "text-green-600" : value >= 40 ? "text-amber-600" : "text-red-600")
     : (value >= 65 ? "text-red-600" : value >= 40 ? "text-amber-600" : "text-green-600");
   return (
     <div className="p-3 rounded-lg bg-muted/40">
-      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+        <span>{label}</span>
+        {tip && <InfoTip text={tip} />}
+      </div>
       <div className={cn("text-2xl font-bold", color)}>{value}<span className="text-sm text-muted-foreground ml-1">/100</span></div>
       <Progress value={value} className="h-1.5 mt-1" />
     </div>
   );
 }
 
-function PenCell({ label, value }: { label: string; value: number }) {
+function PenCell({ label, value, tip }: { label: string; value: number; tip?: string }) {
   return (
     <div className="p-3 rounded-lg bg-muted/40">
-      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="text-[11px] text-muted-foreground flex items-center gap-1">
+        <span>{label}</span>
+        {tip && <InfoTip text={tip} iconClassName="h-3 w-3" />}
+      </div>
       <div className="text-lg font-semibold tabular-nums">{value}<span className="text-xs text-muted-foreground ml-1">/100</span></div>
       <Progress value={value} className="h-1 mt-1" />
     </div>
   );
 }
 
-function SectionCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+function SectionCard({ icon, title, children, tip }: { icon: React.ReactNode; title: string; children: React.ReactNode; tip?: string }) {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-semibold flex items-center gap-2">{icon}{title}</CardTitle>
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          {icon}
+          <span>{title}</span>
+          {tip && <InfoTip text={tip} />}
+        </CardTitle>
       </CardHeader>
       <CardContent>{children}</CardContent>
     </Card>
