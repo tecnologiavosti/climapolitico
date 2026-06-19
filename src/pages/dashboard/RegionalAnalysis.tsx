@@ -350,6 +350,41 @@ export default function RegionalAnalysis() {
 
   const currentState = stateMap[selectedUf];
   const currentRegion = selectedRegion ? regionAggregates[selectedRegion] : null;
+  const currentDeep = deepCache[selectedUf];
+
+  // Lazy-load análise profunda ao trocar UF / no primeiro load
+  useEffect(() => {
+    if (!analysis || !candidateId || detailMode !== "state" || !selectedUf) return;
+    if (deepCache[selectedUf] || deepLoading === selectedUf) return;
+    setDeepLoading(selectedUf);
+    setDeepError(null);
+    (async () => {
+      try {
+        const { data, error: invErr } = await supabase.functions.invoke("regional-ai-analysis", {
+          body: { candidate_id: candidateId, mode: "state_deep", uf: selectedUf, ...periodPayload },
+        });
+        if (invErr || data?.success === false || !data?.state) {
+          setDeepError(data?.message || "Não foi possível gerar a análise profunda agora. Tente novamente.");
+          return;
+        }
+        setDeepCache((prev) => ({ ...prev, [selectedUf]: data.state as StateDeep }));
+      } catch (e) {
+        setDeepError("Não foi possível gerar a análise profunda agora. Tente novamente.");
+      } finally {
+        setDeepLoading((cur) => (cur === selectedUf ? null : cur));
+      }
+    })();
+  }, [selectedUf, detailMode, analysis, candidateId]); // eslint-disable-line
+
+  // Reset cache quando candidato/período mudam
+  useEffect(() => { setDeepCache({}); }, [candidateId, period, customRange]);
+
+  const retryDeep = useCallback(() => {
+    setDeepCache((prev) => { const c = { ...prev }; delete c[selectedUf]; return c; });
+    setDeepError(null);
+  }, [selectedUf]);
+
+
 
   return (
     <TooltipProvider delayDuration={120}>
