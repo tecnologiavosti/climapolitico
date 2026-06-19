@@ -367,6 +367,26 @@ const RejectionAnalysisPage = () => {
         </Card>
       )}
 
+      {/* AI fallback (service overloaded) */}
+      {!isAnalyzing && analysisResult?.fallback && (
+        <Card className="border-orange-500/40">
+          <CardContent className="py-12 text-center space-y-4">
+            <ShieldAlert className="h-12 w-12 mx-auto text-orange-500" />
+            <h3 className="text-lg font-semibold">Serviço de IA temporariamente sobrecarregado</h3>
+            <p className="text-muted-foreground text-sm">
+              {analysisResult.message || "Tente novamente em instantes."}
+              {analysisResult.evidenceCount !== undefined && (
+                <> Foram coletadas <strong>{analysisResult.evidenceCount}</strong> evidências negativas — nenhum dado foi perdido.</>
+              )}
+            </p>
+            <Button onClick={handleAnalyze} disabled={isAnalyzing} size="sm">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Tentar novamente
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Empty state — no candidate selected */}
       {!isAnalyzing && !analysisResult && !selectedCandidate && (
         <Card className="border-dashed">
