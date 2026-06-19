@@ -18,12 +18,29 @@ import {
   Activity, Layers, Megaphone, Radar as RadarIcon,
 } from "lucide-react";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { DateRangePicker } from "@/components/DateRangePicker";
 
-type Period = "7d" | "30d" | "90d" | "1y";
+type Period = "7d" | "30d" | "90d" | "1y" | "custom";
 const PERIOD_LABEL: Record<Period, string> = {
-  "7d": "7 dias", "30d": "30 dias", "90d": "90 dias", "1y": "1 ano",
+  "7d": "7 dias", "30d": "30 dias", "90d": "90 dias", "1y": "1 ano", custom: "Personalizado",
 };
-const PERIOD_TTL_MIN: Record<Period, number> = { "7d": 20, "30d": 45, "90d": 90, "1y": 180 };
+const PERIOD_TTL_MIN: Record<Period, number> = { "7d": 20, "30d": 45, "90d": 90, "1y": 180, custom: 30 };
+const PERIOD_DAYS: Record<Exclude<Period, "custom">, number> = { "7d": 7, "30d": 30, "90d": 90, "1y": 365 };
+
+// Override oficial de partidos (sempre prevalece)
+const PARTY_OVERRIDE: Record<string, string> = {
+  "ronaldo caiado": "União Brasil",
+  "wellington fagundes": "PL",
+  "otaviano pivetta": "Republicanos",
+  "jayme campos": "União Brasil",
+  "natasha slhessarenko": "PSB",
+};
+const resolveParty = (name: string, party: string | null) => {
+  const ov = PARTY_OVERRIDE[name?.toLowerCase().trim()];
+  if (ov) return ov;
+  if (party && party.trim() && !/sem partido/i.test(party)) return party;
+  return "—";
+};
 
 interface Scores {
   strength: number; recall: number; approval: number; rejection: number;
@@ -96,8 +113,8 @@ const fadeIn = {
 };
 
 // ============= Cache (localStorage) =============
-const cacheKey = (userId: string, ids: string[], period: Period) =>
-  `cmp_${userId}_${period}_${ids.slice().sort().join(",")}`;
+const cacheKey = (userId: string, ids: string[], period: Period, range?: { from?: string; to?: string }) =>
+  `cmp_${userId}_${period}_${range?.from ?? ""}_${range?.to ?? ""}_${ids.slice().sort().join(",")}`;
 
 interface CacheEntry { savedAt: number; data: ApiResponse }
 
@@ -258,6 +275,7 @@ function ConfidenceBadge({ value }: { value: number }) {
 const CandidateComparisonPage = () => {
   const { user } = useAuth();
   const [period, setPeriod] = useState<Period>("30d");
+  const [customRange, setCustomRange] = useState<{ from?: Date; to?: Date } | undefined>(undefined);
   const [data, setData] = useState<ApiResponse | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -270,6 +288,19 @@ const CandidateComparisonPage = () => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
+
+  // Resolve effective date range from selected period
+  const resolvedRange = useMemo(() => {
+    const to = new Date();
+    if (period === "custom" && customRange?.from && customRange?.to) {
+      return { from: customRange.from, to: customRange.to };
+    }
+    const days = PERIOD_DAYS[period === "custom" ? "30d" : period];
+    const from = new Date(to.getTime() - days * 86400000);
+    return { from, to };
+  }, [period, customRange]);
+
+  const rangeKey = { from: resolvedRange.from.toISOString().slice(0, 10), to: resolvedRange.to.toISOString().slice(0, 10) };
 
   // Load candidates ids to build cache key
   const [candidateIds, setCandidateIds] = useState<string[] | null>(null);
@@ -285,7 +316,10 @@ const CandidateComparisonPage = () => {
   // Try to hydrate from cache on mount / period change
   useEffect(() => {
     if (!user?.id || !candidateIds) return;
-    const key = cacheKey(user.id, candidateIds, period);
+    if (period === "custom" && !(customRange?.from && customRange?.to)) {
+      setData(null); setSavedAt(null); return;
+    }
+    const key = cacheKey(user.id, candidateIds, period, rangeKey);
     const cached = readCache(key, PERIOD_TTL_MIN[period]);
     if (cached) {
       setData(cached.data);
@@ -295,14 +329,24 @@ const CandidateComparisonPage = () => {
       setData(null);
       setSavedAt(null);
     }
-  }, [user?.id, candidateIds, period]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, candidateIds, period, rangeKey.from, rangeKey.to]);
 
   const runComparison = useCallback(async () => {
     if (!user?.id || !candidateIds) return;
+    if (period === "custom" && !(customRange?.from && customRange?.to)) {
+      setError("Selecione data inicial e final.");
+      return;
+    }
     setLoading(true); setError(null);
     try {
+      const body: any = { period };
+      if (period === "custom") {
+        body.startDate = resolvedRange.from.toISOString();
+        body.endDate = resolvedRange.to.toISOString();
+      }
       const response = await Promise.race([
-        supabase.functions.invoke("ai-candidate-comparison", { body: { period } }),
+        supabase.functions.invoke("ai-candidate-comparison", { body }),
         new Promise<never>((_, rej) => window.setTimeout(() => rej(new Error("Tempo esgotado.")), 60000)),
       ]);
       if (response.error) throw new Error(response.error.message ?? "Erro na função");
@@ -312,14 +356,14 @@ const CandidateComparisonPage = () => {
       setData(parsed);
       const ts = Date.now();
       setSavedAt(ts);
-      writeCache(cacheKey(user.id, candidateIds, period), parsed);
+      writeCache(cacheKey(user.id, candidateIds, period, rangeKey), parsed);
     } catch (e: any) {
       console.error(e);
       if (mountedRef.current) setError(e?.message ?? "Falha ao gerar comparação.");
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [user?.id, candidateIds, period]);
+  }, [user?.id, candidateIds, period, customRange, resolvedRange, rangeKey.from, rangeKey.to]);
 
   const candidates = data?.candidates ?? [];
   useEffect(() => {
@@ -366,31 +410,47 @@ const CandidateComparisonPage = () => {
       <motion.div {...fadeIn} className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <HelpTooltip text="Central de inteligência política comparativa, 100% IA. Atualização manual com cache inteligente por período.">
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2 bg-gradient-to-r from-fuchsia-400 via-primary to-amber-300 bg-clip-text text-transparent">
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2 text-white">
               <Sparkles className="h-7 w-7 text-primary" />
               Comparação Estratégica
             </h1>
           </HelpTooltip>
-          <p className="text-muted-foreground mt-1 text-sm flex flex-wrap items-center gap-2">
-            <span>Inteligência política comparativa premium.</span>
+          <div className="mt-1 flex flex-col gap-1 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm">Inteligência política comparativa premium.</span>
+              {savedAt && (
+                <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">
+                  {ageLabel(savedAt)}
+                </Badge>
+              )}
+            </div>
             {savedAt && (
-              <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">
-                Última análise: {ageLabel(savedAt)}
-              </Badge>
+              <div className="tabular-nums">
+                Última análise: {new Date(savedAt).toLocaleDateString("pt-BR")} {new Date(savedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                <span className="mx-2 opacity-50">·</span>
+                Período: {resolvedRange.from.toLocaleDateString("pt-BR")} → {resolvedRange.to.toLocaleDateString("pt-BR")}
+              </div>
             )}
-          </p>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
-            <SelectTrigger className="w-[130px] h-9">
+            <SelectTrigger className="w-[160px] h-9">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {(["7d", "30d", "90d", "1y"] as Period[]).map((p) => (
+              {(["7d", "30d", "90d", "1y", "custom"] as Period[]).map((p) => (
                 <SelectItem key={p} value={p}>{PERIOD_LABEL[p]}</SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {period === "custom" && (
+            <DateRangePicker
+              dateRange={customRange?.from && customRange?.to ? { from: customRange.from, to: customRange.to } : undefined}
+              onDateRangeChange={(r) => setCustomRange(r ? { from: r.from, to: r.to } : undefined)}
+              className="w-[280px]"
+            />
+          )}
           <Button onClick={runComparison} disabled={loading} className="bg-gradient-to-r from-primary to-fuchsia-500 hover:opacity-90">
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Atualizar IA
@@ -468,7 +528,7 @@ const CandidateComparisonPage = () => {
                         <ConfidenceBadge value={c.confidence} />
                       </div>
                       <div className="text-xs text-muted-foreground truncate">
-                        {c.party ?? "Sem partido"}{c.state ? ` · ${c.state}` : ""}
+                        {resolveParty(c.name, c.party)}{c.state ? ` · ${c.state}` : ""}
                       </div>
                     </div>
                     <div className="hidden sm:flex items-center gap-2">

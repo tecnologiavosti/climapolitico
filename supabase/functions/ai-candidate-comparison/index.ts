@@ -19,8 +19,8 @@ const ok = (body: unknown) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
-type Period = "7d" | "30d" | "90d" | "1y";
-const periodDays: Record<Period, number> = { "7d": 7, "30d": 30, "90d": 90, "1y": 365 };
+type Period = "7d" | "30d" | "90d" | "1y" | "custom";
+const periodDays: Record<Exclude<Period, "custom">, number> = { "7d": 7, "30d": 30, "90d": 90, "1y": 365 };
 
 interface Cand {
   id: string;
@@ -200,8 +200,31 @@ serve(async (req) => {
 
     let body: any = {};
     try { body = await req.json(); } catch {}
-    const period: Period = (["7d", "30d", "90d", "1y"].includes(body?.period) ? body.period : "30d") as Period;
-    const days = periodDays[period];
+    const allowed = ["7d", "30d", "90d", "1y", "custom"];
+    const period: Period = (allowed.includes(body?.period) ? body.period : "30d") as Period;
+
+    const now = Date.now();
+    let dRecent: string;
+    let dPrev: string;
+    let dEnd: string;
+    let days = periodDays[period as Exclude<Period, "custom">] ?? 30;
+
+    if (period === "custom" && body?.startDate && body?.endDate) {
+      const start = new Date(body.startDate).getTime();
+      const end = new Date(body.endDate).getTime();
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        return ok({ success: false, message: "Intervalo personalizado inválido." });
+      }
+      const span = end - start;
+      days = Math.max(1, Math.round(span / 86400000));
+      dRecent = new Date(start).toISOString();
+      dEnd = new Date(end).toISOString();
+      dPrev = new Date(start - span).toISOString();
+    } else {
+      dRecent = new Date(now - days * 86400000).toISOString();
+      dEnd = new Date(now).toISOString();
+      dPrev = new Date(now - 2 * days * 86400000).toISOString();
+    }
 
     const { data: cands, error: candErr } = await supabase
       .from("candidates")
@@ -219,16 +242,12 @@ serve(async (req) => {
       .in("candidate_id", ids);
     const mMap = new Map<string, any>((metrics ?? []).map((m: any) => [m.candidate_id, m]));
 
-    const now = Date.now();
-    const dRecent = new Date(now - days * 86400000).toISOString();
-    const dPrev = new Date(now - 2 * days * 86400000).toISOString();
-
     const growthRows = await Promise.all(
       cands.map(async (c: any) => {
         try {
           const [r1, r2] = await Promise.all([
             supabase.from("social_interactions").select("id", { head: true, count: "exact" })
-              .eq("candidate_id", c.id).gte("created_at", dRecent),
+              .eq("candidate_id", c.id).gte("created_at", dRecent).lt("created_at", dEnd),
             supabase.from("social_interactions").select("id", { head: true, count: "exact" })
               .eq("candidate_id", c.id).gte("created_at", dPrev).lt("created_at", dRecent),
           ]);
