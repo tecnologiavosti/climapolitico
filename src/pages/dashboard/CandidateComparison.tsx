@@ -633,13 +633,22 @@ const CandidateComparisonPage = () => {
                   </ResponsiveContainer>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 text-xs">
-                  {(Object.keys(QUADRANT_COLOR) as Quadrant[]).map((q) => (
+                  {([
+                    { q: "Dominante" as Quadrant, desc: "Alta aprovação + alta força. Liderança consolidada." },
+                    { q: "Polarizador" as Quadrant, desc: "Força alta, mas aprovação dividida. Gera reação." },
+                    { q: "Promissor" as Quadrant, desc: "Boa aprovação, força em construção." },
+                    { q: "Vulnerável" as Quadrant, desc: "Aprovação e força baixas. Risco competitivo." },
+                  ]).map(({ q, desc }) => (
                     <div key={q} className="flex items-center gap-2 rounded border border-border/40 bg-card/40 px-2 py-1.5">
                       <span className="h-2.5 w-2.5 rounded-full" style={{ background: QUADRANT_COLOR[q] }} />
                       <span className="text-muted-foreground">{q}</span>
+                      <InfoTip text={desc} className="ml-auto" />
                     </div>
                   ))}
                 </div>
+                <p className="mt-3 text-[11px] text-muted-foreground">
+                  Eixo X = Aprovação · Eixo Y = Força Política · Tamanho da bolha = Viralização.
+                </p>
               </CardContent>
             </Card>
           </motion.div>
