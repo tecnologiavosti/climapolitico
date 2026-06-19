@@ -107,12 +107,13 @@ Deno.serve(async (req) => {
     }
 
     // Carregar contexto do candidato
-    const { data: cand } = await admin
+    const { data: cand, error: candErr } = await admin
       .from("candidates")
-      .select("full_name, party, state, position, biography")
+      .select("full_name, party, region")
       .eq("id", candidate_id)
       .eq("user_id", userId)
       .maybeSingle();
+    if (candErr) console.error("[regional-ai-analysis] candidate query error:", candErr.message);
 
     if (!cand) {
       return new Response(JSON.stringify({ error: "candidate not found" }), {
