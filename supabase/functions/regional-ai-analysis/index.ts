@@ -117,6 +117,7 @@ Gere as 5 macrorregiões (${REGIONS.join(", ")}) SOMENTE neste JSON:
       const statePrompt = (region: Region, ufs: string[]) => `${baseContext}
 
 Gere análise estadual APENAS para a região ${region}, com EXATAMENTE estes estados: ${ufs.join(", ")}.
+O array "states" deve conter ${ufs.length} objetos, um para cada UF listada, sem omitir nenhuma.
 Responda SOMENTE este JSON:
 {"states":[{"uf":"${ufs[0]}","temperatura":"Favorável|Competitiva|Hostil|Neutra","electoral_strength":0,"rejection_score":0,"perfil_eleitor_dominante":"frase específica com cidade/região e clivagem","dna_eleitoral":[{"tema":"agro","score":0},{"tema":"seguranca","score":0},{"tema":"economia","score":0},{"tema":"corrupcao","score":0},{"tema":"costumes","score":0},{"tema":"saude","score":0}],"segmentos_voto":[{"segmento":"agro","score":0},{"segmento":"evangelicos","score":0},{"segmento":"empresarios","score":0},{"segmento":"jovens_urbanos","score":0},{"segmento":"servidores","score":0},{"segmento":"classe_media","score":0}],"penetracao":{"capitais":0,"cidades_medias":0,"interior":0,"rural_profundo":0},"fragilidade":{"titulo":"título curto da vulnerabilidade","descricao":"contexto específico com cidade/grupo"},"crescimento":{"titulo":"cidade ou microrregião concreta","descricao":"por que há potencial real de expansão ali"},"riscos":[{"titulo":"risco concreto com cidade/ator","severidade":"média"}],"oportunidades":["ação concreta e específica","outra ação concreta"]}]}`;
 
@@ -127,8 +128,15 @@ Responda SOMENTE este JSON:
         ...byRegion.map(({ region, ufs }) => callAIJson(statePrompt(region, ufs), `states_${region}`, 5200)),
       ]);
 
-      const allRawStates = stateParts.flatMap((part: any) => Array.isArray(part.states) ? part.states : []);
-      if (allRawStates.length < 27) throw new Error(`AI_INCOMPLETE_STATES:${allRawStates.length}`);
+      let allRawStates = stateParts.flatMap((part: any) => Array.isArray(part.states) ? part.states : []);
+      const missingAfterBatch = UFS.filter((uf) => !allRawStates.some((x: any) => String(x.uf || "").toUpperCase() === uf));
+      if (missingAfterBatch.length) {
+        console.warn(`[regional-ai-analysis] complementando UFs ausentes: ${missingAfterBatch.join(",")}`);
+        const complements = await Promise.all(missingAfterBatch.map((uf) => callAIJson(statePrompt(UF_TO_REGION[uf], [uf]), `state_retry_${uf}`, 2200)));
+        allRawStates = allRawStates.concat(complements.flatMap((part: any) => Array.isArray(part.states) ? part.states : []));
+      }
+      const stillMissing = UFS.filter((uf) => !allRawStates.some((x: any) => String(x.uf || "").toUpperCase() === uf));
+      if (stillMissing.length) throw new Error(`AI_MISSING_STATES:${stillMissing.join(",")}`);
 
       const statesOut: StateAnalysis[] = UFS.map((uf) => normalizeState(allRawStates, uf));
 
