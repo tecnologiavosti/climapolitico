@@ -374,7 +374,12 @@ const RejectionAnalysisPage = () => {
           {/* 1 — Rejection Level */}
           <Card className={`overflow-hidden ring-1 ${level.ring}`}>
             <CardContent className="p-0">
-              <div className={`${level.bg} ${level.text} p-8 text-center`}>
+              <div className={`${level.bg} ${level.text} p-8 text-center relative`}>
+                {analysisResult?.usedFallback && (
+                  <Badge variant="outline" className="absolute top-3 right-3 bg-white/90 text-orange-700 border-orange-300">
+                    Análise local (fallback)
+                  </Badge>
+                )}
                 <p className="text-xs uppercase tracking-[0.3em] opacity-80">Rejeição atual</p>
                 <p className="text-5xl sm:text-6xl font-black tracking-tight mt-2">{level.label}</p>
               </div>
