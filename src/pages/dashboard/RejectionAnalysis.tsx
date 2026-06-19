@@ -392,6 +392,19 @@ const RejectionAnalysisPage = () => {
                 <p className="text-xs uppercase tracking-[0.3em] opacity-80">Rejeição atual</p>
                 <p className="text-5xl sm:text-6xl font-black tracking-tight mt-2">{level.label}</p>
               </div>
+              {analysisResult?.evidenceCount !== undefined && analysisResult?.confidence && (
+                <div className="px-6 py-4 flex flex-wrap items-center justify-center gap-3 border-t bg-muted/30">
+                  <span className="text-sm font-medium">
+                    {analysisResult.evidenceCount} evidências negativas analisadas
+                  </span>
+                  <Badge variant="outline" className={confidenceConfig[analysisResult.confidence].badge}>
+                    {confidenceConfig[analysisResult.confidence].label}
+                  </Badge>
+                  <p className="w-full text-center text-xs text-muted-foreground">
+                    {confidenceConfig[analysisResult.confidence].subtitle}
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
