@@ -132,9 +132,7 @@ Analise a percepção pública do candidato abaixo em cada uma das 5 regiões do
 CANDIDATO:
 - Nome: ${cand.full_name}
 - Partido: ${cand.party || "não informado"}
-- Estado base: ${cand.state || "não informado"}
-- Cargo disputado: ${cand.position || "não informado"}
-- Biografia: ${(cand.biography || "não informada").slice(0, 600)}
+- Região base: ${cand.region || "não informada"}
 
 PERÍODO DE ANÁLISE: ${periodText}
 
