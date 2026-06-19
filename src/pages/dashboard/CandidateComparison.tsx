@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Radar,
@@ -31,6 +30,7 @@ import {
   Brain,
   RefreshCw,
   Swords,
+  AlertTriangle,
 } from "lucide-react";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 
@@ -70,6 +70,24 @@ interface ApiResponse {
     overall: { name: string; value: number } | null;
   };
   summary?: { lidera: string; cresce: string; estagnou: string; preocupa: string } | null;
+}
+
+interface RawCandidate {
+  id: string;
+  full_name: string;
+  party: string | null;
+  region: string | null;
+}
+
+interface RawMetrics {
+  candidate_id: string;
+  total_mentions: number | null;
+  unique_authors: number | null;
+  total_engagement: number | null;
+  average_sentiment: number | null;
+  positive_count: number | null;
+  negative_count: number | null;
+  neutral_count: number | null;
 }
 
 const STATUS_STYLES: Record<CandidateOut["status"], string> = {
