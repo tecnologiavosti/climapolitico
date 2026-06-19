@@ -734,7 +734,7 @@ export default function RegionalAnalysis() {
 }
 
 // ---------- Subcomponents ----------
-function KpiCard({ icon, label, value, sub, suffix, tint, onClick }: { icon: React.ReactNode; label: string; value: string; sub?: string; suffix?: string; tint: "primary" | "green" | "red" | "blue"; onClick?: () => void }) {
+function KpiCard({ icon, label, value, sub, suffix, tint, onClick, tip }: { icon: React.ReactNode; label: string; value: string; sub?: string; suffix?: string; tint: "primary" | "green" | "red" | "blue"; onClick?: () => void; tip?: string }) {
   const colors = {
     primary: "from-primary/10 to-primary/5 text-primary",
     green: "from-green-500/10 to-green-500/5 text-green-600",
@@ -749,7 +749,8 @@ function KpiCard({ icon, label, value, sub, suffix, tint, onClick }: { icon: Rea
       <CardContent className="pt-5">
         <div className="flex items-center gap-2 text-xs font-medium opacity-80 mb-2">
           <span className="[&>svg]:h-4 [&>svg]:w-4">{icon}</span>
-          {label}
+          <span>{label}</span>
+          {tip && <InfoTip text={tip} />}
         </div>
         <div className="text-2xl font-bold text-foreground">
           {value}
