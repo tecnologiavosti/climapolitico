@@ -48,6 +48,7 @@ interface AnalysisResult {
   analysis: RejectionAnalysis | null;
   insufficient?: boolean;
   fallback?: boolean;
+  usedFallback?: boolean;
   evidenceCount?: number;
   confidence?: ConfidenceLevel;
   message?: string;
