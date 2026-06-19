@@ -1,16 +1,23 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { motion, AnimatePresence } from "framer-motion";
+import { format, differenceInCalendarDays } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import type { DateRange } from "react-day-picker";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Calendar } from "@/components/ui/calendar";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import {
   Loader2, AlertTriangle, ShieldAlert, Lightbulb, Users, Flame,
-  MessageSquareQuote, Megaphone, Crosshair, Target, TrendingDown
+  MessageSquareQuote, Megaphone, Crosshair, Target, TrendingDown, RefreshCw, CalendarIcon
 } from "lucide-react";
 import { toast } from "sonner";
+import RejectionLoading from "@/components/dashboard/RejectionLoading";
 
 interface RejectionVector {
   name: string;
@@ -43,12 +50,23 @@ interface AnalysisResult {
   message?: string;
 }
 
-const PERIOD_OPTIONS = [
-  { value: "3", label: "Últimos 3 dias" },
-  { value: "7", label: "Últimos 7 dias" },
-  { value: "14", label: "Últimos 14 dias" },
-  { value: "30", label: "Últimos 30 dias" },
+const QUICK_PERIODS = [
+  { value: "7",   label: "7 dias" },
+  { value: "30",  label: "30 dias" },
+  { value: "90",  label: "90 dias" },
+  { value: "365", label: "1 ano" },
+] as const;
+
+const MODAL_QUICK = [
+  { label: "Últimos 7 dias",   days: 7 },
+  { label: "Últimos 30 dias",  days: 30 },
+  { label: "Últimos 90 dias",  days: 90 },
+  { label: "Último ano",       days: 365 },
+  { label: "Campanha atual",   days: 180 },
+  { label: "Pré-eleição",      days: 540 },
 ];
+
+const MAX_RANGE_DAYS = 365 * 8;
 
 const levelConfig: Record<string, { label: string; bg: string; ring: string; text: string }> = {
   baixa:     { label: "BAIXA",     bg: "bg-emerald-500",  ring: "ring-emerald-500/30",  text: "text-emerald-50" },
@@ -82,7 +100,10 @@ const typeConfig: Record<string, string> = {
 const RejectionAnalysisPage = () => {
   const { user } = useAuth();
   const [selectedCandidate, setSelectedCandidate] = useState<string>("");
-  const [selectedPeriod, setSelectedPeriod] = useState<string>("7");
+  const [period, setPeriod] = useState<string>("7"); // "7" | "30" | "90" | "365" | "custom"
+  const [customRange, setCustomRange] = useState<DateRange | undefined>();
+  const [draftRange, setDraftRange] = useState<DateRange | undefined>();
+  const [customOpen, setCustomOpen] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -99,6 +120,57 @@ const RejectionAnalysisPage = () => {
     enabled: !!user,
   });
 
+  const candidateName = candidates.find((c) => c.id === selectedCandidate)?.full_name;
+
+  const daysBack = useMemo(() => {
+    if (period === "custom" && customRange?.from && customRange?.to) {
+      return Math.max(1, differenceInCalendarDays(customRange.to, customRange.from) + 1);
+    }
+    return parseInt(period, 10) || 7;
+  }, [period, customRange]);
+
+  const periodLabel = useMemo(() => {
+    if (period === "custom" && customRange?.from && customRange?.to) {
+      return `${format(customRange.from, "dd/MM/yyyy", { locale: ptBR })} → ${format(customRange.to, "dd/MM/yyyy", { locale: ptBR })}`;
+    }
+    return QUICK_PERIODS.find((p) => p.value === period)?.label ?? `${daysBack} dias`;
+  }, [period, customRange, daysBack]);
+
+  const handlePeriodPill = (value: string) => {
+    if (value === "custom") {
+      setDraftRange(customRange);
+      setCustomOpen(true);
+      return;
+    }
+    setPeriod(value);
+  };
+
+  const applyCustom = () => {
+    if (!draftRange?.from || !draftRange?.to) {
+      toast.error("Selecione data inicial e final");
+      return;
+    }
+    if (draftRange.to < draftRange.from) {
+      toast.error("Data final não pode ser menor que a inicial");
+      return;
+    }
+    const diff = differenceInCalendarDays(draftRange.to, draftRange.from);
+    if (diff > MAX_RANGE_DAYS) {
+      toast.error("Período máximo permitido: 8 anos");
+      return;
+    }
+    setCustomRange(draftRange);
+    setPeriod("custom");
+    setCustomOpen(false);
+  };
+
+  const applyModalQuick = (days: number) => {
+    const to = new Date();
+    const from = new Date();
+    from.setDate(from.getDate() - days);
+    setDraftRange({ from, to });
+  };
+
   const handleAnalyze = async () => {
     if (!selectedCandidate) {
       toast.error("Selecione um candidato");
@@ -108,7 +180,7 @@ const RejectionAnalysisPage = () => {
     setAnalysisResult(null);
     try {
       const { data, error } = await supabase.functions.invoke('analyze-rejection', {
-        body: { candidateId: selectedCandidate, daysBack: parseInt(selectedPeriod) },
+        body: { candidateId: selectedCandidate, daysBack },
       });
       if (error) throw error;
       setAnalysisResult(data);
@@ -139,7 +211,7 @@ const RejectionAnalysisPage = () => {
 
       {/* Controls */}
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 space-y-4">
           <div className="flex flex-row flex-wrap gap-3 items-end">
             <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
               <SelectTrigger className="w-[200px] sm:w-[280px]">
@@ -154,44 +226,160 @@ const RejectionAnalysisPage = () => {
               </SelectContent>
             </Select>
 
-            <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-              <SelectTrigger className="w-[160px] sm:w-[200px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PERIOD_OPTIONS.map((p) => (
-                  <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
             <Button onClick={handleAnalyze} disabled={isAnalyzing || !selectedCandidate}>
               {isAnalyzing ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analisando...</>
+                <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />{analysisResult ? "Reanalisando..." : "Analisando..."}</>
+              ) : analysisResult ? (
+                <><RefreshCw className="mr-2 h-4 w-4" />Reanalisar</>
               ) : (
                 <><TrendingDown className="mr-2 h-4 w-4" />Gerar mapa de rejeição</>
               )}
             </Button>
           </div>
+
+          <div className="flex flex-wrap gap-2 items-center">
+            {QUICK_PERIODS.map((p) => (
+              <Button
+                key={p.value}
+                size="sm"
+                variant={period === p.value ? "default" : "outline"}
+                className="rounded-full"
+                onClick={() => handlePeriodPill(p.value)}
+                disabled={isAnalyzing}
+              >
+                {p.label}
+              </Button>
+            ))}
+            <Button
+              size="sm"
+              variant={period === "custom" ? "default" : "outline"}
+              className="rounded-full"
+              onClick={() => handlePeriodPill("custom")}
+              disabled={isAnalyzing}
+            >
+              <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
+              Personalizado
+            </Button>
+            {period === "custom" && customRange?.from && customRange?.to && (
+              <Badge variant="secondary" className="ml-1">
+                {format(customRange.from, "dd/MM/yyyy")} → {format(customRange.to, "dd/MM/yyyy")}
+              </Badge>
+            )}
+          </div>
         </CardContent>
       </Card>
 
+      {/* Custom period dialog */}
+      <Dialog open={customOpen} onOpenChange={setCustomOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Selecionar período de análise</DialogTitle>
+            <DialogDescription>
+              Escolha o intervalo que será usado para analisar a rejeição do candidato
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-wrap gap-2">
+            {MODAL_QUICK.map((q) => (
+              <Button
+                key={q.label}
+                size="sm"
+                variant="outline"
+                className="rounded-full"
+                onClick={() => applyModalQuick(q.days)}
+              >
+                {q.label}
+              </Button>
+            ))}
+          </div>
+
+          <div className="flex justify-center">
+            <Calendar
+              mode="range"
+              selected={draftRange}
+              onSelect={setDraftRange}
+              numberOfMonths={2}
+              locale={ptBR}
+              className="pointer-events-auto"
+            />
+          </div>
+
+          {draftRange?.from && draftRange?.to && (
+            <div className="flex items-center justify-center">
+              <Badge variant="secondary" className="text-sm">
+                {format(draftRange.from, "dd/MM/yyyy")} → {format(draftRange.to, "dd/MM/yyyy")}
+              </Badge>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCustomOpen(false)}>Cancelar</Button>
+            <Button onClick={applyCustom}>Aplicar período</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Loading */}
+      <AnimatePresence mode="wait">
+        {isAnalyzing && (
+          <motion.div
+            key="loading"
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.98 }}
+            transition={{ duration: 0.3 }}
+          >
+            <RejectionLoading candidateName={candidateName} periodLabel={periodLabel} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Insufficient */}
-      {analysisResult?.insufficient && (
+      {!isAnalyzing && analysisResult?.insufficient && (
         <Card className="border-yellow-500/40">
-          <CardContent className="py-12 text-center">
-            <ShieldAlert className="h-12 w-12 mx-auto text-yellow-500 mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Dados insuficientes para análise de rejeição confiável.</h3>
+          <CardContent className="py-12 text-center space-y-4">
+            <ShieldAlert className="h-12 w-12 mx-auto text-yellow-500" />
+            <h3 className="text-lg font-semibold">Dados insuficientes para análise</h3>
             <p className="text-muted-foreground">
-              Encontradas {analysisResult.evidenceCount} evidências negativas. Mínimo: {analysisResult.minRequired}.
-              Aumente o período ou colete mais comentários antes de gerar o mapa.
+              Amplie o período ou escolha outro candidato.
+              <br />
+              <span className="text-xs">
+                Encontradas {analysisResult.evidenceCount} evidências negativas. Mínimo: {analysisResult.minRequired}.
+              </span>
+            </p>
+            <div className="flex justify-center gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => { setPeriod("90"); }}>
+                Últimos 90 dias
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => { setPeriod("365"); }}>
+                Último ano
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Empty state — no candidate selected */}
+      {!isAnalyzing && !analysisResult && !selectedCandidate && (
+        <Card className="border-dashed">
+          <CardContent className="py-16 text-center space-y-3">
+            <AlertTriangle className="h-10 w-10 mx-auto text-muted-foreground" />
+            <h3 className="text-lg font-semibold">Selecione um candidato para começar</h3>
+            <p className="text-sm text-muted-foreground">
+              A análise de rejeição é gerada sob demanda a partir de evidências reais.
             </p>
           </CardContent>
         </Card>
       )}
 
-      {analysis && level && (
-        <div className="space-y-6">
+      {!isAnalyzing && analysis && level && (
+        <motion.div
+          key={`${selectedCandidate}-${period}-${customRange?.from?.toISOString() ?? ""}`}
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.3 }}
+          className="space-y-6"
+        >
           {/* 1 — Rejection Level */}
           <Card className={`overflow-hidden ring-1 ${level.ring}`}>
             <CardContent className="p-0">
@@ -400,7 +588,7 @@ const RejectionAnalysisPage = () => {
               </div>
             </CardContent>
           </Card>
-        </div>
+        </motion.div>
       )}
     </div>
   );
