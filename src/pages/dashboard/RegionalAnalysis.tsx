@@ -20,6 +20,41 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
 import { cn } from "@/lib/utils";
+import { InfoTip } from "@/components/ui/info-tip";
+
+// ---------- Tooltips (legendas explicativas) ----------
+const TIPS = {
+  forca_nacional:
+    "Índice geral de competitividade eleitoral do candidato no país (0–100), calculado a partir de afinidade ideológica regional, presença digital, potencial de voto e rejeição.\n\nEscala:\n0–30 muito fraco · 31–50 fraco · 51–70 competitivo · 71–85 forte · 86–100 dominante.",
+  melhor_estado:
+    "Estado onde o candidato apresenta maior combinação entre força eleitoral, baixa rejeição e maior potencial de conversão de voto.",
+  maior_risco:
+    "Estado onde a rejeição é mais alta ou onde narrativas negativas possuem maior capacidade de viralização.",
+  expansao_potencial:
+    "Estado com espaço estratégico para crescimento eleitoral, mesmo sem liderança atual.",
+  mapa_regional:
+    "Mapa agregado das 5 macrorregiões brasileiras.\n\nFavorável = alta chance de adesão\nCompetitiva = disputa equilibrada\nNeutra = baixa presença política\nHostil = alta resistência eleitoral.",
+  forca_regional: "Potencial bruto de voto naquela região.",
+  rejeicao_regional: "Nível de resistência política ao candidato na região.",
+  mapa_forca:
+    "Mapa por estado mostrando competitividade eleitoral.\n\nVerde = forte (65+) · Amarelo = moderada (40–64) · Vermelho = fraca (<40).",
+  mapa_rejeicao:
+    "Mapa por estado mostrando resistência eleitoral.\n\nVerde = baixa rejeição · Amarelo = média · Vermelho = alta.",
+  perfil_eleitor:
+    "Perfil demográfico e socioeconômico do eleitor mais receptivo ao candidato naquele estado.",
+  dna_eleitoral:
+    "Temas com maior peso na decisão de voto local.\n\nAgro → importância do agronegócio\nSegurança → peso da criminalidade\nEconomia → peso da renda/emprego\nCorrupção → sensibilidade ética\nCostumes → conservadorismo/liberalismo\nSaúde → relevância de SUS/hospitais.",
+  segmentos_voto:
+    "Força de conexão do candidato com cada grupo social (agro, evangélicos, empresários, jovens urbanos, servidores, classe média).",
+  fragilidade:
+    "Principal ponto geográfico ou político onde o candidato encontra resistência.",
+  crescimento:
+    "Microrregião onde existe oportunidade de avanço eleitoral.",
+  penetracao:
+    "Nível de alcance do candidato em cada tipo de território.\n\nCapitais = grandes centros urbanos\nCidades médias = polos regionais\nInterior = cidades pequenas\nRural profundo = zonas rurais/agro.",
+  riscos: "Eventos ou narrativas que podem piorar a imagem do candidato.",
+  oportunidades: "Ações que podem melhorar a performance regional.",
+} as const;
 
 // ---------- Constantes ----------
 const REGIONS = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"] as const;
@@ -136,10 +171,26 @@ interface AnalysisResult {
 
 // ---------- Helpers ----------
 function temperatureFromStrength(strength: number, rejection: number): string {
-  if (strength >= 60 && rejection < 45) return "Favorável";
+  // Regras (ordem importa — Hostil sobrepõe os demais):
+  // rejection >= 60                              → Hostil
+  // strength >= 65 e rejection <= 35             → Favorável
+  // strength 40-64                               → Competitiva
+  // strength < 40 e rejection < 60               → Neutra
   if (rejection >= 60) return "Hostil";
-  if (Math.abs(strength - rejection) <= 15) return "Competitiva";
-  return "Neutra";
+  if (strength >= 65 && rejection <= 35) return "Favorável";
+  if (strength >= 40 && strength <= 64) return "Competitiva";
+  if (strength < 40 && rejection < 60) return "Neutra";
+  // Fallback coerente (ex: força alta com rejeição média) → Competitiva
+  return "Competitiva";
+}
+
+/**
+ * Garante consistência lógica entre temperatura e força exibida.
+ * Se a região/estado é Hostil, a força exibida não pode ultrapassar 40.
+ */
+function coerceStrength(strength: number, temperatura: string): number {
+  if (temperatura.toLowerCase().includes("hostil") && strength > 40) return 40;
+  return strength;
 }
 
 function tempColor(t: string): string {
@@ -325,7 +376,14 @@ export default function RegionalAnalysis() {
 
   const stateMap = useMemo(() => {
     const m: Record<string, StateBase> = {};
-    analysis?.states.forEach((s) => { m[s.uf] = s; });
+    analysis?.states.forEach((s) => {
+      const temperatura = temperatureFromStrength(s.electoral_strength, s.rejection_score);
+      m[s.uf] = {
+        ...s,
+        temperatura,
+        electoral_strength: coerceStrength(s.electoral_strength, temperatura),
+      };
+    });
     return m;
   }, [analysis]);
 
@@ -336,12 +394,17 @@ export default function RegionalAnalysis() {
       const sts = analysis.states.filter((s) => UF_REGION[s.uf] === rg);
       const summary = analysis.regions.find((r) => r.region === rg);
       const avg = (arr: number[]) => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
+      const rejection = summary?.rejection_score || avg(sts.map((s) => s.rejection_score));
+      const rawStrength = summary?.regional_strength_score || avg(sts.map((s) => s.electoral_strength));
+      // Recalcula temperatura pelas regras canônicas e corrige inconsistências
+      const temperatura = temperatureFromStrength(rawStrength, rejection);
+      const electoral_strength = coerceStrength(rawStrength, temperatura);
       m[rg] = {
         region: rg,
-        electoral_strength: summary?.regional_strength_score || avg(sts.map((s) => s.electoral_strength)),
-        rejection_score: summary?.rejection_score || avg(sts.map((s) => s.rejection_score)),
+        electoral_strength,
+        rejection_score: rejection,
         percepcao: summary?.percepcao || "",
-        temperatura: summary?.temperatura || "Competitiva",
+        temperatura,
         ufs: sts.map((s) => s.uf),
       };
     });
@@ -463,12 +526,13 @@ export default function RegionalAnalysis() {
               <div className="flex items-center gap-2 mb-3">
                 <Sparkles className="h-5 w-5 text-primary" />
                 <h2 className="text-xl font-semibold">Radar Nacional</h2>
+                <InfoTip text={TIPS.forca_nacional} />
               </div>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <KpiCard icon={<TrendingUp />} label="Força Nacional" value={`${analysis.national.forca_nacional}`} suffix="/100" tint="primary" />
-                <KpiCard icon={<CheckCircle2 />} label="Melhor Estado" value={analysis.national.melhor_uf} sub={UF_NAMES[analysis.national.melhor_uf]} tint="green" onClick={() => setSelectedUf(analysis.national.melhor_uf)} />
-                <KpiCard icon={<AlertTriangle />} label="Maior Risco" value={analysis.national.uf_risco} sub={UF_NAMES[analysis.national.uf_risco]} tint="red" onClick={() => setSelectedUf(analysis.national.uf_risco)} />
-                <KpiCard icon={<Target />} label="Expansão Potencial" value={analysis.national.expansao_potencial} sub={UF_NAMES[analysis.national.expansao_potencial]} tint="blue" onClick={() => analysis.national.expansao_potencial && setSelectedUf(analysis.national.expansao_potencial)} />
+                <KpiCard tip={TIPS.forca_nacional} icon={<TrendingUp />} label="Força Nacional" value={`${analysis.national.forca_nacional}`} suffix="/100" tint="primary" />
+                <KpiCard tip={TIPS.melhor_estado} icon={<CheckCircle2 />} label="Melhor Estado" value={analysis.national.melhor_uf} sub={UF_NAMES[analysis.national.melhor_uf]} tint="green" onClick={() => setSelectedUf(analysis.national.melhor_uf)} />
+                <KpiCard tip={TIPS.maior_risco} icon={<AlertTriangle />} label="Maior Risco" value={analysis.national.uf_risco} sub={UF_NAMES[analysis.national.uf_risco]} tint="red" onClick={() => setSelectedUf(analysis.national.uf_risco)} />
+                <KpiCard tip={TIPS.expansao_potencial} icon={<Target />} label="Expansão Potencial" value={analysis.national.expansao_potencial} sub={UF_NAMES[analysis.national.expansao_potencial]} tint="blue" onClick={() => analysis.national.expansao_potencial && setSelectedUf(analysis.national.expansao_potencial)} />
               </div>
               {analysis.national.sintese && (
                 <p className="text-sm text-muted-foreground mt-3 italic">{analysis.national.sintese}</p>
@@ -480,6 +544,7 @@ export default function RegionalAnalysis() {
               <div className="flex items-center gap-2 mb-3">
                 <Compass className="h-5 w-5 text-primary" />
                 <h2 className="text-xl font-semibold">Mapa Regional</h2>
+                <InfoTip text={TIPS.mapa_regional} />
                 <span className="text-xs text-muted-foreground">5 macrorregiões — clique para detalhar</span>
               </div>
               <Card>
@@ -552,6 +617,7 @@ export default function RegionalAnalysis() {
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base flex items-center gap-2">
                     <TrendingUp className="h-4 w-4 text-green-600" /> Mapa de Força Eleitoral
+                    <InfoTip text={TIPS.mapa_forca} />
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -591,6 +657,7 @@ export default function RegionalAnalysis() {
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base flex items-center gap-2">
                     <ShieldAlert className="h-4 w-4 text-red-600" /> Mapa de Rejeição
+                    <InfoTip text={TIPS.mapa_rejeicao} />
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -671,7 +738,7 @@ export default function RegionalAnalysis() {
 }
 
 // ---------- Subcomponents ----------
-function KpiCard({ icon, label, value, sub, suffix, tint, onClick }: { icon: React.ReactNode; label: string; value: string; sub?: string; suffix?: string; tint: "primary" | "green" | "red" | "blue"; onClick?: () => void }) {
+function KpiCard({ icon, label, value, sub, suffix, tint, onClick, tip }: { icon: React.ReactNode; label: string; value: string; sub?: string; suffix?: string; tint: "primary" | "green" | "red" | "blue"; onClick?: () => void; tip?: string }) {
   const colors = {
     primary: "from-primary/10 to-primary/5 text-primary",
     green: "from-green-500/10 to-green-500/5 text-green-600",
@@ -686,7 +753,8 @@ function KpiCard({ icon, label, value, sub, suffix, tint, onClick }: { icon: Rea
       <CardContent className="pt-5">
         <div className="flex items-center gap-2 text-xs font-medium opacity-80 mb-2">
           <span className="[&>svg]:h-4 [&>svg]:w-4">{icon}</span>
-          {label}
+          <span>{label}</span>
+          {tip && <InfoTip text={tip} />}
         </div>
         <div className="text-2xl font-bold text-foreground">
           {value}
@@ -725,8 +793,8 @@ function StatePanel({ base, deep, loading, error, onRetry }: { base: StateBase; 
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <ScorePill label="Força eleitoral" value={base.electoral_strength} positive />
-            <ScorePill label="Rejeição" value={base.rejection_score} />
+            <ScorePill label="Força eleitoral" value={base.electoral_strength} positive tip={TIPS.forca_regional} />
+            <ScorePill label="Rejeição" value={base.rejection_score} tip={TIPS.rejeicao_regional} />
           </div>
         </CardContent>
       </Card>
@@ -745,11 +813,11 @@ function StatePanel({ base, deep, loading, error, onRetry }: { base: StateBase; 
 
       {!loading && deep && (
         <>
-          <SectionCard icon={<Users className="h-4 w-4 text-primary" />} title="Perfil do eleitor dominante">
+          <SectionCard icon={<Users className="h-4 w-4 text-primary" />} title="Perfil do eleitor dominante" tip={TIPS.perfil_eleitor}>
             <p className="text-sm leading-relaxed">{deep.perfil_eleitor_dominante}</p>
           </SectionCard>
 
-          <SectionCard icon={<Sparkles className="h-4 w-4 text-amber-500" />} title="DNA Eleitoral">
+          <SectionCard icon={<Sparkles className="h-4 w-4 text-amber-500" />} title="DNA Eleitoral" tip={TIPS.dna_eleitoral}>
             <div className="space-y-2">
               {deep.dna_eleitoral.map((t) => (
                 <div key={t.tema} className="flex items-center gap-3">
@@ -761,7 +829,7 @@ function StatePanel({ base, deep, loading, error, onRetry }: { base: StateBase; 
             </div>
           </SectionCard>
 
-          <SectionCard icon={<Users className="h-4 w-4 text-blue-600" />} title="Segmentos de Voto">
+          <SectionCard icon={<Users className="h-4 w-4 text-blue-600" />} title="Segmentos de Voto" tip={TIPS.segmentos_voto}>
             <div className="space-y-2">
               {deep.segmentos_voto.map((s) => (
                 <div key={s.segmento} className="flex items-center gap-3">
@@ -774,7 +842,7 @@ function StatePanel({ base, deep, loading, error, onRetry }: { base: StateBase; 
           </SectionCard>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <SectionCard icon={<ShieldAlert className="h-4 w-4 text-red-600" />} title="Fragilidade Eleitoral">
+            <SectionCard icon={<ShieldAlert className="h-4 w-4 text-red-600" />} title="Fragilidade Eleitoral" tip={TIPS.fragilidade}>
               <div className="space-y-1">
                 <p className="text-sm font-semibold">{deep.fragilidade.titulo}</p>
                 {deep.fragilidade.descricao && (
@@ -782,7 +850,7 @@ function StatePanel({ base, deep, loading, error, onRetry }: { base: StateBase; 
                 )}
               </div>
             </SectionCard>
-            <SectionCard icon={<TrendingUp className="h-4 w-4 text-green-600" />} title="Potencial de Crescimento">
+            <SectionCard icon={<TrendingUp className="h-4 w-4 text-green-600" />} title="Potencial de Crescimento" tip={TIPS.crescimento}>
               <div className="space-y-1">
                 <p className="text-sm font-semibold">{deep.crescimento.titulo}</p>
                 {deep.crescimento.descricao && (
@@ -792,16 +860,16 @@ function StatePanel({ base, deep, loading, error, onRetry }: { base: StateBase; 
             </SectionCard>
           </div>
 
-          <SectionCard icon={<Building2 className="h-4 w-4 text-blue-600" />} title="Penetração eleitoral">
+          <SectionCard icon={<Building2 className="h-4 w-4 text-blue-600" />} title="Penetração eleitoral" tip={TIPS.penetracao}>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <PenCell label="Capitais" value={deep.penetracao.capitais} />
-              <PenCell label="Cidades médias" value={deep.penetracao.cidades_medias} />
-              <PenCell label="Interior" value={deep.penetracao.interior} />
-              <PenCell label="Rural profundo" value={deep.penetracao.rural_profundo} />
+              <PenCell label="Capitais" value={deep.penetracao.capitais} tip="Grandes centros urbanos (capitais estaduais)." />
+              <PenCell label="Cidades médias" value={deep.penetracao.cidades_medias} tip="Polos regionais e cidades de médio porte." />
+              <PenCell label="Interior" value={deep.penetracao.interior} tip="Cidades pequenas do interior." />
+              <PenCell label="Rural profundo" value={deep.penetracao.rural_profundo} tip="Zonas rurais e regiões agropecuárias afastadas." />
             </div>
           </SectionCard>
 
-          <SectionCard icon={<ShieldAlert className="h-4 w-4 text-amber-600" />} title="Riscos">
+          <SectionCard icon={<ShieldAlert className="h-4 w-4 text-amber-600" />} title="Riscos" tip={TIPS.riscos}>
             <div className="space-y-2">
               {deep.riscos.map((r, i) => (
                 <div key={i} className="flex items-center justify-between gap-2 p-2 rounded-md bg-muted/40">
@@ -813,7 +881,7 @@ function StatePanel({ base, deep, loading, error, onRetry }: { base: StateBase; 
             </div>
           </SectionCard>
 
-          <SectionCard icon={<Lightbulb className="h-4 w-4 text-primary" />} title="Oportunidades">
+          <SectionCard icon={<Lightbulb className="h-4 w-4 text-primary" />} title="Oportunidades" tip={TIPS.oportunidades}>
             {deep.oportunidades.length ? (
               <ul className="space-y-1.5">
                 {deep.oportunidades.map((o, i) => (
@@ -852,34 +920,44 @@ function DeepSkeleton({ uf }: { uf: string }) {
   );
 }
 
-function ScorePill({ label, value, positive }: { label: string; value: number; positive?: boolean }) {
+function ScorePill({ label, value, positive, tip }: { label: string; value: number; positive?: boolean; tip?: string }) {
   const color = positive
     ? (value >= 65 ? "text-green-600" : value >= 40 ? "text-amber-600" : "text-red-600")
     : (value >= 65 ? "text-red-600" : value >= 40 ? "text-amber-600" : "text-green-600");
   return (
     <div className="p-3 rounded-lg bg-muted/40">
-      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+        <span>{label}</span>
+        {tip && <InfoTip text={tip} />}
+      </div>
       <div className={cn("text-2xl font-bold", color)}>{value}<span className="text-sm text-muted-foreground ml-1">/100</span></div>
       <Progress value={value} className="h-1.5 mt-1" />
     </div>
   );
 }
 
-function PenCell({ label, value }: { label: string; value: number }) {
+function PenCell({ label, value, tip }: { label: string; value: number; tip?: string }) {
   return (
     <div className="p-3 rounded-lg bg-muted/40">
-      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="text-[11px] text-muted-foreground flex items-center gap-1">
+        <span>{label}</span>
+        {tip && <InfoTip text={tip} iconClassName="h-3 w-3" />}
+      </div>
       <div className="text-lg font-semibold tabular-nums">{value}<span className="text-xs text-muted-foreground ml-1">/100</span></div>
       <Progress value={value} className="h-1 mt-1" />
     </div>
   );
 }
 
-function SectionCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+function SectionCard({ icon, title, children, tip }: { icon: React.ReactNode; title: string; children: React.ReactNode; tip?: string }) {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-semibold flex items-center gap-2">{icon}{title}</CardTitle>
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          {icon}
+          <span>{title}</span>
+          {tip && <InfoTip text={tip} />}
+        </CardTitle>
       </CardHeader>
       <CardContent>{children}</CardContent>
     </Card>
@@ -904,8 +982,8 @@ function RegionPanel({ data, onPickUf }: { data: RegionAggregate; onPickUf: (uf:
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <ScorePill label="Força regional" value={data.electoral_strength} positive />
-            <ScorePill label="Rejeição regional" value={data.rejection_score} />
+            <ScorePill label="Força regional" value={data.electoral_strength} positive tip={TIPS.forca_regional} />
+            <ScorePill label="Rejeição regional" value={data.rejection_score} tip={TIPS.rejeicao_regional} />
           </div>
           {data.percepcao && (
             <p className="text-sm leading-relaxed text-muted-foreground italic border-l-2 border-primary/40 pl-3">
