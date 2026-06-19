@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Radar,
@@ -31,6 +30,7 @@ import {
   Brain,
   RefreshCw,
   Swords,
+  AlertTriangle,
 } from "lucide-react";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 
@@ -72,6 +72,24 @@ interface ApiResponse {
   summary?: { lidera: string; cresce: string; estagnou: string; preocupa: string } | null;
 }
 
+interface RawCandidate {
+  id: string;
+  full_name: string;
+  party: string | null;
+  region: string | null;
+}
+
+interface RawMetrics {
+  candidate_id: string;
+  total_mentions: number | null;
+  unique_authors: number | null;
+  total_engagement: number | null;
+  average_sentiment: number | null;
+  positive_count: number | null;
+  negative_count: number | null;
+  neutral_count: number | null;
+}
+
 const STATUS_STYLES: Record<CandidateOut["status"], string> = {
   Dominante: "bg-amber-500/15 text-amber-400 border-amber-500/30",
   Forte: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
@@ -95,24 +113,52 @@ const fadeIn = {
 };
 
 function ScanningSkeleton() {
+  const steps = [
+    "IA analisando força eleitoral…",
+    "Comparando momentum…",
+    "Calculando rejeição relativa…",
+  ];
+
   return (
     <div className="space-y-6">
       <div className="rounded-xl border bg-card/40 p-6 relative overflow-hidden">
-        <div className="flex items-center gap-3 text-sm text-muted-foreground">
-          <Brain className="h-4 w-4 animate-pulse text-primary" />
-          <span>IA analisando candidatos...</span>
+        <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+          {steps.map((step, i) => (
+            <motion.div
+              key={step}
+              className="inline-flex items-center gap-2"
+              animate={{ opacity: [0.45, 1, 0.45] }}
+              transition={{ duration: 1.7, repeat: Infinity, delay: i * 0.35 }}
+            >
+              <Brain className="h-4 w-4 text-primary" />
+              <span>{step}</span>
+            </motion.div>
+          ))}
         </div>
-        <div className="mt-4 grid gap-3">
-          <Skeleton className="h-4 w-2/3" />
-          <Skeleton className="h-4 w-1/2" />
-          <Skeleton className="h-4 w-3/4" />
+        <div className="mt-6 grid lg:grid-cols-[1.1fr_.9fr] gap-5">
+          <div className="space-y-3">
+            {[82, 68, 54, 41].map((width, i) => (
+              <div key={i} className="grid grid-cols-[28px_1fr_64px] items-center gap-3 rounded-lg border border-border/40 bg-card/40 px-3 py-3">
+                <Skeleton className="h-4 w-5" />
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-44 max-w-full" />
+                  <Skeleton className="h-2 rounded-full" style={{ width: `${width}%` }} />
+                </div>
+                <Skeleton className="h-6 w-14 rounded-full" />
+              </div>
+            ))}
+          </div>
+          <div className="relative min-h-[230px] rounded-xl border border-border/40 bg-card/30 overflow-hidden p-5">
+            <div className="absolute inset-8 rounded-full border border-primary/20" />
+            <div className="absolute inset-14 rounded-full border border-primary/15" />
+            <div className="absolute left-1/2 top-6 bottom-6 border-l border-primary/15" />
+            <div className="absolute top-1/2 left-6 right-6 border-t border-primary/15" />
+            <Skeleton className="absolute left-[22%] top-[24%] h-3 w-24" />
+            <Skeleton className="absolute right-[18%] top-[38%] h-3 w-28" />
+            <Skeleton className="absolute left-[32%] bottom-[25%] h-3 w-32" />
+          </div>
         </div>
         <div className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-primary/10 to-transparent animate-[scan_2.2s_linear_infinite]" />
-      </div>
-      <div className="grid md:grid-cols-2 gap-4">
-        {[0, 1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-40 rounded-xl" />
-        ))}
       </div>
       <style>{`@keyframes scan { 0% { transform: translateX(0) } 100% { transform: translateX(400%) } }`}</style>
     </div>
@@ -139,24 +185,223 @@ function MomentumBadge({ momentum }: { momentum: CandidateOut["momentum"] }) {
   );
 }
 
+function clampScore(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function normalizeMax(value: number, max: number): number {
+  if (max <= 0) return 0;
+  return clampScore((value / max) * 100);
+}
+
+function statusFromScore(score: number): CandidateOut["status"] {
+  if (score >= 75) return "Dominante";
+  if (score >= 55) return "Forte";
+  if (score >= 35) return "Competitivo";
+  return "Fraco";
+}
+
+function momentumFromGrowth(growth: number): CandidateOut["momentum"] {
+  if (growth >= 15) return "up";
+  if (growth <= -15) return "down";
+  return "stable";
+}
+
+function buildComparisonFromMetrics(candidatesRaw: RawCandidate[], metricsRaw: RawMetrics[]): ApiResponse {
+  const metricsByCandidate = new Map(metricsRaw.map((m) => [m.candidate_id, m]));
+  const maxMentions = Math.max(1, ...candidatesRaw.map((c) => metricsByCandidate.get(c.id)?.total_mentions ?? 0));
+  const maxAuthors = Math.max(1, ...candidatesRaw.map((c) => metricsByCandidate.get(c.id)?.unique_authors ?? 0));
+  const maxEngagement = Math.max(1, ...candidatesRaw.map((c) => metricsByCandidate.get(c.id)?.total_engagement ?? 0));
+
+  const candidates: CandidateOut[] = candidatesRaw
+    .map((candidate) => {
+      const metrics = metricsByCandidate.get(candidate.id);
+      const mentions = metrics?.total_mentions ?? 0;
+      const authors = metrics?.unique_authors ?? 0;
+      const engagement = metrics?.total_engagement ?? 0;
+      const positive = metrics?.positive_count ?? 0;
+      const negative = metrics?.negative_count ?? 0;
+      const neutral = metrics?.neutral_count ?? 0;
+      const totalSentiment = positive + negative + neutral;
+      const approval = totalSentiment > 0 ? (positive / totalSentiment) * 100 : 50;
+      const rejection = totalSentiment > 0 ? (negative / totalSentiment) * 100 : 30;
+      const recall = normalizeMax(mentions, maxMentions);
+      const dominance = normalizeMax(authors, maxAuthors);
+      const virality = mentions > 0 ? normalizeMax(engagement / Math.max(1, mentions), maxEngagement / Math.max(1, maxMentions)) : 0;
+      const sentiment = Number(metrics?.average_sentiment ?? 0);
+      const growth = clampScore((sentiment + 100) / 2) - 50;
+      const growthNorm = (growth + 100) / 2;
+      const regionalForce = clampScore(recall * 0.6 + dominance * 0.4);
+      const strength = clampScore(regionalForce * 0.25 + approval * 0.2 + (100 - rejection) * 0.2 + virality * 0.15 + growthNorm * 0.1 + dominance * 0.1);
+      const highRejection = rejection >= 50;
+      const highRegional = regionalForce >= 65;
+
+      return {
+        id: candidate.id,
+        name: candidate.full_name,
+        party: candidate.party,
+        state: candidate.region,
+        scores: {
+          strength,
+          recall,
+          approval: clampScore(approval),
+          rejection: clampScore(rejection),
+          virality,
+          regionalForce,
+          growth: Math.max(-100, Math.min(100, Math.round(growth))),
+          dominance,
+        },
+        status: statusFromScore(strength),
+        momentum: momentumFromGrowth(growth),
+        narrativas: {
+          temas: [
+            highRegional ? "força regional" : "presença regional",
+            highRejection ? "rejeição" : "aprovação relativa",
+            virality >= 60 ? "tração digital" : "alcance orgânico",
+            candidate.region ?? "base nacional",
+          ].slice(0, 4),
+          tom: highRejection ? "polarizado" : growth >= 15 ? "ascendente" : "competitivo",
+          arquetipo: highRegional ? "Liderança regional consolidada" : highRejection ? "Polarizador competitivo" : "Competidor em consolidação",
+        },
+        momentumNota: growth >= 15 ? "Indicadores locais sugerem aceleração recente." : growth <= -15 ? "Indicadores locais sugerem perda de ritmo." : "Indicadores locais sugerem estabilidade competitiva.",
+      };
+    })
+    .sort((a, b) => b.scores.strength - a.scores.strength);
+
+  const leader = candidates[0];
+  const fastestGrowth = [...candidates].sort((a, b) => b.scores.growth - a.scores.growth)[0];
+  const highestRejection = [...candidates].sort((a, b) => b.scores.rejection - a.scores.rejection)[0];
+  const stagnant = [...candidates].sort((a, b) => Math.abs(a.scores.growth) - Math.abs(b.scores.growth))[0];
+
+  return {
+    success: true,
+    empty: candidates.length === 0,
+    message: "Comparação gerada com fallback local.",
+    candidates,
+    bestInClass: {
+      traction: [...candidates].sort((a, b) => b.scores.virality - a.scores.virality)[0] ? { name: [...candidates].sort((a, b) => b.scores.virality - a.scores.virality)[0].name, value: [...candidates].sort((a, b) => b.scores.virality - a.scores.virality)[0].scores.virality } : null,
+      lowestRejection: [...candidates].sort((a, b) => a.scores.rejection - b.scores.rejection)[0] ? { name: [...candidates].sort((a, b) => a.scores.rejection - b.scores.rejection)[0].name, value: [...candidates].sort((a, b) => a.scores.rejection - b.scores.rejection)[0].scores.rejection } : null,
+      growth: fastestGrowth ? { name: fastestGrowth.name, value: fastestGrowth.scores.growth } : null,
+      centroOeste: leader ? { nome: leader.name, justificativa: "Fallback local: melhor score ponderado com os dados disponíveis." } : null,
+      overall: leader ? { name: leader.name, value: leader.scores.strength } : null,
+    },
+    summary: {
+      lidera: leader ? `${leader.name} lidera pelo melhor score estratégico local (${leader.scores.strength}/100).` : "Sem liderança definida.",
+      cresce: fastestGrowth ? `${fastestGrowth.name} tem o maior sinal relativo de crescimento.` : "Sem crescimento detectado.",
+      estagnou: stagnant ? `${stagnant.name} apresenta menor oscilação nos indicadores disponíveis.` : "Sem estagnação clara.",
+      preocupa: highestRejection ? `${highestRejection.name} concentra a maior rejeição relativa (${highestRejection.scores.rejection}/100).` : "Sem risco dominante mapeado.",
+    },
+  };
+}
+
+function extractJson(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const cleaned = value
+    .replace(/```json\s*/gi, "")
+    .replace(/```/g, "")
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+    .trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("Resposta da IA não contém JSON válido");
+    return JSON.parse(match[0].replace(/,\s*}/g, "}").replace(/,\s*]/g, "]"));
+  }
+}
+
+function normalizeApiResponse(value: unknown): ApiResponse {
+  const parsed = extractJson(value) as Partial<ApiResponse> | null;
+  if (!parsed || typeof parsed !== "object") throw new Error("Resposta vazia da Edge Function");
+  return {
+    success: Boolean(parsed.success),
+    empty: parsed.empty,
+    message: parsed.message,
+    candidates: Array.isArray(parsed.candidates) ? parsed.candidates : [],
+    bestInClass: parsed.bestInClass,
+    summary: parsed.summary ?? null,
+  };
+}
+
 const CandidateComparisonPage = () => {
   const { user } = useAuth();
   const [headA, setHeadA] = useState<string | null>(null);
   const [headB, setHeadB] = useState<string | null>(null);
+  const [data, setData] = useState<ApiResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
 
-  const { data, isLoading, isFetching, refetch, error } = useQuery<ApiResponse>({
-    queryKey: ["ai-candidate-comparison", user?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("ai-candidate-comparison", { body: {} });
-      if (error) throw error;
-      return data as ApiResponse;
-    },
-    enabled: !!user,
-    staleTime: 1000 * 60 * 10,
-    refetchOnWindowFocus: false,
-  });
+  const generateLocalFallback = useCallback(async (): Promise<ApiResponse> => {
+    const { data: candidatesRaw, error: candidatesError } = await supabase
+      .from("candidates")
+      .select("id, full_name, party, region")
+      .order("full_name");
+    if (candidatesError) throw candidatesError;
+    if (!candidatesRaw || candidatesRaw.length === 0) return { success: true, empty: true, message: "Nenhum candidato cadastrado." };
+
+    const { data: metricsRaw, error: metricsError } = await supabase
+      .from("candidate_metrics_cache")
+      .select("candidate_id, total_mentions, unique_authors, total_engagement, average_sentiment, positive_count, negative_count, neutral_count")
+      .in("candidate_id", candidatesRaw.map((c) => c.id));
+    if (metricsError) throw metricsError;
+
+    return buildComparisonFromMetrics(candidatesRaw as RawCandidate[], (metricsRaw ?? []) as RawMetrics[]);
+  }, []);
+
+  const generateComparison = useCallback(async (): Promise<ApiResponse> => {
+    const response = await Promise.race([
+      supabase.functions.invoke("ai-candidate-comparison", { body: {} }),
+      new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error("timeout ao chamar Edge Function")), 45000)),
+    ]);
+    console.log("edge response", response);
+
+    if (response.error) throw new Error(`Edge Function error: ${response.error.message}`);
+    const parsed = normalizeApiResponse(response.data);
+    console.log("comparison parsed", parsed);
+    if (!parsed.success) throw new Error(parsed.message || "Edge Function retornou resposta sem sucesso");
+    return parsed;
+  }, []);
+
+  const runComparison = useCallback(async () => {
+    if (!user) return;
+    console.log("candidate-comparison started");
+    setLoading(true);
+    setError(null);
+
+    try {
+      const result = await generateComparison();
+      if (mountedRef.current) setData(result);
+    } catch (comparisonError) {
+      console.error(comparisonError);
+      try {
+        const fallback = await generateLocalFallback();
+        if (mountedRef.current) setData(fallback);
+      } catch (fallbackError) {
+        console.error(fallbackError);
+        if (mountedRef.current) {
+          setData(null);
+          setError((comparisonError as Error)?.message || "Erro ao gerar comparação");
+        }
+      }
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, [generateComparison, generateLocalFallback, user]);
 
   const candidates = data?.candidates ?? [];
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    void runComparison();
+  }, [runComparison]);
 
   useEffect(() => {
     if (candidates.length >= 2 && !headA && !headB) {
@@ -202,28 +447,34 @@ const CandidateComparisonPage = () => {
             Inteligência política comparativa — não métricas brutas.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? "animate-spin" : ""}`} />
+        <Button variant="outline" size="sm" onClick={runComparison} disabled={loading}>
+          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
           Atualizar análise
         </Button>
       </motion.div>
 
-      {isLoading && <ScanningSkeleton />}
+      {loading && <ScanningSkeleton />}
 
-      {!isLoading && (error || data?.success === false) && (
-        <Card>
-          <CardContent className="py-10 text-center space-y-3">
-            <p className="text-muted-foreground">
-              {data?.message ?? "A análise está sendo processada. Tente novamente em instantes."}
-            </p>
-            <Button onClick={() => refetch()} size="sm">
+      {!loading && (error || data?.success === false) && (
+        <Card className="border-destructive/25 bg-destructive/5">
+          <CardContent className="py-10 text-center space-y-4">
+            <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold">Falha ao gerar comparação</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {error ?? data?.message ?? "Erro ao processar a comparação estratégica."}
+              </p>
+            </div>
+            <Button onClick={runComparison} size="sm">
               Tentar novamente
             </Button>
           </CardContent>
         </Card>
       )}
 
-      {!isLoading && data?.success && data?.empty && (
+      {!loading && data?.success && data?.empty && (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
             Nenhum candidato cadastrado.
@@ -231,7 +482,7 @@ const CandidateComparisonPage = () => {
         </Card>
       )}
 
-      {!isLoading && data?.success && candidates.length > 0 && (
+      {!loading && data?.success && candidates.length > 0 && (
         <>
           {/* SECTION 1 — Political Strength Ranking */}
           <motion.div {...fadeIn}>
