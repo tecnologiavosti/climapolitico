@@ -387,12 +387,17 @@ export default function RegionalAnalysis() {
       const sts = analysis.states.filter((s) => UF_REGION[s.uf] === rg);
       const summary = analysis.regions.find((r) => r.region === rg);
       const avg = (arr: number[]) => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
+      const rejection = summary?.rejection_score || avg(sts.map((s) => s.rejection_score));
+      const rawStrength = summary?.regional_strength_score || avg(sts.map((s) => s.electoral_strength));
+      // Recalcula temperatura pelas regras canônicas e corrige inconsistências
+      const temperatura = temperatureFromStrength(rawStrength, rejection);
+      const electoral_strength = coerceStrength(rawStrength, temperatura);
       m[rg] = {
         region: rg,
-        electoral_strength: summary?.regional_strength_score || avg(sts.map((s) => s.electoral_strength)),
-        rejection_score: summary?.rejection_score || avg(sts.map((s) => s.rejection_score)),
+        electoral_strength,
+        rejection_score: rejection,
         percepcao: summary?.percepcao || "",
-        temperatura: summary?.temperatura || "Competitiva",
+        temperatura,
         ufs: sts.map((s) => s.uf),
       };
     });
