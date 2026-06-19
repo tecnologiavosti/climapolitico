@@ -247,7 +247,7 @@ serve(async (req) => {
         try {
           const [r1, r2] = await Promise.all([
             supabase.from("social_interactions").select("id", { head: true, count: "exact" })
-              .eq("candidate_id", c.id).gte("created_at", dRecent),
+              .eq("candidate_id", c.id).gte("created_at", dRecent).lt("created_at", dEnd),
             supabase.from("social_interactions").select("id", { head: true, count: "exact" })
               .eq("candidate_id", c.id).gte("created_at", dPrev).lt("created_at", dRecent),
           ]);
