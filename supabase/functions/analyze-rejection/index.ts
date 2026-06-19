@@ -184,6 +184,8 @@ Regras: máximo 8 vetores, máximo 5 clusters, palavras de linguagem devem ser e
     return new Response(JSON.stringify({
       analysis,
       evidenceCount,
+      confidence,
+
       candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region },
       period: { daysBack, startDate: startDate.toISOString(), endDate: new Date().toISOString() },
       ai_provider: aiProvider
