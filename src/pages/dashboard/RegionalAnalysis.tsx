@@ -701,9 +701,9 @@ function StatePanel({ data }: { data: StateAnalysis }) {
         <p className="text-sm leading-relaxed">{data.perfil_eleitor_dominante}</p>
       </SectionCard>
 
-      <SectionCard icon={<Sparkles className="h-4 w-4 text-amber-500" />} title="Sensibilidade temática">
+      <SectionCard icon={<Sparkles className="h-4 w-4 text-amber-500" />} title="DNA Eleitoral">
         <div className="space-y-2">
-          {data.temas_sensibilidade.map((t) => (
+          {data.dna_eleitoral.map((t) => (
             <div key={t.tema} className="flex items-center gap-3">
               <span className="text-xs w-28 text-muted-foreground">{TEMA_LABELS[t.tema] || t.tema}</span>
               <Progress value={t.score} className="h-2 flex-1" />
@@ -712,6 +712,37 @@ function StatePanel({ data }: { data: StateAnalysis }) {
           ))}
         </div>
       </SectionCard>
+
+      <SectionCard icon={<Users className="h-4 w-4 text-blue-600" />} title="Segmentos de Voto">
+        <div className="space-y-2">
+          {data.segmentos_voto.map((s) => (
+            <div key={s.segmento} className="flex items-center gap-3">
+              <span className="text-xs w-28 text-muted-foreground">{SEGMENTO_LABELS[s.segmento] || s.segmento}</span>
+              <Progress value={s.score} className="h-2 flex-1" />
+              <span className="text-xs font-medium w-10 text-right tabular-nums">{s.score}</span>
+            </div>
+          ))}
+        </div>
+      </SectionCard>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <SectionCard icon={<ShieldAlert className="h-4 w-4 text-red-600" />} title="Fragilidade Eleitoral">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold">{data.fragilidade.titulo}</p>
+            {data.fragilidade.descricao && (
+              <p className="text-sm text-muted-foreground leading-relaxed">{data.fragilidade.descricao}</p>
+            )}
+          </div>
+        </SectionCard>
+        <SectionCard icon={<TrendingUp className="h-4 w-4 text-green-600" />} title="Potencial de Crescimento">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold">{data.crescimento.titulo}</p>
+            {data.crescimento.descricao && (
+              <p className="text-sm text-muted-foreground leading-relaxed">{data.crescimento.descricao}</p>
+            )}
+          </div>
+        </SectionCard>
+      </div>
 
       <SectionCard icon={<Building2 className="h-4 w-4 text-blue-600" />} title="Penetração eleitoral">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
