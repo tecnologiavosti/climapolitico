@@ -1,316 +1,565 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { motion } from "framer-motion";
+import {
+  Radar,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  ResponsiveContainer,
+  Legend,
+  Tooltip as RTooltip,
+} from "recharts";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Users, MessageSquare, Heart, TrendingUp } from "lucide-react";
+import {
+  Crown,
+  Flame,
+  Shield,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Sparkles,
+  Trophy,
+  Compass,
+  Brain,
+  RefreshCw,
+  Swords,
+} from "lucide-react";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 
-type SortKey = "mentions" | "sentiment" | "engagement" | "authors";
+interface CandidateScores {
+  strength: number;
+  recall: number;
+  approval: number;
+  rejection: number;
+  virality: number;
+  regionalForce: number;
+  growth: number;
+  dominance: number;
+}
 
-const SORT_OPTIONS: { value: SortKey; label: string }[] = [
-  { value: "mentions", label: "Menções" },
-  { value: "sentiment", label: "Sentimento" },
-  { value: "engagement", label: "Engajamento" },
-  { value: "authors", label: "Autores Únicos" },
-];
-
-interface CandidateComparison {
+interface CandidateOut {
   id: string;
   name: string;
   party: string | null;
-  mentions: number;
-  authors: number;
-  engagement: number;
-  sentiment: number | null;
-  positive: number;
-  negative: number;
-  neutral: number;
+  state: string | null;
+  scores: CandidateScores;
+  status: "Dominante" | "Forte" | "Competitivo" | "Fraco";
+  momentum: "up" | "down" | "stable";
+  narrativas: { temas: string[]; tom: string | null; arquetipo: string | null };
+  momentumNota: string | null;
 }
 
-const Bar = ({ value, max, color }: { value: number; max: number; color: string }) => {
-  const pct = max > 0 ? (value / max) * 100 : 0;
-  return (
-    <div className="w-full bg-muted rounded-full h-5 overflow-hidden">
-      <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${pct}%` }} />
-    </div>
-  );
+interface ApiResponse {
+  success: boolean;
+  empty?: boolean;
+  message?: string;
+  candidates?: CandidateOut[];
+  bestInClass?: {
+    traction: { name: string; value: number } | null;
+    lowestRejection: { name: string; value: number } | null;
+    growth: { name: string; value: number } | null;
+    centroOeste: { nome: string; justificativa: string } | null;
+    overall: { name: string; value: number } | null;
+  };
+  summary?: { lidera: string; cresce: string; estagnou: string; preocupa: string } | null;
+}
+
+const STATUS_STYLES: Record<CandidateOut["status"], string> = {
+  Dominante: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+  Forte: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  Competitivo: "bg-sky-500/15 text-sky-400 border-sky-500/30",
+  Fraco: "bg-rose-500/15 text-rose-400 border-rose-500/30",
 };
 
-const SentimentBar = ({ positive, negative, neutral }: { positive: number; negative: number; neutral: number }) => {
-  const total = positive + negative + neutral;
-  if (total === 0) return <div className="text-xs text-muted-foreground">Sem dados</div>;
-  const pPos = (positive / total) * 100;
-  const pNeu = (neutral / total) * 100;
-  const pNeg = (negative / total) * 100;
-  const fmt = (v: number) => `${v.toFixed(1)}%`;
-  return (
-    <TooltipProvider delayDuration={100}>
-      <div className="w-full h-5 rounded-full overflow-hidden flex cursor-help">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="bg-green-500 h-full transition-all hover:opacity-80" style={{ width: `${pPos}%` }} />
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            <div className="text-xs">
-              <div className="font-semibold text-green-600 dark:text-green-400">Positivo: {fmt(pPos)}</div>
-              <div className="text-muted-foreground">{Number(positive ?? 0).toLocaleString('pt-BR')} de {Number(total ?? 0).toLocaleString('pt-BR')} comentários</div>
-            </div>
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="bg-yellow-400 h-full transition-all hover:opacity-80" style={{ width: `${pNeu}%` }} />
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            <div className="text-xs">
-              <div className="font-semibold text-yellow-600 dark:text-yellow-400">Neutro: {fmt(pNeu)}</div>
-              <div className="text-muted-foreground">{Number(neutral ?? 0).toLocaleString('pt-BR')} de {Number(total ?? 0).toLocaleString('pt-BR')} comentários</div>
-            </div>
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="bg-red-500 h-full transition-all hover:opacity-80" style={{ width: `${pNeg}%` }} />
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            <div className="text-xs">
-              <div className="font-semibold text-red-600 dark:text-red-400">Negativo: {fmt(pNeg)}</div>
-              <div className="text-muted-foreground">{Number(negative ?? 0).toLocaleString('pt-BR')} de {Number(total ?? 0).toLocaleString('pt-BR')} comentários</div>
-            </div>
-          </TooltipContent>
-        </Tooltip>
-      </div>
-    </TooltipProvider>
-  );
+const PALETTE = [
+  "hsl(45 95% 60%)",
+  "hsl(160 70% 50%)",
+  "hsl(210 90% 60%)",
+  "hsl(340 80% 60%)",
+  "hsl(280 75% 65%)",
+  "hsl(20 85% 60%)",
+];
+
+const fadeIn = {
+  initial: { opacity: 0, y: 12 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.4, ease: "easeOut" as const },
 };
+
+function ScanningSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="rounded-xl border bg-card/40 p-6 relative overflow-hidden">
+        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <Brain className="h-4 w-4 animate-pulse text-primary" />
+          <span>IA analisando candidatos...</span>
+        </div>
+        <div className="mt-4 grid gap-3">
+          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-4 w-1/2" />
+          <Skeleton className="h-4 w-3/4" />
+        </div>
+        <div className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-primary/10 to-transparent animate-[scan_2.2s_linear_infinite]" />
+      </div>
+      <div className="grid md:grid-cols-2 gap-4">
+        {[0, 1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-40 rounded-xl" />
+        ))}
+      </div>
+      <style>{`@keyframes scan { 0% { transform: translateX(0) } 100% { transform: translateX(400%) } }`}</style>
+    </div>
+  );
+}
+
+function MomentumBadge({ momentum }: { momentum: CandidateOut["momentum"] }) {
+  if (momentum === "up")
+    return (
+      <span className="inline-flex items-center gap-1 text-emerald-400 text-xs font-medium">
+        <TrendingUp className="h-3.5 w-3.5" /> Subindo
+      </span>
+    );
+  if (momentum === "down")
+    return (
+      <span className="inline-flex items-center gap-1 text-rose-400 text-xs font-medium">
+        <TrendingDown className="h-3.5 w-3.5" /> Caindo
+      </span>
+    );
+  return (
+    <span className="inline-flex items-center gap-1 text-muted-foreground text-xs font-medium">
+      <Minus className="h-3.5 w-3.5" /> Estável
+    </span>
+  );
+}
 
 const CandidateComparisonPage = () => {
   const { user } = useAuth();
-  const [sortBy, setSortBy] = useState<SortKey>("mentions");
+  const [headA, setHeadA] = useState<string | null>(null);
+  const [headB, setHeadB] = useState<string | null>(null);
 
-  const { data: candidates = [], isLoading } = useQuery({
-    queryKey: ['candidate-comparison', user?.id],
+  const { data, isLoading, isFetching, refetch, error } = useQuery<ApiResponse>({
+    queryKey: ["ai-candidate-comparison", user?.id],
     queryFn: async () => {
-      // Fetch candidates
-      const { data: cands, error: candErr } = await supabase
-        .from('candidates')
-        .select('id, full_name, party')
-        .order('full_name');
-      if (candErr) throw candErr;
-      if (!cands || cands.length === 0) return [];
-
-      // Fetch metrics cache
-      const { data: metrics, error: metErr } = await supabase
-        .from('candidate_metrics_cache')
-        .select('candidate_id, total_mentions, unique_authors, total_engagement, average_sentiment, positive_count, negative_count, neutral_count');
-      if (metErr) throw metErr;
-
-      const metricsMap = new Map(metrics?.map(m => [m.candidate_id, m]) || []);
-
-      return cands.map((c): CandidateComparison => {
-        const m = metricsMap.get(c.id);
-        return {
-          id: c.id,
-          name: c.full_name,
-          party: c.party,
-          mentions: m?.total_mentions || 0,
-          authors: m?.unique_authors || 0,
-          engagement: m?.total_engagement || 0,
-          sentiment: m?.average_sentiment != null ? Number(m.average_sentiment) : null,
-          positive: m?.positive_count || 0,
-          negative: m?.negative_count || 0,
-          neutral: m?.neutral_count || 0,
-        };
-      });
+      const { data, error } = await supabase.functions.invoke("ai-candidate-comparison", { body: {} });
+      if (error) throw error;
+      return data as ApiResponse;
     },
     enabled: !!user,
+    staleTime: 1000 * 60 * 10,
+    refetchOnWindowFocus: false,
   });
 
-  const sorted = [...candidates].sort((a, b) => {
-    switch (sortBy) {
-      case "mentions": return b.mentions - a.mentions;
-      case "sentiment": return (b.sentiment ?? 0) - (a.sentiment ?? 0);
-      case "engagement": return b.engagement - a.engagement;
-      case "authors": return b.authors - a.authors;
-      default: return 0;
+  const candidates = data?.candidates ?? [];
+
+  useEffect(() => {
+    if (candidates.length >= 2 && !headA && !headB) {
+      setHeadA(candidates[0].id);
+      setHeadB(candidates[1].id);
     }
-  });
+  }, [candidates, headA, headB]);
 
-  const maxMentions = Math.max(...candidates.map(c => c.mentions), 1);
-  const maxEngagement = Math.max(...candidates.map(c => c.engagement), 1);
-  const maxAuthors = Math.max(...candidates.map(c => c.authors), 1);
+  const radarData = useMemo(() => {
+    const keys: { key: keyof CandidateScores; label: string }[] = [
+      { key: "recall", label: "Recall" },
+      { key: "approval", label: "Aprovação" },
+      { key: "rejection", label: "Rejeição" },
+      { key: "virality", label: "Viralização" },
+      { key: "regionalForce", label: "Penetração" },
+      { key: "growth", label: "Momentum" },
+    ];
+    return keys.map(({ key, label }) => {
+      const row: any = { metric: label };
+      candidates.forEach((c) => {
+        const v = c.scores[key];
+        row[c.name] = key === "growth" ? (v + 100) / 2 : v;
+      });
+      return row;
+    });
+  }, [candidates]);
 
-  const getSentimentLabel = (val: number | null) => {
-    if (val == null) return { text: "N/A", class: "text-muted-foreground" };
-    if (val >= 60) return { text: "Positivo", class: "text-green-600 dark:text-green-400" };
-    if (val >= 40) return { text: "Neutro", class: "text-yellow-600 dark:text-yellow-400" };
-    return { text: "Negativo", class: "text-red-600 dark:text-red-400" };
-  };
+  const headACand = candidates.find((c) => c.id === headA);
+  const headBCand = candidates.find((c) => c.id === headB);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-row items-center justify-between gap-3 flex-wrap">
+    <div className="space-y-8">
+      {/* Header */}
+      <motion.div {...fadeIn} className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <HelpTooltip text="Coloca seus candidatos lado a lado pra ver, num olhar só, quem está melhor em cada coisa.">
-            <h1 className="text-3xl font-bold">Comparação de Candidatos</h1>
+          <HelpTooltip text="Comparativo estratégico IA-first: ranking, radar, narrativas, head-to-head e momentum.">
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+              <Sparkles className="h-7 w-7 text-primary" />
+              Comparação Estratégica
+            </h1>
           </HelpTooltip>
-          <p className="text-muted-foreground mt-1">Visualização comparativa rápida baseada em dados reais.</p>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Inteligência política comparativa — não métricas brutas.
+          </p>
         </div>
-        <HelpTooltip text="Escolha como ordenar a lista: por menções, por sentimento, etc.">
-          <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortKey)}>
-            <SelectTrigger className="w-[140px] sm:w-[200px]">
-              <SelectValue placeholder="Ordenar por" />
-            </SelectTrigger>
-            <SelectContent>
-              {SORT_OPTIONS.map(o => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </HelpTooltip>
-      </div>
+        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
+          <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? "animate-spin" : ""}`} />
+          Atualizar análise
+        </Button>
+      </motion.div>
 
-      {isLoading && (
-        <Card><CardContent className="py-12 text-center text-muted-foreground">Carregando...</CardContent></Card>
+      {isLoading && <ScanningSkeleton />}
+
+      {!isLoading && (error || data?.success === false) && (
+        <Card>
+          <CardContent className="py-10 text-center space-y-3">
+            <p className="text-muted-foreground">
+              {data?.message ?? "A análise está sendo processada. Tente novamente em instantes."}
+            </p>
+            <Button onClick={() => refetch()} size="sm">
+              Tentar novamente
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
-      {!isLoading && sorted.length === 0 && (
-        <Card><CardContent className="py-12 text-center text-muted-foreground">Nenhum candidato cadastrado.</CardContent></Card>
+      {!isLoading && data?.success && data?.empty && (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            Nenhum candidato cadastrado.
+          </CardContent>
+        </Card>
       )}
 
-      {!isLoading && sorted.length > 0 && (
+      {!isLoading && data?.success && candidates.length > 0 && (
         <>
-          {/* Metric Comparison Cards */}
-          {[
-            { key: "mentions" as const, title: "Menções", icon: MessageSquare, max: maxMentions, color: "bg-primary", getValue: (c: CandidateComparison) => c.mentions },
-            { key: "authors" as const, title: "Autores Únicos", icon: Users, max: maxAuthors, color: "bg-blue-500", getValue: (c: CandidateComparison) => c.authors },
-            { key: "engagement" as const, title: "Engajamento Total", icon: Heart, max: maxEngagement, color: "bg-pink-500", getValue: (c: CandidateComparison) => c.engagement },
-          ].map(metric => {
-            const metricSorted = [...candidates].sort((a, b) => metric.getValue(b) - metric.getValue(a));
-            return (
-              <Card key={metric.key}>
-                <CardHeader className="pb-3">
-                  <HelpTooltip text="Ranking dos candidatos por essa métrica. Quem aparece em cima está se saindo melhor nela.">
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                      <metric.icon className="h-5 w-5" />
-                      {metric.title}
-                    </CardTitle>
-                  </HelpTooltip>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {metricSorted.map((c, i) => (
-                      <div key={c.id} className="flex items-center gap-3">
-                        <span className="text-sm font-medium text-muted-foreground w-5">{i + 1}.</span>
-                        <div className="w-32 sm:w-48 truncate text-sm font-medium">
-                          {c.name}
-                          {c.party && <span className="text-muted-foreground ml-1 text-xs">({c.party})</span>}
-                        </div>
-                        <div className="flex-1">
-                          <Bar value={metric.getValue(c)} max={metric.max} color={metric.color} />
-                        </div>
-                        <span className="text-sm font-bold w-16 text-right">{metric.getValue(c).toLocaleString('pt-BR')}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-
-          {/* Sentiment Comparison */}
-          <Card>
-            <CardHeader className="pb-3">
-              <HelpTooltip text="Mostra a mistura de elogios (verde), neutros (amarelo) e críticas (vermelho) de cada candidato.">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <TrendingUp className="h-5 w-5" />
-                  Sentimento
+          {/* SECTION 1 — Political Strength Ranking */}
+          <motion.div {...fadeIn}>
+            <Card className="border-primary/20 bg-gradient-to-br from-background via-background to-primary/5">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Trophy className="h-5 w-5 text-amber-400" />
+                  Political Strength Ranking
                 </CardTitle>
-              </HelpTooltip>
-              <CardDescription className="flex gap-4 mt-1">
-                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500 inline-block" /> Positivo</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-yellow-400 inline-block" /> Neutro</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-500 inline-block" /> Negativo</span>
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {[...candidates].sort((a, b) => (b.sentiment ?? 0) - (a.sentiment ?? 0)).map((c, i) => {
-                  const label = getSentimentLabel(c.sentiment);
-                  return (
-                    <div key={c.id} className="flex items-center gap-3">
-                      <span className="text-sm font-medium text-muted-foreground w-5">{i + 1}.</span>
-                      <div className="w-32 sm:w-48 truncate text-sm font-medium">
-                        {c.name}
-                        {c.party && <span className="text-muted-foreground ml-1 text-xs">({c.party})</span>}
-                      </div>
-                      <div className="flex-1">
-                        <SentimentBar positive={c.positive} negative={c.negative} neutral={c.neutral} />
-                      </div>
-                      <div className="w-20 text-right">
-                        <span className={`text-sm font-bold ${label.class}`}>
-                          {c.sentiment != null ? `${c.sentiment.toFixed(0)}%` : 'N/A'}
-                        </span>
+                <CardDescription>
+                  Score 0–100 ponderado: regional 25% · aprovação 20% · rejeição inversa 20% · viralização 15% ·
+                  crescimento 10% · dominância 10%.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {candidates.map((c, i) => (
+                  <motion.div
+                    key={c.id}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.04 }}
+                    className="grid grid-cols-[28px_1fr_auto] sm:grid-cols-[28px_1fr_120px_auto] items-center gap-3 rounded-lg border border-border/40 bg-card/40 px-3 py-2.5 hover:bg-card/70 transition-colors"
+                  >
+                    <span className="text-sm font-mono text-muted-foreground">{String(i + 1).padStart(2, "0")}</span>
+                    <div className="min-w-0">
+                      <div className="font-semibold truncate">{c.name}</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {c.party ?? "Sem partido"}
+                        {c.state ? ` · ${c.state}` : ""}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
+                    <div className="hidden sm:flex items-center gap-2">
+                      <div className="w-24 h-2 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-primary to-amber-400 transition-all duration-700"
+                          style={{ width: `${c.scores.strength}%` }}
+                        />
+                      </div>
+                      <span className="text-sm font-bold tabular-nums w-9 text-right">{c.scores.strength}</span>
+                    </div>
+                    <Badge variant="outline" className={STATUS_STYLES[c.status]}>
+                      {c.status}
+                    </Badge>
+                  </motion.div>
+                ))}
+              </CardContent>
+            </Card>
+          </motion.div>
 
-          {/* Summary Table */}
-          <Card>
-            <CardHeader>
-              <HelpTooltip text="Tabela com todos os números importantes de cada candidato, na ordem que você escolheu.">
-                <CardTitle>Resumo Geral</CardTitle>
-              </HelpTooltip>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2 px-2 font-medium">#</th>
-                      <th className="text-left py-2 px-2 font-medium">Candidato</th>
-                      <th className="text-right py-2 px-2 font-medium">Menções</th>
-                      <th className="text-right py-2 px-2 font-medium">Autores</th>
-                      <th className="text-right py-2 px-2 font-medium">Engajamento</th>
-                      <th className="text-right py-2 px-2 font-medium">Sentimento</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sorted.map((c, i) => {
-                      const label = getSentimentLabel(c.sentiment);
+          {/* SECTION 2 — Radar */}
+          <motion.div {...fadeIn}>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Compass className="h-5 w-5 text-primary" />
+                  Radar Comparativo
+                </CardTitle>
+                <CardDescription>Perfil multidimensional dos candidatos (0–100).</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[420px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RadarChart data={radarData} outerRadius="75%">
+                      <PolarGrid stroke="hsl(var(--border))" />
+                      <PolarAngleAxis dataKey="metric" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+                      <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+                      <RTooltip
+                        contentStyle={{
+                          background: "hsl(var(--card))",
+                          border: "1px solid hsl(var(--border))",
+                          borderRadius: 8,
+                          fontSize: 12,
+                        }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      {candidates.slice(0, 6).map((c, i) => (
+                        <Radar
+                          key={c.id}
+                          name={c.name}
+                          dataKey={c.name}
+                          stroke={PALETTE[i % PALETTE.length]}
+                          fill={PALETTE[i % PALETTE.length]}
+                          fillOpacity={0.18}
+                          strokeWidth={2}
+                        />
+                      ))}
+                    </RadarChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* SECTION 3 — Best in Class */}
+          <motion.div {...fadeIn}>
+            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+              <Crown className="h-5 w-5 text-amber-400" />
+              Best in Class
+            </h2>
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+              <BestCard
+                icon={<Flame className="h-4 w-4" />}
+                label="Maior tração digital"
+                name={data.bestInClass?.traction?.name}
+                hint={`${data.bestInClass?.traction?.value ?? 0}/100`}
+                accent="from-orange-500/20 to-amber-500/5"
+              />
+              <BestCard
+                icon={<Shield className="h-4 w-4" />}
+                label="Menor rejeição"
+                name={data.bestInClass?.lowestRejection?.name}
+                hint={`${data.bestInClass?.lowestRejection?.value ?? 0}% rejeição`}
+                accent="from-emerald-500/20 to-emerald-500/5"
+              />
+              <BestCard
+                icon={<TrendingUp className="h-4 w-4" />}
+                label="Maior crescimento"
+                name={data.bestInClass?.growth?.name}
+                hint={`${data.bestInClass?.growth?.value ?? 0}% 7d`}
+                accent="from-sky-500/20 to-sky-500/5"
+              />
+              <BestCard
+                icon={<Compass className="h-4 w-4" />}
+                label="Melhor no Centro-Oeste"
+                name={data.bestInClass?.centroOeste?.nome}
+                hint={data.bestInClass?.centroOeste?.justificativa ?? "—"}
+                accent="from-purple-500/20 to-purple-500/5"
+              />
+              <BestCard
+                icon={<Trophy className="h-4 w-4" />}
+                label="Melhor no Brasil"
+                name={data.bestInClass?.overall?.name}
+                hint={`Score ${data.bestInClass?.overall?.value ?? 0}`}
+                accent="from-amber-500/20 to-amber-500/5"
+              />
+            </div>
+          </motion.div>
+
+          {/* SECTION 4 — Narrativas Dominantes */}
+          <motion.div {...fadeIn}>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Brain className="h-5 w-5 text-primary" />
+                  Narrativas Dominantes
+                </CardTitle>
+                <CardDescription>Temas, tom emocional e arquétipo político por candidato.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid md:grid-cols-2 gap-3">
+                {candidates.map((c) => (
+                  <div key={c.id} className="rounded-lg border border-border/40 bg-card/40 p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold">{c.name}</div>
+                      {c.narrativas.arquetipo && (
+                        <Badge variant="secondary" className="text-[10px] uppercase tracking-wider">
+                          {c.narrativas.arquetipo}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {c.narrativas.temas.length > 0 ? (
+                        c.narrativas.temas.map((t, i) => (
+                          <Badge key={i} variant="outline" className="text-xs">
+                            {t}
+                          </Badge>
+                        ))
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Sem narrativas mapeadas.</span>
+                      )}
+                    </div>
+                    {c.narrativas.tom && (
+                      <div className="text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground/70">Tom:</span> {c.narrativas.tom}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* SECTION 5 — Head-to-Head */}
+          <motion.div {...fadeIn}>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Swords className="h-5 w-5 text-primary" />
+                  Head-to-Head
+                </CardTitle>
+                <CardDescription>Comparação direta categoria por categoria.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <Select value={headA ?? undefined} onValueChange={setHeadA}>
+                    <SelectTrigger><SelectValue placeholder="Candidato A" /></SelectTrigger>
+                    <SelectContent>
+                      {candidates.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={headB ?? undefined} onValueChange={setHeadB}>
+                    <SelectTrigger><SelectValue placeholder="Candidato B" /></SelectTrigger>
+                    <SelectContent>
+                      {candidates.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {headACand && headBCand && headACand.id !== headBCand.id && (
+                  <div className="rounded-lg border border-border/40 overflow-hidden">
+                    {[
+                      { label: "Popularidade", a: headACand.scores.approval, b: headBCand.scores.approval, higherWins: true },
+                      { label: "Rejeição", a: headACand.scores.rejection, b: headBCand.scores.rejection, higherWins: false },
+                      { label: "Penetração regional", a: headACand.scores.regionalForce, b: headBCand.scores.regionalForce, higherWins: true },
+                      { label: "Engajamento (viralização)", a: headACand.scores.virality, b: headBCand.scores.virality, higherWins: true },
+                      { label: "Potencial eleitoral (Strength)", a: headACand.scores.strength, b: headBCand.scores.strength, higherWins: true },
+                    ].map((row, i) => {
+                      const aWins = row.higherWins ? row.a > row.b : row.a < row.b;
+                      const tie = row.a === row.b;
                       return (
-                        <tr key={c.id} className="border-b last:border-0">
-                          <td className="py-2 px-2 text-muted-foreground">{i + 1}</td>
-                          <td className="py-2 px-2 font-medium">
-                            {c.name}
-                            {c.party && <Badge variant="outline" className="ml-2 text-xs">{c.party}</Badge>}
-                          </td>
-                          <td className="py-2 px-2 text-right">{Number(c.mentions ?? 0).toLocaleString('pt-BR')}</td>
-                          <td className="py-2 px-2 text-right">{Number(c.authors ?? 0).toLocaleString('pt-BR')}</td>
-                          <td className="py-2 px-2 text-right">{Number(c.engagement ?? 0).toLocaleString('pt-BR')}</td>
-                          <td className={`py-2 px-2 text-right font-bold ${label.class}`}>
-                            {c.sentiment != null ? `${c.sentiment.toFixed(0)}%` : 'N/A'}
-                          </td>
-                        </tr>
+                        <div key={i} className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-3 py-2 border-b border-border/30 last:border-0 text-sm">
+                          <div className={`text-right tabular-nums ${!tie && aWins ? "text-emerald-400 font-semibold" : ""}`}>
+                            {row.a}
+                          </div>
+                          <div className="text-xs text-muted-foreground text-center min-w-[140px]">{row.label}</div>
+                          <div className={`tabular-nums ${!tie && !aWins ? "text-emerald-400 font-semibold" : ""}`}>
+                            {row.b}
+                          </div>
+                        </div>
                       );
                     })}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* SECTION 6 — Momentum */}
+          <motion.div {...fadeIn}>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5 text-primary" />
+                  Momentum
+                </CardTitle>
+                <CardDescription>Tendência baseada em variação temporal de menções (7d vs 7d).</CardDescription>
+              </CardHeader>
+              <CardContent className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {candidates.map((c) => (
+                  <div key={c.id} className="rounded-lg border border-border/40 bg-card/40 p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="font-medium truncate">{c.name}</div>
+                      <MomentumBadge momentum={c.momentum} />
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {c.momentumNota ?? `Variação ${c.scores.growth >= 0 ? "+" : ""}${c.scores.growth}%`}
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* SECTION 7 — Resumo Estratégico */}
+          {data.summary && (
+            <motion.div {...fadeIn}>
+              <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-background to-background">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Sparkles className="h-5 w-5 text-primary" />
+                    Resumo Estratégico IA
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="grid sm:grid-cols-2 gap-3 text-sm">
+                  <SummaryBlock title="Quem lidera" body={data.summary.lidera} tone="amber" />
+                  <SummaryBlock title="Quem cresce" body={data.summary.cresce} tone="emerald" />
+                  <SummaryBlock title="Quem estagnou" body={data.summary.estagnou} tone="sky" />
+                  <SummaryBlock title="Quem preocupa" body={data.summary.preocupa} tone="rose" />
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
         </>
       )}
     </div>
   );
 };
+
+function BestCard({
+  icon,
+  label,
+  name,
+  hint,
+  accent,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  name?: string | null;
+  hint?: string;
+  accent: string;
+}) {
+  return (
+    <div className={`rounded-xl border border-border/40 bg-gradient-to-br ${accent} p-4 transition-transform hover:-translate-y-0.5 duration-300`}>
+      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+        {icon}
+        <span>{label}</span>
+      </div>
+      <div className="font-semibold truncate">{name ?? "—"}</div>
+      <div className="text-xs text-muted-foreground mt-1 line-clamp-2">{hint}</div>
+    </div>
+  );
+}
+
+function SummaryBlock({ title, body, tone }: { title: string; body: string; tone: "amber" | "emerald" | "sky" | "rose" }) {
+  const colors: Record<string, string> = {
+    amber: "border-amber-500/30 text-amber-400",
+    emerald: "border-emerald-500/30 text-emerald-400",
+    sky: "border-sky-500/30 text-sky-400",
+    rose: "border-rose-500/30 text-rose-400",
+  };
+  return (
+    <div className={`rounded-lg border ${colors[tone]} bg-card/40 p-3`}>
+      <div className={`text-xs font-semibold uppercase tracking-wider mb-1 ${colors[tone]}`}>{title}</div>
+      <div className="text-sm text-foreground/90">{body}</div>
+    </div>
+  );
+}
 
 export default CandidateComparisonPage;
