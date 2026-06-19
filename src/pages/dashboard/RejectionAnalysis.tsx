@@ -47,6 +47,7 @@ type ConfidenceLevel = 'baixa' | 'moderada' | 'boa' | 'alta';
 interface AnalysisResult {
   analysis: RejectionAnalysis | null;
   insufficient?: boolean;
+  fallback?: boolean;
   evidenceCount?: number;
   confidence?: ConfidenceLevel;
   message?: string;
@@ -193,7 +194,9 @@ const RejectionAnalysisPage = () => {
       });
       if (error) throw error;
       setAnalysisResult(data);
-      if (data.insufficient) {
+      if (data.fallback) {
+        toast.error(data.message || "Serviço de IA temporariamente indisponível.");
+      } else if (data.insufficient) {
         toast.info(data.message);
       } else if (data.analysis) {
         toast.success("Mapa de rejeição gerado.");
@@ -360,6 +363,26 @@ const RejectionAnalysisPage = () => {
                 Último ano
               </Button>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* AI fallback (service overloaded) */}
+      {!isAnalyzing && analysisResult?.fallback && (
+        <Card className="border-orange-500/40">
+          <CardContent className="py-12 text-center space-y-4">
+            <ShieldAlert className="h-12 w-12 mx-auto text-orange-500" />
+            <h3 className="text-lg font-semibold">Serviço de IA temporariamente sobrecarregado</h3>
+            <p className="text-muted-foreground text-sm">
+              {analysisResult.message || "Tente novamente em instantes."}
+              {analysisResult.evidenceCount !== undefined && (
+                <> Foram coletadas <strong>{analysisResult.evidenceCount}</strong> evidências negativas — nenhum dado foi perdido.</>
+              )}
+            </p>
+            <Button onClick={handleAnalyze} disabled={isAnalyzing} size="sm">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Tentar novamente
+            </Button>
           </CardContent>
         </Card>
       )}

@@ -129,6 +129,21 @@ Responda EXCLUSIVAMENTE em JSON válido no formato:
 
 Regras: máximo 8 vetores, máximo 5 clusters, palavras de linguagem devem ser extraídas das evidências (não inventadas).`;
 
+    function safeParse(raw: string | null | undefined): any | null {
+      if (!raw) return null;
+      let s = raw.trim();
+      // strip code fences
+      s = s.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+      try { return JSON.parse(s); } catch (_) {}
+      // try to extract the largest JSON object
+      const first = s.indexOf('{');
+      const last = s.lastIndexOf('}');
+      if (first !== -1 && last > first) {
+        try { return JSON.parse(s.slice(first, last + 1)); } catch (_) {}
+      }
+      return null;
+    }
+
     let analysis: any = null;
     let aiProvider = 'cerebras';
 
@@ -141,45 +156,58 @@ Regras: máximo 8 vetores, máximo 5 clusters, palavras de linguagem devem ser e
         temperature: 0.4,
         tag: 'rejection-mapa',
       });
-      analysis = JSON.parse(result.content || '{}');
-      aiProvider = `${result.provider}:${result.model}`;
+      analysis = safeParse(result.content);
+      if (analysis) aiProvider = `${result.provider}:${result.model}`;
     } catch (e) {
       console.warn('[REJECTION] Cerebras falhou:', (e as Error).message);
     }
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    const callLovable = async (useJsonMode: boolean) => {
+      const body: any = {
+        model: 'google/gemini-3-flash-preview',
+        messages: [
+          { role: 'system', content: systemMsg },
+          { role: 'user', content: useJsonMode ? userPrompt : userPrompt + '\n\nResponda APENAS com o objeto JSON, sem texto antes/depois e sem cercas de código.' },
+        ],
+      };
+      if (useJsonMode) body.response_format = { type: 'json_object' };
+      const r = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        console.warn(`[REJECTION] Lovable AI (json=${useJsonMode}) HTTP ${r.status}:`, (await r.text()).slice(0, 300));
+        return null;
+      }
+      const j = await r.json();
+      return safeParse(j.choices?.[0]?.message?.content);
+    };
+
     if (!analysis && LOVABLE_API_KEY) {
       try {
-        const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'google/gemini-3-flash-preview',
-            messages: [
-              { role: 'system', content: systemMsg },
-              { role: 'user', content: userPrompt }
-            ],
-            response_format: { type: 'json_object' }
-          })
-        });
-        if (aiResponse.ok) {
-          const result = await aiResponse.json();
-          const content = result.choices?.[0]?.message?.content;
-          if (content) {
-            analysis = JSON.parse(content);
-            aiProvider = 'lovable:gemini-3-flash';
-          }
-        }
-      } catch (e) {
-        console.error('Lovable AI exception:', e);
-      }
+        analysis = await callLovable(true);
+        if (analysis) aiProvider = 'lovable:gemini-3-flash';
+      } catch (e) { console.error('[REJECTION] Lovable AI exception:', e); }
+    }
+    if (!analysis && LOVABLE_API_KEY) {
+      try {
+        analysis = await callLovable(false);
+        if (analysis) aiProvider = 'lovable:gemini-3-flash:text';
+      } catch (e) { console.error('[REJECTION] Lovable AI text exception:', e); }
     }
 
     if (!analysis) {
-      return new Response(JSON.stringify({ error: 'Serviço de IA temporariamente indisponível. Tente novamente em instantes.' }), {
-        status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      return new Response(JSON.stringify({
+        analysis: null,
+        fallback: true,
+        evidenceCount,
+        confidence,
+        message: 'Serviço de IA temporariamente sobrecarregado. Tente novamente em instantes.',
+      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
+
 
     return new Response(JSON.stringify({
       analysis,
