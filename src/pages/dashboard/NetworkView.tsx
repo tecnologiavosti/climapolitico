@@ -12,6 +12,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { motion, AnimatePresence } from "framer-motion";
+import NetworkViewLoading from "@/components/dashboard/NetworkViewLoading";
 import {
   AlertTriangle,
   BarChart3,
