@@ -1,5 +1,5 @@
-// Análise Regional 100% IA — gera percepção, temas, apoios, riscos, narrativas e recomendações
-// para o Brasil inteiro + 5 regiões, sem depender de contagem de menções.
+// Análise Regional 100% IA — Híbrida (Região + Estado)
+// Gera inteligência política contextual para 5 macrorregiões + 27 UFs, sem depender de menções.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 
@@ -11,49 +11,56 @@ const corsHeaders = {
 const REGIONS = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"] as const;
 type Region = typeof REGIONS[number];
 
-interface RegionAnalysis {
+const UFS = [
+  "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA",
+  "PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"
+] as const;
+
+const UF_TO_REGION: Record<string, Region> = {
+  AC:"Norte",AM:"Norte",AP:"Norte",PA:"Norte",RO:"Norte",RR:"Norte",TO:"Norte",
+  AL:"Nordeste",BA:"Nordeste",CE:"Nordeste",MA:"Nordeste",PB:"Nordeste",PE:"Nordeste",PI:"Nordeste",RN:"Nordeste",SE:"Nordeste",
+  DF:"Centro-Oeste",GO:"Centro-Oeste",MT:"Centro-Oeste",MS:"Centro-Oeste",
+  ES:"Sudeste",MG:"Sudeste",RJ:"Sudeste",SP:"Sudeste",
+  PR:"Sul",RS:"Sul",SC:"Sul",
+};
+
+const TEMAS = ["seguranca","economia","corrupcao","agro","meio_ambiente","saude"] as const;
+
+interface StateAnalysis {
+  uf: string;
   region: Region;
-  temperatura: "Favorável" | "Competitiva" | "Fria" | "Hostil";
-  regional_strength_score: number; // 0-100
-  rejection_score: number; // 0-100
-  percepcao: string;
-  temas: { nome: string; intensidade: "Baixa" | "Média" | "Alta" }[];
-  apoia: string[];
-  rejeita: string[];
+  temperatura: "Favorável" | "Competitiva" | "Hostil" | "Neutra";
+  electoral_strength: number; // 0-100
+  rejection_score: number;    // 0-100
+  perfil_eleitor_dominante: string;
+  temas_sensibilidade: { tema: string; score: number }[];
+  penetracao: { capitais: number; cidades_medias: number; interior: number; rural_profundo: number };
   riscos: { titulo: string; severidade: "baixa" | "média" | "alta" | "crítica" }[];
   oportunidades: string[];
-  narrativas_funcionam: string[];
-  narrativas_falham: string[];
-  recomendacoes: string[];
+}
+
+interface RegionSummary {
+  region: Region;
+  temperatura: string;
+  regional_strength_score: number;
+  rejection_score: number;
+  percepcao: string;
 }
 
 interface NationalKPIs {
   forca_nacional: number;
-  melhor_regiao: Region;
-  regiao_risco: Region;
-  expansao_potencial: Region;
+  melhor_uf: string;
+  uf_risco: string;
+  expansao_potencial: string;
   sintese: string;
 }
-
-interface Result {
-  national: NationalKPIs;
-  regions: RegionAnalysis[];
-  generated_at: string;
-  fallback?: boolean;
-}
-
-// NOTE: nenhum fallback mockado. Se a IA falhar, devolvemos erro real e a UI exibe retry.
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!authHeader) return json({ error: "Unauthorized" }, 401);
 
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -61,21 +68,12 @@ Deno.serve(async (req) => {
     );
     const { data: userData } = await admin.auth.getUser(authHeader.replace("Bearer ", ""));
     const userId = userData?.user?.id;
-    if (!userId) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!userId) return json({ error: "Unauthorized" }, 401);
 
     const body = await req.json();
     const { candidate_id, period_label, period_from, period_to } = body;
-    if (!candidate_id) {
-      return new Response(JSON.stringify({ error: "missing candidate_id" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!candidate_id) return json({ error: "missing candidate_id" }, 400);
 
-    // Carregar contexto do candidato
     const { data: cand, error: candErr } = await admin
       .from("candidates")
       .select("full_name, party, region")
@@ -83,170 +81,178 @@ Deno.serve(async (req) => {
       .eq("user_id", userId)
       .maybeSingle();
     if (candErr) console.error("[regional-ai-analysis] candidate query error:", candErr.message);
-
-    if (!cand) {
-      return new Response(JSON.stringify({ error: "candidate not found" }), {
-        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!cand) return json({ error: "candidate not found" }, 404);
 
     const periodText = period_from && period_to
       ? `${period_from} a ${period_to}`
       : period_label || "últimos 30 dias";
 
-    const prompt = `Você é um estrategista político sênior brasileiro especializado em análise regional eleitoral.
-
-Analise a percepção pública do candidato abaixo em cada uma das 5 regiões do Brasil. Use seu conhecimento sobre política brasileira, perfis regionais de eleitorado, temas dominantes em cada região e o contexto ideológico/partidário do candidato.
+    const prompt = `Você é um estrategista político brasileiro sênior. Faça uma análise política regional HÍBRIDA (5 macrorregiões + 27 estados) do candidato abaixo. Use seu conhecimento de: histórico eleitoral, perfil demográfico regional, comportamento ideológico, perfil partidário, capitais x interior, agro x urbano, evangélicos, classe média, servidor público, etc.
 
 CANDIDATO:
 - Nome: ${cand.full_name}
 - Partido: ${cand.party || "não informado"}
-- Região base: ${cand.region || "não informada"}
+- Região-base: ${cand.region || "não informada"}
+PERÍODO: ${periodText}
 
-PERÍODO DE ANÁLISE: ${periodText}
+NUNCA use scores genéricos (50/50). Diferencie cada UF com base no perfil real. Mesmo sem menções, gere análise contextual via inteligência política.
 
-Gere uma análise estratégica para cada região (Norte, Nordeste, Centro-Oeste, Sudeste, Sul), cobrindo:
-- temperatura eleitoral (Favorável / Competitiva / Fria / Hostil)
-- regional_strength_score 0-100 (força do candidato na região)
-- rejection_score 0-100 (rejeição na região)
-- percepção pública (parágrafo curto, 2-3 frases)
-- temas dominantes (5 a 8 temas com intensidade Baixa/Média/Alta)
-- quem apoia (3 a 6 grupos sociais)
-- quem rejeita (3 a 6 grupos sociais)
-- riscos regionais (2 a 4 itens com severidade baixa/média/alta/crítica)
-- oportunidades (3 a 5 itens)
-- narrativas que funcionam (3 a 5 frases curtas)
-- narrativas que falham (3 a 5 frases curtas)
-- 3 recomendações estratégicas de campanha
+Responda APENAS JSON válido neste formato exato:
 
-Também gere um RESUMO NACIONAL com:
-- forca_nacional (0-100)
-- melhor_regiao (nome)
-- regiao_risco (nome)
-- expansao_potencial (nome)
-- sintese (1-2 frases)
-
-Responda APENAS um JSON válido neste formato exato:
 {
   "national": {
     "forca_nacional": 0,
-    "melhor_regiao": "Sudeste",
-    "regiao_risco": "Nordeste",
-    "expansao_potencial": "Centro-Oeste",
+    "melhor_uf": "SP",
+    "uf_risco": "BA",
+    "expansao_potencial": "MG",
     "sintese": "..."
   },
   "regions": [
+    {"region":"Norte","temperatura":"Competitiva","regional_strength_score":0,"rejection_score":0,"percepcao":"3 a 4 frases densas sobre como o candidato é percebido nessa região"}
+  ],
+  "states": [
     {
-      "region": "Norte",
-      "temperatura": "Competitiva",
-      "regional_strength_score": 0,
-      "rejection_score": 0,
-      "percepcao": "...",
-      "temas": [{"nome":"Economia","intensidade":"Alta"}],
-      "apoia": ["..."],
-      "rejeita": ["..."],
-      "riscos": [{"titulo":"...","severidade":"média"}],
-      "oportunidades": ["..."],
-      "narrativas_funcionam": ["..."],
-      "narrativas_falham": ["..."],
-      "recomendacoes": ["...","...","..."]
+      "uf":"SP",
+      "temperatura":"Favorável|Competitiva|Hostil|Neutra",
+      "electoral_strength":0,
+      "rejection_score":0,
+      "perfil_eleitor_dominante":"ex: classe média urbana paulistana, evangélico conservador da Zona Leste",
+      "temas_sensibilidade":[
+        {"tema":"seguranca","score":0},
+        {"tema":"economia","score":0},
+        {"tema":"corrupcao","score":0},
+        {"tema":"agro","score":0},
+        {"tema":"meio_ambiente","score":0},
+        {"tema":"saude","score":0}
+      ],
+      "penetracao":{"capitais":0,"cidades_medias":0,"interior":0,"rural_profundo":0},
+      "riscos":[{"titulo":"...","severidade":"média"}],
+      "oportunidades":["...","..."]
     }
   ]
 }
 
-Inclua EXATAMENTE 5 regiões: Norte, Nordeste, Centro-Oeste, Sudeste, Sul. Em português brasileiro.`;
+REGRAS OBRIGATÓRIAS:
+- "regions": EXATAMENTE 5 itens (Norte, Nordeste, Centro-Oeste, Sudeste, Sul).
+- "states": EXATAMENTE 27 itens, um para cada UF: ${UFS.join(", ")}.
+- "perfil_eleitor_dominante": frase curta e específica por estado (NUNCA "base partidária local").
+- Todos os scores 0-100, diferenciados.
+- "temas_sensibilidade": sempre os 6 temas: ${TEMAS.join(", ")}.
+- Português brasileiro. Sem markdown. Apenas JSON.`;
 
     try {
       const aiRes = await callAICerebrasFirst({
-        systemMsg: "Você é um estrategista político brasileiro sênior. Cada candidato tem perfil próprio: nunca use scores genéricos (ex.: 50/50/50). Sempre diferencie regiões. Responda APENAS JSON válido em português.",
+        systemMsg: "Você é estrategista político brasileiro sênior. Responda APENAS JSON válido, em português, com dados diferenciados por UF (jamais scores idênticos).",
         userPrompt: prompt,
         jsonMode: true,
-        maxTokens: 6000,
-        temperature: 0.7,
+        maxTokens: 12000,
+        temperature: 0.65,
         tag: "regional-ai-analysis",
       });
 
       let parsed: any = {};
-      try {
-        parsed = JSON.parse(aiRes.content || "{}");
-      } catch {
+      try { parsed = JSON.parse(aiRes.content || "{}"); }
+      catch {
         const m = (aiRes.content || "").match(/\{[\s\S]*\}/);
         if (m) parsed = JSON.parse(m[0]);
       }
 
-      // Validar resposta — exigir as 5 regiões com summary não-vazio
+      if (!Array.isArray(parsed.states) || parsed.states.length < 20) {
+        throw new Error("AI_INCOMPLETE_STATES");
+      }
       if (!Array.isArray(parsed.regions) || parsed.regions.length < 5) {
-        throw new Error("AI_INCOMPLETE_RESPONSE");
+        throw new Error("AI_INCOMPLETE_REGIONS");
       }
 
-      const regionsOut: RegionAnalysis[] = REGIONS.map((rg) => {
-        const found = (parsed.regions || []).find((x: any) =>
-          (x.region || "").toString().toLowerCase().includes(rg.toLowerCase().slice(0, 4))
-        );
-        if (!found || !found.percepcao || String(found.percepcao).trim().length < 40) {
-          throw new Error(`AI_MISSING_REGION:${rg}`);
-        }
+      const statesOut: StateAnalysis[] = UFS.map((uf) => {
+        const found = parsed.states.find((x: any) => String(x.uf || "").toUpperCase() === uf);
+        if (!found) throw new Error(`AI_MISSING_STATE:${uf}`);
+        const temas = Array.isArray(found.temas_sensibilidade) ? found.temas_sensibilidade : [];
+        const normTemas = TEMAS.map((t) => {
+          const hit = temas.find((x: any) => String(x.tema || "").toLowerCase().includes(t.slice(0, 4)));
+          return { tema: t, score: clamp(Number(hit?.score)) };
+        });
+        const pen = found.penetracao || {};
         return {
-          region: rg,
-          temperatura: String(found.temperatura || "").trim() || "Competitiva",
-          regional_strength_score: Number(found.regional_strength_score),
-          rejection_score: Number(found.rejection_score),
-          percepcao: String(found.percepcao).trim(),
-          temas: Array.isArray(found.temas) ? found.temas.slice(0, 8) : [],
-          apoia: Array.isArray(found.apoia) ? found.apoia.slice(0, 6) : [],
-          rejeita: Array.isArray(found.rejeita) ? found.rejeita.slice(0, 6) : [],
-          riscos: Array.isArray(found.riscos) ? found.riscos.slice(0, 4) : [],
-          oportunidades: Array.isArray(found.oportunidades) ? found.oportunidades.slice(0, 5) : [],
-          narrativas_funcionam: Array.isArray(found.narrativas_funcionam) ? found.narrativas_funcionam.slice(0, 5) : [],
-          narrativas_falham: Array.isArray(found.narrativas_falham) ? found.narrativas_falham.slice(0, 5) : [],
-          recomendacoes: Array.isArray(found.recomendacoes) ? found.recomendacoes.slice(0, 3) : [],
+          uf,
+          region: UF_TO_REGION[uf],
+          temperatura: (String(found.temperatura || "").trim() || "Neutra") as any,
+          electoral_strength: clamp(Number(found.electoral_strength)),
+          rejection_score: clamp(Number(found.rejection_score)),
+          perfil_eleitor_dominante: String(found.perfil_eleitor_dominante || "").trim() || "Perfil regional não mapeado",
+          temas_sensibilidade: normTemas,
+          penetracao: {
+            capitais: clamp(Number(pen.capitais)),
+            cidades_medias: clamp(Number(pen.cidades_medias)),
+            interior: clamp(Number(pen.interior)),
+            rural_profundo: clamp(Number(pen.rural_profundo)),
+          },
+          riscos: Array.isArray(found.riscos) ? found.riscos.slice(0, 4).map((r: any) => ({
+            titulo: String(r.titulo || "").trim(),
+            severidade: String(r.severidade || "média").toLowerCase(),
+          })).filter((r: any) => r.titulo) : [],
+          oportunidades: Array.isArray(found.oportunidades)
+            ? found.oportunidades.slice(0, 5).map((s: any) => String(s).trim()).filter(Boolean)
+            : [],
         };
       });
 
-      // Bloquear scores suspeitos (todos iguais → IA não personalizou)
-      const strengths = regionsOut.map((r) => r.regional_strength_score);
-      const allSame = strengths.every((s) => s === strengths[0]);
-      const anyNaN = strengths.some((s) => Number.isNaN(s));
-      if (anyNaN || allSame) {
-        throw new Error("AI_GENERIC_SCORES");
-      }
+      // Bloquear scores totalmente genéricos
+      const strengths = statesOut.map((s) => s.electoral_strength);
+      if (strengths.every((s) => s === strengths[0])) throw new Error("AI_GENERIC_SCORES");
+
+      const regionsOut: RegionSummary[] = REGIONS.map((rg) => {
+        const found = parsed.regions.find((x: any) =>
+          String(x.region || "").toLowerCase().includes(rg.toLowerCase().slice(0, 4))
+        );
+        return {
+          region: rg,
+          temperatura: String(found?.temperatura || "Neutra"),
+          regional_strength_score: clamp(Number(found?.regional_strength_score)),
+          rejection_score: clamp(Number(found?.rejection_score)),
+          percepcao: String(found?.percepcao || "").trim(),
+        };
+      });
 
       const nat = parsed.national || {};
-      if (!nat.sintese || String(nat.sintese).trim().length < 30) {
-        throw new Error("AI_MISSING_NATIONAL_SUMMARY");
-      }
-      const result: Result = {
-        national: {
-          forca_nacional: Number(nat.forca_nacional),
-          melhor_regiao: nat.melhor_regiao as Region,
-          regiao_risco: nat.regiao_risco as Region,
-          expansao_potencial: nat.expansao_potencial as Region,
-          sintese: String(nat.sintese).trim(),
-        },
-        regions: regionsOut,
-        generated_at: new Date().toISOString(),
+      const national: NationalKPIs = {
+        forca_nacional: clamp(Number(nat.forca_nacional)),
+        melhor_uf: String(nat.melhor_uf || statesOut.reduce((a, b) => a.electoral_strength > b.electoral_strength ? a : b).uf).toUpperCase(),
+        uf_risco: String(nat.uf_risco || statesOut.reduce((a, b) => a.rejection_score > b.rejection_score ? a : b).uf).toUpperCase(),
+        expansao_potencial: String(nat.expansao_potencial || "").toUpperCase(),
+        sintese: String(nat.sintese || "").trim(),
       };
 
       console.log(`[regional-ai-analysis] ✅ ${aiRes.provider}:${aiRes.model}`);
-      return new Response(JSON.stringify(result), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      return json({
+        national,
+        regions: regionsOut,
+        states: statesOut,
+        generated_at: new Date().toISOString(),
       });
     } catch (e) {
       const msg = (e as Error).message || "AI_UNAVAILABLE";
       console.error("[regional-ai-analysis] AI failed:", msg);
-      return new Response(
-        JSON.stringify({
-          error: "AI_UNAVAILABLE",
-          detail: msg,
-          message: "A IA está temporariamente indisponível. Tente novamente em instantes.",
-        }),
-        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return json({
+        error: "AI_UNAVAILABLE",
+        detail: msg,
+        message: "A IA está temporariamente indisponível. Tente novamente em instantes.",
+      }, 503);
     }
   } catch (e) {
     console.error("regional-ai-analysis error:", (e as Error).message);
-    return new Response(JSON.stringify({ error: (e as Error).message }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ error: (e as Error).message }, 500);
   }
 });
+
+function clamp(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function json(body: any, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
