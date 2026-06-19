@@ -6,74 +6,77 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, AlertTriangle, ThumbsDown, MessageSquare, ShieldAlert, Lightbulb, Tag, TrendingDown } from "lucide-react";
+import {
+  Loader2, AlertTriangle, ShieldAlert, Lightbulb, Users, Flame,
+  MessageSquareQuote, Megaphone, Crosshair, Target, TrendingDown
+} from "lucide-react";
 import { toast } from "sonner";
-import { HelpTooltip } from "@/components/ui/help-tooltip";
 
-interface RejectionTheme {
-  theme: string;
-  description: string;
-  frequency: 'alta' | 'media' | 'baixa';
-  severity: 'critica' | 'alta' | 'moderada' | 'baixa';
+interface RejectionVector {
+  name: string;
+  weight: 'baixo' | 'medio' | 'alto' | 'critico';
+  type: 'moral' | 'politico' | 'ideologico' | 'emocional' | 'economico';
+  explanation: string;
 }
+interface WhoRejects { profile: string; reason: string; }
+interface DestructiveNarrative { narrative: string; danger: 'medio' | 'alto' | 'critico'; why_it_works: string; }
+interface CommentCluster { theme: string; representative_quote: string; frequency_label: string; }
+interface VulnerabilityPoint { group: string; explanation: string; }
 
 interface RejectionAnalysis {
-  rejection_summary: string;
-  rejection_themes: RejectionTheme[];
-  recurring_keywords: string[];
-  crisis_points: string[];
-  mitigation_strategies: string[];
-  risk_level: 'critico' | 'alto' | 'moderado' | 'baixo';
-}
-
-interface TopComment {
-  text: string;
-  author: string;
-  network: string;
-  likes: number;
-  replies: number;
+  rejection_level: 'baixa' | 'moderada' | 'alta' | 'critica' | 'explosiva';
+  diagnosis: string;
+  rejection_vectors: RejectionVector[];
+  who_rejects: WhoRejects[];
+  destructive_narratives: DestructiveNarrative[];
+  rejection_language: { raiva: string[]; deboche: string[]; medo: string[]; };
+  comment_clusters: CommentCluster[];
+  vulnerability_points: VulnerabilityPoint[];
+  mitigation: { comunicacao: string[]; posicionamento: string[]; crise: string[]; narrativa: string[]; };
 }
 
 interface AnalysisResult {
   analysis: RejectionAnalysis | null;
+  insufficient?: boolean;
+  evidenceCount?: number;
+  minRequired?: number;
   message?: string;
-  stats: {
-    totalComments: number;
-    negativeCount: number;
-    rejectionRate: number;
-    byNetwork: Record<string, number>;
-  };
-  topNegativeComments?: TopComment[];
-  candidate?: { full_name: string; party: string; region: string };
-  period?: { daysBack: number; startDate: string; endDate: string };
 }
 
 const PERIOD_OPTIONS = [
-  { value: "1", label: "Últimas 24 horas" },
   { value: "3", label: "Últimos 3 dias" },
   { value: "7", label: "Últimos 7 dias" },
   { value: "14", label: "Últimos 14 dias" },
   { value: "30", label: "Últimos 30 dias" },
 ];
 
-const riskConfig: Record<string, { color: string; label: string; icon: React.ReactNode }> = {
-  critico: { color: "bg-red-600 text-white", label: "Crítico", icon: <AlertTriangle className="h-4 w-4" /> },
-  alto: { color: "bg-red-500 text-white", label: "Alto", icon: <AlertTriangle className="h-4 w-4" /> },
-  moderado: { color: "bg-yellow-500 text-white", label: "Moderado", icon: <ShieldAlert className="h-4 w-4" /> },
-  baixo: { color: "bg-green-500 text-white", label: "Baixo", icon: <ShieldAlert className="h-4 w-4" /> },
+const levelConfig: Record<string, { label: string; bg: string; ring: string; text: string }> = {
+  baixa:     { label: "BAIXA",     bg: "bg-emerald-500",  ring: "ring-emerald-500/30",  text: "text-emerald-50" },
+  moderada:  { label: "MODERADA",  bg: "bg-yellow-500",   ring: "ring-yellow-500/30",   text: "text-yellow-50" },
+  alta:      { label: "ALTA",      bg: "bg-orange-500",   ring: "ring-orange-500/30",   text: "text-orange-50" },
+  critica:   { label: "CRÍTICA",   bg: "bg-red-600",      ring: "ring-red-600/30",      text: "text-red-50" },
+  explosiva: { label: "EXPLOSIVA", bg: "bg-rose-700",     ring: "ring-rose-700/30",     text: "text-rose-50" },
 };
 
-const severityConfig: Record<string, string> = {
-  critica: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
-  alta: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
-  moderada: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
-  baixa: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+const weightConfig: Record<string, string> = {
+  baixo:   "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
+  medio:   "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
+  alto:    "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
+  critico: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
 };
 
-const frequencyConfig: Record<string, string> = {
-  alta: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
-  media: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300",
-  baixa: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+const dangerConfig: Record<string, string> = {
+  medio:   "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
+  alto:    "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
+  critico: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+};
+
+const typeConfig: Record<string, string> = {
+  moral:       "border-rose-500/50 text-rose-700 dark:text-rose-300",
+  politico:    "border-blue-500/50 text-blue-700 dark:text-blue-300",
+  ideologico:  "border-purple-500/50 text-purple-700 dark:text-purple-300",
+  emocional:   "border-pink-500/50 text-pink-700 dark:text-pink-300",
+  economico:   "border-amber-500/50 text-amber-700 dark:text-amber-300",
 };
 
 const RejectionAnalysisPage = () => {
@@ -101,43 +104,36 @@ const RejectionAnalysisPage = () => {
       toast.error("Selecione um candidato");
       return;
     }
-
     setIsAnalyzing(true);
     setAnalysisResult(null);
-
     try {
       const { data, error } = await supabase.functions.invoke('analyze-rejection', {
         body: { candidateId: selectedCandidate, daysBack: parseInt(selectedPeriod) },
       });
-
       if (error) throw error;
       setAnalysisResult(data);
-
-      if (!data.analysis) {
-        toast.info(data.message || "Nenhum comentário negativo encontrado.");
-      } else {
-        toast.success("Análise de rejeição gerada com sucesso!");
+      if (data.insufficient) {
+        toast.info(data.message);
+      } else if (data.analysis) {
+        toast.success("Mapa de rejeição gerado.");
       }
     } catch (err: any) {
       console.error('Error:', err);
-      toast.error(err.message || "Erro ao gerar análise de rejeição");
+      toast.error(err.message || "Erro ao gerar mapa de rejeição");
     } finally {
       setIsAnalyzing(false);
     }
   };
 
   const analysis = analysisResult?.analysis;
-  const stats = analysisResult?.stats;
-  const risk = analysis ? riskConfig[analysis.risk_level] || riskConfig.moderado : null;
+  const level = analysis ? (levelConfig[analysis.rejection_level] || levelConfig.moderada) : null;
 
   return (
     <div className="space-y-6">
       <div>
-        <HelpTooltip text="Aqui você descobre por que o povo está criticando seu candidato e o que fazer pra melhorar.">
-          <h1 className="text-3xl font-bold">Análise de Rejeição</h1>
-        </HelpTooltip>
+        <h1 className="text-3xl font-bold tracking-tight">Mapa de Rejeição Política</h1>
         <p className="text-muted-foreground mt-1">
-          Entenda os principais motivos da rejeição ao candidato com base em comentários reais.
+          Entenda quais narrativas geram resistência ao candidato e onde estão seus maiores riscos reputacionais.
         </p>
       </div>
 
@@ -145,261 +141,265 @@ const RejectionAnalysisPage = () => {
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-row flex-wrap gap-3 items-end">
-            <HelpTooltip text="Escolha de qual candidato você quer ver os motivos de rejeição.">
-              <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
-                <SelectTrigger className="w-[160px] sm:w-[280px]">
-                  <SelectValue placeholder="Selecione um candidato" />
-                </SelectTrigger>
-                <SelectContent>
-                  {candidates.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.full_name}{c.party ? ` (${c.party})` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </HelpTooltip>
+            <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
+              <SelectTrigger className="w-[200px] sm:w-[280px]">
+                <SelectValue placeholder="Selecione um candidato" />
+              </SelectTrigger>
+              <SelectContent>
+                {candidates.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.full_name}{c.party ? ` (${c.party})` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-            <HelpTooltip text="De quantos dias atrás a IA vai pegar os comentários pra analisar.">
-              <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-                <SelectTrigger className="w-[120px] sm:w-[200px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PERIOD_OPTIONS.map((p) => (
-                    <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </HelpTooltip>
+            <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+              <SelectTrigger className="w-[160px] sm:w-[200px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PERIOD_OPTIONS.map((p) => (
+                  <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-            <HelpTooltip text="Clica aqui e a IA mostra os motivos da rejeição e o que fazer pra mudar isso.">
-              <Button onClick={handleAnalyze} disabled={isAnalyzing || !selectedCandidate}>
-                {isAnalyzing ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Analisando...
-                  </>
-                ) : (
-                  <>
-                    <TrendingDown className="mr-2 h-4 w-4" />
-                    Analisar Rejeição
-                  </>
-                )}
-              </Button>
-            </HelpTooltip>
+            <Button onClick={handleAnalyze} disabled={isAnalyzing || !selectedCandidate}>
+              {isAnalyzing ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analisando...</>
+              ) : (
+                <><TrendingDown className="mr-2 h-4 w-4" />Gerar mapa de rejeição</>
+              )}
+            </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* No data */}
-      {analysisResult && !analysis && (
-        <Card>
+      {/* Insufficient */}
+      {analysisResult?.insufficient && (
+        <Card className="border-yellow-500/40">
           <CardContent className="py-12 text-center">
-            <ThumbsDown className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Nenhum comentário negativo encontrado</h3>
-            <p className="text-muted-foreground">{analysisResult.message}</p>
+            <ShieldAlert className="h-12 w-12 mx-auto text-yellow-500 mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Dados insuficientes para análise de rejeição confiável.</h3>
+            <p className="text-muted-foreground">
+              Encontradas {analysisResult.evidenceCount} evidências negativas. Mínimo: {analysisResult.minRequired}.
+              Aumente o período ou colete mais comentários antes de gerar o mapa.
+            </p>
           </CardContent>
         </Card>
       )}
 
-      {/* Results */}
-      {analysis && stats && (
+      {analysis && level && (
         <div className="space-y-6">
-          {/* Stats Bar */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <HelpTooltip text="Quantos comentários negativos a IA encontrou no período.">
-              <Card>
-                <CardContent className="pt-6 text-center">
-                  <p className="text-sm text-muted-foreground">Comentários Negativos</p>
-                  <p className="text-3xl font-bold text-destructive">{stats.negativeCount}</p>
-                  <p className="text-xs text-muted-foreground">de {stats.totalComments} totais</p>
-                </CardContent>
-              </Card>
-            </HelpTooltip>
-            <HelpTooltip text="Porcentagem dos comentários que estão criticando seu candidato.">
-              <Card>
-                <CardContent className="pt-6 text-center">
-                  <p className="text-sm text-muted-foreground">Taxa de Rejeição</p>
-                  <p className="text-3xl font-bold text-destructive">{stats.rejectionRate.toFixed(1)}%</p>
-                  <p className="text-xs text-muted-foreground">do total de comentários</p>
-                </CardContent>
-              </Card>
-            </HelpTooltip>
-            <HelpTooltip text="Resumo: o quão perigosa é a rejeição agora. Vermelho = preocupante, verde = tranquilo.">
-              <Card>
-                <CardContent className="pt-6 flex flex-col items-center justify-center">
-                  <p className="text-sm text-muted-foreground mb-2">Nível de Risco</p>
-                  <Badge className={`text-base px-4 py-1 ${risk?.color}`}>
-                    {risk?.icon}
-                    <span className="ml-1">{risk?.label}</span>
-                  </Badge>
-                </CardContent>
-              </Card>
-            </HelpTooltip>
-          </div>
-
-          {/* Summary */}
-          <Card>
-            <CardHeader>
-              <HelpTooltip text="Resumão em texto dos motivos pelos quais o povo está criticando seu candidato.">
-                <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-destructive" />
-                  Resumo da Rejeição
-                </CardTitle>
-              </HelpTooltip>
-            </CardHeader>
-            <CardContent>
-              <p className="text-foreground leading-relaxed">{analysis.rejection_summary}</p>
+          {/* 1 — Rejection Level */}
+          <Card className={`overflow-hidden ring-1 ${level.ring}`}>
+            <CardContent className="p-0">
+              <div className={`${level.bg} ${level.text} p-8 text-center`}>
+                <p className="text-xs uppercase tracking-[0.3em] opacity-80">Rejeição atual</p>
+                <p className="text-5xl sm:text-6xl font-black tracking-tight mt-2">{level.label}</p>
+              </div>
             </CardContent>
           </Card>
 
-          {/* Rejection Themes */}
+          {/* 2 — Diagnosis */}
           <Card>
             <CardHeader>
-              <HelpTooltip text="As críticas agrupadas por assunto, pra ficar fácil ver quais temas mais incomodam o povo.">
-                <CardTitle className="flex items-center gap-2">
-                  <Tag className="h-5 w-5" />
-                  Temas de Crítica
-                </CardTitle>
-              </HelpTooltip>
-              <CardDescription>Principais motivos agrupados por tema</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+                Por que esse candidato gera rejeição?
+              </CardTitle>
+              <CardDescription>Diagnóstico estratégico baseado em evidências reais</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {analysis.rejection_themes.map((theme, i) => (
-                  <div key={i} className="border rounded-lg p-4">
-                    <div className="flex flex-wrap items-center gap-2 mb-2">
-                      <h4 className="font-semibold text-foreground">{theme.theme}</h4>
-                      <Badge variant="outline" className={severityConfig[theme.severity]}>
-                        Severidade: {theme.severity}
-                      </Badge>
-                      <Badge variant="outline" className={frequencyConfig[theme.frequency]}>
-                        Frequência: {theme.frequency}
+              <div className="space-y-3 text-foreground leading-relaxed whitespace-pre-line">
+                {analysis.diagnosis}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 3 — Rejection Vectors */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Crosshair className="h-5 w-5" />
+                Vetores de Rejeição
+              </CardTitle>
+              <CardDescription>Origens estruturais da resistência ao candidato</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {analysis.rejection_vectors?.map((v, i) => (
+                  <div key={i} className={`border-2 ${typeConfig[v.type] || 'border-muted'} rounded-lg p-4 bg-card`}>
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <h4 className="font-semibold text-foreground">{v.name}</h4>
+                      <Badge className={weightConfig[v.weight]} variant="outline">
+                        Peso: {v.weight}
                       </Badge>
                     </div>
-                    <p className="text-sm text-muted-foreground">{theme.description}</p>
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Tipo: {v.type}</p>
+                    <p className="text-sm text-muted-foreground">{v.explanation}</p>
                   </div>
                 ))}
               </div>
             </CardContent>
           </Card>
 
-          {/* Keywords */}
+          {/* 4 — Who rejects */}
           <Card>
             <CardHeader>
-              <HelpTooltip text="As palavras que mais aparecem nas críticas. Ajudam a entender o tom da revolta.">
-                <CardTitle className="flex items-center gap-2">
-                  <MessageSquare className="h-5 w-5" />
-                  Palavras-chave Recorrentes
-                </CardTitle>
-              </HelpTooltip>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Perfis que mais rejeitam
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {analysis.recurring_keywords.map((kw, i) => (
-                  <Badge key={i} variant="secondary" className="text-sm px-3 py-1">
-                    {kw}
-                  </Badge>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {analysis.who_rejects?.map((p, i) => (
+                  <div key={i} className="border rounded-lg p-4">
+                    <h4 className="font-semibold text-foreground mb-1">{p.profile}</h4>
+                    <p className="text-sm text-muted-foreground">Motivo: {p.reason}</p>
+                  </div>
                 ))}
               </div>
             </CardContent>
           </Card>
 
-          {/* Crisis Points */}
+          {/* 5 — Destructive narratives */}
           <Card className="border-destructive/30">
             <CardHeader>
-              <HelpTooltip text="Coisas urgentes que precisam de atenção AGORA pra não virar uma crise maior.">
-                <CardTitle className="flex items-center gap-2 text-destructive">
-                  <ShieldAlert className="h-5 w-5" />
-                  Pontos Críticos
-                </CardTitle>
-              </HelpTooltip>
-              <CardDescription>Itens que exigem atenção imediata</CardDescription>
+              <CardTitle className="flex items-center gap-2 text-destructive">
+                <Flame className="h-5 w-5" />
+                Narrativas de ataque mais perigosas
+              </CardTitle>
+              <CardDescription>Linhas de ataque com maior poder destrutivo</CardDescription>
             </CardHeader>
             <CardContent>
-              <ul className="space-y-3">
-                {analysis.crisis_points.map((point, i) => (
-                  <li key={i} className="flex items-start gap-3">
-                    <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
-                    <span className="text-sm">{point}</span>
-                  </li>
+              <div className="space-y-3">
+                {analysis.destructive_narratives?.map((n, i) => (
+                  <div key={i} className="border rounded-lg p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                      <p className="font-semibold text-foreground italic">"{n.narrative}"</p>
+                      <Badge className={dangerConfig[n.danger]} variant="outline">
+                        Perigo: {n.danger}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      <span className="font-medium text-foreground">Por que funciona:</span> {n.why_it_works}
+                    </p>
+                  </div>
                 ))}
-              </ul>
+              </div>
             </CardContent>
           </Card>
 
-          {/* Mitigation Strategies */}
+          {/* 6 — Rejection language */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Megaphone className="h-5 w-5" />
+                Linguagem da Rejeição
+              </CardTitle>
+              <CardDescription>Palavras reais usadas, agrupadas por emoção</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {([
+                  { key: 'raiva', label: 'Raiva', color: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' },
+                  { key: 'deboche', label: 'Deboche', color: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300' },
+                  { key: 'medo', label: 'Medo', color: 'bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-200' },
+                ] as const).map(({ key, label, color }) => (
+                  <div key={key}>
+                    <p className="text-sm font-semibold mb-2">{label}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(analysis.rejection_language?.[key] || []).map((w, i) => (
+                        <Badge key={i} className={color} variant="outline">{w}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 7 — Comment clusters */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquareQuote className="h-5 w-5" />
+                Comentários representativos
+              </CardTitle>
+              <CardDescription>Agrupados semanticamente por narrativa</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {analysis.comment_clusters?.map((c, i) => (
+                  <div key={i} className="border rounded-lg p-4 bg-muted/30">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
+                      Cluster {i + 1} — {c.theme}
+                    </p>
+                    <p className="text-sm italic text-foreground mb-2">"{c.representative_quote}"</p>
+                    <p className="text-xs text-muted-foreground">{c.frequency_label}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 8 — Vulnerability points */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Target className="h-5 w-5" />
+                Onde ele mais perde votos
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {analysis.vulnerability_points?.map((v, i) => (
+                  <div key={i} className="border rounded-lg p-4">
+                    <h4 className="font-semibold text-foreground mb-1">{v.group}</h4>
+                    <p className="text-sm text-muted-foreground">{v.explanation}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 9 — Mitigation */}
           <Card className="border-primary/30">
             <CardHeader>
-              <HelpTooltip text="Sugestões práticas do que fazer pra diminuir essa rejeição.">
-                <CardTitle className="flex items-center gap-2 text-primary">
-                  <Lightbulb className="h-5 w-5" />
-                  Estratégias de Mitigação
-                </CardTitle>
-              </HelpTooltip>
-              <CardDescription>Recomendações para reduzir a rejeição</CardDescription>
+              <CardTitle className="flex items-center gap-2 text-primary">
+                <Lightbulb className="h-5 w-5" />
+                Como reduzir rejeição
+              </CardTitle>
+              <CardDescription>Plano estratégico em 4 frentes</CardDescription>
             </CardHeader>
             <CardContent>
-              <ul className="space-y-3">
-                {analysis.mitigation_strategies.map((strategy, i) => (
-                  <li key={i} className="flex items-start gap-3">
-                    <span className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">
-                      {i + 1}
-                    </span>
-                    <span className="text-sm">{strategy}</span>
-                  </li>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {([
+                  { key: 'comunicacao', label: 'Comunicação' },
+                  { key: 'posicionamento', label: 'Posicionamento' },
+                  { key: 'crise', label: 'Crise' },
+                  { key: 'narrativa', label: 'Narrativa' },
+                ] as const).map(({ key, label }) => (
+                  <div key={key} className="border rounded-lg p-4">
+                    <p className="font-semibold mb-2">{label}</p>
+                    <ul className="space-y-2">
+                      {(analysis.mitigation?.[key] || []).map((item, i) => (
+                        <li key={i} className="flex items-start gap-2 text-sm">
+                          <span className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">
+                            {i + 1}
+                          </span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ))}
-              </ul>
+              </div>
             </CardContent>
           </Card>
-
-          {/* Top Negative Comments */}
-          {analysisResult.topNegativeComments && analysisResult.topNegativeComments.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <ThumbsDown className="h-5 w-5" />
-                  Comentários Negativos Mais Relevantes
-                </CardTitle>
-                <CardDescription>Ordenados por engajamento (curtidas + respostas)</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {analysisResult.topNegativeComments.map((comment, i) => (
-                    <div key={i} className="border rounded-lg p-3 bg-muted/30">
-                      <p className="text-sm text-foreground mb-2">"{comment.text}"</p>
-                      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                        {comment.author && <span>@{comment.author}</span>}
-                        <Badge variant="outline" className="text-xs">{comment.network}</Badge>
-                        {comment.likes > 0 && <span>👍 {comment.likes}</span>}
-                        {comment.replies > 0 && <span>💬 {comment.replies}</span>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Network Distribution */}
-          {stats.byNetwork && Object.keys(stats.byNetwork).length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Distribuição por Rede Social</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-4">
-                  {Object.entries(stats.byNetwork).map(([network, count]) => (
-                    <div key={network} className="text-center">
-                      <p className="text-2xl font-bold">{count}</p>
-                      <p className="text-sm text-muted-foreground">{network}</p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
         </div>
       )}
     </div>

@@ -7,6 +7,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+const MIN_EVIDENCE = 50;
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -46,7 +48,6 @@ serve(async (req) => {
       });
     }
 
-    // Fetch ALL negative comments with pagination
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - daysBack);
 
@@ -57,140 +58,87 @@ serve(async (req) => {
     while (true) {
       const { data: page, error: pageError } = await supabaseClient
         .from('social_interactions')
-        .select('comment_text, comment_author, sentiment_score, likes_count, replies_count, shares_count, social_network, original_posted_at, created_at')
+        .select('comment_text, comment_author, sentiment_score, likes_count, replies_count, social_network, created_at')
         .eq('candidate_id', candidateId)
         .eq('sentiment_label', 'Negativo')
         .gte('created_at', startDate.toISOString())
         .order('created_at', { ascending: false })
         .range(offset, offset + pageSize - 1);
 
-      if (pageError) {
-        console.error('Error fetching comments:', pageError);
-        break;
-      }
+      if (pageError) break;
       if (!page || page.length === 0) break;
       negativeComments = [...negativeComments, ...page];
       if (page.length < pageSize) break;
       offset += pageSize;
     }
 
-    // Also get total comments for context
-    let totalComments = 0;
-    let totalOffset = 0;
-    while (true) {
-      const { data: page } = await supabaseClient
-        .from('social_interactions')
-        .select('id', { count: 'exact', head: false })
-        .eq('candidate_id', candidateId)
-        .gte('created_at', startDate.toISOString())
-        .range(totalOffset, totalOffset + pageSize - 1);
-      if (!page || page.length === 0) break;
-      totalComments += page.length;
-      if (page.length < pageSize) break;
-      totalOffset += pageSize;
-    }
+    const evidenceCount = negativeComments.length;
 
-    if (negativeComments.length === 0) {
+    if (evidenceCount < MIN_EVIDENCE) {
       return new Response(JSON.stringify({
         analysis: null,
-        message: 'Nenhum comentário negativo encontrado no período selecionado.',
-        stats: { totalComments, negativeCount: 0, rejectionRate: 0 }
+        insufficient: true,
+        evidenceCount,
+        minRequired: MIN_EVIDENCE,
+        message: 'Dados insuficientes para análise de rejeição confiável.',
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const stats = {
-      totalComments,
-      negativeCount: negativeComments.length,
-      rejectionRate: totalComments > 0 ? ((negativeComments.length / totalComments) * 100) : 0,
-      byNetwork: {} as Record<string, number>,
-    };
-
-    negativeComments.forEach(c => {
-      stats.byNetwork[c.social_network] = (stats.byNetwork[c.social_network] || 0) + 1;
-    });
-
-    // Sort by engagement for "most relevant"
-    const sortedByRelevance = [...negativeComments]
-      .filter(c => c.comment_text)
-      .sort((a, b) => ((b.likes_count || 0) + (b.replies_count || 0)) - ((a.likes_count || 0) + (a.replies_count || 0)));
-
-    const topNegative = sortedByRelevance.slice(0, 10).map(c => ({
-      text: c.comment_text?.substring(0, 300),
-      author: c.comment_author,
-      network: c.social_network,
-      likes: c.likes_count || 0,
-      replies: c.replies_count || 0,
-    }));
-
-    // Sample for AI analysis (up to 200 negative comments)
     const sampleForAI = negativeComments
       .filter(c => c.comment_text)
-      .slice(0, 200)
-      .map(c => c.comment_text.substring(0, 250));
+      .slice(0, 250)
+      .map(c => c.comment_text.substring(0, 280));
 
-    const prompt = `Você é um analista político estratégico brasileiro. Analise os seguintes comentários NEGATIVOS reais sobre o candidato ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''} coletados nos últimos ${daysBack} dias.
+    const systemMsg = `Você é um estrategista político sênior brasileiro, especializado em reputação eleitoral, war room e mitigação de rejeição. Analise SOMENTE as evidências reais fornecidas. Não use conhecimento histórico do candidato. Não invente acusações, críticas ou narrativas. Responda em português do Brasil.`;
 
-CONTEXTO:
-- Total de comentários no período: ${totalComments}
-- Comentários negativos: ${negativeComments.length} (${stats.rejectionRate.toFixed(1)}% de rejeição)
-- Redes sociais: ${Object.entries(stats.byNetwork).map(([k, v]) => `${k}: ${v}`).join(', ')}
-
-AMOSTRA DE ${sampleForAI.length} COMENTÁRIOS NEGATIVOS:
+    const userPrompt = `CANDIDATO: ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}
+JANELA: últimos ${daysBack} dias
+EVIDÊNCIAS REAIS (${sampleForAI.length} comentários negativos):
 ${sampleForAI.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
-Analise profundamente esses comentários negativos e identifique padrões de rejeição.`;
+Sua tarefa, com base SOMENTE nessas evidências:
+- Por que ele é rejeitado?
+- Por quem?
+- Com qual intensidade?
+- Quais ataques mais ferem sua imagem?
+- Como mitigar?
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+Responda EXCLUSIVAMENTE em JSON válido no formato:
+{
+  "rejection_level": "baixa|moderada|alta|critica|explosiva",
+  "diagnosis": "3 a 5 parágrafos curtos explicando origem, intensidade e perfil dos críticos, separados por \\n\\n",
+  "rejection_vectors": [
+    {"name":"...","weight":"baixo|medio|alto|critico","type":"moral|politico|ideologico|emocional|economico","explanation":"..."}
+  ],
+  "who_rejects": [{"profile":"...","reason":"..."}],
+  "destructive_narratives": [{"narrative":"...","danger":"medio|alto|critico","why_it_works":"..."}],
+  "rejection_language": {"raiva":["..."],"deboche":["..."],"medo":["..."]},
+  "comment_clusters": [{"theme":"...","representative_quote":"...","frequency_label":"..."}],
+  "vulnerability_points": [{"group":"Mulheres|Jovens|Centro político|Nordeste|Eleitor moderado|Evangélicos|Agro|Classe média|...","explanation":"..."}],
+  "mitigation": {"comunicacao":["..."],"posicionamento":["..."],"crise":["..."],"narrativa":["..."]}
+}
 
-    const systemMsg = 'Você é um analista político estratégico brasileiro especializado em gestão de crises e comunicação de campanha. Analise padrões de rejeição e críticas. Responda sempre em português do Brasil.';
-
-    const toolSchema = {
-      type: 'object',
-      properties: {
-        rejection_summary: { type: 'string', description: 'Resumo executivo de 2-3 frases explicando o panorama geral da rejeição' },
-        rejection_themes: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              theme: { type: 'string' },
-              description: { type: 'string' },
-              frequency: { type: 'string', enum: ['alta', 'media', 'baixa'] },
-              severity: { type: 'string', enum: ['critica', 'alta', 'moderada', 'baixa'] }
-            },
-            required: ['theme', 'description', 'frequency', 'severity']
-          }
-        },
-        recurring_keywords: { type: 'array', items: { type: 'string' } },
-        crisis_points: { type: 'array', items: { type: 'string' } },
-        mitigation_strategies: { type: 'array', items: { type: 'string' } },
-        risk_level: { type: 'string', enum: ['critico', 'alto', 'moderado', 'baixo'] }
-      },
-      required: ['rejection_summary', 'rejection_themes', 'recurring_keywords', 'crisis_points', 'mitigation_strategies', 'risk_level']
-    };
+Regras: máximo 8 vetores, máximo 5 clusters, palavras de linguagem devem ser extraídas das evidências (não inventadas).`;
 
     let analysis: any = null;
     let aiProvider = 'cerebras';
 
-    // 1) PRIMÁRIO: Cerebras (alta capacidade) com fallback automático para Lovable AI Gateway
     try {
-      const jsonPrompt = `${prompt}\n\nResponda EXCLUSIVAMENTE em JSON válido no formato:\n{"rejection_summary":"...","rejection_themes":[{"theme":"...","description":"...","frequency":"alta|media|baixa","severity":"critica|alta|moderada|baixa"}],"recurring_keywords":["..."],"crisis_points":["..."],"mitigation_strategies":["..."],"risk_level":"critico|alto|moderado|baixo"}`;
       const result = await callAICerebrasFirst({
         systemMsg,
-        userPrompt: jsonPrompt,
+        userPrompt,
         jsonMode: true,
-        maxTokens: 2500,
+        maxTokens: 3500,
         temperature: 0.4,
-        tag: 'rejection',
+        tag: 'rejection-mapa',
       });
       analysis = JSON.parse(result.content || '{}');
       aiProvider = `${result.provider}:${result.model}`;
     } catch (e) {
-      console.warn('[REJECTION] Cerebras+Lovable falharam, tentando Lovable AI tool-calling...', (e as Error).message);
+      console.warn('[REJECTION] Cerebras falhou:', (e as Error).message);
     }
 
-    // 2) Fallback secundário: Lovable AI Gateway com tool-calling estruturado
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!analysis && LOVABLE_API_KEY) {
       try {
         const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -200,68 +148,21 @@ Analise profundamente esses comentários negativos e identifique padrões de rej
             model: 'google/gemini-3-flash-preview',
             messages: [
               { role: 'system', content: systemMsg },
-              { role: 'user', content: prompt }
+              { role: 'user', content: userPrompt }
             ],
-            tools: [{ type: 'function', function: { name: 'create_rejection_analysis', description: 'Gerar análise estruturada de rejeição', parameters: toolSchema } }],
-            tool_choice: { type: 'function', function: { name: 'create_rejection_analysis' } }
+            response_format: { type: 'json_object' }
           })
         });
-
         if (aiResponse.ok) {
           const result = await aiResponse.json();
-          const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
-          if (toolCall) {
-            analysis = JSON.parse(toolCall.function.arguments);
-            aiProvider = 'lovable-tool';
-          } else {
-            console.warn('Lovable AI: resposta sem tool_call, tentando Gemini fallback');
+          const content = result.choices?.[0]?.message?.content;
+          if (content) {
+            analysis = JSON.parse(content);
+            aiProvider = 'lovable:gemini-3-flash';
           }
-        } else {
-          const errText = await aiResponse.text();
-          console.error('Lovable AI error:', aiResponse.status, errText, '— tentando Gemini fallback');
         }
       } catch (e) {
-        console.error('Lovable AI exception:', e, '— tentando Gemini fallback');
-      }
-    }
-
-    // Fallback: Gemini direct API — tenta múltiplos modelos em cascata
-    if (!analysis && GEMINI_API_KEY) {
-      const geminiModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest', 'gemini-2.0-flash'];
-      for (const model of geminiModels) {
-        try {
-          aiProvider = `gemini-direct:${model}`;
-          const geminiResponse = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                systemInstruction: { parts: [{ text: systemMsg }] },
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                tools: [{ functionDeclarations: [{ name: 'create_rejection_analysis', description: 'Gerar análise estruturada de rejeição', parameters: toolSchema }] }],
-                toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: ['create_rejection_analysis'] } }
-              })
-            }
-          );
-          if (geminiResponse.ok) {
-            const gResult = await geminiResponse.json();
-            const fnCall = gResult.candidates?.[0]?.content?.parts?.find((p: any) => p.functionCall)?.functionCall;
-            if (fnCall?.args) {
-              analysis = fnCall.args;
-              console.log(`✅ Gemini fallback sucesso com modelo: ${model}`);
-              break;
-            } else {
-              console.warn(`Gemini ${model}: sem functionCall na resposta`);
-            }
-          } else {
-            const errTxt = await geminiResponse.text();
-            console.error(`Gemini ${model} error:`, geminiResponse.status, errTxt.substring(0, 200));
-            if (geminiResponse.status !== 503 && geminiResponse.status !== 429) break;
-          }
-        } catch (e) {
-          console.error(`Gemini ${model} exception:`, e);
-        }
+        console.error('Lovable AI exception:', e);
       }
     }
 
@@ -273,8 +174,7 @@ Analise profundamente esses comentários negativos e identifique padrões de rej
 
     return new Response(JSON.stringify({
       analysis,
-      stats,
-      topNegativeComments: topNegative,
+      evidenceCount,
       candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region },
       period: { daysBack, startDate: startDate.toISOString(), endDate: new Date().toISOString() },
       ai_provider: aiProvider
