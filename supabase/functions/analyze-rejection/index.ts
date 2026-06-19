@@ -85,8 +85,22 @@ serve(async (req) => {
 
     const sampleForAI = negativeComments
       .filter(c => c.comment_text)
-      .slice(0, 250)
-      .map(c => c.comment_text.substring(0, 280));
+      .map(c => ({
+        text: String(c.comment_text).substring(0, 280),
+        score: (c.likes_count || 0) + (c.replies_count || 0) * 1.5,
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 25)
+      .map(c => c.text);
+
+    // hard cap to avoid context overflow
+    let totalChars = 0;
+    const cappedSample: string[] = [];
+    for (const t of sampleForAI) {
+      if (totalChars + t.length > 12000) break;
+      cappedSample.push(t);
+      totalChars += t.length;
+    }
 
     const systemMsg = `Você é um estrategista político sênior brasileiro, especializado em reputação eleitoral, war room e mitigação de rejeição. Você SEMPRE gera uma análise reputacional plausível. Quando não houver comentários coletados, baseie a análise no perfil público do candidato (nome, partido, região), no contexto político brasileiro contemporâneo e em padrões reputacionais típicos do espectro ao qual ele pertence — SEM inventar escândalos, falas, citações ou estatísticas específicas. Toda inferência deve ser interpretativa e clara como tal. Nunca recuse a análise por baixo volume. Responda em português do Brasil.`;
 
