@@ -500,17 +500,9 @@ export default function RegionalAnalysis() {
               </Card>
             </div>
 
-            {/* Mapa por Estado (27 UFs) + detalhe */}
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-              <Card className="lg:col-span-2">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <MapPinned className="h-4 w-4 text-primary" /> Mapa por Estado
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-              <Card className="lg:col-span-2">
+            {/* Dois mapas: Força e Rejeição */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base flex items-center gap-2">
                     <TrendingUp className="h-4 w-4 text-green-600" /> Mapa de Força Eleitoral
@@ -535,7 +527,6 @@ export default function RegionalAnalysis() {
                           onClick={() => { setSelectedUf(uf); setDetailMode("state"); }}
                           onMouseEnter={() => setHoverUf(uf)}
                           onMouseLeave={() => setHoverUf(null)}
-                          style={{ filter: isSel ? "drop-shadow(0 0 6px hsl(var(--primary) / 0.55))" : undefined }}
                         >
                           <title>{UF_NAMES[uf]} — Força {s?.electoral_strength ?? 0}/100</title>
                         </path>
@@ -550,7 +541,7 @@ export default function RegionalAnalysis() {
                 </CardContent>
               </Card>
 
-              <Card className="lg:col-span-2">
+              <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base flex items-center gap-2">
                     <ShieldAlert className="h-4 w-4 text-red-600" /> Mapa de Rejeição
@@ -575,7 +566,6 @@ export default function RegionalAnalysis() {
                           onClick={() => { setSelectedUf(uf); setDetailMode("state"); }}
                           onMouseEnter={() => setHoverUf(uf)}
                           onMouseLeave={() => setHoverUf(null)}
-                          style={{ filter: isSel ? "drop-shadow(0 0 6px hsl(var(--primary) / 0.55))" : undefined }}
                         >
                           <title>{UF_NAMES[uf]} — Rejeição {s?.rejection_score ?? 0}/100</title>
                         </path>
@@ -589,33 +579,21 @@ export default function RegionalAnalysis() {
                   </div>
                 </CardContent>
               </Card>
-
-              <div className="lg:col-span-1 transition-all duration-300" key={`${detailMode}-${detailMode === "state" ? selectedUf : selectedRegion}`}>
-                {detailMode === "region" && currentRegion ? (
-                  <RegionPanel data={currentRegion} onPickUf={(uf) => { setSelectedUf(uf); setDetailMode("state"); }} />
-                ) : currentState ? (
-                  <StatePanel data={currentState} />
-                ) : (
-                  <Card><CardContent className="py-10 text-center text-muted-foreground">
-                    Selecione um estado no mapa.
-                  </CardContent></Card>
-                )}
-              </div>
             </div>
 
-            {/* Detalhe expandido (full width) */}
-            <div className="hidden">{/* spacer placeholder */}</div>
-            <div className="lg:hidden">
-              {/* mobile already shown above */}
+            {/* Detalhe (estado ou região) */}
+            <div className="transition-all duration-300" key={`${detailMode}-${detailMode === "state" ? selectedUf : selectedRegion}`}>
+              {detailMode === "region" && currentRegion ? (
+                <RegionPanel data={currentRegion} onPickUf={(uf) => { setSelectedUf(uf); setDetailMode("state"); }} />
+              ) : currentState ? (
+                <StatePanel data={currentState} />
+              ) : (
+                <Card><CardContent className="py-10 text-center text-muted-foreground">
+                  Selecione um estado no mapa.
+                </CardContent></Card>
+              )}
             </div>
-            <div className="hidden lg:block" />
-            <div className="block lg:block" />
-            <div className="placeholder-old" style={{ display: "none" }}>
-              <Card><CardContent>removed</CardContent></Card>
-            </div>
-            <div style={{ display: "none" }}>
-              {/* old combined block (replaced) */}
-              {(() => null)()}
+          </>
           </>
         )}
 
