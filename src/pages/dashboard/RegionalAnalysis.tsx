@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { BR_STATES_MAP } from "@/data/brStatesMap";
+import { BR_MAP as BR_REGIONS_MAP } from "@/data/brRegionsMap";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
@@ -174,8 +175,11 @@ export default function RegionalAnalysis() {
   const [loadMsg, setLoadMsg] = useState(LOADING_MESSAGES[0]);
   const [error, setError] = useState<string | null>(null);
 
-  const [selectedUf, setSelectedUf] = useState<string>("SP");
+    const [selectedUf, setSelectedUf] = useState<string>("SP");
   const [hoverUf, setHoverUf] = useState<string | null>(null);
+  const [selectedRegion, setSelectedRegion] = useState<Region | null>(null);
+  const [hoverRegion, setHoverRegion] = useState<Region | null>(null);
+  const [detailMode, setDetailMode] = useState<"state" | "region">("state");
 
   // Loading animation
   useEffect(() => {
