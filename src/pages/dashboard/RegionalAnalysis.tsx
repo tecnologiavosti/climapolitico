@@ -145,6 +145,18 @@ function tempColor(t: string): string {
   return "hsl(220 9% 60%)";
 }
 
+function strengthColor(v: number): string {
+  if (v >= 65) return "hsl(142 76% 36%)";
+  if (v >= 40) return "hsl(142 50% 55%)";
+  return "hsl(220 9% 60%)";
+}
+
+function rejectionColor(v: number): string {
+  if (v >= 65) return "hsl(0 84% 60%)";
+  if (v >= 40) return "hsl(38 92% 55%)";
+  return "hsl(220 9% 60%)";
+}
+
 function tempBadge(t: string) {
   const k = t.toLowerCase();
   if (k.includes("favor")) return "bg-green-500/15 text-green-600 border-green-500/30";
