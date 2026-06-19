@@ -107,12 +107,13 @@ Deno.serve(async (req) => {
     }
 
     // Carregar contexto do candidato
-    const { data: cand } = await admin
+    const { data: cand, error: candErr } = await admin
       .from("candidates")
-      .select("full_name, party, state, position, biography")
+      .select("full_name, party, region")
       .eq("id", candidate_id)
       .eq("user_id", userId)
       .maybeSingle();
+    if (candErr) console.error("[regional-ai-analysis] candidate query error:", candErr.message);
 
     if (!cand) {
       return new Response(JSON.stringify({ error: "candidate not found" }), {
@@ -131,9 +132,7 @@ Analise a percepção pública do candidato abaixo em cada uma das 5 regiões do
 CANDIDATO:
 - Nome: ${cand.full_name}
 - Partido: ${cand.party || "não informado"}
-- Estado base: ${cand.state || "não informado"}
-- Cargo disputado: ${cand.position || "não informado"}
-- Biografia: ${(cand.biography || "não informada").slice(0, 600)}
+- Região base: ${cand.region || "não informada"}
 
 PERÍODO DE ANÁLISE: ${periodText}
 
