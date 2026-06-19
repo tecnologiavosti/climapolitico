@@ -113,24 +113,52 @@ const fadeIn = {
 };
 
 function ScanningSkeleton() {
+  const steps = [
+    "IA analisando força eleitoral…",
+    "Comparando momentum…",
+    "Calculando rejeição relativa…",
+  ];
+
   return (
     <div className="space-y-6">
       <div className="rounded-xl border bg-card/40 p-6 relative overflow-hidden">
-        <div className="flex items-center gap-3 text-sm text-muted-foreground">
-          <Brain className="h-4 w-4 animate-pulse text-primary" />
-          <span>IA analisando candidatos...</span>
+        <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+          {steps.map((step, i) => (
+            <motion.div
+              key={step}
+              className="inline-flex items-center gap-2"
+              animate={{ opacity: [0.45, 1, 0.45] }}
+              transition={{ duration: 1.7, repeat: Infinity, delay: i * 0.35 }}
+            >
+              <Brain className="h-4 w-4 text-primary" />
+              <span>{step}</span>
+            </motion.div>
+          ))}
         </div>
-        <div className="mt-4 grid gap-3">
-          <Skeleton className="h-4 w-2/3" />
-          <Skeleton className="h-4 w-1/2" />
-          <Skeleton className="h-4 w-3/4" />
+        <div className="mt-6 grid lg:grid-cols-[1.1fr_.9fr] gap-5">
+          <div className="space-y-3">
+            {[82, 68, 54, 41].map((width, i) => (
+              <div key={i} className="grid grid-cols-[28px_1fr_64px] items-center gap-3 rounded-lg border border-border/40 bg-card/40 px-3 py-3">
+                <Skeleton className="h-4 w-5" />
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-44 max-w-full" />
+                  <Skeleton className="h-2 rounded-full" style={{ width: `${width}%` }} />
+                </div>
+                <Skeleton className="h-6 w-14 rounded-full" />
+              </div>
+            ))}
+          </div>
+          <div className="relative min-h-[230px] rounded-xl border border-border/40 bg-card/30 overflow-hidden p-5">
+            <div className="absolute inset-8 rounded-full border border-primary/20" />
+            <div className="absolute inset-14 rounded-full border border-primary/15" />
+            <div className="absolute left-1/2 top-6 bottom-6 border-l border-primary/15" />
+            <div className="absolute top-1/2 left-6 right-6 border-t border-primary/15" />
+            <Skeleton className="absolute left-[22%] top-[24%] h-3 w-24" />
+            <Skeleton className="absolute right-[18%] top-[38%] h-3 w-28" />
+            <Skeleton className="absolute left-[32%] bottom-[25%] h-3 w-32" />
+          </div>
         </div>
         <div className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-primary/10 to-transparent animate-[scan_2.2s_linear_infinite]" />
-      </div>
-      <div className="grid md:grid-cols-2 gap-4">
-        {[0, 1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-40 rounded-xl" />
-        ))}
       </div>
       <style>{`@keyframes scan { 0% { transform: translateX(0) } 100% { transform: translateX(400%) } }`}</style>
     </div>
