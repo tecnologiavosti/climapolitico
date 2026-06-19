@@ -200,23 +200,27 @@ export default function RegionalAnalysis() {
     return { period_label: map[period] };
   }, [period, customRange]);
 
+  const [error, setError] = useState<string | null>(null);
+
   const runAnalysis = useCallback(async () => {
     if (!user || !candidateId) return;
     setLoading(true);
+    setError(null);
     setAnalysis(null);
     try {
-      const { data, error } = await supabase.functions.invoke("regional-ai-analysis", {
+      const { data, error: invokeErr } = await supabase.functions.invoke("regional-ai-analysis", {
         body: { candidate_id: candidateId, ...periodPayload },
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      if (invokeErr) throw invokeErr;
+      if (data?.error) throw new Error(data.message || data.error);
       setAnalysis(data as AnalysisResult);
       setRegionPulse((n) => n + 1);
-      if (data?.fallback) toast.info("Análise gerada em modo contextual.");
-      else toast.success("Análise regional pronta.");
+      toast.success("Análise regional pronta.");
     } catch (e) {
       console.error(e);
-      toast.error("Falha ao gerar análise regional");
+      const msg = (e as Error).message || "Falha ao gerar análise regional.";
+      setError(msg);
+      toast.error("A IA está indisponível. Toque em Tentar novamente.");
     } finally {
       setLoading(false);
     }
