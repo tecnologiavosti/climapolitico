@@ -19,8 +19,8 @@ const ok = (body: unknown) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
-type Period = "7d" | "30d" | "90d" | "1y";
-const periodDays: Record<Period, number> = { "7d": 7, "30d": 30, "90d": 90, "1y": 365 };
+type Period = "7d" | "30d" | "90d" | "1y" | "custom";
+const periodDays: Record<Exclude<Period, "custom">, number> = { "7d": 7, "30d": 30, "90d": 90, "1y": 365 };
 
 interface Cand {
   id: string;
