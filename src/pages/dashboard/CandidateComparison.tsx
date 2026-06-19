@@ -377,7 +377,7 @@ const CandidateComparisonPage = () => {
     const keys: { key: keyof Scores; label: string }[] = [
       { key: "recall", label: "Lembrança" },
       { key: "approval", label: "Aprovação" },
-      { key: "rejection", label: "Rejeição inv." },
+      { key: "rejection", label: "Resistência Eleitoral" },
       { key: "virality", label: "Viralização" },
       { key: "regionalForce", label: "Penetração" },
       { key: "growth", label: "Crescimento" },
