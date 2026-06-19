@@ -87,8 +87,11 @@ interface StateAnalysis {
   electoral_strength: number;
   rejection_score: number;
   perfil_eleitor_dominante: string;
-  temas_sensibilidade: { tema: string; score: number }[];
+  dna_eleitoral: { tema: string; score: number }[];
+  segmentos_voto: { segmento: string; score: number }[];
   penetracao: { capitais: number; cidades_medias: number; interior: number; rural_profundo: number };
+  fragilidade: { titulo: string; descricao: string };
+  crescimento: { titulo: string; descricao: string };
   riscos: { titulo: string; severidade: string }[];
   oportunidades: string[];
 }
