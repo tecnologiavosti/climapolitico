@@ -313,7 +313,7 @@ export default function RegionalAnalysis() {
       const summary = analysis.regions.find((r) => r.region === rg);
       const avg = (arr: number[]) => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
       const temas: Record<string, number[]> = {};
-      sts.forEach((s) => s.temas_sensibilidade.forEach((t) => {
+      sts.forEach((s) => s.dna_eleitoral.forEach((t) => {
         (temas[t.tema] ||= []).push(t.score);
       }));
       const temasAgg = Object.entries(temas).map(([tema, arr]) => ({ tema, score: avg(arr) }))
