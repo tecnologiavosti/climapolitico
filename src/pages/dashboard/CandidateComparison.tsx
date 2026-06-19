@@ -18,6 +18,7 @@ import {
   Activity, Layers, Megaphone, Radar as RadarIcon,
 } from "lucide-react";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { DateRangePicker } from "@/components/DateRangePicker";
 
 type Period = "7d" | "30d" | "90d" | "1y" | "custom";
 const PERIOD_LABEL: Record<Period, string> = {
