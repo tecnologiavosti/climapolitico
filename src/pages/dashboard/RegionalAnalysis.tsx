@@ -291,15 +291,19 @@ export default function RegionalAnalysis() {
       const { data, error: invokeErr } = await supabase.functions.invoke("regional-ai-analysis", {
         body: { candidate_id: candidateId, ...periodPayload },
       });
-      if (invokeErr) throw invokeErr;
-      if (data?.error) throw new Error(data.message || data.error);
+      if (invokeErr) {
+        setError("A análise está sendo processada. Tente novamente em instantes.");
+        return;
+      }
+      if (data?.fallback || data?.success === false) {
+        setError(data?.message || "A análise está sendo processada. Tente novamente em instantes.");
+        return;
+      }
       setAnalysis(data as AnalysisResult);
       toast.success("Análise regional pronta.");
     } catch (e) {
       console.error(e);
-      const msg = (e as Error).message || "Falha ao gerar análise regional.";
-      setError(msg);
-      toast.error("A IA está indisponível. Toque em Tentar novamente.");
+      setError("A análise está sendo processada. Tente novamente em instantes.");
     } finally {
       setLoading(false);
     }
