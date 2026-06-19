@@ -299,20 +299,80 @@ const CandidateComparisonPage = () => {
   const { user } = useAuth();
   const [headA, setHeadA] = useState<string | null>(null);
   const [headB, setHeadB] = useState<string | null>(null);
+  const [data, setData] = useState<ApiResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
 
-  const { data, isLoading, isFetching, refetch, error } = useQuery<ApiResponse>({
-    queryKey: ["ai-candidate-comparison", user?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("ai-candidate-comparison", { body: {} });
-      if (error) throw error;
-      return data as ApiResponse;
-    },
-    enabled: !!user,
-    staleTime: 1000 * 60 * 10,
-    refetchOnWindowFocus: false,
-  });
+  const generateLocalFallback = useCallback(async (): Promise<ApiResponse> => {
+    const { data: candidatesRaw, error: candidatesError } = await supabase
+      .from("candidates")
+      .select("id, full_name, party, region")
+      .order("full_name");
+    if (candidatesError) throw candidatesError;
+    if (!candidatesRaw || candidatesRaw.length === 0) return { success: true, empty: true, message: "Nenhum candidato cadastrado." };
+
+    const { data: metricsRaw, error: metricsError } = await supabase
+      .from("candidate_metrics_cache")
+      .select("candidate_id, total_mentions, unique_authors, total_engagement, average_sentiment, positive_count, negative_count, neutral_count")
+      .in("candidate_id", candidatesRaw.map((c) => c.id));
+    if (metricsError) throw metricsError;
+
+    return buildComparisonFromMetrics(candidatesRaw as RawCandidate[], (metricsRaw ?? []) as RawMetrics[]);
+  }, []);
+
+  const generateComparison = useCallback(async (): Promise<ApiResponse> => {
+    const response = await Promise.race([
+      supabase.functions.invoke("ai-candidate-comparison", { body: {} }),
+      new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error("timeout ao chamar Edge Function")), 45000)),
+    ]);
+    console.log("edge response", response);
+
+    if (response.error) throw new Error(`Edge Function error: ${response.error.message}`);
+    const parsed = normalizeApiResponse(response.data);
+    console.log("comparison parsed", parsed);
+    if (!parsed.success) throw new Error(parsed.message || "Edge Function retornou resposta sem sucesso");
+    return parsed;
+  }, []);
+
+  const runComparison = useCallback(async () => {
+    if (!user) return;
+    console.log("candidate-comparison started");
+    setLoading(true);
+    setError(null);
+
+    try {
+      const result = await generateComparison();
+      if (mountedRef.current) setData(result);
+    } catch (comparisonError) {
+      console.error(comparisonError);
+      try {
+        const fallback = await generateLocalFallback();
+        if (mountedRef.current) setData(fallback);
+      } catch (fallbackError) {
+        console.error(fallbackError);
+        if (mountedRef.current) {
+          setData(null);
+          setError((comparisonError as Error)?.message || "Erro ao gerar comparação");
+        }
+      }
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, [generateComparison, generateLocalFallback, user]);
 
   const candidates = data?.candidates ?? [];
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    void runComparison();
+  }, [runComparison]);
 
   useEffect(() => {
     if (candidates.length >= 2 && !headA && !headB) {
