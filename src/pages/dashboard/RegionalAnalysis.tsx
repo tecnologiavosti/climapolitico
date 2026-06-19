@@ -594,7 +594,6 @@ export default function RegionalAnalysis() {
               )}
             </div>
           </>
-          </>
         )}
 
         {/* Custom date dialog */}
