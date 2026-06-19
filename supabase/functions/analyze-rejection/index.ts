@@ -85,16 +85,30 @@ serve(async (req) => {
 
     const sampleForAI = negativeComments
       .filter(c => c.comment_text)
-      .slice(0, 250)
-      .map(c => c.comment_text.substring(0, 280));
+      .map(c => ({
+        text: String(c.comment_text).substring(0, 280),
+        score: (c.likes_count || 0) + (c.replies_count || 0) * 1.5,
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 25)
+      .map(c => c.text);
+
+    // hard cap to avoid context overflow
+    let totalChars = 0;
+    const cappedSample: string[] = [];
+    for (const t of sampleForAI) {
+      if (totalChars + t.length > 12000) break;
+      cappedSample.push(t);
+      totalChars += t.length;
+    }
 
     const systemMsg = `Você é um estrategista político sênior brasileiro, especializado em reputação eleitoral, war room e mitigação de rejeição. Você SEMPRE gera uma análise reputacional plausível. Quando não houver comentários coletados, baseie a análise no perfil público do candidato (nome, partido, região), no contexto político brasileiro contemporâneo e em padrões reputacionais típicos do espectro ao qual ele pertence — SEM inventar escândalos, falas, citações ou estatísticas específicas. Toda inferência deve ser interpretativa e clara como tal. Nunca recuse a análise por baixo volume. Responda em português do Brasil.`;
 
     const evidenceBlock = noEvidence
       ? `EVIDÊNCIAS REAIS: nenhuma menção negativa foi coletada nesta janela.
 Gere uma análise reputacional baseada APENAS em: perfil partidário, região, espectro ideológico provável, posicionamento histórico público amplamente conhecido e padrões de rejeição típicos desse perfil no Brasil. NÃO invente escândalos ou citações específicas. Em "comment_clusters" e "rejection_language" use exemplos representativos plausíveis marcados como inferência (ex.: "(inferência)").`
-      : `EVIDÊNCIAS REAIS (${sampleForAI.length} comentários negativos${lowSample ? ' — amostragem pequena, extraia o máximo possível mesmo assim' : ''}):
-${sampleForAI.map((c, i) => `${i + 1}. ${c}`).join('\n')}`;
+      : `EVIDÊNCIAS REAIS (${cappedSample.length} comentários negativos de maior engajamento${lowSample ? ' — amostragem pequena, extraia o máximo possível mesmo assim' : ''}):
+${cappedSample.map((c, i) => `${i + 1}. ${c}`).join('\n')}`;
 
     const userPrompt = `CANDIDATO: ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}${candidate.region ? ` — ${candidate.region}` : ''}
 JANELA: últimos ${daysBack} dias
@@ -139,22 +153,25 @@ Regras: máximo 8 vetores, máximo 5 clusters. SEMPRE retorne o JSON completo, m
       return null;
     }
 
-    let analysis: any = null;
-    let aiProvider = 'cerebras';
+    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-    try {
-      const result = await callAICerebrasFirst({
-        systemMsg,
-        userPrompt,
-        jsonMode: true,
-        maxTokens: 3500,
-        temperature: 0.4,
-        tag: 'rejection-mapa',
-      });
-      analysis = safeParse(result.content);
-      if (analysis) aiProvider = `${result.provider}:${result.model}`;
-    } catch (e) {
-      console.warn('[REJECTION] Cerebras falhou:', (e as Error).message);
+    let analysis: any = null;
+    let aiProvider = 'none';
+    let usedFallback = false;
+
+    // ---- Retry Cerebras up to 3x ----
+    for (let attempt = 0; attempt < 3 && !analysis; attempt++) {
+      try {
+        if (attempt > 0) await sleep(attempt * 1500);
+        const result = await callAICerebrasFirst({
+          systemMsg, userPrompt, jsonMode: true,
+          maxTokens: 3500, temperature: 0.4, tag: 'rejection-mapa',
+        });
+        const parsed = safeParse(result.content);
+        if (parsed) { analysis = parsed; aiProvider = `${result.provider}:${result.model}`; }
+      } catch (e) {
+        console.warn(`[REJECTION] Cerebras tentativa ${attempt + 1} falhou:`, (e as Error).message);
+      }
     }
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
@@ -180,28 +197,93 @@ Regras: máximo 8 vetores, máximo 5 clusters. SEMPRE retorne o JSON completo, m
       return safeParse(j.choices?.[0]?.message?.content);
     };
 
-    if (!analysis && LOVABLE_API_KEY) {
-      try {
-        analysis = await callLovable(true);
-        if (analysis) aiProvider = 'lovable:gemini-3-flash';
-      } catch (e) { console.error('[REJECTION] Lovable AI exception:', e); }
-    }
-    if (!analysis && LOVABLE_API_KEY) {
-      try {
-        analysis = await callLovable(false);
-        if (analysis) aiProvider = 'lovable:gemini-3-flash:text';
-      } catch (e) { console.error('[REJECTION] Lovable AI text exception:', e); }
+    // ---- Retry Lovable (JSON then text) up to 3x cada ----
+    if (LOVABLE_API_KEY) {
+      for (const mode of [true, false]) {
+        for (let attempt = 0; attempt < 3 && !analysis; attempt++) {
+          try {
+            if (attempt > 0) await sleep(attempt * 2000);
+            const parsed = await callLovable(mode);
+            if (parsed) {
+              analysis = parsed;
+              aiProvider = `lovable:gemini-3-flash${mode ? '' : ':text'}`;
+            }
+          } catch (e) {
+            console.error(`[REJECTION] Lovable AI (json=${mode}) tentativa ${attempt + 1}:`, e);
+          }
+        }
+      }
     }
 
+    // ---- FALLBACK HEURÍSTICO LOCAL (sem IA) ----
     if (!analysis) {
-      return new Response(JSON.stringify({
-        analysis: null,
-        fallback: true,
-        evidenceCount,
-        confidence,
-        message: 'Serviço de IA temporariamente sobrecarregado. Tente novamente em instantes.',
-      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      console.warn('[REJECTION] Todos providers de IA falharam — usando fallback heurístico local.');
+      usedFallback = true;
+      aiProvider = 'local:heuristic';
+
+      const stop = new Set(['que','para','com','dos','das','uma','não','nao','você','voce','este','esse','essa','isso','mais','muito','tudo','nada','pelo','pela','como','quando','onde','quem','qual','sobre','seus','suas','meus','minhas','aqui','você','foi','são','sao','tem','têm','ter','vai','vou','tá','ta','né','pra','por','sem','também','tambem','desse','dessa','assim','agora','tudo']);
+      const freq = new Map<string, number>();
+      for (const t of cappedSample) {
+        for (const w of t.toLowerCase().replace(/[^\p{L}\s]/gu, ' ').split(/\s+/)) {
+          if (w.length < 4 || stop.has(w)) continue;
+          freq.set(w, (freq.get(w) || 0) + 1);
+        }
+      }
+      const topWords = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([w]) => w);
+      const level = evidenceCount >= 100 ? 'alta' : evidenceCount >= 40 ? 'moderada' : 'baixa';
+      const quote = cappedSample[0] || '(sem citação disponível)';
+
+      analysis = {
+        rejection_level: level,
+        diagnosis:
+          `Análise gerada localmente a partir de ${evidenceCount} evidências negativas coletadas — o serviço de IA está temporariamente indisponível.\n\n` +
+          `Palavras mais recorrentes nos comentários críticos: ${topWords.join(', ') || 'amostragem insuficiente'}.\n\n` +
+          `Esses termos sugerem os principais focos de rejeição contra ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}. Para um diagnóstico estratégico completo, reanalise quando a IA voltar a responder.`,
+        rejection_vectors: topWords.slice(0, 5).map((w, i) => ({
+          name: w.charAt(0).toUpperCase() + w.slice(1),
+          weight: i < 2 ? 'alto' : 'medio',
+          type: 'politico',
+          explanation: `Termo recorrente nos comentários negativos coletados (${freq.get(w)} ocorrências).`,
+        })),
+        who_rejects: [
+          { profile: 'Eleitor crítico nas redes sociais', reason: 'Engajamento negativo concentrado nos comentários coletados.' },
+        ],
+        destructive_narratives: topWords.slice(0, 3).map(w => ({
+          narrative: `Críticas associadas a "${w}"`,
+          danger: 'medio',
+          why_it_works: 'Repetição orgânica nos comentários reais — narrativa já circulando.',
+        })),
+        rejection_language: {
+          raiva: topWords.slice(0, 4),
+          deboche: topWords.slice(4, 8),
+          medo: topWords.slice(8, 12),
+        },
+        comment_clusters: [{
+          theme: 'Comentário de maior engajamento',
+          representative_quote: quote,
+          frequency_label: `${evidenceCount} comentários negativos no período`,
+        }],
+        vulnerability_points: [
+          { group: 'Eleitor digital ativo', explanation: 'Concentração de críticas em plataformas sociais.' },
+        ],
+        mitigation: {
+          comunicacao: ['Reanalisar quando o provedor de IA voltar para obter recomendações detalhadas.'],
+          posicionamento: ['Monitorar os termos recorrentes acima como sinais de risco reputacional.'],
+          crise: ['Acompanhar manualmente os comentários de maior engajamento listados.'],
+          narrativa: ['Mapear contra-narrativas para os termos críticos mais frequentes.'],
+        },
+      };
     }
+
+    return new Response(JSON.stringify({
+      analysis,
+      evidenceCount,
+      confidence,
+      usedFallback,
+      candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region },
+      period: { daysBack, startDate: startDate.toISOString(), endDate: new Date().toISOString() },
+      ai_provider: aiProvider
+    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
 
     return new Response(JSON.stringify({

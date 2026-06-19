@@ -48,6 +48,7 @@ interface AnalysisResult {
   analysis: RejectionAnalysis | null;
   insufficient?: boolean;
   fallback?: boolean;
+  usedFallback?: boolean;
   evidenceCount?: number;
   confidence?: ConfidenceLevel;
   message?: string;
@@ -194,8 +195,8 @@ const RejectionAnalysisPage = () => {
       });
       if (error) throw error;
       setAnalysisResult(data);
-      if (data.fallback) {
-        toast.error(data.message || "Serviço de IA temporariamente indisponível.");
+      if (data.usedFallback) {
+        toast.warning("Análise local gerada — provedor de IA indisponível no momento.");
       } else if (data.analysis) {
         toast.success("Mapa de rejeição gerado.");
       }
@@ -347,25 +348,7 @@ const RejectionAnalysisPage = () => {
       {/* (removido) bloqueio por evidência insuficiente — a IA sempre gera análise */}
 
 
-      {/* AI fallback (service overloaded) */}
-      {!isAnalyzing && analysisResult?.fallback && (
-        <Card className="border-orange-500/40">
-          <CardContent className="py-12 text-center space-y-4">
-            <ShieldAlert className="h-12 w-12 mx-auto text-orange-500" />
-            <h3 className="text-lg font-semibold">Serviço de IA temporariamente sobrecarregado</h3>
-            <p className="text-muted-foreground text-sm">
-              {analysisResult.message || "Tente novamente em instantes."}
-              {analysisResult.evidenceCount !== undefined && (
-                <> Foram coletadas <strong>{analysisResult.evidenceCount}</strong> evidências negativas — nenhum dado foi perdido.</>
-              )}
-            </p>
-            <Button onClick={handleAnalyze} disabled={isAnalyzing} size="sm">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Tentar novamente
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+      {/* (removido) card de "Serviço de IA sobrecarregado" — agora há fallback heurístico local */}
 
       {/* Empty state — no candidate selected */}
       {!isAnalyzing && !analysisResult && !selectedCandidate && (
@@ -391,7 +374,12 @@ const RejectionAnalysisPage = () => {
           {/* 1 — Rejection Level */}
           <Card className={`overflow-hidden ring-1 ${level.ring}`}>
             <CardContent className="p-0">
-              <div className={`${level.bg} ${level.text} p-8 text-center`}>
+              <div className={`${level.bg} ${level.text} p-8 text-center relative`}>
+                {analysisResult?.usedFallback && (
+                  <Badge variant="outline" className="absolute top-3 right-3 bg-white/90 text-orange-700 border-orange-300">
+                    Análise local (fallback)
+                  </Badge>
+                )}
                 <p className="text-xs uppercase tracking-[0.3em] opacity-80">Rejeição atual</p>
                 <p className="text-5xl sm:text-6xl font-black tracking-tight mt-2">{level.label}</p>
               </div>
