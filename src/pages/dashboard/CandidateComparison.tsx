@@ -19,11 +19,27 @@ import {
 } from "lucide-react";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 
-type Period = "7d" | "30d" | "90d" | "1y";
+type Period = "7d" | "30d" | "90d" | "1y" | "custom";
 const PERIOD_LABEL: Record<Period, string> = {
-  "7d": "7 dias", "30d": "30 dias", "90d": "90 dias", "1y": "1 ano",
+  "7d": "7 dias", "30d": "30 dias", "90d": "90 dias", "1y": "1 ano", custom: "Personalizado",
 };
-const PERIOD_TTL_MIN: Record<Period, number> = { "7d": 20, "30d": 45, "90d": 90, "1y": 180 };
+const PERIOD_TTL_MIN: Record<Period, number> = { "7d": 20, "30d": 45, "90d": 90, "1y": 180, custom: 30 };
+const PERIOD_DAYS: Record<Exclude<Period, "custom">, number> = { "7d": 7, "30d": 30, "90d": 90, "1y": 365 };
+
+// Override oficial de partidos (sempre prevalece)
+const PARTY_OVERRIDE: Record<string, string> = {
+  "ronaldo caiado": "União Brasil",
+  "wellington fagundes": "PL",
+  "otaviano pivetta": "Republicanos",
+  "jayme campos": "União Brasil",
+  "natasha slhessarenko": "PSB",
+};
+const resolveParty = (name: string, party: string | null) => {
+  const ov = PARTY_OVERRIDE[name?.toLowerCase().trim()];
+  if (ov) return ov;
+  if (party && party.trim() && !/sem partido/i.test(party)) return party;
+  return "—";
+};
 
 interface Scores {
   strength: number; recall: number; approval: number; rejection: number;
