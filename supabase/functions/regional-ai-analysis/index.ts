@@ -174,26 +174,24 @@ Inclua EXATAMENTE 5 regiões: Norte, Nordeste, Centro-Oeste, Sudeste, Sul. Em po
         if (m) parsed = JSON.parse(m[0]);
       }
 
-      // Normalizar
+      // Validar resposta — exigir as 5 regiões com summary não-vazio
+      if (!Array.isArray(parsed.regions) || parsed.regions.length < 5) {
+        throw new Error("AI_INCOMPLETE_RESPONSE");
+      }
+
       const regionsOut: RegionAnalysis[] = REGIONS.map((rg) => {
-        const found = (parsed.regions || []).find((x: any) => (x.region || "").toString().toLowerCase().includes(rg.toLowerCase().slice(0, 4)));
-        if (!found) {
-          return {
-            region: rg,
-            temperatura: "Competitiva",
-            regional_strength_score: 50,
-            rejection_score: 40,
-            percepcao: `Análise regional para ${rg} indisponível.`,
-            temas: [], apoia: [], rejeita: [], riscos: [], oportunidades: [],
-            narrativas_funcionam: [], narrativas_falham: [], recomendacoes: [],
-          };
+        const found = (parsed.regions || []).find((x: any) =>
+          (x.region || "").toString().toLowerCase().includes(rg.toLowerCase().slice(0, 4))
+        );
+        if (!found || !found.percepcao || String(found.percepcao).trim().length < 40) {
+          throw new Error(`AI_MISSING_REGION:${rg}`);
         }
         return {
           region: rg,
-          temperatura: found.temperatura || "Competitiva",
-          regional_strength_score: Number(found.regional_strength_score) || 50,
-          rejection_score: Number(found.rejection_score) || 40,
-          percepcao: String(found.percepcao || ""),
+          temperatura: String(found.temperatura || "").trim() || "Competitiva",
+          regional_strength_score: Number(found.regional_strength_score),
+          rejection_score: Number(found.rejection_score),
+          percepcao: String(found.percepcao).trim(),
           temas: Array.isArray(found.temas) ? found.temas.slice(0, 8) : [],
           apoia: Array.isArray(found.apoia) ? found.apoia.slice(0, 6) : [],
           rejeita: Array.isArray(found.rejeita) ? found.rejeita.slice(0, 6) : [],
@@ -204,6 +202,14 @@ Inclua EXATAMENTE 5 regiões: Norte, Nordeste, Centro-Oeste, Sudeste, Sul. Em po
           recomendacoes: Array.isArray(found.recomendacoes) ? found.recomendacoes.slice(0, 3) : [],
         };
       });
+
+      // Bloquear scores suspeitos (todos iguais → IA não personalizou)
+      const strengths = regionsOut.map((r) => r.regional_strength_score);
+      const allSame = strengths.every((s) => s === strengths[0]);
+      const anyNaN = strengths.some((s) => Number.isNaN(s));
+      if (anyNaN || allSame) {
+        throw new Error("AI_GENERIC_SCORES");
+      }
 
       const nat = parsed.national || {};
       const result: Result = {
