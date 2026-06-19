@@ -107,8 +107,8 @@ serve(async (req) => {
     const evidenceBlock = noEvidence
       ? `EVIDÊNCIAS REAIS: nenhuma menção negativa foi coletada nesta janela.
 Gere uma análise reputacional baseada APENAS em: perfil partidário, região, espectro ideológico provável, posicionamento histórico público amplamente conhecido e padrões de rejeição típicos desse perfil no Brasil. NÃO invente escândalos ou citações específicas. Em "comment_clusters" e "rejection_language" use exemplos representativos plausíveis marcados como inferência (ex.: "(inferência)").`
-      : `EVIDÊNCIAS REAIS (${sampleForAI.length} comentários negativos${lowSample ? ' — amostragem pequena, extraia o máximo possível mesmo assim' : ''}):
-${sampleForAI.map((c, i) => `${i + 1}. ${c}`).join('\n')}`;
+      : `EVIDÊNCIAS REAIS (${cappedSample.length} comentários negativos de maior engajamento${lowSample ? ' — amostragem pequena, extraia o máximo possível mesmo assim' : ''}):
+${cappedSample.map((c, i) => `${i + 1}. ${c}`).join('\n')}`;
 
     const userPrompt = `CANDIDATO: ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}${candidate.region ? ` — ${candidate.region}` : ''}
 JANELA: últimos ${daysBack} dias
