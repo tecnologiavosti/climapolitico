@@ -226,10 +226,12 @@ export default function NetworkView() {
       )}
 
       {needsCandidate && (
-        <Card className="p-8 text-center">
-          <MessageCircle className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+        <Card className="p-10 text-center border-dashed">
+          <MessageCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
           <h3 className="text-lg font-semibold mb-1">Selecione um candidato</h3>
-          <p className="text-sm text-muted-foreground">A leitura de social listening será gerada por plataforma e período.</p>
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            A leitura de social listening será gerada por plataforma e período. Escolha um candidato no seletor acima para começar.
+          </p>
         </Card>
       )}
 
@@ -238,8 +240,14 @@ export default function NetworkView() {
       )}
 
       {!needsCandidate && analysis.isError && (
-        <Card className="p-4 text-sm text-destructive flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <span>Falha ao gerar análise: {(analysis.error as Error)?.message ?? "erro desconhecido"}</span>
+        <Card className="p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-destructive/40">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />
+            <div>
+              <p className="font-semibold text-sm text-destructive">Falha ao gerar análise</p>
+              <p className="text-xs text-muted-foreground mt-1">{(analysis.error as Error)?.message ?? "erro desconhecido"}</p>
+            </div>
+          </div>
           <Button size="sm" variant="outline" onClick={() => setNonce((n) => n + 1)}>
             <RefreshCw className="h-4 w-4 mr-2" /> Tentar novamente
           </Button>
@@ -247,33 +255,41 @@ export default function NetworkView() {
       )}
 
       {!needsCandidate && loading && !report && (
-        <div className="space-y-6">
-          <Skeleton className="h-44 w-full" />
-          <Skeleton className="h-52 w-full" />
-          <Skeleton className="h-64 w-full" />
-          <Skeleton className="h-52 w-full" />
-        </div>
+        <NetworkViewLoading
+          candidateName={(candidate as any)?.full_name}
+          networkLabel={NETWORKS_FILTER.find((n) => n.value === network)?.label}
+          periodLabel={PERIODS.find((p) => p.value === period)?.label}
+        />
       )}
 
-      {!needsCandidate && report && (
-        <>
-          <ClimaSocialCard clima={report.clima_social} />
-          <ReacaoRedeCard reacao={report.reacao_da_rede} network={report.network} />
-          <FormatosCard formatos={report.formatos_que_engajam} />
-          <NarrativasCard narrativas={report.narrativas_dominantes} />
-          <ComentariosCard comentarios={report.comentarios_tipicos} />
-          <AmplificadoresCard amplificadores={report.amplificadores} />
-          <RiscoViralizacaoCard temas={report.risco_viralizacao} />
-          <ScorePerformanceCard scores={report.score_performance_social} />
+      <AnimatePresence mode="wait">
+        {!needsCandidate && report && (
+          <motion.div
+            key={`${candidateId}-${network}-${range?.start_date}-${range?.end_date}`}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.3 }}
+            className="space-y-8"
+          >
+            <ClimaSocialCard clima={report.clima_social} />
+            <ReacaoRedeCard reacao={report.reacao_da_rede} network={report.network} />
+            <FormatosCard formatos={report.formatos_que_engajam} />
+            <NarrativasCard narrativas={report.narrativas_dominantes} />
+            <ComentariosCard comentarios={report.comentarios_tipicos} />
+            <AmplificadoresCard amplificadores={report.amplificadores} />
+            <RiscoViralizacaoCard temas={report.risco_viralizacao} />
+            <ScorePerformanceCard scores={report.score_performance_social} />
 
-          <p className="text-xs text-muted-foreground">
-            Leitura gerada por IA em {format(new Date(report.generated_at), "dd/MM/yyyy HH:mm")} ·
-            {report.evidence_used > 0
-              ? ` ${report.evidence_used} evidências web consultadas como contexto.`
-              : " interpretação baseada em conhecimento político e padrões públicos de rede."}
-          </p>
-        </>
-      )}
+            <p className="text-xs text-muted-foreground">
+              Leitura gerada por IA em {format(new Date(report.generated_at), "dd/MM/yyyy HH:mm")} ·
+              {report.evidence_used > 0
+                ? ` ${report.evidence_used} evidências web consultadas como contexto.`
+                : " interpretação baseada em conhecimento político e padrões públicos de rede."}
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
