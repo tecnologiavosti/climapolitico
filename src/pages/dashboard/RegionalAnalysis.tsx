@@ -528,10 +528,10 @@ export default function RegionalAnalysis() {
                 <h2 className="text-xl font-semibold">Radar Nacional</h2>
               </div>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <KpiCard icon={<TrendingUp />} label="Força Nacional" value={`${analysis.national.forca_nacional}`} suffix="/100" tint="primary" />
-                <KpiCard icon={<CheckCircle2 />} label="Melhor Estado" value={analysis.national.melhor_uf} sub={UF_NAMES[analysis.national.melhor_uf]} tint="green" onClick={() => setSelectedUf(analysis.national.melhor_uf)} />
-                <KpiCard icon={<AlertTriangle />} label="Maior Risco" value={analysis.national.uf_risco} sub={UF_NAMES[analysis.national.uf_risco]} tint="red" onClick={() => setSelectedUf(analysis.national.uf_risco)} />
-                <KpiCard icon={<Target />} label="Expansão Potencial" value={analysis.national.expansao_potencial} sub={UF_NAMES[analysis.national.expansao_potencial]} tint="blue" onClick={() => analysis.national.expansao_potencial && setSelectedUf(analysis.national.expansao_potencial)} />
+                <KpiCard tip={TIPS.forca_nacional} icon={<TrendingUp />} label="Força Nacional" value={`${analysis.national.forca_nacional}`} suffix="/100" tint="primary" />
+                <KpiCard tip={TIPS.melhor_estado} icon={<CheckCircle2 />} label="Melhor Estado" value={analysis.national.melhor_uf} sub={UF_NAMES[analysis.national.melhor_uf]} tint="green" onClick={() => setSelectedUf(analysis.national.melhor_uf)} />
+                <KpiCard tip={TIPS.maior_risco} icon={<AlertTriangle />} label="Maior Risco" value={analysis.national.uf_risco} sub={UF_NAMES[analysis.national.uf_risco]} tint="red" onClick={() => setSelectedUf(analysis.national.uf_risco)} />
+                <KpiCard tip={TIPS.expansao_potencial} icon={<Target />} label="Expansão Potencial" value={analysis.national.expansao_potencial} sub={UF_NAMES[analysis.national.expansao_potencial]} tint="blue" onClick={() => analysis.national.expansao_potencial && setSelectedUf(analysis.national.expansao_potencial)} />
               </div>
               {analysis.national.sintese && (
                 <p className="text-sm text-muted-foreground mt-3 italic">{analysis.national.sintese}</p>
