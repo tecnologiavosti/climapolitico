@@ -42,38 +42,7 @@ interface Result {
   fallback?: boolean;
 }
 
-function fallbackResult(candidateName: string): Result {
-  const r: RegionAnalysis[] = REGIONS.map((region) => ({
-    region,
-    temperatura: "Competitiva",
-    regional_strength_score: 50,
-    rejection_score: 35,
-    percepcao: `Percepção sobre ${candidateName} na região ${region} ainda em construção. Análise contextual indisponível no momento.`,
-    temas: [
-      { nome: "Economia", intensidade: "Média" },
-      { nome: "Segurança", intensidade: "Média" },
-    ],
-    apoia: ["base partidária local"],
-    rejeita: ["oposição organizada"],
-    riscos: [{ titulo: "Baixa exposição regional", severidade: "média" }],
-    oportunidades: ["ampliar presença digital"],
-    narrativas_funcionam: ["gestão"],
-    narrativas_falham: ["radicalismo"],
-    recomendacoes: ["intensificar agenda regional", "aliança com lideranças locais", "comunicação adaptada"],
-  }));
-  return {
-    national: {
-      forca_nacional: 50,
-      melhor_regiao: "Sudeste",
-      regiao_risco: "Nordeste",
-      expansao_potencial: "Centro-Oeste",
-      sintese: "Análise gerada em modo contextual. Resultados detalhados ficarão disponíveis na próxima execução.",
-    },
-    regions: r,
-    generated_at: new Date().toISOString(),
-    fallback: true,
-  };
-}
+// NOTE: nenhum fallback mockado. Se a IA falhar, devolvemos erro real e a UI exibe retry.
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
