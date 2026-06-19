@@ -417,7 +417,7 @@ const CandidateComparisonPage = () => {
           </HelpTooltip>
           <div className="mt-1 flex flex-col gap-1 text-xs text-muted-foreground">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm">Inteligência política comparativa premium.</span>
+              <span className="text-sm">Baseado em histórico consolidado + sinais recentes.</span>
               {savedAt && (
                 <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">
                   {ageLabel(savedAt)}
@@ -427,30 +427,11 @@ const CandidateComparisonPage = () => {
             {savedAt && (
               <div className="tabular-nums">
                 Última análise: {new Date(savedAt).toLocaleDateString("pt-BR")} {new Date(savedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                <span className="mx-2 opacity-50">·</span>
-                Período: {resolvedRange.from.toLocaleDateString("pt-BR")} → {resolvedRange.to.toLocaleDateString("pt-BR")}
               </div>
             )}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
-            <SelectTrigger className="w-[160px] h-9">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(["7d", "30d", "90d", "1y", "custom"] as Period[]).map((p) => (
-                <SelectItem key={p} value={p}>{PERIOD_LABEL[p]}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {period === "custom" && (
-            <DateRangePicker
-              dateRange={customRange?.from && customRange?.to ? { from: customRange.from, to: customRange.to } : undefined}
-              onDateRangeChange={(r) => setCustomRange(r ? { from: r.from, to: r.to } : undefined)}
-              className="w-[280px]"
-            />
-          )}
           <Button onClick={runComparison} disabled={loading} className="bg-gradient-to-r from-primary to-fuchsia-500 hover:opacity-90">
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Atualizar IA
