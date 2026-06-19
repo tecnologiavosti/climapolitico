@@ -161,10 +161,12 @@ serve(async (req) => {
     const userId = userData?.user?.id;
     if (!userId) return ok({ success: false, message: "Sessão inválida." });
 
+    console.log("candidate-comparison started");
+
     // Fetch candidates
     const { data: cands, error: candErr } = await supabase
       .from("candidates")
-      .select("id, full_name, party, state")
+      .select("id, full_name, party, region")
       .order("full_name");
     if (candErr) throw candErr;
     if (!cands || cands.length === 0) {
@@ -221,7 +223,7 @@ serve(async (req) => {
         id: c.id,
         name: c.full_name,
         party: c.party,
-        state: c.state,
+        region: c.region,
         mentions: m?.total_mentions ?? 0,
         authors: m?.unique_authors ?? 0,
         engagement: m?.total_engagement ?? 0,
@@ -268,14 +270,14 @@ serve(async (req) => {
       return {
         ...c,
         scores: {
-          strength: Math.round(strength),
-          recall: Math.round(recall),
-          approval: Math.round(approval),
-          rejection: Math.round(rejection),
-          virality: Math.round(virality),
-          regionalForce: Math.round(regionalForce),
+          strength: safeScore(strength),
+          recall: safeScore(recall),
+          approval: safeScore(approval),
+          rejection: safeScore(rejection),
+          virality: safeScore(virality),
+          regionalForce: safeScore(regionalForce),
           growth: Math.round(growth),
-          dominance: Math.round(dominance),
+          dominance: safeScore(dominance),
         },
         status: statusFromScore(strength),
         momentum: momentumLabel(growth),
@@ -293,12 +295,12 @@ serve(async (req) => {
     };
 
     // AI qualitative: narratives + momentum reasoning + strategic summary + regional notes
-    let ai: any = {};
+    let ai: any = buildStrategicFallback(enriched);
     try {
       const compact = enriched.map((c) => ({
         nome: c.name,
         partido: c.party,
-        estado: c.state,
+        regiao: c.region,
         score: c.scores.strength,
         status: c.status,
         aprovacao: c.scores.approval,
@@ -323,10 +325,19 @@ serve(async (req) => {
         temperature: 0.5,
         tag: "candidate-comparison",
       });
-      ai = safeParseJson(r.content) ?? {};
+      const parsed = safeParseJson(r.content);
+      console.log("comparison parsed", Boolean(parsed));
+      if (parsed && typeof parsed === "object") {
+        ai = {
+          ...ai,
+          ...parsed,
+          resumo: parsed.resumo ?? ai.resumo,
+          narrativas: Array.isArray(parsed.narrativas) ? parsed.narrativas : ai.narrativas,
+          momentum_notas: parsed.momentum_notas ?? ai.momentum_notas,
+        };
+      }
     } catch (e) {
       console.warn("[ai-candidate-comparison] AI fallback:", (e as Error).message);
-      ai = {};
     }
 
     // Map narratives by candidate name
@@ -339,6 +350,7 @@ serve(async (req) => {
       const n = narrativasMap.get(c.name.toLowerCase());
       return {
         ...c,
+        state: c.region,
         narrativas: n
           ? {
               temas: Array.isArray(n.temas) ? n.temas.slice(0, 4) : [],
@@ -367,7 +379,7 @@ serve(async (req) => {
     console.error("[ai-candidate-comparison] fatal:", (e as Error).message);
     return ok({
       success: false,
-      message: "A análise está sendo processada. Tente novamente em instantes.",
+      message: `Falha ao gerar comparação: ${(e as Error).message ?? "erro inesperado"}`,
     });
   }
 });
