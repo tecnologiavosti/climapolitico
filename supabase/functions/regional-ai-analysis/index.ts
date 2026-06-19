@@ -212,13 +212,16 @@ Inclua EXATAMENTE 5 regiões: Norte, Nordeste, Centro-Oeste, Sudeste, Sul. Em po
       }
 
       const nat = parsed.national || {};
+      if (!nat.sintese || String(nat.sintese).trim().length < 30) {
+        throw new Error("AI_MISSING_NATIONAL_SUMMARY");
+      }
       const result: Result = {
         national: {
-          forca_nacional: Number(nat.forca_nacional) || 50,
-          melhor_regiao: (nat.melhor_regiao as Region) || "Sudeste",
-          regiao_risco: (nat.regiao_risco as Region) || "Nordeste",
-          expansao_potencial: (nat.expansao_potencial as Region) || "Centro-Oeste",
-          sintese: String(nat.sintese || ""),
+          forca_nacional: Number(nat.forca_nacional),
+          melhor_regiao: nat.melhor_regiao as Region,
+          regiao_risco: nat.regiao_risco as Region,
+          expansao_potencial: nat.expansao_potencial as Region,
+          sintese: String(nat.sintese).trim(),
         },
         regions: regionsOut,
         generated_at: new Date().toISOString(),
@@ -229,10 +232,16 @@ Inclua EXATAMENTE 5 regiões: Norte, Nordeste, Centro-Oeste, Sudeste, Sul. Em po
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     } catch (e) {
-      console.error("[regional-ai-analysis] AI failed:", (e as Error).message);
-      return new Response(JSON.stringify(fallbackResult(cand.full_name)), {
-        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      const msg = (e as Error).message || "AI_UNAVAILABLE";
+      console.error("[regional-ai-analysis] AI failed:", msg);
+      return new Response(
+        JSON.stringify({
+          error: "AI_UNAVAILABLE",
+          detail: msg,
+          message: "A IA está temporariamente indisponível. Tente novamente em instantes.",
+        }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
   } catch (e) {
     console.error("regional-ai-analysis error:", (e as Error).message);
