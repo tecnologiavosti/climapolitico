@@ -254,14 +254,20 @@ REGRAS:
       const msg = (e as Error).message || "AI_UNAVAILABLE";
       console.error("[regional-ai-analysis] AI failed:", msg);
       return json({
-        error: "AI_UNAVAILABLE",
+        success: false,
+        fallback: true,
+        message: "A análise está sendo processada. Tente novamente em instantes.",
         detail: msg,
-        message: "A IA está temporariamente indisponível. Tente novamente em instantes.",
-      }, 503);
+      }, 200);
     }
   } catch (e) {
     console.error("regional-ai-analysis error:", (e as Error).message);
-    return json({ error: (e as Error).message }, 500);
+    return json({
+      success: false,
+      fallback: true,
+      message: "A análise está sendo processada. Tente novamente em instantes.",
+      detail: (e as Error).message,
+    }, 200);
   }
 });
 
