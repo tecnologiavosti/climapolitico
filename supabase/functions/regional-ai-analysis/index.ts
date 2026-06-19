@@ -42,38 +42,7 @@ interface Result {
   fallback?: boolean;
 }
 
-function fallbackResult(candidateName: string): Result {
-  const r: RegionAnalysis[] = REGIONS.map((region) => ({
-    region,
-    temperatura: "Competitiva",
-    regional_strength_score: 50,
-    rejection_score: 35,
-    percepcao: `Percepção sobre ${candidateName} na região ${region} ainda em construção. Análise contextual indisponível no momento.`,
-    temas: [
-      { nome: "Economia", intensidade: "Média" },
-      { nome: "Segurança", intensidade: "Média" },
-    ],
-    apoia: ["base partidária local"],
-    rejeita: ["oposição organizada"],
-    riscos: [{ titulo: "Baixa exposição regional", severidade: "média" }],
-    oportunidades: ["ampliar presença digital"],
-    narrativas_funcionam: ["gestão"],
-    narrativas_falham: ["radicalismo"],
-    recomendacoes: ["intensificar agenda regional", "aliança com lideranças locais", "comunicação adaptada"],
-  }));
-  return {
-    national: {
-      forca_nacional: 50,
-      melhor_regiao: "Sudeste",
-      regiao_risco: "Nordeste",
-      expansao_potencial: "Centro-Oeste",
-      sintese: "Análise gerada em modo contextual. Resultados detalhados ficarão disponíveis na próxima execução.",
-    },
-    regions: r,
-    generated_at: new Date().toISOString(),
-    fallback: true,
-  };
-}
+// NOTE: nenhum fallback mockado. Se a IA falhar, devolvemos erro real e a UI exibe retry.
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -189,11 +158,11 @@ Inclua EXATAMENTE 5 regiões: Norte, Nordeste, Centro-Oeste, Sudeste, Sul. Em po
 
     try {
       const aiRes = await callAICerebrasFirst({
-        systemMsg: "Você é um estrategista político brasileiro. Sempre responda JSON válido em português.",
+        systemMsg: "Você é um estrategista político brasileiro sênior. Cada candidato tem perfil próprio: nunca use scores genéricos (ex.: 50/50/50). Sempre diferencie regiões. Responda APENAS JSON válido em português.",
         userPrompt: prompt,
         jsonMode: true,
-        maxTokens: 4500,
-        temperature: 0.5,
+        maxTokens: 6000,
+        temperature: 0.7,
         tag: "regional-ai-analysis",
       });
 
@@ -205,26 +174,24 @@ Inclua EXATAMENTE 5 regiões: Norte, Nordeste, Centro-Oeste, Sudeste, Sul. Em po
         if (m) parsed = JSON.parse(m[0]);
       }
 
-      // Normalizar
+      // Validar resposta — exigir as 5 regiões com summary não-vazio
+      if (!Array.isArray(parsed.regions) || parsed.regions.length < 5) {
+        throw new Error("AI_INCOMPLETE_RESPONSE");
+      }
+
       const regionsOut: RegionAnalysis[] = REGIONS.map((rg) => {
-        const found = (parsed.regions || []).find((x: any) => (x.region || "").toString().toLowerCase().includes(rg.toLowerCase().slice(0, 4)));
-        if (!found) {
-          return {
-            region: rg,
-            temperatura: "Competitiva",
-            regional_strength_score: 50,
-            rejection_score: 40,
-            percepcao: `Análise regional para ${rg} indisponível.`,
-            temas: [], apoia: [], rejeita: [], riscos: [], oportunidades: [],
-            narrativas_funcionam: [], narrativas_falham: [], recomendacoes: [],
-          };
+        const found = (parsed.regions || []).find((x: any) =>
+          (x.region || "").toString().toLowerCase().includes(rg.toLowerCase().slice(0, 4))
+        );
+        if (!found || !found.percepcao || String(found.percepcao).trim().length < 40) {
+          throw new Error(`AI_MISSING_REGION:${rg}`);
         }
         return {
           region: rg,
-          temperatura: found.temperatura || "Competitiva",
-          regional_strength_score: Number(found.regional_strength_score) || 50,
-          rejection_score: Number(found.rejection_score) || 40,
-          percepcao: String(found.percepcao || ""),
+          temperatura: String(found.temperatura || "").trim() || "Competitiva",
+          regional_strength_score: Number(found.regional_strength_score),
+          rejection_score: Number(found.rejection_score),
+          percepcao: String(found.percepcao).trim(),
           temas: Array.isArray(found.temas) ? found.temas.slice(0, 8) : [],
           apoia: Array.isArray(found.apoia) ? found.apoia.slice(0, 6) : [],
           rejeita: Array.isArray(found.rejeita) ? found.rejeita.slice(0, 6) : [],
@@ -236,14 +203,25 @@ Inclua EXATAMENTE 5 regiões: Norte, Nordeste, Centro-Oeste, Sudeste, Sul. Em po
         };
       });
 
+      // Bloquear scores suspeitos (todos iguais → IA não personalizou)
+      const strengths = regionsOut.map((r) => r.regional_strength_score);
+      const allSame = strengths.every((s) => s === strengths[0]);
+      const anyNaN = strengths.some((s) => Number.isNaN(s));
+      if (anyNaN || allSame) {
+        throw new Error("AI_GENERIC_SCORES");
+      }
+
       const nat = parsed.national || {};
+      if (!nat.sintese || String(nat.sintese).trim().length < 30) {
+        throw new Error("AI_MISSING_NATIONAL_SUMMARY");
+      }
       const result: Result = {
         national: {
-          forca_nacional: Number(nat.forca_nacional) || 50,
-          melhor_regiao: (nat.melhor_regiao as Region) || "Sudeste",
-          regiao_risco: (nat.regiao_risco as Region) || "Nordeste",
-          expansao_potencial: (nat.expansao_potencial as Region) || "Centro-Oeste",
-          sintese: String(nat.sintese || ""),
+          forca_nacional: Number(nat.forca_nacional),
+          melhor_regiao: nat.melhor_regiao as Region,
+          regiao_risco: nat.regiao_risco as Region,
+          expansao_potencial: nat.expansao_potencial as Region,
+          sintese: String(nat.sintese).trim(),
         },
         regions: regionsOut,
         generated_at: new Date().toISOString(),
@@ -254,10 +232,16 @@ Inclua EXATAMENTE 5 regiões: Norte, Nordeste, Centro-Oeste, Sudeste, Sul. Em po
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     } catch (e) {
-      console.error("[regional-ai-analysis] AI failed:", (e as Error).message);
-      return new Response(JSON.stringify(fallbackResult(cand.full_name)), {
-        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      const msg = (e as Error).message || "AI_UNAVAILABLE";
+      console.error("[regional-ai-analysis] AI failed:", msg);
+      return new Response(
+        JSON.stringify({
+          error: "AI_UNAVAILABLE",
+          detail: msg,
+          message: "A IA está temporariamente indisponível. Tente novamente em instantes.",
+        }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
   } catch (e) {
     console.error("regional-ai-analysis error:", (e as Error).message);

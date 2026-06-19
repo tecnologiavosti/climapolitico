@@ -200,23 +200,27 @@ export default function RegionalAnalysis() {
     return { period_label: map[period] };
   }, [period, customRange]);
 
+  const [error, setError] = useState<string | null>(null);
+
   const runAnalysis = useCallback(async () => {
     if (!user || !candidateId) return;
     setLoading(true);
+    setError(null);
     setAnalysis(null);
     try {
-      const { data, error } = await supabase.functions.invoke("regional-ai-analysis", {
+      const { data, error: invokeErr } = await supabase.functions.invoke("regional-ai-analysis", {
         body: { candidate_id: candidateId, ...periodPayload },
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      if (invokeErr) throw invokeErr;
+      if (data?.error) throw new Error(data.message || data.error);
       setAnalysis(data as AnalysisResult);
       setRegionPulse((n) => n + 1);
-      if (data?.fallback) toast.info("Análise gerada em modo contextual.");
-      else toast.success("Análise regional pronta.");
+      toast.success("Análise regional pronta.");
     } catch (e) {
       console.error(e);
-      toast.error("Falha ao gerar análise regional");
+      const msg = (e as Error).message || "Falha ao gerar análise regional.";
+      setError(msg);
+      toast.error("A IA está indisponível. Toque em Tentar novamente.");
     } finally {
       setLoading(false);
     }
@@ -297,6 +301,17 @@ export default function RegionalAnalysis() {
 
       {loading && <RegionalLoading progress={progress} message={loadMsg} />}
 
+      {!loading && error && !analysis && (
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardContent className="py-10 text-center space-y-3">
+            <AlertTriangle className="h-8 w-8 text-destructive mx-auto" />
+            <h3 className="font-semibold">A IA está temporariamente indisponível</h3>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">{error}</p>
+            <Button onClick={runAnalysis}>Tentar novamente</Button>
+          </CardContent>
+        </Card>
+      )}
+
       {!loading && analysis && (
         <>
           {/* National KPIs */}
@@ -304,7 +319,6 @@ export default function RegionalAnalysis() {
             <div className="flex items-center gap-2 mb-3">
               <Sparkles className="h-5 w-5 text-primary" />
               <h2 className="text-xl font-semibold">Radar Regional Nacional</h2>
-              {analysis.fallback && <Badge variant="outline" className="border-amber-500/50 text-amber-600">Modo contextual</Badge>}
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <KpiCard icon={<TrendingUp />} label="Força Nacional" value={`${analysis.national.forca_nacional}`} suffix="/100" tint="primary" />
