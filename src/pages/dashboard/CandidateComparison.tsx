@@ -447,28 +447,34 @@ const CandidateComparisonPage = () => {
             Inteligência política comparativa — não métricas brutas.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? "animate-spin" : ""}`} />
+        <Button variant="outline" size="sm" onClick={runComparison} disabled={loading}>
+          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
           Atualizar análise
         </Button>
       </motion.div>
 
-      {isLoading && <ScanningSkeleton />}
+      {loading && <ScanningSkeleton />}
 
-      {!isLoading && (error || data?.success === false) && (
-        <Card>
-          <CardContent className="py-10 text-center space-y-3">
-            <p className="text-muted-foreground">
-              {data?.message ?? "A análise está sendo processada. Tente novamente em instantes."}
-            </p>
-            <Button onClick={() => refetch()} size="sm">
+      {!loading && (error || data?.success === false) && (
+        <Card className="border-destructive/25 bg-destructive/5">
+          <CardContent className="py-10 text-center space-y-4">
+            <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold">Falha ao gerar comparação</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {error ?? data?.message ?? "Erro ao processar a comparação estratégica."}
+              </p>
+            </div>
+            <Button onClick={runComparison} size="sm">
               Tentar novamente
             </Button>
           </CardContent>
         </Card>
       )}
 
-      {!isLoading && data?.success && data?.empty && (
+      {!loading && data?.success && data?.empty && (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
             Nenhum candidato cadastrado.
@@ -476,7 +482,7 @@ const CandidateComparisonPage = () => {
         </Card>
       )}
 
-      {!isLoading && data?.success && candidates.length > 0 && (
+      {!loading && data?.success && candidates.length > 0 && (
         <>
           {/* SECTION 1 — Political Strength Ranking */}
           <motion.div {...fadeIn}>
