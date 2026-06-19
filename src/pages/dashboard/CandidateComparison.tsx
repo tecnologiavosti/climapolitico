@@ -274,6 +274,7 @@ function ConfidenceBadge({ value }: { value: number }) {
 const CandidateComparisonPage = () => {
   const { user } = useAuth();
   const [period, setPeriod] = useState<Period>("30d");
+  const [customRange, setCustomRange] = useState<{ from?: Date; to?: Date } | undefined>(undefined);
   const [data, setData] = useState<ApiResponse | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -286,6 +287,19 @@ const CandidateComparisonPage = () => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
+
+  // Resolve effective date range from selected period
+  const resolvedRange = useMemo(() => {
+    const to = new Date();
+    if (period === "custom" && customRange?.from && customRange?.to) {
+      return { from: customRange.from, to: customRange.to };
+    }
+    const days = PERIOD_DAYS[period === "custom" ? "30d" : period];
+    const from = new Date(to.getTime() - days * 86400000);
+    return { from, to };
+  }, [period, customRange]);
+
+  const rangeKey = { from: resolvedRange.from.toISOString().slice(0, 10), to: resolvedRange.to.toISOString().slice(0, 10) };
 
   // Load candidates ids to build cache key
   const [candidateIds, setCandidateIds] = useState<string[] | null>(null);
@@ -301,7 +315,10 @@ const CandidateComparisonPage = () => {
   // Try to hydrate from cache on mount / period change
   useEffect(() => {
     if (!user?.id || !candidateIds) return;
-    const key = cacheKey(user.id, candidateIds, period);
+    if (period === "custom" && !(customRange?.from && customRange?.to)) {
+      setData(null); setSavedAt(null); return;
+    }
+    const key = cacheKey(user.id, candidateIds, period, rangeKey);
     const cached = readCache(key, PERIOD_TTL_MIN[period]);
     if (cached) {
       setData(cached.data);
@@ -311,14 +328,24 @@ const CandidateComparisonPage = () => {
       setData(null);
       setSavedAt(null);
     }
-  }, [user?.id, candidateIds, period]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, candidateIds, period, rangeKey.from, rangeKey.to]);
 
   const runComparison = useCallback(async () => {
     if (!user?.id || !candidateIds) return;
+    if (period === "custom" && !(customRange?.from && customRange?.to)) {
+      setError("Selecione data inicial e final.");
+      return;
+    }
     setLoading(true); setError(null);
     try {
+      const body: any = { period };
+      if (period === "custom") {
+        body.startDate = resolvedRange.from.toISOString();
+        body.endDate = resolvedRange.to.toISOString();
+      }
       const response = await Promise.race([
-        supabase.functions.invoke("ai-candidate-comparison", { body: { period } }),
+        supabase.functions.invoke("ai-candidate-comparison", { body }),
         new Promise<never>((_, rej) => window.setTimeout(() => rej(new Error("Tempo esgotado.")), 60000)),
       ]);
       if (response.error) throw new Error(response.error.message ?? "Erro na função");
@@ -328,14 +355,14 @@ const CandidateComparisonPage = () => {
       setData(parsed);
       const ts = Date.now();
       setSavedAt(ts);
-      writeCache(cacheKey(user.id, candidateIds, period), parsed);
+      writeCache(cacheKey(user.id, candidateIds, period, rangeKey), parsed);
     } catch (e: any) {
       console.error(e);
       if (mountedRef.current) setError(e?.message ?? "Falha ao gerar comparação.");
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [user?.id, candidateIds, period]);
+  }, [user?.id, candidateIds, period, customRange, resolvedRange, rangeKey.from, rangeKey.to]);
 
   const candidates = data?.candidates ?? [];
   useEffect(() => {
