@@ -206,6 +206,7 @@ serve(async (req) => {
     const now = Date.now();
     let dRecent: string;
     let dPrev: string;
+    let dEnd: string;
     let days = periodDays[period as Exclude<Period, "custom">] ?? 30;
 
     if (period === "custom" && body?.startDate && body?.endDate) {
@@ -217,9 +218,11 @@ serve(async (req) => {
       const span = end - start;
       days = Math.max(1, Math.round(span / 86400000));
       dRecent = new Date(start).toISOString();
+      dEnd = new Date(end).toISOString();
       dPrev = new Date(start - span).toISOString();
     } else {
       dRecent = new Date(now - days * 86400000).toISOString();
+      dEnd = new Date(now).toISOString();
       dPrev = new Date(now - 2 * days * 86400000).toISOString();
     }
 
