@@ -42,13 +42,22 @@ interface RejectionAnalysis {
   mitigation: { comunicacao: string[]; posicionamento: string[]; crise: string[]; narrativa: string[]; };
 }
 
+type ConfidenceLevel = 'baixa' | 'moderada' | 'boa' | 'alta';
+
 interface AnalysisResult {
   analysis: RejectionAnalysis | null;
   insufficient?: boolean;
   evidenceCount?: number;
-  minRequired?: number;
+  confidence?: ConfidenceLevel;
   message?: string;
 }
+
+const confidenceConfig: Record<ConfidenceLevel, { label: string; badge: string; subtitle: string }> = {
+  baixa:    { label: "Baixa confiança",    badge: "bg-yellow-100 text-yellow-800 border-yellow-400 dark:bg-yellow-900/30 dark:text-yellow-300", subtitle: "Poucas evidências encontradas. A análise pode não representar todo o eleitorado." },
+  moderada: { label: "Confiança moderada", badge: "bg-blue-100 text-blue-800 border-blue-400 dark:bg-blue-900/30 dark:text-blue-300",         subtitle: "Amostragem moderada. Padrões já são identificáveis." },
+  boa:      { label: "Boa confiança",      badge: "bg-emerald-100 text-emerald-800 border-emerald-400 dark:bg-emerald-900/30 dark:text-emerald-300", subtitle: "Volume saudável de evidências analisadas." },
+  alta:     { label: "Alta confiança",     badge: "bg-green-100 text-green-800 border-green-500 dark:bg-green-900/30 dark:text-green-300",      subtitle: "Amostragem ampla e representativa." },
+};
 
 const QUICK_PERIODS = [
   { value: "7",   label: "7 dias" },
@@ -334,18 +343,14 @@ const RejectionAnalysisPage = () => {
         )}
       </AnimatePresence>
 
-      {/* Insufficient */}
+      {/* No negative evidence at all */}
       {!isAnalyzing && analysisResult?.insufficient && (
         <Card className="border-yellow-500/40">
           <CardContent className="py-12 text-center space-y-4">
             <ShieldAlert className="h-12 w-12 mx-auto text-yellow-500" />
-            <h3 className="text-lg font-semibold">Dados insuficientes para análise</h3>
-            <p className="text-muted-foreground">
-              Amplie o período ou escolha outro candidato.
-              <br />
-              <span className="text-xs">
-                Encontradas {analysisResult.evidenceCount} evidências negativas. Mínimo: {analysisResult.minRequired}.
-              </span>
+            <h3 className="text-lg font-semibold">Sem evidências negativas encontradas neste período</h3>
+            <p className="text-muted-foreground text-sm">
+              Tente ampliar a janela de análise.
             </p>
             <div className="flex justify-center gap-2 pt-2">
               <Button variant="outline" size="sm" onClick={() => { setPeriod("90"); }}>
@@ -387,6 +392,19 @@ const RejectionAnalysisPage = () => {
                 <p className="text-xs uppercase tracking-[0.3em] opacity-80">Rejeição atual</p>
                 <p className="text-5xl sm:text-6xl font-black tracking-tight mt-2">{level.label}</p>
               </div>
+              {analysisResult?.evidenceCount !== undefined && analysisResult?.confidence && (
+                <div className="px-6 py-4 flex flex-wrap items-center justify-center gap-3 border-t bg-muted/30">
+                  <span className="text-sm font-medium">
+                    {analysisResult.evidenceCount} evidências negativas analisadas
+                  </span>
+                  <Badge variant="outline" className={confidenceConfig[analysisResult.confidence].badge}>
+                    {confidenceConfig[analysisResult.confidence].label}
+                  </Badge>
+                  <p className="w-full text-center text-xs text-muted-foreground">
+                    {confidenceConfig[analysisResult.confidence].subtitle}
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 

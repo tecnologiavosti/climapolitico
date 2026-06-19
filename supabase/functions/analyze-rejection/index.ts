@@ -7,7 +7,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-const MIN_EVIDENCE = 50;
+type Confidence = 'baixa' | 'moderada' | 'boa' | 'alta';
+function getConfidence(n: number): Confidence {
+  if (n < 10) return 'baixa';
+  if (n < 30) return 'moderada';
+  if (n < 80) return 'boa';
+  return 'alta';
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -74,26 +80,29 @@ serve(async (req) => {
 
     const evidenceCount = negativeComments.length;
 
-    if (evidenceCount < MIN_EVIDENCE) {
+    if (evidenceCount === 0) {
       return new Response(JSON.stringify({
         analysis: null,
         insufficient: true,
-        evidenceCount,
-        minRequired: MIN_EVIDENCE,
-        message: 'Dados insuficientes para análise de rejeição confiável.',
+        evidenceCount: 0,
+        confidence: 'baixa',
+        message: 'Sem evidências negativas encontradas neste período.',
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
+
+    const confidence = getConfidence(evidenceCount);
+    const lowSample = evidenceCount < 30;
 
     const sampleForAI = negativeComments
       .filter(c => c.comment_text)
       .slice(0, 250)
       .map(c => c.comment_text.substring(0, 280));
 
-    const systemMsg = `Você é um estrategista político sênior brasileiro, especializado em reputação eleitoral, war room e mitigação de rejeição. Analise SOMENTE as evidências reais fornecidas. Não use conhecimento histórico do candidato. Não invente acusações, críticas ou narrativas. Responda em português do Brasil.`;
+    const systemMsg = `Você é um estrategista político sênior brasileiro, especializado em reputação eleitoral, war room e mitigação de rejeição. Analise SOMENTE as evidências reais fornecidas. Não use conhecimento histórico do candidato. Não invente acusações, críticas ou narrativas. Não recuse análise por baixo volume de evidências — adapte a profundidade à amostragem. Responda em português do Brasil.`;
 
     const userPrompt = `CANDIDATO: ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}
 JANELA: últimos ${daysBack} dias
-EVIDÊNCIAS REAIS (${sampleForAI.length} comentários negativos):
+EVIDÊNCIAS REAIS (${sampleForAI.length} comentários negativos${lowSample ? ' — amostragem pequena, extraia o máximo possível mesmo assim' : ''}):
 ${sampleForAI.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
 Sua tarefa, com base SOMENTE nessas evidências:
@@ -175,6 +184,8 @@ Regras: máximo 8 vetores, máximo 5 clusters, palavras de linguagem devem ser e
     return new Response(JSON.stringify({
       analysis,
       evidenceCount,
+      confidence,
+
       candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region },
       period: { daysBack, startDate: startDate.toISOString(), endDate: new Date().toISOString() },
       ai_provider: aiProvider
