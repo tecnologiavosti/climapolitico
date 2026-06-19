@@ -343,18 +343,14 @@ const RejectionAnalysisPage = () => {
         )}
       </AnimatePresence>
 
-      {/* Insufficient */}
+      {/* No negative evidence at all */}
       {!isAnalyzing && analysisResult?.insufficient && (
         <Card className="border-yellow-500/40">
           <CardContent className="py-12 text-center space-y-4">
             <ShieldAlert className="h-12 w-12 mx-auto text-yellow-500" />
-            <h3 className="text-lg font-semibold">Dados insuficientes para análise</h3>
-            <p className="text-muted-foreground">
-              Amplie o período ou escolha outro candidato.
-              <br />
-              <span className="text-xs">
-                Encontradas {analysisResult.evidenceCount} evidências negativas. Mínimo: {analysisResult.minRequired}.
-              </span>
+            <h3 className="text-lg font-semibold">Sem evidências negativas encontradas neste período</h3>
+            <p className="text-muted-foreground text-sm">
+              Tente ampliar a janela de análise.
             </p>
             <div className="flex justify-center gap-2 pt-2">
               <Button variant="outline" size="sm" onClick={() => { setPeriod("90"); }}>
