@@ -43,12 +43,21 @@ const UF_REGION: Record<string, Region> = {
 };
 
 const TEMA_LABELS: Record<string, string> = {
+  agro: "Agro",
   seguranca: "Segurança",
   economia: "Economia",
   corrupcao: "Corrupção",
-  agro: "Agro",
-  meio_ambiente: "Meio Ambiente",
+  costumes: "Costumes",
   saude: "Saúde",
+};
+
+const SEGMENTO_LABELS: Record<string, string> = {
+  agro: "Agro",
+  evangelicos: "Evangélicos",
+  empresarios: "Empresários",
+  jovens_urbanos: "Jovens urbanos",
+  servidores: "Servidores",
+  classe_media: "Classe média",
 };
 
 type PeriodKey = "7d" | "30d" | "90d" | "1y" | "custom";
