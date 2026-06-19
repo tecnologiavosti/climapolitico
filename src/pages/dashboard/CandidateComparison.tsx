@@ -668,7 +668,7 @@ const CandidateComparisonPage = () => {
                   <div className="rounded-lg border border-border/40 overflow-hidden divide-y divide-border/30">
                     {[
                       { label: "Popularidade", a: headACand.scores.approval, b: headBCand.scores.approval, higherWins: true },
-                      { label: "Rejeição", a: headACand.scores.rejection, b: headBCand.scores.rejection, higherWins: false },
+                      { label: "Resistência Eleitoral", a: 100 - headACand.scores.rejection, b: 100 - headBCand.scores.rejection, higherWins: true },
                       { label: "Penetração regional", a: headACand.scores.regionalForce, b: headBCand.scores.regionalForce, higherWins: true },
                       { label: "Engajamento", a: headACand.scores.virality, b: headBCand.scores.virality, higherWins: true },
                       { label: "Força política", a: headACand.scores.strength, b: headBCand.scores.strength, higherWins: true },
