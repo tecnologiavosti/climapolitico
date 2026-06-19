@@ -196,8 +196,6 @@ const RejectionAnalysisPage = () => {
       setAnalysisResult(data);
       if (data.fallback) {
         toast.error(data.message || "Serviço de IA temporariamente indisponível.");
-      } else if (data.insufficient) {
-        toast.info(data.message);
       } else if (data.analysis) {
         toast.success("Mapa de rejeição gerado.");
       }
