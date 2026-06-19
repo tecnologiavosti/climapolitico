@@ -111,8 +111,8 @@ Gere SOMENTE este JSON:
 
       const regionsPrompt = `${baseContext}
 
-Gere as 5 macrorregiões (${REGIONS.join(", ")}) SOMENTE neste JSON:
-{"regions":[{"region":"Norte","temperatura":"Competitiva","regional_strength_score":0,"rejection_score":0,"percepcao":"3-4 frases densas citando estados, polos e clivagens reais"}]}`;
+Gere EXATAMENTE as 5 macrorregiões (${REGIONS.join(", ")}), sem omitir nenhuma, SOMENTE neste JSON:
+{"regions":[{"region":"Norte","temperatura":"Competitiva","regional_strength_score":0,"rejection_score":0,"percepcao":"3-4 frases densas citando estados, polos e clivagens reais"},{"region":"Nordeste","temperatura":"Competitiva","regional_strength_score":0,"rejection_score":0,"percepcao":"3-4 frases densas"},{"region":"Centro-Oeste","temperatura":"Competitiva","regional_strength_score":0,"rejection_score":0,"percepcao":"3-4 frases densas"},{"region":"Sudeste","temperatura":"Competitiva","regional_strength_score":0,"rejection_score":0,"percepcao":"3-4 frases densas"},{"region":"Sul","temperatura":"Competitiva","regional_strength_score":0,"rejection_score":0,"percepcao":"3-4 frases densas"}]}`;
 
       const statePrompt = (region: Region, ufs: string[]) => `${baseContext}
 
@@ -124,7 +124,7 @@ Responda SOMENTE este JSON:
       const byRegion = REGIONS.map((rg) => ({ region: rg, ufs: UFS.filter((uf) => UF_TO_REGION[uf] === rg) }));
       const [nationalParsed, regionsParsed, ...stateParts] = await Promise.all([
         callAIJson(nationalPrompt, "national_radar", 1200),
-        callAIJson(regionsPrompt, "macro_regions", 2600),
+        callAIJson(regionsPrompt, "macro_regions", 3800),
         ...byRegion.map(({ region, ufs }) => callAIJson(statePrompt(region, ufs), `states_${region}`, 5200)),
       ]);
 
@@ -143,18 +143,21 @@ Responda SOMENTE este JSON:
       const strengths = statesOut.map((s) => s.electoral_strength);
       if (strengths.every((s) => s === strengths[0])) throw new Error("AI_GENERIC_SCORES");
 
-      if (!Array.isArray((regionsParsed as any).regions) || (regionsParsed as any).regions.length < 5) throw new Error("AI_INCOMPLETE_REGIONS");
+      const rawRegions = Array.isArray((regionsParsed as any).regions) ? (regionsParsed as any).regions : [];
       const regionsOut = REGIONS.map((rg) => {
-        const found = (regionsParsed as any).regions.find((x: any) =>
+        const found = rawRegions.find((x: any) =>
           String(x.region || "").toLowerCase().includes(rg.toLowerCase().slice(0, 4))
         );
-        if (!found) throw new Error(`AI_MISSING_REGION:${rg}`);
+        const regionStates = statesOut.filter((s) => s.region === rg);
+        const avg = (arr: number[]) => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
+        const top = regionStates.reduce((a, b) => a.electoral_strength > b.electoral_strength ? a : b, regionStates[0]);
+        const risk = regionStates.reduce((a, b) => a.rejection_score > b.rejection_score ? a : b, regionStates[0]);
         return {
           region: rg,
-          temperatura: String(found?.temperatura || "Neutra"),
-          regional_strength_score: clamp(Number(found?.regional_strength_score)),
-          rejection_score: clamp(Number(found?.rejection_score)),
-          percepcao: String(found?.percepcao || "").trim(),
+          temperatura: String(found?.temperatura || top?.temperatura || "Neutra"),
+          regional_strength_score: clamp(Number(found?.regional_strength_score ?? avg(regionStates.map((s) => s.electoral_strength)))),
+          rejection_score: clamp(Number(found?.rejection_score ?? avg(regionStates.map((s) => s.rejection_score)))),
+          percepcao: String(found?.percepcao || `Na região ${rg}, a leitura estadual aponta melhor tração em ${top?.uf || "UF competitiva"} e maior vulnerabilidade em ${risk?.uf || "UF de atenção"}. O padrão combina ${top?.perfil_eleitor_dominante || "clivagens locais"} com riscos territoriais que exigem abordagem diferenciada por capital, interior e polos econômicos.`).trim(),
         };
       });
 
