@@ -171,10 +171,26 @@ interface AnalysisResult {
 
 // ---------- Helpers ----------
 function temperatureFromStrength(strength: number, rejection: number): string {
-  if (strength >= 60 && rejection < 45) return "Favorável";
+  // Regras (ordem importa — Hostil sobrepõe os demais):
+  // rejection >= 60                              → Hostil
+  // strength >= 65 e rejection <= 35             → Favorável
+  // strength 40-64                               → Competitiva
+  // strength < 40 e rejection < 60               → Neutra
   if (rejection >= 60) return "Hostil";
-  if (Math.abs(strength - rejection) <= 15) return "Competitiva";
-  return "Neutra";
+  if (strength >= 65 && rejection <= 35) return "Favorável";
+  if (strength >= 40 && strength <= 64) return "Competitiva";
+  if (strength < 40 && rejection < 60) return "Neutra";
+  // Fallback coerente (ex: força alta com rejeição média) → Competitiva
+  return "Competitiva";
+}
+
+/**
+ * Garante consistência lógica entre temperatura e força exibida.
+ * Se a região/estado é Hostil, a força exibida não pode ultrapassar 40.
+ */
+function coerceStrength(strength: number, temperatura: string): number {
+  if (temperatura.toLowerCase().includes("hostil") && strength > 40) return 40;
+  return strength;
 }
 
 function tempColor(t: string): string {
