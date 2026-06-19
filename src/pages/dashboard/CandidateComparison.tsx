@@ -528,7 +528,7 @@ const CandidateComparisonPage = () => {
                         <ConfidenceBadge value={c.confidence} />
                       </div>
                       <div className="text-xs text-muted-foreground truncate">
-                        {c.party ?? "Sem partido"}{c.state ? ` · ${c.state}` : ""}
+                        {resolveParty(c.name, c.party)}{c.state ? ` · ${c.state}` : ""}
                       </div>
                     </div>
                     <div className="hidden sm:flex items-center gap-2">
