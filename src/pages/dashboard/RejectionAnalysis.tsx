@@ -47,6 +47,7 @@ type ConfidenceLevel = 'baixa' | 'moderada' | 'boa' | 'alta';
 interface AnalysisResult {
   analysis: RejectionAnalysis | null;
   insufficient?: boolean;
+  fallback?: boolean;
   evidenceCount?: number;
   confidence?: ConfidenceLevel;
   message?: string;
