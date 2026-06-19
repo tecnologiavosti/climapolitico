@@ -509,11 +509,18 @@ export default function RegionalAnalysis() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+              <Card className="lg:col-span-2">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-green-600" /> Mapa de Força Eleitoral
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
                   <svg viewBox={BR_STATES_MAP.viewBox} className="w-full h-auto">
                     {Object.entries(BR_STATES_MAP.states).map(([uf, data]) => {
                       const s = stateMap[uf];
-                      const temp = s ? temperatureFromStrength(s.electoral_strength, s.rejection_score) : "Neutra";
-                      const fill = s ? tempColor(temp) : "hsl(220 9% 75%)";
+                      const fill = s ? strengthColor(s.electoral_strength) : "hsl(220 9% 75%)";
                       const isSel = uf === selectedUf && detailMode === "state";
                       const isHover = uf === hoverUf;
                       return (
@@ -530,32 +537,85 @@ export default function RegionalAnalysis() {
                           onMouseLeave={() => setHoverUf(null)}
                           style={{ filter: isSel ? "drop-shadow(0 0 6px hsl(var(--primary) / 0.55))" : undefined }}
                         >
-                          <title>{UF_NAMES[uf]} — Força {s?.electoral_strength ?? 0} · Rejeição {s?.rejection_score ?? 0}</title>
+                          <title>{UF_NAMES[uf]} — Força {s?.electoral_strength ?? 0}/100</title>
                         </path>
                       );
                     })}
                   </svg>
                   <div className="flex flex-wrap gap-2 mt-3 text-xs">
-                    <Legend color="hsl(142 76% 36%)" label="Favorável" />
-                    <Legend color="hsl(48 96% 53%)" label="Competitivo" />
-                    <Legend color="hsl(0 84% 60%)" label="Desfavorável" />
-                    <Legend color="hsl(220 9% 60%)" label="Neutro" />
+                    <Legend color="hsl(142 76% 36%)" label="Forte (65+)" />
+                    <Legend color="hsl(142 50% 55%)" label="Moderada (40-64)" />
+                    <Legend color="hsl(220 9% 60%)" label="Fraca (<40)" />
                   </div>
                 </CardContent>
               </Card>
 
-              <div className="lg:col-span-3 transition-all duration-300" key={`${detailMode}-${detailMode === "state" ? selectedUf : selectedRegion}`}>
+              <Card className="lg:col-span-2">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <ShieldAlert className="h-4 w-4 text-red-600" /> Mapa de Rejeição
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <svg viewBox={BR_STATES_MAP.viewBox} className="w-full h-auto">
+                    {Object.entries(BR_STATES_MAP.states).map(([uf, data]) => {
+                      const s = stateMap[uf];
+                      const fill = s ? rejectionColor(s.rejection_score) : "hsl(220 9% 75%)";
+                      const isSel = uf === selectedUf && detailMode === "state";
+                      const isHover = uf === hoverUf;
+                      return (
+                        <path
+                          key={uf}
+                          d={(data as any).path}
+                          fill={fill}
+                          stroke={isSel ? "hsl(var(--primary))" : "hsl(var(--background))"}
+                          strokeWidth={isSel ? 1.8 : 0.6}
+                          opacity={isHover && !isSel ? 0.85 : 1}
+                          className="cursor-pointer transition-all duration-300"
+                          onClick={() => { setSelectedUf(uf); setDetailMode("state"); }}
+                          onMouseEnter={() => setHoverUf(uf)}
+                          onMouseLeave={() => setHoverUf(null)}
+                          style={{ filter: isSel ? "drop-shadow(0 0 6px hsl(var(--primary) / 0.55))" : undefined }}
+                        >
+                          <title>{UF_NAMES[uf]} — Rejeição {s?.rejection_score ?? 0}/100</title>
+                        </path>
+                      );
+                    })}
+                  </svg>
+                  <div className="flex flex-wrap gap-2 mt-3 text-xs">
+                    <Legend color="hsl(0 84% 60%)" label="Alta (65+)" />
+                    <Legend color="hsl(38 92% 55%)" label="Média (40-64)" />
+                    <Legend color="hsl(220 9% 60%)" label="Baixa (<40)" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="lg:col-span-1 transition-all duration-300" key={`${detailMode}-${detailMode === "state" ? selectedUf : selectedRegion}`}>
                 {detailMode === "region" && currentRegion ? (
                   <RegionPanel data={currentRegion} onPickUf={(uf) => { setSelectedUf(uf); setDetailMode("state"); }} />
                 ) : currentState ? (
                   <StatePanel data={currentState} />
                 ) : (
                   <Card><CardContent className="py-10 text-center text-muted-foreground">
-                    Selecione um estado ou região no mapa.
+                    Selecione um estado no mapa.
                   </CardContent></Card>
                 )}
               </div>
             </div>
+
+            {/* Detalhe expandido (full width) */}
+            <div className="hidden">{/* spacer placeholder */}</div>
+            <div className="lg:hidden">
+              {/* mobile already shown above */}
+            </div>
+            <div className="hidden lg:block" />
+            <div className="block lg:block" />
+            <div className="placeholder-old" style={{ display: "none" }}>
+              <Card><CardContent>removed</CardContent></Card>
+            </div>
+            <div style={{ display: "none" }}>
+              {/* old combined block (replaced) */}
+              {(() => null)()}
           </>
         )}
 
