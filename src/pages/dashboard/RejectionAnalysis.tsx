@@ -346,26 +346,8 @@ const RejectionAnalysisPage = () => {
         )}
       </AnimatePresence>
 
-      {/* No negative evidence at all */}
-      {!isAnalyzing && analysisResult?.insufficient && (
-        <Card className="border-yellow-500/40">
-          <CardContent className="py-12 text-center space-y-4">
-            <ShieldAlert className="h-12 w-12 mx-auto text-yellow-500" />
-            <h3 className="text-lg font-semibold">Sem evidências negativas encontradas neste período</h3>
-            <p className="text-muted-foreground text-sm">
-              Tente ampliar a janela de análise.
-            </p>
-            <div className="flex justify-center gap-2 pt-2">
-              <Button variant="outline" size="sm" onClick={() => { setPeriod("90"); }}>
-                Últimos 90 dias
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => { setPeriod("365"); }}>
-                Último ano
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* (removido) bloqueio por evidência insuficiente — a IA sempre gera análise */}
+
 
       {/* AI fallback (service overloaded) */}
       {!isAnalyzing && analysisResult?.fallback && (
