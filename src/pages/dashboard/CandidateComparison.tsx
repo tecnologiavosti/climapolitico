@@ -295,6 +295,35 @@ function buildComparisonFromMetrics(candidatesRaw: RawCandidate[], metricsRaw: R
   };
 }
 
+function extractJson(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const cleaned = value
+    .replace(/```json\s*/gi, "")
+    .replace(/```/g, "")
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+    .trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("Resposta da IA não contém JSON válido");
+    return JSON.parse(match[0].replace(/,\s*}/g, "}").replace(/,\s*]/g, "]"));
+  }
+}
+
+function normalizeApiResponse(value: unknown): ApiResponse {
+  const parsed = extractJson(value) as Partial<ApiResponse> | null;
+  if (!parsed || typeof parsed !== "object") throw new Error("Resposta vazia da Edge Function");
+  return {
+    success: Boolean(parsed.success),
+    empty: parsed.empty,
+    message: parsed.message,
+    candidates: Array.isArray(parsed.candidates) ? parsed.candidates : [],
+    bestInClass: parsed.bestInClass,
+    summary: parsed.summary ?? null,
+  };
+}
+
 const CandidateComparisonPage = () => {
   const { user } = useAuth();
   const [headA, setHeadA] = useState<string | null>(null);
