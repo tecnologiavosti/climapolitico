@@ -112,8 +112,8 @@ const fadeIn = {
 };
 
 // ============= Cache (localStorage) =============
-const cacheKey = (userId: string, ids: string[], period: Period) =>
-  `cmp_${userId}_${period}_${ids.slice().sort().join(",")}`;
+const cacheKey = (userId: string, ids: string[], period: Period, range?: { from?: string; to?: string }) =>
+  `cmp_${userId}_${period}_${range?.from ?? ""}_${range?.to ?? ""}_${ids.slice().sort().join(",")}`;
 
 interface CacheEntry { savedAt: number; data: ApiResponse }
 
