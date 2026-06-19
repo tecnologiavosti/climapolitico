@@ -273,7 +273,40 @@ export default function RegionalAnalysis() {
     return m;
   }, [analysis]);
 
+  const regionAggregates = useMemo(() => {
+    const m: Record<Region, RegionAggregate> = {} as any;
+    if (!analysis) return m;
+    REGIONS.forEach((rg) => {
+      const sts = analysis.states.filter((s) => UF_REGION[s.uf] === rg);
+      const summary = analysis.regions.find((r) => r.region === rg);
+      const avg = (arr: number[]) => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
+      const temas: Record<string, number[]> = {};
+      sts.forEach((s) => s.temas_sensibilidade.forEach((t) => {
+        (temas[t.tema] ||= []).push(t.score);
+      }));
+      const temasAgg = Object.entries(temas).map(([tema, arr]) => ({ tema, score: avg(arr) }))
+        .sort((a, b) => b.score - a.score);
+      const profiles = Array.from(new Set(sts.map((s) => s.perfil_eleitor_dominante).filter(Boolean))).slice(0, 4);
+      const riscos = sts.flatMap((s) => s.riscos.map((r) => ({ ...r, uf: s.uf })))
+        .sort((a, b) => sevRank(b.severidade) - sevRank(a.severidade)).slice(0, 5);
+      const oportunidades = Array.from(new Set(sts.flatMap((s) => s.oportunidades))).slice(0, 6);
+      m[rg] = {
+        region: rg,
+        electoral_strength: summary?.regional_strength_score || avg(sts.map((s) => s.electoral_strength)),
+        rejection_score: summary?.rejection_score || avg(sts.map((s) => s.rejection_score)),
+        percepcao: summary?.percepcao || "",
+        perfis: profiles,
+        temas: temasAgg,
+        riscos,
+        oportunidades,
+        ufs: sts.map((s) => s.uf),
+      };
+    });
+    return m;
+  }, [analysis]);
+
   const currentState = stateMap[selectedUf];
+  const currentRegion = selectedRegion ? regionAggregates[selectedRegion] : null;
 
   return (
     <TooltipProvider delayDuration={120}>
