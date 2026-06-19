@@ -544,7 +544,9 @@ const CandidateComparisonPage = () => {
                   <Compass className="h-5 w-5 text-primary" />
                   Radar Multidimensional
                 </CardTitle>
-                <CardDescription>Perfil em 8 dimensões (0–100). Hover para detalhes.</CardDescription>
+                <CardDescription>
+                  Perfil em 8 dimensões (0–100). Quanto maior a área preenchida, mais robusto o candidato.
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="h-[440px] w-full">
