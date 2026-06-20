@@ -786,22 +786,17 @@ export default function RadarPolitico() {
           </Card>
         ) : (
           <div className="space-y-2">
-            <div ref={listParentRef} className="border rounded-md bg-card h-[70vh] overflow-y-auto">
-              <div className="relative w-full" style={{ height: rowVirtualizer.getTotalSize() }}>
-                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                  const e = visibleEvents[virtualRow.index];
-                  if (!e) return null;
+            <div className="border rounded-md bg-card max-h-[70vh] overflow-y-auto">
+              {visibleEvents.map((e, index) => {
+                if (!e) return null;
               const b = band(e.importance);
               const entity = candidateId !== "all" && candidateName
                 ? analyzeEventEntity(e, candidateName)
                 : null;
               return (
                 <div
-                  key={e.id || `${e.event_date}-${virtualRow.index}`}
-                  data-index={virtualRow.index}
-                  ref={rowVirtualizer.measureElement}
-                  className="absolute left-0 top-0 w-full border-b last:border-b-0"
-                  style={{ transform: `translateY(${virtualRow.start}px)` }}
+                  key={e.id || `${e.event_date}-${index}`}
+                  className="border-b last:border-b-0"
                 >
                   <button
                     onClick={() => setSelected(e)}
@@ -861,35 +856,8 @@ export default function RadarPolitico() {
                   </button>
                 </div>
               );
-                })}
-              </div>
+              })}
             </div>
-            {(visibleCount < filtered.length || ((jobStatus?.events_count ?? 0) > events.length && !!jobId && jobId !== "cache")) && (
-              <Button
-                variant="outline"
-                className="w-full"
-                disabled={loadMoreMutation.isPending}
-                onClick={() => {
-                  const nextVisible = visibleCount + LOAD_MORE_STEP;
-                  console.log("[Radar] Load more clicked", {
-                    visibleCount,
-                    nextVisible,
-                    filteredLength: filtered.length,
-                    eventsLength: events.length,
-                    backendTotal: jobStatus?.events_count ?? 0,
-                  });
-                  // Sempre incrementa a janela visível
-                  setVisibleCount(nextVisible);
-                  // Se já mostramos tudo que está em memória e backend tem mais, busca próximo lote
-                  if (nextVisible > filtered.length && (jobStatus?.events_count ?? 0) > events.length) {
-                    loadMoreMutation.mutate();
-                  }
-                }}
-              >
-                {loadMoreMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                Carregar mais {LOAD_MORE_STEP}
-              </Button>
-            )}
 
           </div>
         )}
