@@ -336,8 +336,6 @@ export default function RadarPolitico() {
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
   const [lastError, setLastError] = useState<{ message: string; stack: string } | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
-  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
-  const listParentRef = useRef<HTMLDivElement | null>(null);
 
   const { data: candidates } = useQuery({
     queryKey: ["candidates-min", user?.id],
@@ -376,7 +374,7 @@ export default function RadarPolitico() {
     },
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("radar-job-status", {
-        body: { job_id: jobId, page_size: PAGE_SIZE, offset: 0, sort: sortBy },
+        body: { job_id: jobId, sort: sortBy },
       });
       if (error) throw error;
       return data as RadarJobStatus;
@@ -462,7 +460,6 @@ export default function RadarPolitico() {
       if (candidateId === "all") throw new Error("Selecione um candidato.");
       if (!from || !to) throw new Error("Defina o período (datas inicial e final).");
       setEvents([]);
-      setVisibleCount(INITIAL_VISIBLE);
       setLastError(null);
       const { data, error } = await supabase.functions.invoke("radar-job-create", {
         body: {
@@ -496,44 +493,6 @@ export default function RadarPolitico() {
       toast.error(msg);
     },
   });
-
-  const loadMoreMutation = useMutation({
-    mutationFn: async () => {
-      if (!jobId || jobId === "cache") return [] as RadarEvent[];
-      const { data, error } = await supabase.functions.invoke("radar-job-status", {
-        body: { job_id: jobId, page_size: BACKEND_FETCH_PAGE, offset: events.length, sort: sortBy },
-      });
-      if (error) throw error;
-      const payload = data as { events?: RadarEvent[] } | null;
-      return Array.isArray(payload?.events) ? payload.events : [];
-    },
-    onSuccess: (next) => {
-      if (next.length === 0) return;
-      setEvents((prev) => {
-        const seen = new Set(prev.map((e) => e.id || `${e.event_date}|${e.title}`));
-        const merged = [...prev];
-        for (const e of next) {
-          const key = e.id || `${e.event_date}|${e.title}`;
-          if (!seen.has(key)) merged.push(e);
-        }
-        setRadarCache(cacheKey, { events: merged, jobId: jobId ?? undefined, fetchedAt: new Date().toISOString(), eventsCount: jobStatus?.events_count });
-        return merged;
-      });
-    },
-    onError: (e: unknown) => toast.error(friendlyRadarError(e instanceof Error ? e.message : "Falha ao carregar mais eventos")),
-  });
-
-  // Auto-prefetch: quando backend tem mais eventos do que carregamos localmente,
-  // baixa o restante em background para que a paginação local cubra todos os 2190+.
-  useEffect(() => {
-    const backendCount = jobStatus?.events_count ?? 0;
-    if (!jobId || jobId === "cache") return;
-    if (loadMoreMutation.isPending) return;
-    if (backendCount > events.length) {
-      const t = setTimeout(() => loadMoreMutation.mutate(), 250);
-      return () => clearTimeout(t);
-    }
-  }, [jobStatus?.events_count, events.length, jobId, loadMoreMutation.isPending]);
 
 
   // Filtros locais
