@@ -577,14 +577,18 @@ export default function RadarPolitico() {
 
   const backendTotal = jobStatus?.events_count ?? events.length;
   useEffect(() => {
-    console.log("TOTAL EVENTS", events.length);
-    console.log("BACKEND TOTAL", backendTotal);
-    console.log("FILTERED EVENTS", filtered.length);
-    console.log("SORTED EVENTS", filtered.length);
-    console.log("VISIBLE EVENTS", visibleEvents.length);
-    console.log("FIRST EVENT DATE", filtered[0]?.event_date);
-    console.log("LAST EVENT DATE", filtered.at(-1)?.event_date);
-  }, [backendTotal, filtered, visibleEvents.length, events.length]);
+    if (import.meta.env.DEV) {
+      console.log("[Radar Debug]", {
+        totalFetched: events.length,
+        backendTotal,
+        totalAfterFilter: filtered.length,
+        totalRendered: visibleEvents.length,
+      });
+      if (backendTotal !== filtered.length && events.length > 0) {
+        console.warn(`Radar mismatch: fetched ${backendTotal} / após filtros ${filtered.length} / renderizado ${visibleEvents.length}`);
+      }
+    }
+  }, [backendTotal, filtered.length, visibleEvents.length, events.length]);
 
   const rowVirtualizer = useVirtualizer({
     count: visibleEvents.length,
