@@ -438,7 +438,7 @@ Deno.serve(async (req) => {
     const periodHash = hashPeriod(body);
     const bypassCache = body.force_refresh === true || body.ignore_cache === true;
     console.log("FORCE REFRESH", bypassCache);
-    const cached = bypassCache ? null : await readCacheFirstPage(admin, user.id, periodHash, body);
+    const cached = bypassCache ? null : await readCacheEvents(admin, user.id, periodHash, body);
     console.log("CACHE HIT", !!cached);
     if (cached) {
       return new Response(JSON.stringify({
