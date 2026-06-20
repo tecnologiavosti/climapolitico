@@ -1093,3 +1093,46 @@ function RegionPanel({ data, onPickUf }: { data: RegionAggregate; onPickUf: (uf:
     </div>
   );
 }
+
+function ProgressLoader({ steps, current }: { steps: string[]; current: number }) {
+  const pct = Math.min(100, Math.round((current / steps.length) * 100));
+  return (
+    <Card className="border-border/60">
+      <CardContent className="p-6 space-y-4">
+        <div className="space-y-2">
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>Executando pipeline regional</span>
+            <span className="tabular-nums">{pct}%</span>
+          </div>
+          <Progress value={pct} className="h-2" />
+        </div>
+        <ul className="space-y-2">
+          {steps.map((s, i) => {
+            const done = i < current;
+            const active = i === current;
+            return (
+              <li key={i} className="flex items-center gap-2 text-sm">
+                {done ? (
+                  <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                ) : active ? (
+                  <Loader2 className="h-4 w-4 text-primary animate-spin shrink-0" />
+                ) : (
+                  <div className="h-4 w-4 rounded-full border border-muted-foreground/30 shrink-0" />
+                )}
+                <span
+                  className={cn(
+                    done && "text-foreground",
+                    active && "text-foreground font-medium",
+                    !done && !active && "text-muted-foreground"
+                  )}
+                >
+                  {s}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
