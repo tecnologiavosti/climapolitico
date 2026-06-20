@@ -7,10 +7,28 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+
+function safeParse(s: string): any {
+  try { return JSON.parse(s); } catch {}
+  const m = s.match(/\{[\s\S]*\}/);
+  if (m) { try { return JSON.parse(m[0]); } catch {} }
+  return null;
+}
+
+async function callAI(systemMsg: string, userPrompt: string, maxTokens = 3200) {
+  const r = await callAICerebrasFirst({
+    systemMsg, userPrompt, jsonMode: true, maxTokens, temperature: 0.55, tag: 'narrative-ai',
+  });
+  return { parsed: safeParse(r.content || ''), provider: `${r.provider}:${r.model}` };
+}
+
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
     const supabaseClient = createClient(
@@ -20,18 +38,13 @@ serve(async (req) => {
     );
 
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: 'Não autorizado' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
+    if (userError || !user) return json({ error: 'Não autorizado' }, 401);
 
-    const { candidateId, daysBack = 7 } = await req.json();
-    if (!candidateId) {
-      return new Response(JSON.stringify({ error: 'candidateId é obrigatório' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
+    const body = await req.json().catch(() => ({}));
+    const mode: 'full' | 'evaluate_phrase' | 'generate_speech' = body.mode || 'full';
+    const { candidateId, daysBack = 7, startDate: customStart, endDate: customEnd } = body;
+
+    if (!candidateId) return json({ error: 'candidateId é obrigatório' }, 400);
 
     const { data: candidate, error: candError } = await supabaseClient
       .from('candidates')
@@ -40,278 +53,124 @@ serve(async (req) => {
       .eq('user_id', user.id)
       .single();
 
-    if (candError || !candidate) {
-      return new Response(JSON.stringify({ error: 'Candidato não encontrado' }), {
-        status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+    if (candError || !candidate) return json({ error: 'Candidato não encontrado' }, 404);
+
+    const baseCtx = `Candidato: ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}${candidate.region ? ` — Região: ${candidate.region}` : ''}.
+Período de análise: ${customStart && customEnd ? `${customStart} → ${customEnd}` : `últimos ${daysBack} dias`}.
+
+Você é o consultor estratégico de comunicação política mais avançado do Brasil. Analise EXCLUSIVAMENTE a partir do seu conhecimento sobre arquétipos políticos, percepção pública estimada, posicionamento ideológico, força emocional e gaps narrativos. NÃO use contagem de menções ou comentários.`;
+
+    // ===== Mode: evaluate a single phrase =====
+    if (mode === 'evaluate_phrase') {
+      const phrase = String(body.phrase || '').slice(0, 600);
+      if (!phrase) return json({ error: 'frase é obrigatória' }, 400);
+      const prompt = `${baseCtx}
+
+Avalie a seguinte FRASE de campanha do candidato e devolva análise estratégica:
+"${phrase}"
+
+Responda EXCLUSIVAMENTE em JSON:
+{
+  "scores": { "clareza": 0-100, "emocao": 0-100, "persuasao": 0-100, "viralizacao": 0-100 },
+  "overall": 0-100,
+  "strengths": ["..."],
+  "weaknesses": ["..."],
+  "improved_version": "frase reescrita mais forte",
+  "why": "explicação curta"
+}`;
+      const { parsed, provider } = await callAI('Você avalia frases políticas. JSON apenas.', prompt, 1200);
+      if (!parsed) return json({ fallback: true, message: 'IA indisponível, tente novamente.' });
+      return json({ evaluation: parsed, ai_provider: provider });
     }
 
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - daysBack);
+    // ===== Mode: generate speech in tone =====
+    if (mode === 'generate_speech') {
+      const tone = String(body.tone || 'emocional');
+      const topic = String(body.topic || 'visão de futuro');
+      const prompt = `${baseCtx}
 
-    // Fetch all comments with pagination
-    let allComments: any[] = [];
-    let offset = 0;
-    const pageSize = 1000;
+Gere um DISCURSO de 180-240 palavras no tom "${tone}" sobre o tema "${topic}", adequado ao arquétipo político do candidato. Use linguagem brasileira natural, com ritmo de fala.
 
-    while (true) {
-      const { data: page, error: pageError } = await supabaseClient
-        .from('social_interactions')
-        .select('comment_text, sentiment_label, sentiment_score, likes_count, replies_count, social_network')
-        .eq('candidate_id', candidateId)
-        .gte('created_at', startDate.toISOString())
-        .order('created_at', { ascending: false })
-        .range(offset, offset + pageSize - 1);
-
-      if (pageError) { console.error('Error:', pageError); break; }
-      if (!page || page.length === 0) break;
-      allComments = [...allComments, ...page];
-      if (page.length < pageSize) break;
-      offset += pageSize;
+Responda EXCLUSIVAMENTE em JSON:
+{
+  "title": "título curto",
+  "speech": "texto do discurso completo",
+  "hooks": ["3 frases de impacto extraídas"],
+  "recommended_channel": "TV|Comício|Instagram|Debate|Rádio"
+}`;
+      const { parsed, provider } = await callAI('Você é roteirista político brasileiro. JSON apenas.', prompt, 1500);
+      if (!parsed) return json({ fallback: true, message: 'IA indisponível, tente novamente.' });
+      return json({ speech: parsed, ai_provider: provider });
     }
 
-    if (allComments.length === 0) {
-      return new Response(JSON.stringify({
-        recommendations: null,
-        message: 'Nenhum comentário encontrado no período selecionado.',
-        stats: { total: 0 }
-      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
+    // ===== Mode: full strategic narrative =====
+    const prompt = `${baseCtx}
 
-    const stats = {
-      total: allComments.length,
-      positive: allComments.filter(c => c.sentiment_label === 'Positivo').length,
-      negative: allComments.filter(c => c.sentiment_label === 'Negativo').length,
-      neutral: allComments.filter(c => c.sentiment_label === 'Neutro').length,
-    };
+Gere uma análise narrativa COMPLETA e profundamente estratégica, no formato JSON exato abaixo.
+Regras: cada campo deve ser específico ao candidato, não genérico. Scores são 0-100. Não invente estatísticas numéricas de mídia.
 
-    // Sample negative comments (priority) and positive/neutral for context
-    const negSample = allComments
-      .filter(c => c.sentiment_label === 'Negativo' && c.comment_text)
-      .sort((a, b) => ((b.likes_count || 0) + (b.replies_count || 0)) - ((a.likes_count || 0) + (a.replies_count || 0)))
-      .slice(0, 100)
-      .map(c => c.comment_text.substring(0, 250));
+{
+  "central_narrative": "narrativa central recomendada em 1-2 frases",
+  "archetype": "arquétipo político (ex: O Reformador, O Pai da Família, O Guerreiro, O Sábio, O Outsider)",
+  "archetype_rationale": "por quê",
+  "public_perception": "como o público estimadamente percebe o candidato hoje",
+  "ideological_position": "posicionamento ideológico (centro, direita-liberal, etc) e sua nuance",
+  "emotional_force": 0-100,
+  "narrative_dna": {
+    "emocao": 0-100, "autoridade": 0-100, "carisma": 0-100,
+    "confianca": 0-100, "combatividade": 0-100, "proximidade": 0-100
+  },
+  "narrative_gaps": [
+    { "topic": "...", "opportunity": "...", "why": "..." }
+  ],
+  "high_conversion_narratives": [
+    { "narrative": "...", "score": 0-100, "target_audience": "...", "rationale": "..." }
+  ],
+  "harmful_narratives": [
+    { "narrative": "...", "risk": "...", "mitigation": "..." }
+  ],
+  "channel_plan": {
+    "instagram": { "strategy": "...", "tone": "...", "content_examples": ["...","..."] },
+    "tiktok":    { "strategy": "...", "tone": "...", "content_examples": ["...","..."] },
+    "debates":   { "strategy": "...", "tone": "...", "content_examples": ["...","..."] },
+    "tv":        { "strategy": "...", "tone": "...", "content_examples": ["...","..."] },
+    "interior":  { "strategy": "...", "tone": "...", "content_examples": ["...","..."] }
+  },
+  "confidence": 0-100
+}
 
-    const posSample = allComments
-      .filter(c => c.sentiment_label === 'Positivo' && c.comment_text)
-      .slice(0, 50)
-      .map(c => c.comment_text.substring(0, 200));
+Mínimos: 3 itens em narrative_gaps, 4 em high_conversion_narratives, 3 em harmful_narratives.`;
 
-    const neuSample = allComments
-      .filter(c => c.sentiment_label === 'Neutro' && c.comment_text)
-      .slice(0, 30)
-      .map(c => c.comment_text.substring(0, 200));
+    const { parsed, provider } = await callAI(
+      'Você é consultor estratégico de comunicação política brasileira. Responda SEMPRE em JSON válido seguindo o schema solicitado, em português do Brasil.',
+      prompt,
+      3500,
+    );
 
-    const prompt = `Você é um consultor de comunicação política brasileiro de alto nível. Analise os comentários reais sobre o candidato ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}${candidate.region ? ` - ${candidate.region}` : ''} e gere recomendações estratégicas de narrativa.
-
-ESTATÍSTICAS DO PERÍODO (últimos ${daysBack} dias):
-- Total: ${stats.total} comentários
-- Positivos: ${stats.positive} (${((stats.positive / stats.total) * 100).toFixed(1)}%)
-- Negativos: ${stats.negative} (${((stats.negative / stats.total) * 100).toFixed(1)}%)
-- Neutros: ${stats.neutral} (${((stats.neutral / stats.total) * 100).toFixed(1)}%)
-
-COMENTÁRIOS NEGATIVOS MAIS RELEVANTES (${negSample.length}):
-${negSample.map((c, i) => `${i + 1}. ${c}`).join('\n')}
-
-COMENTÁRIOS POSITIVOS (${posSample.length}):
-${posSample.map((c, i) => `${i + 1}. ${c}`).join('\n')}
-
-COMENTÁRIOS NEUTROS (${neuSample.length}):
-${neuSample.map((c, i) => `${i + 1}. ${c}`).join('\n')}
-
-Com base nos dados REAIS acima, gere recomendações concretas e específicas de narrativa. NÃO faça sugestões genéricas. Cada recomendação deve ser baseada em padrões encontrados nos comentários.`;
-
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-
-    const systemMsg = 'Você é um consultor de comunicação política brasileiro de alto nível. Gere recomendações práticas, específicas e acionáveis baseadas exclusivamente nos dados reais fornecidos. Responda sempre em português do Brasil.';
-
-    const toolSchema = {
-      type: 'object',
-      properties: {
-        situation_summary: { type: 'string' },
-        topics_to_avoid: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              topic: { type: 'string' },
-              reason: { type: 'string' },
-              urgency: { type: 'string', enum: ['imediata', 'alta', 'moderada'] }
-            },
-            required: ['topic', 'reason', 'urgency']
-          }
-        },
-        topics_to_reinforce: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              topic: { type: 'string' },
-              reason: { type: 'string' },
-              suggested_approach: { type: 'string' }
-            },
-            required: ['topic', 'reason', 'suggested_approach']
-          }
-        },
-        responses_to_criticism: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              criticism: { type: 'string' },
-              suggested_response: { type: 'string' },
-              tone: { type: 'string', enum: ['firme', 'conciliador', 'educativo', 'empático'] }
-            },
-            required: ['criticism', 'suggested_response', 'tone']
-          }
-        },
-        communication_plan: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              action: { type: 'string' },
-              channel: { type: 'string' },
-              priority: { type: 'string', enum: ['critica', 'alta', 'media', 'baixa'] },
-              expected_impact: { type: 'string' }
-            },
-            required: ['action', 'channel', 'priority', 'expected_impact']
-          }
-        },
-        key_message: { type: 'string' }
-      },
-      required: ['situation_summary', 'topics_to_avoid', 'topics_to_reinforce', 'responses_to_criticism', 'communication_plan', 'key_message']
-    };
-
-    let recommendations: any = null;
-    let aiProvider = 'cerebras';
-
-    // 1) PRIMÁRIO: Cerebras (alta capacidade) com fallback automático para Lovable AI Gateway
-    try {
-      const jsonPrompt = `${prompt}\n\nResponda EXCLUSIVAMENTE em JSON válido no formato:\n{"situation_summary":"...","topics_to_avoid":[{"topic":"...","reason":"...","urgency":"imediata|alta|moderada"}],"topics_to_reinforce":[{"topic":"...","reason":"...","suggested_approach":"..."}],"responses_to_criticism":[{"criticism":"...","suggested_response":"...","tone":"firme|conciliador|educativo|empático"}],"communication_plan":[{"action":"...","channel":"...","priority":"critica|alta|media|baixa","expected_impact":"..."}],"key_message":"..."}`;
-      const result = await callAICerebrasFirst({
-        systemMsg,
-        userPrompt: jsonPrompt,
-        jsonMode: true,
-        maxTokens: 3000,
-        temperature: 0.5,
-        tag: 'narrative',
-      });
-      recommendations = JSON.parse(result.content || '{}');
-      aiProvider = `${result.provider}:${result.model}`;
-    } catch (e) {
-      console.warn('[NARRATIVE] Cerebras+Lovable falharam, tentando Lovable AI tool-calling...', (e as Error).message);
-    }
-
-    // 2) Fallback secundário: Lovable AI Gateway com tool-calling estruturado
-    if (!recommendations && LOVABLE_API_KEY) {
-      try {
-        const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'google/gemini-3-flash-preview',
-            messages: [
-              { role: 'system', content: systemMsg },
-              { role: 'user', content: prompt }
-            ],
-            tools: [{ type: 'function', function: { name: 'create_narrative_recommendations', description: 'Gerar recomendações de narrativa', parameters: toolSchema } }],
-            tool_choice: { type: 'function', function: { name: 'create_narrative_recommendations' } }
-          })
-        });
-
-        if (aiResponse.ok) {
-          const result = await aiResponse.json();
-          const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
-          if (toolCall) {
-            recommendations = JSON.parse(toolCall.function.arguments);
-            aiProvider = 'lovable-tool';
-          } else {
-            console.warn('Lovable AI: resposta sem tool_call, tentando Gemini fallback');
-          }
-        } else {
-          const errText = await aiResponse.text();
-          console.error('Lovable AI error:', aiResponse.status, errText, '— tentando Gemini fallback');
-        }
-      } catch (e) {
-        console.error('Lovable AI exception:', e, '— tentando Gemini fallback');
-      }
-    }
-
-    // Fallback: Gemini direct API — tenta múltiplos modelos em cascata
-    if (!recommendations && GEMINI_API_KEY) {
-      const geminiModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest', 'gemini-2.0-flash'];
-      for (const model of geminiModels) {
-        try {
-          aiProvider = `gemini-direct:${model}`;
-          const geminiResponse = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                systemInstruction: { parts: [{ text: systemMsg }] },
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                tools: [{ functionDeclarations: [{ name: 'create_narrative_recommendations', description: 'Gerar recomendações de narrativa', parameters: toolSchema }] }],
-                toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: ['create_narrative_recommendations'] } }
-              })
-            }
-          );
-          if (geminiResponse.ok) {
-            const gResult = await geminiResponse.json();
-            const fnCall = gResult.candidates?.[0]?.content?.parts?.find((p: any) => p.functionCall)?.functionCall;
-            if (fnCall?.args) {
-              recommendations = fnCall.args;
-              console.log(`✅ Gemini fallback sucesso com modelo: ${model}`);
-              break;
-            } else {
-              console.warn(`Gemini ${model}: sem functionCall na resposta`);
-            }
-          } else {
-            const errTxt = await geminiResponse.text();
-            console.error(`Gemini ${model} error:`, geminiResponse.status, errTxt.substring(0, 200));
-            if (geminiResponse.status !== 503 && geminiResponse.status !== 429) break;
-          }
-        } catch (e) {
-          console.error(`Gemini ${model} exception:`, e);
-        }
-      }
-    }
-
-    if (!recommendations) {
-      return new Response(JSON.stringify({
+    if (!parsed || !parsed.central_narrative) {
+      return json({
         recommendations: null,
         fallback: true,
-        error: 'SERVICE_UNAVAILABLE',
-        message: 'Serviço de IA temporariamente indisponível. Tente novamente em instantes.',
-        stats,
-        candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region },
-        period: { daysBack, startDate: startDate.toISOString(), endDate: new Date().toISOString() },
-        ai_provider: aiProvider
-      }), {
-        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        message: 'Serviço de IA temporariamente indisponível. Tente novamente.',
+        candidate,
       });
     }
 
-    return new Response(JSON.stringify({
-      recommendations,
-      fallback: false,
-      stats,
-      candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region },
-      period: { daysBack, startDate: startDate.toISOString(), endDate: new Date().toISOString() },
-      ai_provider: aiProvider
-    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-
+    return json({
+      recommendations: parsed,
+      candidate,
+      period: customStart && customEnd
+        ? { startDate: customStart, endDate: customEnd }
+        : { daysBack, startDate: new Date(Date.now() - daysBack * 86400000).toISOString(), endDate: new Date().toISOString() },
+      ai_provider: provider,
+      generated_at: new Date().toISOString(),
+    });
   } catch (error) {
-    console.error('Error:', error);
-    return new Response(JSON.stringify({
+    console.error('narrative-ai error:', error);
+    return json({
       recommendations: null,
       fallback: true,
-      error: 'UNEXPECTED_ERROR',
-      message: error instanceof Error ? error.message : 'Erro desconhecido'
-    }), {
-      status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      message: error instanceof Error ? error.message : 'Erro desconhecido',
     });
   }
 });
