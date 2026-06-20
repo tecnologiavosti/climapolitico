@@ -94,20 +94,95 @@ function normalizeCandidateName(name: string) {
   return name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
 
+// =====================================================================
+// NER: extrai entidade principal (pessoa) do título/resumo do evento.
+// Heurística: nomes próprios (>=2 palavras capitalizadas, com de/da/do/dos opcional).
+// =====================================================================
+const STOPWORDS_CAPS = new Set([
+  "STF","TSE","STJ","PF","CGU","TCU","CNJ","BC","BCB","AGU","COAF","MPF","PGR",
+  "CPI","CPMI","PT","PL","PSDB","MDB","PP","PSD","PDT","PSB","NOVO","PSOL",
+  "União","Uniao","Republicanos","Senado","Câmara","Camara","Planalto",
+  "Itamaraty","Brasil","Brasília","Brasilia",
+  "Janeiro","Fevereiro","Março","Marco","Abril","Maio","Junho","Julho",
+  "Agosto","Setembro","Outubro","Novembro","Dezembro",
+]);
+
+function extractPeople(text: string): string[] {
+  if (!text) return [];
+  const re = /\b([A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]+(?:\s+(?:de|da|do|dos|das)\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ]?[a-záéíóúâêôãõç]+|\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]+){1,3})\b/g;
+  const out: string[] = [];
+  for (const m of text.matchAll(re)) {
+    const name = m[1].trim();
+    if (name.length > 60) continue;
+    const first = name.split(/\s+/)[0];
+    if (STOPWORDS_CAPS.has(first)) continue;
+    out.push(name);
+  }
+  return out;
+}
+
+interface EntityMatchResult {
+  primaryEntity: string | null;
+  secondaryEntities: string[];
+  matched: boolean;
+  score: number;
+  reason: string;
+}
+
+function analyzeEventEntity(event: RadarEvent, candidateName: string): EntityMatchResult {
+  const candNorm = normalizeCandidateName(candidateName);
+  const candTokens = candNorm.split(/\s+/).filter((t) => !["de","da","do","dos","das"].includes(t));
+  const candFirst = candTokens[0] ?? "";
+  const candLast = candTokens[candTokens.length - 1] ?? "";
+
+  const title = sanitizeRadarText(event.title);
+  const summary = sanitizeRadarText(event.summary ?? event.description ?? "");
+  const haystackNorm = `${title} ${summary}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+  const people = Array.from(new Set([...extractPeople(title), ...extractPeople(summary)]));
+  const primary = people[0] ?? null;
+  const secondary = people.slice(1, 6);
+
+  // Disambiguation overrides (ex.: família Bolsonaro)
+  const rule = CANDIDATE_ALIASES[candNorm];
+  if (rule) {
+    const hasStrong = rule.strong.some((a) => haystackNorm.includes(normalizeCandidateName(a)));
+    const hasConflict = rule.conflicts.some((a) => haystackNorm.includes(normalizeCandidateName(a)));
+    if (hasStrong) return { primaryEntity: primary, secondaryEntities: secondary, matched: true, score: 1, reason: `alias forte: ${candidateName}` };
+    if (hasConflict) return { primaryEntity: primary, secondaryEntities: secondary, matched: false, score: 0, reason: "conflito de homônimo" };
+  }
+
+  // Estrito: a entidade principal precisa ser o candidato selecionado.
+  if (!primary) {
+    if (candTokens.length >= 2 && haystackNorm.includes(candNorm)) {
+      return { primaryEntity: candidateName, secondaryEntities: secondary, matched: true, score: 0.7, reason: "nome completo no texto" };
+    }
+    return { primaryEntity: null, secondaryEntities: secondary, matched: false, score: 0, reason: "nenhuma pessoa detectada" };
+  }
+
+  const primaryNorm = normalizeCandidateName(primary);
+  const primaryTokens = primaryNorm.split(/\s+/);
+  const containsFull = candTokens.length >= 2 && primaryNorm.includes(candTokens.slice(0, 2).join(" "));
+  const containsFirstAndLast = primaryNorm.includes(candFirst) && primaryTokens.includes(candLast);
+
+  if (containsFull || containsFirstAndLast) {
+    return { primaryEntity: primary, secondaryEntities: secondary, matched: true, score: 1, reason: "primary_entity = candidato" };
+  }
+  if (candLast.length >= 5 && primaryTokens.includes(candLast)) {
+    return { primaryEntity: primary, secondaryEntities: secondary, matched: true, score: 0.85, reason: `sobrenome distintivo "${candLast}"` };
+  }
+
+  return {
+    primaryEntity: primary,
+    secondaryEntities: secondary,
+    matched: false,
+    score: 0,
+    reason: `primary_entity "${primary}" ≠ "${candidateName}"`,
+  };
+}
+
 function isEventRelevantForCandidate(event: RadarEvent, candidateName: string): boolean {
-  const normalized = normalizeCandidateName(candidateName);
-  const rule = CANDIDATE_ALIASES[normalized];
-  if (!rule) return true; // sem regra específica = não filtra
-  const haystack = `${event.title ?? ""} ${event.summary ?? ""} ${event.description ?? ""} ${event.content ?? ""}`
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  const hasStrong = rule.strong.some((a) => haystack.includes(normalizeCandidateName(a)));
-  if (hasStrong) return true;
-  const hasConflict = rule.conflicts.some((a) => haystack.includes(normalizeCandidateName(a)));
-  // se menciona "bolsonaro" sozinho mas só aparece um conflito (ex.: Jair), descarta para Flávio
-  if (hasConflict) return false;
-  // sem strong e sem conflito: aceitar só se candidato base é genérico (sobrenome único etc.)
-  const surnameOnly = haystack.includes("bolsonaro");
-  return !surnameOnly;
+  return analyzeEventEntity(event, candidateName).matched;
 }
 
 const PRESETS = [
@@ -768,6 +843,9 @@ export default function RadarPolitico() {
                   const e = visibleEvents[virtualRow.index];
                   if (!e) return null;
               const b = band(e.importance);
+              const entity = candidateId !== "all" && candidateName
+                ? analyzeEventEntity(e, candidateName)
+                : null;
               return (
                 <div
                   key={e.id || `${e.event_date}-${virtualRow.index}`}
@@ -793,6 +871,11 @@ export default function RadarPolitico() {
                               Institucional
                             </Badge>
                           )}
+                          {entity?.matched && (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-emerald-500/40 text-emerald-600 dark:text-emerald-400">
+                              ✓ Evento validado por entidade
+                            </Badge>
+                          )}
                         </div>
                         <h3 className="text-sm font-medium leading-snug break-words [overflow-wrap:anywhere]">{sanitizeRadarText(e.title)}</h3>
                         {(() => {
@@ -805,6 +888,16 @@ export default function RadarPolitico() {
                           title: e.title, summary: e.summary, category: e.category,
                           social_score: e.social_score, importance: e.importance, source_count: e.source_count,
                         })} compact />
+                        {entity && import.meta.env.DEV && (
+                          <div className="mt-2 rounded border border-dashed border-amber-500/40 bg-amber-500/5 p-2 text-[10px] font-mono text-amber-700 dark:text-amber-300 space-y-0.5">
+                            <div>[debug] primary_entity: {entity.primaryEntity ?? "—"}</div>
+                            <div>[debug] match_score: {entity.score.toFixed(2)} ({entity.matched ? "incluído" : "excluído"})</div>
+                            <div>[debug] motivo: {entity.reason}</div>
+                            {entity.secondaryEntities.length > 0 && (
+                              <div>[debug] secondary: {entity.secondaryEntities.join(", ")}</div>
+                            )}
+                          </div>
+                        )}
 
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
