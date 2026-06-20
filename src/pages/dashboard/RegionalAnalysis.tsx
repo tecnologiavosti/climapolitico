@@ -366,14 +366,15 @@ export default function RegionalAnalysis() {
     return { period_label: map[period] };
   }, [period, customRange]);
 
-  const runAnalysis = useCallback(async () => {
-    if (!user || !candidateId) return;
+  const runAnalysis = useCallback(async (cid?: string) => {
+    const targetId = cid || activeCandidateId;
+    if (!user || !targetId) return;
     setLoading(true);
     setError(null);
     setAnalysis(null);
     try {
       const { data, error: invokeErr } = await supabase.functions.invoke("regional-ai-analysis", {
-        body: { candidate_id: candidateId, ...periodPayload },
+        body: { candidate_id: targetId, ...periodPayload },
       });
       if (invokeErr) {
         setError("A análise está sendo processada. Tente novamente em instantes.");
@@ -391,13 +392,32 @@ export default function RegionalAnalysis() {
     } finally {
       setLoading(false);
     }
-  }, [user, candidateId, periodPayload]);
+  }, [user, activeCandidateId, periodPayload]);
 
+  const handleStart = useCallback(() => {
+    if (!selectedCandidate) return;
+    setActiveCandidateId(selectedCandidate.id);
+    setStarted(true);
+    setDeepCache({});
+    runAnalysis(selectedCandidate.id);
+  }, [selectedCandidate, runAnalysis]);
+
+  const handleChangeCandidate = useCallback(() => {
+    setStarted(false);
+    setActiveCandidateId("");
+    setAnalysis(null);
+    setError(null);
+    setDeepCache({});
+    setSelectedRegion(null);
+    setProgressStep(0);
+  }, []);
+
+  // Re-run when period changes while active
   useEffect(() => {
-    if (!candidateId) return;
+    if (!started || !activeCandidateId) return;
     if (period === "custom" && !(customRange?.from && customRange?.to)) return;
     runAnalysis();
-  }, [candidateId, period, customRange]); // eslint-disable-line
+  }, [period, customRange, started, activeCandidateId]); // eslint-disable-line
 
   const stateMap = useMemo(() => {
     const m: Record<string, StateBase> = {};
