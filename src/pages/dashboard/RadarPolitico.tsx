@@ -791,7 +791,7 @@ export default function RadarPolitico() {
         <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">
           {searchMutation.isPending || isJobRunning
             ? "Buscando eventos históricos..."
-            : `${nfBR.format(filtered.length)} eventos`}
+            : `${nfBR.format(visibleEvents.length)} de ${nfBR.format(filtered.length)} exibidos${filtered.length !== backendTotal ? ` · ${nfBR.format(backendTotal)} encontrados` : ""}`}
         </h2>
 
         {lastError && !searchMutation.isPending && !isJobRunning && (
