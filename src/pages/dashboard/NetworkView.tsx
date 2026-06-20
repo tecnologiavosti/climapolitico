@@ -82,9 +82,27 @@ const NETWORKS_FILTER = [
   { value: "tiktok", label: "TikTok" },
   { value: "youtube", label: "YouTube" },
   { value: "facebook", label: "Facebook" },
-  { value: "telegram", label: "Telegram" },
-  { value: "reddit", label: "Reddit" },
-  { value: "news", label: "Notícias" },
+const NETWORK_OPTIONS = [
+  { value: "instagram", label: "Instagram" },
+  { value: "twitter", label: "X / Twitter" },
+  { value: "tiktok", label: "TikTok" },
+  { value: "youtube", label: "YouTube" },
+  { value: "facebook", label: "Facebook" },
+  { value: "googletrends", label: "Google Trends" },
+];
+
+const NETWORKS_FILTER = [
+  { value: "all", label: "Todas" },
+  ...NETWORK_OPTIONS,
+];
+
+const PROGRESS_STEPS = [
+  "Inicializando",
+  "Coletando posts e menções",
+  "Calculando engajamento",
+  "Calculando sentimento",
+  "Calculando viralização",
+  "Gerando insights IA",
 ];
 
 const PERIODS = [
@@ -94,6 +112,7 @@ const PERIODS = [
   { value: "365", label: "1 ano" },
   { value: "custom", label: "Personalizado" },
 ] as const;
+
 
 const STATUS_META: Record<ClimaStatus, { label: string; cls: string }> = {
   explodindo: { label: "Explodindo", cls: "bg-destructive/15 text-destructive border-destructive/40" },
