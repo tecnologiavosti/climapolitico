@@ -55,10 +55,15 @@ export const CandidateSelector = ({ candidates, value, onChange, disabled }: Pro
               >
                 {initials(selected.full_name)}
               </div>
-              <span className="truncate text-sm font-medium">{selected.full_name}</span>
+              <div className="flex flex-col min-w-0 text-left">
+                <span className="truncate text-sm font-medium leading-tight">{selected.full_name}</span>
+                {formatMeta(selected) && (
+                  <span className="truncate text-[10px] text-muted-foreground leading-tight">{formatMeta(selected)}</span>
+                )}
+              </div>
             </div>
           ) : (
-            <span className="text-muted-foreground text-sm">Selecione um candidato</span>
+            <span className="text-muted-foreground text-sm">Selecionar candidato</span>
           )}
           <ChevronsUpDown className="h-4 w-4 text-muted-foreground shrink-0 opacity-70" />
         </Button>
