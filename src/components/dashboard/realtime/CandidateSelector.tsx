@@ -8,7 +8,14 @@ import { cn } from "@/lib/utils";
 interface Candidate {
   id: string;
   full_name: string;
+  party?: string | null;
+  region?: string | null;
 }
+
+const formatMeta = (c: Candidate) => {
+  const parts = [c.party, c.region].filter(Boolean);
+  return parts.length ? parts.join(" — ") : "";
+};
 
 interface Props {
   candidates: Candidate[];
@@ -48,10 +55,15 @@ export const CandidateSelector = ({ candidates, value, onChange, disabled }: Pro
               >
                 {initials(selected.full_name)}
               </div>
-              <span className="truncate text-sm font-medium">{selected.full_name}</span>
+              <div className="flex flex-col min-w-0 text-left">
+                <span className="truncate text-sm font-medium leading-tight">{selected.full_name}</span>
+                {formatMeta(selected) && (
+                  <span className="truncate text-[10px] text-muted-foreground leading-tight">{formatMeta(selected)}</span>
+                )}
+              </div>
             </div>
           ) : (
-            <span className="text-muted-foreground text-sm">Selecione um candidato</span>
+            <span className="text-muted-foreground text-sm">Selecionar candidato</span>
           )}
           <ChevronsUpDown className="h-4 w-4 text-muted-foreground shrink-0 opacity-70" />
         </Button>
@@ -68,7 +80,7 @@ export const CandidateSelector = ({ candidates, value, onChange, disabled }: Pro
               {candidates.map(c => (
                 <CommandItem
                   key={c.id}
-                  value={c.full_name}
+                  value={`${c.full_name} ${c.party ?? ""} ${c.region ?? ""}`}
                   onSelect={() => { onChange(c.id); setOpen(false); }}
                   className="gap-2"
                 >
@@ -78,7 +90,12 @@ export const CandidateSelector = ({ candidates, value, onChange, disabled }: Pro
                   >
                     {initials(c.full_name)}
                   </div>
-                  <span className="flex-1 truncate text-sm">{c.full_name}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate text-sm leading-tight">{c.full_name}</div>
+                    {formatMeta(c) && (
+                      <div className="truncate text-[10px] text-muted-foreground leading-tight">{formatMeta(c)}</div>
+                    )}
+                  </div>
                   <Check className={cn("h-4 w-4", value === c.id ? "opacity-100 text-primary" : "opacity-0")} />
                 </CommandItem>
               ))}

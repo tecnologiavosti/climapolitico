@@ -10,12 +10,13 @@ import { CandidateSelector } from "@/components/dashboard/realtime/CandidateSele
 import {
   RefreshCw, BrainCircuit, TrendingUp, TrendingDown, ShieldAlert,
   Trophy, Megaphone, AlertTriangle, Sparkles, Activity, Clock,
+  Play, CheckCircle2, Loader2, Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
-interface Candidate { id: string; full_name: string; party?: string | null; }
+interface Candidate { id: string; full_name: string; party?: string | null; region?: string | null; }
 
 interface KeyEvent {
   title: string;
@@ -139,29 +140,42 @@ const RealTimeMonitor = () => {
   const [brief, setBrief] = useState<Brief | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [started, setStarted] = useState(false);
+  const [activeCandidateId, setActiveCandidateId] = useState<string>("");
+  const [progressStep, setProgressStep] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const selectedCandidate = useMemo(
     () => candidates.find((c) => c.id === selectedId) || null,
     [candidates, selectedId]
   );
+  const activeCandidate = useMemo(
+    () => candidates.find((c) => c.id === activeCandidateId) || null,
+    [candidates, activeCandidateId]
+  );
 
-  // Load user's tracked candidates
+  // Load user's tracked candidates (no auto-select)
   useEffect(() => {
     if (!user) return;
     (async () => {
       const { data } = await supabase
         .from("candidates")
-        .select("id, full_name, party")
+        .select("id, full_name, party, region")
         .eq("user_id", user.id)
         .order("full_name");
-      const list = (data || []) as Candidate[];
-      setCandidates(list);
-      if (!selectedId && list.length > 0) setSelectedId(list[0].id);
+      setCandidates((data || []) as Candidate[]);
     })();
   }, [user]);
 
-  const fetchBrief = useCallback(async (name: string, force = false) => {
+  const PROGRESS_STEPS = [
+    "Inicializando monitoramento",
+    "Coletando notícias",
+    "Processando eventos",
+    "Detectando crises",
+    "Gerando análise IA",
+  ];
+
+  const fetchBrief = useCallback(async (name: string, force = false, withProgress = false) => {
     const cacheKey = `${CACHE_PREFIX}${name}`;
     if (!force) {
       try {
@@ -174,6 +188,13 @@ const RealTimeMonitor = () => {
     }
     setLoading(true);
     setError(null);
+    let progressTimer: ReturnType<typeof setInterval> | null = null;
+    if (withProgress) {
+      setProgressStep(0);
+      progressTimer = setInterval(() => {
+        setProgressStep((s) => (s < PROGRESS_STEPS.length - 1 ? s + 1 : s));
+      }, 1800);
+    }
     try {
       const { data, error: fnError } = await supabase.functions.invoke("political-intelligence", {
         body: { candidate_name: name },
@@ -182,29 +203,42 @@ const RealTimeMonitor = () => {
       if (!data) throw new Error("Resposta inválida do servidor");
       setBrief(data as Brief);
       try { localStorage.setItem(cacheKey, JSON.stringify(data)); } catch { /* ignore */ }
+      if (withProgress) setProgressStep(PROGRESS_STEPS.length);
     } catch (e: any) {
       console.error("[Intel] fetch failed", e);
       setError(e?.message || "Falha ao consultar inteligência política");
     } finally {
+      if (progressTimer) clearInterval(progressTimer);
       setLoading(false);
     }
   }, []);
 
-  // Initial + on candidate change
-  useEffect(() => {
-    if (!selectedCandidate) { setBrief(null); return; }
-    fetchBrief(selectedCandidate.full_name, false);
-  }, [selectedCandidate?.id, fetchBrief]);
+  const handleStart = useCallback(() => {
+    if (!selectedCandidate) return;
+    setActiveCandidateId(selectedCandidate.id);
+    setStarted(true);
+    setBrief(null);
+    fetchBrief(selectedCandidate.full_name, true, true);
+  }, [selectedCandidate, fetchBrief]);
 
-  // Polling 5min
+  const handleChangeCandidate = useCallback(() => {
+    setStarted(false);
+    setActiveCandidateId("");
+    setBrief(null);
+    setError(null);
+    setProgressStep(0);
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+  }, []);
+
+  // Polling 5min — only while active
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
-    if (!selectedCandidate) return;
+    if (!started || !activeCandidate) return;
     timerRef.current = setInterval(() => {
-      fetchBrief(selectedCandidate.full_name, true);
+      fetchBrief(activeCandidate.full_name, true);
     }, REFRESH_MS);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [selectedCandidate?.id, fetchBrief]);
+  }, [started, activeCandidate?.id, fetchBrief]);
 
   const analysis = brief?.analysis;
   const intensity = brief?.intensity;
@@ -216,7 +250,7 @@ const RealTimeMonitor = () => {
   const visibleEvents = useMemo(() => {
     if (!analysis?.key_events) return [];
     const now = Date.now();
-    const candidateName = (selectedCandidate?.full_name || "").toLowerCase().trim();
+    const candidateName = (activeCandidate?.full_name || "").toLowerCase().trim();
     const candidateTokens = candidateName
       .split(/\s+/)
       .filter((t) => t.length >= 4);
@@ -226,7 +260,7 @@ const RealTimeMonitor = () => {
         title: cleanFeedContent(ev.title),
         summary: (() => {
           const cleanSummary = cleanFeedContent(ev.summary);
-          return isBrokenSummary(cleanSummary) ? buildFallbackSummary(ev.title, selectedCandidate?.full_name) : cleanSummary;
+          return isBrokenSummary(cleanSummary) ? buildFallbackSummary(ev.title, activeCandidate?.full_name) : cleanSummary;
         })(),
         source: cleanFeedContent(ev.source),
       }))
@@ -250,7 +284,7 @@ const RealTimeMonitor = () => {
         }
         return true;
       });
-  }, [analysis?.key_events, selectedCandidate?.full_name]);
+  }, [analysis?.key_events, activeCandidate?.full_name]);
 
 
   const intensityTone =
@@ -264,7 +298,7 @@ const RealTimeMonitor = () => {
   return (
     <div className="space-y-5 pb-8">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
         <div className="flex items-start gap-3">
           <div className="rounded-lg bg-primary/10 p-2.5 mt-0.5">
             <BrainCircuit className="h-5 w-5 text-primary" />
@@ -272,31 +306,80 @@ const RealTimeMonitor = () => {
           <div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Centro de Inteligência Política</h1>
             <p className="text-xs sm:text-sm text-muted-foreground">
-              Análise estratégica gerada por IA a partir de fontes externas (Google News, portais, STF, TSE, Congresso, PF, YouTube).
+              Análise estratégica gerada por IA a partir de fontes externas.
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <CandidateSelector
-            candidates={candidates}
-            value={selectedId}
-            onChange={setSelectedId}
-            disabled={loading}
-          />
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => selectedCandidate && fetchBrief(selectedCandidate.full_name, true)}
-            disabled={loading || !selectedCandidate}
-          >
-            <RefreshCw className={cn("h-4 w-4 mr-1.5", loading && "animate-spin")} />
-            Atualizar IA
-          </Button>
-        </div>
+        {started && activeCandidate && (
+          <div className="flex flex-col items-end gap-1.5">
+            <div className="text-[11px] text-muted-foreground">
+              Monitoramento ativo para
+            </div>
+            <div className="text-sm font-semibold">{activeCandidate.full_name}</div>
+            {brief && (
+              <div className="text-[10px] text-muted-foreground">
+                Última atualização: {format(new Date(brief.fetched_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+              </div>
+            )}
+            <div className="flex items-center gap-2 mt-1">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => fetchBrief(activeCandidate.full_name, true)}
+                disabled={loading}
+              >
+                <RefreshCw className={cn("h-4 w-4 mr-1.5", loading && "animate-spin")} />
+                Atualizar IA
+              </Button>
+              <Button size="sm" variant="ghost" onClick={handleChangeCandidate} disabled={loading}>
+                <Users className="h-4 w-4 mr-1.5" />
+                Trocar candidato
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* Initial start screen */}
+      {!started && (
+        <Card className="border-border/60">
+          <CardContent className="p-8 flex flex-col items-center gap-4 max-w-xl mx-auto text-center">
+            <div className="rounded-full bg-primary/10 p-3">
+              <BrainCircuit className="h-6 w-6 text-primary" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-base font-semibold">Selecione um candidato para iniciar</h2>
+              <p className="text-xs text-muted-foreground">
+                A IA irá coletar notícias, fontes oficiais (STF, TSE, Congresso, PF), YouTube e gerar uma análise estratégica completa.
+              </p>
+            </div>
+            <div className="w-full max-w-sm space-y-2">
+              <CandidateSelector
+                candidates={candidates}
+                value={selectedId}
+                onChange={setSelectedId}
+                disabled={loading}
+              />
+              <Button
+                className="w-full"
+                onClick={handleStart}
+                disabled={!selectedCandidate || loading}
+              >
+                <Play className="h-4 w-4 mr-1.5" />
+                Iniciar Monitoramento IA
+              </Button>
+            </div>
+            {candidates.length === 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                Nenhum candidato cadastrado ainda. Adicione candidatos para começar.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Meta bar */}
-      {brief && (
+      {started && brief && (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="outline" className="gap-1">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -313,7 +396,7 @@ const RealTimeMonitor = () => {
         </div>
       )}
 
-      {error && (
+      {started && error && (
         <Card className="border-destructive/40 bg-destructive/5">
           <CardContent className="p-4 text-sm text-destructive flex items-center gap-2">
             <AlertTriangle className="h-4 w-4" /> {error}
@@ -321,12 +404,8 @@ const RealTimeMonitor = () => {
         </Card>
       )}
 
-      {!selectedCandidate ? (
-        <Card><CardContent className="p-10 text-center text-muted-foreground text-sm">
-          Selecione um candidato para iniciar a análise política por IA.
-        </CardContent></Card>
-      ) : loading && !brief ? (
-        <LoadingState />
+      {started && (loading && !brief ? (
+        <ProgressLoader steps={PROGRESS_STEPS} current={progressStep} />
       ) : brief ? (
         <>
           {/* Intensidade sempre visível (calculada das fontes, não da IA) */}
@@ -535,9 +614,8 @@ const RealTimeMonitor = () => {
             </Card>
           )}
         </>
-      ) : (
-        <LoadingState />
-      )}
+      ) : null)}
+
     </div>
   );
 };
@@ -579,5 +657,53 @@ const LoadingState = () => (
     </CardContent></Card>
   </div>
 );
+
+const ProgressLoader = ({ steps, current }: { steps: string[]; current: number }) => {
+  const pct = Math.min(100, Math.round((current / steps.length) * 100));
+  return (
+    <Card className="border-border/60">
+      <CardContent className="p-6 space-y-4">
+        <div className="space-y-2">
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>Executando pipeline de inteligência</span>
+            <span className="tabular-nums">{pct}%</span>
+          </div>
+          <div className="h-2 rounded-full bg-muted overflow-hidden">
+            <motion.div
+              className="h-full bg-primary"
+              initial={{ width: 0 }}
+              animate={{ width: `${pct}%` }}
+              transition={{ duration: 0.5 }}
+            />
+          </div>
+        </div>
+        <ul className="space-y-2">
+          {steps.map((s, i) => {
+            const done = i < current;
+            const active = i === current;
+            return (
+              <li key={i} className="flex items-center gap-2 text-sm">
+                {done ? (
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                ) : active ? (
+                  <Loader2 className="h-4 w-4 text-primary animate-spin shrink-0" />
+                ) : (
+                  <div className="h-4 w-4 rounded-full border border-muted-foreground/30 shrink-0" />
+                )}
+                <span className={cn(
+                  done && "text-foreground",
+                  active && "text-foreground font-medium",
+                  !done && !active && "text-muted-foreground"
+                )}>
+                  {s}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+};
 
 export default RealTimeMonitor;
