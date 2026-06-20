@@ -10,7 +10,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   MapPinned, Sparkles, TrendingUp, AlertTriangle, Target, ShieldAlert,
   CheckCircle2, Compass, CalendarRange, Users, Building2, Lightbulb,
+  BrainCircuit, Play, Loader2, RefreshCw,
 } from "lucide-react";
+import { CandidateSelector } from "@/components/dashboard/realtime/CandidateSelector";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -112,8 +114,16 @@ const LOADING_MESSAGES = [
   "Gerando estratégia eleitoral híbrida...",
 ];
 
+const PROGRESS_STEPS = [
+  "Inicializando",
+  "Analisando regiões",
+  "Processando 27 estados",
+  "Cruzando dados demográficos",
+  "Gerando análise IA",
+];
+
 // ---------- Tipos ----------
-interface Candidate { id: string; full_name: string; }
+interface Candidate { id: string; full_name: string; party?: string | null; region?: string | null; }
 
 // Estado base (vem do overview, calculado por algoritmo)
 interface StateBase {
@@ -265,6 +275,8 @@ export default function RegionalAnalysis() {
   const { user } = useAuth();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [candidateId, setCandidateId] = useState<string>("");
+  const [activeCandidateId, setActiveCandidateId] = useState<string>("");
+  const [started, setStarted] = useState(false);
   const [period, setPeriod] = useState<PeriodKey>("30d");
   const [customRange, setCustomRange] = useState<DateRange | undefined>();
   const [customOpen, setCustomOpen] = useState(false);
@@ -273,6 +285,7 @@ export default function RegionalAnalysis() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [loadMsg, setLoadMsg] = useState(LOADING_MESSAGES[0]);
+  const [progressStep, setProgressStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const [selectedUf, setSelectedUf] = useState<string>("MT");
@@ -284,44 +297,56 @@ export default function RegionalAnalysis() {
   const [deepLoading, setDeepLoading] = useState<string | null>(null);
   const [deepError, setDeepError] = useState<string | null>(null);
 
+  const selectedCandidate = useMemo(
+    () => candidates.find((c) => c.id === candidateId) || null,
+    [candidates, candidateId]
+  );
+  const activeCandidate = useMemo(
+    () => candidates.find((c) => c.id === activeCandidateId) || null,
+    [candidates, activeCandidateId]
+  );
+
   // Loading animation
   useEffect(() => {
     if (!loading) {
       if (progress > 0) {
         setProgress(100);
+        setProgressStep(PROGRESS_STEPS.length);
         const t = setTimeout(() => setProgress(0), 400);
         return () => clearTimeout(t);
       }
       return;
     }
     setProgress(5);
+    setProgressStep(0);
     let i = 0;
     setLoadMsg(LOADING_MESSAGES[0]);
     const msgTick = setInterval(() => {
       i = (i + 1) % LOADING_MESSAGES.length;
       setLoadMsg(LOADING_MESSAGES[i]);
     }, 1800);
+    const stepTick = setInterval(() => {
+      setProgressStep((s) => (s < PROGRESS_STEPS.length - 1 ? s + 1 : s));
+    }, 1800);
     const tick = setInterval(() => {
       setProgress((p) => Math.min(p + Math.random() * 5 + 2, 92));
     }, 500);
-    return () => { clearInterval(tick); clearInterval(msgTick); };
+    return () => { clearInterval(tick); clearInterval(msgTick); clearInterval(stepTick); };
   }, [loading]); // eslint-disable-line
 
-  // Load candidates
+  // Load candidates (no auto-select)
   useEffect(() => {
     if (!user) return;
     (async () => {
       const { data } = await supabase
         .from("candidates")
-        .select("id, full_name")
+        .select("id, full_name, party, region")
         .eq("user_id", user.id)
         .eq("status", "active")
         .order("full_name");
-      const list = data ?? [];
-      setCandidates(list);
-      if (list.length && !candidateId) setCandidateId(list[0].id);
+      setCandidates((data ?? []) as Candidate[]);
     })();
-  }, [user]); // eslint-disable-line
+  }, [user]);
 
   const periodPayload = useMemo(() => {
     if (period === "custom" && customRange?.from && customRange?.to) {
@@ -341,14 +366,15 @@ export default function RegionalAnalysis() {
     return { period_label: map[period] };
   }, [period, customRange]);
 
-  const runAnalysis = useCallback(async () => {
-    if (!user || !candidateId) return;
+  const runAnalysis = useCallback(async (cid?: string) => {
+    const targetId = cid || activeCandidateId;
+    if (!user || !targetId) return;
     setLoading(true);
     setError(null);
     setAnalysis(null);
     try {
       const { data, error: invokeErr } = await supabase.functions.invoke("regional-ai-analysis", {
-        body: { candidate_id: candidateId, ...periodPayload },
+        body: { candidate_id: targetId, ...periodPayload },
       });
       if (invokeErr) {
         setError("A análise está sendo processada. Tente novamente em instantes.");
@@ -366,13 +392,32 @@ export default function RegionalAnalysis() {
     } finally {
       setLoading(false);
     }
-  }, [user, candidateId, periodPayload]);
+  }, [user, activeCandidateId, periodPayload]);
 
+  const handleStart = useCallback(() => {
+    if (!selectedCandidate) return;
+    setActiveCandidateId(selectedCandidate.id);
+    setStarted(true);
+    setDeepCache({});
+    runAnalysis(selectedCandidate.id);
+  }, [selectedCandidate, runAnalysis]);
+
+  const handleChangeCandidate = useCallback(() => {
+    setStarted(false);
+    setActiveCandidateId("");
+    setAnalysis(null);
+    setError(null);
+    setDeepCache({});
+    setSelectedRegion(null);
+    setProgressStep(0);
+  }, []);
+
+  // Re-run when period changes while active
   useEffect(() => {
-    if (!candidateId) return;
+    if (!started || !activeCandidateId) return;
     if (period === "custom" && !(customRange?.from && customRange?.to)) return;
     runAnalysis();
-  }, [candidateId, period, customRange]); // eslint-disable-line
+  }, [period, customRange, started, activeCandidateId]); // eslint-disable-line
 
   const stateMap = useMemo(() => {
     const m: Record<string, StateBase> = {};
@@ -417,14 +462,14 @@ export default function RegionalAnalysis() {
 
   // Lazy-load análise profunda ao trocar UF / no primeiro load
   useEffect(() => {
-    if (!analysis || !candidateId || detailMode !== "state" || !selectedUf) return;
+    if (!analysis || !activeCandidateId || detailMode !== "state" || !selectedUf) return;
     if (deepCache[selectedUf] || deepLoading === selectedUf) return;
     setDeepLoading(selectedUf);
     setDeepError(null);
     (async () => {
       try {
         const { data, error: invErr } = await supabase.functions.invoke("regional-ai-analysis", {
-          body: { candidate_id: candidateId, mode: "state_deep", uf: selectedUf, ...periodPayload },
+          body: { candidate_id: activeCandidateId, mode: "state_deep", uf: selectedUf, ...periodPayload },
         });
         if (invErr || data?.success === false || !data?.state) {
           setDeepError(data?.message || "Não foi possível gerar a análise profunda agora. Tente novamente.");
@@ -437,10 +482,10 @@ export default function RegionalAnalysis() {
         setDeepLoading((cur) => (cur === selectedUf ? null : cur));
       }
     })();
-  }, [selectedUf, detailMode, analysis, candidateId]); // eslint-disable-line
+  }, [selectedUf, detailMode, analysis, activeCandidateId]); // eslint-disable-line
 
   // Reset cache quando candidato/período mudam
-  useEffect(() => { setDeepCache({}); }, [candidateId, period, customRange]);
+  useEffect(() => { setDeepCache({}); }, [activeCandidateId, period, customRange]);
 
   const retryDeep = useCallback(() => {
     setDeepCache((prev) => { const c = { ...prev }; delete c[selectedUf]; return c; });
@@ -453,27 +498,37 @@ export default function RegionalAnalysis() {
     <TooltipProvider delayDuration={120}>
       <div className="space-y-6 animate-fade-in">
         {/* Header */}
-        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-2">
               <MapPinned className="h-7 w-7 text-primary" />
               Análise Regional
             </h1>
             <p className="text-muted-foreground mt-1 max-w-2xl">
-              Inteligência política híbrida: macrorregiões e os 27 estados — perfil do eleitor, temas sensíveis, penetração e estratégia.
+              Inteligência política híbrida: macrorregiões e os 27 estados.
             </p>
           </div>
-          <div className="min-w-[220px]">
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Candidato</label>
-            <Select value={candidateId} onValueChange={setCandidateId}>
-              <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-              <SelectContent>
-                {candidates.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {started && activeCandidate && (
+            <div className="flex flex-col items-end gap-1.5">
+              <div className="text-[11px] text-muted-foreground">Análise ativa para</div>
+              <div className="text-sm font-semibold">{activeCandidate.full_name}</div>
+              {analysis && (
+                <div className="text-[10px] text-muted-foreground">
+                  Última atualização: {format(new Date(analysis.generated_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                </div>
+              )}
+              <div className="flex items-center gap-2 mt-1">
+                <Button size="sm" variant="outline" onClick={() => runAnalysis()} disabled={loading}>
+                  <RefreshCw className={cn("h-4 w-4 mr-1.5", loading && "animate-spin")} />
+                  Atualizar IA
+                </Button>
+                <Button size="sm" variant="ghost" onClick={handleChangeCandidate} disabled={loading}>
+                  <Users className="h-4 w-4 mr-1.5" />
+                  Trocar candidato
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Period pills */}
@@ -500,24 +555,53 @@ export default function RegionalAnalysis() {
           ))}
         </div>
 
-        {!candidateId && !loading && (
-          <Card><CardContent className="py-16 text-center text-muted-foreground">
-            Adicione um candidato em "Candidatos" para começar.
-          </CardContent></Card>
+        {/* Initial start screen */}
+        {!started && (
+          <Card className="border-border/60">
+            <CardContent className="p-8 flex flex-col items-center gap-4 max-w-xl mx-auto text-center">
+              <div className="rounded-full bg-primary/10 p-3">
+                <BrainCircuit className="h-6 w-6 text-primary" />
+              </div>
+              <div className="space-y-1">
+                <h2 className="text-base font-semibold">Selecione um candidato para iniciar</h2>
+                <p className="text-xs text-muted-foreground">
+                  A IA irá analisar as 5 macrorregiões e os 27 estados, cruzando força eleitoral, rejeição e perfil demográfico.
+                </p>
+              </div>
+              <div className="w-full max-w-sm space-y-2">
+                <CandidateSelector
+                  candidates={candidates}
+                  value={candidateId}
+                  onChange={setCandidateId}
+                  disabled={loading}
+                />
+                <Button className="w-full" onClick={handleStart} disabled={!selectedCandidate || loading}>
+                  <Play className="h-4 w-4 mr-1.5" />
+                  Gerar Análise Regional IA
+                </Button>
+              </div>
+              {candidates.length === 0 && (
+                <p className="text-[11px] text-muted-foreground">
+                  Nenhum candidato cadastrado ainda. Adicione candidatos para começar.
+                </p>
+              )}
+            </CardContent>
+          </Card>
         )}
 
-        {loading && <RegionalLoading progress={progress} message={loadMsg} />}
+        {started && loading && <ProgressLoader steps={PROGRESS_STEPS} current={progressStep} />}
 
-        {!loading && error && !analysis && (
+        {started && !loading && error && !analysis && (
           <Card className="border-destructive/30 bg-destructive/5">
             <CardContent className="py-10 text-center space-y-3">
               <AlertTriangle className="h-8 w-8 text-destructive mx-auto" />
               <h3 className="font-semibold">Análise em processamento</h3>
               <p className="text-sm text-muted-foreground max-w-md mx-auto">{error}</p>
-              <Button onClick={runAnalysis}>Tentar novamente</Button>
+              <Button onClick={() => runAnalysis()}>Tentar novamente</Button>
             </CardContent>
           </Card>
         )}
+
 
         {!loading && analysis && (
           <>
@@ -1007,5 +1091,48 @@ function RegionPanel({ data, onPickUf }: { data: RegionAggregate; onPickUf: (uf:
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function ProgressLoader({ steps, current }: { steps: string[]; current: number }) {
+  const pct = Math.min(100, Math.round((current / steps.length) * 100));
+  return (
+    <Card className="border-border/60">
+      <CardContent className="p-6 space-y-4">
+        <div className="space-y-2">
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>Executando pipeline regional</span>
+            <span className="tabular-nums">{pct}%</span>
+          </div>
+          <Progress value={pct} className="h-2" />
+        </div>
+        <ul className="space-y-2">
+          {steps.map((s, i) => {
+            const done = i < current;
+            const active = i === current;
+            return (
+              <li key={i} className="flex items-center gap-2 text-sm">
+                {done ? (
+                  <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                ) : active ? (
+                  <Loader2 className="h-4 w-4 text-primary animate-spin shrink-0" />
+                ) : (
+                  <div className="h-4 w-4 rounded-full border border-muted-foreground/30 shrink-0" />
+                )}
+                <span
+                  className={cn(
+                    done && "text-foreground",
+                    active && "text-foreground font-medium",
+                    !done && !active && "text-muted-foreground"
+                  )}
+                >
+                  {s}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </CardContent>
+    </Card>
   );
 }
