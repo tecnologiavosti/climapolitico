@@ -75,13 +75,6 @@ interface ListeningReport {
   generated_at: string;
 }
 
-const NETWORKS_FILTER = [
-  { value: "all", label: "Todas" },
-  { value: "twitter", label: "X / Twitter" },
-  { value: "instagram", label: "Instagram" },
-  { value: "tiktok", label: "TikTok" },
-  { value: "youtube", label: "YouTube" },
-  { value: "facebook", label: "Facebook" },
 const NETWORK_OPTIONS = [
   { value: "instagram", label: "Instagram" },
   { value: "twitter", label: "X / Twitter" },
