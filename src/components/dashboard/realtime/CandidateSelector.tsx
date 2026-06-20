@@ -8,7 +8,14 @@ import { cn } from "@/lib/utils";
 interface Candidate {
   id: string;
   full_name: string;
+  party?: string | null;
+  region?: string | null;
 }
+
+const formatMeta = (c: Candidate) => {
+  const parts = [c.party, c.region].filter(Boolean);
+  return parts.length ? parts.join(" — ") : "";
+};
 
 interface Props {
   candidates: Candidate[];
