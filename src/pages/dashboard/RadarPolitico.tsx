@@ -498,14 +498,6 @@ export default function RadarPolitico() {
   // Filtros locais
   const filtered = useMemo(() => {
     let list = events;
-    // Entity resolution: garante que notícias do Jair não vazem para Flávio (e vice-versa)
-    if (candidateId !== "all" && candidateName) {
-      const before = list.length;
-      list = list.filter((e) => isEventRelevantForCandidate(e, candidateName));
-      if (before !== list.length) {
-        console.log(`[Radar] Entity filter '${candidateName}': ${before} → ${list.length} eventos`);
-      }
-    }
     if (category !== "Todos") list = list.filter((e) => e.category === category);
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -517,7 +509,7 @@ export default function RadarPolitico() {
       return new Date(b.event_date).getTime() - new Date(a.event_date).getTime();
     });
     return list;
-  }, [events, candidateId, candidateName, category, search, sortBy]);
+  }, [events, category, search, sortBy]);
 
   const visibleEvents = filtered;
 
@@ -698,7 +690,8 @@ export default function RadarPolitico() {
       {/* KPIs */}
       <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Kpi label="Eventos encontrados" value={backendTotal} />
-        <Kpi label="Eventos exibidos (com filtros)" value={filtered.length} />
+        <Kpi label="Eventos exibidos" value={visibleEvents.length} />
+        <Kpi label="Status" value={visibleEvents.length === events.length ? "Completo" : "Incompleto"} />
       </section>
 
       {/* Timeline */}
