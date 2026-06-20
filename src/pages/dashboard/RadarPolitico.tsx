@@ -519,15 +519,14 @@ export default function RadarPolitico() {
     return list;
   }, [events, candidateId, candidateName, category, search, sortBy]);
 
-
-  useEffect(() => {
-    setVisibleCount(INITIAL_VISIBLE);
-  }, [cacheKey, search]);
-
-  const visibleEvents = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+  const visibleEvents = filtered;
 
   const backendTotal = jobStatus?.events_count ?? events.length;
   useEffect(() => {
+    console.log({ fetched: events.length, rendered: visibleEvents.length });
+    if (events.length !== visibleEvents.length) {
+      console.error("Radar render mismatch");
+    }
     if (import.meta.env.DEV) {
       console.log("[Radar Debug]", {
         totalFetched: events.length,
@@ -535,18 +534,11 @@ export default function RadarPolitico() {
         totalAfterFilter: filtered.length,
         totalRendered: visibleEvents.length,
       });
-      if (backendTotal !== filtered.length && events.length > 0) {
-        console.warn(`Radar mismatch: fetched ${backendTotal} / após filtros ${filtered.length} / renderizado ${visibleEvents.length}`);
+      if (events.length !== visibleEvents.length) {
+        console.warn(`Radar mismatch: fetched ${events.length} / rendered ${visibleEvents.length}`);
       }
     }
   }, [backendTotal, filtered.length, visibleEvents.length, events.length]);
-
-  const rowVirtualizer = useVirtualizer({
-    count: visibleEvents.length,
-    getScrollElement: () => listParentRef.current,
-    estimateSize: () => 108,
-    overscan: 8,
-  });
 
   const kpis = useMemo(() => ({
     total: Math.max(backendTotal, filtered.length),
