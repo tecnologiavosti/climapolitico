@@ -198,7 +198,8 @@ const PRESETS = [
 
 const nfBR = new Intl.NumberFormat("pt-BR");
 const PAGE_SIZE = 500;
-const LOAD_MORE_STEP = 100;
+const INITIAL_VISIBLE = 10;
+const LOAD_MORE_STEP = 10;
 const BACKEND_FETCH_PAGE = 500;
 const MEMORY_CACHE_TTL_MS = 15 * 60 * 1000;
 const BROWSER_CACHE_TTL_MS = 60 * 60 * 1000;
@@ -343,7 +344,7 @@ export default function RadarPolitico() {
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
   const [lastError, setLastError] = useState<{ message: string; stack: string } | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
-  const [visibleCount, setVisibleCount] = useState(LOAD_MORE_STEP);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
   const listParentRef = useRef<HTMLDivElement | null>(null);
 
   const { data: candidates } = useQuery({
@@ -469,7 +470,7 @@ export default function RadarPolitico() {
       if (candidateId === "all") throw new Error("Selecione um candidato.");
       if (!from || !to) throw new Error("Defina o período (datas inicial e final).");
       setEvents([]);
-      setVisibleCount(LOAD_MORE_STEP);
+      setVisibleCount(INITIAL_VISIBLE);
       setLastError(null);
       const { data, error } = await supabase.functions.invoke("radar-job-create", {
         body: {
@@ -569,21 +570,25 @@ export default function RadarPolitico() {
 
 
   useEffect(() => {
-    setVisibleCount(LOAD_MORE_STEP);
+    setVisibleCount(INITIAL_VISIBLE);
   }, [cacheKey, search]);
 
   const visibleEvents = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
 
   const backendTotal = jobStatus?.events_count ?? events.length;
   useEffect(() => {
-    console.log("TOTAL EVENTS", events.length);
-    console.log("BACKEND TOTAL", backendTotal);
-    console.log("FILTERED EVENTS", filtered.length);
-    console.log("SORTED EVENTS", filtered.length);
-    console.log("VISIBLE EVENTS", visibleEvents.length);
-    console.log("FIRST EVENT DATE", filtered[0]?.event_date);
-    console.log("LAST EVENT DATE", filtered.at(-1)?.event_date);
-  }, [backendTotal, filtered, visibleEvents.length, events.length]);
+    if (import.meta.env.DEV) {
+      console.log("[Radar Debug]", {
+        totalFetched: events.length,
+        backendTotal,
+        totalAfterFilter: filtered.length,
+        totalRendered: visibleEvents.length,
+      });
+      if (backendTotal !== filtered.length && events.length > 0) {
+        console.warn(`Radar mismatch: fetched ${backendTotal} / após filtros ${filtered.length} / renderizado ${visibleEvents.length}`);
+      }
+    }
+  }, [backendTotal, filtered.length, visibleEvents.length, events.length]);
 
   const rowVirtualizer = useVirtualizer({
     count: visibleEvents.length,
@@ -748,8 +753,9 @@ export default function RadarPolitico() {
       )}
 
       {/* KPIs */}
-      <section className="grid grid-cols-1 gap-3">
-        <Kpi label="Eventos" value={kpis.total} />
+      <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Kpi label="Eventos encontrados" value={backendTotal} />
+        <Kpi label="Eventos exibidos (com filtros)" value={filtered.length} />
       </section>
 
       {/* Timeline */}
@@ -785,7 +791,7 @@ export default function RadarPolitico() {
         <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">
           {searchMutation.isPending || isJobRunning
             ? "Buscando eventos históricos..."
-            : `${nfBR.format(filtered.length)} eventos`}
+            : `${nfBR.format(visibleEvents.length)} de ${nfBR.format(filtered.length)} exibidos${filtered.length !== backendTotal ? ` · ${nfBR.format(backendTotal)} encontrados` : ""}`}
         </h2>
 
         {lastError && !searchMutation.isPending && !isJobRunning && (
