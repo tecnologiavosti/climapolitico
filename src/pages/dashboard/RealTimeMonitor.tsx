@@ -298,7 +298,7 @@ const RealTimeMonitor = () => {
   return (
     <div className="space-y-5 pb-8">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
         <div className="flex items-start gap-3">
           <div className="rounded-lg bg-primary/10 p-2.5 mt-0.5">
             <BrainCircuit className="h-5 w-5 text-primary" />
@@ -306,31 +306,80 @@ const RealTimeMonitor = () => {
           <div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Centro de Inteligência Política</h1>
             <p className="text-xs sm:text-sm text-muted-foreground">
-              Análise estratégica gerada por IA a partir de fontes externas (Google News, portais, STF, TSE, Congresso, PF, YouTube).
+              Análise estratégica gerada por IA a partir de fontes externas.
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <CandidateSelector
-            candidates={candidates}
-            value={selectedId}
-            onChange={setSelectedId}
-            disabled={loading}
-          />
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => selectedCandidate && fetchBrief(selectedCandidate.full_name, true)}
-            disabled={loading || !selectedCandidate}
-          >
-            <RefreshCw className={cn("h-4 w-4 mr-1.5", loading && "animate-spin")} />
-            Atualizar IA
-          </Button>
-        </div>
+        {started && activeCandidate && (
+          <div className="flex flex-col items-end gap-1.5">
+            <div className="text-[11px] text-muted-foreground">
+              Monitoramento ativo para
+            </div>
+            <div className="text-sm font-semibold">{activeCandidate.full_name}</div>
+            {brief && (
+              <div className="text-[10px] text-muted-foreground">
+                Última atualização: {format(new Date(brief.fetched_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+              </div>
+            )}
+            <div className="flex items-center gap-2 mt-1">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => fetchBrief(activeCandidate.full_name, true)}
+                disabled={loading}
+              >
+                <RefreshCw className={cn("h-4 w-4 mr-1.5", loading && "animate-spin")} />
+                Atualizar IA
+              </Button>
+              <Button size="sm" variant="ghost" onClick={handleChangeCandidate} disabled={loading}>
+                <Users className="h-4 w-4 mr-1.5" />
+                Trocar candidato
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* Initial start screen */}
+      {!started && (
+        <Card className="border-border/60">
+          <CardContent className="p-8 flex flex-col items-center gap-4 max-w-xl mx-auto text-center">
+            <div className="rounded-full bg-primary/10 p-3">
+              <BrainCircuit className="h-6 w-6 text-primary" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-base font-semibold">Selecione um candidato para iniciar</h2>
+              <p className="text-xs text-muted-foreground">
+                A IA irá coletar notícias, fontes oficiais (STF, TSE, Congresso, PF), YouTube e gerar uma análise estratégica completa.
+              </p>
+            </div>
+            <div className="w-full max-w-sm space-y-2">
+              <CandidateSelector
+                candidates={candidates}
+                value={selectedId}
+                onChange={setSelectedId}
+                disabled={loading}
+              />
+              <Button
+                className="w-full"
+                onClick={handleStart}
+                disabled={!selectedCandidate || loading}
+              >
+                <Play className="h-4 w-4 mr-1.5" />
+                Iniciar Monitoramento IA
+              </Button>
+            </div>
+            {candidates.length === 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                Nenhum candidato cadastrado ainda. Adicione candidatos para começar.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Meta bar */}
-      {brief && (
+      {started && brief && (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="outline" className="gap-1">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -347,7 +396,7 @@ const RealTimeMonitor = () => {
         </div>
       )}
 
-      {error && (
+      {started && error && (
         <Card className="border-destructive/40 bg-destructive/5">
           <CardContent className="p-4 text-sm text-destructive flex items-center gap-2">
             <AlertTriangle className="h-4 w-4" /> {error}
@@ -355,12 +404,8 @@ const RealTimeMonitor = () => {
         </Card>
       )}
 
-      {!selectedCandidate ? (
-        <Card><CardContent className="p-10 text-center text-muted-foreground text-sm">
-          Selecione um candidato para iniciar a análise política por IA.
-        </CardContent></Card>
-      ) : loading && !brief ? (
-        <LoadingState />
+      {started && (loading && !brief ? (
+        <ProgressLoader steps={PROGRESS_STEPS} current={progressStep} />
       ) : brief ? (
         <>
           {/* Intensidade sempre visível (calculada das fontes, não da IA) */}
