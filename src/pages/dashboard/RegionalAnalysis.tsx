@@ -275,6 +275,8 @@ export default function RegionalAnalysis() {
   const { user } = useAuth();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [candidateId, setCandidateId] = useState<string>("");
+  const [activeCandidateId, setActiveCandidateId] = useState<string>("");
+  const [started, setStarted] = useState(false);
   const [period, setPeriod] = useState<PeriodKey>("30d");
   const [customRange, setCustomRange] = useState<DateRange | undefined>();
   const [customOpen, setCustomOpen] = useState(false);
@@ -283,6 +285,7 @@ export default function RegionalAnalysis() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [loadMsg, setLoadMsg] = useState(LOADING_MESSAGES[0]);
+  const [progressStep, setProgressStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const [selectedUf, setSelectedUf] = useState<string>("MT");
@@ -294,44 +297,56 @@ export default function RegionalAnalysis() {
   const [deepLoading, setDeepLoading] = useState<string | null>(null);
   const [deepError, setDeepError] = useState<string | null>(null);
 
+  const selectedCandidate = useMemo(
+    () => candidates.find((c) => c.id === candidateId) || null,
+    [candidates, candidateId]
+  );
+  const activeCandidate = useMemo(
+    () => candidates.find((c) => c.id === activeCandidateId) || null,
+    [candidates, activeCandidateId]
+  );
+
   // Loading animation
   useEffect(() => {
     if (!loading) {
       if (progress > 0) {
         setProgress(100);
+        setProgressStep(PROGRESS_STEPS.length);
         const t = setTimeout(() => setProgress(0), 400);
         return () => clearTimeout(t);
       }
       return;
     }
     setProgress(5);
+    setProgressStep(0);
     let i = 0;
     setLoadMsg(LOADING_MESSAGES[0]);
     const msgTick = setInterval(() => {
       i = (i + 1) % LOADING_MESSAGES.length;
       setLoadMsg(LOADING_MESSAGES[i]);
     }, 1800);
+    const stepTick = setInterval(() => {
+      setProgressStep((s) => (s < PROGRESS_STEPS.length - 1 ? s + 1 : s));
+    }, 1800);
     const tick = setInterval(() => {
       setProgress((p) => Math.min(p + Math.random() * 5 + 2, 92));
     }, 500);
-    return () => { clearInterval(tick); clearInterval(msgTick); };
+    return () => { clearInterval(tick); clearInterval(msgTick); clearInterval(stepTick); };
   }, [loading]); // eslint-disable-line
 
-  // Load candidates
+  // Load candidates (no auto-select)
   useEffect(() => {
     if (!user) return;
     (async () => {
       const { data } = await supabase
         .from("candidates")
-        .select("id, full_name")
+        .select("id, full_name, party, region")
         .eq("user_id", user.id)
         .eq("status", "active")
         .order("full_name");
-      const list = data ?? [];
-      setCandidates(list);
-      if (list.length && !candidateId) setCandidateId(list[0].id);
+      setCandidates((data ?? []) as Candidate[]);
     })();
-  }, [user]); // eslint-disable-line
+  }, [user]);
 
   const periodPayload = useMemo(() => {
     if (period === "custom" && customRange?.from && customRange?.to) {
