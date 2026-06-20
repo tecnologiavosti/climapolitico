@@ -264,18 +264,6 @@ const RealTimeMonitor = () => {
         })(),
         source: cleanFeedContent(ev.source),
       }))
-      .split(/\s+/)
-      .filter((t) => t.length >= 4);
-    return analysis.key_events
-      .map((ev) => ({
-        ...ev,
-        title: cleanFeedContent(ev.title),
-        summary: (() => {
-          const cleanSummary = cleanFeedContent(ev.summary);
-          return isBrokenSummary(cleanSummary) ? buildFallbackSummary(ev.title, selectedCandidate?.full_name) : cleanSummary;
-        })(),
-        source: cleanFeedContent(ev.source),
-      }))
       .filter((ev) => {
         if (!ev?.date) return false;
         const t = new Date(ev.date).getTime();
