@@ -1,27 +1,35 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { DateRange } from "react-day-picker";
 import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { DateRangePicker } from "@/components/DateRangePicker";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { CandidateSelector } from "@/components/dashboard/realtime/CandidateSelector";
 import { motion, AnimatePresence } from "framer-motion";
-import NetworkViewLoading from "@/components/dashboard/NetworkViewLoading";
+import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
   BarChart3,
+  BrainCircuit,
   CheckCircle2,
+  ChevronsUpDown,
   Flame,
   Gauge,
+  Loader2,
   Megaphone,
   MessageCircle,
+  Play,
   RefreshCw,
   Repeat2,
   Share2,
@@ -31,6 +39,7 @@ import {
   Users,
   Zap,
 } from "lucide-react";
+
 
 type ClimaStatus = "explodindo" | "aquecido" | "estavel" | "frio" | "hostil" | "favoravel" | "polarizado";
 type Tracao = "alta" | "media" | "baixa";
