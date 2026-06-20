@@ -20,7 +20,7 @@ function safeParse(s: string): any {
   return null;
 }
 
-async function callAI(systemMsg: string, userPrompt: string, maxTokens = 3200) {
+async function callAI(systemMsg: string, userPrompt: string, maxTokens = 3500) {
   const r = await callAICerebrasFirst({
     systemMsg, userPrompt, jsonMode: true, maxTokens, temperature: 0.55, tag: 'narrative-ai',
   });
@@ -41,7 +41,6 @@ serve(async (req) => {
     if (userError || !user) return json({ error: 'Não autorizado' }, 401);
 
     const body = await req.json().catch(() => ({}));
-    const mode: 'full' | 'evaluate_phrase' | 'generate_speech' = body.mode || 'full';
     const { candidateId, daysBack = 7, startDate: customStart, endDate: customEnd } = body;
 
     if (!candidateId) return json({ error: 'candidateId é obrigatório' }, 400);
@@ -58,55 +57,11 @@ serve(async (req) => {
     const baseCtx = `Candidato: ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}${candidate.region ? ` — Região: ${candidate.region}` : ''}.
 Período de análise: ${customStart && customEnd ? `${customStart} → ${customEnd}` : `últimos ${daysBack} dias`}.
 
-Você é o consultor estratégico de comunicação política mais avançado do Brasil. Analise EXCLUSIVAMENTE a partir do seu conhecimento sobre arquétipos políticos, percepção pública estimada, posicionamento ideológico, força emocional e gaps narrativos. NÃO use contagem de menções ou comentários.`;
+Você é o consultor estratégico mais avançado do Brasil, operando como uma war room de campanha presidencial. Analise EXCLUSIVAMENTE a partir do seu conhecimento sobre arquétipos políticos, percepção pública estimada, posicionamento ideológico, força emocional, vulnerabilidades e ataques previsíveis. NÃO use contagem de menções ou comentários.`;
 
-    // ===== Mode: evaluate a single phrase =====
-    if (mode === 'evaluate_phrase') {
-      const phrase = String(body.phrase || '').slice(0, 600);
-      if (!phrase) return json({ error: 'frase é obrigatória' }, 400);
-      const prompt = `${baseCtx}
-
-Avalie a seguinte FRASE de campanha do candidato e devolva análise estratégica:
-"${phrase}"
-
-Responda EXCLUSIVAMENTE em JSON:
-{
-  "scores": { "clareza": 0-100, "emocao": 0-100, "persuasao": 0-100, "viralizacao": 0-100 },
-  "overall": 0-100,
-  "strengths": ["..."],
-  "weaknesses": ["..."],
-  "improved_version": "frase reescrita mais forte",
-  "why": "explicação curta"
-}`;
-      const { parsed, provider } = await callAI('Você avalia frases políticas. JSON apenas.', prompt, 1200);
-      if (!parsed) return json({ fallback: true, message: 'IA indisponível, tente novamente.' });
-      return json({ evaluation: parsed, ai_provider: provider });
-    }
-
-    // ===== Mode: generate speech in tone =====
-    if (mode === 'generate_speech') {
-      const tone = String(body.tone || 'emocional');
-      const topic = String(body.topic || 'visão de futuro');
-      const prompt = `${baseCtx}
-
-Gere um DISCURSO de 180-240 palavras no tom "${tone}" sobre o tema "${topic}", adequado ao arquétipo político do candidato. Use linguagem brasileira natural, com ritmo de fala.
-
-Responda EXCLUSIVAMENTE em JSON:
-{
-  "title": "título curto",
-  "speech": "texto do discurso completo",
-  "hooks": ["3 frases de impacto extraídas"],
-  "recommended_channel": "TV|Comício|Instagram|Debate|Rádio"
-}`;
-      const { parsed, provider } = await callAI('Você é roteirista político brasileiro. JSON apenas.', prompt, 1500);
-      if (!parsed) return json({ fallback: true, message: 'IA indisponível, tente novamente.' });
-      return json({ speech: parsed, ai_provider: provider });
-    }
-
-    // ===== Mode: full strategic narrative =====
     const prompt = `${baseCtx}
 
-Gere uma análise narrativa COMPLETA e profundamente estratégica, no formato JSON exato abaixo.
+Gere uma análise estratégica COMPLETA no formato JSON exato abaixo.
 Regras: cada campo deve ser específico ao candidato, não genérico. Scores são 0-100. Não invente estatísticas numéricas de mídia.
 
 {
@@ -129,6 +84,28 @@ Regras: cada campo deve ser específico ao candidato, não genérico. Scores sã
   "harmful_narratives": [
     { "narrative": "...", "risk": "...", "mitigation": "..." }
   ],
+  "discourse_matrix": {
+    "conservador": { "electoral_impact": 0-100, "reputational_risk": 0-100, "conversion_rate": 0-100, "summary": "..." },
+    "moderado":    { "electoral_impact": 0-100, "reputational_risk": 0-100, "conversion_rate": 0-100, "summary": "..." },
+    "economico":   { "electoral_impact": 0-100, "reputational_risk": 0-100, "conversion_rate": 0-100, "summary": "..." },
+    "polarizador": { "electoral_impact": 0-100, "reputational_risk": 0-100, "conversion_rate": 0-100, "summary": "..." }
+  },
+  "narrative_elasticity": {
+    "score": 0-100,
+    "label": "Baixa|Média|Alta capacidade de reposicionamento",
+    "explanation": "explicação estratégica sobre a capacidade do candidato de mudar discurso sem perder base"
+  },
+  "emotional_triggers": [
+    { "emotion": "segurança|autoridade|proteção|indignação|esperança|...", "score": 0-100, "why": "..." }
+  ],
+  "attack_surface": {
+    "high":   [ { "vector": "...", "why": "..." } ],
+    "medium": [ { "vector": "...", "why": "..." } ],
+    "low":    [ { "vector": "...", "why": "..." } ]
+  },
+  "counter_narratives": [
+    { "attack": "ataque previsível do adversário", "response": "resposta estratégica recomendada", "channel": "TV|Debate|Redes|Comício" }
+  ],
   "channel_plan": {
     "instagram": { "strategy": "...", "tone": "...", "content_examples": ["...","..."] },
     "tiktok":    { "strategy": "...", "tone": "...", "content_examples": ["...","..."] },
@@ -139,12 +116,12 @@ Regras: cada campo deve ser específico ao candidato, não genérico. Scores sã
   "confidence": 0-100
 }
 
-Mínimos: 3 itens em narrative_gaps, 4 em high_conversion_narratives, 3 em harmful_narratives.`;
+Mínimos: 3 narrative_gaps, 4 high_conversion_narratives, 3 harmful_narratives, 5 emotional_triggers, 4 counter_narratives, 2 itens em cada nível de attack_surface.`;
 
     const { parsed, provider } = await callAI(
-      'Você é consultor estratégico de comunicação política brasileira. Responda SEMPRE em JSON válido seguindo o schema solicitado, em português do Brasil.',
+      'Você é consultor estratégico de campanha presidencial brasileira (war room). Responda SEMPRE em JSON válido seguindo o schema solicitado, em português do Brasil.',
       prompt,
-      3500,
+      4500,
     );
 
     if (!parsed || !parsed.central_narrative) {
