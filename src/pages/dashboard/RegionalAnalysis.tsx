@@ -10,7 +10,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   MapPinned, Sparkles, TrendingUp, AlertTriangle, Target, ShieldAlert,
   CheckCircle2, Compass, CalendarRange, Users, Building2, Lightbulb,
+  BrainCircuit, Play, Loader2, RefreshCw,
 } from "lucide-react";
+import { CandidateSelector } from "@/components/dashboard/realtime/CandidateSelector";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
