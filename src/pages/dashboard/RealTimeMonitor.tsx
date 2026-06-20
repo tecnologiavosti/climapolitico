@@ -284,7 +284,7 @@ const RealTimeMonitor = () => {
         }
         return true;
       });
-  }, [analysis?.key_events, selectedCandidate?.full_name]);
+  }, [analysis?.key_events, activeCandidate?.full_name]);
 
 
   const intensityTone =
