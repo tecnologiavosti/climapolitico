@@ -250,8 +250,20 @@ const RealTimeMonitor = () => {
   const visibleEvents = useMemo(() => {
     if (!analysis?.key_events) return [];
     const now = Date.now();
-    const candidateName = (selectedCandidate?.full_name || "").toLowerCase().trim();
+    const candidateName = (activeCandidate?.full_name || "").toLowerCase().trim();
     const candidateTokens = candidateName
+      .split(/\s+/)
+      .filter((t) => t.length >= 4);
+    return analysis.key_events
+      .map((ev) => ({
+        ...ev,
+        title: cleanFeedContent(ev.title),
+        summary: (() => {
+          const cleanSummary = cleanFeedContent(ev.summary);
+          return isBrokenSummary(cleanSummary) ? buildFallbackSummary(ev.title, activeCandidate?.full_name) : cleanSummary;
+        })(),
+        source: cleanFeedContent(ev.source),
+      }))
       .split(/\s+/)
       .filter((t) => t.length >= 4);
     return analysis.key_events
