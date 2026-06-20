@@ -10,12 +10,13 @@ import { CandidateSelector } from "@/components/dashboard/realtime/CandidateSele
 import {
   RefreshCw, BrainCircuit, TrendingUp, TrendingDown, ShieldAlert,
   Trophy, Megaphone, AlertTriangle, Sparkles, Activity, Clock,
+  Play, CheckCircle2, Loader2, Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
-interface Candidate { id: string; full_name: string; party?: string | null; }
+interface Candidate { id: string; full_name: string; party?: string | null; region?: string | null; }
 
 interface KeyEvent {
   title: string;
