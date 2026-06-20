@@ -498,27 +498,37 @@ export default function RegionalAnalysis() {
     <TooltipProvider delayDuration={120}>
       <div className="space-y-6 animate-fade-in">
         {/* Header */}
-        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-2">
               <MapPinned className="h-7 w-7 text-primary" />
               Análise Regional
             </h1>
             <p className="text-muted-foreground mt-1 max-w-2xl">
-              Inteligência política híbrida: macrorregiões e os 27 estados — perfil do eleitor, temas sensíveis, penetração e estratégia.
+              Inteligência política híbrida: macrorregiões e os 27 estados.
             </p>
           </div>
-          <div className="min-w-[220px]">
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Candidato</label>
-            <Select value={candidateId} onValueChange={setCandidateId}>
-              <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-              <SelectContent>
-                {candidates.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {started && activeCandidate && (
+            <div className="flex flex-col items-end gap-1.5">
+              <div className="text-[11px] text-muted-foreground">Análise ativa para</div>
+              <div className="text-sm font-semibold">{activeCandidate.full_name}</div>
+              {analysis && (
+                <div className="text-[10px] text-muted-foreground">
+                  Última atualização: {format(new Date(analysis.generated_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                </div>
+              )}
+              <div className="flex items-center gap-2 mt-1">
+                <Button size="sm" variant="outline" onClick={() => runAnalysis()} disabled={loading}>
+                  <RefreshCw className={cn("h-4 w-4 mr-1.5", loading && "animate-spin")} />
+                  Atualizar IA
+                </Button>
+                <Button size="sm" variant="ghost" onClick={handleChangeCandidate} disabled={loading}>
+                  <Users className="h-4 w-4 mr-1.5" />
+                  Trocar candidato
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Period pills */}
@@ -545,24 +555,53 @@ export default function RegionalAnalysis() {
           ))}
         </div>
 
-        {!candidateId && !loading && (
-          <Card><CardContent className="py-16 text-center text-muted-foreground">
-            Adicione um candidato em "Candidatos" para começar.
-          </CardContent></Card>
+        {/* Initial start screen */}
+        {!started && (
+          <Card className="border-border/60">
+            <CardContent className="p-8 flex flex-col items-center gap-4 max-w-xl mx-auto text-center">
+              <div className="rounded-full bg-primary/10 p-3">
+                <BrainCircuit className="h-6 w-6 text-primary" />
+              </div>
+              <div className="space-y-1">
+                <h2 className="text-base font-semibold">Selecione um candidato para iniciar</h2>
+                <p className="text-xs text-muted-foreground">
+                  A IA irá analisar as 5 macrorregiões e os 27 estados, cruzando força eleitoral, rejeição e perfil demográfico.
+                </p>
+              </div>
+              <div className="w-full max-w-sm space-y-2">
+                <CandidateSelector
+                  candidates={candidates}
+                  value={candidateId}
+                  onChange={setCandidateId}
+                  disabled={loading}
+                />
+                <Button className="w-full" onClick={handleStart} disabled={!selectedCandidate || loading}>
+                  <Play className="h-4 w-4 mr-1.5" />
+                  Gerar Análise Regional IA
+                </Button>
+              </div>
+              {candidates.length === 0 && (
+                <p className="text-[11px] text-muted-foreground">
+                  Nenhum candidato cadastrado ainda. Adicione candidatos para começar.
+                </p>
+              )}
+            </CardContent>
+          </Card>
         )}
 
-        {loading && <RegionalLoading progress={progress} message={loadMsg} />}
+        {started && loading && <ProgressLoader steps={PROGRESS_STEPS} current={progressStep} />}
 
-        {!loading && error && !analysis && (
+        {started && !loading && error && !analysis && (
           <Card className="border-destructive/30 bg-destructive/5">
             <CardContent className="py-10 text-center space-y-3">
               <AlertTriangle className="h-8 w-8 text-destructive mx-auto" />
               <h3 className="font-semibold">Análise em processamento</h3>
               <p className="text-sm text-muted-foreground max-w-md mx-auto">{error}</p>
-              <Button onClick={runAnalysis}>Tentar novamente</Button>
+              <Button onClick={() => runAnalysis()}>Tentar novamente</Button>
             </CardContent>
           </Card>
         )}
+
 
         {!loading && analysis && (
           <>
