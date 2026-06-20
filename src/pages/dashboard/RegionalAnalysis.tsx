@@ -114,6 +114,14 @@ const LOADING_MESSAGES = [
   "Gerando estratégia eleitoral híbrida...",
 ];
 
+const PROGRESS_STEPS = [
+  "Inicializando",
+  "Analisando regiões",
+  "Processando 27 estados",
+  "Cruzando dados demográficos",
+  "Gerando análise IA",
+];
+
 // ---------- Tipos ----------
 interface Candidate { id: string; full_name: string; party?: string | null; region?: string | null; }
 
