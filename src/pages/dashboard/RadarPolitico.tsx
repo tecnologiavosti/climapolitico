@@ -939,12 +939,12 @@ function DateField({ date, onChange, placeholder }: { date?: Date; onChange: (d?
   );
 }
 
-function Kpi({ label, value, hint }: { label: string; value: number; hint?: string }) {
+function Kpi({ label, value, hint }: { label: string; value: number | string; hint?: string }) {
   return (
     <Card>
       <CardContent className="p-4">
         <div className="text-xs text-muted-foreground">{label}</div>
-        <div className="text-2xl font-semibold mt-1 tabular-nums">{nfBR.format(value)}</div>
+        <div className="text-2xl font-semibold mt-1 tabular-nums">{typeof value === "number" ? nfBR.format(value) : value}</div>
         {hint && <div className="text-[10px] text-muted-foreground mt-0.5">{hint}</div>}
       </CardContent>
     </Card>
