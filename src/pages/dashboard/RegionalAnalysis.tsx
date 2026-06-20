@@ -115,7 +115,7 @@ const LOADING_MESSAGES = [
 ];
 
 // ---------- Tipos ----------
-interface Candidate { id: string; full_name: string; }
+interface Candidate { id: string; full_name: string; party?: string | null; region?: string | null; }
 
 // Estado base (vem do overview, calculado por algoritmo)
 interface StateBase {
