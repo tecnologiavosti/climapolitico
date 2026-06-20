@@ -20,9 +20,9 @@ function safeParse(s: string): any {
   return null;
 }
 
-async function callAI(systemMsg: string, userPrompt: string, maxTokens = 3500) {
+async function callAI(systemMsg: string, userPrompt: string, maxTokens = 5000) {
   const r = await callAICerebrasFirst({
-    systemMsg, userPrompt, jsonMode: true, maxTokens, temperature: 0.55, tag: 'narrative-ai',
+    systemMsg, userPrompt, jsonMode: true, maxTokens, temperature: 0.5, tag: 'narrative-ai',
   });
   return { parsed: safeParse(r.content || ''), provider: `${r.provider}:${r.model}` };
 }
@@ -55,76 +55,92 @@ serve(async (req) => {
     if (candError || !candidate) return json({ error: 'Candidato não encontrado' }, 404);
 
     const baseCtx = `Candidato: ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}${candidate.region ? ` — Região: ${candidate.region}` : ''}.
-Período de análise: ${customStart && customEnd ? `${customStart} → ${customEnd}` : `últimos ${daysBack} dias`}.
+Período: ${customStart && customEnd ? `${customStart} → ${customEnd}` : `últimos ${daysBack} dias`}.
 
-Você é o consultor estratégico mais avançado do Brasil, operando como uma war room de campanha presidencial. Analise EXCLUSIVAMENTE a partir do seu conhecimento sobre arquétipos políticos, percepção pública estimada, posicionamento ideológico, força emocional, vulnerabilidades e ataques previsíveis. NÃO use contagem de menções ou comentários.`;
+Você é um cientista político e estrategista de campanha brasileiro sênior. Produza análise no estilo Bloomberg/War Room: técnica, política, institucional. PROIBIDO usar termos: arquétipo, guerreiro, outsider, protetor, energia, vibe, storytelling emocional, branding pessoal, tom emocional, DNA narrativo. Use linguagem de consultor eleitoral profissional brasileiro.`;
 
     const prompt = `${baseCtx}
 
-Gere uma análise estratégica COMPLETA no formato JSON exato abaixo.
-Regras: cada campo deve ser específico ao candidato, não genérico. Scores são 0-100. Não invente estatísticas numéricas de mídia.
+Gere uma análise completa NO FORMATO JSON exato abaixo, em português do Brasil, específica ao candidato. Scores 0-100. Não invente números de mídia.
 
 {
-  "central_narrative": "narrativa central recomendada em 1-2 frases",
-  "archetype": "arquétipo político (ex: O Reformador, O Pai da Família, O Guerreiro, O Sábio, O Outsider)",
-  "archetype_rationale": "por quê",
-  "public_perception": "como o público estimadamente percebe o candidato hoje",
-  "ideological_position": "posicionamento ideológico (centro, direita-liberal, etc) e sua nuance",
-  "emotional_force": 0-100,
-  "narrative_dna": {
-    "emocao": 0-100, "autoridade": 0-100, "carisma": 0-100,
-    "confianca": 0-100, "combatividade": 0-100, "proximidade": 0-100
+  "central_thesis": {
+    "headline": "tese central de campanha em 1-2 frases políticas",
+    "confidence": 0-100,
+    "rationale": "por que essa tese converte voto, em linguagem de estrategista"
   },
-  "narrative_gaps": [
-    { "topic": "...", "opportunity": "...", "why": "..." }
-  ],
-  "high_conversion_narratives": [
-    { "narrative": "...", "score": 0-100, "target_audience": "...", "rationale": "..." }
-  ],
-  "harmful_narratives": [
-    { "narrative": "...", "risk": "...", "mitigation": "..." }
-  ],
-  "discourse_matrix": {
-    "conservador": { "electoral_impact": 0-100, "reputational_risk": 0-100, "conversion_rate": 0-100, "summary": "..." },
-    "moderado":    { "electoral_impact": 0-100, "reputational_risk": 0-100, "conversion_rate": 0-100, "summary": "..." },
-    "economico":   { "electoral_impact": 0-100, "reputational_risk": 0-100, "conversion_rate": 0-100, "summary": "..." },
-    "polarizador": { "electoral_impact": 0-100, "reputational_risk": 0-100, "conversion_rate": 0-100, "summary": "..." }
+  "political_diagnosis": {
+    "dominant_positioning": "Conservador institucional|Direita liberal|Centro pragmático|Progressista reformista|Populista de oposição|Tecnocrata de gestão|Municipalista|Desenvolvimentista",
+    "public_perception": "como o eleitorado percebe hoje",
+    "ideological_position": "posicionamento ideológico com nuance",
+    "electoral_strength": 0-100,
+    "base_consolidation": 0-100,
+    "critical_rejection": 0-100
   },
-  "narrative_elasticity": {
-    "score": 0-100,
-    "label": "Baixa|Média|Alta capacidade de reposicionamento",
-    "explanation": "explicação estratégica sobre a capacidade do candidato de mudar discurso sem perder base"
-  },
-  "emotional_triggers": [
-    { "emotion": "segurança|autoridade|proteção|indignação|esperança|...", "score": 0-100, "why": "..." }
+  "vote_drivers": [
+    { "topic": "Segurança pública|Economia|Anticorrupção|Costumes|Desenvolvimento regional|Saúde|Educação|Agro|Infraestrutura|Liberdade econômica|...", "score": 0-100, "explanation": "..." }
   ],
-  "attack_surface": {
-    "high":   [ { "vector": "...", "why": "..." } ],
-    "medium": [ { "vector": "...", "why": "..." } ],
-    "low":    [ { "vector": "...", "why": "..." } ]
+  "positioning_matrix": {
+    "autoridade_institucional": 0-100,
+    "mobilizacao": 0-100,
+    "penetracao_popular": 0-100,
+    "confianca_economica": 0-100,
+    "confronto": 0-100,
+    "elasticidade_eleitoral": 0-100
   },
-  "counter_narratives": [
-    { "attack": "ataque previsível do adversário", "response": "resposta estratégica recomendada", "channel": "TV|Debate|Redes|Comício" }
+  "electoral_vulnerabilities": {
+    "high":   [ { "title": "...", "explanation": "..." } ],
+    "medium": [ { "title": "...", "explanation": "..." } ],
+    "low":    [ { "title": "...", "explanation": "..." } ]
+  },
+  "discourse_pillars": [
+    { "pillar": "...", "message": "...", "target": "..." }
+  ],
+  "opposition_attacks": [
+    { "attack": "...", "risk": "...", "damage_potential": 0-100, "works_with": ["jovens urbanos","classe média progressista","..."] }
+  ],
+  "strategic_responses": [
+    { "attack": "...", "response": "resposta de campanha pronta", "channel": "Debate|TV|Instagram|Entrevista|Rádio" }
+  ],
+  "priority_audiences": {
+    "hard_core":      "descrição do núcleo duro",
+    "persuadable":    "descrição dos persuasíveis",
+    "hard_convert":   "descrição da conversão difícil",
+    "locked_rejection": "descrição da rejeição consolidada"
+  },
+  "conversion_themes": [
+    { "theme": "...", "score": 0-100, "segments": ["..."], "recommended_narrative": "..." }
+  ],
+  "communication_risks": [
+    { "risk": "...", "mitigation": "..." }
   ],
   "channel_plan": {
-    "instagram": { "strategy": "...", "tone": "...", "content_examples": ["...","..."] },
-    "tiktok":    { "strategy": "...", "tone": "...", "content_examples": ["...","..."] },
-    "debates":   { "strategy": "...", "tone": "...", "content_examples": ["...","..."] },
-    "tv":        { "strategy": "...", "tone": "...", "content_examples": ["...","..."] },
-    "interior":  { "strategy": "...", "tone": "...", "content_examples": ["...","..."] }
+    "instagram": { "objective": "...", "message_type": "...", "format": "...", "frequency": "..." },
+    "tiktok":    { "objective": "...", "message_type": "...", "format": "...", "frequency": "..." },
+    "debates":   { "objective": "...", "message_type": "...", "format": "...", "frequency": "..." },
+    "tv":        { "objective": "...", "message_type": "...", "format": "...", "frequency": "..." },
+    "interior":  { "objective": "...", "message_type": "...", "format": "...", "frequency": "..." }
+  },
+  "executive_briefing": {
+    "scenario": "Expansão|Consolidação|Risco",
+    "main_opportunity": "...",
+    "main_threat": "...",
+    "immediate_action": "...",
+    "growth_probability": 0-100,
+    "retraction_probability": 0-100
   },
   "confidence": 0-100
 }
 
-Mínimos: 3 narrative_gaps, 4 high_conversion_narratives, 3 harmful_narratives, 5 emotional_triggers, 4 counter_narratives, 2 itens em cada nível de attack_surface.`;
+Mínimos: 6 vote_drivers, 5 discourse_pillars, 4 opposition_attacks, 4 strategic_responses (alinhados aos ataques), 5 conversion_themes, 3 communication_risks, 2 itens em cada nível de electoral_vulnerabilities.`;
 
     const { parsed, provider } = await callAI(
-      'Você é consultor estratégico de campanha presidencial brasileira (war room). Responda SEMPRE em JSON válido seguindo o schema solicitado, em português do Brasil.',
+      'Você é estrategista político brasileiro sênior (war room). Responda SEMPRE em JSON válido seguindo o schema solicitado, em português do Brasil, linguagem técnica e institucional.',
       prompt,
-      4500,
+      6000,
     );
 
-    if (!parsed || !parsed.central_narrative) {
+    if (!parsed || !parsed.central_thesis) {
       return json({
         recommendations: null,
         fallback: true,

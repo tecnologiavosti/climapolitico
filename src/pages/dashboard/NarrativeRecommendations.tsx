@@ -12,9 +12,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { InfoTip } from "@/components/ui/info-tip";
 import {
-  Sparkles, Target, Megaphone, AlertTriangle, Brain,
-  Loader2, CheckCircle2, Instagram, Music2, Mic2, Tv, MapPin, Flame,
-  Grid3x3, Activity, Heart, Shield, ShieldAlert, Swords,
+  Sparkles, Target, AlertTriangle, Loader2, CheckCircle2,
+  Instagram, Music2, Mic2, Tv, MapPin, ShieldAlert, Shield,
+  Swords, Users, TrendingUp, Activity, FileText, Crosshair, Megaphone,
 } from "lucide-react";
 import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip,
@@ -22,37 +22,36 @@ import {
 import { toast } from "sonner";
 import type { DateRange } from "react-day-picker";
 
-interface DNA {
-  emocao: number; autoridade: number; carisma: number;
-  confianca: number; combatividade: number; proximidade: number;
-}
-interface QuadrantMetrics {
-  electoral_impact: number; reputational_risk: number; conversion_rate: number; summary: string;
+interface PositioningMatrix {
+  autoridade_institucional: number; mobilizacao: number; penetracao_popular: number;
+  confianca_economica: number; confronto: number; elasticidade_eleitoral: number;
 }
 interface Recommendations {
-  central_narrative: string;
-  archetype: string;
-  archetype_rationale: string;
-  public_perception: string;
-  ideological_position: string;
-  emotional_force: number;
-  narrative_dna: DNA;
-  narrative_gaps: { topic: string; opportunity: string; why: string }[];
-  high_conversion_narratives: { narrative: string; score: number; target_audience: string; rationale: string }[];
-  harmful_narratives: { narrative: string; risk: string; mitigation: string }[];
-  discourse_matrix?: {
-    conservador: QuadrantMetrics; moderado: QuadrantMetrics;
-    economico: QuadrantMetrics; polarizador: QuadrantMetrics;
+  central_thesis: { headline: string; confidence: number; rationale: string };
+  political_diagnosis: {
+    dominant_positioning: string; public_perception: string; ideological_position: string;
+    electoral_strength: number; base_consolidation: number; critical_rejection: number;
   };
-  narrative_elasticity?: { score: number; label: string; explanation: string };
-  emotional_triggers?: { emotion: string; score: number; why: string }[];
-  attack_surface?: {
-    high: { vector: string; why: string }[];
-    medium: { vector: string; why: string }[];
-    low: { vector: string; why: string }[];
+  vote_drivers: { topic: string; score: number; explanation: string }[];
+  positioning_matrix: PositioningMatrix;
+  electoral_vulnerabilities: {
+    high: { title: string; explanation: string }[];
+    medium: { title: string; explanation: string }[];
+    low: { title: string; explanation: string }[];
   };
-  counter_narratives?: { attack: string; response: string; channel: string }[];
-  channel_plan: Record<string, { strategy: string; tone: string; content_examples: string[] }>;
+  discourse_pillars: { pillar: string; message: string; target: string }[];
+  opposition_attacks: { attack: string; risk: string; damage_potential: number; works_with: string[] }[];
+  strategic_responses: { attack: string; response: string; channel: string }[];
+  priority_audiences: {
+    hard_core: string; persuadable: string; hard_convert: string; locked_rejection: string;
+  };
+  conversion_themes: { theme: string; score: number; segments: string[]; recommended_narrative: string }[];
+  communication_risks: { risk: string; mitigation: string }[];
+  channel_plan: Record<string, { objective: string; message_type: string; format: string; frequency: string }>;
+  executive_briefing: {
+    scenario: string; main_opportunity: string; main_threat: string; immediate_action: string;
+    growth_probability: number; retraction_probability: number;
+  };
   confidence: number;
 }
 
@@ -65,54 +64,83 @@ const PERIOD_OPTIONS = [
 ];
 
 const LOADING_STAGES = [
-  "Analisando posicionamento",
-  "Detectando arquétipo",
-  "Mapeando vulnerabilidades",
-  "Calculando elasticidade narrativa",
-  "Finalizando estratégia de war room",
+  "Diagnóstico político",
+  "Mapeamento de vulnerabilidades",
+  "Cenário de ataques da oposição",
+  "Plano tático por canal",
+  "Compilando briefing executivo",
 ];
 
-const CHANNEL_META: Record<string, { label: string; icon: any; gradient: string }> = {
-  instagram: { label: "Instagram", icon: Instagram, gradient: "from-pink-500/20 to-purple-500/20" },
-  tiktok:    { label: "TikTok",    icon: Music2,    gradient: "from-rose-500/20 to-cyan-500/20" },
-  debates:   { label: "Debates",   icon: Mic2,      gradient: "from-amber-500/20 to-orange-500/20" },
-  tv:        { label: "TV",        icon: Tv,        gradient: "from-blue-500/20 to-indigo-500/20" },
-  interior:  { label: "Interior",  icon: MapPin,    gradient: "from-emerald-500/20 to-teal-500/20" },
+const CHANNEL_META: Record<string, { label: string; icon: any }> = {
+  instagram: { label: "Instagram", icon: Instagram },
+  tiktok:    { label: "TikTok",    icon: Music2 },
+  debates:   { label: "Debates",   icon: Mic2 },
+  tv:        { label: "TV",        icon: Tv },
+  interior:  { label: "Interior",  icon: MapPin },
 };
 
-const QUADRANT_META: Record<string, { label: string; gradient: string; border: string }> = {
-  conservador: { label: "Conservador", gradient: "from-blue-600/15 to-indigo-600/15", border: "border-blue-500/30" },
-  moderado:    { label: "Moderado",    gradient: "from-emerald-600/15 to-teal-600/15", border: "border-emerald-500/30" },
-  economico:   { label: "Econômico",   gradient: "from-amber-600/15 to-orange-600/15", border: "border-amber-500/30" },
-  polarizador: { label: "Polarizador", gradient: "from-rose-600/15 to-fuchsia-600/15", border: "border-rose-500/30" },
+const MATRIX_LABELS: Record<keyof PositioningMatrix, { label: string; tip: string }> = {
+  autoridade_institucional: { label: "Autoridade institucional", tip: "Percepção de competência, preparo e legitimidade para ocupar o cargo." },
+  mobilizacao:              { label: "Capacidade de mobilização", tip: "Capacidade de gerar engajamento espontâneo e ato político." },
+  penetracao_popular:       { label: "Penetração popular", tip: "Alcance entre eleitorado de baixa renda, interior e bases populares." },
+  confianca_economica:      { label: "Confiança econômica", tip: "Credibilidade do candidato em pautas econômicas e de gestão fiscal." },
+  confronto:                { label: "Capacidade de confronto", tip: "Habilidade para enfrentar adversários e dominar debates." },
+  elasticidade_eleitoral:   { label: "Elasticidade eleitoral", tip: "Capacidade de ampliar eleitorado sem perder a base atual." },
 };
 
 const TIPS = {
-  emotional_force: "Mede quanto a comunicação do candidato desperta emoções fortes no eleitor.",
-  public_perception: "Síntese de como o eleitorado médio enxerga o candidato hoje, com base em arquétipo e posicionamento estimado.",
-  dna: "Perfil de comunicação em 6 dimensões: emoção, autoridade, carisma, confiança, combatividade e proximidade.",
-  gaps: "Temas pouco explorados pelo candidato com alto potencial de retorno eleitoral.",
-  conversion: "Score estimado pela IA de quanto a narrativa converte indecisos em apoiadores.",
-  elasticity: "Capacidade do candidato de reposicionar discurso sem perder a base de apoio atual.",
-  triggers: "Emoções que mais geram conversão de apoio quando ativadas pelo discurso do candidato.",
-  attack: "Vetores pelos quais adversários podem atacar reputação ou narrativa do candidato.",
-  matrix: "Avalia o efeito eleitoral, risco reputacional e taxa de conversão para cada postura de discurso.",
-  counter: "Respostas estratégicas pré-formuladas para ataques previsíveis no ciclo eleitoral.",
+  electoral_strength: "Força Eleitoral: combinação de base consolidada, recall, aprovação e capilaridade regional.",
+  base_consolidation: "Consolidação da Base: percentual do núcleo duro que permanece firme em diferentes cenários.",
+  critical_rejection: "Rejeição Crítica: parcela do eleitorado que rejeita o candidato e dificilmente muda de opinião.",
+  vote_drivers: "Motores de Voto: temas políticos que mais convertem apoio quando bem trabalhados pelo candidato.",
+  matrix: "Matriz de Posicionamento Político: 6 dimensões institucionais e eleitorais avaliadas pela IA.",
+  vulnerabilities: "Vulnerabilidades Eleitorais: pontos estruturais que podem reduzir competitividade do candidato.",
+  attacks: "Ataques Prováveis: linhas de ataque que a oposição tende a explorar no ciclo eleitoral.",
+  responses: "Respostas Estratégicas: contra-ataques pré-formulados para os ataques mais prováveis.",
+  audiences: "Públicos Prioritários: segmentação eleitoral entre base, persuasíveis, difíceis e rejeição.",
+  conversion: "Temas com maior potencial de mover indecisos a partir do diagnóstico atual.",
+  briefing: "Síntese institucional do cenário, oportunidade, ameaça e ação imediata recomendada.",
 };
 
-const glass =
-  "backdrop-blur-xl bg-white/5 dark:bg-white/[0.03] border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.12)]";
+const card = "bg-card/60 border border-border/60 backdrop-blur-sm";
 
-function ScoreBar({ value, color = "from-blue-500 to-violet-500" }: { value: number; color?: string }) {
+function ScoreBar({ value, tone = "primary" }: { value: number; tone?: "primary" | "risk" | "ok" | "neutral" }) {
+  const cls =
+    tone === "risk" ? "bg-rose-500" :
+    tone === "ok" ? "bg-emerald-500" :
+    tone === "neutral" ? "bg-muted-foreground/60" :
+    "bg-blue-500";
   return (
-    <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+    <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
       <motion.div
         initial={{ width: 0 }}
         animate={{ width: `${Math.max(0, Math.min(100, value))}%` }}
-        transition={{ duration: 0.9, ease: "easeOut" }}
-        className={`h-full bg-gradient-to-r ${color}`}
+        transition={{ duration: 0.8, ease: "easeOut" }}
+        className={`h-full ${cls}`}
       />
     </div>
+  );
+}
+
+function Metric({ label, value, tip, tone = "primary" }: { label: string; value: number; tip?: string; tone?: "primary" | "risk" | "ok" }) {
+  return (
+    <div className="rounded-md border border-border/50 p-3">
+      <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1 flex items-center gap-1">
+        {label} {tip && <InfoTip text={tip} iconClassName="h-3 w-3" />}
+      </div>
+      <div className="text-2xl font-semibold tabular-nums">{Math.round(value)}<span className="text-xs text-muted-foreground ml-1">/100</span></div>
+      <div className="mt-2"><ScoreBar value={value} tone={tone} /></div>
+    </div>
+  );
+}
+
+function SectionTitle({ icon: Icon, children, tip }: { icon: any; children: React.ReactNode; tip?: string }) {
+  return (
+    <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-[0.15em] text-muted-foreground font-semibold">
+      <Icon className="h-4 w-4 text-blue-400" />
+      {children}
+      {tip && <InfoTip text={tip} />}
+    </CardTitle>
   );
 }
 
@@ -123,9 +151,9 @@ function LoadingStages() {
     return () => clearInterval(t);
   }, []);
   return (
-    <Card className={glass}>
+    <Card className={card}>
       <CardContent className="py-8 space-y-5">
-        <Progress value={(step / LOADING_STAGES.length) * 100} className="h-1.5" />
+        <Progress value={(step / LOADING_STAGES.length) * 100} className="h-1" />
         <ul className="space-y-2">
           {LOADING_STAGES.map((s, i) => (
             <motion.li
@@ -134,21 +162,15 @@ function LoadingStages() {
               animate={{ opacity: i < step ? 1 : 0.4, x: i < step ? 0 : -4 }}
               className="flex items-center gap-3 text-sm"
             >
-              {i < step ? (
-                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-              ) : i === step ? (
-                <Loader2 className="h-4 w-4 animate-spin text-violet-400" />
-              ) : (
-                <div className="h-4 w-4 rounded-full border border-muted-foreground/30" />
-              )}
+              {i < step ? <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                : i === step ? <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                : <div className="h-4 w-4 rounded-full border border-muted-foreground/30" />}
               <span className={i < step ? "text-foreground" : "text-muted-foreground"}>{s}</span>
             </motion.li>
           ))}
         </ul>
         <div className="grid gap-3 sm:grid-cols-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-20 w-full" />
-          ))}
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}
         </div>
       </CardContent>
     </Card>
@@ -162,7 +184,7 @@ const NarrativeRecommendationsPage = () => {
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [result, setResult] = useState<{
     recommendations: Recommendations | null; fallback?: boolean; message?: string;
-    candidate?: any; period?: any; ai_provider?: string;
+    candidate?: any; ai_provider?: string;
   } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -196,7 +218,7 @@ const NarrativeRecommendationsPage = () => {
       if (data?.fallback || !data?.recommendations) {
         toast.error(data?.message || "IA temporariamente indisponível");
       } else {
-        toast.success("Inteligência estratégica gerada!");
+        toast.success("Briefing estratégico gerado");
       }
     } catch (e: any) {
       console.error(e);
@@ -209,32 +231,28 @@ const NarrativeRecommendationsPage = () => {
   const rec = result?.recommendations;
 
   const radarData = useMemo(() => {
-    if (!rec?.narrative_dna) return [];
-    const d = rec.narrative_dna;
-    return [
-      { dim: "Emoção", v: d.emocao },
-      { dim: "Autoridade", v: d.autoridade },
-      { dim: "Carisma", v: d.carisma },
-      { dim: "Confiança", v: d.confianca },
-      { dim: "Combatividade", v: d.combatividade },
-      { dim: "Proximidade", v: d.proximidade },
-    ];
+    if (!rec?.positioning_matrix) return [];
+    const m = rec.positioning_matrix;
+    return (Object.keys(MATRIX_LABELS) as (keyof PositioningMatrix)[]).map((k) => ({
+      dim: MATRIX_LABELS[k].label, v: m[k],
+    }));
   }, [rec]);
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-violet-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent">
-          Recomendações de Narrativa
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          Central de inteligência de campanha — arquétipo, vulnerabilidades, counter-narratives e estratégia de war room.
+        <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground mb-1">
+          <Crosshair className="h-3.5 w-3.5" /> War Room · Inteligência de Campanha
+        </div>
+        <h1 className="text-3xl font-bold tracking-tight">Recomendações de Narrativa</h1>
+        <p className="text-muted-foreground mt-1 text-sm">
+          Briefing estratégico institucional gerado por IA — diagnóstico, vulnerabilidades, ataques e plano tático.
         </p>
       </div>
 
       {/* Controls */}
-      <Card className={glass}>
+      <Card className={card}>
         <CardContent className="pt-6">
           <div className="flex flex-wrap items-end gap-3">
             <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
@@ -264,10 +282,10 @@ const NarrativeRecommendationsPage = () => {
             <Button
               onClick={handleGenerate}
               disabled={isLoading || !selectedCandidate}
-              className="bg-gradient-to-r from-violet-600 to-blue-600 hover:opacity-90"
+              className="bg-blue-600 hover:bg-blue-700 text-white"
             >
-              {isLoading ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Gerando...</>) :
-                (<><Sparkles className="mr-2 h-4 w-4" />Gerar Inteligência</>)}
+              {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Gerando...</>
+                : <><Sparkles className="mr-2 h-4 w-4" />Gerar Briefing</>}
             </Button>
           </div>
         </CardContent>
@@ -276,9 +294,9 @@ const NarrativeRecommendationsPage = () => {
       {isLoading && <LoadingStages />}
 
       {result && !rec && !isLoading && (
-        <Card className={glass}>
+        <Card className={card}>
           <CardContent className="py-12 text-center">
-            <AlertTriangle className="h-10 w-10 mx-auto text-amber-400 mb-3" />
+            <AlertTriangle className="h-10 w-10 mx-auto text-amber-500 mb-3" />
             <p className="text-muted-foreground">{result.message || "Sem dados."}</p>
           </CardContent>
         </Card>
@@ -290,345 +308,314 @@ const NarrativeRecommendationsPage = () => {
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
             className="space-y-6"
           >
-            {/* Central Narrative */}
-            <Card className={`${glass} border-violet-500/30`}>
+            {/* 1. Tese Central */}
+            <Card className={`${card} border-l-4 border-l-blue-500`}>
               <CardContent className="pt-6">
-                <div className="flex items-start gap-3">
-                  <Target className="h-7 w-7 text-violet-400 mt-1 shrink-0" />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <span className="text-xs uppercase tracking-wider text-violet-300">Narrativa Central Recomendada</span>
-                      <Badge variant="outline" className="border-violet-500/40 text-violet-300">
-                        Arquétipo: {rec.archetype}
-                      </Badge>
-                      <Badge variant="outline" className="ml-auto">
-                        Confiança IA: {Math.round(rec.confidence ?? 0)}%
-                      </Badge>
-                    </div>
-                    <p className="text-xl font-semibold leading-snug">{rec.central_narrative}</p>
-                    <div className="mt-4 grid gap-3 md:grid-cols-3 text-sm">
-                      <div className="rounded-lg border border-white/10 p-3">
-                        <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                          Percepção pública <InfoTip text={TIPS.public_perception} iconClassName="h-3 w-3" />
-                        </div>
-                        <div>{rec.public_perception}</div>
-                      </div>
-                      <div className="rounded-lg border border-white/10 p-3">
-                        <div className="text-xs text-muted-foreground mb-1">Posicionamento ideológico</div>
-                        <div>{rec.ideological_position}</div>
-                      </div>
-                      <div className="rounded-lg border border-white/10 p-3">
-                        <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                          Força emocional <InfoTip text={TIPS.emotional_force} iconClassName="h-3 w-3" />
-                        </div>
-                        <div className="text-2xl font-bold">{Math.round(rec.emotional_force ?? 0)}</div>
-                        <ScoreBar value={rec.emotional_force ?? 0} color="from-rose-500 to-amber-500" />
-                      </div>
-                    </div>
-                  </div>
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <span className="text-[11px] uppercase tracking-[0.2em] text-blue-400 font-semibold">Tese Central de Campanha</span>
+                  <Badge variant="outline" className="ml-auto">Confiança IA: {Math.round(rec.central_thesis?.confidence ?? rec.confidence ?? 0)}%</Badge>
+                </div>
+                <p className="text-xl font-semibold leading-snug">"{rec.central_thesis?.headline}"</p>
+                <div className="mt-4 rounded-md border border-border/50 p-3 bg-muted/20">
+                  <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Por que essa tese converte</div>
+                  <p className="text-sm leading-relaxed">{rec.central_thesis?.rationale}</p>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Matriz de Discurso Estratégico */}
-            {rec.discourse_matrix && (
-              <Card className={glass}>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Grid3x3 className="h-5 w-5 text-blue-400" /> Matriz de Discurso Estratégico
-                    <InfoTip text={TIPS.matrix} />
-                  </CardTitle>
-                  <CardDescription>Impacto eleitoral, risco reputacional e conversão por postura.</CardDescription>
-                </CardHeader>
-                <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  {(["conservador", "moderado", "economico", "polarizador"] as const).map((k, i) => {
-                    const q = rec.discourse_matrix![k];
-                    const meta = QUADRANT_META[k];
-                    return (
-                      <motion.div
-                        key={k}
-                        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
-                        className={`rounded-xl border ${meta.border} bg-gradient-to-br ${meta.gradient} p-4 hover:scale-[1.02] transition-transform`}
-                      >
-                        <div className="font-semibold mb-3">{meta.label}</div>
-                        <div className="space-y-3 text-xs">
-                          <div>
-                            <div className="flex justify-between mb-1">
-                              <span className="text-muted-foreground">Impacto eleitoral</span>
-                              <span className="font-semibold">{Math.round(q.electoral_impact)}</span>
-                            </div>
-                            <ScoreBar value={q.electoral_impact} color="from-blue-500 to-cyan-400" />
-                          </div>
-                          <div>
-                            <div className="flex justify-between mb-1">
-                              <span className="text-muted-foreground">Risco reputacional</span>
-                              <span className="font-semibold">{Math.round(q.reputational_risk)}</span>
-                            </div>
-                            <ScoreBar value={q.reputational_risk} color="from-rose-500 to-orange-400" />
-                          </div>
-                          <div>
-                            <div className="flex justify-between mb-1">
-                              <span className="text-muted-foreground">Taxa de conversão</span>
-                              <span className="font-semibold">{Math.round(q.conversion_rate)}</span>
-                            </div>
-                            <ScoreBar value={q.conversion_rate} color="from-emerald-500 to-teal-400" />
-                          </div>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-3 leading-relaxed">{q.summary}</p>
-                      </motion.div>
-                    );
-                  })}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Elasticidade + Triggers */}
-            <div className="grid gap-6 lg:grid-cols-2">
-              {rec.narrative_elasticity && (
-                <Card className={glass}>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Activity className="h-5 w-5 text-cyan-400" /> Elasticidade Narrativa
-                      <InfoTip text={TIPS.elasticity} />
-                    </CardTitle>
-                    <CardDescription>Reposicionamento sem perder base.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-end gap-3">
-                      <div className="text-5xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-                        {Math.round(rec.narrative_elasticity.score)}
-                      </div>
-                      <div className="text-sm text-muted-foreground pb-2">/ 100</div>
-                      <Badge variant="outline" className="ml-auto">{rec.narrative_elasticity.label}</Badge>
-                    </div>
-                    <ScoreBar value={rec.narrative_elasticity.score} color="from-cyan-500 to-blue-500" />
-                    <p className="text-sm text-muted-foreground leading-relaxed">{rec.narrative_elasticity.explanation}</p>
-                  </CardContent>
-                </Card>
-              )}
-
-              {rec.emotional_triggers && rec.emotional_triggers.length > 0 && (
-                <Card className={glass}>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Heart className="h-5 w-5 text-rose-400" /> Triggers Emocionais do Eleitor
-                      <InfoTip text={TIPS.triggers} />
-                    </CardTitle>
-                    <CardDescription>Emoções que mais convertem apoio.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {rec.emotional_triggers.map((t, i) => (
-                      <motion.div
-                        key={i}
-                        initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}
-                      >
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="capitalize font-medium">{t.emotion}</span>
-                          <span className="text-muted-foreground">{Math.round(t.score)}</span>
-                        </div>
-                        <ScoreBar value={t.score} color="from-rose-500 via-fuchsia-500 to-violet-500" />
-                        <p className="text-xs text-muted-foreground mt-1">{t.why}</p>
-                      </motion.div>
-                    ))}
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-
-            {/* DNA Radar + Vacuums */}
-            <div className="grid gap-6 lg:grid-cols-2">
-              <Card className={glass}>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Brain className="h-5 w-5 text-cyan-400" /> Radar DNA Narrativo
-                    <InfoTip text={TIPS.dna} />
-                  </CardTitle>
-                  <CardDescription>Perfil de comunicação em 6 dimensões.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-[320px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <RadarChart data={radarData}>
-                        <PolarGrid stroke="hsl(var(--border))" />
-                        <PolarAngleAxis dataKey="dim" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
-                        <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
-                        <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
-                        <Radar name="DNA" dataKey="v" stroke="#a78bfa" fill="#a78bfa" fillOpacity={0.4} />
-                      </RadarChart>
-                    </ResponsiveContainer>
+            {/* 2. Diagnóstico Político */}
+            <Card className={card}>
+              <CardHeader><SectionTitle icon={Activity}>Diagnóstico Político Atual</SectionTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="outline" className="border-blue-500/40 text-blue-400">
+                    Posicionamento dominante: {rec.political_diagnosis?.dominant_positioning}
+                  </Badge>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="rounded-md border border-border/50 p-3">
+                    <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Percepção pública</div>
+                    <p className="text-sm">{rec.political_diagnosis?.public_perception}</p>
                   </div>
+                  <div className="rounded-md border border-border/50 p-3">
+                    <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Posicionamento ideológico</div>
+                    <p className="text-sm">{rec.political_diagnosis?.ideological_position}</p>
+                  </div>
+                </div>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <Metric label="Força eleitoral" value={rec.political_diagnosis?.electoral_strength ?? 0} tip={TIPS.electoral_strength} />
+                  <Metric label="Consolidação da base" value={rec.political_diagnosis?.base_consolidation ?? 0} tip={TIPS.base_consolidation} tone="ok" />
+                  <Metric label="Rejeição crítica" value={rec.political_diagnosis?.critical_rejection ?? 0} tip={TIPS.critical_rejection} tone="risk" />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 3. Vulnerabilidades + 4. Pilares */}
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card className={card}>
+                <CardHeader><SectionTitle icon={ShieldAlert} tip={TIPS.vulnerabilities}>Vulnerabilidades Eleitorais</SectionTitle></CardHeader>
+                <CardContent className="space-y-4">
+                  {([
+                    { key: "high",   label: "Alta",  wrap: "border-l-rose-500", badge: "bg-rose-500/15 text-rose-400 border-rose-500/30" },
+                    { key: "medium", label: "Média", wrap: "border-l-amber-500", badge: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
+                    { key: "low",    label: "Baixa", wrap: "border-l-emerald-500", badge: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
+                  ] as const).map(({ key, label, wrap, badge }) => (
+                    <div key={key} className="space-y-2">
+                      <Badge variant="outline" className={badge}>{label}</Badge>
+                      {(rec.electoral_vulnerabilities?.[key] || []).map((v, i) => (
+                        <div key={i} className={`rounded-md border border-border/50 border-l-2 ${wrap} p-3`}>
+                          <div className="font-medium text-sm">{v.title}</div>
+                          <div className="text-xs text-muted-foreground mt-1 leading-relaxed">{v.explanation}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
                 </CardContent>
               </Card>
 
-              <Card className={glass}>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Flame className="h-5 w-5 text-amber-400" /> Vácuos Narrativos
-                    <InfoTip text={TIPS.gaps} />
-                  </CardTitle>
-                  <CardDescription>Oportunidades pouco exploradas com alto retorno.</CardDescription>
-                </CardHeader>
+              <Card className={card}>
+                <CardHeader><SectionTitle icon={FileText}>Pilares de Discurso</SectionTitle></CardHeader>
                 <CardContent className="space-y-3">
-                  {rec.narrative_gaps?.map((g, i) => (
+                  {rec.discourse_pillars?.map((p, i) => (
                     <motion.div
                       key={i}
                       initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}
-                      className="rounded-lg border border-white/10 p-3 hover:border-amber-500/40 transition-colors"
+                      className="rounded-md border border-border/50 p-3"
                     >
-                      <div className="font-semibold">{g.topic}</div>
-                      <div className="text-sm text-muted-foreground mt-1">{g.opportunity}</div>
-                      <div className="text-xs text-amber-300/80 mt-2">Por quê: {g.why}</div>
+                      <div className="font-semibold text-sm">{p.pillar}</div>
+                      <div className="text-sm mt-1">{p.message}</div>
+                      <div className="text-xs text-muted-foreground mt-2">Alvo: {p.target}</div>
                     </motion.div>
                   ))}
                 </CardContent>
               </Card>
             </div>
 
-            {/* Conversion narratives */}
-            <Card className={`${glass} border-emerald-500/20`}>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-emerald-300">
-                  <Megaphone className="h-5 w-5" /> Narrativas com Maior Potencial de Conversão
-                  <InfoTip text={TIPS.conversion} />
-                </CardTitle>
-                <CardDescription>Score 0–100 estimado pela IA para mover indecisos.</CardDescription>
-              </CardHeader>
+            {/* 5. Ataques */}
+            <Card className={card}>
+              <CardHeader><SectionTitle icon={Swords} tip={TIPS.attacks}>Ataques Prováveis da Oposição</SectionTitle></CardHeader>
               <CardContent className="grid gap-3 md:grid-cols-2">
-                {rec.high_conversion_narratives?.map((n, i) => (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
-                    className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-4 hover:bg-emerald-500/[0.08] transition-colors"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-semibold">{n.narrative}</span>
-                      <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30">{Math.round(n.score)}</Badge>
-                    </div>
-                    <ScoreBar value={n.score} color="from-emerald-500 to-teal-400" />
-                    <div className="text-xs text-muted-foreground mt-2">🎯 {n.target_audience}</div>
-                    <div className="text-sm mt-2">{n.rationale}</div>
-                  </motion.div>
-                ))}
-              </CardContent>
-            </Card>
-
-            {/* Superfície de Ataque */}
-            {rec.attack_surface && (
-              <Card className={glass}>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <ShieldAlert className="h-5 w-5 text-rose-400" /> Superfície de Ataque
-                    <InfoTip text={TIPS.attack} />
-                  </CardTitle>
-                  <CardDescription>Onde adversários podem atacar — agrupado por vulnerabilidade.</CardDescription>
-                </CardHeader>
-                <CardContent className="grid gap-4 md:grid-cols-3">
-                  {([
-                    { key: "high",   label: "Alta vulnerabilidade",   wrap: "border-rose-500/30 bg-rose-500/[0.04]",       text: "text-rose-300",    Icon: ShieldAlert },
-                    { key: "medium", label: "Média vulnerabilidade",  wrap: "border-amber-500/30 bg-amber-500/[0.04]",     text: "text-amber-300",   Icon: Shield },
-                    { key: "low",    label: "Baixa vulnerabilidade",  wrap: "border-emerald-500/30 bg-emerald-500/[0.04]", text: "text-emerald-300", Icon: Shield },
-                  ] as const).map(({ key, label, wrap, text, Icon }) => (
-                    <div key={key} className={`rounded-xl border p-4 ${wrap}`}>
-                      <div className={`flex items-center gap-2 mb-3 font-semibold ${text}`}>
-                        <Icon className="h-4 w-4" /> {label}
+                {rec.opposition_attacks?.map((a, i) => (
+                  <div key={i} className="rounded-md border border-border/50 border-l-2 border-l-rose-500 p-3">
+                    <div className="font-semibold text-sm">"{a.attack}"</div>
+                    <div className="text-xs text-muted-foreground mt-1">{a.risk}</div>
+                    <div className="mt-3">
+                      <div className="flex justify-between text-[11px] uppercase tracking-wider text-muted-foreground mb-1">
+                        <span>Potencial de dano</span><span className="font-semibold text-foreground">{Math.round(a.damage_potential)}%</span>
                       </div>
-                      <ul className="space-y-2">
-                        {(rec.attack_surface![key] || []).map((a, i) => (
-                          <li key={i} className="text-sm">
-                            <div className="font-medium">{a.vector}</div>
-                            <div className="text-xs text-muted-foreground mt-0.5">{a.why}</div>
-                          </li>
-                        ))}
-                      </ul>
+                      <ScoreBar value={a.damage_potential} tone="risk" />
                     </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Counter-narratives */}
-            {rec.counter_narratives && rec.counter_narratives.length > 0 && (
-              <Card className={glass}>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Swords className="h-5 w-5 text-fuchsia-400" /> Counter-Narratives
-                    <InfoTip text={TIPS.counter} />
-                  </CardTitle>
-                  <CardDescription>Respostas estratégicas pré-formuladas para ataques previsíveis.</CardDescription>
-                </CardHeader>
-                <CardContent className="grid gap-3 md:grid-cols-2">
-                  {rec.counter_narratives.map((c, i) => (
-                    <motion.div
-                      key={i}
-                      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-                      className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/[0.04] p-4"
-                    >
-                      <div className="text-xs uppercase text-rose-300 tracking-wider mb-1">Ataque</div>
-                      <div className="text-sm font-medium mb-3">"{c.attack}"</div>
-                      <div className="text-xs uppercase text-emerald-300 tracking-wider mb-1">Resposta estratégica</div>
-                      <div className="text-sm">{c.response}</div>
-                      {c.channel && (
-                        <Badge variant="outline" className="mt-3 text-xs">Canal ideal: {c.channel}</Badge>
-                      )}
-                    </motion.div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Harmful narratives */}
-            <Card className={`${glass} border-rose-500/20`}>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-rose-300">
-                  <AlertTriangle className="h-5 w-5" /> Narrativas que Prejudicam
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {rec.harmful_narratives?.map((h, i) => (
-                  <div key={i} className="rounded-lg border border-rose-500/20 p-4 bg-rose-500/[0.04]">
-                    <div className="font-semibold">{h.narrative}</div>
-                    <div className="text-sm mt-1"><span className="text-rose-300">Risco:</span> {h.risk}</div>
-                    <div className="text-sm mt-1"><span className="text-emerald-300">Mitigação:</span> {h.mitigation}</div>
+                    <div className="mt-3 flex flex-wrap gap-1">
+                      <span className="text-[11px] uppercase tracking-wider text-muted-foreground mr-1">Funciona em:</span>
+                      {a.works_with?.map((w, j) => (
+                        <Badge key={j} variant="secondary" className="text-[10px]">{w}</Badge>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </CardContent>
             </Card>
 
-            {/* Channel plan */}
-            <Card className={glass}>
+            {/* 6. Respostas */}
+            <Card className={card}>
+              <CardHeader><SectionTitle icon={Shield} tip={TIPS.responses}>Respostas Estratégicas</SectionTitle></CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-2">
+                {rec.strategic_responses?.map((c, i) => (
+                  <div key={i} className="rounded-md border border-border/50 p-3">
+                    <div className="text-[11px] uppercase tracking-wider text-rose-400 mb-1">Ataque</div>
+                    <div className="text-sm mb-3">"{c.attack}"</div>
+                    <div className="text-[11px] uppercase tracking-wider text-emerald-400 mb-1">Resposta estratégica</div>
+                    <div className="text-sm">{c.response}</div>
+                    {c.channel && <Badge variant="outline" className="mt-3 text-xs">Canal ideal: {c.channel}</Badge>}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* 7. Públicos + Motores de Voto */}
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card className={card}>
+                <CardHeader><SectionTitle icon={Users} tip={TIPS.audiences}>Públicos Prioritários</SectionTitle></CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  {([
+                    { k: "hard_core",        label: "Núcleo duro",          dot: "bg-emerald-500" },
+                    { k: "persuadable",      label: "Persuasíveis",         dot: "bg-blue-500" },
+                    { k: "hard_convert",     label: "Conversão difícil",    dot: "bg-amber-500" },
+                    { k: "locked_rejection", label: "Rejeição consolidada", dot: "bg-rose-500" },
+                  ] as const).map(({ k, label, dot }) => (
+                    <div key={k} className="rounded-md border border-border/50 p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`h-2 w-2 rounded-full ${dot}`} />
+                        <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</span>
+                      </div>
+                      <p>{rec.priority_audiences?.[k]}</p>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+
+              <Card className={card}>
+                <CardHeader><SectionTitle icon={TrendingUp} tip={TIPS.vote_drivers}>Motores de Voto</SectionTitle></CardHeader>
+                <CardContent className="space-y-3">
+                  {rec.vote_drivers?.map((d, i) => (
+                    <div key={i}>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="font-medium">{d.topic}</span>
+                        <span className="tabular-nums text-muted-foreground">{Math.round(d.score)}</span>
+                      </div>
+                      <ScoreBar value={d.score} />
+                      <p className="text-xs text-muted-foreground mt-1">{d.explanation}</p>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Matriz de Posicionamento */}
+            <Card className={card}>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Target className="h-5 w-5 text-blue-400" /> Plano de Comunicação por Canal
-                </CardTitle>
+                <SectionTitle icon={Crosshair} tip={TIPS.matrix}>Matriz de Posicionamento Político</SectionTitle>
+                <CardDescription>Avaliação institucional em 6 dimensões. Passe o mouse nos rótulos para legendas.</CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <CardContent className="grid gap-6 lg:grid-cols-2">
+                <div className="h-[320px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RadarChart data={radarData}>
+                      <PolarGrid stroke="hsl(var(--border))" />
+                      <PolarAngleAxis dataKey="dim" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
+                      <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
+                      <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 6 }} />
+                      <Radar name="Posicionamento" dataKey="v" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.25} />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="space-y-2">
+                  {(Object.keys(MATRIX_LABELS) as (keyof PositioningMatrix)[]).map((k) => (
+                    <div key={k} className="flex items-center gap-3 rounded-md border border-border/50 p-2">
+                      <div className="flex-1 text-sm flex items-center gap-1">
+                        {MATRIX_LABELS[k].label}
+                        <InfoTip text={MATRIX_LABELS[k].tip} iconClassName="h-3 w-3" />
+                      </div>
+                      <div className="w-32"><ScoreBar value={rec.positioning_matrix?.[k] ?? 0} /></div>
+                      <div className="w-10 text-right text-sm tabular-nums">{Math.round(rec.positioning_matrix?.[k] ?? 0)}</div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 8. Temas de Conversão */}
+            <Card className={card}>
+              <CardHeader><SectionTitle icon={Megaphone} tip={TIPS.conversion}>Temas com Maior Potencial de Conversão</SectionTitle></CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-2">
+                {rec.conversion_themes?.map((t, i) => (
+                  <div key={i} className="rounded-md border border-border/50 p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-semibold uppercase text-sm tracking-wider">{t.theme}</span>
+                      <Badge variant="outline" className="border-blue-500/40 text-blue-400">{Math.round(t.score)}/100</Badge>
+                    </div>
+                    <ScoreBar value={t.score} />
+                    <div className="mt-3 text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Impacta</div>
+                    <div className="flex flex-wrap gap-1 mb-3">
+                      {t.segments?.map((s, j) => <Badge key={j} variant="secondary" className="text-[10px]">{s}</Badge>)}
+                    </div>
+                    <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Narrativa recomendada</div>
+                    <p className="text-sm">{t.recommended_narrative}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* 9. Riscos */}
+            <Card className={card}>
+              <CardHeader><SectionTitle icon={AlertTriangle}>Riscos de Comunicação</SectionTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {rec.communication_risks?.map((r, i) => (
+                  <div key={i} className="rounded-md border border-border/50 border-l-2 border-l-rose-500 p-3">
+                    <div className="font-medium text-sm">{r.risk}</div>
+                    <div className="text-xs mt-1"><span className="text-emerald-400">Mitigação:</span> {r.mitigation}</div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* 10. Plano por Canal */}
+            <Card className={card}>
+              <CardHeader><SectionTitle icon={Target}>Plano Tático por Canal</SectionTitle></CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {Object.entries(rec.channel_plan || {}).map(([k, v], i) => {
-                  const meta = CHANNEL_META[k] || { label: k, icon: Target, gradient: "from-blue-500/20 to-violet-500/20" };
+                  const meta = CHANNEL_META[k] || { label: k, icon: Target };
                   const Icon = meta.icon;
                   return (
                     <motion.div
                       key={k}
                       initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-                      className={`rounded-xl border border-white/10 p-4 bg-gradient-to-br ${meta.gradient} hover:scale-[1.02] transition-transform`}
+                      className="rounded-md border border-border/50 p-4"
                     >
-                      <div className="flex items-center gap-2 mb-2">
-                        <Icon className="h-5 w-5" />
-                        <span className="font-semibold">{meta.label}</span>
-                        <Badge variant="outline" className="ml-auto text-xs">{v.tone}</Badge>
+                      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border/50">
+                        <Icon className="h-4 w-4 text-blue-400" />
+                        <span className="font-semibold uppercase text-sm tracking-wider">{meta.label}</span>
                       </div>
-                      <p className="text-sm mb-3">{v.strategy}</p>
-                      <ul className="space-y-1">
-                        {v.content_examples?.map((ex, j) => (
-                          <li key={j} className="text-xs text-muted-foreground flex gap-2">
-                            <span className="text-blue-300">▸</span><span>{ex}</span>
-                          </li>
-                        ))}
-                      </ul>
+                      <div className="space-y-2 text-sm">
+                        <div>
+                          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Objetivo</div>
+                          <p>{v.objective}</p>
+                        </div>
+                        <div>
+                          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Mensagem</div>
+                          <p>{v.message_type}</p>
+                        </div>
+                        <div>
+                          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Formato</div>
+                          <p>{v.format}</p>
+                        </div>
+                        <div>
+                          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Frequência</div>
+                          <p>{v.frequency}</p>
+                        </div>
+                      </div>
                     </motion.div>
                   );
                 })}
               </CardContent>
             </Card>
+
+            {/* 11. Executive Briefing */}
+            {rec.executive_briefing && (
+              <Card className={`${card} border-l-4 border-l-blue-500`}>
+                <CardHeader>
+                  <SectionTitle icon={FileText} tip={TIPS.briefing}>Executive Briefing</SectionTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Cenário atual:</span>
+                    <Badge variant="outline" className={
+                      rec.executive_briefing.scenario === "Risco" ? "border-rose-500/40 text-rose-400" :
+                      rec.executive_briefing.scenario === "Expansão" ? "border-emerald-500/40 text-emerald-400" :
+                      "border-blue-500/40 text-blue-400"
+                    }>{rec.executive_briefing.scenario}</Badge>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-md border border-border/50 border-l-2 border-l-emerald-500 p-3">
+                      <div className="text-[11px] uppercase tracking-wider text-emerald-400 mb-1">Principal oportunidade</div>
+                      <p className="text-sm">{rec.executive_briefing.main_opportunity}</p>
+                    </div>
+                    <div className="rounded-md border border-border/50 border-l-2 border-l-rose-500 p-3">
+                      <div className="text-[11px] uppercase tracking-wider text-rose-400 mb-1">Principal ameaça</div>
+                      <p className="text-sm">{rec.executive_briefing.main_threat}</p>
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-border/50 border-l-2 border-l-blue-500 p-3">
+                    <div className="text-[11px] uppercase tracking-wider text-blue-400 mb-1">Ação imediata recomendada</div>
+                    <p className="text-sm">{rec.executive_briefing.immediate_action}</p>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Metric label="Probabilidade de crescimento" value={rec.executive_briefing.growth_probability ?? 0} tone="ok" />
+                    <Metric label="Probabilidade de retração" value={rec.executive_briefing.retraction_probability ?? 0} tone="risk" />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             <div className="text-xs text-muted-foreground text-right">
               Gerado por IA · {result?.ai_provider}
