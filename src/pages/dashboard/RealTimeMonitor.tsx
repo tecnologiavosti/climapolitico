@@ -140,29 +140,42 @@ const RealTimeMonitor = () => {
   const [brief, setBrief] = useState<Brief | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [started, setStarted] = useState(false);
+  const [activeCandidateId, setActiveCandidateId] = useState<string>("");
+  const [progressStep, setProgressStep] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const selectedCandidate = useMemo(
     () => candidates.find((c) => c.id === selectedId) || null,
     [candidates, selectedId]
   );
+  const activeCandidate = useMemo(
+    () => candidates.find((c) => c.id === activeCandidateId) || null,
+    [candidates, activeCandidateId]
+  );
 
-  // Load user's tracked candidates
+  // Load user's tracked candidates (no auto-select)
   useEffect(() => {
     if (!user) return;
     (async () => {
       const { data } = await supabase
         .from("candidates")
-        .select("id, full_name, party")
+        .select("id, full_name, party, region")
         .eq("user_id", user.id)
         .order("full_name");
-      const list = (data || []) as Candidate[];
-      setCandidates(list);
-      if (!selectedId && list.length > 0) setSelectedId(list[0].id);
+      setCandidates((data || []) as Candidate[]);
     })();
   }, [user]);
 
-  const fetchBrief = useCallback(async (name: string, force = false) => {
+  const PROGRESS_STEPS = [
+    "Inicializando monitoramento",
+    "Coletando notícias",
+    "Processando eventos",
+    "Detectando crises",
+    "Gerando análise IA",
+  ];
+
+  const fetchBrief = useCallback(async (name: string, force = false, withProgress = false) => {
     const cacheKey = `${CACHE_PREFIX}${name}`;
     if (!force) {
       try {
@@ -175,6 +188,13 @@ const RealTimeMonitor = () => {
     }
     setLoading(true);
     setError(null);
+    let progressTimer: ReturnType<typeof setInterval> | null = null;
+    if (withProgress) {
+      setProgressStep(0);
+      progressTimer = setInterval(() => {
+        setProgressStep((s) => (s < PROGRESS_STEPS.length - 1 ? s + 1 : s));
+      }, 1800);
+    }
     try {
       const { data, error: fnError } = await supabase.functions.invoke("political-intelligence", {
         body: { candidate_name: name },
@@ -183,29 +203,42 @@ const RealTimeMonitor = () => {
       if (!data) throw new Error("Resposta inválida do servidor");
       setBrief(data as Brief);
       try { localStorage.setItem(cacheKey, JSON.stringify(data)); } catch { /* ignore */ }
+      if (withProgress) setProgressStep(PROGRESS_STEPS.length);
     } catch (e: any) {
       console.error("[Intel] fetch failed", e);
       setError(e?.message || "Falha ao consultar inteligência política");
     } finally {
+      if (progressTimer) clearInterval(progressTimer);
       setLoading(false);
     }
   }, []);
 
-  // Initial + on candidate change
-  useEffect(() => {
-    if (!selectedCandidate) { setBrief(null); return; }
-    fetchBrief(selectedCandidate.full_name, false);
-  }, [selectedCandidate?.id, fetchBrief]);
+  const handleStart = useCallback(() => {
+    if (!selectedCandidate) return;
+    setActiveCandidateId(selectedCandidate.id);
+    setStarted(true);
+    setBrief(null);
+    fetchBrief(selectedCandidate.full_name, true, true);
+  }, [selectedCandidate, fetchBrief]);
 
-  // Polling 5min
+  const handleChangeCandidate = useCallback(() => {
+    setStarted(false);
+    setActiveCandidateId("");
+    setBrief(null);
+    setError(null);
+    setProgressStep(0);
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+  }, []);
+
+  // Polling 5min — only while active
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
-    if (!selectedCandidate) return;
+    if (!started || !activeCandidate) return;
     timerRef.current = setInterval(() => {
-      fetchBrief(selectedCandidate.full_name, true);
+      fetchBrief(activeCandidate.full_name, true);
     }, REFRESH_MS);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [selectedCandidate?.id, fetchBrief]);
+  }, [started, activeCandidate?.id, fetchBrief]);
 
   const analysis = brief?.analysis;
   const intensity = brief?.intensity;
