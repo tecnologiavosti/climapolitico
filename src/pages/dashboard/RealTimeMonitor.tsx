@@ -614,9 +614,8 @@ const RealTimeMonitor = () => {
             </Card>
           )}
         </>
-      ) : (
-        <LoadingState />
-      )}
+      ) : null)}
+
     </div>
   );
 };
