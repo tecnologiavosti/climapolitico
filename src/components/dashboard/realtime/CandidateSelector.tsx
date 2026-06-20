@@ -80,7 +80,7 @@ export const CandidateSelector = ({ candidates, value, onChange, disabled }: Pro
               {candidates.map(c => (
                 <CommandItem
                   key={c.id}
-                  value={c.full_name}
+                  value={`${c.full_name} ${c.party ?? ""} ${c.region ?? ""}`}
                   onSelect={() => { onChange(c.id); setOpen(false); }}
                   className="gap-2"
                 >
@@ -90,7 +90,12 @@ export const CandidateSelector = ({ candidates, value, onChange, disabled }: Pro
                   >
                     {initials(c.full_name)}
                   </div>
-                  <span className="flex-1 truncate text-sm">{c.full_name}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate text-sm leading-tight">{c.full_name}</div>
+                    {formatMeta(c) && (
+                      <div className="truncate text-[10px] text-muted-foreground leading-tight">{formatMeta(c)}</div>
+                    )}
+                  </div>
                   <Check className={cn("h-4 w-4", value === c.id ? "opacity-100 text-primary" : "opacity-0")} />
                 </CommandItem>
               ))}
