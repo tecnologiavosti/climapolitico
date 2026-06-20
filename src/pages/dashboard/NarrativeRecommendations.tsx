@@ -524,12 +524,12 @@ const NarrativeRecommendationsPage = () => {
                 </CardHeader>
                 <CardContent className="grid gap-4 md:grid-cols-3">
                   {([
-                    { key: "high",   label: "Alta vulnerabilidade",   color: "rose",    Icon: ShieldAlert },
-                    { key: "medium", label: "Média vulnerabilidade",  color: "amber",   Icon: Shield },
-                    { key: "low",    label: "Baixa vulnerabilidade",  color: "emerald", Icon: Shield },
-                  ] as const).map(({ key, label, color, Icon }) => (
-                    <div key={key} className={`rounded-xl border border-${color}-500/30 bg-${color}-500/[0.04] p-4`}>
-                      <div className={`flex items-center gap-2 mb-3 text-${color}-300 font-semibold`}>
+                    { key: "high",   label: "Alta vulnerabilidade",   wrap: "border-rose-500/30 bg-rose-500/[0.04]",       text: "text-rose-300",    Icon: ShieldAlert },
+                    { key: "medium", label: "Média vulnerabilidade",  wrap: "border-amber-500/30 bg-amber-500/[0.04]",     text: "text-amber-300",   Icon: Shield },
+                    { key: "low",    label: "Baixa vulnerabilidade",  wrap: "border-emerald-500/30 bg-emerald-500/[0.04]", text: "text-emerald-300", Icon: Shield },
+                  ] as const).map(({ key, label, wrap, text, Icon }) => (
+                    <div key={key} className={`rounded-xl border p-4 ${wrap}`}>
+                      <div className={`flex items-center gap-2 mb-3 font-semibold ${text}`}>
                         <Icon className="h-4 w-4" /> {label}
                       </div>
                       <ul className="space-y-2">
