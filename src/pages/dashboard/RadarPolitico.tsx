@@ -1,6 +1,5 @@
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -52,9 +51,6 @@ interface RadarJobStatus {
   events: RadarEvent[];
   error: string | null;
   partial?: boolean;
-  page_size?: number;
-  offset?: number;
-  has_more?: boolean;
 }
 
 const CATEGORIES = [
@@ -197,10 +193,6 @@ const PRESETS = [
 
 
 const nfBR = new Intl.NumberFormat("pt-BR");
-const PAGE_SIZE = 500;
-const INITIAL_VISIBLE = 10;
-const LOAD_MORE_STEP = 10;
-const BACKEND_FETCH_PAGE = 500;
 const MEMORY_CACHE_TTL_MS = 15 * 60 * 1000;
 const BROWSER_CACHE_TTL_MS = 60 * 60 * 1000;
 const radarMemoryCache = new Map<string, { expiresAt: number; events: RadarEvent[]; jobId?: string; fetchedAt: string; eventsCount?: number }>();
@@ -344,8 +336,6 @@ export default function RadarPolitico() {
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
   const [lastError, setLastError] = useState<{ message: string; stack: string } | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
-  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
-  const listParentRef = useRef<HTMLDivElement | null>(null);
 
   const { data: candidates } = useQuery({
     queryKey: ["candidates-min", user?.id],
@@ -384,7 +374,7 @@ export default function RadarPolitico() {
     },
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("radar-job-status", {
-        body: { job_id: jobId, page_size: PAGE_SIZE, offset: 0, sort: sortBy },
+        body: { job_id: jobId, sort: sortBy },
       });
       if (error) throw error;
       return data as RadarJobStatus;
@@ -470,7 +460,6 @@ export default function RadarPolitico() {
       if (candidateId === "all") throw new Error("Selecione um candidato.");
       if (!from || !to) throw new Error("Defina o período (datas inicial e final).");
       setEvents([]);
-      setVisibleCount(INITIAL_VISIBLE);
       setLastError(null);
       const { data, error } = await supabase.functions.invoke("radar-job-create", {
         body: {
@@ -505,56 +494,10 @@ export default function RadarPolitico() {
     },
   });
 
-  const loadMoreMutation = useMutation({
-    mutationFn: async () => {
-      if (!jobId || jobId === "cache") return [] as RadarEvent[];
-      const { data, error } = await supabase.functions.invoke("radar-job-status", {
-        body: { job_id: jobId, page_size: BACKEND_FETCH_PAGE, offset: events.length, sort: sortBy },
-      });
-      if (error) throw error;
-      const payload = data as { events?: RadarEvent[] } | null;
-      return Array.isArray(payload?.events) ? payload.events : [];
-    },
-    onSuccess: (next) => {
-      if (next.length === 0) return;
-      setEvents((prev) => {
-        const seen = new Set(prev.map((e) => e.id || `${e.event_date}|${e.title}`));
-        const merged = [...prev];
-        for (const e of next) {
-          const key = e.id || `${e.event_date}|${e.title}`;
-          if (!seen.has(key)) merged.push(e);
-        }
-        setRadarCache(cacheKey, { events: merged, jobId: jobId ?? undefined, fetchedAt: new Date().toISOString(), eventsCount: jobStatus?.events_count });
-        return merged;
-      });
-    },
-    onError: (e: unknown) => toast.error(friendlyRadarError(e instanceof Error ? e.message : "Falha ao carregar mais eventos")),
-  });
-
-  // Auto-prefetch: quando backend tem mais eventos do que carregamos localmente,
-  // baixa o restante em background para que a paginação local cubra todos os 2190+.
-  useEffect(() => {
-    const backendCount = jobStatus?.events_count ?? 0;
-    if (!jobId || jobId === "cache") return;
-    if (loadMoreMutation.isPending) return;
-    if (backendCount > events.length) {
-      const t = setTimeout(() => loadMoreMutation.mutate(), 250);
-      return () => clearTimeout(t);
-    }
-  }, [jobStatus?.events_count, events.length, jobId, loadMoreMutation.isPending]);
-
 
   // Filtros locais
   const filtered = useMemo(() => {
     let list = events;
-    // Entity resolution: garante que notícias do Jair não vazem para Flávio (e vice-versa)
-    if (candidateId !== "all" && candidateName) {
-      const before = list.length;
-      list = list.filter((e) => isEventRelevantForCandidate(e, candidateName));
-      if (before !== list.length) {
-        console.log(`[Radar] Entity filter '${candidateName}': ${before} → ${list.length} eventos`);
-      }
-    }
     if (category !== "Todos") list = list.filter((e) => e.category === category);
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -566,17 +509,16 @@ export default function RadarPolitico() {
       return new Date(b.event_date).getTime() - new Date(a.event_date).getTime();
     });
     return list;
-  }, [events, candidateId, candidateName, category, search, sortBy]);
+  }, [events, category, search, sortBy]);
 
-
-  useEffect(() => {
-    setVisibleCount(INITIAL_VISIBLE);
-  }, [cacheKey, search]);
-
-  const visibleEvents = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+  const visibleEvents = filtered;
 
   const backendTotal = jobStatus?.events_count ?? events.length;
   useEffect(() => {
+    console.log({ fetched: events.length, rendered: visibleEvents.length });
+    if (events.length !== visibleEvents.length) {
+      console.error("Radar render mismatch");
+    }
     if (import.meta.env.DEV) {
       console.log("[Radar Debug]", {
         totalFetched: events.length,
@@ -584,28 +526,11 @@ export default function RadarPolitico() {
         totalAfterFilter: filtered.length,
         totalRendered: visibleEvents.length,
       });
-      if (backendTotal !== filtered.length && events.length > 0) {
-        console.warn(`Radar mismatch: fetched ${backendTotal} / após filtros ${filtered.length} / renderizado ${visibleEvents.length}`);
+      if (events.length !== visibleEvents.length) {
+        console.warn(`Radar mismatch: fetched ${events.length} / rendered ${visibleEvents.length}`);
       }
     }
   }, [backendTotal, filtered.length, visibleEvents.length, events.length]);
-
-  const rowVirtualizer = useVirtualizer({
-    count: visibleEvents.length,
-    getScrollElement: () => listParentRef.current,
-    estimateSize: () => 108,
-    overscan: 8,
-  });
-
-  const kpis = useMemo(() => ({
-    total: Math.max(backendTotal, filtered.length),
-    grandes: filtered.filter((e) => e.importance >= 70).length,
-    institucionais: filtered.filter((e) =>
-      e.institutional_sources > 0 || e.sources?.some((s) => /\b(STF|TSE|PF|Senado|Câmara|Camara|Planalto|STJ|TCU|CGU|AGU|CNJ)\b/i.test(s.name)),
-    ).length,
-    altaRepercussao: filtered.filter((e) => e.social_score >= 60).length,
-  }), [filtered, backendTotal]);
-
   const timeline = useMemo(() => {
     const map = new Map<string, number>();
     filtered.forEach((e) => {
@@ -755,7 +680,8 @@ export default function RadarPolitico() {
       {/* KPIs */}
       <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Kpi label="Eventos encontrados" value={backendTotal} />
-        <Kpi label="Eventos exibidos (com filtros)" value={filtered.length} />
+        <Kpi label="Eventos exibidos" value={visibleEvents.length} />
+        <Kpi label="Status" value={visibleEvents.length === events.length ? "Completo" : "Incompleto"} />
       </section>
 
       {/* Timeline */}
@@ -843,22 +769,17 @@ export default function RadarPolitico() {
           </Card>
         ) : (
           <div className="space-y-2">
-            <div ref={listParentRef} className="border rounded-md bg-card h-[70vh] overflow-y-auto">
-              <div className="relative w-full" style={{ height: rowVirtualizer.getTotalSize() }}>
-                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                  const e = visibleEvents[virtualRow.index];
-                  if (!e) return null;
+            <div className="border rounded-md bg-card max-h-[70vh] overflow-y-auto">
+              {visibleEvents.map((e, index) => {
+                if (!e) return null;
               const b = band(e.importance);
               const entity = candidateId !== "all" && candidateName
                 ? analyzeEventEntity(e, candidateName)
                 : null;
               return (
                 <div
-                  key={e.id || `${e.event_date}-${virtualRow.index}`}
-                  data-index={virtualRow.index}
-                  ref={rowVirtualizer.measureElement}
-                  className="absolute left-0 top-0 w-full border-b last:border-b-0"
-                  style={{ transform: `translateY(${virtualRow.start}px)` }}
+                  key={e.id || `${e.event_date}-${index}`}
+                  className="border-b last:border-b-0"
                 >
                   <button
                     onClick={() => setSelected(e)}
@@ -918,35 +839,8 @@ export default function RadarPolitico() {
                   </button>
                 </div>
               );
-                })}
-              </div>
+              })}
             </div>
-            {(visibleCount < filtered.length || ((jobStatus?.events_count ?? 0) > events.length && !!jobId && jobId !== "cache")) && (
-              <Button
-                variant="outline"
-                className="w-full"
-                disabled={loadMoreMutation.isPending}
-                onClick={() => {
-                  const nextVisible = visibleCount + LOAD_MORE_STEP;
-                  console.log("[Radar] Load more clicked", {
-                    visibleCount,
-                    nextVisible,
-                    filteredLength: filtered.length,
-                    eventsLength: events.length,
-                    backendTotal: jobStatus?.events_count ?? 0,
-                  });
-                  // Sempre incrementa a janela visível
-                  setVisibleCount(nextVisible);
-                  // Se já mostramos tudo que está em memória e backend tem mais, busca próximo lote
-                  if (nextVisible > filtered.length && (jobStatus?.events_count ?? 0) > events.length) {
-                    loadMoreMutation.mutate();
-                  }
-                }}
-              >
-                {loadMoreMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                Carregar mais {LOAD_MORE_STEP}
-              </Button>
-            )}
 
           </div>
         )}
@@ -1035,12 +929,12 @@ function DateField({ date, onChange, placeholder }: { date?: Date; onChange: (d?
   );
 }
 
-function Kpi({ label, value, hint }: { label: string; value: number; hint?: string }) {
+function Kpi({ label, value, hint }: { label: string; value: number | string; hint?: string }) {
   return (
     <Card>
       <CardContent className="p-4">
         <div className="text-xs text-muted-foreground">{label}</div>
-        <div className="text-2xl font-semibold mt-1 tabular-nums">{nfBR.format(value)}</div>
+        <div className="text-2xl font-semibold mt-1 tabular-nums">{typeof value === "number" ? nfBR.format(value) : value}</div>
         {hint && <div className="text-[10px] text-muted-foreground mt-0.5">{hint}</div>}
       </CardContent>
     </Card>

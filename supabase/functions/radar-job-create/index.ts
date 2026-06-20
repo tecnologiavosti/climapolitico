@@ -141,7 +141,7 @@ async function completePartial(admin: any, jobId: string, processed: number, tot
   }).eq("id", jobId);
 }
 
-async function readCacheFirstPage(admin: any, userId: string, periodHash: string, body: ReqBody) {
+async function readCacheEvents(admin: any, userId: string, periodHash: string, body: ReqBody) {
   const { data } = await admin
     .from("radar_cache")
     .select("event_count,created_at")
@@ -164,7 +164,7 @@ async function readCacheFirstPage(admin: any, userId: string, periodHash: string
   let pageQuery = admin.from("radar_job_events").select("event_data").eq("job_id", recentJob.id);
   if (body.sort === "date") pageQuery = pageQuery.order("event_date", { ascending: false, nullsFirst: false }).order("importance", { ascending: false });
   else pageQuery = pageQuery.order("importance", { ascending: false }).order("event_date", { ascending: false, nullsFirst: false });
-  const { data: rows } = await pageQuery.range(0, 49);
+  const { data: rows } = await pageQuery;
   const events = (rows ?? []).map((row: any) => row?.event_data).filter(Boolean);
   return { events, event_count: data?.event_count ?? recentJob?.events_count ?? events.length, cached_at: data?.created_at, job_id: recentJob.id };
 }
@@ -438,7 +438,7 @@ Deno.serve(async (req) => {
     const periodHash = hashPeriod(body);
     const bypassCache = body.force_refresh === true || body.ignore_cache === true;
     console.log("FORCE REFRESH", bypassCache);
-    const cached = bypassCache ? null : await readCacheFirstPage(admin, user.id, periodHash, body);
+    const cached = bypassCache ? null : await readCacheEvents(admin, user.id, periodHash, body);
     console.log("CACHE HIT", !!cached);
     if (cached) {
       return new Response(JSON.stringify({
