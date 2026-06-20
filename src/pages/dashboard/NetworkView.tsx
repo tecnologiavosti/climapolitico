@@ -402,9 +402,9 @@ export default function NetworkView() {
 
 
       <AnimatePresence mode="wait">
-        {!needsCandidate && report && (
+        {started && report && (
           <motion.div
-            key={`${candidateId}-${network}-${range?.start_date}-${range?.end_date}`}
+            key={`${activeCandidateId}-${networkParam}-${range?.start_date}-${range?.end_date}`}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
@@ -429,6 +429,7 @@ export default function NetworkView() {
           </motion.div>
         )}
       </AnimatePresence>
+
     </div>
   );
 }
