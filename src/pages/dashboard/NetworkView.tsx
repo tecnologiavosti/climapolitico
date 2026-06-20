@@ -227,7 +227,6 @@ export default function NetworkView() {
     setStarted(false);
     setActiveCandidateId("");
     setProgressStep(0);
-    analysis.remove?.();
   };
 
   const toggleNetwork = (val: string) => {
