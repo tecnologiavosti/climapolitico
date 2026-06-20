@@ -1,6 +1,5 @@
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -52,9 +51,6 @@ interface RadarJobStatus {
   events: RadarEvent[];
   error: string | null;
   partial?: boolean;
-  page_size?: number;
-  offset?: number;
-  has_more?: boolean;
 }
 
 const CATEGORIES = [
@@ -197,10 +193,6 @@ const PRESETS = [
 
 
 const nfBR = new Intl.NumberFormat("pt-BR");
-const PAGE_SIZE = 500;
-const INITIAL_VISIBLE = 10;
-const LOAD_MORE_STEP = 10;
-const BACKEND_FETCH_PAGE = 500;
 const MEMORY_CACHE_TTL_MS = 15 * 60 * 1000;
 const BROWSER_CACHE_TTL_MS = 60 * 60 * 1000;
 const radarMemoryCache = new Map<string, { expiresAt: number; events: RadarEvent[]; jobId?: string; fetchedAt: string; eventsCount?: number }>();
