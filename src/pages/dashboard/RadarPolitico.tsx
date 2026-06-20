@@ -753,8 +753,9 @@ export default function RadarPolitico() {
       )}
 
       {/* KPIs */}
-      <section className="grid grid-cols-1 gap-3">
-        <Kpi label="Eventos" value={kpis.total} />
+      <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Kpi label="Eventos encontrados" value={backendTotal} />
+        <Kpi label="Eventos exibidos (com filtros)" value={filtered.length} />
       </section>
 
       {/* Timeline */}
