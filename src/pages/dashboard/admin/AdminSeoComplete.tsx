@@ -460,10 +460,10 @@ function SitemapRobotsSection() {
         { path: "/auth", priority: "0.5" },
       ];
       // Add published blog posts
-      const { data: posts } = await supabase
+      const { data: posts } = await (supabase as any)
         .from("blog_posts")
         .select("slug")
-        .eq("status", "published" as any);
+        .eq("status", "published");
       (posts ?? []).forEach((p: any) => publicRoutes.push({ path: `/blog/${p.slug}`, priority: "0.6" }));
 
       const content = buildSitemap(publicRoutes);
