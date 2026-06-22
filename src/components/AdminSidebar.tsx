@@ -1,5 +1,4 @@
-import { NavLink } from "@/components/NavLink";
-import { Link, useLocation } from "react-router-dom";
+import { NavLink as RRNavLink, Link, useLocation } from "react-router-dom";
 import {
   Shield,
   FileText,
@@ -9,6 +8,13 @@ import {
   Key,
   Database,
   ArrowLeft,
+  LayoutDashboard,
+  Users,
+  CreditCard,
+  Wallet,
+  UserCheck,
+  Settings as SettingsIcon,
+  Search,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -22,11 +28,27 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { cn } from "@/lib/utils";
 
-type AdminItem = { title: string; url: string; icon: LucideIcon };
+type AdminItem = { title: string; url: string; icon: LucideIcon; tab?: string };
 
-const adminItems: AdminItem[] = [
-  { title: "Painel Administrativo", url: "/dashboard/admin", icon: Shield },
+const adminTabs: AdminItem[] = [
+  { title: "Visão Geral", url: "/dashboard/admin?tab=overview", icon: LayoutDashboard, tab: "overview" },
+  { title: "Usuários", url: "/dashboard/admin?tab=users", icon: Users, tab: "users" },
+  { title: "Assinaturas", url: "/dashboard/admin?tab=subscriptions", icon: CreditCard, tab: "subscriptions" },
+  { title: "Planos", url: "/dashboard/admin?tab=plans", icon: CreditCard, tab: "plans" },
+  { title: "Financeiro", url: "/dashboard/admin?tab=finance", icon: Wallet, tab: "finance" },
+  { title: "Candidatos", url: "/dashboard/admin?tab=candidates", icon: UserCheck, tab: "candidates" },
+  { title: "Analytics", url: "/dashboard/admin?tab=analytics", icon: BarChart3, tab: "analytics" },
+  { title: "Segurança", url: "/dashboard/admin?tab=security", icon: Shield, tab: "security" },
+  { title: "Logs", url: "/dashboard/admin?tab=logs", icon: Activity, tab: "logs" },
+  { title: "Sistema", url: "/dashboard/admin?tab=system", icon: SettingsIcon, tab: "system" },
+  { title: "APIs", url: "/dashboard/admin?tab=api", icon: SettingsIcon, tab: "api" },
+  { title: "SEO", url: "/dashboard/admin?tab=seo", icon: Search, tab: "seo" },
+  { title: "Configurações", url: "/dashboard/admin?tab=settings", icon: SettingsIcon, tab: "settings" },
+];
+
+const adminTools: AdminItem[] = [
   { title: "Blog IA", url: "/dashboard/admin/blog", icon: FileText },
   { title: "Observabilidade", url: "/dashboard/observability", icon: Eye },
   { title: "Operations Console", url: "/dashboard/operations", icon: Activity },
@@ -38,10 +60,33 @@ const adminItems: AdminItem[] = [
   { title: "Enriquecimento de Dados", url: "/dashboard/data-enrichment", icon: Database },
 ];
 
+function Row({ item, active, collapsed }: { item: AdminItem; active: boolean; collapsed: boolean }) {
+  return (
+    <RRNavLink
+      to={item.url}
+      className={cn(
+        "group flex items-center gap-3 hover:bg-muted/60 px-2 py-1.5 rounded-md",
+        active && "bg-muted text-primary font-semibold",
+      )}
+      title={collapsed ? item.title : undefined}
+    >
+      <div className="p-1.5 bg-muted/60 rounded-md group-hover:bg-muted">
+        <item.icon className="h-4 w-4 shrink-0 text-primary" />
+      </div>
+      {!collapsed && (
+        <span className="font-medium text-sm leading-snug flex-1 min-w-0">{item.title}</span>
+      )}
+    </RRNavLink>
+  );
+}
+
 export function AdminSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
-  const { pathname } = useLocation();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const currentTab = searchParams.get("tab") || "overview";
+  const onAdminCenter = location.pathname === "/dashboard/admin";
 
   return (
     <Sidebar className={isCollapsed ? "w-14" : "w-[17rem]"}>
@@ -63,37 +108,39 @@ export function AdminSidebar() {
         </div>
 
         <SidebarGroup>
-          {!isCollapsed && <SidebarGroupLabel>Administração</SidebarGroupLabel>}
+          {!isCollapsed && <SidebarGroupLabel>Painel Administrativo</SidebarGroupLabel>}
           <SidebarGroupContent>
             <SidebarMenu>
-              {adminItems.map((item) => {
-                const active =
-                  item.url === "/dashboard/admin"
-                    ? pathname === item.url
-                    : pathname.startsWith(item.url);
-                return (
-                  <SidebarMenuItem key={item.url}>
-                    <SidebarMenuButton asChild isActive={active}>
-                      <NavLink
-                        to={item.url}
-                        end={item.url === "/dashboard/admin"}
-                        className="group flex items-center gap-3 hover:bg-muted/60 px-2 py-1.5 rounded-md"
-                        activeClassName="bg-muted text-primary font-semibold"
-                        title={isCollapsed ? item.title : undefined}
-                      >
-                        <div className="p-1.5 bg-muted/60 rounded-md group-hover:bg-muted">
-                          <item.icon className="h-4 w-4 shrink-0 text-primary" />
-                        </div>
-                        {!isCollapsed && (
-                          <span className="font-medium text-sm leading-snug flex-1 min-w-0">
-                            {item.title}
-                          </span>
-                        )}
-                      </NavLink>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
+              {adminTabs.map((item) => (
+                <SidebarMenuItem key={item.url}>
+                  <SidebarMenuButton asChild>
+                    <Row
+                      item={item}
+                      collapsed={isCollapsed}
+                      active={onAdminCenter && currentTab === item.tab}
+                    />
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          {!isCollapsed && <SidebarGroupLabel>Ferramentas</SidebarGroupLabel>}
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {adminTools.map((item) => (
+                <SidebarMenuItem key={item.url}>
+                  <SidebarMenuButton asChild>
+                    <Row
+                      item={item}
+                      collapsed={isCollapsed}
+                      active={location.pathname.startsWith(item.url)}
+                    />
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
