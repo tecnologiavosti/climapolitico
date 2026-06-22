@@ -7,6 +7,7 @@ import { LogOut, Sun, Moon, BarChart3 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
+import { AdminSidebar } from "@/components/AdminSidebar";
 import { RouteErrorBoundary } from "@/components/RouteErrorBoundary";
 import { MobileBottomNav } from "@/components/MobileBottomNav";
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs";
