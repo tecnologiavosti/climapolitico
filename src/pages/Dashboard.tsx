@@ -1,5 +1,5 @@
 import { useEffect, lazy, Suspense } from "react";
-import { useNavigate, Routes, Route, Navigate } from "react-router-dom";
+import { useNavigate, useLocation, Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSessionHealthCheck } from "@/hooks/useSessionHealthCheck";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { LogOut, Sun, Moon, BarChart3 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
+import { AdminSidebar } from "@/components/AdminSidebar";
 import { RouteErrorBoundary } from "@/components/RouteErrorBoundary";
 import { MobileBottomNav } from "@/components/MobileBottomNav";
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs";
@@ -64,8 +65,23 @@ const wrap = (name: string, El: React.ComponentType) => (
 const Dashboard = () => {
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { theme, setTheme } = useTheme();
   useSessionHealthCheck();
+
+  const ADMIN_PATHS = [
+    "/dashboard/admin",
+    "/dashboard/observability",
+    "/dashboard/operations",
+    "/dashboard/slo",
+    "/dashboard/worker-tokens",
+    "/dashboard/tenant-analytics",
+    "/dashboard/data-diagnostics",
+    "/dashboard/collector-health",
+    "/dashboard/data-enrichment",
+    "/dashboard/system-health",
+  ];
+  const isAdminRoute = ADMIN_PATHS.some((p) => location.pathname.startsWith(p));
 
   const onboarding = useOnboarding(onboardingSteps, !!user);
 
@@ -83,7 +99,7 @@ const Dashboard = () => {
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-gradient-secondary">
         <div data-onboarding="sidebar">
-          <AppSidebar />
+          {isAdminRoute ? <AdminSidebar /> : <AppSidebar />}
         </div>
 
         <div className="flex-1 flex flex-col min-w-0">

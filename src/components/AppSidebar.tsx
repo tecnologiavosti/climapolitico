@@ -155,16 +155,7 @@ const adminGroup: NavGroup = {
   icon: Shield,
   defaultOpen: false,
   items: [
-    { title: "Painel Administrativo", url: "/dashboard/admin", icon: Shield, tip: "Tudo em um só lugar: usuários, financeiro, planos, SEO, segurança e mais." },
-    { title: "Blog IA", url: "/dashboard/admin/blog", icon: FileText },
-    { title: "Observabilidade", url: "/dashboard/observability", icon: Eye },
-    { title: "Operations Console", url: "/dashboard/operations", icon: Activity },
-    { title: "SLO & SLA", url: "/dashboard/slo", icon: BarChart3 },
-    { title: "Worker Tokens", url: "/dashboard/worker-tokens", icon: Key },
-    { title: "Tenant Analytics", url: "/dashboard/tenant-analytics", icon: BarChart3 },
-    { title: "Diagnóstico de Dados", url: "/dashboard/data-diagnostics", icon: Database },
-    { title: "Saúde dos Coletores", url: "/dashboard/collector-health", icon: Activity },
-    { title: "Enriquecimento de Dados", url: "/dashboard/data-enrichment", icon: Database },
+    { title: "Painel Administrativo", url: "/dashboard/admin", icon: Shield, tip: "Acessa o painel dedicado do administrador." },
   ],
 };
 
