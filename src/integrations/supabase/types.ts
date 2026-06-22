@@ -3188,6 +3188,27 @@ export type Database = {
           },
         ]
       }
+      seo_artifacts: {
+        Row: {
+          content: string
+          generated_at: string
+          id: string
+          url_count: number | null
+        }
+        Insert: {
+          content: string
+          generated_at?: string
+          id: string
+          url_count?: number | null
+        }
+        Update: {
+          content?: string
+          generated_at?: string
+          id?: string
+          url_count?: number | null
+        }
+        Relationships: []
+      }
       seo_settings: {
         Row: {
           canonical_url: string | null
@@ -3232,6 +3253,51 @@ export type Database = {
           route?: string
           schema_jsonld?: Json | null
           title?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      seo_tracking: {
+        Row: {
+          enabled: boolean
+          id: string
+          provider: string
+          tracking_id: string
+          updated_at: string
+        }
+        Insert: {
+          enabled?: boolean
+          id?: string
+          provider: string
+          tracking_id: string
+          updated_at?: string
+        }
+        Update: {
+          enabled?: boolean
+          id?: string
+          provider?: string
+          tracking_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      seo_verifications: {
+        Row: {
+          code: string
+          id: string
+          provider: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          id?: string
+          provider: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          id?: string
+          provider?: string
           updated_at?: string
         }
         Relationships: []
