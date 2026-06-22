@@ -99,7 +99,7 @@ const Dashboard = () => {
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-gradient-secondary">
         <div data-onboarding="sidebar">
-          <AppSidebar />
+          {isAdminRoute ? <AdminSidebar /> : <AppSidebar />}
         </div>
 
         <div className="flex-1 flex flex-col min-w-0">
