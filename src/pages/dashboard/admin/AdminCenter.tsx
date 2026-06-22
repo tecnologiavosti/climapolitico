@@ -53,11 +53,6 @@ function Inner() {
 
   return (
     <div className="p-4 sm:p-6 space-y-4">
-      <div>
-        <h1 className="text-3xl font-bold">Painel Administrativo</h1>
-        <p className="text-muted-foreground">Tudo o que você precisa para administrar a plataforma em um só lugar.</p>
-      </div>
-
       <Tabs
         value={current}
         onValueChange={(v) => {
@@ -66,19 +61,8 @@ function Inner() {
           setParams(next, { replace: true });
         }}
       >
-        <div className="overflow-x-auto">
-          <TabsList className="flex w-max h-auto flex-nowrap">
-            {TABS.map((t) => (
-              <TabsTrigger key={t.value} value={t.value} className="whitespace-nowrap">
-                <t.icon className="h-4 w-4 mr-1" />
-                {t.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </div>
-
         {TABS.map((t) => (
-          <TabsContent key={t.value} value={t.value} className="mt-4">
+          <TabsContent key={t.value} value={t.value} className="mt-0">
             <Suspense fallback={<PageLoader />}>
               <t.El />
             </Suspense>
