@@ -65,8 +65,23 @@ const wrap = (name: string, El: React.ComponentType) => (
 const Dashboard = () => {
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { theme, setTheme } = useTheme();
   useSessionHealthCheck();
+
+  const ADMIN_PATHS = [
+    "/dashboard/admin",
+    "/dashboard/observability",
+    "/dashboard/operations",
+    "/dashboard/slo",
+    "/dashboard/worker-tokens",
+    "/dashboard/tenant-analytics",
+    "/dashboard/data-diagnostics",
+    "/dashboard/collector-health",
+    "/dashboard/data-enrichment",
+    "/dashboard/system-health",
+  ];
+  const isAdminRoute = ADMIN_PATHS.some((p) => location.pathname.startsWith(p));
 
   const onboarding = useOnboarding(onboardingSteps, !!user);
 
