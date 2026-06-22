@@ -21,19 +21,7 @@ const Overview = lazy(() => import("./dashboard/Overview"));
 const Candidates = lazy(() => import("./dashboard/Candidates"));
 const Analytics = lazy(() => import("./dashboard/Analytics"));
 const CandidateRanking = lazy(() => import("./dashboard/CandidateRanking"));
-const AdminDashboard = lazy(() => import("./dashboard/admin/AdminDashboard"));
-const AdminUsers = lazy(() => import("./dashboard/AdminUsers"));
-const AdminFinance = lazy(() => import("./dashboard/admin/AdminFinance"));
-const AdminPlans = lazy(() => import("./dashboard/admin/AdminPlans"));
-const AdminSeo = lazy(() => import("./dashboard/admin/AdminSeo"));
-const AdminAnalytics = lazy(() => import("./dashboard/admin/AdminAnalytics"));
-const AdminSecurity = lazy(() => import("./dashboard/admin/AdminSecurity"));
-const AdminLogs = lazy(() => import("./dashboard/admin/AdminLogs"));
-const AdminSettings = lazy(() => import("./dashboard/admin/AdminSettings"));
-const AdminApiSettings = lazy(() => import("./dashboard/AdminApiSettings"));
-const AdminSubscriptions = lazy(() => import("./dashboard/admin/AdminSubscriptions"));
-const AdminCandidates = lazy(() => import("./dashboard/admin/AdminCandidates"));
-const AdminSystem = lazy(() => import("./dashboard/admin/AdminSystem"));
+const AdminCenter = lazy(() => import("./dashboard/admin/AdminCenter"));
 
 const BlogAdmin = lazy(() => import("./dashboard/BlogAdmin"));
 const AIInsights = lazy(() => import("./dashboard/AIInsights"));
@@ -151,19 +139,19 @@ const Dashboard = () => {
                 <Route path="/realtime-monitor" element={wrap("RealTimeMonitor", RealTimeMonitor)} />
                 <Route path="/brand24-collector" element={wrap("Brand24Collector", Brand24Collector)} />
                 <Route path="/ai-insights" element={wrap("AIInsights", AIInsights)} />
-                <Route path="/admin" element={wrap("AdminDashboard", AdminDashboard)} />
-                <Route path="/admin/users" element={wrap("AdminUsers", AdminUsers)} />
-                <Route path="/admin/finance" element={wrap("AdminFinance", AdminFinance)} />
-                <Route path="/admin/plans" element={wrap("AdminPlans", AdminPlans)} />
-                <Route path="/admin/seo" element={wrap("AdminSeo", AdminSeo)} />
-                <Route path="/admin/analytics" element={wrap("AdminAnalytics", AdminAnalytics)} />
-                <Route path="/admin/security" element={wrap("AdminSecurity", AdminSecurity)} />
-                <Route path="/admin/logs" element={wrap("AdminLogs", AdminLogs)} />
-                <Route path="/admin/settings" element={wrap("AdminSettings", AdminSettings)} />
-                <Route path="/admin/api-settings" element={wrap("AdminApiSettings", AdminApiSettings)} />
-                <Route path="/admin/subscriptions" element={wrap("AdminSubscriptions", AdminSubscriptions)} />
-                <Route path="/admin/candidates" element={wrap("AdminCandidates", AdminCandidates)} />
-                <Route path="/admin/system" element={wrap("AdminSystem", AdminSystem)} />
+                <Route path="/admin" element={wrap("AdminCenter", AdminCenter)} />
+                <Route path="/admin/users" element={<Navigate to="/dashboard/admin?tab=users" replace />} />
+                <Route path="/admin/finance" element={<Navigate to="/dashboard/admin?tab=finance" replace />} />
+                <Route path="/admin/plans" element={<Navigate to="/dashboard/admin?tab=plans" replace />} />
+                <Route path="/admin/seo" element={<Navigate to="/dashboard/admin?tab=seo" replace />} />
+                <Route path="/admin/analytics" element={<Navigate to="/dashboard/admin?tab=analytics" replace />} />
+                <Route path="/admin/security" element={<Navigate to="/dashboard/admin?tab=security" replace />} />
+                <Route path="/admin/logs" element={<Navigate to="/dashboard/admin?tab=logs" replace />} />
+                <Route path="/admin/settings" element={<Navigate to="/dashboard/admin?tab=settings" replace />} />
+                <Route path="/admin/api-settings" element={<Navigate to="/dashboard/admin?tab=api" replace />} />
+                <Route path="/admin/subscriptions" element={<Navigate to="/dashboard/admin?tab=subscriptions" replace />} />
+                <Route path="/admin/candidates" element={<Navigate to="/dashboard/admin?tab=candidates" replace />} />
+                <Route path="/admin/system" element={<Navigate to="/dashboard/admin?tab=system" replace />} />
                 <Route path="/admin/blog" element={wrap("BlogAdmin", BlogAdmin)} />
 
                 <Route path="/system-health" element={wrap("SystemHealth", SystemHealth)} />

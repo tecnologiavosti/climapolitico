@@ -13,6 +13,7 @@ import Dashboard from "./pages/Dashboard";
 import TestAI from "./pages/TestAI";
 import NotFound from "./pages/NotFound";
 import { CookieConsent } from "@/components/CookieConsent";
+import { SeoHead } from "@/components/SeoHead";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,6 +33,7 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
+        <SeoHead />
       <BrowserRouter>
         <AuthProvider>
           <Routes>
