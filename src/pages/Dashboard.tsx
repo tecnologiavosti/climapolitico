@@ -1,5 +1,5 @@
 import { useEffect, lazy, Suspense } from "react";
-import { useNavigate, Routes, Route, Navigate } from "react-router-dom";
+import { useNavigate, useLocation, Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSessionHealthCheck } from "@/hooks/useSessionHealthCheck";
 import { Button } from "@/components/ui/button";
