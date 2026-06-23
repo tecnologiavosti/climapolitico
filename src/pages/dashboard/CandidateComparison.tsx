@@ -492,7 +492,7 @@ const CandidateComparisonPage = () => {
                 <CardTitle className="flex items-center gap-2">
                   <Trophy className="h-5 w-5 text-amber-400" />
                   Ranking de Força Política
-                  <InfoTip text="Score IA 0–100 calculado por modelo híbrido com pesos regionais, sentimentais e competitivos: regional 25% · aprovação 20% · resistência 20% · viralização 15% · crescimento 10% · dominância 10%." />
+                  <InfoTip text="Score 0–100 calculado por média simples (sem pesos): (aprovação + popularidade + penetração + engajamento + autoridade) / 5. Todos os indicadores são normalizados min-max entre os candidatos." />
                 </CardTitle>
                 <CardDescription>
                   Pontuação consolidada de cada candidato. Hover/tap nos indicadores para entender cada métrica.
