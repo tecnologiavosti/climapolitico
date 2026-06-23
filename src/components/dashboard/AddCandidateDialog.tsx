@@ -245,7 +245,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                   <button
                     key={name}
                     type="button"
-                    onClick={() => setPosition(name)}
+                    onClick={() => handlePosition(name)}
                     disabled={isPending}
                     className={cn(
                       "group flex flex-col items-start gap-2 p-3.5 rounded-xl border text-left transition-all duration-200",
