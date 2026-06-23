@@ -6,24 +6,47 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import {
   UserPlus, Loader2, Landmark, Building2, Building, Scroll, FileText, ClipboardList, User,
-  Sparkles,
+  Sparkles, Check, ChevronsUpDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const PARTIES: { name: string; color: string }[] = [
-  { name: "PT", color: "from-red-500/20 to-red-500/5 text-red-600 dark:text-red-300 border-red-500/40" },
-  { name: "PL", color: "from-blue-500/20 to-blue-500/5 text-blue-600 dark:text-blue-300 border-blue-500/40" },
-  { name: "MDB", color: "from-emerald-500/20 to-emerald-500/5 text-emerald-600 dark:text-emerald-300 border-emerald-500/40" },
-  { name: "União Brasil", color: "from-orange-500/20 to-orange-500/5 text-orange-600 dark:text-orange-300 border-orange-500/40" },
-  { name: "PSD", color: "from-sky-500/20 to-sky-500/5 text-sky-600 dark:text-sky-300 border-sky-500/40" },
-  { name: "PSB", color: "from-yellow-500/20 to-yellow-500/5 text-yellow-600 dark:text-yellow-300 border-yellow-500/40" },
-  { name: "Republicanos", color: "from-indigo-500/20 to-indigo-500/5 text-indigo-600 dark:text-indigo-300 border-indigo-500/40" },
-  { name: "PDT", color: "from-rose-500/20 to-rose-500/5 text-rose-600 dark:text-rose-300 border-rose-500/40" },
-  { name: "PSDB", color: "from-cyan-500/20 to-cyan-500/5 text-cyan-600 dark:text-cyan-300 border-cyan-500/40" },
-  { name: "Novo", color: "from-amber-500/20 to-amber-500/5 text-amber-600 dark:text-amber-300 border-amber-500/40" },
-  { name: "Outro", color: "from-zinc-500/20 to-zinc-500/5 text-zinc-600 dark:text-zinc-300 border-zinc-500/40" },
+type Party = { sigla: string; nome: string; numero: number };
+
+const PARTIES: Party[] = [
+  { sigla: "MDB", nome: "Movimento Democrático Brasileiro", numero: 15 },
+  { sigla: "PDT", nome: "Partido Democrático Trabalhista", numero: 12 },
+  { sigla: "PT", nome: "Partido dos Trabalhadores", numero: 13 },
+  { sigla: "PCdoB", nome: "Partido Comunista do Brasil", numero: 65 },
+  { sigla: "PSB", nome: "Partido Socialista Brasileiro", numero: 40 },
+  { sigla: "PSDB", nome: "Partido da Social Democracia Brasileira", numero: 45 },
+  { sigla: "AGIR", nome: "AGIR", numero: 36 },
+  { sigla: "MOBILIZA", nome: "Mobilização Nacional", numero: 33 },
+  { sigla: "CIDADANIA", nome: "Cidadania", numero: 23 },
+  { sigla: "PV", nome: "Partido Verde", numero: 43 },
+  { sigla: "AVANTE", nome: "Avante", numero: 70 },
+  { sigla: "PP", nome: "Progressistas", numero: 11 },
+  { sigla: "PSTU", nome: "Partido Socialista dos Trabalhadores Unificado", numero: 16 },
+  { sigla: "PCB", nome: "Partido Comunista Brasileiro", numero: 21 },
+  { sigla: "PRTB", nome: "Partido Renovador Trabalhista Brasileiro", numero: 28 },
+  { sigla: "DC", nome: "Democracia Cristã", numero: 27 },
+  { sigla: "PCO", nome: "Partido da Causa Operária", numero: 29 },
+  { sigla: "PODE", nome: "Podemos", numero: 20 },
+  { sigla: "REPUBLICANOS", nome: "Republicanos", numero: 10 },
+  { sigla: "PSOL", nome: "Partido Socialismo e Liberdade", numero: 50 },
+  { sigla: "PL", nome: "Partido Liberal", numero: 22 },
+  { sigla: "PSD", nome: "Partido Social Democrático", numero: 55 },
+  { sigla: "SOLIDARIEDADE", nome: "Solidariedade", numero: 77 },
+  { sigla: "NOVO", nome: "Partido Novo", numero: 30 },
+  { sigla: "REDE", nome: "Rede Sustentabilidade", numero: 18 },
+  { sigla: "DEMOCRATA", nome: "Democrata", numero: 35 },
+  { sigla: "UP", nome: "Unidade Popular", numero: 80 },
+  { sigla: "UNIÃO", nome: "União Brasil", numero: 44 },
+  { sigla: "PRD", nome: "Partido Renovação Democrática", numero: 25 },
+  { sigla: "MISSÃO", nome: "Partido Missão", numero: 14 },
 ];
 
 const POSITIONS: { name: string; Icon: React.ComponentType<{ className?: string }> }[] = [
@@ -169,29 +192,9 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
 
           {/* Partido */}
           <Field label="Partido" error={errors.party} required>
-            <div className="flex flex-wrap gap-2">
-              {PARTIES.map((p) => {
-                const selected = party === p.name;
-                return (
-                  <button
-                    key={p.name}
-                    type="button"
-                    onClick={() => setParty(p.name)}
-                    disabled={isPending}
-                    className={cn(
-                      "px-3.5 py-2 rounded-full text-sm font-medium border transition-all duration-200",
-                      "hover:scale-[1.03] hover:shadow-sm",
-                      selected
-                        ? `bg-gradient-to-br ${p.color} shadow-md ring-2 ring-offset-1 ring-offset-background ring-current/40`
-                        : "border-border/70 bg-muted/30 text-muted-foreground hover:text-foreground hover:border-border",
-                    )}
-                  >
-                    {p.name}
-                  </button>
-                );
-              })}
-            </div>
+            <PartyCombobox value={party} onChange={setParty} disabled={isPending} />
           </Field>
+
 
           {/* Cargo */}
           <Field label="Cargo" error={errors.position} required>
@@ -309,3 +312,74 @@ function Field({
     </div>
   );
 }
+
+function PartyCombobox({
+  value, onChange, disabled,
+}: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const selected = PARTIES.find((p) => p.sigla === value);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          role="combobox"
+          aria-expanded={open}
+          disabled={disabled}
+          className={cn(
+            "w-full h-12 flex items-center justify-between gap-2 rounded-xl border px-4 text-sm transition-all duration-200",
+            "bg-background hover:border-primary/40",
+            selected
+              ? "border-primary/60 ring-2 ring-primary/20 shadow-[0_0_0_4px_hsl(var(--primary)/0.08)]"
+              : "border-input",
+            disabled && "opacity-50 cursor-not-allowed",
+          )}
+        >
+          {selected ? (
+            <span className="flex items-center gap-2 min-w-0">
+              <span className="font-semibold text-foreground">{selected.sigla}</span>
+              <span className="text-muted-foreground truncate">· {selected.nome}</span>
+              <span className="text-xs text-muted-foreground shrink-0">({selected.numero})</span>
+            </span>
+          ) : (
+            <span className="text-muted-foreground">Buscar por sigla, nome ou número…</span>
+          )}
+          <ChevronsUpDown className="h-4 w-4 text-muted-foreground shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="p-0 w-[--radix-popover-trigger-width] rounded-xl" align="start">
+        <Command
+          filter={(itemValue, search) => {
+            const q = search.toLowerCase().trim();
+            if (!q) return 1;
+            return itemValue.toLowerCase().includes(q) ? 1 : 0;
+          }}
+        >
+          <CommandInput placeholder="Buscar partido…" className="h-11" />
+          <CommandList className="max-h-72">
+            <CommandEmpty>Nenhum partido encontrado.</CommandEmpty>
+            <CommandGroup>
+              {PARTIES.map((p) => {
+                const isSel = value === p.sigla;
+                return (
+                  <CommandItem
+                    key={p.sigla}
+                    value={`${p.sigla} ${p.nome} ${p.numero}`}
+                    onSelect={() => { onChange(p.sigla); setOpen(false); }}
+                    className="cursor-pointer"
+                  >
+                    <Check className={cn("mr-2 h-4 w-4 transition-opacity", isSel ? "opacity-100 text-primary" : "opacity-0")} />
+                    <span className="font-semibold mr-1.5">{p.sigla}</span>
+                    <span className="text-muted-foreground truncate">· {p.nome}</span>
+                    <span className="ml-auto text-xs text-muted-foreground">({p.numero})</span>
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
