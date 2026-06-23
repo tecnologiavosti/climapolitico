@@ -187,7 +187,6 @@ export default function Candidates() {
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
       toast.success('Candidato adicionado e métricas iniciais processadas!');
       setDialogOpen(false);
-      setFormData({ fullName: "", region: "", socialMedia: "", instagramUrl: "", facebookUrl: "" });
       setValidationErrors({});
 
       // Geração automática de canais/subreddits/keywords via IA (não bloqueante)
