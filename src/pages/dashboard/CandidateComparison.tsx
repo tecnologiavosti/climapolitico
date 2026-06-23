@@ -836,16 +836,36 @@ const CandidateComparisonPage = () => {
                 {(() => {
                   type Alert = { id: string; icon: typeof TrendingUp; tone: string; title: string; body: string };
                   const alerts: Alert[] = [];
-                  const byRegion = new Map<string, typeof candidates>();
-                  candidates.forEach((c) => {
-                    const key = c.state ?? "—";
-                    const arr = byRegion.get(key) ?? [];
-                    arr.push(c);
-                    byRegion.set(key, arr);
-                  });
 
-                  // 1. Liderança regional consolidada
-                  byRegion.forEach((arr, region) => {
+                  // Clusters ideológicos por partido (proxy simples).
+                  const ideologyOf = (party: string | null): string => {
+                    if (!party) return "indef";
+                    const p = party.toUpperCase();
+                    if (["PL", "NOVO", "PP", "REPUBLICANOS", "UNIÃO", "UNIAO", "PSDB", "PSD", "PODE", "MDB", "AVANTE"].includes(p)) return "centro-direita";
+                    if (["PT", "PSOL", "PCDOB", "PC DO B", "PV", "REDE", "PDT"].includes(p)) return "centro-esquerda";
+                    if (["CIDADANIA", "SOLIDARIEDADE", "PSB"].includes(p)) return "centro";
+                    return "indef";
+                  };
+
+                  // Regra de comparabilidade: mesma UF OU mesmo cluster ideológico.
+                  const isComparable = (a: typeof candidates[number], b: typeof candidates[number]) => {
+                    if (a.id === b.id) return false;
+                    const sameState = !!a.state && !!b.state && a.state === b.state;
+                    const ideoA = ideologyOf(a.party);
+                    const ideoB = ideologyOf(b.party);
+                    const sameIdeo = ideoA !== "indef" && ideoA === ideoB;
+                    return sameState || sameIdeo;
+                  };
+
+                  // 1. Liderança regional consolidada (por UF, exige rival comparável na mesma UF)
+                  const byState = new Map<string, typeof candidates>();
+                  candidates.forEach((c) => {
+                    if (!c.state) return;
+                    const arr = byState.get(c.state) ?? [];
+                    arr.push(c);
+                    byState.set(c.state, arr);
+                  });
+                  byState.forEach((arr, state) => {
                     if (arr.length < 2) return;
                     const sorted = [...arr].sort((a, b) => b.scores.regionalForce - a.scores.regionalForce);
                     const leader = sorted[0];
@@ -853,78 +873,93 @@ const CandidateComparisonPage = () => {
                     if (gap >= 12) {
                       alerts.push({
                         id: `reg-${leader.id}`,
-
                         icon: Shield,
                         tone: "text-emerald-400",
-                        title: `${leader.name} consolidando liderança no ${region}`,
-                        body: `Penetração regional ${leader.scores.regionalForce} vs ${sorted[1].scores.regionalForce} do 2º colocado (+${gap} pts).`,
+                        title: `${leader.name} consolidando liderança em ${state}`,
+                        body: `Penetração ${leader.scores.regionalForce} vs ${sorted[1].scores.regionalForce} de ${sorted[1].name} (+${gap} pts).`,
                       });
                     }
                   });
 
-                  // 2. Expansão de recall nacional
-                  const recallSorted = [...candidates].sort((a, b) => (b.scores.recall ?? 0) - (a.scores.recall ?? 0));
-                  if (recallSorted[0] && (recallSorted[0].scores.recall ?? 0) >= 70) {
-                    alerts.push({
-                      id: `recall-${recallSorted[0].id}`,
-                      icon: Megaphone,
-                      tone: "text-sky-400",
-                      title: `${recallSorted[0].name} expandindo recall nacional`,
-                      body: `Lembrança ${recallSorted[0].scores.recall} — referência de presença pública entre os comparados.`,
-                    });
-                  }
+                  // 2. Perda de competitividade — APENAS entre comparáveis diretos
+                  candidates.forEach((c) => {
+                    const rivals = candidates.filter((r) => isComparable(c, r));
+                    if (rivals.length === 0) return;
+                    const strongestRival = rivals.sort((a, b) => b.scores.strength - a.scores.strength)[0];
+                    const diff = strongestRival.scores.strength - c.scores.strength;
+                    if (diff >= 18) {
+                      alerts.push({
+                        id: `weak-${c.id}`,
+                        icon: TrendingDown,
+                        tone: "text-rose-400",
+                        title: `${c.name} perde competitividade frente a ${strongestRival.name}`,
+                        body: `Força política ${c.scores.strength} vs ${strongestRival.scores.strength} (mesma UF/cluster ideológico).`,
+                      });
+                    }
+                  });
 
-                  // 3. Crescimento entre os menos consolidados
-                  const growthSorted = [...candidates]
-                    .filter((c) => getComputedGrowthScore(c) > 0)
-                    .sort((a, b) => getComputedGrowthScore(b) - getComputedGrowthScore(a));
-                  const rising = growthSorted.find((c) => (c.scores.popularity ?? c.scores.approval) < 60);
-                  if (rising) {
+                  // 3. Alertas individuais (sem rival comparável) — perfil próprio
+                  candidates.forEach((c) => {
+                    const hasRival = candidates.some((r) => isComparable(c, r));
+                    if (hasRival) return;
+                    const pop = c.scores.popularity ?? c.scores.approval;
+                    const approval = c.scores.approval;
+                    const regional = c.scores.regionalForce;
+                    let body = "";
+                    let icon: typeof TrendingUp = Target;
+                    let tone = "text-sky-400";
+                    if (approval >= 55 && regional < 50) {
+                      body = `Boa aprovação (${approval}) em nichos, mas penetração estadual baixa (${regional}).`;
+                      icon = Target;
+                      tone = "text-fuchsia-400";
+                    } else if (regional >= 60) {
+                      body = `Consolida base regional (${regional}) — sem rival direto comparável neste recorte.`;
+                      icon = MapPin;
+                      tone = "text-emerald-400";
+                    } else if (c.scores.virality >= 60) {
+                      body = `Tração digital forte (viralização ${c.scores.virality}), ainda sem competidor equivalente.`;
+                      icon = Zap;
+                      tone = "text-violet-400";
+                    } else {
+                      body = `Perfil isolado: aprovação ${approval}, força ${c.scores.strength}, sem par comparável no recorte atual.`;
+                    }
                     alerts.push({
-                      id: `grow-${rising.id}`,
-                      icon: TrendingUp,
-                      tone: "text-fuchsia-400",
-                      title: `${rising.name} cresce com espaço para expandir`,
-                      body: `Capacidade de crescimento ${getComputedGrowthScore(rising)} com popularidade ainda em ${rising.scores.popularity ?? rising.scores.approval}.`,
+                      id: `solo-${c.id}`,
+                      icon,
+                      tone,
+                      title: `${c.name} — leitura individual`,
+                      body,
                     });
-                  }
+                  });
 
-                  // 4. Perda de competitividade
-                  const weakest = [...candidates].sort((a, b) => a.scores.strength - b.scores.strength)[0];
-                  const strongest = [...candidates].sort((a, b) => b.scores.strength - a.scores.strength)[0];
-                  if (weakest && strongest && weakest.id !== strongest.id && (strongest.scores.strength - weakest.scores.strength) >= 18) {
-                    alerts.push({
-                      id: `weak-${weakest.id}`,
-                      icon: TrendingDown,
-                      tone: "text-rose-400",
-                      title: `${weakest.name} perde competitividade`,
-                      body: `Força política ${weakest.scores.strength} vs ${strongest.scores.strength} do líder (${strongest.name}).`,
+                  // 4. Alta rejeição (perfil próprio, não comparativo)
+                  candidates
+                    .filter((c) => c.scores.rejection >= 35)
+                    .slice(0, 2)
+                    .forEach((c) => {
+                      alerts.push({
+                        id: `rej-${c.id}`,
+                        icon: AlertTriangle,
+                        tone: "text-amber-400",
+                        title: `${c.name} acumula resistência elevada`,
+                        body: `Rejeição em ${c.scores.rejection}% limita potencial de expansão (${c.scores.expansion}).`,
+                      });
                     });
-                  }
 
-                  // 5. Alta rejeição
-                  const highRej = [...candidates].sort((a, b) => b.scores.rejection - a.scores.rejection)[0];
-                  if (highRej && highRej.scores.rejection >= 35) {
-                    alerts.push({
-                      id: `rej-${highRej.id}`,
-                      icon: AlertTriangle,
-                      tone: "text-amber-400",
-                      title: `${highRej.name} acumula resistência elevada`,
-                      body: `Rejeição em ${highRej.scores.rejection}% limita potencial de 2º turno (expansão ${highRej.scores.expansion}).`,
+                  // 5. Crescimento próprio (não comparativo)
+                  candidates
+                    .filter((c) => getComputedGrowthScore(c) >= 65 && (c.scores.popularity ?? c.scores.approval) < 60)
+                    .slice(0, 2)
+                    .forEach((c) => {
+                      alerts.push({
+                        id: `grow-${c.id}`,
+                        icon: TrendingUp,
+                        tone: "text-fuchsia-400",
+                        title: `${c.name} cresce com espaço para expandir`,
+                        body: `Crescimento ${getComputedGrowthScore(c)} com popularidade ainda em ${c.scores.popularity ?? c.scores.approval}.`,
+                      });
                     });
-                  }
 
-                  // 6. Viralização destacada
-                  const viralTop = [...candidates].sort((a, b) => b.scores.virality - a.scores.virality)[0];
-                  if (viralTop && viralTop.scores.virality >= 65) {
-                    alerts.push({
-                      id: `viral-${viralTop.id}`,
-                      icon: Zap,
-                      tone: "text-violet-400",
-                      title: `${viralTop.name} domina a viralização digital`,
-                      body: `Engajamento normalizado ${viralTop.scores.virality} — maior tração nas redes entre os candidatos.`,
-                    });
-                  }
 
                   const shown = alerts.slice(0, 6);
                   if (shown.length === 0) {
