@@ -34,13 +34,6 @@ const candidateSchema = z.object({
   facebookUrl: urlOpt,
 });
 
-type CandidateFormData = {
-  fullName: string;
-  region: string;
-  socialMedia: string;
-  instagramUrl: string;
-  facebookUrl: string;
-};
 
 function normalizeText(value: string) {
   return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
