@@ -323,21 +323,27 @@ export function AppSidebar() {
   const tooltipsEnabled = useTooltipsEnabled();
 
   return (
-    <Sidebar className={isCollapsed ? "w-14" : "w-[17rem]"}>
-      <SidebarContent>
+    <Sidebar
+      className={isCollapsed ? "w-14" : "w-[17rem]"}
+      style={{ background: "var(--gradient-sidebar)" }}
+    >
+      <SidebarContent className="text-white">
         {/* Logo */}
-        <div className="p-4 border-b">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-gradient-primary rounded-lg">
-              <BarChart3 className="h-5 w-5 text-white" />
-            </div>
+        <div className="p-4 border-b border-white/10">
+          <div className="flex items-center gap-2.5">
+            <img
+              src={logoAsset.url}
+              alt="Clima Político"
+              className="h-9 w-9 rounded-full object-cover ring-2 ring-white/30 shadow-md shrink-0"
+            />
             {!isCollapsed && (
-              <span className="font-bold text-lg bg-gradient-primary bg-clip-text text-transparent">
+              <span className="font-bold text-base text-white tracking-tight">
                 Clima Político
               </span>
             )}
           </div>
         </div>
+
 
         {!isCollapsed && <OnboardingBanner />}
 

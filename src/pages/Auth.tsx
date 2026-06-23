@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, BarChart3 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import logoAsset from "@/assets/clima-politico-logo.jpg.asset.json";
 import { z } from "zod";
 import { consumeTrialAfterLogin, getTrialStart, queueTrialCelebration, startTrial } from "@/lib/trial";
 
@@ -165,17 +166,23 @@ const Auth = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-secondary flex items-center justify-center p-4">
-      <Card className="w-full max-w-md p-8 space-y-6">
-        <div className="text-center space-y-2">
-          <div className="flex justify-center mb-4">
-            <div className="p-3 bg-gradient-primary rounded-lg">
-              <BarChart3 className="h-8 w-8 text-white" />
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "var(--gradient-hero)" }}>
+      <Card className="w-full max-w-md p-8 space-y-6 shadow-2xl border-white/20 backdrop-blur-sm">
+        <div className="text-center space-y-3">
+          <div className="flex justify-center mb-2">
+            <div className="relative">
+              <div className="absolute inset-0 rounded-full blur-2xl bg-primary-glow/40" aria-hidden />
+              <img
+                src={logoAsset.url}
+                alt="Clima Político"
+                className="relative h-24 w-24 rounded-full object-cover ring-4 ring-white/70 shadow-xl"
+              />
             </div>
           </div>
           <h1 className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">Clima Político</h1>
           <p className="text-muted-foreground">Análise política inteligente com IA</p>
         </div>
+
 
         {forgotOpen ? (
           <form onSubmit={handleForgot} className="space-y-4">
