@@ -192,29 +192,9 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
 
           {/* Partido */}
           <Field label="Partido" error={errors.party} required>
-            <div className="flex flex-wrap gap-2">
-              {PARTIES.map((p) => {
-                const selected = party === p.name;
-                return (
-                  <button
-                    key={p.name}
-                    type="button"
-                    onClick={() => setParty(p.name)}
-                    disabled={isPending}
-                    className={cn(
-                      "px-3.5 py-2 rounded-full text-sm font-medium border transition-all duration-200",
-                      "hover:scale-[1.03] hover:shadow-sm",
-                      selected
-                        ? `bg-gradient-to-br ${p.color} shadow-md ring-2 ring-offset-1 ring-offset-background ring-current/40`
-                        : "border-border/70 bg-muted/30 text-muted-foreground hover:text-foreground hover:border-border",
-                    )}
-                  >
-                    {p.name}
-                  </button>
-                );
-              })}
-            </div>
+            <PartyCombobox value={party} onChange={setParty} disabled={isPending} />
           </Field>
+
 
           {/* Cargo */}
           <Field label="Cargo" error={errors.position} required>
