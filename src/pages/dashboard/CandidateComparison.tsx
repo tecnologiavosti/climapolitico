@@ -783,6 +783,7 @@ const CandidateComparisonPage = () => {
               </CardHeader>
               <CardContent className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {candidates.map((c) => {
+                  const hasBaseline = (c.scores as any).hasBaseline !== false;
                   const g = Math.max(-100, Math.min(100, c.scores.growth));
                   const mid = 50;
                   const width = Math.abs(g) / 2; // 0..50
@@ -791,20 +792,26 @@ const CandidateComparisonPage = () => {
                     <div key={c.id} className="rounded-lg border border-border/40 bg-card/40 p-3 space-y-2">
                       <div className="flex items-center justify-between">
                         <div className="font-medium truncate">{c.name}</div>
-                        <MomentumBadge m={c.momentum} />
+                        {hasBaseline ? <MomentumBadge m={c.momentum} /> : <Badge variant="outline" className="text-[10px]">Sem histórico</Badge>}
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        Crescimento {g >= 0 ? "+" : ""}{g}% · Viralização {c.scores.virality}
-                      </div>
-                      <div className="relative h-1.5 rounded-full bg-muted overflow-hidden">
-                        <div className="absolute inset-y-0 left-1/2 w-px bg-border" />
-                        <motion.div
-                          className={`absolute inset-y-0 ${positive ? "bg-emerald-400" : "bg-rose-400"}`}
-                          initial={{ width: 0 }}
-                          animate={{ width: `${width}%`, left: positive ? `${mid}%` : `${mid - width}%` }}
-                          transition={{ duration: 0.7 }}
-                        />
-                      </div>
+                      {hasBaseline ? (
+                        <>
+                          <div className="text-xs text-muted-foreground">
+                            Crescimento {g >= 0 ? "+" : ""}{g}% · Viralização {c.scores.virality}
+                          </div>
+                          <div className="relative h-1.5 rounded-full bg-muted overflow-hidden">
+                            <div className="absolute inset-y-0 left-1/2 w-px bg-border" />
+                            <motion.div
+                              className={`absolute inset-y-0 ${positive ? "bg-emerald-400" : "bg-rose-400"}`}
+                              initial={{ width: 0 }}
+                              animate={{ width: `${width}%`, left: positive ? `${mid}%` : `${mid - width}%` }}
+                              transition={{ duration: 0.7 }}
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-xs text-muted-foreground italic">Sem histórico suficiente</div>
+                      )}
                     </div>
                   );
                 })}
