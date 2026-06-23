@@ -838,9 +838,10 @@ const CandidateComparisonPage = () => {
                   const alerts: Alert[] = [];
                   const byRegion = new Map<string, typeof candidates>();
                   candidates.forEach((c) => {
-                    const arr = byRegion.get(c.region) ?? [];
+                    const key = c.state ?? "—";
+                    const arr = byRegion.get(key) ?? [];
                     arr.push(c);
-                    byRegion.set(c.region, arr);
+                    byRegion.set(key, arr);
                   });
 
                   // 1. Liderança regional consolidada
@@ -852,6 +853,7 @@ const CandidateComparisonPage = () => {
                     if (gap >= 12) {
                       alerts.push({
                         id: `reg-${leader.id}`,
+
                         icon: Shield,
                         tone: "text-emerald-400",
                         title: `${leader.name} consolidando liderança no ${region}`,
