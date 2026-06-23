@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { z } from "zod";
+
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,13 +51,28 @@ const PARTIES: Party[] = [
 
 const POSITIONS: { name: string; Icon: React.ComponentType<{ className?: string }> }[] = [
   { name: "Presidente", Icon: Landmark },
+  { name: "Vice-presidente", Icon: Landmark },
+  { name: "Ministro", Icon: Scroll },
   { name: "Governador", Icon: Building2 },
-  { name: "Prefeito", Icon: Building },
+  { name: "Vice-governador", Icon: Building2 },
   { name: "Senador", Icon: Scroll },
   { name: "Deputado Federal", Icon: ClipboardList },
   { name: "Deputado Estadual", Icon: FileText },
+  { name: "Prefeito", Icon: Building },
+  { name: "Vice-prefeito", Icon: Building },
   { name: "Vereador", Icon: User },
 ];
+
+const NATIONAL_POSITIONS = new Set(["Presidente", "Vice-presidente", "Ministro"]);
+const STATE_POSITIONS = new Set(["Governador", "Vice-governador", "Senador", "Deputado Federal", "Deputado Estadual"]);
+const MUNICIPAL_POSITIONS = new Set(["Prefeito", "Vice-prefeito", "Vereador"]);
+
+type Scope = "national" | "state" | "municipal" | "none";
+const scopeOf = (p: string): Scope =>
+  NATIONAL_POSITIONS.has(p) ? "national"
+  : STATE_POSITIONS.has(p) ? "state"
+  : MUNICIPAL_POSITIONS.has(p) ? "municipal"
+  : "none";
 
 const REGIONS: Record<string, string[]> = {
   "Norte": ["AC", "AP", "AM", "PA", "RO", "RR", "TO"],
@@ -67,6 +82,11 @@ const REGIONS: Record<string, string[]> = {
   "Sul": ["PR", "SC", "RS"],
 };
 
+const STATE_TO_REGION: Record<string, string> = Object.entries(REGIONS).reduce((acc, [r, sts]) => {
+  sts.forEach((s) => { acc[s] = r; });
+  return acc;
+}, {} as Record<string, string>);
+
 const STATE_NAMES: Record<string, string> = {
   AC: "Acre", AP: "Amapá", AM: "Amazonas", PA: "Pará", RO: "Rondônia", RR: "Roraima", TO: "Tocantins",
   AL: "Alagoas", BA: "Bahia", CE: "Ceará", MA: "Maranhão", PB: "Paraíba", PE: "Pernambuco", PI: "Piauí", RN: "Rio Grande do Norte", SE: "Sergipe",
@@ -75,13 +95,7 @@ const STATE_NAMES: Record<string, string> = {
   PR: "Paraná", SC: "Santa Catarina", RS: "Rio Grande do Sul",
 };
 
-const schema = z.object({
-  fullName: z.string().trim().min(3, "Nome deve ter no mínimo 3 caracteres").max(100),
-  party: z.string().min(1, "Selecione um partido"),
-  position: z.string().min(1, "Selecione um cargo"),
-  region: z.string().min(1, "Selecione uma região"),
-  state: z.string().min(1, "Selecione um estado"),
-});
+const ALL_STATES = Object.keys(STATE_NAMES).sort();
 
 export type AddCandidatePayload = {
   fullName: string;
@@ -89,6 +103,7 @@ export type AddCandidatePayload = {
   position: string;
   region: string;
   state: string;
+  city?: string;
   socials: Record<string, string>;
   photoFile: File | null;
 };
@@ -101,40 +116,63 @@ interface Props {
   onSubmit: (data: AddCandidatePayload) => void;
 }
 
+
 export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onSubmit }: Props) {
   const [fullName, setFullName] = useState("");
   const [party, setParty] = useState("");
   const [position, setPosition] = useState("");
-  const [region, setRegion] = useState("");
   const [state, setState] = useState("");
+  const [city, setCity] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const states = useMemo(() => (region ? REGIONS[region] ?? [] : []), [region]);
-  const canSubmit = !!fullName.trim() && !!party && !!position && !!state && !isPending;
+  const scope = scopeOf(position);
+  const canSubmit =
+    !!fullName.trim() && !!party && !!position && !isPending &&
+    (scope === "national" || (scope === "state" && !!state) || (scope === "municipal" && !!state && !!city.trim()));
 
   const scopeBadge = useMemo(() => {
-    if (position === "Presidente") return { label: "Monitoramento nacional", cls: "bg-gradient-to-r from-emerald-500/15 to-cyan-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30" };
-    if (position === "Governador") return { label: "Monitoramento estadual", cls: "bg-gradient-to-r from-blue-500/15 to-indigo-500/15 text-blue-600 dark:text-blue-300 border-blue-500/30" };
-    if (position === "Senador") return { label: "Monitoramento regional", cls: "bg-gradient-to-r from-amber-500/15 to-orange-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30" };
+    if (scope === "national") return { label: "Atuação nacional · cobertura Brasil", cls: "bg-gradient-to-r from-emerald-500/15 to-cyan-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30" };
+    if (scope === "state") return { label: "Monitoramento estadual", cls: "bg-gradient-to-r from-blue-500/15 to-indigo-500/15 text-blue-600 dark:text-blue-300 border-blue-500/30" };
+    if (scope === "municipal") return { label: "Base municipal", cls: "bg-gradient-to-r from-amber-500/15 to-orange-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30" };
+    return null;
+  }, [scope]);
+
+  const helperText = useMemo(() => {
+    if (position === "Presidente" || position === "Vice-presidente" || position === "Ministro")
+      return "Este cargo é monitorado em escala nacional.";
+    if (position === "Governador" || position === "Vice-governador") return "Selecione o estado principal de atuação.";
+    if (position === "Senador" || position === "Deputado Federal" || position === "Deputado Estadual")
+      return "Selecione o estado de atuação parlamentar.";
+    if (position === "Prefeito" || position === "Vice-prefeito" || position === "Vereador")
+      return "Selecione município e estado.";
     return null;
   }, [position]);
 
+  const handlePosition = (p: string) => {
+    setPosition(p);
+    const next = scopeOf(p);
+    if (next === "national") { setState(""); setCity(""); }
+    else if (next === "state") { setCity(""); }
+  };
+
   const reset = () => {
-    setFullName(""); setParty(""); setPosition(""); setRegion(""); setState(""); setErrors({});
+    setFullName(""); setParty(""); setPosition(""); setState(""); setCity(""); setErrors({});
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setErrors({});
-    const parsed = schema.safeParse({ fullName, party, position, region, state });
-    if (!parsed.success) {
-      const errs: Record<string, string> = {};
-      parsed.error.issues.forEach((i) => { errs[i.path.join(".")] = i.message; });
-      setErrors(errs);
-      return;
-    }
+    const errs: Record<string, string> = {};
+    if (fullName.trim().length < 3) errs.fullName = "Nome deve ter no mínimo 3 caracteres";
+    if (!party) errs.party = "Selecione um partido";
+    if (!position) errs.position = "Selecione um cargo";
+    if (scope !== "national" && !state) errs.state = "Selecione um estado";
+    if (scope === "municipal" && !city.trim()) errs.city = "Informe a cidade";
+    setErrors(errs);
+    if (Object.keys(errs).length) return;
+
+    const region = scope === "national" ? "Brasil" : (STATE_TO_REGION[state] ?? "");
     onSubmit({
-      fullName, party, position, region, state,
+      fullName, party, position, region, state, city: city.trim() || undefined,
       socials: {}, photoFile: null,
     });
   };
@@ -143,6 +181,8 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     if (!v && !isPending) reset();
     onOpenChange(v);
   };
+
+
 
   return (
     <Dialog open={open} onOpenChange={onOpen}>
@@ -205,7 +245,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                   <button
                     key={name}
                     type="button"
-                    onClick={() => setPosition(name)}
+                    onClick={() => handlePosition(name)}
                     disabled={isPending}
                     className={cn(
                       "group flex flex-col items-start gap-2 p-3.5 rounded-xl border text-left transition-all duration-200",
@@ -230,29 +270,52 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
             </div>
           </Field>
 
-          {/* Região e Estado */}
-          <Field label="Região e estado" error={errors.region || errors.state} required>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Select
-                value={region}
-                onValueChange={(v) => { setRegion(v); setState(""); }}
-                disabled={isPending}
-              >
-                <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Região" /></SelectTrigger>
-                <SelectContent>
-                  {Object.keys(REGIONS).map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={state} onValueChange={setState} disabled={isPending || !region}>
-                <SelectTrigger className="h-11 rounded-xl">
-                  <SelectValue placeholder={region ? "Estado" : "Selecione uma região"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {states.map((s) => <SelectItem key={s} value={s}>{STATE_NAMES[s] ?? s}</SelectItem>)}
-                </SelectContent>
-              </Select>
+          {/* Localização — condicional ao cargo */}
+          {scope !== "none" && (
+            <div className="animate-in fade-in-0 slide-in-from-top-2 duration-300">
+              {scope === "national" ? (
+                <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-cyan-500/5 px-4 py-3 flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-lg bg-emerald-500/15 flex items-center justify-center">
+                    <Landmark className="h-4 w-4 text-emerald-600 dark:text-emerald-300" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold">Atuação nacional · cobertura Brasil</div>
+                    {helperText && <div className="text-xs text-muted-foreground">{helperText}</div>}
+                  </div>
+                </div>
+              ) : scope === "state" ? (
+                <Field label="Estado de atuação" error={errors.state} required>
+                  <Select value={state} onValueChange={setState} disabled={isPending}>
+                    <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Selecione o estado" /></SelectTrigger>
+                    <SelectContent>
+                      {ALL_STATES.map((s) => <SelectItem key={s} value={s}>{STATE_NAMES[s]} ({s})</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {helperText && <p className="text-xs text-muted-foreground">{helperText}</p>}
+                </Field>
+              ) : (
+                <Field label="Base municipal" error={errors.state || errors.city} required>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Select value={state} onValueChange={setState} disabled={isPending}>
+                      <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Estado" /></SelectTrigger>
+                      <SelectContent>
+                        {ALL_STATES.map((s) => <SelectItem key={s} value={s}>{STATE_NAMES[s]} ({s})</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      placeholder="Cidade"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      disabled={isPending || !state}
+                      className="h-11 rounded-xl"
+                    />
+                  </div>
+                  {helperText && <p className="text-xs text-muted-foreground">{helperText}</p>}
+                </Field>
+              )}
             </div>
-          </Field>
+          )}
+
 
           {/* Preview */}
           <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-muted/40 via-muted/20 to-transparent p-4">
@@ -269,7 +332,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                   {fullName.trim() || <span className="text-muted-foreground font-normal">Nome do candidato</span>}
                 </div>
                 <div className="text-sm text-muted-foreground truncate">
-                  {[party, position, state && (STATE_NAMES[state] ?? state)].filter(Boolean).join(" · ") || "Partido · Cargo · Estado"}
+                  {[party, position, scope === "national" ? "Brasil" : (city && state ? `${city}/${state}` : (state && (STATE_NAMES[state] ?? state)))].filter(Boolean).join(" · ") || "Partido · Cargo · Localização"}
                 </div>
               </div>
             </div>
