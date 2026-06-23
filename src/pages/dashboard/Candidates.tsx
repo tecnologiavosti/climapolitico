@@ -19,6 +19,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, ChevronUp, BarChart3, RefreshCw, Twitter, MessageCircle, Send, MessagesSquare, Newspaper, Music2, Wand2 } from "lucide-react";
 // ArrowUpRight, ArrowDownRight, Minus removidos temporariamente (coluna Tendência oculta)
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
+import { AddCandidateDialog, type AddCandidatePayload } from "@/components/dashboard/AddCandidateDialog";
 
 // Zod validation schema
 const urlOpt = z.string().trim().refine((val) => !val || val.startsWith("http://") || val.startsWith("https://"), {
@@ -33,13 +34,6 @@ const candidateSchema = z.object({
   facebookUrl: urlOpt,
 });
 
-type CandidateFormData = {
-  fullName: string;
-  region: string;
-  socialMedia: string;
-  instagramUrl: string;
-  facebookUrl: string;
-};
 
 function normalizeText(value: string) {
   return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
@@ -65,13 +59,6 @@ export default function Candidates() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [candidateToDelete, setCandidateToDelete] = useState<string | null>(null);
   const [expandedCandidate, setExpandedCandidate] = useState<string | null>(null);
-  const [formData, setFormData] = useState<CandidateFormData>({
-    fullName: "",
-    region: "",
-    socialMedia: "",
-    instagramUrl: "",
-    facebookUrl: "",
-  });
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   // Open add-candidate dialog automatically when navigated with ?add=1 (from sidebar)
@@ -123,48 +110,45 @@ export default function Candidates() {
 
   // Add candidate mutation
   const addCandidateMutation = useMutation({
-    mutationFn: async (formData: CandidateFormData) => {
+    mutationFn: async (payload: AddCandidatePayload) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
-      const validatedData = candidateSchema.parse(formData);
+      const isNationalPosition = payload.position === 'Presidente';
+      const inferred = resolveInitialMetadata({ fullName: payload.fullName, region: payload.state });
+      const regionFinal = isNationalPosition
+        ? 'Brasil'
+        : (inferred.region || `${payload.state} — ${payload.region}`);
 
-      // Limite de candidatos removido — usuários podem adicionar quantos quiserem.
-
-      const metadata = resolveInitialMetadata(validatedData);
+      const tiktokLink = payload.socials.tiktok?.trim() || null;
 
       const { data, error } = await supabase
         .from('candidates')
         .insert({
           user_id: user.id,
-          full_name: validatedData.fullName,
-          region: metadata.region,
-          party: metadata.party,
-          social_media_link: validatedData.socialMedia || null
+          full_name: payload.fullName,
+          region: regionFinal,
+          party: payload.party || inferred.party,
+          social_media_link: tiktokLink,
         })
         .select()
         .single();
 
       if (error) throw error;
 
-      // Insere links extras (IG/FB) na tabela relacionada
-      const extraLinks: Array<{ candidate_id: string; user_id: string; platform: string; url: string; handle: string | null }> = [];
-      if (validatedData.instagramUrl) {
-        const m = validatedData.instagramUrl.match(/instagram\.com\/([A-Za-z0-9_.]+)/i);
-        extraLinks.push({
-          candidate_id: data.id, user_id: user.id, platform: 'instagram',
-          url: validatedData.instagramUrl, handle: m?.[1] ?? null,
-        });
-      }
-      if (validatedData.facebookUrl) {
-        const m = validatedData.facebookUrl.match(/facebook\.com\/([A-Za-z0-9.\-]+)/i);
-        extraLinks.push({
-          candidate_id: data.id, user_id: user.id, platform: 'facebook',
-          url: validatedData.facebookUrl, handle: m?.[1] ?? null,
-        });
-      }
-      if (extraLinks.length > 0) {
-        const { error: linksErr } = await supabase.from('candidate_social_links').insert(extraLinks);
+      // Extra social links
+      const extras: Array<{ candidate_id: string; user_id: string; platform: string; url: string; handle: string | null }> = [];
+      const pushLink = (platform: string, url: string, re: RegExp) => {
+        if (!url) return;
+        const m = url.match(re);
+        extras.push({ candidate_id: data.id, user_id: user.id, platform, url, handle: m?.[1] ?? null });
+      };
+      pushLink('instagram', payload.socials.instagram, /instagram\.com\/([A-Za-z0-9_.]+)/i);
+      pushLink('facebook', payload.socials.facebook, /facebook\.com\/([A-Za-z0-9.\-]+)/i);
+      pushLink('twitter', payload.socials.twitter, /(?:twitter|x)\.com\/([A-Za-z0-9_]+)/i);
+      pushLink('youtube', payload.socials.youtube, /youtube\.com\/(?:@|c\/|channel\/|user\/)?([A-Za-z0-9_\-]+)/i);
+      if (extras.length > 0) {
+        const { error: linksErr } = await supabase.from('candidate_social_links').insert(extras);
         if (linksErr) console.error('Erro ao salvar links extras:', linksErr);
       }
 
@@ -189,7 +173,6 @@ export default function Candidates() {
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
       toast.success('Candidato adicionado e métricas iniciais processadas!');
       setDialogOpen(false);
-      setFormData({ fullName: "", region: "", socialMedia: "", instagramUrl: "", facebookUrl: "" });
       setValidationErrors({});
 
       // Geração automática de canais/subreddits/keywords via IA (não bloqueante)
@@ -576,24 +559,8 @@ export default function Candidates() {
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setValidationErrors({});
-
-    try {
-      candidateSchema.parse(formData);
-      addCandidateMutation.mutate(formData);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const errors: Record<string, string> = {};
-        error.issues.forEach((err) => {
-          if (err.path[0]) {
-            errors[err.path[0].toString()] = err.message;
-          }
-        });
-        setValidationErrors(errors);
-      }
-    }
+  const handleAddCandidate = (payload: AddCandidatePayload) => {
+    addCandidateMutation.mutate(payload);
   };
 
   const filteredCandidates = candidates.filter((candidate) =>
@@ -692,112 +659,18 @@ export default function Candidates() {
             </Tooltip>
           </TooltipProvider>
 
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
+          <AddCandidateDialog
+            open={dialogOpen}
+            onOpenChange={setDialogOpen}
+            isPending={addCandidateMutation.isPending}
+            onSubmit={handleAddCandidate}
+            trigger={
               <Button title="Cadastra um novo candidato pra você começar a acompanhar.">
                 <UserPlus className="mr-2 h-4 w-4" />
                 Adicionar Candidato
               </Button>
-            </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>Adicionar Novo Candidato</DialogTitle>
-              <DialogDescription>
-                Insira as informações do candidato que deseja monitorar.
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label htmlFor="fullName">Nome Completo *</Label>
-                <Input
-                  id="fullName"
-                  placeholder="Ex: João Silva"
-                  value={formData.fullName}
-                  onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                  disabled={addCandidateMutation.isPending}
-                />
-                {validationErrors.fullName && (
-                  <p className="text-sm text-destructive">{validationErrors.fullName}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="region">Região / Estado</Label>
-                <Input
-                  id="region"
-                  placeholder="Ex: São Paulo, Rio de Janeiro"
-                  value={formData.region}
-                  onChange={(e) => setFormData({ ...formData, region: e.target.value })}
-                  disabled={addCandidateMutation.isPending}
-                />
-                {validationErrors.region && (
-                  <p className="text-sm text-destructive">{validationErrors.region}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="socialMedia">Link de Rede Social</Label>
-                <Input
-                  id="socialMedia"
-                  placeholder="Ex: https://www.tiktok.com/@usuario ou https://twitter.com/usuario"
-                  value={formData.socialMedia}
-                  onChange={(e) => setFormData({ ...formData, socialMedia: e.target.value })}
-                  disabled={addCandidateMutation.isPending}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Para coletas do TikTok funcionarem, cole o link completo do perfil no formato <code>https://www.tiktok.com/@handle</code>. Se deixar em branco, o sistema tenta descobrir automaticamente.
-                </p>
-                {validationErrors.socialMedia && (
-                  <p className="text-sm text-destructive">{validationErrors.socialMedia}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="instagramUrl">Instagram (opcional)</Label>
-                <Input
-                  id="instagramUrl"
-                  placeholder="https://www.instagram.com/usuario/"
-                  value={formData.instagramUrl}
-                  onChange={(e) => setFormData({ ...formData, instagramUrl: e.target.value })}
-                  disabled={addCandidateMutation.isPending}
-                />
-                {validationErrors.instagramUrl && (
-                  <p className="text-sm text-destructive">{validationErrors.instagramUrl}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="facebookUrl">Facebook (opcional)</Label>
-                <Input
-                  id="facebookUrl"
-                  placeholder="https://www.facebook.com/pagina/"
-                  value={formData.facebookUrl}
-                  onChange={(e) => setFormData({ ...formData, facebookUrl: e.target.value })}
-                  disabled={addCandidateMutation.isPending}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Adicionar IG/FB habilita a coleta via Apify para essas redes.
-                </p>
-                {validationErrors.facebookUrl && (
-                  <p className="text-sm text-destructive">{validationErrors.facebookUrl}</p>
-                )}
-              </div>
-              <div className="flex justify-end gap-2 pt-4">
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={() => setDialogOpen(false)}
-                  disabled={addCandidateMutation.isPending}
-                >
-                  Cancelar
-                </Button>
-                <Button 
-                  type="submit"
-                  disabled={addCandidateMutation.isPending || isLimitReached}
-                  title={isLimitReached ? "Limite do plano atingido" : ""}
-                >
-                  {addCandidateMutation.isPending ? "Processando..." : "Adicionar"}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-          </Dialog>
+            }
+          />
         </div>
       </div>
 
