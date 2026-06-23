@@ -744,13 +744,14 @@ serve(async (req) => {
       const estrutura = Number(s.electoralStructure ?? electoralStructure(c.party, c.name));
       s.institutionalAuthority = safeScore(authInst);
       s.electoralStructure = safeScore(estrutura);
+      const initial = generateInitialMetrics(c);
       const force = (
-        Number(s.popularity ?? s.recall ?? 0) +
-        Number(s.approval ?? 0) +
-        Number(s.resistencia ?? (100 - (s.rejection ?? 0))) +
-        Number(s.regionalForce ?? 0) +
-        Number(s.engagement ?? 0) +
-        Number(s.growthCapacity ?? s.growth ?? 0) +
+        safeMetric(s.popularity ?? s.recall, initial.popularity) +
+        safeMetric(s.approval, initial.approval) +
+        safeMetric(s.resistencia ?? (100 - (s.rejection ?? (100 - initial.resistance))), initial.resistance) +
+        safeMetric(s.regionalForce, initial.penetration) +
+        safeMetric(s.engagement, initial.engagement) +
+        safeMetric(s.growthCapacity ?? s.growth, initial.growth) +
         authInst +
         estrutura
       ) / 8;
@@ -762,7 +763,7 @@ serve(async (req) => {
       s.forceScore = finalForce;
       s.strength = finalForce;
       c.status = statusFromScore(finalForce);
-      c.quadrant = quadrant(Number(s.popularity ?? 0), finalForce);
+      c.quadrant = quadrant(safeMetric(s.popularity, initial.popularity), finalForce);
     });
 
 
@@ -847,7 +848,7 @@ serve(async (req) => {
           }
         : fallbackSwot(c);
       return {
-        id: c.id, name: c.name, party: c.party, state: c.region,
+        id: c.id, name: c.name, party: c.party, state: normalizedRegion({ name: c.name, region: c.region }),
         scores: c.scores, status: c.status, momentum: c.momentum, quadrant: c.quadrant,
         confidence: c.confidence,
         narrativas, swot,
