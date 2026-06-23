@@ -42,6 +42,19 @@ interface Cand {
   prevReach: number;
 }
 
+interface InitialMetrics {
+  popularity: number;
+  recall: number;
+  approval: number;
+  resistance: number;
+  authority: number;
+  penetration: number;
+  engagement: number;
+  growth: number;
+  expansion: number;
+  virality: number;
+}
+
 function clamp(v: number, lo = 0, hi = 100) {
   if (!Number.isFinite(v)) return lo;
   return Math.max(lo, Math.min(hi, v));
@@ -59,6 +72,117 @@ function safeScore(v: unknown, fb = 0) {
   const n = Number(v);
   if (!Number.isFinite(n)) return fb;
   return Math.round(clamp(n));
+}
+function safeMetric(v: unknown, fallback = 50) {
+  const n = Number(v);
+  return safeScore(Number.isFinite(n) ? n : fallback, fallback);
+}
+function normText(value: string | null | undefined) {
+  return (value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+function deterministicRange(seed: string, min: number, max: number) {
+  let hash = 0;
+  for (const ch of seed) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  return Math.round(min + (hash % 1000) / 999 * (max - min));
+}
+function candidateScope(candidate: { name?: string | null; party?: string | null; region?: string | null }) {
+  const name = normText(candidate.name);
+  const region = normText(candidate.region);
+  if (name.includes("lula")) return "presidente" as const;
+  if (region.includes("brasil") || region.includes("nacional")) return "nacional" as const;
+  const nationalNames = ["bolsonaro", "ciro", "marina silva", "tarcisio", "tarcisio de freitas"];
+  if (nationalNames.some((n) => name.includes(n))) return "nacional" as const;
+  return "estadual" as const;
+}
+function normalizedRegion(candidate: { name?: string | null; region?: string | null }) {
+  const scope = candidateScope(candidate);
+  return scope === "presidente" || scope === "nacional" ? "Brasil" : (candidate.region ?? null);
+}
+
+function generateInitialMetrics(candidate: { name?: string | null; party?: string | null; region?: string | null }): InitialMetrics {
+  const name = normText(candidate.name);
+  const scope = candidateScope(candidate);
+  const pick = (key: string, min: number, max: number) => deterministicRange(`${name}|${key}`, min, max);
+
+  if (name.includes("lula")) {
+    return {
+      popularity: 95,
+      recall: 100,
+      approval: 55,
+      resistance: 45,
+      authority: 100,
+      penetration: 95,
+      engagement: 75,
+      growth: 60,
+      expansion: 82,
+      virality: 78,
+    };
+  }
+
+  if (scope === "presidente") {
+    return {
+      popularity: pick("popularidade", 80, 95),
+      recall: pick("lembranca", 95, 100),
+      approval: pick("aprovacao", 50, 68),
+      resistance: pick("resistencia", 42, 65),
+      authority: pick("autoridade", 85, 100),
+      penetration: pick("penetracao", 85, 100),
+      engagement: pick("engajamento", 55, 80),
+      growth: pick("crescimento", 45, 70),
+      expansion: pick("expansao", 65, 88),
+      virality: pick("viralizacao", 55, 82),
+    };
+  }
+
+  if (scope === "nacional") {
+    return {
+      popularity: pick("popularidade", 55, 80),
+      recall: pick("lembranca", 60, 85),
+      approval: pick("aprovacao", 45, 65),
+      resistance: pick("resistencia", 45, 70),
+      authority: pick("autoridade", 50, 80),
+      penetration: pick("penetracao", 55, 85),
+      engagement: pick("engajamento", 40, 70),
+      growth: pick("crescimento", 40, 65),
+      expansion: pick("expansao", 50, 78),
+      virality: pick("viralizacao", 42, 72),
+    };
+  }
+
+  return {
+    popularity: pick("popularidade", 15, 50),
+    recall: pick("lembranca", 10, 40),
+    approval: pick("aprovacao", 35, 62),
+    resistance: pick("resistencia", 45, 75),
+    authority: pick("autoridade", 15, 50),
+    penetration: pick("penetracao", 10, 45),
+    engagement: pick("engajamento", 10, 50),
+    growth: pick("crescimento", 15, 60),
+    expansion: pick("expansao", 18, 62),
+    virality: pick("viralizacao", 12, 55),
+  };
+}
+
+function seedCounts(seed: InitialMetrics, candidateName: string) {
+  const scope = candidateScope({ name: candidateName });
+  const scale = scope === "presidente" ? 22 : scope === "nacional" ? 10 : 4;
+  const total = Math.max(8, Math.round(seed.recall * scale));
+  const positive = Math.round(total * clamp(seed.approval) / 100);
+  const negative = Math.round(total * clamp(100 - seed.resistance) / 100);
+  const neutral = Math.max(0, total - positive - negative);
+  return {
+    mentions: total,
+    authors: Math.max(4, Math.round(total * seed.penetration / 140)),
+    engagement: Math.max(6, Math.round(total * seed.engagement / 8)),
+    positive,
+    negative,
+    neutral,
+    sentiment: clamp(seed.approval),
+  };
 }
 function statusFromScore(s: number) {
   if (s >= 78) return "Dominante";
