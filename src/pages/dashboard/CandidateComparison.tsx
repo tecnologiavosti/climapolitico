@@ -48,7 +48,7 @@ interface Scores {
   strength: number; recall: number; approval: number; rejection: number;
   virality: number; regionalForce: number; growth: number; dominance: number;
   authority: number; expansion: number;
-  popularity?: number; hasBaseline?: boolean; growthInsufficient?: boolean;
+  popularity?: number; hasBaseline?: boolean; growthInsufficient?: boolean; growthCapacity?: number;
 }
 type Status = "Dominante" | "Forte" | "Competitivo" | "Fraco" | "Crítico";
 type Momentum = "Subindo forte" | "Subindo" | "Estável" | "Caindo" | "Caindo forte";
