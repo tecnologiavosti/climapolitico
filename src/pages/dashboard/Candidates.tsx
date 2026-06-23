@@ -124,48 +124,45 @@ export default function Candidates() {
 
   // Add candidate mutation
   const addCandidateMutation = useMutation({
-    mutationFn: async (formData: CandidateFormData) => {
+    mutationFn: async (payload: AddCandidatePayload) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
-      const validatedData = candidateSchema.parse(formData);
+      const isNationalPosition = payload.position === 'Presidente';
+      const inferred = resolveInitialMetadata({ fullName: payload.fullName, region: payload.state });
+      const regionFinal = isNationalPosition
+        ? 'Brasil'
+        : (inferred.region || `${payload.state} — ${payload.region}`);
 
-      // Limite de candidatos removido — usuários podem adicionar quantos quiserem.
-
-      const metadata = resolveInitialMetadata(validatedData);
+      const tiktokLink = payload.socials.tiktok?.trim() || null;
 
       const { data, error } = await supabase
         .from('candidates')
         .insert({
           user_id: user.id,
-          full_name: validatedData.fullName,
-          region: metadata.region,
-          party: metadata.party,
-          social_media_link: validatedData.socialMedia || null
+          full_name: payload.fullName,
+          region: regionFinal,
+          party: payload.party || inferred.party,
+          social_media_link: tiktokLink,
         })
         .select()
         .single();
 
       if (error) throw error;
 
-      // Insere links extras (IG/FB) na tabela relacionada
-      const extraLinks: Array<{ candidate_id: string; user_id: string; platform: string; url: string; handle: string | null }> = [];
-      if (validatedData.instagramUrl) {
-        const m = validatedData.instagramUrl.match(/instagram\.com\/([A-Za-z0-9_.]+)/i);
-        extraLinks.push({
-          candidate_id: data.id, user_id: user.id, platform: 'instagram',
-          url: validatedData.instagramUrl, handle: m?.[1] ?? null,
-        });
-      }
-      if (validatedData.facebookUrl) {
-        const m = validatedData.facebookUrl.match(/facebook\.com\/([A-Za-z0-9.\-]+)/i);
-        extraLinks.push({
-          candidate_id: data.id, user_id: user.id, platform: 'facebook',
-          url: validatedData.facebookUrl, handle: m?.[1] ?? null,
-        });
-      }
-      if (extraLinks.length > 0) {
-        const { error: linksErr } = await supabase.from('candidate_social_links').insert(extraLinks);
+      // Extra social links
+      const extras: Array<{ candidate_id: string; user_id: string; platform: string; url: string; handle: string | null }> = [];
+      const pushLink = (platform: string, url: string, re: RegExp) => {
+        if (!url) return;
+        const m = url.match(re);
+        extras.push({ candidate_id: data.id, user_id: user.id, platform, url, handle: m?.[1] ?? null });
+      };
+      pushLink('instagram', payload.socials.instagram, /instagram\.com\/([A-Za-z0-9_.]+)/i);
+      pushLink('facebook', payload.socials.facebook, /facebook\.com\/([A-Za-z0-9.\-]+)/i);
+      pushLink('twitter', payload.socials.twitter, /(?:twitter|x)\.com\/([A-Za-z0-9_]+)/i);
+      pushLink('youtube', payload.socials.youtube, /youtube\.com\/(?:@|c\/|channel\/|user\/)?([A-Za-z0-9_\-]+)/i);
+      if (extras.length > 0) {
+        const { error: linksErr } = await supabase.from('candidate_social_links').insert(extras);
         if (linksErr) console.error('Erro ao salvar links extras:', linksErr);
       }
 
