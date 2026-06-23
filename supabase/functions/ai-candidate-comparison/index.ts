@@ -522,10 +522,24 @@ serve(async (req) => {
         trend: momentumLabel(growth),
       });
 
-      return {
-        ...c,
-        confidence: conf,
-        scores: {
+      // Estruturais (não dependem de menções de curto prazo)
+      const authInst = institutionalAuthority(c.name, c.party);
+      const estruturaEleitoral = electoralStructure(c.party, c.name);
+
+      // Nova Força Política = média das 8 dimensões (12.5% cada)
+      // 4 dinâmicas: popularidade, aprovação, resistência (100-rej), penetração, engajamento, crescimento
+      // 2 estruturais: autoridade institucional, estrutura eleitoral
+      const resistenciaScore = 100 - rejection;
+      const force8 = (popularidade + approval + resistenciaScore + penetracao + engagementN + growthCapacity + authInst + estruturaEleitoral) / 8;
+      let strengthFinal = clamp(force8);
+      // Fallback: presidente em exercício nunca abaixo de 85
+      if ((c.name || "").toLowerCase().includes("lula")) {
+        strengthFinal = Math.max(strengthFinal, 85);
+      }
+
+      console.log("[force8]", { name: c.name, popularidade, approval, resistenciaScore, penetracao, engagementN, growthCapacity, authInst, estruturaEleitoral, force8: strengthFinal });
+
+
           strength: safeScore(strength),
           recall: safeScore(mencoesN),
           approval: safeScore(approval),
