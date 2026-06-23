@@ -116,7 +116,7 @@ const fadeIn = {
 };
 
 // ============= Cache (localStorage) =============
-const COMPARISON_CACHE_VERSION = "v3-growth-debug";
+const COMPARISON_CACHE_VERSION = "v4-growth-clamp";
 const cacheKey = (userId: string, ids: string[], period: Period, range?: { from?: string; to?: string }) =>
   `cmp_${COMPARISON_CACHE_VERSION}_${userId}_${period}_${range?.from ?? ""}_${range?.to ?? ""}_${ids.slice().sort().join(",")}`;
 
