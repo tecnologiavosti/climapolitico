@@ -12,6 +12,99 @@ interface NetworkMetrics {
   avgSentiment: number;
 }
 
+interface InitialMetrics {
+  popularity: number;
+  recall: number;
+  approval: number;
+  resistance: number;
+  authority: number;
+  penetration: number;
+  engagement: number;
+  growth: number;
+}
+
+function clamp(v: number, lo = 0, hi = 100) {
+  if (!Number.isFinite(v)) return lo;
+  return Math.max(lo, Math.min(hi, v));
+}
+
+function normText(value: string | null | undefined) {
+  return (value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+function deterministicRange(seed: string, min: number, max: number) {
+  let hash = 0;
+  for (const ch of seed) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  return Math.round(min + (hash % 1000) / 999 * (max - min));
+}
+
+function candidateScope(candidate: { full_name?: string | null; region?: string | null }) {
+  const name = normText(candidate.full_name);
+  const region = normText(candidate.region);
+  if (name.includes('lula')) return 'presidente' as const;
+  if (region.includes('brasil') || region.includes('nacional')) return 'nacional' as const;
+  if (['bolsonaro', 'ciro', 'marina silva', 'tarcisio'].some((n) => name.includes(n))) return 'nacional' as const;
+  return 'estadual' as const;
+}
+
+function generateInitialMetrics(candidate: { full_name?: string | null; party?: string | null; region?: string | null }): InitialMetrics {
+  const name = normText(candidate.full_name);
+  const scope = candidateScope(candidate);
+  const pick = (key: string, min: number, max: number) => deterministicRange(`${name}|${key}`, min, max);
+
+  if (name.includes('lula')) {
+    return { popularity: 95, recall: 100, approval: 55, resistance: 45, authority: 100, penetration: 95, engagement: 75, growth: 60 };
+  }
+
+  if (scope === 'presidente') {
+    return {
+      popularity: pick('popularidade', 80, 95), recall: pick('lembranca', 95, 100), approval: pick('aprovacao', 50, 68),
+      resistance: pick('resistencia', 42, 65), authority: pick('autoridade', 85, 100), penetration: pick('penetracao', 85, 100),
+      engagement: pick('engajamento', 55, 80), growth: pick('crescimento', 45, 70),
+    };
+  }
+
+  if (scope === 'nacional') {
+    return {
+      popularity: pick('popularidade', 55, 80), recall: pick('lembranca', 60, 85), approval: pick('aprovacao', 45, 65),
+      resistance: pick('resistencia', 45, 70), authority: pick('autoridade', 50, 80), penetration: pick('penetracao', 55, 85),
+      engagement: pick('engajamento', 40, 70), growth: pick('crescimento', 40, 65),
+    };
+  }
+
+  return {
+    popularity: pick('popularidade', 15, 50), recall: pick('lembranca', 10, 40), approval: pick('aprovacao', 35, 62),
+    resistance: pick('resistencia', 45, 75), authority: pick('autoridade', 15, 50), penetration: pick('penetracao', 10, 45),
+    engagement: pick('engajamento', 10, 50), growth: pick('crescimento', 15, 60),
+  };
+}
+
+function seedCacheMetrics(seed: InitialMetrics, candidate: { full_name?: string | null }) {
+  const scope = candidateScope(candidate);
+  const scale = scope === 'presidente' ? 22 : scope === 'nacional' ? 10 : 4;
+  const totalMentions = Math.max(8, Math.round(seed.recall * scale));
+  const totalEngagement = Math.max(6, Math.round(totalMentions * seed.engagement / 8));
+  const positiveCount = Math.round(totalMentions * clamp(seed.approval) / 100);
+  const negativeCount = Math.round(totalMentions * clamp(100 - seed.resistance) / 100);
+  const neutralCount = Math.max(0, totalMentions - positiveCount - negativeCount);
+  return {
+    totalMentions,
+    uniqueAuthors: Math.max(4, Math.round(totalMentions * seed.penetration / 140)),
+    totalEngagement,
+    totalLikes: Math.round(totalEngagement * 0.68),
+    totalReplies: Math.round(totalEngagement * 0.22),
+    totalShares: Math.max(0, totalEngagement - Math.round(totalEngagement * 0.68) - Math.round(totalEngagement * 0.22)),
+    positiveCount,
+    negativeCount,
+    neutralCount,
+    averageSentiment: seed.approval,
+  };
+}
+
 async function processMetricsInBackground(
   supabase: any,
   userId: string,
@@ -48,18 +141,22 @@ async function processMetricsInBackground(
 
     const { data: candidate } = await supabase
       .from('candidates')
-      .select('followers')
+      .select('full_name, party, region, followers')
       .eq('id', candidateId)
       .maybeSingle();
 
-    const totalMentions = interactions.length;
+    const seed = generateInitialMetrics(candidate ?? {});
+    const seeded = seedCacheMetrics(seed, candidate ?? {});
+    const useBootstrap = interactions.length === 0;
+
+    const totalMentions = useBootstrap ? seeded.totalMentions : interactions.length;
     const uniqueAuthorsSet = new Set<string>();
     interactions.forEach((i) => { if (i.comment_author) uniqueAuthorsSet.add(i.comment_author); });
-    const uniqueAuthors = uniqueAuthorsSet.size;
+    const uniqueAuthors = useBootstrap ? seeded.uniqueAuthors : uniqueAuthorsSet.size;
 
-    const totalLikes = interactions.reduce((s, i) => s + (i.likes_count || 0), 0);
-    const totalReplies = interactions.reduce((s, i) => s + (i.replies_count || 0), 0);
-    const totalShares = interactions.reduce((s, i) => s + (i.shares_count || 0), 0);
+    const totalLikes = useBootstrap ? seeded.totalLikes : interactions.reduce((s, i) => s + (i.likes_count ?? 0), 0);
+    const totalReplies = useBootstrap ? seeded.totalReplies : interactions.reduce((s, i) => s + (i.replies_count ?? 0), 0);
+    const totalShares = useBootstrap ? seeded.totalShares : interactions.reduce((s, i) => s + (i.shares_count ?? 0), 0);
     const totalEngagement = totalLikes + totalReplies + totalShares;
 
     let positiveCount = 0, neutralCount = 0, negativeCount = 0;
@@ -77,7 +174,15 @@ async function processMetricsInBackground(
       sentimentSum += i.sentiment_score * 100;
     });
 
-    const averageSentiment = analyzedSentimentCount > 0
+    if (useBootstrap) {
+      positiveCount = seeded.positiveCount;
+      negativeCount = seeded.negativeCount;
+      neutralCount = seeded.neutralCount;
+    }
+
+    const averageSentiment = useBootstrap
+      ? seeded.averageSentiment
+      : analyzedSentimentCount > 0
       ? Math.round(sentimentSum / analyzedSentimentCount)
       : 50;
 
@@ -104,7 +209,12 @@ async function processMetricsInBackground(
       }
     });
 
-    const networkBreakdown = Object.entries(networkMap).map(([network, data]) => ({
+    const networkBreakdown = useBootstrap ? [{
+      network: 'Bootstrap IA',
+      mentions: totalMentions,
+      engagement: totalEngagement,
+      avgSentiment: averageSentiment,
+    }] : Object.entries(networkMap).map(([network, data]) => ({
       network,
       mentions: data.mentions,
       engagement: data.engagement,
@@ -159,7 +269,7 @@ async function processMetricsInBackground(
       .eq('id', candidateId)
       .eq('user_id', userId);
 
-    console.log(`[BG] ✅ Done candidate=${candidateId} mentions=${totalMentions} analyzed=${analyzedSentimentCount} unanalyzed=${unanalyzedSentimentCount}`);
+    console.log(`[BG] ✅ Done candidate=${candidateId} mentions=${totalMentions} bootstrap=${useBootstrap} analyzed=${analyzedSentimentCount} unanalyzed=${unanalyzedSentimentCount}`);
   } catch (err) {
     console.error('[BG] Recalculate metrics error:', err);
   }
