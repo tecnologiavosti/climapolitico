@@ -75,59 +75,71 @@ All colors MUST be HSL.
 
 
   .dark {
-    --background: 222 47% 6%;
-    --foreground: 210 40% 98%;
+    /* Clima Político — dark premium (app interno) */
+    --background: 222 56% 4%;            /* #05070D */
+    --foreground: 210 40% 98%;           /* #F8FAFC */
 
-    --card: 222 47% 8%;
+    --card: 222 47% 8%;                  /* #0F172A surface */
     --card-foreground: 210 40% 98%;
 
     --popover: 222 47% 8%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 221 83% 53%;
+    --primary: 217 88% 22%;              /* #082B66 */
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 221 83% 63%;
+    --primary-glow: 197 82% 51%;         /* #1EB5E8 */
 
-    --secondary: 217 33% 18%;
+    --secondary: 215 28% 17%;            /* #1F2937 */
     --secondary-foreground: 210 40% 98%;
 
-    --muted: 217 33% 18%;
-    --muted-foreground: 215 20% 65%;
+    --muted: 217 33% 14%;
+    --muted-foreground: 215 20% 70%;     /* #94A3B8 */
 
-    --accent: 199 89% 48%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 197 82% 51%;               /* #1EB5E8 */
+    --accent-foreground: 222 47% 6%;
 
-    --success: 142 76% 36%;
+    --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
 
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
 
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 217 33% 18%;
-    --input: 217 33% 18%;
-    --ring: 221 83% 53%;
+    --border: 215 27% 18%;
+    --input: 215 27% 18%;
+    --ring: 197 82% 51%;
 
-    --gradient-primary: linear-gradient(135deg, hsl(221 83% 53%), hsl(199 89% 48%));
-    --gradient-secondary: linear-gradient(180deg, hsl(222 47% 6%), hsl(222 47% 10%));
-    --gradient-hero: linear-gradient(135deg, hsl(221 83% 40%) 0%, hsl(199 89% 35%) 100%);
-    
-    --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.3);
-    --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.4);
-    --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.5);
-    --shadow-glow: 0 0 40px hsl(221 83% 53% / 0.4);
+    --gradient-primary: linear-gradient(135deg, hsl(217 88% 22%), hsl(197 82% 51%));
+    --gradient-secondary: linear-gradient(180deg, hsl(222 56% 4%), hsl(222 47% 8%));
+    --gradient-hero: linear-gradient(135deg, hsl(217 88% 22%) 0%, hsl(210 86% 31%) 55%, hsl(197 82% 51%) 100%);
+    --gradient-auth: radial-gradient(circle at top right, hsl(197 82% 51%) 0%, hsl(217 88% 22%) 70%);
+    --gradient-sidebar: linear-gradient(180deg, hsl(222 56% 4%) 0%, hsl(217 88% 22%) 100%);
+    --gradient-app: linear-gradient(180deg, #05070D 0%, #0A1020 45%, #111827 100%);
 
-    --sidebar-background: 222 47% 8%;
+    --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.4);
+    --shadow-md: 0 4px 12px -1px hsl(0 0% 0% / 0.5);
+    --shadow-lg: 0 10px 35px hsl(0 0% 0% / 0.55);
+    --shadow-glow: 0 0 25px hsl(197 82% 51% / 0.35);
+
+    --sidebar-background: 222 56% 4%;
     --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 221 83% 53%;
+    --sidebar-primary: 197 82% 51%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 217 33% 18%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 217 33% 18%;
-    --sidebar-ring: 221 83% 53%;
+    --sidebar-accent: 197 82% 51%;
+    --sidebar-accent-foreground: 222 47% 6%;
+    --sidebar-border: 0 0% 100% / 0.08;
+    --sidebar-ring: 197 82% 51%;
   }
+
+  .dark html,
+  .dark body,
+  .dark #root {
+    background: var(--gradient-app) !important;
+    color: hsl(var(--foreground));
+  }
+
 }
 
 @layer base {
