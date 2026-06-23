@@ -166,7 +166,7 @@ const Auth = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "var(--gradient-hero)" }}>
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "var(--gradient-auth)" }}>
       <Card className="w-full max-w-md p-8 space-y-6 shadow-2xl border-white/20 backdrop-blur-sm">
         <div className="text-center space-y-3">
           <div className="flex justify-center mb-2">
