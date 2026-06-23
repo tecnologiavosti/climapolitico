@@ -145,21 +145,41 @@ function ageLabel(ts: number) {
   return `${d}d atrás`;
 }
 
+// Regra global: toda métrica 0–100 deve passar por clampScore.
+function clampScore(score: number): number {
+  if (!Number.isFinite(score)) return 0;
+  return Math.max(0, Math.min(100, score));
+}
+
 function asFiniteScore(value: unknown): number | null {
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
-  return Math.round(Math.max(0, Math.min(100, n)));
+  return Math.round(clampScore(n));
 }
 
 function getComputedGrowthScore(candidate: CandidateOut) {
   const direct = asFiniteScore(candidate.scores.growthCapacity);
-  if (direct !== null) return direct;
+  if (direct !== null) return clampScore(direct);
 
-  const engagement = asFiniteScore(candidate.scores.engagement) ?? 0;
-  const viralizacao = asFiniteScore(candidate.scores.virality) ?? 0;
-  const mencoes = asFiniteScore(candidate.scores.recall ?? candidate.scores.popularity) ?? 0;
-  const computedGrowth = (engagement + viralizacao + mencoes) / 3;
-  return Number.isFinite(computedGrowth) ? Math.round(Math.max(0, Math.min(100, computedGrowth))) : 0;
+  // Fallback: média de 3 indicadores 0–100, todos pré-normalizados e clampados.
+  const engagement = clampScore(asFiniteScore(candidate.scores.engagement) ?? 0);
+  const viralizacao = clampScore(asFiniteScore(candidate.scores.virality) ?? 0);
+  const momentum = clampScore(
+    asFiniteScore(candidate.scores.recall ?? candidate.scores.popularity) ?? 0,
+  );
+  const rawGrowth = (engagement + viralizacao + momentum) / 3;
+  const computedGrowth = clampScore(rawGrowth);
+
+  console.log("Growth Formula Debug", {
+    name: candidate.name,
+    engagement,
+    viralizacao,
+    momentum,
+    rawGrowth,
+    computedGrowth,
+  });
+
+  return Math.round(computedGrowth);
 }
 
 // ============= Loading Overlay =============
