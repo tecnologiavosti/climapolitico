@@ -540,7 +540,11 @@ serve(async (req) => {
       console.log("[force8]", { name: c.name, popularidade, approval, resistenciaScore, penetracao, engagementN, growthCapacity, authInst, estruturaEleitoral, force8: strengthFinal });
 
 
-          strength: safeScore(strength),
+      return {
+        ...c,
+        confidence: conf,
+        scores: {
+          strength: safeScore(strengthFinal),
           recall: safeScore(mencoesN),
           approval: safeScore(approval),
           popularity: safeScore(popularidade),
@@ -558,11 +562,15 @@ serve(async (req) => {
           resistencia: safeScore(resistencia),
           segundoTurno: safeScore(segundoTurno),
           tendenciaTemporal: safeScore(tendenciaTemporal),
+          institutionalAuthority: safeScore(authInst),
+          electoralStructure: safeScore(estruturaEleitoral),
+          forceScore: safeScore(strengthFinal),
         } as any,
-        status: statusFromScore(strength),
+        status: statusFromScore(strengthFinal),
         momentum: momentumLabel(growth),
-        quadrant: quadrant(popularidade, strength),
+        quadrant: quadrant(popularidade, strengthFinal),
       };
+
     });
 
     // ============================================================
