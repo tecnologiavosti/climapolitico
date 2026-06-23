@@ -833,26 +833,10 @@ const CandidateComparisonPage = () => {
           )}
 
           {/* 9 — Simulação de Confrontos */}
-          {data.confrontos && (
-            <motion.div {...fadeIn}>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Swords className="h-5 w-5 text-primary" /> Simulação de Confrontos
-                  </CardTitle>
-                  <CardDescription>{data.confrontos.a} <span className="text-muted-foreground">vs</span> {data.confrontos.b}</CardDescription>
-                </CardHeader>
-                <CardContent className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {data.confrontos.dimensoes.map((d) => (
-                    <div key={d.dim} className="rounded-lg border border-border/40 bg-card/40 p-3">
-                      <div className="text-xs text-muted-foreground">{d.dim}</div>
-                      <div className="font-semibold mt-1 truncate">{d.vencedor}</div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </motion.div>
-          )}
+          <motion.div {...fadeIn}>
+            <ConfrontoSimulator />
+          </motion.div>
+
 
           {/* 10 — SWOT */}
           <motion.div {...fadeIn}>
