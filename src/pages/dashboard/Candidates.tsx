@@ -573,24 +573,8 @@ export default function Candidates() {
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setValidationErrors({});
-
-    try {
-      candidateSchema.parse(formData);
-      addCandidateMutation.mutate(formData);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const errors: Record<string, string> = {};
-        error.issues.forEach((err) => {
-          if (err.path[0]) {
-            errors[err.path[0].toString()] = err.message;
-          }
-        });
-        setValidationErrors(errors);
-      }
-    }
+  const handleAddCandidate = (payload: AddCandidatePayload) => {
+    addCandidateMutation.mutate(payload);
   };
 
   const filteredCandidates = candidates.filter((candidate) =>
