@@ -6,24 +6,47 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import {
   UserPlus, Loader2, Landmark, Building2, Building, Scroll, FileText, ClipboardList, User,
-  Sparkles,
+  Sparkles, Check, ChevronsUpDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const PARTIES: { name: string; color: string }[] = [
-  { name: "PT", color: "from-red-500/20 to-red-500/5 text-red-600 dark:text-red-300 border-red-500/40" },
-  { name: "PL", color: "from-blue-500/20 to-blue-500/5 text-blue-600 dark:text-blue-300 border-blue-500/40" },
-  { name: "MDB", color: "from-emerald-500/20 to-emerald-500/5 text-emerald-600 dark:text-emerald-300 border-emerald-500/40" },
-  { name: "União Brasil", color: "from-orange-500/20 to-orange-500/5 text-orange-600 dark:text-orange-300 border-orange-500/40" },
-  { name: "PSD", color: "from-sky-500/20 to-sky-500/5 text-sky-600 dark:text-sky-300 border-sky-500/40" },
-  { name: "PSB", color: "from-yellow-500/20 to-yellow-500/5 text-yellow-600 dark:text-yellow-300 border-yellow-500/40" },
-  { name: "Republicanos", color: "from-indigo-500/20 to-indigo-500/5 text-indigo-600 dark:text-indigo-300 border-indigo-500/40" },
-  { name: "PDT", color: "from-rose-500/20 to-rose-500/5 text-rose-600 dark:text-rose-300 border-rose-500/40" },
-  { name: "PSDB", color: "from-cyan-500/20 to-cyan-500/5 text-cyan-600 dark:text-cyan-300 border-cyan-500/40" },
-  { name: "Novo", color: "from-amber-500/20 to-amber-500/5 text-amber-600 dark:text-amber-300 border-amber-500/40" },
-  { name: "Outro", color: "from-zinc-500/20 to-zinc-500/5 text-zinc-600 dark:text-zinc-300 border-zinc-500/40" },
+type Party = { sigla: string; nome: string; numero: number };
+
+const PARTIES: Party[] = [
+  { sigla: "MDB", nome: "Movimento Democrático Brasileiro", numero: 15 },
+  { sigla: "PDT", nome: "Partido Democrático Trabalhista", numero: 12 },
+  { sigla: "PT", nome: "Partido dos Trabalhadores", numero: 13 },
+  { sigla: "PCdoB", nome: "Partido Comunista do Brasil", numero: 65 },
+  { sigla: "PSB", nome: "Partido Socialista Brasileiro", numero: 40 },
+  { sigla: "PSDB", nome: "Partido da Social Democracia Brasileira", numero: 45 },
+  { sigla: "AGIR", nome: "AGIR", numero: 36 },
+  { sigla: "MOBILIZA", nome: "Mobilização Nacional", numero: 33 },
+  { sigla: "CIDADANIA", nome: "Cidadania", numero: 23 },
+  { sigla: "PV", nome: "Partido Verde", numero: 43 },
+  { sigla: "AVANTE", nome: "Avante", numero: 70 },
+  { sigla: "PP", nome: "Progressistas", numero: 11 },
+  { sigla: "PSTU", nome: "Partido Socialista dos Trabalhadores Unificado", numero: 16 },
+  { sigla: "PCB", nome: "Partido Comunista Brasileiro", numero: 21 },
+  { sigla: "PRTB", nome: "Partido Renovador Trabalhista Brasileiro", numero: 28 },
+  { sigla: "DC", nome: "Democracia Cristã", numero: 27 },
+  { sigla: "PCO", nome: "Partido da Causa Operária", numero: 29 },
+  { sigla: "PODE", nome: "Podemos", numero: 20 },
+  { sigla: "REPUBLICANOS", nome: "Republicanos", numero: 10 },
+  { sigla: "PSOL", nome: "Partido Socialismo e Liberdade", numero: 50 },
+  { sigla: "PL", nome: "Partido Liberal", numero: 22 },
+  { sigla: "PSD", nome: "Partido Social Democrático", numero: 55 },
+  { sigla: "SOLIDARIEDADE", nome: "Solidariedade", numero: 77 },
+  { sigla: "NOVO", nome: "Partido Novo", numero: 30 },
+  { sigla: "REDE", nome: "Rede Sustentabilidade", numero: 18 },
+  { sigla: "DEMOCRATA", nome: "Democrata", numero: 35 },
+  { sigla: "UP", nome: "Unidade Popular", numero: 80 },
+  { sigla: "UNIÃO", nome: "União Brasil", numero: 44 },
+  { sigla: "PRD", nome: "Partido Renovação Democrática", numero: 25 },
+  { sigla: "MISSÃO", nome: "Partido Missão", numero: 14 },
 ];
 
 const POSITIONS: { name: string; Icon: React.ComponentType<{ className?: string }> }[] = [
