@@ -673,112 +673,18 @@ export default function Candidates() {
             </Tooltip>
           </TooltipProvider>
 
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
+          <AddCandidateDialog
+            open={dialogOpen}
+            onOpenChange={setDialogOpen}
+            isPending={addCandidateMutation.isPending}
+            onSubmit={handleAddCandidate}
+            trigger={
               <Button title="Cadastra um novo candidato pra você começar a acompanhar.">
                 <UserPlus className="mr-2 h-4 w-4" />
                 Adicionar Candidato
               </Button>
-            </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>Adicionar Novo Candidato</DialogTitle>
-              <DialogDescription>
-                Insira as informações do candidato que deseja monitorar.
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label htmlFor="fullName">Nome Completo *</Label>
-                <Input
-                  id="fullName"
-                  placeholder="Ex: João Silva"
-                  value={formData.fullName}
-                  onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                  disabled={addCandidateMutation.isPending}
-                />
-                {validationErrors.fullName && (
-                  <p className="text-sm text-destructive">{validationErrors.fullName}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="region">Região / Estado</Label>
-                <Input
-                  id="region"
-                  placeholder="Ex: São Paulo, Rio de Janeiro"
-                  value={formData.region}
-                  onChange={(e) => setFormData({ ...formData, region: e.target.value })}
-                  disabled={addCandidateMutation.isPending}
-                />
-                {validationErrors.region && (
-                  <p className="text-sm text-destructive">{validationErrors.region}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="socialMedia">Link de Rede Social</Label>
-                <Input
-                  id="socialMedia"
-                  placeholder="Ex: https://www.tiktok.com/@usuario ou https://twitter.com/usuario"
-                  value={formData.socialMedia}
-                  onChange={(e) => setFormData({ ...formData, socialMedia: e.target.value })}
-                  disabled={addCandidateMutation.isPending}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Para coletas do TikTok funcionarem, cole o link completo do perfil no formato <code>https://www.tiktok.com/@handle</code>. Se deixar em branco, o sistema tenta descobrir automaticamente.
-                </p>
-                {validationErrors.socialMedia && (
-                  <p className="text-sm text-destructive">{validationErrors.socialMedia}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="instagramUrl">Instagram (opcional)</Label>
-                <Input
-                  id="instagramUrl"
-                  placeholder="https://www.instagram.com/usuario/"
-                  value={formData.instagramUrl}
-                  onChange={(e) => setFormData({ ...formData, instagramUrl: e.target.value })}
-                  disabled={addCandidateMutation.isPending}
-                />
-                {validationErrors.instagramUrl && (
-                  <p className="text-sm text-destructive">{validationErrors.instagramUrl}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="facebookUrl">Facebook (opcional)</Label>
-                <Input
-                  id="facebookUrl"
-                  placeholder="https://www.facebook.com/pagina/"
-                  value={formData.facebookUrl}
-                  onChange={(e) => setFormData({ ...formData, facebookUrl: e.target.value })}
-                  disabled={addCandidateMutation.isPending}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Adicionar IG/FB habilita a coleta via Apify para essas redes.
-                </p>
-                {validationErrors.facebookUrl && (
-                  <p className="text-sm text-destructive">{validationErrors.facebookUrl}</p>
-                )}
-              </div>
-              <div className="flex justify-end gap-2 pt-4">
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={() => setDialogOpen(false)}
-                  disabled={addCandidateMutation.isPending}
-                >
-                  Cancelar
-                </Button>
-                <Button 
-                  type="submit"
-                  disabled={addCandidateMutation.isPending || isLimitReached}
-                  title={isLimitReached ? "Limite do plano atingido" : ""}
-                >
-                  {addCandidateMutation.isPending ? "Processando..." : "Adicionar"}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-          </Dialog>
+            }
+          />
         </div>
       </div>
 
