@@ -19,6 +19,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, ChevronUp, BarChart3, RefreshCw, Twitter, MessageCircle, Send, MessagesSquare, Newspaper, Music2, Wand2 } from "lucide-react";
 // ArrowUpRight, ArrowDownRight, Minus removidos temporariamente (coluna Tendência oculta)
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
+import { AddCandidateDialog, type AddCandidatePayload } from "@/components/dashboard/AddCandidateDialog";
 
 // Zod validation schema
 const urlOpt = z.string().trim().refine((val) => !val || val.startsWith("http://") || val.startsWith("https://"), {
