@@ -157,6 +157,11 @@ function asFiniteScore(value: unknown): number | null {
   return Math.round(clampScore(n));
 }
 
+function safeMetric(value: unknown, fallback = 50): number {
+  const n = Number(value);
+  return Math.round(clampScore(Number.isFinite(n) ? n : fallback));
+}
+
 function getComputedGrowthScore(candidate: CandidateOut) {
   const direct = asFiniteScore(candidate.scores.growthCapacity);
   if (direct !== null) return clampScore(direct);
@@ -444,7 +449,8 @@ const CandidateComparisonPage = () => {
     return keys.map(({ key, label }) => {
       const row: any = { metric: label };
       candidates.forEach((c) => {
-        const v = Number((c.scores as any)[key]) || 0;
+        const fallback = key === "rejection" ? 50 : key === "growth" ? safeMetric(c.scores.growthCapacity, 50) : 50;
+        const v = safeMetric((c.scores as any)[key], fallback);
         row[c.name] = key === "growth" ? (v + 100) / 2 : key === "rejection" ? 100 - v : v;
       });
       return row;
