@@ -354,7 +354,11 @@ const CandidateComparisonPage = () => {
     return () => { cancel = true; };
   }, [user?.id]);
 
-  // Try to hydrate from cache on mount / period change
+  // Try to hydrate from cache on mount / period change.
+  // Se a lista de candidatos mudou (novo candidato adicionado/removido) e o cache
+  // anterior não cobre esses IDs, dispara recomputação automática para regenerar
+  // métricas, radar e insights IA — sem precisar refresh manual.
+  const prevCandidateIdsRef = useRef<string[] | null>(null);
   useEffect(() => {
     if (!user?.id || !candidateIds) return;
     if (period === "custom" && !(customRange?.from && customRange?.to)) {
@@ -369,7 +373,15 @@ const CandidateComparisonPage = () => {
     } else {
       setData(null);
       setSavedAt(null);
+      // Auto-trigger: lista de candidatos mudou e não há cache para essa combinação.
+      const prev = prevCandidateIdsRef.current;
+      const changed = !prev || prev.length !== candidateIds.length ||
+        prev.some((id, i) => id !== candidateIds.slice().sort()[i]);
+      if (changed && candidateIds.length > 0 && !loading) {
+        runComparisonRef.current?.();
+      }
     }
+    prevCandidateIdsRef.current = candidateIds.slice().sort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, candidateIds, period, rangeKey.from, rangeKey.to]);
 
