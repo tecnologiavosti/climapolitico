@@ -167,11 +167,9 @@ function getComputedGrowthScore(candidate: CandidateOut) {
   if (direct !== null) return clampScore(direct);
 
   // Fallback: média de 3 indicadores 0–100, todos pré-normalizados e clampados.
-  const engagement = clampScore(asFiniteScore(candidate.scores.engagement) ?? 0);
-  const viralizacao = clampScore(asFiniteScore(candidate.scores.virality) ?? 0);
-  const momentum = clampScore(
-    asFiniteScore(candidate.scores.recall ?? candidate.scores.popularity) ?? 0,
-  );
+  const engagement = safeMetric(candidate.scores.engagement, 50);
+  const viralizacao = safeMetric(candidate.scores.virality, 50);
+  const momentum = safeMetric(candidate.scores.recall ?? candidate.scores.popularity, 50);
   const rawGrowth = (engagement + viralizacao + momentum) / 3;
   const computedGrowth = clampScore(rawGrowth);
 
