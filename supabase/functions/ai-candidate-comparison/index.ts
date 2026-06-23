@@ -493,24 +493,29 @@ serve(async (req) => {
     const data: Cand[] = cands.map((c: any) => {
       const m = mMap.get(c.id);
       const g = gMap.get(c.id) ?? { recent: 0, prev: 0, recentEngagement: 0, prevEngagement: 0, recentReach: 0, prevReach: 0 };
+      const initial = generateInitialMetrics({ name: c.full_name, party: c.party, region: c.region });
+      const seeded = seedCounts(initial, c.full_name);
+      const hasCacheMetrics = m && [m.total_mentions, m.unique_authors, m.total_engagement].some((v: unknown) => Number(v) > 0);
+      const hasGrowthMetrics = [g.recent, g.prev, g.recentEngagement, g.prevEngagement, g.recentReach, g.prevReach].some((v) => Number(v) > 0);
+      const useSeed = !hasCacheMetrics && !hasGrowthMetrics;
       return {
         id: c.id,
         name: c.full_name,
         party: c.party,
-        region: c.region,
-        mentions: m?.total_mentions ?? 0,
-        authors: m?.unique_authors ?? 0,
-        engagement: m?.total_engagement ?? 0,
-        positive: m?.positive_count ?? 0,
-        negative: m?.negative_count ?? 0,
-        neutral: m?.neutral_count ?? 0,
-        avgSentiment: m?.average_sentiment != null ? Number(m.average_sentiment) : null,
-        recent: g.recent,
-        prev: g.prev,
-        recentEngagement: g.recentEngagement,
-        prevEngagement: g.prevEngagement,
-        recentReach: g.recentReach,
-        prevReach: g.prevReach,
+        region: normalizedRegion({ name: c.full_name, region: c.region }),
+        mentions: Number(m?.total_mentions ?? (useSeed ? seeded.mentions : 0)),
+        authors: Number(m?.unique_authors ?? (useSeed ? seeded.authors : 0)),
+        engagement: Number(m?.total_engagement ?? (useSeed ? seeded.engagement : 0)),
+        positive: Number(m?.positive_count ?? (useSeed ? seeded.positive : 0)),
+        negative: Number(m?.negative_count ?? (useSeed ? seeded.negative : 0)),
+        neutral: Number(m?.neutral_count ?? (useSeed ? seeded.neutral : 0)),
+        avgSentiment: m?.average_sentiment != null ? Number(m.average_sentiment) : (useSeed ? seeded.sentiment : null),
+        recent: Number(g.recent ?? (useSeed ? Math.round(seeded.mentions * 0.55) : 0)),
+        prev: Number(g.prev ?? (useSeed ? Math.round(seeded.mentions * 0.45) : 0)),
+        recentEngagement: Number(g.recentEngagement ?? (useSeed ? Math.round(seeded.engagement * 0.55) : 0)),
+        prevEngagement: Number(g.prevEngagement ?? (useSeed ? Math.round(seeded.engagement * 0.45) : 0)),
+        recentReach: Number(g.recentReach ?? (useSeed ? Math.round(seeded.authors * 0.55) : 0)),
+        prevReach: Number(g.prevReach ?? (useSeed ? Math.round(seeded.authors * 0.45) : 0)),
       };
     });
 
@@ -561,23 +566,24 @@ serve(async (req) => {
 
     const enriched = raw.map((r) => {
       const c = r.c;
+      const initial = generateInitialMetrics(c);
       const conf = regionDataConfidence(c);
 
       // Normalizações base
-      const mencoesN = normGroup(c.mentions, arrMentions);
-      const dominanceN = normGroup(c.authors, arrAuthors);
-      const engagementN = normGroup(c.engagement, arrEngagement);
-      const engRatioN = normGroup(r.engPerMention, arrEngRatio);
+      const mencoesN = safeMetric(normGroup(c.mentions, arrMentions), initial.recall);
+      const dominanceN = safeMetric(normGroup(c.authors, arrAuthors), initial.authority);
+      const engagementN = safeMetric(normGroup(c.engagement, arrEngagement), initial.engagement);
+      const engRatioN = safeMetric(normGroup(r.engPerMention, arrEngRatio), initial.engagement);
       const rejectionN = normGroup(r.rejection, arrRejection);
 
-      const approval = r.approval;   // já 0-100, fórmula matemática direta
-      const rejection = r.rejection;
+      const approval = safeMetric(r.total > 0 ? r.approval : null, initial.approval);   // já 0-100, fórmula matemática direta
+      const rejection = safeMetric(r.total > 0 ? r.rejection : null, 100 - initial.resistance);
 
       // Crescimento normalizado entre candidatos. max==min retorna 50; nunca null/NaN/Infinity.
-      const deltaMentions = normGroup(r.deltaMentions, arrDeltaMentions);
-      const deltaEngagement = normGroup(r.deltaEngagement, arrDeltaEngagement);
-      const deltaReach = normGroup(r.deltaReach, arrDeltaReach);
-      const momentum = normGroup(r.momentumRaw, arrMomentum);
+      const deltaMentions = safeMetric(normGroup(r.deltaMentions, arrDeltaMentions), initial.growth);
+      const deltaEngagement = safeMetric(normGroup(r.deltaEngagement, arrDeltaEngagement), initial.growth);
+      const deltaReach = safeMetric(normGroup(r.deltaReach, arrDeltaReach), initial.growth);
+      const momentum = safeMetric(normGroup(r.momentumRaw, arrMomentum), initial.growth);
       const growth = Math.round(Number.isFinite(r.growthRaw) ? r.growthRaw : 0);
 
       // 6. Penetração Regional — média das 5 regiões (proxy por região-base)
@@ -589,24 +595,24 @@ serve(async (req) => {
       const centroOeste = regionScore("Centro-Oeste");
       const sudeste = regionScore("Sudeste");
       const sul = regionScore("Sul");
-      const penetracao = (norte + nordeste + centroOeste + sudeste + sul) / 5;
+      const penetracao = safeMetric((norte + nordeste + centroOeste + sudeste + sul) / 5, initial.penetration);
 
       // 5. Resistência Eleitoral = 100 − rejeição (%) — simples, sem normalização
       const resistencia = clamp(100 - rejection);
 
       // 3. Viralização = média(shares, reposts, comentários, velocidade) — proxy normalizado
-      const viralizacao = (engagementN + dominanceN + engRatioN + deltaMentions) / 4;
+      const viralizacao = safeMetric((engagementN + dominanceN + engRatioN + deltaMentions) / 4, initial.virality);
 
       // 4. Popularidade = média(lembrança, busca, menções totais)
-      const popularidade = (mencoesN + engagementN + dominanceN) / 3;
+      const popularidade = safeMetric((mencoesN + engagementN + dominanceN) / 3, initial.popularity);
 
       // 2. Capacidade de Crescimento = média de 4 fatores normalizados 0–100.
       // Nunca retorna null/NaN/Infinity. Se inválido → 0.
       let growthCapacityRaw = (deltaMentions + deltaEngagement + deltaReach + momentum) / 4;
       if ([r.deltaMentions, r.deltaEngagement, r.deltaReach, r.momentumRaw].every((v) => v === 0)) {
-        growthCapacityRaw = (engagementN + viralizacao + mencoesN) / 3;
+        growthCapacityRaw = initial.growth;
       }
-      const growthCapacity = Number.isFinite(growthCapacityRaw) ? clamp(growthCapacityRaw) : 0;
+      const growthCapacity = safeMetric(growthCapacityRaw, initial.growth);
 
       // 10. Tendência Temporal = média(Δmenções, Δengajamento, Δsentimento)
       const tendenciaTemporal = (deltaMentions + deltaEngagement + approval) / 3;
@@ -622,8 +628,8 @@ serve(async (req) => {
       const transferibilidade = (popularidade + (100 - rejection)) / 2;
       const segundoTurno = ((100 - rejection) + aceitacaoCentro + transferibilidade + mencoesN) / 4;
 
-      const authority = (dominanceN + viralizacao) / 2;
-      const expansionPotential = (deltaMentions + (100 - rejection) + viralizacao) / 3;
+      const authority = safeMetric((dominanceN + viralizacao) / 2, initial.authority);
+      const expansionPotential = safeMetric((deltaMentions + (100 - rejection) + viralizacao) / 3, initial.expansion);
 
       const computedGrowth = Math.round(growthCapacity);
 
