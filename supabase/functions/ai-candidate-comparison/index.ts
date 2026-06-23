@@ -409,7 +409,7 @@ serve(async (req) => {
       // 2. Capacidade de Crescimento = média de 4 fatores normalizados 0–100.
       // Nunca retorna null/NaN/Infinity. Se inválido → 0.
       let growthCapacityRaw = (deltaMentions + deltaEngagement + deltaReach + momentum) / 4;
-      if ([deltaMentions, deltaEngagement, deltaReach, momentum].every((v) => v === 0)) {
+      if ([r.deltaMentions, r.deltaEngagement, r.deltaReach, r.momentumRaw].every((v) => v === 0)) {
         growthCapacityRaw = (engagementN + viralizacao + mencoesN) / 3;
       }
       const growthCapacity = Number.isFinite(growthCapacityRaw) ? clamp(growthCapacityRaw) : 0;
