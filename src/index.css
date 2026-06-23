@@ -8,8 +8,9 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 222 47% 11%;
+    /* Clima Político — light theme */
+    --background: 213 41% 97%;          /* #F4F7FB */
+    --foreground: 222 47% 11%;          /* #0F172A */
 
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
@@ -17,54 +18,57 @@ All colors MUST be HSL.
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    --primary: 221 83% 53%;
+    --primary: 218 85% 22%;             /* #082B66 */
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 221 83% 63%;
+    --primary-glow: 199 80% 57%;        /* #38B6E8 */
 
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
+    --secondary: 213 100% 96%;          /* #EFF6FF */
+    --secondary-foreground: 209 83% 30%;/* #0D4D8B */
 
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
+    --muted: 213 41% 95%;
+    --muted-foreground: 215 16% 47%;    /* #64748B */
 
-    --accent: 199 89% 48%;
+    --accent: 196 81% 43%;              /* #1496C8 */
     --accent-foreground: 0 0% 100%;
 
-    --success: 142 76% 36%;
+    --success: 142 71% 45%;             /* #22C55E */
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 92% 50%;
+    --warning: 38 92% 50%;              /* #F59E0B */
     --warning-foreground: 0 0% 100%;
 
-    --destructive: 0 84% 60%;
+    --destructive: 0 84% 60%;           /* #EF4444 */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 221 83% 53%;
+    --border: 213 41% 91%;              /* #DCE6F2 */
+    --input: 213 41% 91%;
+    --ring: 196 81% 43%;
 
-    --radius: 0.75rem;
+    --radius: 1.125rem;                 /* 18px */
 
-    --gradient-primary: linear-gradient(135deg, hsl(221 83% 53%), hsl(199 89% 48%));
-    --gradient-secondary: linear-gradient(180deg, hsl(210 40% 98%), hsl(221 83% 96%));
-    --gradient-hero: linear-gradient(135deg, hsl(221 83% 53%) 0%, hsl(199 89% 48%) 100%);
-    
-    --shadow-sm: 0 1px 2px 0 hsl(222 47% 11% / 0.05);
-    --shadow-md: 0 4px 6px -1px hsl(222 47% 11% / 0.1);
-    --shadow-lg: 0 10px 15px -3px hsl(222 47% 11% / 0.1);
-    --shadow-glow: 0 0 40px hsl(221 83% 53% / 0.3);
+    --gradient-primary: linear-gradient(135deg, hsl(218 85% 22%), hsl(196 81% 43%));
+    --gradient-secondary: linear-gradient(180deg, hsl(213 41% 97%), hsl(213 100% 96%));
+    --gradient-hero: radial-gradient(circle at top right, hsl(199 80% 57%) 0%, hsl(218 85% 22%) 65%);
+    --gradient-sidebar: linear-gradient(180deg, hsl(218 85% 22%) 0%, hsl(209 83% 30%) 100%);
 
-    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --shadow-sm: 0 1px 2px 0 hsl(218 85% 22% / 0.05);
+    --shadow-md: 0 4px 6px -1px hsl(218 85% 22% / 0.08);
+    --shadow-lg: 0 8px 30px hsl(218 85% 22% / 0.08);
+    --shadow-glow: 0 0 40px hsl(199 80% 57% / 0.35);
 
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5% 26%;
-    --sidebar-primary: 221 83% 53%;
+    --transition-smooth: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
+    --sidebar-background: 218 85% 22%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 199 80% 57%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 210 40% 96%;
-    --sidebar-accent-foreground: 222 47% 11%;
-    --sidebar-border: 214 32% 91%;
-    --sidebar-ring: 221 83% 53%;
+    --sidebar-accent: 199 80% 57%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 218 60% 30%;
+    --sidebar-ring: 199 80% 57%;
   }
+
+
 
   .dark {
     --background: 222 47% 6%;
