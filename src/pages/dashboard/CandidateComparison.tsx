@@ -707,12 +707,12 @@ const CandidateComparisonPage = () => {
                   <div className="rounded-lg border border-border/40 overflow-hidden divide-y divide-border/30">
                     {[
                       { label: "Popularidade", tip: "Média simples (sem pesos): (buscas + menções + recall + mídia + social) / 5. Cada indicador normalizado min-max entre candidatos.", a: headACand.scores.popularity ?? headACand.scores.approval, b: headBCand.scores.popularity ?? headBCand.scores.approval, higherWins: true },
-                      { label: "Resistência Eleitoral", tip: "Média simples: ((100 − rejeição) + base fiel + estabilidade) / 3. Sem pesos manuais.", a: 100 - headACand.scores.rejection, b: 100 - headBCand.scores.rejection, higherWins: true },
+                      { label: "Resistência Eleitoral", tip: "Fórmula:\n100 − rejeição (%)\n\nQuanto menor a rejeição, maior a resistência eleitoral.", a: 100 - headACand.scores.rejection, b: 100 - headBCand.scores.rejection, higherWins: true },
                       { label: "Penetração regional", tip: "Média simples das 5 macrorregiões: (Norte + Nordeste + Centro-Oeste + Sudeste + Sul) / 5. Sem ponderação populacional.", a: headACand.scores.regionalForce, b: headBCand.scores.regionalForce, higherWins: true },
                       { label: "Engajamento", tip: "Viralização = média simples: (shares + reposts + comentários + velocidade) / 4. Tudo normalizado.", a: headACand.scores.virality, b: headBCand.scores.virality, higherWins: true },
                       { label: "Força política", tip: "Média simples: (aprovação + popularidade + penetração + engajamento + autoridade) / 5. Sem pesos.", a: headACand.scores.strength, b: headBCand.scores.strength, higherWins: true },
                       { label: "Potencial 2º turno", tip: "Média simples: (baixa rejeição + transferência + centro + recall) / 4. Sem pesos.", a: headACand.scores.expansion, b: headBCand.scores.expansion, higherWins: true },
-                      { label: "Capacidade de crescimento", tip: "Média simples: (Δmenções + Δengajamento + Δsentimento + Δbuscas) / 4, normalizado entre candidatos. Sem fallback artificial.", a: headACand.scores.growthCapacity ?? null, b: headBCand.scores.growthCapacity ?? null, higherWins: true },
+                      { label: "Capacidade de crescimento", tip: "Média de 4 fatores normalizados 0–100: (Δmenções + Δengajamento + Δalcance + momentum) / 4. Sem null, sem fallback artificial.", a: headACand.scores.growthCapacity ?? 0, b: headBCand.scores.growthCapacity ?? 0, higherWins: true },
 
                     ].map((row, i) => {
                       const aVal = typeof row.a === "number" ? row.a : 0;
