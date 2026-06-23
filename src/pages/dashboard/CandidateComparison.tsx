@@ -957,16 +957,6 @@ function SummaryBlock({ title, body, tone }: { title: string; body: string; tone
 }
 
 // ============= Simulação de Confrontos (interativo) =============
-const SIM_CANDIDATES = [
-  "Ronaldo Caiado",
-  "Ratinho Júnior",
-  "Tarcísio de Freitas",
-  "Romeu Zema",
-  "Lula",
-  "Jair Bolsonaro",
-  "Simone Tebet",
-  "Eduardo Leite",
-];
 const SIM_DIMENSIONS = [
   "Centro-Oeste", "Sudeste", "Nordeste", "Rural",
   "Urbano", "Jovens", "Evangélicos", "Agro",
@@ -976,10 +966,17 @@ function hashStr(s: string) {
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
   return Math.abs(h);
 }
-function ConfrontoSimulator() {
+function ConfrontoSimulator({ candidates }: { candidates: CandidateOut[] }) {
   const [candidate1, setCandidate1] = useState<string | null>(null);
   const [candidate2, setCandidate2] = useState<string | null>(null);
   const [result, setResult] = useState<{ a: string; b: string; dims: { dim: string; vencedor: string }[] } | null>(null);
+
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log("Candidates loaded:", candidates);
+  }, [candidates]);
+
+  const nameById = (id: string | null) => candidates.find((c) => c.id === id)?.name ?? "";
 
   const compare = () => {
     if (!candidate1 || !candidate2) {
@@ -990,12 +987,14 @@ function ConfrontoSimulator() {
       toast.error("Escolha candidatos diferentes");
       return;
     }
+    const a = nameById(candidate1);
+    const b = nameById(candidate2);
     const dims = SIM_DIMENSIONS.map((dim) => {
-      const sA = hashStr(candidate1 + "|" + dim);
-      const sB = hashStr(candidate2 + "|" + dim);
-      return { dim, vencedor: sA >= sB ? candidate1 : candidate2 };
+      const sA = hashStr(a + "|" + dim);
+      const sB = hashStr(b + "|" + dim);
+      return { dim, vencedor: sA >= sB ? a : b };
     });
-    setResult({ a: candidate1, b: candidate2, dims });
+    setResult({ a, b, dims });
   };
 
   const invert = () => {
@@ -1003,6 +1002,8 @@ function ConfrontoSimulator() {
     setCandidate2(candidate1);
     if (result) setResult({ a: result.b, b: result.a, dims: result.dims });
   };
+
+  const empty = candidates.length === 0;
 
   return (
     <Card>
@@ -1019,13 +1020,18 @@ function ConfrontoSimulator() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {empty ? (
+          <div className="text-sm text-muted-foreground text-center py-6">
+            Nenhum candidato disponível para comparação
+          </div>
+        ) : (
         <div className="grid sm:grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">Candidato 1</label>
             <Select value={candidate1 ?? ""} onValueChange={(v) => setCandidate1(v)}>
               <SelectTrigger><SelectValue placeholder="Selecionar candidato" /></SelectTrigger>
               <SelectContent>
-                {SIM_CANDIDATES.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
+                {candidates.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -1034,11 +1040,13 @@ function ConfrontoSimulator() {
             <Select value={candidate2 ?? ""} onValueChange={(v) => setCandidate2(v)}>
               <SelectTrigger><SelectValue placeholder="Selecionar candidato" /></SelectTrigger>
               <SelectContent>
-                {SIM_CANDIDATES.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
+                {candidates.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
         </div>
+        )}
+
 
         <Button onClick={compare} className="w-full rounded-xl h-12 text-base font-semibold">
           <Swords className="h-4 w-4" /> Comparar candidatos
