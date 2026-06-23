@@ -379,7 +379,7 @@ function PartyCombobox({
           </CommandList>
         </Command>
       </PopoverContent>
-    </Pop​over>
+    </Popover>
   );
 }
 
