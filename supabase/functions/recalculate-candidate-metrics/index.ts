@@ -304,11 +304,26 @@ Deno.serve(async (req) => {
     }
 
     const userId = userData.user.id;
-    const { candidateId } = await req.json();
+    const body = await req.json();
+    const { candidateId } = body;
+    const wait = body?.wait === true;
     if (!candidateId) {
       return new Response(JSON.stringify({ error: 'candidateId is required' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    }
+
+    if (wait) {
+      await processMetricsInBackground(supabase, userId, candidateId);
+      return new Response(
+        JSON.stringify({
+          success: true,
+          status: 'completed',
+          message: 'Métricas iniciais calculadas.',
+          candidateId,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
     }
 
     // Dispara processamento em background — retorna imediatamente
