@@ -354,7 +354,11 @@ const CandidateComparisonPage = () => {
     return () => { cancel = true; };
   }, [user?.id]);
 
-  // Try to hydrate from cache on mount / period change
+  // Try to hydrate from cache on mount / period change.
+  // Se a lista de candidatos mudou (novo candidato adicionado/removido) e o cache
+  // anterior não cobre esses IDs, dispara recomputação automática para regenerar
+  // métricas, radar e insights IA — sem precisar refresh manual.
+  const prevCandidateIdsRef = useRef<string[] | null>(null);
   useEffect(() => {
     if (!user?.id || !candidateIds) return;
     if (period === "custom" && !(customRange?.from && customRange?.to)) {
@@ -369,9 +373,19 @@ const CandidateComparisonPage = () => {
     } else {
       setData(null);
       setSavedAt(null);
+      // Auto-trigger: lista de candidatos mudou e não há cache para essa combinação.
+      const prev = prevCandidateIdsRef.current;
+      const changed = !prev || prev.length !== candidateIds.length ||
+        prev.some((id, i) => id !== candidateIds.slice().sort()[i]);
+      if (changed && candidateIds.length > 0 && !loading) {
+        runComparisonRef.current?.();
+      }
     }
+    prevCandidateIdsRef.current = candidateIds.slice().sort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, candidateIds, period, rangeKey.from, rangeKey.to]);
+
+  const runComparisonRef = useRef<() => void>();
 
   const runComparison = useCallback(async () => {
     if (!user?.id || !candidateIds) return;
@@ -405,6 +419,8 @@ const CandidateComparisonPage = () => {
       if (mountedRef.current) setLoading(false);
     }
   }, [user?.id, candidateIds, period, customRange, resolvedRange, rangeKey.from, rangeKey.to]);
+
+  useEffect(() => { runComparisonRef.current = runComparison; }, [runComparison]);
 
   const candidates = data?.candidates ?? [];
   useEffect(() => {
@@ -619,7 +635,7 @@ const CandidateComparisonPage = () => {
                             <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
                             <RTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
                             <Legend wrapperStyle={{ fontSize: 12 }} />
-                            {candidates.slice(0, 6).map((c, i) => (
+                            {candidates.map((c, i) => (
                               <Radar key={c.id} name={c.name} dataKey={c.name}
                                 stroke={PALETTE[i % PALETTE.length]} fill={PALETTE[i % PALETTE.length]}
                                 fillOpacity={0.18} strokeWidth={2} />
