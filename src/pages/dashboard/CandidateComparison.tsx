@@ -1048,11 +1048,11 @@ function ConfrontoSimulator({ candidates }: { candidates: CandidateOut[] }) {
         )}
 
 
-        <Button onClick={compare} className="w-full rounded-xl h-12 text-base font-semibold">
+        <Button onClick={compare} disabled={empty} className="w-full rounded-xl h-12 text-base font-semibold">
           <Swords className="h-4 w-4" /> Comparar candidatos
         </Button>
 
-        <Button onClick={invert} variant="outline" className="w-full rounded-xl">
+        <Button onClick={invert} disabled={empty} variant="outline" className="w-full rounded-xl">
           <ArrowLeftRight className="h-4 w-4" /> Inverter candidatos
         </Button>
 
