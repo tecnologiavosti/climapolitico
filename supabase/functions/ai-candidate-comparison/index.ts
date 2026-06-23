@@ -130,6 +130,43 @@ const KB_DEFAULT: KBEntry = {
   growth: 35, resistance: 50, authority: 35, expansion: 35,
 };
 
+// ============================================================
+// Autoridade Institucional & Estrutura Eleitoral
+// Métricas estruturais (não variam com menções de curto prazo).
+// ============================================================
+function institutionalAuthority(name: string, party?: string | null): number {
+  const n = (name || "").toLowerCase();
+  // Presidente em exercício
+  if (n.includes("lula")) return 100;
+  // Ex-presidentes
+  if (n.includes("bolsonaro") || n.includes("dilma") || n.includes("temer") || n.includes("fhc") || n.includes("fernando henrique")) return 95;
+  // Governadores conhecidos
+  const governadores = ["tarcisio", "tarcísio", "ratinho", "caiado", "zema", "leite", "castro", "mauro mendes", "wilson lima", "helder", "raquel lyra", "fatima bezerra", "fátima bezerra", "elmano", "rafael fonteles", "jerônimo", "jeronimo", "renato casagrande"];
+  if (governadores.some((g) => n.includes(g))) return 80;
+  // Senadores conhecidos (heurística leve)
+  const senadores = ["pacheco", "alcolumbre", "randolfe", "humberto costa", "jaques wagner", "otto alencar", "weverton", "esperidiao amin", "esperidião amin", "jayme campos", "wellington fagundes"];
+  if (senadores.some((s) => n.includes(s))) return 65;
+  // Deputado / outros — baseline
+  return 40;
+}
+
+function electoralStructure(party?: string | null, name?: string): number {
+  const p = (party || "").toUpperCase().trim();
+  // Grandes máquinas nacionais com fundo eleitoral robusto e capilaridade
+  const grandes = ["PT", "PL", "MDB", "PP", "UNIÃO", "UNIAO", "UB", "REPUBLICANOS", "PSD"];
+  const medios = ["PSDB", "PDT", "PSB", "PODEMOS", "PODE", "SOLIDARIEDADE", "CIDADANIA", "AVANTE", "AGIR"];
+  const pequenos = ["PSOL", "REDE", "NOVO", "PV", "PRTB", "DC", "PMB", "PCdoB", "PCDOB", "PMN"];
+  let base = 35;
+  if (grandes.includes(p)) base = 85;
+  else if (medios.includes(p)) base = 60;
+  else if (pequenos.includes(p)) base = 40;
+  // Bônus de presença nacional para nomes com alcance comprovado
+  const n = (name || "").toLowerCase();
+  if (n.includes("lula") || n.includes("bolsonaro")) base = Math.max(base, 95);
+  return clamp(base);
+}
+
+
 function regionDataConfidence(c: Cand): number {
   const total = c.positive + c.negative + c.neutral;
   if (total >= 200) return 0.9;
