@@ -58,11 +58,12 @@ function statusFromScore(s: number) {
   if (s >= 22) return "Fraco";
   return "Crítico";
 }
-function momentumLabel(g: number) {
-  if (g >= 35) return "Subindo forte";
-  if (g >= 12) return "Subindo";
-  if (g <= -35) return "Caindo forte";
-  if (g <= -12) return "Caindo";
+function momentumLabel(g: number | null) {
+  if (g === null) return "Estável";
+  if (g >= 40) return "Subindo forte";
+  if (g >= 10) return "Subindo";
+  if (g <= -40) return "Caindo forte";
+  if (g <= -10) return "Caindo";
   return "Estável";
 }
 function quadrant(approval: number, strength: number) {
