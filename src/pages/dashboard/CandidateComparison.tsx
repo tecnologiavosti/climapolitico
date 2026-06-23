@@ -834,7 +834,7 @@ const CandidateComparisonPage = () => {
 
           {/* 9 — Simulação de Confrontos */}
           <motion.div {...fadeIn}>
-            <ConfrontoSimulator />
+            <ConfrontoSimulator candidates={candidates} />
           </motion.div>
 
 
