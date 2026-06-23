@@ -46,6 +46,11 @@ function normalizeMax(value: number, max: number) {
   if (max <= 0) return 0;
   return clamp((value / max) * 100);
 }
+// Soft-cap logarítmico: dificulta atingir 100. baseline = valor que mapeia para ~63.
+function softCap(value: number, baseline: number) {
+  if (!Number.isFinite(value) || value <= 0 || baseline <= 0) return 0;
+  return clamp(100 * (1 - Math.exp(-value / baseline)));
+}
 function safeScore(v: unknown, fb = 0) {
   const n = Number(v);
   if (!Number.isFinite(n)) return fb;
