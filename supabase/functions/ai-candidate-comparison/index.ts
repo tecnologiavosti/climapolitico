@@ -320,20 +320,35 @@ serve(async (req) => {
       const baseReach = recall * 0.6 + dominance * 0.4;
       const regionalForce = clamp(baseReach * (1 - homeWeight) + 100 * homeWeight * (baseReach / 100));
 
-      // Crescimento — fórmula amortecida, evita inflação com previous baixo.
+      // Crescimento — log-ratio amortecido (evita inflação por previous baixo / divisão por zero).
+      // mentionsRatio em "stops" log2: dobrou = 1, quadruplicou = 2, caiu pela metade = -1.
+      const mentionsRatio = Math.log2((c.recent + 1) / (c.prev + 1));
       let growth: number | null;
       let growthInsufficient = false;
-      if (c.prev < 10) {
+      if (c.recent + c.prev < 8) {
         growth = null;
         growthInsufficient = true;
       } else {
-        growth = clamp(((c.recent - c.prev) / (c.prev + 10)) * 100, -100, 100);
+        // 1 stop log2 ≈ +25 pts; clamp -100..+100.
+        growth = clamp(Math.round(mentionsRatio * 25), -100, 100);
       }
       const growthNorm = growth === null ? 50 : (growth + 100) / 2;
 
       const mentionsGrowth = growth ?? 0;
       const viralityRaw = clamp(mentionsGrowth * 0.5 + engRatio * 0.5, 0, 100);
       const virality = c.mentions > 0 ? softCap(Math.max(viralityRaw, engRatio * 0.6), 55) : 0;
+
+      // Capacidade de crescimento — score composto (menções + engajamento + sentimento),
+      // com soft-cap e penalidade de consolidação para evitar todos no 100.
+      const mentionsGrowthScore = softCap(Math.max(0, mentionsRatio * 25), 60);
+      const engagementScore = softCap(engPerMention, 20);
+      const sentimentScore = softCap(Math.max(0, approval - 40), 35);
+      const rawCapacity = growthInsufficient
+        ? engagementScore * 0.35 + sentimentScore * 0.25
+        : mentionsGrowthScore * 0.5 + engagementScore * 0.25 + sentimentScore * 0.25;
+      // Consolidação: candidatos muito populares têm teto marginal menor.
+      const consolidationFactor = 1 - 0.35 * (popularity / 100);
+      const growthCapacity = Math.round(clamp(rawCapacity * consolidationFactor, 0, 95));
 
       const authority = dominance * 0.6 + virality * 0.4;
       const expansionPotential = clamp(growthNorm * 0.5 + (100 - rejection) * 0.3 + virality * 0.2);
@@ -346,9 +361,8 @@ serve(async (req) => {
         currentMentions: c.recent,
         previousMentions: c.prev,
         growth,
+        growthCapacity,
         trend: momentumLabel(growth),
-        popularity,
-        regionalForce,
       });
 
       return {
