@@ -910,7 +910,7 @@ const CandidateComparisonPage = () => {
                       icon: AlertTriangle,
                       tone: "text-amber-400",
                       title: `${highRej.name} acumula resistência elevada`,
-                      body: `Rejeição em ${highRej.scores.rejection}% limita potencial de 2º turno (${highRej.scores.segundoTurno ?? "—"}).`,
+                      body: `Rejeição em ${highRej.scores.rejection}% limita potencial de 2º turno (expansão ${highRej.scores.expansion}).`,
                     });
                   }
 
