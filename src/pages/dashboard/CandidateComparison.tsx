@@ -420,6 +420,8 @@ const CandidateComparisonPage = () => {
     }
   }, [user?.id, candidateIds, period, customRange, resolvedRange, rangeKey.from, rangeKey.to]);
 
+  useEffect(() => { runComparisonRef.current = runComparison; }, [runComparison]);
+
   const candidates = data?.candidates ?? [];
   useEffect(() => {
     if (candidates.length >= 2) {
