@@ -830,7 +830,7 @@ const CandidateComparisonPage = () => {
                 <CardTitle className="flex items-center gap-2">
                   <AlertTriangle className="h-5 w-5 text-primary" /> Alertas Estratégicos IA
                 </CardTitle>
-                <CardDescription>Insights comparativos gerados a partir das métricas atuais.</CardDescription>
+                <CardDescription>Leituras rápidas sobre cada candidato — em linguagem direta.</CardDescription>
               </CardHeader>
               <CardContent className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {(() => {
@@ -875,8 +875,8 @@ const CandidateComparisonPage = () => {
                         id: `reg-${leader.id}`,
                         icon: Shield,
                         tone: "text-emerald-400",
-                        title: `${leader.name} consolidando liderança em ${state}`,
-                        body: `Penetração ${leader.scores.regionalForce} vs ${sorted[1].scores.regionalForce} de ${sorted[1].name} (+${gap} pts).`,
+                        title: `${leader.name} se consolida como referência em ${state}`,
+                        body: `Aparece à frente dos adversários locais e mantém presença firme no estado.`,
                       });
                     }
                   });
@@ -892,8 +892,8 @@ const CandidateComparisonPage = () => {
                         id: `weak-${c.id}`,
                         icon: TrendingDown,
                         tone: "text-rose-400",
-                        title: `${c.name} perde competitividade frente a ${strongestRival.name}`,
-                        body: `Força política ${c.scores.strength} vs ${strongestRival.scores.strength} (mesma UF/cluster ideológico).`,
+                        title: `${c.name} perde fôlego no embate com ${strongestRival.name}`,
+                        body: `Vem ficando para trás em um confronto que era considerado mais equilibrado.`,
                       });
                     }
                   });
@@ -905,31 +905,27 @@ const CandidateComparisonPage = () => {
                     const pop = c.scores.popularity ?? c.scores.approval;
                     const approval = c.scores.approval;
                     const regional = c.scores.regionalForce;
-                    let body = "";
+                    let title = `${c.name} segue trajetória própria`;
+                    let body = "Tem perfil singular no recorte atual e merece leitura individual.";
                     let icon: typeof TrendingUp = Target;
                     let tone = "text-sky-400";
                     if (approval >= 55 && regional < 50) {
-                      body = `Boa aprovação (${approval}) em nichos, mas penetração estadual baixa (${regional}).`;
+                      title = `${c.name} tem boa aceitação, mas ainda fala com poucos`;
+                      body = "É bem avaliado por quem o conhece, mas precisa ganhar presença além do seu nicho.";
                       icon = Target;
                       tone = "text-fuchsia-400";
                     } else if (regional >= 60) {
-                      body = `Consolida base regional (${regional}) — sem rival direto comparável neste recorte.`;
+                      title = `${c.name} domina seu território`;
+                      body = "Construiu base sólida em sua região e ainda não enfrenta adversário do mesmo porte.";
                       icon = MapPin;
                       tone = "text-emerald-400";
                     } else if (c.scores.virality >= 60) {
-                      body = `Tração digital forte (viralização ${c.scores.virality}), ainda sem competidor equivalente.`;
+                      title = `${c.name} viraliza e ganha atenção nas redes`;
+                      body = "Está pautando conversas nas redes sociais e ampliando o próprio espaço de influência.";
                       icon = Zap;
                       tone = "text-violet-400";
-                    } else {
-                      body = `Perfil isolado: aprovação ${approval}, força ${c.scores.strength}, sem par comparável no recorte atual.`;
                     }
-                    alerts.push({
-                      id: `solo-${c.id}`,
-                      icon,
-                      tone,
-                      title: `${c.name} — leitura individual`,
-                      body,
-                    });
+                    alerts.push({ id: `solo-${c.id}`, icon, tone, title, body });
                   });
 
                   // 4. Alta rejeição (perfil próprio, não comparativo)
@@ -941,8 +937,8 @@ const CandidateComparisonPage = () => {
                         id: `rej-${c.id}`,
                         icon: AlertTriangle,
                         tone: "text-amber-400",
-                        title: `${c.name} acumula resistência elevada`,
-                        body: `Rejeição em ${c.scores.rejection}% limita potencial de expansão (${c.scores.expansion}).`,
+                        title: `${c.name} esbarra na resistência do eleitor`,
+                        body: "Tem dificuldade de conquistar quem ainda não simpatiza com seu nome.",
                       });
                     });
 
@@ -955,10 +951,11 @@ const CandidateComparisonPage = () => {
                         id: `grow-${c.id}`,
                         icon: TrendingUp,
                         tone: "text-fuchsia-400",
-                        title: `${c.name} cresce com espaço para expandir`,
-                        body: `Crescimento ${getComputedGrowthScore(c)} com popularidade ainda em ${c.scores.popularity ?? c.scores.approval}.`,
+                        title: `${c.name} tem espaço para crescer`,
+                        body: "Ainda não atingiu seu teto de popularidade e pode ganhar mais espaço nas próximas semanas.",
                       });
                     });
+
 
 
                   const shown = alerts.slice(0, 6);
