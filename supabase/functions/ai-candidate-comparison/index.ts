@@ -285,94 +285,110 @@ serve(async (req) => {
       };
     });
 
-    const maxMentions = Math.max(1, ...data.map((d) => d.mentions));
-    const maxAuthors = Math.max(1, ...data.map((d) => d.authors));
-    const maxEngagement = Math.max(1, ...data.map((d) => d.engagement));
-
-    const enriched = data.map((c) => {
+    // ============================================================
+    // FASE 1 — Indicadores brutos por candidato (sem pesos, sem clamp artificial)
+    // ============================================================
+    const raw = data.map((c) => {
       const total = c.positive + c.negative + c.neutral;
-      const conf = regionDataConfidence(c);
-      // Sem dados de sentimento → neutro (50/50), nunca inflar.
-      const approval = total > 0 ? (c.positive / total) * 100 : 50;
-      const rejection = total > 0 ? (c.negative / total) * 100 : 50;
+      const approval = total > 0 ? (c.positive / total) * 100 : 0;     // 7. aprovação
+      const rejection = total > 0 ? (c.negative / total) * 100 : 0;
+      const engPerMention = c.mentions > 0 ? c.engagement / c.mentions : 0;
 
-      // ===== Indicadores base (0-100, soft-cap absoluto) =====
-      const recall = softCap(c.mentions, 8000);
-      const dominance = softCap(c.authors, 1500);
-      const engPerMention = c.mentions > 0 ? c.engagement / Math.max(1, c.mentions) : 0;
-      const engRatio = softCap(engPerMention, 15);
-      const mentionsLog = softCap(c.mentions, 20000);
-      const engagementLog = softCap(c.engagement, 50000);
-      const authorsLog = softCap(c.authors, 3000);
-
-      // ===== Crescimento (log-ratio amortecido — NUNCA defaulta para 100) =====
-      const mentionsRatio = Math.log2((c.recent + 1) / (c.prev + 1));
-      let growth: number | null;
-      let growthInsufficient = false;
-      if (c.recent + c.prev < 8) {
-        growth = null;
-        growthInsufficient = true;
+      // 10. Tendência Temporal — variação REAL entre janela atual e anterior
+      // growth = ((atual - anterior) / anterior) * 100. Sem fallback 100.
+      let growthRaw: number | null = null;
+      if (c.recent + c.prev < 5) {
+        growthRaw = null; // dados insuficientes
+      } else if (c.prev > 0) {
+        growthRaw = ((c.recent - c.prev) / c.prev) * 100;
       } else {
-        growth = clamp(Math.round(mentionsRatio * 25), -100, 100);
+        // prev = 0, recent > 0 → cresceu a partir do nada; valor finito amortecido
+        growthRaw = Math.log2(c.recent + 1) * 25;
       }
-      const growthNorm = growth === null ? 50 : (growth + 100) / 2;
+      return { c, total, approval, rejection, engPerMention, growthRaw };
+    });
 
-      // ===== 2. Popularidade = (recall + trends + mídia + social + pesquisas)/5 =====
-      const popularity = (mentionsLog + engagementLog + authorsLog + engRatio + approval) / 5;
+    // ============================================================
+    // FASE 2 — Normalização min-max entre candidatos
+    // score = ((v - min) / (max - min)) * 100; se max==min → 50
+    // ============================================================
+    const normGroup = (val: number, arr: number[]) => {
+      if (!Number.isFinite(val) || arr.length === 0) return 50;
+      const mn = Math.min(...arr);
+      const mx = Math.max(...arr);
+      if (mx === mn) return 50;
+      return ((val - mn) / (mx - mn)) * 100;
+    };
 
-      // ===== 4. Penetração regional = (N + NE + CO + SE + S)/5 =====
-      // Sem breakdown por UF no cache → proxy: recall+dominância com bônus de região-base.
-      const homeRegion = c.region ?? "";
-      const baseReach = (recall + dominance) / 2;
-      const regionScore = (r: string) =>
-        homeRegion === r ? clamp(baseReach + 20) : clamp(baseReach * 0.7);
+    const arrMentions = data.map((d) => d.mentions);
+    const arrAuthors = data.map((d) => d.authors);
+    const arrEngagement = data.map((d) => d.engagement);
+    const arrEngRatio = raw.map((r) => r.engPerMention);
+    const arrRejection = raw.map((r) => r.rejection);
+    const validGrowths = raw.filter((r) => r.growthRaw !== null).map((r) => r.growthRaw as number);
+
+    const enriched = raw.map((r) => {
+      const c = r.c;
+      const conf = regionDataConfidence(c);
+
+      // Normalizações base
+      const mencoesN = normGroup(c.mentions, arrMentions);
+      const dominanceN = normGroup(c.authors, arrAuthors);
+      const engagementN = normGroup(c.engagement, arrEngagement);
+      const engRatioN = normGroup(r.engPerMention, arrEngRatio);
+      const rejectionN = normGroup(r.rejection, arrRejection);
+
+      const approval = r.approval;   // já 0-100, fórmula matemática direta
+      const rejection = r.rejection;
+
+      // Crescimento normalizado entre os candidatos com dados
+      let growthNorm = 50;
+      let growth: number | null = null;
+      const growthInsufficient = r.growthRaw === null;
+      if (r.growthRaw !== null && validGrowths.length > 0) {
+        growthNorm = normGroup(r.growthRaw, validGrowths);
+        growth = Math.round(r.growthRaw);
+      }
+
+      // 6. Penetração Regional — média das 5 regiões (proxy por região-base)
+      const baseReach = (mencoesN + dominanceN) / 2;
+      const regionScore = (rg: string) =>
+        c.region === rg ? clamp(baseReach + 20) : clamp(baseReach * 0.7);
       const norte = regionScore("Norte");
       const nordeste = regionScore("Nordeste");
       const centroOeste = regionScore("Centro-Oeste");
       const sudeste = regionScore("Sudeste");
       const sul = regionScore("Sul");
-      const regionalForce = (norte + nordeste + centroOeste + sudeste + sul) / 5;
+      const penetracao = (norte + nordeste + centroOeste + sudeste + sul) / 5;
 
-      // ===== 5. Engajamento = (likes + comments + shares + saves)/4 =====
-      // Sem breakdown por tipo → split do engajamento total como proxy.
-      const engagement = (
-        softCap(c.engagement * 0.5, 25000) +
-        softCap(c.engagement * 0.2, 10000) +
-        softCap(c.engagement * 0.2, 10000) +
-        softCap(c.engagement * 0.1, 5000)
-      ) / 4;
+      // 5. Resistência Eleitoral = 100 - rejeição normalizada
+      const resistencia = 100 - rejectionN;
 
-      // ===== 3. Resistência eleitoral = ((100-rej) + base_fiel + recall + estabilidade)/4 =====
-      const baseFiel = approval;
-      const estabilidade = growth === null ? 50 : 100 - Math.min(100, Math.abs(growth));
-      const resistencia = ((100 - rejection) + baseFiel + recall + estabilidade) / 4;
+      // 3. Viralização = média(shares, reposts, comentários, velocidade) — proxy normalizado
+      const viralizacao = (engagementN + dominanceN + engRatioN + growthNorm) / 4;
 
-      // ===== Viralização (média simples — usada em força política) =====
-      const positiveGrowth = growth !== null && growth > 0 ? growth : 0;
-      const virality = (engRatio + positiveGrowth + dominance) / 3;
+      // 4. Popularidade = média(lembrança, busca, menções totais)
+      const popularidade = (mencoesN + engagementN + dominanceN) / 3;
 
-      // ===== 6. Potencial 2º turno = ((100-rej) + aceit_centro + transf + recall)/4 =====
+      // 2. Potencial / Capacidade de Crescimento = média(Δmenções, Δengajamento, momentum)
+      const growthCapacity = (growthNorm + engRatioN + growthNorm) / 3;
+
+      // 10. Tendência Temporal = média(Δmenções, Δengajamento, Δsentimento)
+      const tendenciaTemporal = (growthNorm + engRatioN + approval) / 3;
+
+      // Engajamento composto = média(likes, comments, shares, saves) — proxy normalizado
+      const engagement = engagementN;
+
+      // 1. Força Política = média(aprovação, menções, engajamento, penetração, dominância)
+      const strength = (approval + mencoesN + engagementN + penetracao + dominanceN) / 5;
+
+      // Potencial 2º turno = ((100-rej) + aceit_centro + transferibilidade + recall) / 4
       const aceitacaoCentro = (approval + (100 - rejection)) / 2;
-      const transferibilidade = (popularity + (100 - rejection)) / 2;
-      const segundoTurno = ((100 - rejection) + aceitacaoCentro + transferibilidade + recall) / 4;
+      const transferibilidade = (popularidade + (100 - rejection)) / 2;
+      const segundoTurno = ((100 - rejection) + aceitacaoCentro + transferibilidade + mencoesN) / 4;
 
-      // ===== 7. Capacidade de crescimento = ((100-pop) + momentum + (100-rej) + exp_reg + novidade)/5 =====
-      const momentum = growth === null ? 50 : growthNorm;
-      const expansaoRegional = 100 - regionalForce;
-      const novidade = 100 - popularity;
-      const growthCapacity = ((100 - popularity) + momentum + (100 - rejection) + expansaoRegional + novidade) / 5;
-
-      // ===== 8. Tendência temporal = (Δmenções + Δengajamento + Δsentimento)/3 =====
-      const deltaMencoes = growthNorm;
-      const deltaEngajamento = engRatio;
-      const deltaSentimento = approval;
-      const tendenciaTemporal = (deltaMencoes + deltaEngajamento + deltaSentimento) / 3;
-
-      // ===== 1. Força política = (regional + aprov + resist + viral + cresc + domin)/6 =====
-      const strength = (regionalForce + approval + resistencia + virality + growthNorm + dominance) / 6;
-
-      const authority = (dominance + virality) / 2;
-      const expansionPotential = (growthNorm + (100 - rejection) + virality) / 3;
+      const authority = (dominanceN + viralizacao) / 2;
+      const expansionPotential = (growthNorm + (100 - rejection) + viralizacao) / 3;
 
       console.log("[trend]", {
         candidate: c.name,
@@ -389,17 +405,17 @@ serve(async (req) => {
         confidence: conf,
         scores: {
           strength: safeScore(strength),
-          recall: safeScore(recall),
+          recall: safeScore(mencoesN),
           approval: safeScore(approval),
-          popularity: safeScore(popularity),
+          popularity: safeScore(popularidade),
           rejection: safeScore(rejection),
-          virality: safeScore(virality),
-          regionalForce: safeScore(regionalForce),
+          virality: safeScore(viralizacao),
+          regionalForce: safeScore(penetracao),
           growth: growth === null ? 0 : Math.round(growth),
           hasBaseline: growth !== null,
           growthInsufficient,
           growthCapacity: safeScore(growthCapacity),
-          dominance: safeScore(dominance),
+          dominance: safeScore(dominanceN),
           authority: safeScore(authority),
           expansion: safeScore(expansionPotential),
           engagement: safeScore(engagement),
@@ -409,7 +425,7 @@ serve(async (req) => {
         } as any,
         status: statusFromScore(strength),
         momentum: momentumLabel(growth),
-        quadrant: quadrant(popularity, strength),
+        quadrant: quadrant(popularidade, strength),
       };
     });
 
