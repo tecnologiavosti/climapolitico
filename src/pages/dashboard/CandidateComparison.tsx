@@ -830,7 +830,7 @@ const CandidateComparisonPage = () => {
                 <CardTitle className="flex items-center gap-2">
                   <AlertTriangle className="h-5 w-5 text-primary" /> Alertas Estratégicos IA
                 </CardTitle>
-                <CardDescription>Insights comparativos gerados a partir das métricas atuais.</CardDescription>
+                <CardDescription>Leituras rápidas sobre cada candidato — em linguagem direta.</CardDescription>
               </CardHeader>
               <CardContent className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {(() => {
