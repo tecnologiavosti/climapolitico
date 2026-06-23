@@ -385,6 +385,8 @@ const CandidateComparisonPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, candidateIds, period, rangeKey.from, rangeKey.to]);
 
+  const runComparisonRef = useRef<() => void>();
+
   const runComparison = useCallback(async () => {
     if (!user?.id || !candidateIds) return;
     if (period === "custom" && !(customRange?.from && customRange?.to)) {
