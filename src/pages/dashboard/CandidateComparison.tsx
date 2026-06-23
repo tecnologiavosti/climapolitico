@@ -48,7 +48,7 @@ interface Scores {
   strength: number; recall: number; approval: number; rejection: number;
   virality: number; regionalForce: number; growth: number; dominance: number;
   authority: number; expansion: number;
-  popularity?: number; hasBaseline?: boolean; growthInsufficient?: boolean; growthCapacity?: number;
+  popularity?: number; hasBaseline?: boolean; growthInsufficient?: boolean; growthCapacity?: number; engagement?: number;
 }
 type Status = "Dominante" | "Forte" | "Competitivo" | "Fraco" | "Crítico";
 type Momentum = "Subindo forte" | "Subindo" | "Estável" | "Caindo" | "Caindo forte";
@@ -116,8 +116,9 @@ const fadeIn = {
 };
 
 // ============= Cache (localStorage) =============
+const COMPARISON_CACHE_VERSION = "v3-growth-debug";
 const cacheKey = (userId: string, ids: string[], period: Period, range?: { from?: string; to?: string }) =>
-  `cmp_${userId}_${period}_${range?.from ?? ""}_${range?.to ?? ""}_${ids.slice().sort().join(",")}`;
+  `cmp_${COMPARISON_CACHE_VERSION}_${userId}_${period}_${range?.from ?? ""}_${range?.to ?? ""}_${ids.slice().sort().join(",")}`;
 
 interface CacheEntry { savedAt: number; data: ApiResponse }
 
@@ -142,6 +143,23 @@ function ageLabel(ts: number) {
   if (h < 24) return `${h}h atrás`;
   const d = Math.floor(h / 24);
   return `${d}d atrás`;
+}
+
+function asFiniteScore(value: unknown): number | null {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(Math.max(0, Math.min(100, n)));
+}
+
+function getComputedGrowthScore(candidate: CandidateOut) {
+  const direct = asFiniteScore(candidate.scores.growthCapacity);
+  if (direct !== null) return direct;
+
+  const engagement = asFiniteScore(candidate.scores.engagement) ?? 0;
+  const viralizacao = asFiniteScore(candidate.scores.virality) ?? 0;
+  const mencoes = asFiniteScore(candidate.scores.recall ?? candidate.scores.popularity) ?? 0;
+  const computedGrowth = (engagement + viralizacao + mencoes) / 3;
+  return Number.isFinite(computedGrowth) ? Math.round(Math.max(0, Math.min(100, computedGrowth))) : 0;
 }
 
 // ============= Loading Overlay =============
@@ -712,7 +730,7 @@ const CandidateComparisonPage = () => {
                       { label: "Engajamento", tip: "Viralização = média simples: (shares + reposts + comentários + velocidade) / 4. Tudo normalizado.", a: headACand.scores.virality, b: headBCand.scores.virality, higherWins: true },
                       { label: "Força política", tip: "Média simples: (aprovação + popularidade + penetração + engajamento + autoridade) / 5. Sem pesos.", a: headACand.scores.strength, b: headBCand.scores.strength, higherWins: true },
                       { label: "Potencial 2º turno", tip: "Média simples: (baixa rejeição + transferência + centro + recall) / 4. Sem pesos.", a: headACand.scores.expansion, b: headBCand.scores.expansion, higherWins: true },
-                      { label: "Capacidade de crescimento", tip: "Média de 4 fatores normalizados 0–100: (Δmenções + Δengajamento + Δalcance + momentum) / 4. Sem null, sem fallback artificial.", a: headACand.scores.growthCapacity ?? 0, b: headBCand.scores.growthCapacity ?? 0, higherWins: true },
+                      { label: "Capacidade de crescimento", tip: "Fórmula: (Δmenções + Δengajamento + Δalcance + momentum) / 4. Todos os fatores são normalizados 0–100; se todos forem iguais, retornam 50. Se não houver deltas úteis, usa (engajamento + viralização + menções) / 3.", a: getComputedGrowthScore(headACand), b: getComputedGrowthScore(headBCand), higherWins: true },
 
                     ].map((row, i) => {
                       const aVal = typeof row.a === "number" ? row.a : 0;

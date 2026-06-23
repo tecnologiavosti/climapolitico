@@ -36,6 +36,10 @@ interface Cand {
   avgSentiment: number | null;
   recent: number;
   prev: number;
+  recentEngagement: number;
+  prevEngagement: number;
+  recentReach: number;
+  prevReach: number;
 }
 
 function clamp(v: number, lo = 0, hi = 100) {
@@ -248,18 +252,45 @@ serve(async (req) => {
       .in("candidate_id", ids);
     const mMap = new Map<string, any>((metrics ?? []).map((m: any) => [m.candidate_id, m]));
 
+    const interactionEngagement = (row: any) =>
+      Number(row?.engagement_score ?? 0) ||
+      (Number(row?.likes_count ?? 0) + Number(row?.replies_count ?? 0) + Number(row?.shares_count ?? 0));
+    const authorKey = (row: any) =>
+      String(row?.author_handle ?? row?.author_name ?? row?.comment_author ?? row?.id ?? "").trim();
+    const summarizeWindow = (rows: any[] | null | undefined) => {
+      const list = rows ?? [];
+      const authors = new Set(list.map(authorKey).filter(Boolean));
+      return {
+        mentions: list.length,
+        engagement: list.reduce((sum, row) => sum + interactionEngagement(row), 0),
+        reach: authors.size,
+      };
+    };
+
     const growthRows = await Promise.all(
       cands.map(async (c: any) => {
         try {
           const [r1, r2] = await Promise.all([
-            supabase.from("social_interactions").select("id", { head: true, count: "exact" })
+            supabase.from("social_interactions")
+              .select("id, likes_count, replies_count, shares_count, engagement_score, author_handle, author_name, comment_author", { count: "exact" })
               .eq("candidate_id", c.id).gte("created_at", dRecent).lt("created_at", dEnd),
-            supabase.from("social_interactions").select("id", { head: true, count: "exact" })
+            supabase.from("social_interactions")
+              .select("id, likes_count, replies_count, shares_count, engagement_score, author_handle, author_name, comment_author", { count: "exact" })
               .eq("candidate_id", c.id).gte("created_at", dPrev).lt("created_at", dRecent),
           ]);
-          return { id: c.id, recent: r1.count ?? 0, prev: r2.count ?? 0 };
+          const recentSummary = summarizeWindow(r1.data);
+          const prevSummary = summarizeWindow(r2.data);
+          return {
+            id: c.id,
+            recent: r1.count ?? recentSummary.mentions,
+            prev: r2.count ?? prevSummary.mentions,
+            recentEngagement: recentSummary.engagement,
+            prevEngagement: prevSummary.engagement,
+            recentReach: recentSummary.reach,
+            prevReach: prevSummary.reach,
+          };
         } catch {
-          return { id: c.id, recent: 0, prev: 0 };
+          return { id: c.id, recent: 0, prev: 0, recentEngagement: 0, prevEngagement: 0, recentReach: 0, prevReach: 0 };
         }
       }),
     );
@@ -267,7 +298,7 @@ serve(async (req) => {
 
     const data: Cand[] = cands.map((c: any) => {
       const m = mMap.get(c.id);
-      const g = gMap.get(c.id) ?? { recent: 0, prev: 0 };
+      const g = gMap.get(c.id) ?? { recent: 0, prev: 0, recentEngagement: 0, prevEngagement: 0, recentReach: 0, prevReach: 0 };
       return {
         id: c.id,
         name: c.full_name,
@@ -282,30 +313,34 @@ serve(async (req) => {
         avgSentiment: m?.average_sentiment != null ? Number(m.average_sentiment) : null,
         recent: g.recent,
         prev: g.prev,
+        recentEngagement: g.recentEngagement,
+        prevEngagement: g.prevEngagement,
+        recentReach: g.recentReach,
+        prevReach: g.prevReach,
       };
     });
 
     // ============================================================
     // FASE 1 — Indicadores brutos por candidato (sem pesos, sem clamp artificial)
     // ============================================================
+    const deltaPercent = (current: number, previous: number) => {
+      if (!Number.isFinite(current) || !Number.isFinite(previous)) return 0;
+      if (previous > 0) return ((current - previous) / previous) * 100;
+      if (current > 0) return Math.log2(current + 1) * 25;
+      return 0;
+    };
+
     const raw = data.map((c) => {
       const total = c.positive + c.negative + c.neutral;
       const approval = total > 0 ? (c.positive / total) * 100 : 0;     // 7. aprovação
       const rejection = total > 0 ? (c.negative / total) * 100 : 0;
       const engPerMention = c.mentions > 0 ? c.engagement / c.mentions : 0;
+      const deltaMentions = deltaPercent(c.recent, c.prev);
+      const deltaEngagement = deltaPercent(c.recentEngagement, c.prevEngagement);
+      const deltaReach = deltaPercent(c.recentReach, c.prevReach);
+      const momentumRaw = (c.recent + c.recentEngagement + c.recentReach) / 3;
 
-      // 10. Tendência Temporal — variação REAL entre janela atual e anterior
-      // growth = ((atual - anterior) / anterior) * 100. Sem fallback 100.
-      let growthRaw: number | null = null;
-      if (c.recent + c.prev < 5) {
-        growthRaw = null; // dados insuficientes
-      } else if (c.prev > 0) {
-        growthRaw = ((c.recent - c.prev) / c.prev) * 100;
-      } else {
-        // prev = 0, recent > 0 → cresceu a partir do nada; valor finito amortecido
-        growthRaw = Math.log2(c.recent + 1) * 25;
-      }
-      return { c, total, approval, rejection, engPerMention, growthRaw };
+      return { c, total, approval, rejection, engPerMention, growthRaw: deltaMentions, deltaMentions, deltaEngagement, deltaReach, momentumRaw };
     });
 
     // ============================================================
@@ -325,7 +360,10 @@ serve(async (req) => {
     const arrEngagement = data.map((d) => d.engagement);
     const arrEngRatio = raw.map((r) => r.engPerMention);
     const arrRejection = raw.map((r) => r.rejection);
-    const validGrowths = raw.filter((r) => r.growthRaw !== null).map((r) => r.growthRaw as number);
+    const arrDeltaMentions = raw.map((r) => r.deltaMentions);
+    const arrDeltaEngagement = raw.map((r) => r.deltaEngagement);
+    const arrDeltaReach = raw.map((r) => r.deltaReach);
+    const arrMomentum = raw.map((r) => r.momentumRaw);
 
     const enriched = raw.map((r) => {
       const c = r.c;
@@ -341,14 +379,12 @@ serve(async (req) => {
       const approval = r.approval;   // já 0-100, fórmula matemática direta
       const rejection = r.rejection;
 
-      // Crescimento normalizado entre os candidatos com dados
-      let growthNorm = 50;
-      let growth: number | null = null;
-      const growthInsufficient = r.growthRaw === null;
-      if (r.growthRaw !== null && validGrowths.length > 0) {
-        growthNorm = normGroup(r.growthRaw, validGrowths);
-        growth = Math.round(r.growthRaw);
-      }
+      // Crescimento normalizado entre candidatos. max==min retorna 50; nunca null/NaN/Infinity.
+      const deltaMentions = normGroup(r.deltaMentions, arrDeltaMentions);
+      const deltaEngagement = normGroup(r.deltaEngagement, arrDeltaEngagement);
+      const deltaReach = normGroup(r.deltaReach, arrDeltaReach);
+      const momentum = normGroup(r.momentumRaw, arrMomentum);
+      const growth = Math.round(Number.isFinite(r.growthRaw) ? r.growthRaw : 0);
 
       // 6. Penetração Regional — média das 5 regiões (proxy por região-base)
       const baseReach = (mencoesN + dominanceN) / 2;
@@ -365,23 +401,21 @@ serve(async (req) => {
       const resistencia = clamp(100 - rejection);
 
       // 3. Viralização = média(shares, reposts, comentários, velocidade) — proxy normalizado
-      const viralizacao = (engagementN + dominanceN + engRatioN + growthNorm) / 4;
+      const viralizacao = (engagementN + dominanceN + engRatioN + deltaMentions) / 4;
 
       // 4. Popularidade = média(lembrança, busca, menções totais)
       const popularidade = (mencoesN + engagementN + dominanceN) / 3;
 
       // 2. Capacidade de Crescimento = média de 4 fatores normalizados 0–100.
       // Nunca retorna null/NaN/Infinity. Se inválido → 0.
-      const scoreDeltaMencoes = growthNorm;                 // Δ menções (janela atual vs anterior)
-      const scoreDeltaEngajamento = engRatioN;              // Δ engajamento por menção
-      const scoreDeltaAlcance = dominanceN;                 // Δ alcance (autores únicos)
-      const scoreMomentum = (mencoesN + engagementN) / 2;   // momentum agregado
-      const growthCapacityRaw =
-        (scoreDeltaMencoes + scoreDeltaEngajamento + scoreDeltaAlcance + scoreMomentum) / 4;
+      let growthCapacityRaw = (deltaMentions + deltaEngagement + deltaReach + momentum) / 4;
+      if ([deltaMentions, deltaEngagement, deltaReach, momentum].every((v) => v === 0)) {
+        growthCapacityRaw = (engagementN + viralizacao + mencoesN) / 3;
+      }
       const growthCapacity = Number.isFinite(growthCapacityRaw) ? clamp(growthCapacityRaw) : 0;
 
       // 10. Tendência Temporal = média(Δmenções, Δengajamento, Δsentimento)
-      const tendenciaTemporal = (growthNorm + engRatioN + approval) / 3;
+      const tendenciaTemporal = (deltaMentions + deltaEngagement + approval) / 3;
 
       // Engajamento composto = média(likes, comments, shares, saves) — proxy normalizado
       const engagement = engagementN;
@@ -395,14 +429,25 @@ serve(async (req) => {
       const segundoTurno = ((100 - rejection) + aceitacaoCentro + transferibilidade + mencoesN) / 4;
 
       const authority = (dominanceN + viralizacao) / 2;
-      const expansionPotential = (growthNorm + (100 - rejection) + viralizacao) / 3;
+      const expansionPotential = (deltaMentions + (100 - rejection) + viralizacao) / 3;
+
+      const computedGrowth = Math.round(growthCapacity);
+
+      console.log("Growth Debug", {
+        name: c.name,
+        deltaMentions,
+        deltaEngagement,
+        deltaReach,
+        momentum,
+        computedGrowth,
+      });
 
       console.log("[trend]", {
         candidate: c.name,
         currentMentions: c.recent,
         previousMentions: c.prev,
         growth,
-        growthCapacity: Math.round(growthCapacity),
+        growthCapacity: computedGrowth,
         strength: Math.round(strength),
         trend: momentumLabel(growth),
       });
@@ -418,9 +463,9 @@ serve(async (req) => {
           rejection: safeScore(rejection),
           virality: safeScore(viralizacao),
           regionalForce: safeScore(penetracao),
-          growth: growth === null ? 0 : Math.round(growth),
-          hasBaseline: growth !== null,
-          growthInsufficient,
+          growth: Math.round(growth),
+          hasBaseline: true,
+          growthInsufficient: false,
           growthCapacity: safeScore(growthCapacity),
           dominance: safeScore(dominanceN),
           authority: safeScore(authority),
