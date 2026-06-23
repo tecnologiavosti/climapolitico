@@ -379,6 +379,7 @@ serve(async (req) => {
           growth: growth === null ? 0 : Math.round(growth),
           hasBaseline: growth !== null,
           growthInsufficient,
+          growthCapacity,
           dominance: safeScore(dominance),
           authority: safeScore(authority),
           expansion: safeScore(expansionPotential),
