@@ -51,13 +51,28 @@ const PARTIES: Party[] = [
 
 const POSITIONS: { name: string; Icon: React.ComponentType<{ className?: string }> }[] = [
   { name: "Presidente", Icon: Landmark },
+  { name: "Vice-presidente", Icon: Landmark },
+  { name: "Ministro", Icon: Scroll },
   { name: "Governador", Icon: Building2 },
-  { name: "Prefeito", Icon: Building },
+  { name: "Vice-governador", Icon: Building2 },
   { name: "Senador", Icon: Scroll },
   { name: "Deputado Federal", Icon: ClipboardList },
   { name: "Deputado Estadual", Icon: FileText },
+  { name: "Prefeito", Icon: Building },
+  { name: "Vice-prefeito", Icon: Building },
   { name: "Vereador", Icon: User },
 ];
+
+const NATIONAL_POSITIONS = new Set(["Presidente", "Vice-presidente", "Ministro"]);
+const STATE_POSITIONS = new Set(["Governador", "Vice-governador", "Senador", "Deputado Federal", "Deputado Estadual"]);
+const MUNICIPAL_POSITIONS = new Set(["Prefeito", "Vice-prefeito", "Vereador"]);
+
+type Scope = "national" | "state" | "municipal" | "none";
+const scopeOf = (p: string): Scope =>
+  NATIONAL_POSITIONS.has(p) ? "national"
+  : STATE_POSITIONS.has(p) ? "state"
+  : MUNICIPAL_POSITIONS.has(p) ? "municipal"
+  : "none";
 
 const REGIONS: Record<string, string[]> = {
   "Norte": ["AC", "AP", "AM", "PA", "RO", "RR", "TO"],
@@ -67,6 +82,11 @@ const REGIONS: Record<string, string[]> = {
   "Sul": ["PR", "SC", "RS"],
 };
 
+const STATE_TO_REGION: Record<string, string> = Object.entries(REGIONS).reduce((acc, [r, sts]) => {
+  sts.forEach((s) => { acc[s] = r; });
+  return acc;
+}, {} as Record<string, string>);
+
 const STATE_NAMES: Record<string, string> = {
   AC: "Acre", AP: "Amapá", AM: "Amazonas", PA: "Pará", RO: "Rondônia", RR: "Roraima", TO: "Tocantins",
   AL: "Alagoas", BA: "Bahia", CE: "Ceará", MA: "Maranhão", PB: "Paraíba", PE: "Pernambuco", PI: "Piauí", RN: "Rio Grande do Norte", SE: "Sergipe",
@@ -75,13 +95,7 @@ const STATE_NAMES: Record<string, string> = {
   PR: "Paraná", SC: "Santa Catarina", RS: "Rio Grande do Sul",
 };
 
-const schema = z.object({
-  fullName: z.string().trim().min(3, "Nome deve ter no mínimo 3 caracteres").max(100),
-  party: z.string().min(1, "Selecione um partido"),
-  position: z.string().min(1, "Selecione um cargo"),
-  region: z.string().min(1, "Selecione uma região"),
-  state: z.string().min(1, "Selecione um estado"),
-});
+const ALL_STATES = Object.keys(STATE_NAMES).sort();
 
 export type AddCandidatePayload = {
   fullName: string;
@@ -89,6 +103,7 @@ export type AddCandidatePayload = {
   position: string;
   region: string;
   state: string;
+  city?: string;
   socials: Record<string, string>;
   photoFile: File | null;
 };
@@ -100,6 +115,7 @@ interface Props {
   trigger?: React.ReactNode;
   onSubmit: (data: AddCandidatePayload) => void;
 }
+
 
 export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onSubmit }: Props) {
   const [fullName, setFullName] = useState("");
