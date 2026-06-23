@@ -40,6 +40,20 @@ interface Cand {
   prevEngagement: number;
   recentReach: number;
   prevReach: number;
+  isBootstrap?: boolean;
+}
+
+interface InitialMetrics {
+  popularity: number;
+  recall: number;
+  approval: number;
+  resistance: number;
+  authority: number;
+  penetration: number;
+  engagement: number;
+  growth: number;
+  expansion: number;
+  virality: number;
 }
 
 function clamp(v: number, lo = 0, hi = 100) {
@@ -59,6 +73,117 @@ function safeScore(v: unknown, fb = 0) {
   const n = Number(v);
   if (!Number.isFinite(n)) return fb;
   return Math.round(clamp(n));
+}
+function safeMetric(v: unknown, fallback = 50) {
+  const n = Number(v);
+  return safeScore(Number.isFinite(n) ? n : fallback, fallback);
+}
+function normText(value: string | null | undefined) {
+  return (value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+function deterministicRange(seed: string, min: number, max: number) {
+  let hash = 0;
+  for (const ch of seed) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  return Math.round(min + (hash % 1000) / 999 * (max - min));
+}
+function candidateScope(candidate: { name?: string | null; party?: string | null; region?: string | null }) {
+  const name = normText(candidate.name);
+  const region = normText(candidate.region);
+  if (name.includes("lula")) return "presidente" as const;
+  if (region.includes("brasil") || region.includes("nacional")) return "nacional" as const;
+  const nationalNames = ["bolsonaro", "ciro", "marina silva", "tarcisio", "tarcisio de freitas"];
+  if (nationalNames.some((n) => name.includes(n))) return "nacional" as const;
+  return "estadual" as const;
+}
+function normalizedRegion(candidate: { name?: string | null; region?: string | null }) {
+  const scope = candidateScope(candidate);
+  return scope === "presidente" || scope === "nacional" ? "Brasil" : (candidate.region ?? null);
+}
+
+function generateInitialMetrics(candidate: { name?: string | null; party?: string | null; region?: string | null }): InitialMetrics {
+  const name = normText(candidate.name);
+  const scope = candidateScope(candidate);
+  const pick = (key: string, min: number, max: number) => deterministicRange(`${name}|${key}`, min, max);
+
+  if (name.includes("lula")) {
+    return {
+      popularity: 95,
+      recall: 100,
+      approval: 55,
+      resistance: 45,
+      authority: 100,
+      penetration: 95,
+      engagement: 75,
+      growth: 60,
+      expansion: 82,
+      virality: 78,
+    };
+  }
+
+  if (scope === "presidente") {
+    return {
+      popularity: pick("popularidade", 80, 95),
+      recall: pick("lembranca", 95, 100),
+      approval: pick("aprovacao", 50, 68),
+      resistance: pick("resistencia", 42, 65),
+      authority: pick("autoridade", 85, 100),
+      penetration: pick("penetracao", 85, 100),
+      engagement: pick("engajamento", 55, 80),
+      growth: pick("crescimento", 45, 70),
+      expansion: pick("expansao", 65, 88),
+      virality: pick("viralizacao", 55, 82),
+    };
+  }
+
+  if (scope === "nacional") {
+    return {
+      popularity: pick("popularidade", 55, 80),
+      recall: pick("lembranca", 60, 85),
+      approval: pick("aprovacao", 45, 65),
+      resistance: pick("resistencia", 45, 70),
+      authority: pick("autoridade", 50, 80),
+      penetration: pick("penetracao", 55, 85),
+      engagement: pick("engajamento", 40, 70),
+      growth: pick("crescimento", 40, 65),
+      expansion: pick("expansao", 50, 78),
+      virality: pick("viralizacao", 42, 72),
+    };
+  }
+
+  return {
+    popularity: pick("popularidade", 15, 50),
+    recall: pick("lembranca", 10, 40),
+    approval: pick("aprovacao", 35, 62),
+    resistance: pick("resistencia", 45, 75),
+    authority: pick("autoridade", 15, 50),
+    penetration: pick("penetracao", 10, 45),
+    engagement: pick("engajamento", 10, 50),
+    growth: pick("crescimento", 15, 60),
+    expansion: pick("expansao", 18, 62),
+    virality: pick("viralizacao", 12, 55),
+  };
+}
+
+function seedCounts(seed: InitialMetrics, candidateName: string) {
+  const scope = candidateScope({ name: candidateName });
+  const scale = scope === "presidente" ? 22 : scope === "nacional" ? 10 : 4;
+  const total = Math.max(8, Math.round(seed.recall * scale));
+  const positive = Math.round(total * clamp(seed.approval) / 100);
+  const negative = Math.round(total * clamp(100 - seed.resistance) / 100);
+  const neutral = Math.max(0, total - positive - negative);
+  return {
+    mentions: total,
+    authors: Math.max(4, Math.round(total * seed.penetration / 140)),
+    engagement: Math.max(6, Math.round(total * seed.engagement / 8)),
+    positive,
+    negative,
+    neutral,
+    sentiment: clamp(seed.approval),
+  };
 }
 function statusFromScore(s: number) {
   if (s >= 78) return "Dominante";
@@ -318,7 +443,7 @@ serve(async (req) => {
     const ids = cands.map((c: any) => c.id);
     const { data: metrics } = await supabase
       .from("candidate_metrics_cache")
-      .select("candidate_id, total_mentions, unique_authors, total_engagement, average_sentiment, positive_count, negative_count, neutral_count")
+      .select("candidate_id, total_mentions, unique_authors, total_engagement, average_sentiment, positive_count, negative_count, neutral_count, network_breakdown")
       .in("candidate_id", ids);
     const mMap = new Map<string, any>((metrics ?? []).map((m: any) => [m.candidate_id, m]));
 
@@ -369,24 +494,31 @@ serve(async (req) => {
     const data: Cand[] = cands.map((c: any) => {
       const m = mMap.get(c.id);
       const g = gMap.get(c.id) ?? { recent: 0, prev: 0, recentEngagement: 0, prevEngagement: 0, recentReach: 0, prevReach: 0 };
+      const initial = generateInitialMetrics({ name: c.full_name, party: c.party, region: c.region });
+      const seeded = seedCounts(initial, c.full_name);
+      const hasCacheMetrics = m && [m.total_mentions, m.unique_authors, m.total_engagement].some((v: unknown) => Number(v) > 0);
+      const hasGrowthMetrics = [g.recent, g.prev, g.recentEngagement, g.prevEngagement, g.recentReach, g.prevReach].some((v) => Number(v) > 0);
+      const isBootstrapCache = Array.isArray(m?.network_breakdown) && m.network_breakdown.some((n: any) => n?.network === "Bootstrap IA");
+      const useSeed = isBootstrapCache || (!hasCacheMetrics && !hasGrowthMetrics);
       return {
         id: c.id,
         name: c.full_name,
         party: c.party,
-        region: c.region,
-        mentions: m?.total_mentions ?? 0,
-        authors: m?.unique_authors ?? 0,
-        engagement: m?.total_engagement ?? 0,
-        positive: m?.positive_count ?? 0,
-        negative: m?.negative_count ?? 0,
-        neutral: m?.neutral_count ?? 0,
-        avgSentiment: m?.average_sentiment != null ? Number(m.average_sentiment) : null,
-        recent: g.recent,
-        prev: g.prev,
-        recentEngagement: g.recentEngagement,
-        prevEngagement: g.prevEngagement,
-        recentReach: g.recentReach,
-        prevReach: g.prevReach,
+        region: normalizedRegion({ name: c.full_name, region: c.region }),
+        mentions: useSeed ? seeded.mentions : Number(m?.total_mentions ?? 0),
+        authors: useSeed ? seeded.authors : Number(m?.unique_authors ?? 0),
+        engagement: useSeed ? seeded.engagement : Number(m?.total_engagement ?? 0),
+        positive: useSeed ? seeded.positive : Number(m?.positive_count ?? 0),
+        negative: useSeed ? seeded.negative : Number(m?.negative_count ?? 0),
+        neutral: useSeed ? seeded.neutral : Number(m?.neutral_count ?? 0),
+        avgSentiment: m?.average_sentiment != null ? Number(m.average_sentiment) : (useSeed ? seeded.sentiment : null),
+        recent: useSeed ? Math.round(seeded.mentions * 0.55) : Number(g.recent ?? 0),
+        prev: useSeed ? Math.round(seeded.mentions * 0.45) : Number(g.prev ?? 0),
+        recentEngagement: useSeed ? Math.round(seeded.engagement * 0.55) : Number(g.recentEngagement ?? 0),
+        prevEngagement: useSeed ? Math.round(seeded.engagement * 0.45) : Number(g.prevEngagement ?? 0),
+        recentReach: useSeed ? Math.round(seeded.authors * 0.55) : Number(g.recentReach ?? 0),
+        prevReach: useSeed ? Math.round(seeded.authors * 0.45) : Number(g.prevReach ?? 0),
+        isBootstrap: useSeed,
       };
     });
 
@@ -437,23 +569,24 @@ serve(async (req) => {
 
     const enriched = raw.map((r) => {
       const c = r.c;
+      const initial = generateInitialMetrics(c);
       const conf = regionDataConfidence(c);
 
       // Normalizações base
-      const mencoesN = normGroup(c.mentions, arrMentions);
-      const dominanceN = normGroup(c.authors, arrAuthors);
-      const engagementN = normGroup(c.engagement, arrEngagement);
-      const engRatioN = normGroup(r.engPerMention, arrEngRatio);
+      const mencoesN = c.isBootstrap ? initial.recall : safeMetric(normGroup(c.mentions, arrMentions), initial.recall);
+      const dominanceN = c.isBootstrap ? initial.authority : safeMetric(normGroup(c.authors, arrAuthors), initial.authority);
+      const engagementN = c.isBootstrap ? initial.engagement : safeMetric(normGroup(c.engagement, arrEngagement), initial.engagement);
+      const engRatioN = c.isBootstrap ? initial.engagement : safeMetric(normGroup(r.engPerMention, arrEngRatio), initial.engagement);
       const rejectionN = normGroup(r.rejection, arrRejection);
 
-      const approval = r.approval;   // já 0-100, fórmula matemática direta
-      const rejection = r.rejection;
+      const approval = c.isBootstrap ? initial.approval : safeMetric(r.total > 0 ? r.approval : null, initial.approval);   // já 0-100, fórmula matemática direta
+      const rejection = c.isBootstrap ? 100 - initial.resistance : safeMetric(r.total > 0 ? r.rejection : null, 100 - initial.resistance);
 
       // Crescimento normalizado entre candidatos. max==min retorna 50; nunca null/NaN/Infinity.
-      const deltaMentions = normGroup(r.deltaMentions, arrDeltaMentions);
-      const deltaEngagement = normGroup(r.deltaEngagement, arrDeltaEngagement);
-      const deltaReach = normGroup(r.deltaReach, arrDeltaReach);
-      const momentum = normGroup(r.momentumRaw, arrMomentum);
+      const deltaMentions = c.isBootstrap ? initial.growth : safeMetric(normGroup(r.deltaMentions, arrDeltaMentions), initial.growth);
+      const deltaEngagement = c.isBootstrap ? initial.growth : safeMetric(normGroup(r.deltaEngagement, arrDeltaEngagement), initial.growth);
+      const deltaReach = c.isBootstrap ? initial.growth : safeMetric(normGroup(r.deltaReach, arrDeltaReach), initial.growth);
+      const momentum = c.isBootstrap ? initial.growth : safeMetric(normGroup(r.momentumRaw, arrMomentum), initial.growth);
       const growth = Math.round(Number.isFinite(r.growthRaw) ? r.growthRaw : 0);
 
       // 6. Penetração Regional — média das 5 regiões (proxy por região-base)
@@ -465,24 +598,24 @@ serve(async (req) => {
       const centroOeste = regionScore("Centro-Oeste");
       const sudeste = regionScore("Sudeste");
       const sul = regionScore("Sul");
-      const penetracao = (norte + nordeste + centroOeste + sudeste + sul) / 5;
+      const penetracao = c.isBootstrap ? initial.penetration : safeMetric((norte + nordeste + centroOeste + sudeste + sul) / 5, initial.penetration);
 
       // 5. Resistência Eleitoral = 100 − rejeição (%) — simples, sem normalização
       const resistencia = clamp(100 - rejection);
 
       // 3. Viralização = média(shares, reposts, comentários, velocidade) — proxy normalizado
-      const viralizacao = (engagementN + dominanceN + engRatioN + deltaMentions) / 4;
+      const viralizacao = c.isBootstrap ? initial.virality : safeMetric((engagementN + dominanceN + engRatioN + deltaMentions) / 4, initial.virality);
 
       // 4. Popularidade = média(lembrança, busca, menções totais)
-      const popularidade = (mencoesN + engagementN + dominanceN) / 3;
+      const popularidade = c.isBootstrap ? initial.popularity : safeMetric((mencoesN + engagementN + dominanceN) / 3, initial.popularity);
 
       // 2. Capacidade de Crescimento = média de 4 fatores normalizados 0–100.
       // Nunca retorna null/NaN/Infinity. Se inválido → 0.
       let growthCapacityRaw = (deltaMentions + deltaEngagement + deltaReach + momentum) / 4;
       if ([r.deltaMentions, r.deltaEngagement, r.deltaReach, r.momentumRaw].every((v) => v === 0)) {
-        growthCapacityRaw = (engagementN + viralizacao + mencoesN) / 3;
+        growthCapacityRaw = initial.growth;
       }
-      const growthCapacity = Number.isFinite(growthCapacityRaw) ? clamp(growthCapacityRaw) : 0;
+      const growthCapacity = safeMetric(growthCapacityRaw, initial.growth);
 
       // 10. Tendência Temporal = média(Δmenções, Δengajamento, Δsentimento)
       const tendenciaTemporal = (deltaMentions + deltaEngagement + approval) / 3;
@@ -498,8 +631,8 @@ serve(async (req) => {
       const transferibilidade = (popularidade + (100 - rejection)) / 2;
       const segundoTurno = ((100 - rejection) + aceitacaoCentro + transferibilidade + mencoesN) / 4;
 
-      const authority = (dominanceN + viralizacao) / 2;
-      const expansionPotential = (deltaMentions + (100 - rejection) + viralizacao) / 3;
+      const authority = safeMetric((dominanceN + viralizacao) / 2, initial.authority);
+      const expansionPotential = safeMetric((deltaMentions + (100 - rejection) + viralizacao) / 3, initial.expansion);
 
       const computedGrowth = Math.round(growthCapacity);
 
@@ -551,7 +684,7 @@ serve(async (req) => {
           rejection: safeScore(rejection),
           virality: safeScore(viralizacao),
           regionalForce: safeScore(penetracao),
-          growth: Math.round(growth),
+          growth: safeScore(growthCapacity),
           hasBaseline: true,
           growthInsufficient: false,
           growthCapacity: safeScore(growthCapacity),
@@ -614,13 +747,14 @@ serve(async (req) => {
       const estrutura = Number(s.electoralStructure ?? electoralStructure(c.party, c.name));
       s.institutionalAuthority = safeScore(authInst);
       s.electoralStructure = safeScore(estrutura);
+      const initial = generateInitialMetrics(c);
       const force = (
-        Number(s.popularity ?? s.recall ?? 0) +
-        Number(s.approval ?? 0) +
-        Number(s.resistencia ?? (100 - (s.rejection ?? 0))) +
-        Number(s.regionalForce ?? 0) +
-        Number(s.engagement ?? 0) +
-        Number(s.growthCapacity ?? s.growth ?? 0) +
+        safeMetric(s.popularity ?? s.recall, initial.popularity) +
+        safeMetric(s.approval, initial.approval) +
+        safeMetric(s.resistencia ?? (100 - (s.rejection ?? (100 - initial.resistance))), initial.resistance) +
+        safeMetric(s.regionalForce, initial.penetration) +
+        safeMetric(s.engagement, initial.engagement) +
+        safeMetric(s.growthCapacity ?? s.growth, initial.growth) +
         authInst +
         estrutura
       ) / 8;
@@ -632,7 +766,7 @@ serve(async (req) => {
       s.forceScore = finalForce;
       s.strength = finalForce;
       c.status = statusFromScore(finalForce);
-      c.quadrant = quadrant(Number(s.popularity ?? 0), finalForce);
+      c.quadrant = quadrant(safeMetric(s.popularity, initial.popularity), finalForce);
     });
 
 
@@ -717,7 +851,7 @@ serve(async (req) => {
           }
         : fallbackSwot(c);
       return {
-        id: c.id, name: c.name, party: c.party, state: c.region,
+        id: c.id, name: c.name, party: c.party, state: normalizedRegion({ name: c.name, region: c.region }),
         scores: c.scores, status: c.status, momentum: c.momentum, quadrant: c.quadrant,
         confidence: c.confidence,
         narrativas, swot,

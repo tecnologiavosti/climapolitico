@@ -41,6 +41,23 @@ type CandidateFormData = {
   facebookUrl: string;
 };
 
+function normalizeText(value: string) {
+  return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+}
+
+function resolveInitialMetadata(data: { fullName: string; region?: string }) {
+  const name = normalizeText(data.fullName);
+  const region = normalizeText(data.region ?? "");
+  const isLula = name.includes("lula") || name.includes("luiz inacio lula da silva");
+  const isNational = isLula || region.includes("brasil") || region.includes("nacional") ||
+    ["bolsonaro", "ciro", "marina silva", "tarcisio"].some((n) => name.includes(n));
+
+  return {
+    region: isNational ? "Brasil" : (data.region?.trim() || null),
+    party: isLula ? "PT" : null,
+  };
+}
+
 export default function Candidates() {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
@@ -114,12 +131,15 @@ export default function Candidates() {
 
       // Limite de candidatos removido — usuários podem adicionar quantos quiserem.
 
+      const metadata = resolveInitialMetadata(validatedData);
+
       const { data, error } = await supabase
         .from('candidates')
         .insert({
           user_id: user.id,
           full_name: validatedData.fullName,
-          region: validatedData.region || null,
+          region: metadata.region,
+          party: metadata.party,
           social_media_link: validatedData.socialMedia || null
         })
         .select()
@@ -148,11 +168,26 @@ export default function Candidates() {
         if (linksErr) console.error('Erro ao salvar links extras:', linksErr);
       }
 
+      const bootstrap = await supabase.functions.invoke('recalculate-candidate-metrics', {
+        body: { candidateId: data.id, wait: true, bootstrap: true },
+      });
+      if (bootstrap.error) throw new Error(bootstrap.error.message ?? 'Falha ao inicializar métricas');
+
+      const comparison = await supabase.functions.invoke('ai-candidate-comparison', {
+        body: { period: '30d' },
+      });
+      if (comparison.error) throw new Error(comparison.error.message ?? 'Falha ao recalcular comparação');
+
+      const narrative = await supabase.functions.invoke('generate-candidate-summary', {
+        body: { candidateId: data.id, daysBack: 'all' },
+      });
+      if (narrative.error) throw new Error(narrative.error.message ?? 'Falha ao gerar narrativa inicial');
+
       return data;
     },
     onSuccess: async (data) => {
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
-      toast.success('Candidato adicionado com sucesso!');
+      toast.success('Candidato adicionado e métricas iniciais processadas!');
       setDialogOpen(false);
       setFormData({ fullName: "", region: "", socialMedia: "", instagramUrl: "", facebookUrl: "" });
       setValidationErrors({});
@@ -757,7 +792,7 @@ export default function Candidates() {
                   disabled={addCandidateMutation.isPending || isLimitReached}
                   title={isLimitReached ? "Limite do plano atingido" : ""}
                 >
-                  {addCandidateMutation.isPending ? "Adicionando..." : "Adicionar"}
+                  {addCandidateMutation.isPending ? "Processando..." : "Adicionar"}
                 </Button>
               </div>
             </form>

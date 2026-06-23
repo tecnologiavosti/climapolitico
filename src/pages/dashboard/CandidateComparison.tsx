@@ -116,7 +116,7 @@ const fadeIn = {
 };
 
 // ============= Cache (localStorage) =============
-const COMPARISON_CACHE_VERSION = "v4-growth-clamp";
+const COMPARISON_CACHE_VERSION = "v5-bootstrap-metrics";
 const cacheKey = (userId: string, ids: string[], period: Period, range?: { from?: string; to?: string }) =>
   `cmp_${COMPARISON_CACHE_VERSION}_${userId}_${period}_${range?.from ?? ""}_${range?.to ?? ""}_${ids.slice().sort().join(",")}`;
 
@@ -157,16 +157,19 @@ function asFiniteScore(value: unknown): number | null {
   return Math.round(clampScore(n));
 }
 
+function safeMetric(value: unknown, fallback = 50): number {
+  const n = Number(value);
+  return Math.round(clampScore(Number.isFinite(n) ? n : fallback));
+}
+
 function getComputedGrowthScore(candidate: CandidateOut) {
   const direct = asFiniteScore(candidate.scores.growthCapacity);
   if (direct !== null) return clampScore(direct);
 
   // Fallback: média de 3 indicadores 0–100, todos pré-normalizados e clampados.
-  const engagement = clampScore(asFiniteScore(candidate.scores.engagement) ?? 0);
-  const viralizacao = clampScore(asFiniteScore(candidate.scores.virality) ?? 0);
-  const momentum = clampScore(
-    asFiniteScore(candidate.scores.recall ?? candidate.scores.popularity) ?? 0,
-  );
+  const engagement = safeMetric(candidate.scores.engagement, 50);
+  const viralizacao = safeMetric(candidate.scores.virality, 50);
+  const momentum = safeMetric(candidate.scores.recall ?? candidate.scores.popularity, 50);
   const rawGrowth = (engagement + viralizacao + momentum) / 3;
   const computedGrowth = clampScore(rawGrowth);
 
@@ -444,7 +447,8 @@ const CandidateComparisonPage = () => {
     return keys.map(({ key, label }) => {
       const row: any = { metric: label };
       candidates.forEach((c) => {
-        const v = Number((c.scores as any)[key]) || 0;
+        const fallback = key === "rejection" ? 50 : key === "growth" ? safeMetric(c.scores.growthCapacity, 50) : 50;
+        const v = safeMetric((c.scores as any)[key], fallback);
         row[c.name] = key === "growth" ? (v + 100) / 2 : key === "rejection" ? 100 - v : v;
       });
       return row;
