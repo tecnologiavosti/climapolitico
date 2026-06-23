@@ -332,7 +332,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                   {fullName.trim() || <span className="text-muted-foreground font-normal">Nome do candidato</span>}
                 </div>
                 <div className="text-sm text-muted-foreground truncate">
-                  {[party, position, state && (STATE_NAMES[state] ?? state)].filter(Boolean).join(" · ") || "Partido · Cargo · Estado"}
+                  {[party, position, scope === "national" ? "Brasil" : (city && state ? `${city}/${state}` : (state && (STATE_NAMES[state] ?? state)))].filter(Boolean).join(" · ") || "Partido · Cargo · Localização"}
                 </div>
               </div>
             </div>
