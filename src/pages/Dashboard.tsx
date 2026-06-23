@@ -93,11 +93,23 @@ const Dashboard = () => {
     validateOnboardingTargets();
   }, []);
 
+  // Força tema dark premium em todo o app interno (dashboard logado)
+  useEffect(() => {
+    const root = document.documentElement;
+    const prev = root.classList.contains("dark");
+    root.classList.add("dark");
+    if (theme !== "dark") setTheme("dark");
+    return () => {
+      if (!prev) root.classList.remove("dark");
+    };
+  }, [setTheme, theme]);
+
   if (authLoading) return <PageLoader />;
 
   return (
     <SidebarProvider>
-      <div className="min-h-screen flex w-full bg-gradient-secondary">
+      <div className="min-h-screen flex w-full" style={{ background: "var(--gradient-app)" }}>
+
         <div data-onboarding="sidebar">
           {isAdminRoute ? <AdminSidebar /> : <AppSidebar />}
         </div>
