@@ -270,29 +270,52 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
             </div>
           </Field>
 
-          {/* Região e Estado */}
-          <Field label="Região e estado" error={errors.region || errors.state} required>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Select
-                value={region}
-                onValueChange={(v) => { setRegion(v); setState(""); }}
-                disabled={isPending}
-              >
-                <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Região" /></SelectTrigger>
-                <SelectContent>
-                  {Object.keys(REGIONS).map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={state} onValueChange={setState} disabled={isPending || !region}>
-                <SelectTrigger className="h-11 rounded-xl">
-                  <SelectValue placeholder={region ? "Estado" : "Selecione uma região"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {states.map((s) => <SelectItem key={s} value={s}>{STATE_NAMES[s] ?? s}</SelectItem>)}
-                </SelectContent>
-              </Select>
+          {/* Localização — condicional ao cargo */}
+          {scope !== "none" && (
+            <div className="animate-in fade-in-0 slide-in-from-top-2 duration-300">
+              {scope === "national" ? (
+                <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-cyan-500/5 px-4 py-3 flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-lg bg-emerald-500/15 flex items-center justify-center">
+                    <Landmark className="h-4 w-4 text-emerald-600 dark:text-emerald-300" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold">Atuação nacional · cobertura Brasil</div>
+                    {helperText && <div className="text-xs text-muted-foreground">{helperText}</div>}
+                  </div>
+                </div>
+              ) : scope === "state" ? (
+                <Field label="Estado de atuação" error={errors.state} required>
+                  <Select value={state} onValueChange={setState} disabled={isPending}>
+                    <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Selecione o estado" /></SelectTrigger>
+                    <SelectContent>
+                      {ALL_STATES.map((s) => <SelectItem key={s} value={s}>{STATE_NAMES[s]} ({s})</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {helperText && <p className="text-xs text-muted-foreground">{helperText}</p>}
+                </Field>
+              ) : (
+                <Field label="Base municipal" error={errors.state || errors.city} required>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Select value={state} onValueChange={setState} disabled={isPending}>
+                      <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Estado" /></SelectTrigger>
+                      <SelectContent>
+                        {ALL_STATES.map((s) => <SelectItem key={s} value={s}>{STATE_NAMES[s]} ({s})</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      placeholder="Cidade"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      disabled={isPending || !state}
+                      className="h-11 rounded-xl"
+                    />
+                  </div>
+                  {helperText && <p className="text-xs text-muted-foreground">{helperText}</p>}
+                </Field>
+              )}
             </div>
-          </Field>
+          )}
+
 
           {/* Preview */}
           <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-muted/40 via-muted/20 to-transparent p-4">
