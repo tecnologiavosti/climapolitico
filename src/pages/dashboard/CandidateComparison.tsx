@@ -619,7 +619,7 @@ const CandidateComparisonPage = () => {
                             <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
                             <RTooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
                             <Legend wrapperStyle={{ fontSize: 12 }} />
-                            {candidates.slice(0, 6).map((c, i) => (
+                            {candidates.map((c, i) => (
                               <Radar key={c.id} name={c.name} dataKey={c.name}
                                 stroke={PALETTE[i % PALETTE.length]} fill={PALETTE[i % PALETTE.length]}
                                 fillOpacity={0.18} strokeWidth={2} />
