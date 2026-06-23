@@ -202,7 +202,7 @@ async function processMetricsInBackground(
       const network = normalizeNet(i.social_network || 'Outro');
       if (!networkMap[network]) networkMap[network] = { mentions: 0, engagement: 0, sentimentSum: 0, analyzedCount: 0 };
       networkMap[network].mentions++;
-      networkMap[network].engagement += (i.likes_count || 0) + (i.replies_count || 0) + (i.shares_count || 0);
+      networkMap[network].engagement += (i.likes_count ?? 0) + (i.replies_count ?? 0) + (i.shares_count ?? 0);
       if (i.sentiment_label && i.sentiment_score !== null && i.sentiment_score !== undefined) {
         networkMap[network].sentimentSum += i.sentiment_score * 100;
         networkMap[network].analyzedCount++;
@@ -272,6 +272,7 @@ async function processMetricsInBackground(
     console.log(`[BG] ✅ Done candidate=${candidateId} mentions=${totalMentions} bootstrap=${useBootstrap} analyzed=${analyzedSentimentCount} unanalyzed=${unanalyzedSentimentCount}`);
   } catch (err) {
     console.error('[BG] Recalculate metrics error:', err);
+    throw err;
   }
 }
 
