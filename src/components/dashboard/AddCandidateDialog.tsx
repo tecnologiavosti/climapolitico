@@ -312,3 +312,74 @@ function Field({
     </div>
   );
 }
+
+function PartyCombobox({
+  value, onChange, disabled,
+}: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const selected = PARTIES.find((p) => p.sigla === value);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          role="combobox"
+          aria-expanded={open}
+          disabled={disabled}
+          className={cn(
+            "w-full h-12 flex items-center justify-between gap-2 rounded-xl border px-4 text-sm transition-all duration-200",
+            "bg-background hover:border-primary/40",
+            selected
+              ? "border-primary/60 ring-2 ring-primary/20 shadow-[0_0_0_4px_hsl(var(--primary)/0.08)]"
+              : "border-input",
+            disabled && "opacity-50 cursor-not-allowed",
+          )}
+        >
+          {selected ? (
+            <span className="flex items-center gap-2 min-w-0">
+              <span className="font-semibold text-foreground">{selected.sigla}</span>
+              <span className="text-muted-foreground truncate">· {selected.nome}</span>
+              <span className="text-xs text-muted-foreground shrink-0">({selected.numero})</span>
+            </span>
+          ) : (
+            <span className="text-muted-foreground">Buscar por sigla, nome ou número…</span>
+          )}
+          <ChevronsUpDown className="h-4 w-4 text-muted-foreground shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="p-0 w-[--radix-popover-trigger-width] rounded-xl" align="start">
+        <Command
+          filter={(itemValue, search) => {
+            const q = search.toLowerCase().trim();
+            if (!q) return 1;
+            return itemValue.toLowerCase().includes(q) ? 1 : 0;
+          }}
+        >
+          <CommandInput placeholder="Buscar partido…" className="h-11" />
+          <CommandList className="max-h-72">
+            <CommandEmpty>Nenhum partido encontrado.</CommandEmpty>
+            <CommandGroup>
+              {PARTIES.map((p) => {
+                const isSel = value === p.sigla;
+                return (
+                  <CommandItem
+                    key={p.sigla}
+                    value={`${p.sigla} ${p.nome} ${p.numero}`}
+                    onSelect={() => { onChange(p.sigla); setOpen(false); }}
+                    className="cursor-pointer"
+                  >
+                    <Check className={cn("mr-2 h-4 w-4 transition-opacity", isSel ? "opacity-100 text-primary" : "opacity-0")} />
+                    <span className="font-semibold mr-1.5">{p.sigla}</span>
+                    <span className="text-muted-foreground truncate">· {p.nome}</span>
+                    <span className="ml-auto text-xs text-muted-foreground">({p.numero})</span>
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Pop​over>
+  );
+}
+
