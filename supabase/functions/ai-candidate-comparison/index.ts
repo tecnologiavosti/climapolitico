@@ -581,6 +581,8 @@ serve(async (req) => {
       const hasData = (c.mentions ?? 0) > 0 || (c.engagement ?? 0) > 0 || (c.recent ?? 0) > 0;
       if (hasData) return;
       const kb = kbLookup(c.name) ?? KB_DEFAULT;
+      const authInst = institutionalAuthority(c.name, c.party);
+      const estruturaEleitoral = electoralStructure(c.party, c.name);
       c.scores.popularity = safeScore(kb.popularity);
       c.scores.recall = safeScore(kb.popularity);
       c.scores.approval = safeScore(kb.approval);
@@ -594,8 +596,10 @@ serve(async (req) => {
       c.scores.virality = safeScore((kb.engagement + kb.expansion) / 2);
       c.scores.dominance = safeScore(kb.authority);
       c.scores.resistencia = safeScore(kb.resistance);
-      const force = (kb.popularity + kb.approval + kb.engagement + kb.regional +
-        kb.growth + kb.resistance + kb.authority + kb.expansion) / 8;
+      c.scores.institutionalAuthority = safeScore(authInst);
+      c.scores.electoralStructure = safeScore(estruturaEleitoral);
+      const force = (kb.popularity + kb.approval + kb.resistance + kb.regional +
+        kb.engagement + kb.growth + authInst + estruturaEleitoral) / 8;
       c.scores.strength = safeScore(force);
       c.scores.forceScore = safeScore(force);
       c.status = statusFromScore(c.scores.strength);
@@ -603,24 +607,35 @@ serve(async (req) => {
       c.quadrant = quadrant(c.scores.approval, c.scores.strength);
     });
 
-    // Força global (forceScore) — média das 8 dimensões. Garante ausência de zeros globais.
+    // Força global (forceScore) — nova fórmula 8D (12.5% cada).
     enriched.forEach((c: any) => {
       const s = c.scores;
+      const authInst = Number(s.institutionalAuthority ?? institutionalAuthority(c.name, c.party));
+      const estrutura = Number(s.electoralStructure ?? electoralStructure(c.party, c.name));
+      s.institutionalAuthority = safeScore(authInst);
+      s.electoralStructure = safeScore(estrutura);
       const force = (
         Number(s.popularity ?? s.recall ?? 0) +
         Number(s.approval ?? 0) +
-        Number(s.engagement ?? 0) +
-        Number(s.regionalForce ?? 0) +
-        Number(s.growthCapacity ?? s.growth ?? 0) +
         Number(s.resistencia ?? (100 - (s.rejection ?? 0))) +
-        Number(s.authority ?? 0) +
-        Number(s.expansion ?? 0)
+        Number(s.regionalForce ?? 0) +
+        Number(s.engagement ?? 0) +
+        Number(s.growthCapacity ?? s.growth ?? 0) +
+        authInst +
+        estrutura
       ) / 8;
-      const finalForce = safeScore(force);
+      let finalForce = safeScore(force);
+      // Fallback: presidente em exercício nunca abaixo de 85
+      if ((c.name || "").toLowerCase().includes("lula")) {
+        finalForce = Math.max(finalForce, 85);
+      }
       s.forceScore = finalForce;
-      // Se strength ficou 0 mas há sinais, usar forceScore para evitar score global 0.
-      if (!s.strength || s.strength === 0) s.strength = finalForce || 1;
+      s.strength = finalForce;
+      c.status = statusFromScore(finalForce);
+      c.quadrant = quadrant(Number(s.popularity ?? 0), finalForce);
     });
+
+
 
     enriched.sort((a, b) => b.scores.strength - a.scores.strength);
 
