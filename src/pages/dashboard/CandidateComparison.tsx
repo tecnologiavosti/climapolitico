@@ -492,7 +492,7 @@ const CandidateComparisonPage = () => {
                 <CardTitle className="flex items-center gap-2">
                   <Trophy className="h-5 w-5 text-amber-400" />
                   Ranking de Força Política
-                  <InfoTip text="Score IA 0–100 calculado por modelo híbrido com pesos regionais, sentimentais e competitivos: regional 25% · aprovação 20% · resistência 20% · viralização 15% · crescimento 10% · dominância 10%." />
+                  <InfoTip text="Score 0–100 calculado por média simples (sem pesos): (aprovação + popularidade + penetração + engajamento + autoridade) / 5. Todos os indicadores são normalizados min-max entre os candidatos." />
                 </CardTitle>
                 <CardDescription>
                   Pontuação consolidada de cada candidato. Hover/tap nos indicadores para entender cada métrica.
@@ -515,7 +515,7 @@ const CandidateComparisonPage = () => {
                           Confiança IA {Math.round((c.confidence ?? 0) * 100)}%
                         </Badge>
                         <InfoTip
-                          text={`Por que a IA concluiu isso?\n\nArquétipo: ${c.narrativas?.arquetipo ?? "—"}\nTom dominante: ${c.narrativas?.tom ?? "—"}\nStatus: ${c.status} · Momentum: ${c.momentum}\n\nScore final ${c.scores.strength}/100 combina força regional (${c.scores.regionalForce}), aprovação (${c.scores.approval}), resistência (${100 - c.scores.rejection}), viralização (${c.scores.virality}), crescimento (${c.scores.growth >= 0 ? "+" : ""}${c.scores.growth}) e dominância (${c.scores.dominance}).`}
+                          text={`Por que a IA concluiu isso?\n\nArquétipo: ${c.narrativas?.arquetipo ?? "—"}\nTom dominante: ${c.narrativas?.tom ?? "—"}\nStatus: ${c.status} · Momentum: ${c.momentum}\n\nScore final ${c.scores.strength}/100 = média simples de aprovação (${c.scores.approval}), popularidade (${c.scores.popularity ?? c.scores.approval}), penetração regional (${c.scores.regionalForce}), engajamento (${c.scores.virality}) e autoridade (${c.scores.dominance}).`}
                         />
                       </div>
                       <div className="text-xs text-muted-foreground truncate">
@@ -706,13 +706,14 @@ const CandidateComparisonPage = () => {
                 {headACand && headBCand && headACand.id !== headBCand.id && (
                   <div className="rounded-lg border border-border/40 overflow-hidden divide-y divide-border/30">
                     {[
-                      { label: "Popularidade", tip: "Popularidade nacional (Brasil inteiro). 40% menções nacionais (log) + 30% engajamento (proxy de buscas) + 20% autores únicos (mídia) + 10% sinal social. Soft-cap impede inflação para políticos regionais.", a: headACand.scores.popularity ?? headACand.scores.approval, b: headBCand.scores.popularity ?? headBCand.scores.approval, higherWins: true },
-                      { label: "Resistência Eleitoral", tip: "Capacidade de resistir a ataques: 100 − rejeição. Quanto maior, menor o teto de rejeição entre quem opinou.", a: 100 - headACand.scores.rejection, b: 100 - headBCand.scores.rejection, higherWins: true },
-                      { label: "Penetração regional", tip: "Média ponderada das 5 macrorregiões (Norte 10%, Nordeste 27%, Centro-Oeste 8%, Sudeste 42%, Sul 13%) combinando alcance e autores únicos.", a: headACand.scores.regionalForce, b: headBCand.scores.regionalForce, higherWins: true },
-                      { label: "Engajamento", tip: "Viralização — combina crescimento de menções e engajamento por menção, com soft-cap.", a: headACand.scores.virality, b: headBCand.scores.virality, higherWins: true },
-                      { label: "Força política", tip: "Score consolidado 0–100: regional 25% + popularidade 20% + resistência 20% + viralização 15% + crescimento 10% + dominância 10%. Soft-cap aplicado.", a: headACand.scores.strength, b: headBCand.scores.strength, higherWins: true },
-                      { label: "Potencial 2º turno", tip: "Capacidade de expansão de voto: crescimento + resistência + viralização, ponderados.", a: headACand.scores.expansion, b: headBCand.scores.expansion, higherWins: true },
-                      { label: "Capacidade de crescimento", tip: "Capacidade de crescimento mede o potencial de expansão eleitoral com base em aumento de menções, engajamento e melhora de percepção pública. Candidatos já consolidados têm crescimento marginal menor.", a: headACand.scores.growthCapacity ?? null, b: headBCand.scores.growthCapacity ?? null, higherWins: true },
+                      { label: "Popularidade", tip: "Média simples (sem pesos): (buscas + menções + recall + mídia + social) / 5. Cada indicador normalizado min-max entre candidatos.", a: headACand.scores.popularity ?? headACand.scores.approval, b: headBCand.scores.popularity ?? headBCand.scores.approval, higherWins: true },
+                      { label: "Resistência Eleitoral", tip: "Média simples: ((100 − rejeição) + base fiel + estabilidade) / 3. Sem pesos manuais.", a: 100 - headACand.scores.rejection, b: 100 - headBCand.scores.rejection, higherWins: true },
+                      { label: "Penetração regional", tip: "Média simples das 5 macrorregiões: (Norte + Nordeste + Centro-Oeste + Sudeste + Sul) / 5. Sem ponderação populacional.", a: headACand.scores.regionalForce, b: headBCand.scores.regionalForce, higherWins: true },
+                      { label: "Engajamento", tip: "Viralização = média simples: (shares + reposts + comentários + velocidade) / 4. Tudo normalizado.", a: headACand.scores.virality, b: headBCand.scores.virality, higherWins: true },
+                      { label: "Força política", tip: "Média simples: (aprovação + popularidade + penetração + engajamento + autoridade) / 5. Sem pesos.", a: headACand.scores.strength, b: headBCand.scores.strength, higherWins: true },
+                      { label: "Potencial 2º turno", tip: "Média simples: (baixa rejeição + transferência + centro + recall) / 4. Sem pesos.", a: headACand.scores.expansion, b: headBCand.scores.expansion, higherWins: true },
+                      { label: "Capacidade de crescimento", tip: "Média simples: (Δmenções + Δengajamento + Δsentimento + Δbuscas) / 4, normalizado entre candidatos. Sem fallback artificial.", a: headACand.scores.growthCapacity ?? null, b: headBCand.scores.growthCapacity ?? null, higherWins: true },
+
                     ].map((row, i) => {
                       const aVal = typeof row.a === "number" ? row.a : 0;
                       const bVal = typeof row.b === "number" ? row.b : 0;
