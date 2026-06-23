@@ -290,19 +290,38 @@ serve(async (req) => {
       const approval = total > 0 ? (c.positive / total) * 100 : 50;
       const rejection = total > 0 ? (c.negative / total) * 100 : 30;
       const recall = normalizeMax(c.mentions, maxMentions);
-      const virality = c.mentions > 0
-        ? normalizeMax(c.engagement / Math.max(1, c.mentions), maxEngagement / Math.max(1, maxMentions))
-        : 0;
+      const engPerMention = c.mentions > 0 ? c.engagement / Math.max(1, c.mentions) : 0;
+      const engBaseline = maxEngagement / Math.max(1, maxMentions);
+      const engRatio = engBaseline > 0 ? normalizeMax(engPerMention, engBaseline) : 0;
+
+      // Crescimento real — sem forçar 100% quando não há baseline
+      let growth: number | null;
+      if (c.prev <= 0) {
+        growth = c.recent > 0 ? null : 0; // sem histórico suficiente
+      } else {
+        growth = clamp(((c.recent - c.prev) / c.prev) * 100, -100, 100);
+      }
+      const growthNorm = growth === null ? 50 : (growth + 100) / 2;
+
+      // Viralização combina crescimento de menções + engajamento por menção
+      const mentionsGrowth = growth ?? 0;
+      const viralityRaw = clamp(mentionsGrowth * 0.5 + engRatio * 0.5, 0, 100);
+      const virality = c.mentions > 0 ? Math.max(viralityRaw, engRatio * 0.6) : 0;
+
       const dominance = normalizeMax(c.authors, maxAuthors);
-      const growth = c.prev === 0
-        ? (c.recent > 0 ? 100 : 0)
-        : clamp(((c.recent - c.prev) / c.prev) * 100, -100, 100);
-      const growthNorm = (growth + 100) / 2;
       const regionalForce = recall * 0.6 + dominance * 0.4;
       const authority = dominance * 0.6 + virality * 0.4;
       const expansionPotential = clamp(growthNorm * 0.5 + (100 - rejection) * 0.3 + virality * 0.2);
       const strength = regionalForce * 0.25 + approval * 0.20 + (100 - rejection) * 0.20
         + virality * 0.15 + growthNorm * 0.10 + dominance * 0.10;
+
+      console.log("[trend]", {
+        candidate: c.name,
+        currentMentions: c.recent,
+        previousMentions: c.prev,
+        growth,
+        trend: momentumLabel(growth),
+      });
 
       return {
         ...c,
@@ -314,11 +333,12 @@ serve(async (req) => {
           rejection: safeScore(rejection),
           virality: safeScore(virality),
           regionalForce: safeScore(regionalForce),
-          growth: Math.round(growth),
+          growth: growth === null ? 0 : Math.round(growth),
+          hasBaseline: growth !== null,
           dominance: safeScore(dominance),
           authority: safeScore(authority),
           expansion: safeScore(expansionPotential),
-        },
+        } as any,
         status: statusFromScore(strength),
         momentum: momentumLabel(growth),
         quadrant: quadrant(approval, strength),
