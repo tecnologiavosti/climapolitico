@@ -121,36 +121,58 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   const [fullName, setFullName] = useState("");
   const [party, setParty] = useState("");
   const [position, setPosition] = useState("");
-  const [region, setRegion] = useState("");
   const [state, setState] = useState("");
+  const [city, setCity] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const states = useMemo(() => (region ? REGIONS[region] ?? [] : []), [region]);
-  const canSubmit = !!fullName.trim() && !!party && !!position && !!state && !isPending;
+  const scope = scopeOf(position);
+  const canSubmit =
+    !!fullName.trim() && !!party && !!position && !isPending &&
+    (scope === "national" || (scope === "state" && !!state) || (scope === "municipal" && !!state && !!city.trim()));
 
   const scopeBadge = useMemo(() => {
-    if (position === "Presidente") return { label: "Monitoramento nacional", cls: "bg-gradient-to-r from-emerald-500/15 to-cyan-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30" };
-    if (position === "Governador") return { label: "Monitoramento estadual", cls: "bg-gradient-to-r from-blue-500/15 to-indigo-500/15 text-blue-600 dark:text-blue-300 border-blue-500/30" };
-    if (position === "Senador") return { label: "Monitoramento regional", cls: "bg-gradient-to-r from-amber-500/15 to-orange-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30" };
+    if (scope === "national") return { label: "Atuação nacional · cobertura Brasil", cls: "bg-gradient-to-r from-emerald-500/15 to-cyan-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30" };
+    if (scope === "state") return { label: "Monitoramento estadual", cls: "bg-gradient-to-r from-blue-500/15 to-indigo-500/15 text-blue-600 dark:text-blue-300 border-blue-500/30" };
+    if (scope === "municipal") return { label: "Base municipal", cls: "bg-gradient-to-r from-amber-500/15 to-orange-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30" };
+    return null;
+  }, [scope]);
+
+  const helperText = useMemo(() => {
+    if (position === "Presidente" || position === "Vice-presidente" || position === "Ministro")
+      return "Este cargo é monitorado em escala nacional.";
+    if (position === "Governador" || position === "Vice-governador") return "Selecione o estado principal de atuação.";
+    if (position === "Senador" || position === "Deputado Federal" || position === "Deputado Estadual")
+      return "Selecione o estado de atuação parlamentar.";
+    if (position === "Prefeito" || position === "Vice-prefeito" || position === "Vereador")
+      return "Selecione município e estado.";
     return null;
   }, [position]);
 
+  const handlePosition = (p: string) => {
+    setPosition(p);
+    const next = scopeOf(p);
+    if (next === "national") { setState(""); setCity(""); }
+    else if (next === "state") { setCity(""); }
+  };
+
   const reset = () => {
-    setFullName(""); setParty(""); setPosition(""); setRegion(""); setState(""); setErrors({});
+    setFullName(""); setParty(""); setPosition(""); setState(""); setCity(""); setErrors({});
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setErrors({});
-    const parsed = schema.safeParse({ fullName, party, position, region, state });
-    if (!parsed.success) {
-      const errs: Record<string, string> = {};
-      parsed.error.issues.forEach((i) => { errs[i.path.join(".")] = i.message; });
-      setErrors(errs);
-      return;
-    }
+    const errs: Record<string, string> = {};
+    if (fullName.trim().length < 3) errs.fullName = "Nome deve ter no mínimo 3 caracteres";
+    if (!party) errs.party = "Selecione um partido";
+    if (!position) errs.position = "Selecione um cargo";
+    if (scope !== "national" && !state) errs.state = "Selecione um estado";
+    if (scope === "municipal" && !city.trim()) errs.city = "Informe a cidade";
+    setErrors(errs);
+    if (Object.keys(errs).length) return;
+
+    const region = scope === "national" ? "Brasil" : (STATE_TO_REGION[state] ?? "");
     onSubmit({
-      fullName, party, position, region, state,
+      fullName, party, position, region, state, city: city.trim() || undefined,
       socials: {}, photoFile: null,
     });
   };
@@ -159,6 +181,8 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     if (!v && !isPending) reset();
     onOpenChange(v);
   };
+
+
 
   return (
     <Dialog open={open} onOpenChange={onOpen}>
