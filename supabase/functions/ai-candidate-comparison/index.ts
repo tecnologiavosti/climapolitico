@@ -40,6 +40,7 @@ interface Cand {
   prevEngagement: number;
   recentReach: number;
   prevReach: number;
+  isBootstrap?: boolean;
 }
 
 interface InitialMetrics {
@@ -442,7 +443,7 @@ serve(async (req) => {
     const ids = cands.map((c: any) => c.id);
     const { data: metrics } = await supabase
       .from("candidate_metrics_cache")
-      .select("candidate_id, total_mentions, unique_authors, total_engagement, average_sentiment, positive_count, negative_count, neutral_count")
+      .select("candidate_id, total_mentions, unique_authors, total_engagement, average_sentiment, positive_count, negative_count, neutral_count, network_breakdown")
       .in("candidate_id", ids);
     const mMap = new Map<string, any>((metrics ?? []).map((m: any) => [m.candidate_id, m]));
 
@@ -497,7 +498,8 @@ serve(async (req) => {
       const seeded = seedCounts(initial, c.full_name);
       const hasCacheMetrics = m && [m.total_mentions, m.unique_authors, m.total_engagement].some((v: unknown) => Number(v) > 0);
       const hasGrowthMetrics = [g.recent, g.prev, g.recentEngagement, g.prevEngagement, g.recentReach, g.prevReach].some((v) => Number(v) > 0);
-      const useSeed = !hasCacheMetrics && !hasGrowthMetrics;
+      const isBootstrapCache = Array.isArray(m?.network_breakdown) && m.network_breakdown.some((n: any) => n?.network === "Bootstrap IA");
+      const useSeed = isBootstrapCache || (!hasCacheMetrics && !hasGrowthMetrics);
       return {
         id: c.id,
         name: c.full_name,
@@ -516,6 +518,7 @@ serve(async (req) => {
         prevEngagement: useSeed ? Math.round(seeded.engagement * 0.45) : Number(g.prevEngagement ?? 0),
         recentReach: useSeed ? Math.round(seeded.authors * 0.55) : Number(g.recentReach ?? 0),
         prevReach: useSeed ? Math.round(seeded.authors * 0.45) : Number(g.prevReach ?? 0),
+        isBootstrap: useSeed,
       };
     });
 
@@ -570,20 +573,20 @@ serve(async (req) => {
       const conf = regionDataConfidence(c);
 
       // Normalizações base
-      const mencoesN = safeMetric(normGroup(c.mentions, arrMentions), initial.recall);
-      const dominanceN = safeMetric(normGroup(c.authors, arrAuthors), initial.authority);
-      const engagementN = safeMetric(normGroup(c.engagement, arrEngagement), initial.engagement);
-      const engRatioN = safeMetric(normGroup(r.engPerMention, arrEngRatio), initial.engagement);
+      const mencoesN = c.isBootstrap ? initial.recall : safeMetric(normGroup(c.mentions, arrMentions), initial.recall);
+      const dominanceN = c.isBootstrap ? initial.authority : safeMetric(normGroup(c.authors, arrAuthors), initial.authority);
+      const engagementN = c.isBootstrap ? initial.engagement : safeMetric(normGroup(c.engagement, arrEngagement), initial.engagement);
+      const engRatioN = c.isBootstrap ? initial.engagement : safeMetric(normGroup(r.engPerMention, arrEngRatio), initial.engagement);
       const rejectionN = normGroup(r.rejection, arrRejection);
 
-      const approval = safeMetric(r.total > 0 ? r.approval : null, initial.approval);   // já 0-100, fórmula matemática direta
-      const rejection = safeMetric(r.total > 0 ? r.rejection : null, 100 - initial.resistance);
+      const approval = c.isBootstrap ? initial.approval : safeMetric(r.total > 0 ? r.approval : null, initial.approval);   // já 0-100, fórmula matemática direta
+      const rejection = c.isBootstrap ? 100 - initial.resistance : safeMetric(r.total > 0 ? r.rejection : null, 100 - initial.resistance);
 
       // Crescimento normalizado entre candidatos. max==min retorna 50; nunca null/NaN/Infinity.
-      const deltaMentions = safeMetric(normGroup(r.deltaMentions, arrDeltaMentions), initial.growth);
-      const deltaEngagement = safeMetric(normGroup(r.deltaEngagement, arrDeltaEngagement), initial.growth);
-      const deltaReach = safeMetric(normGroup(r.deltaReach, arrDeltaReach), initial.growth);
-      const momentum = safeMetric(normGroup(r.momentumRaw, arrMomentum), initial.growth);
+      const deltaMentions = c.isBootstrap ? initial.growth : safeMetric(normGroup(r.deltaMentions, arrDeltaMentions), initial.growth);
+      const deltaEngagement = c.isBootstrap ? initial.growth : safeMetric(normGroup(r.deltaEngagement, arrDeltaEngagement), initial.growth);
+      const deltaReach = c.isBootstrap ? initial.growth : safeMetric(normGroup(r.deltaReach, arrDeltaReach), initial.growth);
+      const momentum = c.isBootstrap ? initial.growth : safeMetric(normGroup(r.momentumRaw, arrMomentum), initial.growth);
       const growth = Math.round(Number.isFinite(r.growthRaw) ? r.growthRaw : 0);
 
       // 6. Penetração Regional — média das 5 regiões (proxy por região-base)
@@ -595,16 +598,16 @@ serve(async (req) => {
       const centroOeste = regionScore("Centro-Oeste");
       const sudeste = regionScore("Sudeste");
       const sul = regionScore("Sul");
-      const penetracao = safeMetric((norte + nordeste + centroOeste + sudeste + sul) / 5, initial.penetration);
+      const penetracao = c.isBootstrap ? initial.penetration : safeMetric((norte + nordeste + centroOeste + sudeste + sul) / 5, initial.penetration);
 
       // 5. Resistência Eleitoral = 100 − rejeição (%) — simples, sem normalização
       const resistencia = clamp(100 - rejection);
 
       // 3. Viralização = média(shares, reposts, comentários, velocidade) — proxy normalizado
-      const viralizacao = safeMetric((engagementN + dominanceN + engRatioN + deltaMentions) / 4, initial.virality);
+      const viralizacao = c.isBootstrap ? initial.virality : safeMetric((engagementN + dominanceN + engRatioN + deltaMentions) / 4, initial.virality);
 
       // 4. Popularidade = média(lembrança, busca, menções totais)
-      const popularidade = safeMetric((mencoesN + engagementN + dominanceN) / 3, initial.popularity);
+      const popularidade = c.isBootstrap ? initial.popularity : safeMetric((mencoesN + engagementN + dominanceN) / 3, initial.popularity);
 
       // 2. Capacidade de Crescimento = média de 4 fatores normalizados 0–100.
       // Nunca retorna null/NaN/Infinity. Se inválido → 0.
