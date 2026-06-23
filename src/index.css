@@ -135,8 +135,11 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
-  html, body {
-    @apply bg-background text-foreground;
+  html, body, #root {
+    @apply text-foreground;
+    background: var(--gradient-app);
+    background-attachment: fixed;
+    min-height: 100vh;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
@@ -144,6 +147,7 @@ All colors MUST be HSL.
     overflow-x: hidden;
     max-width: 100vw;
   }
+
 
   /* Mobile: promove grids de coluna única para 2 colunas, mantendo
      os blocos lado a lado como no desktop. */
