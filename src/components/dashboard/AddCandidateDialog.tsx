@@ -7,20 +7,34 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  UserPlus, Loader2, Instagram, Facebook, Youtube, Twitter, Music2,
-  User, Flag, Briefcase, MapPin, Upload, Sparkles,
+  UserPlus, Loader2, Landmark, Building2, Building, Scroll, FileText, ClipboardList, User,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const PARTIES = [
-  "PT", "PL", "União Brasil", "MDB", "PSD", "Republicanos", "PP", "PSB",
-  "PDT", "PSDB", "Novo", "PSOL", "Podemos", "Avante", "Solidariedade",
-] as const;
+const PARTIES: { name: string; color: string }[] = [
+  { name: "PT", color: "from-red-500/20 to-red-500/5 text-red-600 dark:text-red-300 border-red-500/40" },
+  { name: "PL", color: "from-blue-500/20 to-blue-500/5 text-blue-600 dark:text-blue-300 border-blue-500/40" },
+  { name: "MDB", color: "from-emerald-500/20 to-emerald-500/5 text-emerald-600 dark:text-emerald-300 border-emerald-500/40" },
+  { name: "União Brasil", color: "from-orange-500/20 to-orange-500/5 text-orange-600 dark:text-orange-300 border-orange-500/40" },
+  { name: "PSD", color: "from-sky-500/20 to-sky-500/5 text-sky-600 dark:text-sky-300 border-sky-500/40" },
+  { name: "PSB", color: "from-yellow-500/20 to-yellow-500/5 text-yellow-600 dark:text-yellow-300 border-yellow-500/40" },
+  { name: "Republicanos", color: "from-indigo-500/20 to-indigo-500/5 text-indigo-600 dark:text-indigo-300 border-indigo-500/40" },
+  { name: "PDT", color: "from-rose-500/20 to-rose-500/5 text-rose-600 dark:text-rose-300 border-rose-500/40" },
+  { name: "PSDB", color: "from-cyan-500/20 to-cyan-500/5 text-cyan-600 dark:text-cyan-300 border-cyan-500/40" },
+  { name: "Novo", color: "from-amber-500/20 to-amber-500/5 text-amber-600 dark:text-amber-300 border-amber-500/40" },
+  { name: "Outro", color: "from-zinc-500/20 to-zinc-500/5 text-zinc-600 dark:text-zinc-300 border-zinc-500/40" },
+];
 
-const POSITIONS = [
-  "Presidente", "Governador", "Senador",
-  "Deputado Federal", "Deputado Estadual", "Prefeito", "Vereador",
-] as const;
+const POSITIONS: { name: string; Icon: React.ComponentType<{ className?: string }> }[] = [
+  { name: "Presidente", Icon: Landmark },
+  { name: "Governador", Icon: Building2 },
+  { name: "Prefeito", Icon: Building },
+  { name: "Senador", Icon: Scroll },
+  { name: "Deputado Federal", Icon: ClipboardList },
+  { name: "Deputado Estadual", Icon: FileText },
+  { name: "Vereador", Icon: User },
+];
 
 const REGIONS: Record<string, string[]> = {
   "Norte": ["AC", "AP", "AM", "PA", "RO", "RR", "TO"],
@@ -30,24 +44,13 @@ const REGIONS: Record<string, string[]> = {
   "Sul": ["PR", "SC", "RS"],
 };
 
-const SOCIALS = [
-  { key: "tiktok", label: "TikTok", Icon: Music2, placeholder: "https://tiktok.com/@usuario", color: "from-fuchsia-500/15 to-cyan-500/15" },
-  { key: "instagram", label: "Instagram", Icon: Instagram, placeholder: "https://instagram.com/usuario", color: "from-pink-500/15 to-orange-500/15" },
-  { key: "facebook", label: "Facebook", Icon: Facebook, placeholder: "https://facebook.com/pagina", color: "from-blue-500/15 to-indigo-500/15" },
-  { key: "twitter", label: "Twitter / X", Icon: Twitter, placeholder: "https://x.com/usuario", color: "from-zinc-500/15 to-slate-500/15" },
-  { key: "youtube", label: "YouTube", Icon: Youtube, placeholder: "https://youtube.com/@canal", color: "from-red-500/15 to-rose-500/15" },
-] as const;
-
-type SocialKey = typeof SOCIALS[number]["key"];
-
-const urlOpt = z
-  .string()
-  .trim()
-  .refine((v) => !v || v.startsWith("http://") || v.startsWith("https://"), {
-    message: "Link deve começar com http:// ou https://",
-  })
-  .optional()
-  .or(z.literal(""));
+const STATE_NAMES: Record<string, string> = {
+  AC: "Acre", AP: "Amapá", AM: "Amazonas", PA: "Pará", RO: "Rondônia", RR: "Roraima", TO: "Tocantins",
+  AL: "Alagoas", BA: "Bahia", CE: "Ceará", MA: "Maranhão", PB: "Paraíba", PE: "Pernambuco", PI: "Piauí", RN: "Rio Grande do Norte", SE: "Sergipe",
+  DF: "Distrito Federal", GO: "Goiás", MT: "Mato Grosso", MS: "Mato Grosso do Sul",
+  SP: "São Paulo", RJ: "Rio de Janeiro", MG: "Minas Gerais", ES: "Espírito Santo",
+  PR: "Paraná", SC: "Santa Catarina", RS: "Rio Grande do Sul",
+};
 
 const schema = z.object({
   fullName: z.string().trim().min(3, "Nome deve ter no mínimo 3 caracteres").max(100),
@@ -55,9 +58,6 @@ const schema = z.object({
   position: z.string().min(1, "Selecione um cargo"),
   region: z.string().min(1, "Selecione uma região"),
   state: z.string().min(1, "Selecione um estado"),
-  socials: z.object({
-    tiktok: urlOpt, instagram: urlOpt, facebook: urlOpt, twitter: urlOpt, youtube: urlOpt,
-  }),
 });
 
 export type AddCandidatePayload = {
@@ -66,7 +66,7 @@ export type AddCandidatePayload = {
   position: string;
   region: string;
   state: string;
-  socials: Record<SocialKey, string>;
+  socials: Record<string, string>;
   photoFile: File | null;
 };
 
@@ -78,22 +78,16 @@ interface Props {
   onSubmit: (data: AddCandidatePayload) => void;
 }
 
-const emptySocials: Record<SocialKey, string> = {
-  tiktok: "", instagram: "", facebook: "", twitter: "", youtube: "",
-};
-
 export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onSubmit }: Props) {
   const [fullName, setFullName] = useState("");
   const [party, setParty] = useState("");
   const [position, setPosition] = useState("");
   const [region, setRegion] = useState("");
   const [state, setState] = useState("");
-  const [socials, setSocials] = useState<Record<SocialKey, string>>(emptySocials);
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const states = useMemo(() => (region ? REGIONS[region] ?? [] : []), [region]);
+  const canSubmit = !!fullName.trim() && !!party && !!position && !!state && !isPending;
 
   const scopeBadge = useMemo(() => {
     if (position === "Presidente") return { label: "Monitoramento nacional", cls: "bg-gradient-to-r from-emerald-500/15 to-cyan-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30" };
@@ -103,24 +97,23 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   }, [position]);
 
   const reset = () => {
-    setFullName(""); setParty(""); setPosition(""); setRegion(""); setState("");
-    setSocials(emptySocials); setPhotoFile(null); setPhotoPreview(null); setErrors({});
+    setFullName(""); setParty(""); setPosition(""); setRegion(""); setState(""); setErrors({});
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
-    const parsed = schema.safeParse({ fullName, party, position, region, state, socials });
+    const parsed = schema.safeParse({ fullName, party, position, region, state });
     if (!parsed.success) {
-      const e: Record<string, string> = {};
-      parsed.error.issues.forEach((i) => {
-        const k = i.path.join(".");
-        e[k] = i.message;
-      });
-      setErrors(e);
+      const errs: Record<string, string> = {};
+      parsed.error.issues.forEach((i) => { errs[i.path.join(".")] = i.message; });
+      setErrors(errs);
       return;
     }
-    onSubmit({ fullName, party, position, region, state, socials, photoFile });
+    onSubmit({
+      fullName, party, position, region, state,
+      socials: {}, photoFile: null,
+    });
   };
 
   const onOpen = (v: boolean) => {
@@ -128,199 +121,191 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     onOpenChange(v);
   };
 
-  const onPhoto = (file: File | null) => {
-    setPhotoFile(file);
-    if (photoPreview) URL.revokeObjectURL(photoPreview);
-    setPhotoPreview(file ? URL.createObjectURL(file) : null);
-  };
-
   return (
     <Dialog open={open} onOpenChange={onOpen}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
-      <DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto p-0 gap-0 rounded-2xl border-border/60">
-        <div className="px-6 pt-6 pb-4 border-b border-border/60 bg-gradient-to-b from-muted/40 to-transparent">
+      <DialogContent
+        className={cn(
+          "sm:max-w-[760px] max-h-[92vh] overflow-y-auto p-0 gap-0",
+          "rounded-3xl border-border/60 shadow-2xl",
+          "bg-background/95 backdrop-blur-xl",
+          "animate-in fade-in-0 zoom-in-95 duration-200",
+        )}
+      >
+        {/* Header */}
+        <div className="px-8 pt-8 pb-6 border-b border-border/50 bg-gradient-to-b from-primary/[0.04] to-transparent">
           <DialogHeader>
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center ring-1 ring-primary/20">
-                <Sparkles className="h-5 w-5 text-primary" />
+              <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 flex items-center justify-center ring-1 ring-primary/20 shadow-sm">
+                <Landmark className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <DialogTitle className="text-xl">Adicionar novo candidato</DialogTitle>
+                <DialogTitle className="text-xl tracking-tight">Adicionar novo candidato</DialogTitle>
                 <DialogDescription className="text-sm">
-                  Cadastre quem você quer monitorar — preencha em segundos.
+                  Cadastre um candidato para monitoramento político em tempo real.
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 py-6 space-y-6">
-          {/* Section 1 — Dados básicos */}
-          <Section index={1} title="Dados básicos" icon={<User className="h-4 w-4" />}>
-            <div className="grid grid-cols-1 sm:grid-cols-[112px_1fr] gap-4">
-              <label
-                className={cn(
-                  "relative aspect-square w-28 rounded-2xl border-2 border-dashed border-border/60 hover:border-primary/50 transition-colors cursor-pointer overflow-hidden bg-muted/30 flex items-center justify-center group",
-                )}
-              >
-                {photoPreview ? (
-                  <img src={photoPreview} alt="Prévia" className="absolute inset-0 h-full w-full object-cover" />
-                ) : (
-                  <div className="flex flex-col items-center text-muted-foreground text-xs gap-1">
-                    <Upload className="h-5 w-5 group-hover:text-primary transition-colors" />
-                    <span>Foto</span>
-                  </div>
-                )}
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="absolute inset-0 opacity-0 cursor-pointer"
-                  onChange={(e) => onPhoto(e.target.files?.[0] ?? null)}
-                  disabled={isPending}
-                />
-              </label>
-              <div className="space-y-2">
-                <Label htmlFor="fullName">Nome completo *</Label>
-                <Input
-                  id="fullName"
-                  placeholder="Ex: Maria Santos"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  disabled={isPending}
-                  className="h-11"
-                />
-                {errors.fullName && <p className="text-xs text-destructive">{errors.fullName}</p>}
-                {scopeBadge && (
-                  <Badge variant="outline" className={cn("mt-1 font-medium", scopeBadge.cls)}>
-                    {scopeBadge.label}
-                  </Badge>
-                )}
-              </div>
-            </div>
-          </Section>
+        <form onSubmit={handleSubmit} className="px-8 py-7 space-y-7">
+          {/* Nome */}
+          <Field label="Nome completo" error={errors.fullName} required>
+            <Input
+              id="fullName"
+              placeholder="Ex: Luiz Inácio Lula da Silva"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              disabled={isPending}
+              className="h-12 text-base rounded-xl"
+            />
+            {scopeBadge && (
+              <Badge variant="outline" className={cn("mt-2 font-medium", scopeBadge.cls)}>
+                {scopeBadge.label}
+              </Badge>
+            )}
+          </Field>
 
-          {/* Section 2 — Partido */}
-          <Section index={2} title="Partido" icon={<Flag className="h-4 w-4" />}>
-            <Select value={party} onValueChange={setParty} disabled={isPending}>
-              <SelectTrigger className="h-11"><SelectValue placeholder="Selecione o partido" /></SelectTrigger>
-              <SelectContent>
-                {PARTIES.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            {errors.party && <p className="text-xs text-destructive mt-1">{errors.party}</p>}
-          </Section>
-
-          {/* Section 3 — Cargo */}
-          <Section index={3} title="Cargo" icon={<Briefcase className="h-4 w-4" />}>
-            <Select value={position} onValueChange={setPosition} disabled={isPending}>
-              <SelectTrigger className="h-11"><SelectValue placeholder="Selecione o cargo" /></SelectTrigger>
-              <SelectContent>
-                {POSITIONS.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            {errors.position && <p className="text-xs text-destructive mt-1">{errors.position}</p>}
-          </Section>
-
-          {/* Section 4 — Região / Estado */}
-          <Section index={4} title="Região e estado" icon={<MapPin className="h-4 w-4" />}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <Select
-                  value={region}
-                  onValueChange={(v) => { setRegion(v); setState(""); }}
-                  disabled={isPending}
-                >
-                  <SelectTrigger className="h-11"><SelectValue placeholder="Região" /></SelectTrigger>
-                  <SelectContent>
-                    {Object.keys(REGIONS).map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                {errors.region && <p className="text-xs text-destructive mt-1">{errors.region}</p>}
-              </div>
-              <div>
-                <Select value={state} onValueChange={setState} disabled={isPending || !region}>
-                  <SelectTrigger className="h-11">
-                    <SelectValue placeholder={region ? "Estado" : "Selecione uma região primeiro"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {states.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                {errors.state && <p className="text-xs text-destructive mt-1">{errors.state}</p>}
-              </div>
-            </div>
-          </Section>
-
-          {/* Section 5 — Redes sociais */}
-          <Section index={5} title="Redes sociais" icon={<Sparkles className="h-4 w-4" />} subtitle="Opcional. Adicione apenas as que você quer monitorar.">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {SOCIALS.map(({ key, label, Icon, placeholder, color }) => {
-                const filled = !!socials[key];
+          {/* Partido */}
+          <Field label="Partido" error={errors.party} required>
+            <div className="flex flex-wrap gap-2">
+              {PARTIES.map((p) => {
+                const selected = party === p.name;
                 return (
-                  <div
-                    key={key}
+                  <button
+                    key={p.name}
+                    type="button"
+                    onClick={() => setParty(p.name)}
+                    disabled={isPending}
                     className={cn(
-                      "rounded-xl border border-border/60 p-3 transition-all hover:border-primary/40 hover:shadow-sm bg-gradient-to-br",
-                      color,
-                      filled && "border-primary/40 ring-1 ring-primary/20",
+                      "px-3.5 py-2 rounded-full text-sm font-medium border transition-all duration-200",
+                      "hover:scale-[1.03] hover:shadow-sm",
+                      selected
+                        ? `bg-gradient-to-br ${p.color} shadow-md ring-2 ring-offset-1 ring-offset-background ring-current/40`
+                        : "border-border/70 bg-muted/30 text-muted-foreground hover:text-foreground hover:border-border",
                     )}
                   >
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="h-8 w-8 rounded-lg bg-background/80 backdrop-blur flex items-center justify-center">
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <span className="text-sm font-medium">{label}</span>
-                    </div>
-                    <Input
-                      placeholder={placeholder}
-                      value={socials[key]}
-                      onChange={(e) => setSocials({ ...socials, [key]: e.target.value })}
-                      disabled={isPending}
-                      className="h-9 bg-background/70"
-                    />
-                    {errors[`socials.${key}`] && (
-                      <p className="text-xs text-destructive mt-1">{errors[`socials.${key}`]}</p>
-                    )}
-                  </div>
+                    {p.name}
+                  </button>
                 );
               })}
             </div>
-          </Section>
+          </Field>
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-border/60 -mx-6 px-6 pt-4 sticky bottom-0 bg-background">
-            <Button type="button" variant="outline" onClick={() => onOpen(false)} disabled={isPending}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={isPending} className="min-w-[180px]">
-              {isPending ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processando...</>
-              ) : (
-                <><UserPlus className="mr-2 h-4 w-4" /> Adicionar candidato</>
-              )}
-            </Button>
+          {/* Cargo */}
+          <Field label="Cargo" error={errors.position} required>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+              {POSITIONS.map(({ name, Icon }) => {
+                const selected = position === name;
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => setPosition(name)}
+                    disabled={isPending}
+                    className={cn(
+                      "group flex flex-col items-start gap-2 p-3.5 rounded-xl border text-left transition-all duration-200",
+                      "hover:border-primary/40 hover:shadow-sm hover:-translate-y-0.5",
+                      selected
+                        ? "border-primary/60 bg-gradient-to-br from-primary/10 to-primary/[0.02] ring-1 ring-primary/30 shadow-md"
+                        : "border-border/70 bg-muted/20",
+                    )}
+                  >
+                    <div className={cn(
+                      "h-8 w-8 rounded-lg flex items-center justify-center transition-colors",
+                      selected ? "bg-primary/15 text-primary" : "bg-background text-muted-foreground group-hover:text-foreground",
+                    )}>
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <span className={cn("text-sm font-medium leading-tight", selected ? "text-foreground" : "text-muted-foreground group-hover:text-foreground")}>
+                      {name}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+
+          {/* Região e Estado */}
+          <Field label="Região e estado" error={errors.region || errors.state} required>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Select
+                value={region}
+                onValueChange={(v) => { setRegion(v); setState(""); }}
+                disabled={isPending}
+              >
+                <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Região" /></SelectTrigger>
+                <SelectContent>
+                  {Object.keys(REGIONS).map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={state} onValueChange={setState} disabled={isPending || !region}>
+                <SelectTrigger className="h-11 rounded-xl">
+                  <SelectValue placeholder={region ? "Estado" : "Selecione uma região"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {states.map((s) => <SelectItem key={s} value={s}>{STATE_NAMES[s] ?? s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </Field>
+
+          {/* Preview */}
+          <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-muted/40 via-muted/20 to-transparent p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles className="h-3.5 w-3.5 text-primary" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Preview do candidato</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center ring-1 ring-border/60">
+                <User className="h-5 w-5 text-primary/70" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-base font-semibold truncate">
+                  {fullName.trim() || <span className="text-muted-foreground font-normal">Nome do candidato</span>}
+                </div>
+                <div className="text-sm text-muted-foreground truncate">
+                  {[party, position, state && (STATE_NAMES[state] ?? state)].filter(Boolean).join(" · ") || "Partido · Cargo · Estado"}
+                </div>
+              </div>
+            </div>
           </div>
         </form>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-2 px-8 py-4 border-t border-border/60 bg-background/80 backdrop-blur sticky bottom-0">
+          <Button type="button" variant="outline" onClick={() => onOpen(false)} disabled={isPending} className="rounded-xl">
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            onClick={handleSubmit as unknown as React.MouseEventHandler<HTMLButtonElement>}
+            disabled={!canSubmit}
+            className="min-w-[200px] h-11 rounded-xl shadow-md hover:shadow-lg transition-all"
+          >
+            {isPending ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processando...</>
+            ) : (
+              <><UserPlus className="mr-2 h-4 w-4" /> Adicionar candidato</>
+            )}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-function Section({
-  index, title, subtitle, icon, children,
-}: { index: number; title: string; subtitle?: string; icon: React.ReactNode; children: React.ReactNode }) {
+function Field({
+  label, error, required, children,
+}: { label: string; error?: string; required?: boolean; children: React.ReactNode }) {
   return (
-    <section className="space-y-3">
-      <header className="flex items-center gap-2">
-        <div className="h-6 w-6 rounded-md bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center">
-          {index}
-        </div>
-        <div className="flex items-center gap-2 text-sm font-semibold">
-          <span className="text-muted-foreground">{icon}</span>
-          {title}
-        </div>
-        {subtitle && <span className="text-xs text-muted-foreground ml-1">— {subtitle}</span>}
-      </header>
-      <div>{children}</div>
-    </section>
+    <div className="space-y-2.5">
+      <Label className="text-sm font-semibold">
+        {label} {required && <span className="text-primary/70">*</span>}
+      </Label>
+      {children}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
   );
 }
