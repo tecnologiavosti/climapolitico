@@ -16,9 +16,11 @@ import {
   Crown, Flame, Shield, TrendingUp, TrendingDown, Minus, Sparkles, Trophy,
   Compass, Brain, RefreshCw, Swords, AlertTriangle, Target, Zap, MapPin,
   Activity, Layers, Megaphone, Radar as RadarIcon,
+  ArrowLeftRight,
 } from "lucide-react";
 import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { InfoTip } from "@/components/ui/info-tip";
+import { toast } from "sonner";
 
 type Period = "7d" | "30d" | "90d" | "1y" | "custom";
 const PERIOD_LABEL: Record<Period, string> = {
@@ -831,26 +833,10 @@ const CandidateComparisonPage = () => {
           )}
 
           {/* 9 — Simulação de Confrontos */}
-          {data.confrontos && (
-            <motion.div {...fadeIn}>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Swords className="h-5 w-5 text-primary" /> Simulação de Confrontos
-                  </CardTitle>
-                  <CardDescription>{data.confrontos.a} <span className="text-muted-foreground">vs</span> {data.confrontos.b}</CardDescription>
-                </CardHeader>
-                <CardContent className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {data.confrontos.dimensoes.map((d) => (
-                    <div key={d.dim} className="rounded-lg border border-border/40 bg-card/40 p-3">
-                      <div className="text-xs text-muted-foreground">{d.dim}</div>
-                      <div className="font-semibold mt-1 truncate">{d.vencedor}</div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </motion.div>
-          )}
+          <motion.div {...fadeIn}>
+            <ConfrontoSimulator />
+          </motion.div>
+
 
           {/* 10 — SWOT */}
           <motion.div {...fadeIn}>
@@ -967,6 +953,113 @@ function SummaryBlock({ title, body, tone }: { title: string; body: string; tone
       <div className={`text-xs font-semibold uppercase tracking-wider mb-1 ${colors[tone]}`}>{title}</div>
       <div className="text-sm text-foreground/90">{body}</div>
     </div>
+  );
+}
+
+// ============= Simulação de Confrontos (interativo) =============
+const SIM_CANDIDATES = [
+  "Ronaldo Caiado",
+  "Ratinho Júnior",
+  "Tarcísio de Freitas",
+  "Romeu Zema",
+  "Lula",
+  "Jair Bolsonaro",
+  "Simone Tebet",
+  "Eduardo Leite",
+];
+const SIM_DIMENSIONS = [
+  "Centro-Oeste", "Sudeste", "Nordeste", "Rural",
+  "Urbano", "Jovens", "Evangélicos", "Agro",
+];
+function hashStr(s: string) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+function ConfrontoSimulator() {
+  const [candidate1, setCandidate1] = useState<string | null>(null);
+  const [candidate2, setCandidate2] = useState<string | null>(null);
+  const [result, setResult] = useState<{ a: string; b: string; dims: { dim: string; vencedor: string }[] } | null>(null);
+
+  const compare = () => {
+    if (!candidate1 || !candidate2) {
+      toast.error("Selecione dois candidatos para comparar");
+      return;
+    }
+    if (candidate1 === candidate2) {
+      toast.error("Escolha candidatos diferentes");
+      return;
+    }
+    const dims = SIM_DIMENSIONS.map((dim) => {
+      const sA = hashStr(candidate1 + "|" + dim);
+      const sB = hashStr(candidate2 + "|" + dim);
+      return { dim, vencedor: sA >= sB ? candidate1 : candidate2 };
+    });
+    setResult({ a: candidate1, b: candidate2, dims });
+  };
+
+  const invert = () => {
+    setCandidate1(candidate2);
+    setCandidate2(candidate1);
+    if (result) setResult({ a: result.b, b: result.a, dims: result.dims });
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Swords className="h-5 w-5 text-primary" /> Simulação de Confrontos
+        </CardTitle>
+        <CardDescription>
+          {result ? (
+            <><span className="font-semibold text-foreground">{result.a}</span> <span className="text-muted-foreground">vs</span> <span className="font-semibold text-foreground">{result.b}</span></>
+          ) : (
+            "Selecione dois candidatos para simular o confronto."
+          )}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Candidato 1</label>
+            <Select value={candidate1 ?? ""} onValueChange={(v) => setCandidate1(v)}>
+              <SelectTrigger><SelectValue placeholder="Selecionar candidato" /></SelectTrigger>
+              <SelectContent>
+                {SIM_CANDIDATES.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Candidato 2</label>
+            <Select value={candidate2 ?? ""} onValueChange={(v) => setCandidate2(v)}>
+              <SelectTrigger><SelectValue placeholder="Selecionar candidato" /></SelectTrigger>
+              <SelectContent>
+                {SIM_CANDIDATES.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <Button onClick={compare} className="w-full rounded-xl h-12 text-base font-semibold">
+          <Swords className="h-4 w-4" /> Comparar candidatos
+        </Button>
+
+        <Button onClick={invert} variant="outline" className="w-full rounded-xl">
+          <ArrowLeftRight className="h-4 w-4" /> Inverter candidatos
+        </Button>
+
+        {result && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2">
+            {result.dims.map((d) => (
+              <div key={d.dim} className="rounded-lg border border-border/40 bg-card/40 p-3">
+                <div className="text-xs text-muted-foreground">{d.dim}</div>
+                <div className="font-semibold mt-1 truncate">{d.vencedor}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
