@@ -514,6 +514,55 @@ serve(async (req) => {
       };
     });
 
+    // ============================================================
+    // Fallback knowledge-base: nenhum candidato pode ter score global 0.
+    // Se candidato não tem menções/dados, usar KB (Lula, Bolsonaro, etc.) ou baseline neutro.
+    // ============================================================
+    enriched.forEach((c: any) => {
+      const hasData = (c.mentions ?? 0) > 0 || (c.engagement ?? 0) > 0 || (c.recent ?? 0) > 0;
+      if (hasData) return;
+      const kb = kbLookup(c.name) ?? KB_DEFAULT;
+      c.scores.popularity = safeScore(kb.popularity);
+      c.scores.recall = safeScore(kb.popularity);
+      c.scores.approval = safeScore(kb.approval);
+      c.scores.engagement = safeScore(kb.engagement);
+      c.scores.regionalForce = safeScore(kb.regional);
+      c.scores.growth = safeScore(kb.growth);
+      c.scores.growthCapacity = safeScore(kb.growth);
+      c.scores.rejection = safeScore(100 - kb.resistance);
+      c.scores.authority = safeScore(kb.authority);
+      c.scores.expansion = safeScore(kb.expansion);
+      c.scores.virality = safeScore((kb.engagement + kb.expansion) / 2);
+      c.scores.dominance = safeScore(kb.authority);
+      c.scores.resistencia = safeScore(kb.resistance);
+      const force = (kb.popularity + kb.approval + kb.engagement + kb.regional +
+        kb.growth + kb.resistance + kb.authority + kb.expansion) / 8;
+      c.scores.strength = safeScore(force);
+      c.scores.forceScore = safeScore(force);
+      c.status = statusFromScore(c.scores.strength);
+      c.momentum = momentumLabel(kb.growth);
+      c.quadrant = quadrant(c.scores.approval, c.scores.strength);
+    });
+
+    // Força global (forceScore) — média das 8 dimensões. Garante ausência de zeros globais.
+    enriched.forEach((c: any) => {
+      const s = c.scores;
+      const force = (
+        Number(s.popularity ?? s.recall ?? 0) +
+        Number(s.approval ?? 0) +
+        Number(s.engagement ?? 0) +
+        Number(s.regionalForce ?? 0) +
+        Number(s.growthCapacity ?? s.growth ?? 0) +
+        Number(s.resistencia ?? (100 - (s.rejection ?? 0))) +
+        Number(s.authority ?? 0) +
+        Number(s.expansion ?? 0)
+      ) / 8;
+      const finalForce = safeScore(force);
+      s.forceScore = finalForce;
+      // Se strength ficou 0 mas há sinais, usar forceScore para evitar score global 0.
+      if (!s.strength || s.strength === 0) s.strength = finalForce || 1;
+    });
+
     enriched.sort((a, b) => b.scores.strength - a.scores.strength);
 
     // Best in class
