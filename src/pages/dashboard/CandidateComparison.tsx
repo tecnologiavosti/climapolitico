@@ -515,7 +515,7 @@ const CandidateComparisonPage = () => {
                           Confiança IA {Math.round((c.confidence ?? 0) * 100)}%
                         </Badge>
                         <InfoTip
-                          text={`Por que a IA concluiu isso?\n\nArquétipo: ${c.narrativas?.arquetipo ?? "—"}\nTom dominante: ${c.narrativas?.tom ?? "—"}\nStatus: ${c.status} · Momentum: ${c.momentum}\n\nScore final ${c.scores.strength}/100 combina força regional (${c.scores.regionalForce}), aprovação (${c.scores.approval}), resistência (${100 - c.scores.rejection}), viralização (${c.scores.virality}), crescimento (${c.scores.growth >= 0 ? "+" : ""}${c.scores.growth}) e dominância (${c.scores.dominance}).`}
+                          text={`Por que a IA concluiu isso?\n\nArquétipo: ${c.narrativas?.arquetipo ?? "—"}\nTom dominante: ${c.narrativas?.tom ?? "—"}\nStatus: ${c.status} · Momentum: ${c.momentum}\n\nScore final ${c.scores.strength}/100 = média simples de aprovação (${c.scores.approval}), popularidade (${c.scores.popularity ?? c.scores.approval}), penetração regional (${c.scores.regionalForce}), engajamento (${c.scores.virality}) e autoridade (${c.scores.dominance}).`}
                         />
                       </div>
                       <div className="text-xs text-muted-foreground truncate">
