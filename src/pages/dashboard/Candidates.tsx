@@ -66,13 +66,6 @@ export default function Candidates() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [candidateToDelete, setCandidateToDelete] = useState<string | null>(null);
   const [expandedCandidate, setExpandedCandidate] = useState<string | null>(null);
-  const [formData, setFormData] = useState<CandidateFormData>({
-    fullName: "",
-    region: "",
-    socialMedia: "",
-    instagramUrl: "",
-    facebookUrl: "",
-  });
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   // Open add-candidate dialog automatically when navigated with ?add=1 (from sidebar)
