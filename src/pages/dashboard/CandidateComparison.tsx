@@ -823,52 +823,134 @@ const CandidateComparisonPage = () => {
             </Card>
           </motion.div>
 
-          {/* 7 — Tendência Temporal */}
+          {/* 7 — Alertas Estratégicos IA */}
           <motion.div {...fadeIn}>
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Activity className="h-5 w-5 text-primary" /> Tendência Temporal
+                  <AlertTriangle className="h-5 w-5 text-primary" /> Alertas Estratégicos IA
                 </CardTitle>
-                <CardDescription>Aceleração de engajamento, mudança de sentimento e crescimento de lembrança.</CardDescription>
+                <CardDescription>Insights comparativos gerados a partir das métricas atuais.</CardDescription>
               </CardHeader>
               <CardContent className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {candidates.map((c) => {
-                  const hasBaseline = (c.scores as any).hasBaseline !== false;
-                  const g = Math.max(-100, Math.min(100, c.scores.growth));
-                  const mid = 50;
-                  const width = Math.abs(g) / 2; // 0..50
-                  const positive = g >= 0;
-                  return (
-                    <div key={c.id} className="rounded-lg border border-border/40 bg-card/40 p-3 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="font-medium truncate">{c.name}</div>
-                        {hasBaseline ? <MomentumBadge m={c.momentum} /> : <Badge variant="outline" className="text-[10px]">Sem histórico</Badge>}
+                {(() => {
+                  type Alert = { id: string; icon: typeof TrendingUp; tone: string; title: string; body: string };
+                  const alerts: Alert[] = [];
+                  const byRegion = new Map<string, typeof candidates>();
+                  candidates.forEach((c) => {
+                    const key = c.state ?? "—";
+                    const arr = byRegion.get(key) ?? [];
+                    arr.push(c);
+                    byRegion.set(key, arr);
+                  });
+
+                  // 1. Liderança regional consolidada
+                  byRegion.forEach((arr, region) => {
+                    if (arr.length < 2) return;
+                    const sorted = [...arr].sort((a, b) => b.scores.regionalForce - a.scores.regionalForce);
+                    const leader = sorted[0];
+                    const gap = leader.scores.regionalForce - sorted[1].scores.regionalForce;
+                    if (gap >= 12) {
+                      alerts.push({
+                        id: `reg-${leader.id}`,
+
+                        icon: Shield,
+                        tone: "text-emerald-400",
+                        title: `${leader.name} consolidando liderança no ${region}`,
+                        body: `Penetração regional ${leader.scores.regionalForce} vs ${sorted[1].scores.regionalForce} do 2º colocado (+${gap} pts).`,
+                      });
+                    }
+                  });
+
+                  // 2. Expansão de recall nacional
+                  const recallSorted = [...candidates].sort((a, b) => (b.scores.recall ?? 0) - (a.scores.recall ?? 0));
+                  if (recallSorted[0] && (recallSorted[0].scores.recall ?? 0) >= 70) {
+                    alerts.push({
+                      id: `recall-${recallSorted[0].id}`,
+                      icon: Megaphone,
+                      tone: "text-sky-400",
+                      title: `${recallSorted[0].name} expandindo recall nacional`,
+                      body: `Lembrança ${recallSorted[0].scores.recall} — referência de presença pública entre os comparados.`,
+                    });
+                  }
+
+                  // 3. Crescimento entre os menos consolidados
+                  const growthSorted = [...candidates]
+                    .filter((c) => getComputedGrowthScore(c) > 0)
+                    .sort((a, b) => getComputedGrowthScore(b) - getComputedGrowthScore(a));
+                  const rising = growthSorted.find((c) => (c.scores.popularity ?? c.scores.approval) < 60);
+                  if (rising) {
+                    alerts.push({
+                      id: `grow-${rising.id}`,
+                      icon: TrendingUp,
+                      tone: "text-fuchsia-400",
+                      title: `${rising.name} cresce com espaço para expandir`,
+                      body: `Capacidade de crescimento ${getComputedGrowthScore(rising)} com popularidade ainda em ${rising.scores.popularity ?? rising.scores.approval}.`,
+                    });
+                  }
+
+                  // 4. Perda de competitividade
+                  const weakest = [...candidates].sort((a, b) => a.scores.strength - b.scores.strength)[0];
+                  const strongest = [...candidates].sort((a, b) => b.scores.strength - a.scores.strength)[0];
+                  if (weakest && strongest && weakest.id !== strongest.id && (strongest.scores.strength - weakest.scores.strength) >= 18) {
+                    alerts.push({
+                      id: `weak-${weakest.id}`,
+                      icon: TrendingDown,
+                      tone: "text-rose-400",
+                      title: `${weakest.name} perde competitividade`,
+                      body: `Força política ${weakest.scores.strength} vs ${strongest.scores.strength} do líder (${strongest.name}).`,
+                    });
+                  }
+
+                  // 5. Alta rejeição
+                  const highRej = [...candidates].sort((a, b) => b.scores.rejection - a.scores.rejection)[0];
+                  if (highRej && highRej.scores.rejection >= 35) {
+                    alerts.push({
+                      id: `rej-${highRej.id}`,
+                      icon: AlertTriangle,
+                      tone: "text-amber-400",
+                      title: `${highRej.name} acumula resistência elevada`,
+                      body: `Rejeição em ${highRej.scores.rejection}% limita potencial de 2º turno (expansão ${highRej.scores.expansion}).`,
+                    });
+                  }
+
+                  // 6. Viralização destacada
+                  const viralTop = [...candidates].sort((a, b) => b.scores.virality - a.scores.virality)[0];
+                  if (viralTop && viralTop.scores.virality >= 65) {
+                    alerts.push({
+                      id: `viral-${viralTop.id}`,
+                      icon: Zap,
+                      tone: "text-violet-400",
+                      title: `${viralTop.name} domina a viralização digital`,
+                      body: `Engajamento normalizado ${viralTop.scores.virality} — maior tração nas redes entre os candidatos.`,
+                    });
+                  }
+
+                  const shown = alerts.slice(0, 6);
+                  if (shown.length === 0) {
+                    return (
+                      <div className="col-span-full text-sm text-muted-foreground italic text-center py-6">
+                        Sem alertas estratégicos relevantes no momento.
                       </div>
-                      {hasBaseline ? (
-                        <>
-                          <div className="text-xs text-muted-foreground">
-                            Crescimento {g >= 0 ? "+" : ""}{g}% · Viralização {c.scores.virality}
-                          </div>
-                          <div className="relative h-1.5 rounded-full bg-muted overflow-hidden">
-                            <div className="absolute inset-y-0 left-1/2 w-px bg-border" />
-                            <motion.div
-                              className={`absolute inset-y-0 ${positive ? "bg-emerald-400" : "bg-rose-400"}`}
-                              initial={{ width: 0 }}
-                              animate={{ width: `${width}%`, left: positive ? `${mid}%` : `${mid - width}%` }}
-                              transition={{ duration: 0.7 }}
-                            />
-                          </div>
-                        </>
-                      ) : (
-                        <div className="text-xs text-muted-foreground italic">Sem histórico suficiente</div>
-                      )}
-                    </div>
-                  );
-                })}
+                    );
+                  }
+                  return shown.map((a) => {
+                    const Icon = a.icon;
+                    return (
+                      <div key={a.id} className="rounded-lg border border-border/40 bg-card/40 p-3 space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <Icon className={`h-4 w-4 ${a.tone}`} />
+                          <div className="text-sm font-medium leading-tight">{a.title}</div>
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed">{a.body}</p>
+                      </div>
+                    );
+                  });
+                })()}
               </CardContent>
             </Card>
           </motion.div>
+
 
           {/* 8 — Cenários Eleitorais */}
           {data.cenarios && (
