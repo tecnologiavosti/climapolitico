@@ -712,7 +712,7 @@ const CandidateComparisonPage = () => {
                       { label: "Engajamento", tip: "Viralização — combina crescimento de menções e engajamento por menção, com soft-cap.", a: headACand.scores.virality, b: headBCand.scores.virality, higherWins: true },
                       { label: "Força política", tip: "Score consolidado 0–100: regional 25% + popularidade 20% + resistência 20% + viralização 15% + crescimento 10% + dominância 10%. Soft-cap aplicado.", a: headACand.scores.strength, b: headBCand.scores.strength, higherWins: true },
                       { label: "Potencial 2º turno", tip: "Capacidade de expansão de voto: crescimento + resistência + viralização, ponderados.", a: headACand.scores.expansion, b: headBCand.scores.expansion, higherWins: true },
-                      { label: "Capacidade de crescimento", tip: "Crescimento amortecido: (atual − anterior) / (anterior + 10). Se anterior < 10 menções, dados insuficientes.", a: headACand.scores.growthInsufficient ? null : Math.max(0, headACand.scores.growth), b: headBCand.scores.growthInsufficient ? null : Math.max(0, headBCand.scores.growth), higherWins: true },
+                      { label: "Capacidade de crescimento", tip: "Capacidade de crescimento mede o potencial de expansão eleitoral com base em aumento de menções, engajamento e melhora de percepção pública. Candidatos já consolidados têm crescimento marginal menor.", a: headACand.scores.growthCapacity ?? null, b: headBCand.scores.growthCapacity ?? null, higherWins: true },
                     ].map((row, i) => {
                       const aVal = typeof row.a === "number" ? row.a : 0;
                       const bVal = typeof row.b === "number" ? row.b : 0;
