@@ -48,6 +48,7 @@ interface Scores {
   strength: number; recall: number; approval: number; rejection: number;
   virality: number; regionalForce: number; growth: number; dominance: number;
   authority: number; expansion: number;
+  popularity?: number; hasBaseline?: boolean; growthInsufficient?: boolean;
 }
 type Status = "Dominante" | "Forte" | "Competitivo" | "Fraco" | "Crítico";
 type Momentum = "Subindo forte" | "Subindo" | "Estável" | "Caindo" | "Caindo forte";
@@ -389,7 +390,7 @@ const CandidateComparisonPage = () => {
     return keys.map(({ key, label }) => {
       const row: any = { metric: label };
       candidates.forEach((c) => {
-        const v = c.scores[key];
+        const v = Number((c.scores as any)[key]) || 0;
         row[c.name] = key === "growth" ? (v + 100) / 2 : key === "rejection" ? 100 - v : v;
       });
       return row;
@@ -705,34 +706,45 @@ const CandidateComparisonPage = () => {
                 {headACand && headBCand && headACand.id !== headBCand.id && (
                   <div className="rounded-lg border border-border/40 overflow-hidden divide-y divide-border/30">
                     {[
-                      { label: "Popularidade", a: headACand.scores.approval, b: headBCand.scores.approval, higherWins: true },
-                      { label: "Resistência Eleitoral", a: 100 - headACand.scores.rejection, b: 100 - headBCand.scores.rejection, higherWins: true },
-                      { label: "Penetração regional", a: headACand.scores.regionalForce, b: headBCand.scores.regionalForce, higherWins: true },
-                      { label: "Engajamento", a: headACand.scores.virality, b: headBCand.scores.virality, higherWins: true },
-                      { label: "Força política", a: headACand.scores.strength, b: headBCand.scores.strength, higherWins: true },
-                      { label: "Potencial 2º turno", a: headACand.scores.expansion, b: headBCand.scores.expansion, higherWins: true },
-                      { label: "Capacidade de crescimento", a: Math.max(0, headACand.scores.growth), b: Math.max(0, headBCand.scores.growth), higherWins: true },
+                      { label: "Popularidade", tip: "Popularidade nacional (Brasil inteiro). 40% menções nacionais (log) + 30% engajamento (proxy de buscas) + 20% autores únicos (mídia) + 10% sinal social. Soft-cap impede inflação para políticos regionais.", a: headACand.scores.popularity ?? headACand.scores.approval, b: headBCand.scores.popularity ?? headBCand.scores.approval, higherWins: true },
+                      { label: "Resistência Eleitoral", tip: "Capacidade de resistir a ataques: 100 − rejeição. Quanto maior, menor o teto de rejeição entre quem opinou.", a: 100 - headACand.scores.rejection, b: 100 - headBCand.scores.rejection, higherWins: true },
+                      { label: "Penetração regional", tip: "Média ponderada das 5 macrorregiões (Norte 10%, Nordeste 27%, Centro-Oeste 8%, Sudeste 42%, Sul 13%) combinando alcance e autores únicos.", a: headACand.scores.regionalForce, b: headBCand.scores.regionalForce, higherWins: true },
+                      { label: "Engajamento", tip: "Viralização — combina crescimento de menções e engajamento por menção, com soft-cap.", a: headACand.scores.virality, b: headBCand.scores.virality, higherWins: true },
+                      { label: "Força política", tip: "Score consolidado 0–100: regional 25% + popularidade 20% + resistência 20% + viralização 15% + crescimento 10% + dominância 10%. Soft-cap aplicado.", a: headACand.scores.strength, b: headBCand.scores.strength, higherWins: true },
+                      { label: "Potencial 2º turno", tip: "Capacidade de expansão de voto: crescimento + resistência + viralização, ponderados.", a: headACand.scores.expansion, b: headBCand.scores.expansion, higherWins: true },
+                      { label: "Capacidade de crescimento", tip: "Crescimento amortecido: (atual − anterior) / (anterior + 10). Se anterior < 10 menções, dados insuficientes.", a: headACand.scores.growthInsufficient ? null : Math.max(0, headACand.scores.growth), b: headBCand.scores.growthInsufficient ? null : Math.max(0, headBCand.scores.growth), higherWins: true },
                     ].map((row, i) => {
-                      const aWins = row.higherWins ? row.a > row.b : row.a < row.b;
-                      const bWins = row.higherWins ? row.b > row.a : row.b < row.a;
-                      const max = Math.max(row.a, row.b, 1);
+                      const aVal = typeof row.a === "number" ? row.a : 0;
+                      const bVal = typeof row.b === "number" ? row.b : 0;
+                      const aInsuf = row.a === null;
+                      const bInsuf = row.b === null;
+                      const aWins = !aInsuf && !bInsuf && (row.higherWins ? aVal > bVal : aVal < bVal);
+                      const bWins = !aInsuf && !bInsuf && (row.higherWins ? bVal > aVal : bVal < aVal);
+                      const max = Math.max(aVal, bVal, 1);
                       return (
-                        <div key={i} className="grid grid-cols-[1fr_120px_1fr] items-center gap-3 px-3 py-2.5 text-sm">
+                        <div key={i} className="grid grid-cols-[1fr_160px_1fr] items-center gap-3 px-3 py-2.5 text-sm">
                           <div className="flex items-center gap-2 justify-end">
                             <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
                               <motion.div className={`h-full ml-auto ${aWins ? "bg-emerald-400" : "bg-muted-foreground/40"}`}
-                                initial={{ width: 0 }} animate={{ width: `${(row.a / max) * 100}%` }} transition={{ duration: 0.6 }}
+                                initial={{ width: 0 }} animate={{ width: aInsuf ? "0%" : `${(aVal / max) * 100}%` }} transition={{ duration: 0.6 }}
                                 style={{ marginLeft: "auto" }}
                               />
                             </div>
-                            <span className={`tabular-nums w-9 text-right ${aWins ? "text-emerald-400 font-semibold" : ""}`}>{row.a}</span>
+                            <span className={`tabular-nums w-12 text-right text-xs ${aWins ? "text-emerald-400 font-semibold" : ""}`}>
+                              {aInsuf ? <span className="text-muted-foreground italic">s/dados</span> : aVal}
+                            </span>
                           </div>
-                          <div className="text-xs text-muted-foreground text-center">{row.label}</div>
+                          <div className="text-xs text-muted-foreground text-center flex items-center justify-center gap-1">
+                            <span>{row.label}</span>
+                            <InfoTip text={row.tip} iconClassName="h-3 w-3" />
+                          </div>
                           <div className="flex items-center gap-2">
-                            <span className={`tabular-nums w-9 ${bWins ? "text-emerald-400 font-semibold" : ""}`}>{row.b}</span>
+                            <span className={`tabular-nums w-12 text-xs ${bWins ? "text-emerald-400 font-semibold" : ""}`}>
+                              {bInsuf ? <span className="text-muted-foreground italic">s/dados</span> : bVal}
+                            </span>
                             <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
                               <motion.div className={`h-full ${bWins ? "bg-emerald-400" : "bg-muted-foreground/40"}`}
-                                initial={{ width: 0 }} animate={{ width: `${(row.b / max) * 100}%` }} transition={{ duration: 0.6 }} />
+                                initial={{ width: 0 }} animate={{ width: bInsuf ? "0%" : `${(bVal / max) * 100}%` }} transition={{ duration: 0.6 }} />
                             </div>
                           </div>
                         </div>
