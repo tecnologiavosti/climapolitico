@@ -130,6 +130,43 @@ const KB_DEFAULT: KBEntry = {
   growth: 35, resistance: 50, authority: 35, expansion: 35,
 };
 
+// ============================================================
+// Autoridade Institucional & Estrutura Eleitoral
+// Métricas estruturais (não variam com menções de curto prazo).
+// ============================================================
+function institutionalAuthority(name: string, party?: string | null): number {
+  const n = (name || "").toLowerCase();
+  // Presidente em exercício
+  if (n.includes("lula")) return 100;
+  // Ex-presidentes
+  if (n.includes("bolsonaro") || n.includes("dilma") || n.includes("temer") || n.includes("fhc") || n.includes("fernando henrique")) return 95;
+  // Governadores conhecidos
+  const governadores = ["tarcisio", "tarcísio", "ratinho", "caiado", "zema", "leite", "castro", "mauro mendes", "wilson lima", "helder", "raquel lyra", "fatima bezerra", "fátima bezerra", "elmano", "rafael fonteles", "jerônimo", "jeronimo", "renato casagrande"];
+  if (governadores.some((g) => n.includes(g))) return 80;
+  // Senadores conhecidos (heurística leve)
+  const senadores = ["pacheco", "alcolumbre", "randolfe", "humberto costa", "jaques wagner", "otto alencar", "weverton", "esperidiao amin", "esperidião amin", "jayme campos", "wellington fagundes"];
+  if (senadores.some((s) => n.includes(s))) return 65;
+  // Deputado / outros — baseline
+  return 40;
+}
+
+function electoralStructure(party?: string | null, name?: string): number {
+  const p = (party || "").toUpperCase().trim();
+  // Grandes máquinas nacionais com fundo eleitoral robusto e capilaridade
+  const grandes = ["PT", "PL", "MDB", "PP", "UNIÃO", "UNIAO", "UB", "REPUBLICANOS", "PSD"];
+  const medios = ["PSDB", "PDT", "PSB", "PODEMOS", "PODE", "SOLIDARIEDADE", "CIDADANIA", "AVANTE", "AGIR"];
+  const pequenos = ["PSOL", "REDE", "NOVO", "PV", "PRTB", "DC", "PMB", "PCdoB", "PCDOB", "PMN"];
+  let base = 35;
+  if (grandes.includes(p)) base = 85;
+  else if (medios.includes(p)) base = 60;
+  else if (pequenos.includes(p)) base = 40;
+  // Bônus de presença nacional para nomes com alcance comprovado
+  const n = (name || "").toLowerCase();
+  if (n.includes("lula") || n.includes("bolsonaro")) base = Math.max(base, 95);
+  return clamp(base);
+}
+
+
 function regionDataConfidence(c: Cand): number {
   const total = c.positive + c.negative + c.neutral;
   if (total >= 200) return 0.9;
@@ -485,11 +522,29 @@ serve(async (req) => {
         trend: momentumLabel(growth),
       });
 
+      // Estruturais (não dependem de menções de curto prazo)
+      const authInst = institutionalAuthority(c.name, c.party);
+      const estruturaEleitoral = electoralStructure(c.party, c.name);
+
+      // Nova Força Política = média das 8 dimensões (12.5% cada)
+      // 4 dinâmicas: popularidade, aprovação, resistência (100-rej), penetração, engajamento, crescimento
+      // 2 estruturais: autoridade institucional, estrutura eleitoral
+      const resistenciaScore = 100 - rejection;
+      const force8 = (popularidade + approval + resistenciaScore + penetracao + engagementN + growthCapacity + authInst + estruturaEleitoral) / 8;
+      let strengthFinal = clamp(force8);
+      // Fallback: presidente em exercício nunca abaixo de 85
+      if ((c.name || "").toLowerCase().includes("lula")) {
+        strengthFinal = Math.max(strengthFinal, 85);
+      }
+
+      console.log("[force8]", { name: c.name, popularidade, approval, resistenciaScore, penetracao, engagementN, growthCapacity, authInst, estruturaEleitoral, force8: strengthFinal });
+
+
       return {
         ...c,
         confidence: conf,
         scores: {
-          strength: safeScore(strength),
+          strength: safeScore(strengthFinal),
           recall: safeScore(mencoesN),
           approval: safeScore(approval),
           popularity: safeScore(popularidade),
@@ -507,11 +562,15 @@ serve(async (req) => {
           resistencia: safeScore(resistencia),
           segundoTurno: safeScore(segundoTurno),
           tendenciaTemporal: safeScore(tendenciaTemporal),
+          institutionalAuthority: safeScore(authInst),
+          electoralStructure: safeScore(estruturaEleitoral),
+          forceScore: safeScore(strengthFinal),
         } as any,
-        status: statusFromScore(strength),
+        status: statusFromScore(strengthFinal),
         momentum: momentumLabel(growth),
-        quadrant: quadrant(popularidade, strength),
+        quadrant: quadrant(popularidade, strengthFinal),
       };
+
     });
 
     // ============================================================
@@ -522,6 +581,8 @@ serve(async (req) => {
       const hasData = (c.mentions ?? 0) > 0 || (c.engagement ?? 0) > 0 || (c.recent ?? 0) > 0;
       if (hasData) return;
       const kb = kbLookup(c.name) ?? KB_DEFAULT;
+      const authInst = institutionalAuthority(c.name, c.party);
+      const estruturaEleitoral = electoralStructure(c.party, c.name);
       c.scores.popularity = safeScore(kb.popularity);
       c.scores.recall = safeScore(kb.popularity);
       c.scores.approval = safeScore(kb.approval);
@@ -535,8 +596,10 @@ serve(async (req) => {
       c.scores.virality = safeScore((kb.engagement + kb.expansion) / 2);
       c.scores.dominance = safeScore(kb.authority);
       c.scores.resistencia = safeScore(kb.resistance);
-      const force = (kb.popularity + kb.approval + kb.engagement + kb.regional +
-        kb.growth + kb.resistance + kb.authority + kb.expansion) / 8;
+      c.scores.institutionalAuthority = safeScore(authInst);
+      c.scores.electoralStructure = safeScore(estruturaEleitoral);
+      const force = (kb.popularity + kb.approval + kb.resistance + kb.regional +
+        kb.engagement + kb.growth + authInst + estruturaEleitoral) / 8;
       c.scores.strength = safeScore(force);
       c.scores.forceScore = safeScore(force);
       c.status = statusFromScore(c.scores.strength);
@@ -544,24 +607,35 @@ serve(async (req) => {
       c.quadrant = quadrant(c.scores.approval, c.scores.strength);
     });
 
-    // Força global (forceScore) — média das 8 dimensões. Garante ausência de zeros globais.
+    // Força global (forceScore) — nova fórmula 8D (12.5% cada).
     enriched.forEach((c: any) => {
       const s = c.scores;
+      const authInst = Number(s.institutionalAuthority ?? institutionalAuthority(c.name, c.party));
+      const estrutura = Number(s.electoralStructure ?? electoralStructure(c.party, c.name));
+      s.institutionalAuthority = safeScore(authInst);
+      s.electoralStructure = safeScore(estrutura);
       const force = (
         Number(s.popularity ?? s.recall ?? 0) +
         Number(s.approval ?? 0) +
-        Number(s.engagement ?? 0) +
-        Number(s.regionalForce ?? 0) +
-        Number(s.growthCapacity ?? s.growth ?? 0) +
         Number(s.resistencia ?? (100 - (s.rejection ?? 0))) +
-        Number(s.authority ?? 0) +
-        Number(s.expansion ?? 0)
+        Number(s.regionalForce ?? 0) +
+        Number(s.engagement ?? 0) +
+        Number(s.growthCapacity ?? s.growth ?? 0) +
+        authInst +
+        estrutura
       ) / 8;
-      const finalForce = safeScore(force);
+      let finalForce = safeScore(force);
+      // Fallback: presidente em exercício nunca abaixo de 85
+      if ((c.name || "").toLowerCase().includes("lula")) {
+        finalForce = Math.max(finalForce, 85);
+      }
       s.forceScore = finalForce;
-      // Se strength ficou 0 mas há sinais, usar forceScore para evitar score global 0.
-      if (!s.strength || s.strength === 0) s.strength = finalForce || 1;
+      s.strength = finalForce;
+      c.status = statusFromScore(finalForce);
+      c.quadrant = quadrant(Number(s.popularity ?? 0), finalForce);
     });
+
+
 
     enriched.sort((a, b) => b.scores.strength - a.scores.strength);
 
