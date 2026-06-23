@@ -361,8 +361,8 @@ serve(async (req) => {
       const sul = regionScore("Sul");
       const penetracao = (norte + nordeste + centroOeste + sudeste + sul) / 5;
 
-      // 5. Resistência Eleitoral = 100 - rejeição normalizada
-      const resistencia = 100 - rejectionN;
+      // 5. Resistência Eleitoral = 100 − rejeição (%) — simples, sem normalização
+      const resistencia = clamp(100 - rejection);
 
       // 3. Viralização = média(shares, reposts, comentários, velocidade) — proxy normalizado
       const viralizacao = (engagementN + dominanceN + engRatioN + growthNorm) / 4;
@@ -370,8 +370,15 @@ serve(async (req) => {
       // 4. Popularidade = média(lembrança, busca, menções totais)
       const popularidade = (mencoesN + engagementN + dominanceN) / 3;
 
-      // 2. Potencial / Capacidade de Crescimento = média(Δmenções, Δengajamento, momentum)
-      const growthCapacity = (growthNorm + engRatioN + growthNorm) / 3;
+      // 2. Capacidade de Crescimento = média de 4 fatores normalizados 0–100.
+      // Nunca retorna null/NaN/Infinity. Se inválido → 0.
+      const scoreDeltaMencoes = growthNorm;                 // Δ menções (janela atual vs anterior)
+      const scoreDeltaEngajamento = engRatioN;              // Δ engajamento por menção
+      const scoreDeltaAlcance = dominanceN;                 // Δ alcance (autores únicos)
+      const scoreMomentum = (mencoesN + engagementN) / 2;   // momentum agregado
+      const growthCapacityRaw =
+        (scoreDeltaMencoes + scoreDeltaEngajamento + scoreDeltaAlcance + scoreMomentum) / 4;
+      const growthCapacity = Number.isFinite(growthCapacityRaw) ? clamp(growthCapacityRaw) : 0;
 
       // 10. Tendência Temporal = média(Δmenções, Δengajamento, Δsentimento)
       const tendenciaTemporal = (growthNorm + engRatioN + approval) / 3;
