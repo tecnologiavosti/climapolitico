@@ -294,31 +294,52 @@ serve(async (req) => {
       const conf = regionDataConfidence(c);
       const approval = total > 0 ? (c.positive / total) * 100 : 50;
       const rejection = total > 0 ? (c.negative / total) * 100 : 30;
-      const recall = normalizeMax(c.mentions, maxMentions);
-      const engPerMention = c.mentions > 0 ? c.engagement / Math.max(1, c.mentions) : 0;
-      const engBaseline = maxEngagement / Math.max(1, maxMentions);
-      const engRatio = engBaseline > 0 ? normalizeMax(engPerMention, engBaseline) : 0;
 
-      // Crescimento real — sem forçar 100% quando não há baseline
+      // Recall com soft-cap absoluto (escala nacional, não relativa ao dataset).
+      const recall = softCap(c.mentions, 8000);
+      const dominance = softCap(c.authors, 1500);
+      const engPerMention = c.mentions > 0 ? c.engagement / Math.max(1, c.mentions) : 0;
+      const engRatio = softCap(engPerMention, 15);
+
+      // Popularidade nacional — soft-capped, não relativa ao dataset.
+      // 40% menções nacionais, 30% engajamento (proxy de buscas), 20% autores únicos (mídia), 10% viralização social.
+      const mentionsLog = softCap(c.mentions, 20000);            // 100k menções ≈ 99
+      const engagementLog = softCap(c.engagement, 50000);        // proxy buscas
+      const authorsLog = softCap(c.authors, 3000);               // proxy mídia
+      const socialSignal = engRatio;                             // proxy redes
+      const popularity = clamp(
+        mentionsLog * 0.40 + engagementLog * 0.30 + authorsLog * 0.20 + socialSignal * 0.10,
+      );
+
+      // Penetração regional — média ponderada das 5 macrorregiões.
+      // Sem breakdown granular no cache, usamos recall + dominance e damos peso de presença regional declarada.
+      const REGION_WEIGHTS: Record<string, number> = {
+        "Norte": 0.10, "Nordeste": 0.27, "Centro-Oeste": 0.08, "Sudeste": 0.42, "Sul": 0.13,
+      };
+      const homeWeight = REGION_WEIGHTS[c.region ?? ""] ?? 0;
+      const baseReach = recall * 0.6 + dominance * 0.4;
+      const regionalForce = clamp(baseReach * (1 - homeWeight) + 100 * homeWeight * (baseReach / 100));
+
+      // Crescimento — fórmula amortecida, evita inflação com previous baixo.
       let growth: number | null;
-      if (c.prev <= 0) {
-        growth = c.recent > 0 ? null : 0; // sem histórico suficiente
+      let growthInsufficient = false;
+      if (c.prev < 10) {
+        growth = null;
+        growthInsufficient = true;
       } else {
-        growth = clamp(((c.recent - c.prev) / c.prev) * 100, -100, 100);
+        growth = clamp(((c.recent - c.prev) / (c.prev + 10)) * 100, -100, 100);
       }
       const growthNorm = growth === null ? 50 : (growth + 100) / 2;
 
-      // Viralização combina crescimento de menções + engajamento por menção
       const mentionsGrowth = growth ?? 0;
       const viralityRaw = clamp(mentionsGrowth * 0.5 + engRatio * 0.5, 0, 100);
-      const virality = c.mentions > 0 ? Math.max(viralityRaw, engRatio * 0.6) : 0;
+      const virality = c.mentions > 0 ? softCap(Math.max(viralityRaw, engRatio * 0.6), 55) : 0;
 
-      const dominance = normalizeMax(c.authors, maxAuthors);
-      const regionalForce = recall * 0.6 + dominance * 0.4;
       const authority = dominance * 0.6 + virality * 0.4;
       const expansionPotential = clamp(growthNorm * 0.5 + (100 - rejection) * 0.3 + virality * 0.2);
-      const strength = regionalForce * 0.25 + approval * 0.20 + (100 - rejection) * 0.20
+      const strengthRaw = regionalForce * 0.25 + popularity * 0.20 + (100 - rejection) * 0.20
         + virality * 0.15 + growthNorm * 0.10 + dominance * 0.10;
+      const strength = softCap(strengthRaw, 55);
 
       console.log("[trend]", {
         candidate: c.name,
@@ -326,6 +347,8 @@ serve(async (req) => {
         previousMentions: c.prev,
         growth,
         trend: momentumLabel(growth),
+        popularity,
+        regionalForce,
       });
 
       return {
@@ -335,18 +358,20 @@ serve(async (req) => {
           strength: safeScore(strength),
           recall: safeScore(recall),
           approval: safeScore(approval),
+          popularity: safeScore(popularity),
           rejection: safeScore(rejection),
           virality: safeScore(virality),
           regionalForce: safeScore(regionalForce),
           growth: growth === null ? 0 : Math.round(growth),
           hasBaseline: growth !== null,
+          growthInsufficient,
           dominance: safeScore(dominance),
           authority: safeScore(authority),
           expansion: safeScore(expansionPotential),
         } as any,
         status: statusFromScore(strength),
         momentum: momentumLabel(growth),
-        quadrant: quadrant(approval, strength),
+        quadrant: quadrant(popularity, strength),
       };
     });
 
