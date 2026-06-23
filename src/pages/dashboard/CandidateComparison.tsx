@@ -390,7 +390,7 @@ const CandidateComparisonPage = () => {
     return keys.map(({ key, label }) => {
       const row: any = { metric: label };
       candidates.forEach((c) => {
-        const v = c.scores[key];
+        const v = Number((c.scores as any)[key]) || 0;
         row[c.name] = key === "growth" ? (v + 100) / 2 : key === "rejection" ? 100 - v : v;
       });
       return row;
