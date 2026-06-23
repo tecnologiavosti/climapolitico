@@ -681,7 +681,7 @@ serve(async (req) => {
           rejection: safeScore(rejection),
           virality: safeScore(viralizacao),
           regionalForce: safeScore(penetracao),
-          growth: Math.round(growth),
+          growth: safeScore(growthCapacity),
           hasBaseline: true,
           growthInsufficient: false,
           growthCapacity: safeScore(growthCapacity),
