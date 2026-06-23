@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { Mail, MessageCircle, Globe } from "lucide-react";
+import logoAsset from "@/assets/clima-politico-logo.jpg.asset.json";
 
 export const Footer = () => {
   return (
@@ -7,12 +8,16 @@ export const Footer = () => {
       <div className="container mx-auto px-4 py-12">
         <div className="grid gap-8 md:grid-cols-4">
           <div className="md:col-span-2 space-y-3">
-            <h3 className="text-xl font-bold gradient-text">Clima Político</h3>
+            <div className="flex items-center gap-3">
+              <img src={logoAsset.url} alt="Clima Político" className="h-10 w-10 rounded-full object-cover ring-2 ring-border" />
+              <h3 className="text-xl font-bold gradient-text">Clima Político</h3>
+            </div>
             <p className="text-sm text-muted-foreground max-w-md">
               Inteligência política em tempo real. Monitore candidatos, analise
               sentimentos e antecipe tendências com IA.
             </p>
           </div>
+
 
           <div className="space-y-3">
             <h4 className="text-sm font-semibold">Produto</h4>
