@@ -683,6 +683,7 @@ export default function Candidates() {
             onOpenChange={setDialogOpen}
             isPending={addCandidateMutation.isPending}
             onSubmit={handleAddCandidate}
+            knownNames={(candidates ?? []).map((c: any) => c.full_name).filter(Boolean)}
             trigger={
               <Button title="Cadastra um novo candidato pra você começar a acompanhar.">
                 <UserPlus className="mr-2 h-4 w-4" />

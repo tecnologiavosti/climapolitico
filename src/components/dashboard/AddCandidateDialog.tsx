@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import {
   UserPlus, Loader2, Landmark, Building2, Building, Scroll, FileText, ClipboardList, User,
-  Sparkles, Check, ChevronsUpDown,
+  Sparkles, Check, ChevronsUpDown, Wand2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { nameSimilarity, normalizeCandidateName } from "@/lib/candidateNameNormalizer";
 
 type Party = { sigla: string; nome: string; numero: number };
 
@@ -114,16 +115,39 @@ interface Props {
   isPending: boolean;
   trigger?: React.ReactNode;
   onSubmit: (data: AddCandidatePayload) => void;
+  /** Nomes já cadastrados (conta do usuário + catálogo público) para sugestão e dedup. */
+  knownNames?: string[];
 }
 
 
-export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onSubmit }: Props) {
+export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onSubmit, knownNames = [] }: Props) {
   const [fullName, setFullName] = useState("");
+  const [debouncedName, setDebouncedName] = useState("");
   const [party, setParty] = useState("");
   const [position, setPosition] = useState("");
   const [state, setState] = useState("");
   const [city, setCity] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Debounce 300ms para sugestões
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedName(fullName), 300);
+    return () => clearTimeout(t);
+  }, [fullName]);
+
+  const suggestions = useMemo(() => {
+    const q = debouncedName.trim();
+    if (q.length < 3 || knownNames.length === 0) return [] as Array<{ name: string; sim: number }>;
+    const canonicalQ = normalizeCandidateName(q);
+    const ranked = knownNames
+      .map((n) => ({ name: n, sim: nameSimilarity(q, n) }))
+      .filter((r) => r.sim >= 0.8 && normalizeCandidateName(r.name) !== canonicalQ)
+      .sort((a, b) => b.sim - a.sim)
+      .slice(0, 4);
+    return ranked;
+  }, [debouncedName, knownNames]);
+
+  const autoCorrect = suggestions.find((s) => s.sim >= 0.98) ?? null;
 
   const scope = scopeOf(position);
   const canSubmit =
@@ -156,7 +180,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   };
 
   const reset = () => {
-    setFullName(""); setParty(""); setPosition(""); setState(""); setCity(""); setErrors({});
+    setFullName(""); setDebouncedName(""); setParty(""); setPosition(""); setState(""); setCity(""); setErrors({});
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -222,7 +246,43 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
               onChange={(e) => setFullName(e.target.value)}
               disabled={isPending}
               className="h-12 text-base rounded-xl"
+              autoComplete="off"
             />
+
+            {autoCorrect && normalizeCandidateName(fullName) !== normalizeCandidateName(autoCorrect.name) && (
+              <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-primary/30 bg-primary/[0.06] px-3 py-2 animate-in fade-in-0 slide-in-from-top-1 duration-200">
+                <div className="flex items-center gap-2 text-sm">
+                  <Wand2 className="h-4 w-4 text-primary" />
+                  <span>Correção sugerida: <strong>{autoCorrect.name}</strong></span>
+                </div>
+                <Button type="button" size="sm" variant="secondary" className="h-7 rounded-lg" onClick={() => setFullName(autoCorrect.name)}>
+                  Aplicar
+                </Button>
+              </div>
+            )}
+
+            {!autoCorrect && suggestions.length > 0 && (
+              <div className="mt-2 rounded-xl border border-border/70 bg-popover/95 backdrop-blur shadow-sm overflow-hidden animate-in fade-in-0 slide-in-from-top-1 duration-200">
+                <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/40">
+                  Você quis dizer:
+                </div>
+                <ul className="divide-y divide-border/50">
+                  {suggestions.map((s) => (
+                    <li key={s.name} className="flex items-center justify-between gap-2 px-3 py-2 hover:bg-muted/40 transition-colors">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Sparkles className="h-3.5 w-3.5 text-primary shrink-0" />
+                        <span className="text-sm truncate">{s.name}</span>
+                        <Badge variant="outline" className="text-[10px]">{Math.round(s.sim * 100)}%</Badge>
+                      </div>
+                      <Button type="button" size="sm" variant="ghost" className="h-7 rounded-lg shrink-0" onClick={() => setFullName(s.name)}>
+                        Usar sugestão
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {scopeBadge && (
               <Badge variant="outline" className={cn("mt-2 font-medium", scopeBadge.cls)}>
                 {scopeBadge.label}
