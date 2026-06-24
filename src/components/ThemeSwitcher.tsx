@@ -14,7 +14,7 @@ import {
 const OPTIONS = [
   { value: "light", label: "Light", icon: Sun },
   { value: "dark", label: "Dark", icon: Moon },
-  { value: "aurora", label: "Aurora IA", icon: Sparkles },
+  { value: "aurora", label: "Aurora", icon: Sparkles },
 ] as const;
 
 export function ThemeSwitcher() {
