@@ -13,7 +13,69 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useAdminAudit } from "@/hooks/useAdminAudit";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, RefreshCw, Loader2 } from "lucide-react";
+
+const UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
+
+function TseSyncCard() {
+  const [year, setYear] = useState("2024");
+  const [uf, setUf] = useState<string>("");
+  const [syncing, setSyncing] = useState(false);
+
+  async function sync() {
+    setSyncing(true);
+    try {
+      const qs = new URLSearchParams({ year });
+      if (uf) qs.set("uf", uf);
+      const { data, error } = await supabase.functions.invoke(`etl-tse-politicians?${qs.toString()}`, {
+        method: "POST",
+      });
+      if (error) throw error;
+      const total = (data?.results ?? []).reduce((s: number, r: any) => s + (r.upserted ?? 0), 0);
+      toast.success(`Sincronização concluída — ${total.toLocaleString("pt-BR")} políticos atualizados.`);
+    } catch (e: any) {
+      toast.error(`Falha na sincronização TSE: ${e.message ?? e}`);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <RefreshCw className="h-5 w-5 text-primary" />
+          Sincronizar base TSE
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-wrap items-end gap-3">
+        <div>
+          <Label className="text-xs">Ano eleitoral</Label>
+          <Input type="number" value={year} onChange={(e) => setYear(e.target.value)} className="w-28" />
+        </div>
+        <div>
+          <Label className="text-xs">UF (vazio = todas, leva muito mais tempo)</Label>
+          <select
+            value={uf}
+            onChange={(e) => setUf(e.target.value)}
+            className="h-10 rounded-md border bg-background px-3 text-sm"
+          >
+            <option value="">Todas</option>
+            {UFS.map((u) => <option key={u} value={u}>{u}</option>)}
+          </select>
+        </div>
+        <Button onClick={sync} disabled={syncing}>
+          {syncing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+          Sincronizar agora
+        </Button>
+        <p className="text-xs text-muted-foreground basis-full">
+          Baixa os dados oficiais do TSE (consulta_cand) e atualiza a tabela <code>politicians</code>.
+          Roda automaticamente todo dia às 04:00 (BRT). Para a primeira carga completa, prefira sincronizar UF por UF.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
 
 function Inner() {
   const qc = useQueryClient();
