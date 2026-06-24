@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { normalizeCandidateName, suggestCandidateNames, type NameSuggestion } from "@/lib/candidateNameNormalizer";
+import { supabase } from "@/integrations/supabase/client";
 
 type Party = { sigla: string; nome: string; numero: number };
 
