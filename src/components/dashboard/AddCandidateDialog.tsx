@@ -68,11 +68,15 @@ const POSITIONS: { name: string; Icon: React.ComponentType<{ className?: string 
   { name: "Deputado Estadual", Icon: FileText },
   { name: "Deputado Distrital", Icon: FileText },
   { name: "Vereador", Icon: User },
-  // Outros
+  // Partidário
   { name: "Presidente de partido", Icon: Landmark },
-  { name: "Ex-candidato", Icon: User },
-  { name: "Influenciador político", Icon: User },
-  { name: "Jornalista político", Icon: User },
+];
+
+type ProfileType = "politico" | "figura" | "midia";
+const PROFILE_TYPES: { id: ProfileType; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: "politico", label: "Político", Icon: Landmark },
+  { id: "figura", label: "Figura Pública", Icon: User },
+  { id: "midia", label: "Mídia/Jornalismo", Icon: FileText },
 ];
 
 const NATIONAL_POSITIONS = new Set(["Presidente", "Vice-presidente", "Ministro", "Presidente de partido"]);
@@ -134,6 +138,7 @@ interface Props {
 export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onSubmit, knownNames = [] }: Props) {
   const [fullName, setFullName] = useState("");
   const [debouncedName, setDebouncedName] = useState("");
+  const [profileType, setProfileType] = useState<ProfileType>("politico");
   const [party, setParty] = useState("");
   const [position, setPosition] = useState("");
   const [state, setState] = useState("");
@@ -246,9 +251,10 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
 
 
   const scope = scopeOf(position);
+  const requiresPosition = profileType === "politico";
   const canSubmit =
-    !!fullName.trim() && !!party && !!position && !isPending &&
-    (scope === "national" || (scope === "state" && !!state) || (scope === "municipal" && !!state && !!city.trim()));
+    !!fullName.trim() && !!party && (!requiresPosition || !!position) && !isPending &&
+    (!requiresPosition || scope === "national" || (scope === "state" && !!state) || (scope === "municipal" && !!state && !!city.trim()));
 
   const scopeBadge = useMemo(() => {
     if (scope === "national") return { label: "Atuação nacional · cobertura Brasil", cls: "bg-gradient-to-r from-emerald-500/15 to-cyan-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30" };
@@ -276,7 +282,8 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   };
 
   const reset = () => {
-    setFullName(""); setDebouncedName(""); setParty(""); setPosition(""); setState(""); setCity(""); setErrors({});
+    setFullName(""); setDebouncedName(""); setProfileType("politico");
+    setParty(""); setPosition(""); setState(""); setCity(""); setErrors({});
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -284,15 +291,19 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     const errs: Record<string, string> = {};
     if (fullName.trim().length < 3) errs.fullName = "Nome deve ter no mínimo 3 caracteres";
     if (!party) errs.party = "Selecione um partido";
-    if (!position) errs.position = "Selecione um cargo";
-    if (scope !== "national" && !state) errs.state = "Selecione um estado";
-    if (scope === "municipal" && !city.trim()) errs.city = "Informe a cidade";
+    if (requiresPosition && !position) errs.position = "Selecione um cargo";
+    if (requiresPosition && scope !== "national" && !state) errs.state = "Selecione um estado";
+    if (requiresPosition && scope === "municipal" && !city.trim()) errs.city = "Informe a cidade";
     setErrors(errs);
     if (Object.keys(errs).length) return;
 
-    const region = scope === "national" ? "Brasil" : (STATE_TO_REGION[state] ?? "");
+    const effectivePosition = requiresPosition ? position : (profileType === "midia" ? "Mídia/Jornalismo" : "Figura Pública");
+    const effectiveScope = requiresPosition ? scope : "national";
+    const region = effectiveScope === "national" ? "Brasil" : (STATE_TO_REGION[state] ?? "");
     onSubmit({
-      fullName, party, position, region, state, city: city.trim() || undefined,
+      fullName, party, position: effectivePosition, region,
+      state: requiresPosition ? state : "",
+      city: requiresPosition ? (city.trim() || undefined) : undefined,
       socials: {}, photoFile: null,
     });
   };
@@ -456,16 +467,21 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
           </Field>
 
 
-          {/* Cargo */}
-          <Field label="Cargo" error={errors.position} required>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
-              {POSITIONS.map(({ name, Icon }) => {
-                const selected = position === name;
+          {/* Tipo de perfil */}
+          <Field label="Tipo de perfil" required>
+            <div className="grid grid-cols-3 gap-2.5">
+              {PROFILE_TYPES.map(({ id, label, Icon }) => {
+                const selected = profileType === id;
                 return (
                   <button
-                    key={name}
+                    key={id}
                     type="button"
-                    onClick={() => handlePosition(name)}
+                    onClick={() => {
+                      setProfileType(id);
+                      if (id !== "politico") {
+                        setPosition(""); setState(""); setCity("");
+                      }
+                    }}
                     disabled={isPending}
                     className={cn(
                       "group flex flex-col items-start gap-2 p-3.5 rounded-xl border text-left transition-all duration-200",
@@ -482,7 +498,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                       <Icon className="h-4 w-4" />
                     </div>
                     <span className={cn("text-sm font-medium leading-tight", selected ? "text-foreground" : "text-muted-foreground group-hover:text-foreground")}>
-                      {name}
+                      {label}
                     </span>
                   </button>
                 );
@@ -490,8 +506,44 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
             </div>
           </Field>
 
-          {/* Localização — condicional ao cargo */}
-          {scope !== "none" && (
+          {/* Cargo — somente para Político */}
+          {requiresPosition && (
+            <Field label="Cargo" error={errors.position} required>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                {POSITIONS.map(({ name, Icon }) => {
+                  const selected = position === name;
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => handlePosition(name)}
+                      disabled={isPending}
+                      className={cn(
+                        "group flex flex-col items-start gap-2 p-3.5 rounded-xl border text-left transition-all duration-200",
+                        "hover:border-primary/40 hover:shadow-sm hover:-translate-y-0.5",
+                        selected
+                          ? "border-primary/60 bg-gradient-to-br from-primary/10 to-primary/[0.02] ring-1 ring-primary/30 shadow-md"
+                          : "border-border/70 bg-muted/20",
+                      )}
+                    >
+                      <div className={cn(
+                        "h-8 w-8 rounded-lg flex items-center justify-center transition-colors",
+                        selected ? "bg-primary/15 text-primary" : "bg-background text-muted-foreground group-hover:text-foreground",
+                      )}>
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <span className={cn("text-sm font-medium leading-tight", selected ? "text-foreground" : "text-muted-foreground group-hover:text-foreground")}>
+                        {name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+          )}
+
+          {/* Localização — condicional ao cargo (apenas para Político) */}
+          {requiresPosition && scope !== "none" && (
             <div className="animate-in fade-in-0 slide-in-from-top-2 duration-300">
               {scope === "national" ? (
                 <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-cyan-500/5 px-4 py-3 flex items-center gap-3">
@@ -537,8 +589,10 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
           )}
 
 
-          {/* Preview — só aparece quando nome, partido e cargo estão definidos */}
-          {fullName.trim() && party && position && (
+
+
+          {/* Preview — só aparece quando nome e partido (+ cargo se Político) estão definidos */}
+          {fullName.trim() && party && (!requiresPosition || position) && (
             <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-muted/40 via-muted/20 to-transparent p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Sparkles className="h-3.5 w-3.5 text-primary" />
@@ -551,7 +605,13 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                 <div className="min-w-0">
                   <div className="text-base font-semibold truncate">{fullName.trim()}</div>
                   <div className="text-sm text-muted-foreground truncate">
-                    {[party, position, scope === "national" ? "Brasil" : (city && state ? `${city}/${state}` : (state && (STATE_NAMES[state] ?? state)))].filter(Boolean).join(" · ")}
+                    {[
+                      party,
+                      requiresPosition ? position : (profileType === "midia" ? "Mídia/Jornalismo" : "Figura Pública"),
+                      requiresPosition
+                        ? (scope === "national" ? "Brasil" : (city && state ? `${city}/${state}` : (state && (STATE_NAMES[state] ?? state))))
+                        : "Brasil",
+                    ].filter(Boolean).join(" · ")}
                   </div>
                 </div>
               </div>
