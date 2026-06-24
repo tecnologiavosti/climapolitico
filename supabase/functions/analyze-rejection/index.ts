@@ -212,9 +212,8 @@ Regras: 4 a 6 perfis em who_rejects, 3 a 6 narrativas em attack_narratives, 3 a 
       (components.aprovacao + components.base_fiel + components.autoridade_institucional) / 3;
     let rejeicaoFinal = negativeScore - (positiveShield * 0.35);
 
-    // Redutor para presidentes em exercício
-    const roleStr = (candidate.role_title || '').toLowerCase();
-    if (roleStr.includes('presidente')) {
+    // Redutor para presidentes em exercício (inferido pela autoridade institucional máxima)
+    if (components.autoridade_institucional >= 90) {
       rejeicaoFinal *= 0.90;
     }
 
