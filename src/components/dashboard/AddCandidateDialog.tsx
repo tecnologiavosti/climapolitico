@@ -154,6 +154,27 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     if (s.meta?.state && !state) setState(s.meta.state);
   };
 
+  // Match exato no catálogo (>= 95%) — usado para card "Candidato identificado"
+  const catalogMatch = useMemo(() => {
+    const top = suggestions[0];
+    if (top && top.similarity >= 0.95 && top.meta) return top;
+    return null;
+  }, [suggestions]);
+
+  // Debug
+  useEffect(() => {
+    if (!debouncedName.trim()) return;
+    // eslint-disable-next-line no-console
+    console.log("[Candidate metadata]", {
+      name: debouncedName,
+      foundInCatalog: !!catalogMatch,
+      party: catalogMatch?.meta?.party ?? null,
+      office: catalogMatch?.meta?.position ?? null,
+      state: catalogMatch?.meta?.state ?? null,
+    });
+  }, [debouncedName, catalogMatch]);
+
+
   const scope = scopeOf(position);
   const canSubmit =
     !!fullName.trim() && !!party && !!position && !isPending &&
@@ -295,6 +316,29 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
               </div>
             )}
 
+            {catalogMatch && (
+              <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/[0.08] px-3 py-2 animate-in fade-in-0 slide-in-from-top-1 duration-200">
+                <div className="flex items-center gap-2 text-sm min-w-0">
+                  <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="font-semibold truncate">Candidato identificado: {catalogMatch.fullName}</div>
+                    <div className="text-[11px] text-muted-foreground truncate">
+                      {[catalogMatch.meta?.position, catalogMatch.meta?.party, catalogMatch.meta?.state].filter(Boolean).join(" · ")}
+                    </div>
+                  </div>
+                </div>
+                <Button type="button" size="sm" variant="secondary" className="h-7 rounded-lg shrink-0" onClick={() => applySuggestion(catalogMatch)}>
+                  Autopreencher
+                </Button>
+              </div>
+            )}
+
+            {debouncedName.trim().length >= 3 && suggestions.length === 0 && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Candidato não encontrado no catálogo. Preencha partido, cargo e localização manualmente.
+              </p>
+            )}
+
             {scopeBadge && (
               <Badge variant="outline" className={cn("mt-2 font-medium", scopeBadge.cls)}>
                 {scopeBadge.label}
@@ -389,26 +433,26 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
           )}
 
 
-          {/* Preview */}
-          <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-muted/40 via-muted/20 to-transparent p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Preview do candidato</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center ring-1 ring-border/60">
-                <User className="h-5 w-5 text-primary/70" />
+          {/* Preview — só aparece quando nome, partido e cargo estão definidos */}
+          {fullName.trim() && party && position && (
+            <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-muted/40 via-muted/20 to-transparent p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Preview do candidato</span>
               </div>
-              <div className="min-w-0">
-                <div className="text-base font-semibold truncate">
-                  {fullName.trim() || <span className="text-muted-foreground font-normal">Nome do candidato</span>}
+              <div className="flex items-center gap-3">
+                <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center ring-1 ring-border/60">
+                  <User className="h-5 w-5 text-primary/70" />
                 </div>
-                <div className="text-sm text-muted-foreground truncate">
-                  {[party, position, scope === "national" ? "Brasil" : (city && state ? `${city}/${state}` : (state && (STATE_NAMES[state] ?? state)))].filter(Boolean).join(" · ") || "Partido · Cargo · Localização"}
+                <div className="min-w-0">
+                  <div className="text-base font-semibold truncate">{fullName.trim()}</div>
+                  <div className="text-sm text-muted-foreground truncate">
+                    {[party, position, scope === "national" ? "Brasil" : (city && state ? `${city}/${state}` : (state && (STATE_NAMES[state] ?? state)))].filter(Boolean).join(" · ")}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </form>
 
         {/* Footer */}
