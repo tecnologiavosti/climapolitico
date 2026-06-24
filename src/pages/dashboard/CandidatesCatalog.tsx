@@ -29,13 +29,15 @@ export default function CandidatesCatalog() {
     [rawFilters, debouncedQ, debouncedMuni]
   );
 
-  const { data, isLoading, isFetching } = useCatalogSearch(filters);
+  const { data, isLoading, isFetching, isSuccess } = useCatalogSearch(filters);
   const rows = data?.rows ?? [];
   const total = data?.total ?? 0;
   const suggestions = data?.suggestions ?? [];
   const normalized = data?.normalized ?? {};
+  const notice = data?.notice ?? null;
   const page = filters.page ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const busy = isLoading || isFetching;
 
   const { data: myCandidates = [] } = useQuery({
     queryKey: ["my-candidates-names"],
