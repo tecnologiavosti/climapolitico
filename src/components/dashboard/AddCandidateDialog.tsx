@@ -135,19 +135,13 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     return () => clearTimeout(t);
   }, [fullName]);
 
-  const suggestions = useMemo(() => {
+  const suggestions = useMemo<NameSuggestion[]>(() => {
     const q = debouncedName.trim();
-    if (q.length < 3 || knownNames.length === 0) return [] as Array<{ name: string; sim: number }>;
-    const canonicalQ = normalizeCandidateName(q);
-    const ranked = knownNames
-      .map((n) => ({ name: n, sim: nameSimilarity(q, n) }))
-      .filter((r) => r.sim >= 0.8 && normalizeCandidateName(r.name) !== canonicalQ)
-      .sort((a, b) => b.sim - a.sim)
-      .slice(0, 4);
-    return ranked;
+    if (q.length < 2) return [];
+    return suggestCandidateNames(q, knownNames, 0.72);
   }, [debouncedName, knownNames]);
 
-  const autoCorrect = suggestions.find((s) => s.sim >= 0.98) ?? null;
+  const autoCorrect = suggestions.find((s) => s.similarity >= 0.98) ?? null;
 
   const scope = scopeOf(position);
   const canSubmit =
