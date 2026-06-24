@@ -93,14 +93,20 @@ serve(async (req) => {
 - Região/UF: ${candidate.region || 'não informada'}
 - Cargo/posição e ideologia: inferir a partir do partido, região e perfil público brasileiro contemporâneo.
 
+CONTEXTO TEMPORAL DA ANÁLISE:
+- Período selecionado: ${periodLabel} (${rangeDays} dias).
+- Peso para narrativas RECENTES (curto prazo, momento atual, viralizações, falas polêmicas, escândalos recentes): ${Math.round(recentWeight * 100)}%.
+- Peso para narrativas HISTÓRICAS / ESTRUTURAIS (desgaste acumulado, reputação consolidada, rejeição estrutural de longo prazo): ${Math.round(historicalWeight * 100)}%.
+- Recalibre TODOS os componentes e o diagnóstico aplicando essa ponderação: períodos curtos sensibilizam mais a 'exposicao_negativa' e 'fragilidade_narrativa' atuais; períodos longos sensibilizam mais 'desgaste' e 'antagonismo_ideologico' estrutural. Mudança de percepção, evolução da polarização, ataques recentes vs históricos e tendência reputacional devem refletir o intervalo.
+
 TAREFA — INTELIGÊNCIA PREDITIVA DE REJEIÇÃO (sem usar dados coletados):
 
-Calcule um score de rejeição (0–100) como a média de 5 componentes (0–100 cada):
+Calcule um score de rejeição (0–100) como a média de 5 componentes (0–100 cada), já ponderados pelo contexto temporal acima:
 1. polarizacao — quanto divide opiniões (ex.: Lula alto, prefeito técnico baixo).
 2. desgaste — tempo de exposição pública e histórico (presidente alto, novato baixo).
 3. antagonismo_ideologico — rejeição em grupos opostos (direita vs esquerda, agro vs urbano progressista).
 4. fragilidade_narrativa — facilidade de ataque (corrupção, velha política, elitismo, radicalismo, inexperiência).
-5. exposicao_negativa — probabilidade de narrativas negativas ganharem força.
+5. exposicao_negativa — probabilidade de narrativas negativas ganharem força no período.
 
 Responda EXCLUSIVAMENTE em JSON válido no formato:
 {
