@@ -254,8 +254,90 @@ function resolveUfs(f: Filters): string[] {
 
 function resolveCargos(f: Filters): string[] {
   if (f.cargo?.length) return [...new Set(f.cargo.map((c) => normalizeCargoKey(c)).filter(Boolean))] as string[];
-  // Without cargo: default to the top federal cargos to keep request bounded.
-  return ["presidente", "governador", "senador", "deputado_federal"];
+  // Without cargo: default to top federal cargos + cargos vivos 2026 cobertos pela IA.
+  return ["presidente", "governador", "senador", "deputado_federal", "ministro", "presidente_partido"];
+}
+
+const CARGO_LABEL: Record<string, string> = {
+  presidente: "Presidente da República",
+  vice_presidente: "Vice-presidente",
+  governador: "Governador",
+  vice_governador: "Vice-governador",
+  senador: "Senador",
+  deputado_federal: "Deputado Federal",
+  deputado_estadual: "Deputado Estadual",
+  deputado_distrital: "Deputado Distrital",
+  prefeito: "Prefeito",
+  vice_prefeito: "Vice-prefeito",
+  vereador: "Vereador",
+  ministro: "Ministro de Estado",
+  presidente_partido: "Presidente Nacional de Partido",
+  pre_candidato: "Pré-candidato 2026",
+};
+
+async function aiPoliticalLookup(f: Filters, cargos: string[]): Promise<CandidateOut[]> {
+  if (!LOVABLE_API_KEY) return [];
+  const cargoNames = cargos.map((c) => CARGO_LABEL[c] ?? c).join(", ");
+  const ufs = (f.estado ?? []).join(", ");
+  const partidos = (f.partido ?? []).join(", ");
+  const municipio = f.municipio ?? "";
+  const nome = f.q ?? "";
+
+  const system = `Você é um especialista no cenário político brasileiro atual (2025-2026).
+Conhece presidente, vice, ministros, governadores, vice-governadores, senadores, deputados federais/estaduais/distritais, prefeitos, vice-prefeitos, vereadores em exercício, presidentes nacionais de partidos e pré-candidatos declarados para 2026.
+Inclui figuras como Lula, Bolsonaro, Tarcísio de Freitas, Ratinho Júnior, Ronaldo Caiado, Romeu Zema, Pablo Marçal, Flávio Bolsonaro, Nikolas Ferreira, Gustavo Martinelli e equivalentes.
+Devolva APENAS JSON: {"politicos":[{"nome":"...","partido":"SIGLA","cargo":"presidente|vice_presidente|governador|vice_governador|senador|deputado_federal|deputado_estadual|deputado_distrital|prefeito|vice_prefeito|vereador|ministro|presidente_partido|pre_candidato","estado":"UF","municipio":"...|null","eleito":true|false,"confidence":0-1}]}.
+Máximo 30 itens. Só políticos REAIS e atuais. Nunca invente nomes.`;
+
+  const user = `Busca:
+- nome contém: ${nome || "(qualquer)"}
+- cargos: ${cargoNames || "qualquer"}
+- estados (UF): ${ufs || "qualquer"}
+- partidos: ${partidos || "qualquer"}
+- município: ${municipio || "qualquer"}
+- somente eleitos/em exercício: ${f.onlyEleitos ? "sim" : "não"}`;
+
+  try {
+    const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-3-flash-preview",
+        messages: [{ role: "system", content: system }, { role: "user", content: user }],
+        response_format: { type: "json_object" },
+      }),
+    });
+    if (!r.ok) {
+      console.error("[tse-search] AI lookup failed:", r.status, await r.text().catch(() => ""));
+      return [];
+    }
+    const j = await r.json();
+    const parsed = JSON.parse(j?.choices?.[0]?.message?.content ?? "{}");
+    const list: any[] = parsed?.politicos ?? [];
+    return list.map((p, i) => ({
+      id: `ai-${i}-${normalize(p.nome).replace(/\s+/g, "-")}`,
+      tse_id: null,
+      nome: String(p.nome ?? ""),
+      nome_urna: null,
+      partido_sigla: p.partido ? String(p.partido).toUpperCase() : null,
+      partido_nome: null,
+      numero_partido: null,
+      cargo: normalizeCargoKey(String(p.cargo ?? "")) ?? String(p.cargo ?? null),
+      regiao: p.estado ? (REGION_OF_UF[String(p.estado).toUpperCase()] ?? null) : null,
+      estado: p.estado ? String(p.estado).toUpperCase() : null,
+      municipio: p.municipio ?? null,
+      eleito: !!p.eleito,
+      ano_eleicao: null,
+      foto_url: null,
+      redes_sociais: null,
+      popularidade: Number(p.confidence ?? 0.5),
+      similarity: Number(p.confidence ?? 0.5),
+      total_count: 0,
+    } satisfies CandidateOut));
+  } catch (e) {
+    console.error("[tse-search] AI lookup exception:", e);
+    return [];
+  }
 }
 
 Deno.serve(async (req) => {
