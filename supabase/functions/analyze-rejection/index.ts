@@ -13,10 +13,12 @@ function clamp(n: any): number {
   return Math.max(0, Math.min(100, Math.round(v)));
 }
 
-function levelFromScore(score: number): 'baixa' | 'moderada' | 'alta' {
-  if (score <= 30) return 'baixa';
-  if (score <= 60) return 'moderada';
-  return 'alta';
+function levelFromScore(score: number): 'baixa' | 'moderada' | 'alta' | 'critica' | 'extrema' {
+  if (score <= 25) return 'baixa';
+  if (score <= 50) return 'moderada';
+  if (score <= 70) return 'alta';
+  if (score <= 85) return 'critica';
+  return 'extrema';
 }
 
 serve(async (req) => {
