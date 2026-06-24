@@ -154,6 +154,27 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     if (s.meta?.state && !state) setState(s.meta.state);
   };
 
+  // Match exato no catálogo (>= 95%) — usado para card "Candidato identificado"
+  const catalogMatch = useMemo(() => {
+    const top = suggestions[0];
+    if (top && top.similarity >= 0.95 && top.meta) return top;
+    return null;
+  }, [suggestions]);
+
+  // Debug
+  useEffect(() => {
+    if (!debouncedName.trim()) return;
+    // eslint-disable-next-line no-console
+    console.log("[Candidate metadata]", {
+      name: debouncedName,
+      foundInCatalog: !!catalogMatch,
+      party: catalogMatch?.meta?.party ?? null,
+      office: catalogMatch?.meta?.position ?? null,
+      state: catalogMatch?.meta?.state ?? null,
+    });
+  }, [debouncedName, catalogMatch]);
+
+
   const scope = scopeOf(position);
   const canSubmit =
     !!fullName.trim() && !!party && !!position && !isPending &&
