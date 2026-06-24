@@ -200,18 +200,34 @@ Regras: 4 a 6 perfis em who_rejects, 3 a 6 narrativas em attack_narratives, 3 a 
       antagonismo_ideologico: clamp(c.antagonismo_ideologico),
       fragilidade_narrativa: clamp(c.fragilidade_narrativa),
       exposicao_negativa: clamp(c.exposicao_negativa),
+      aprovacao: clamp(c.aprovacao),
+      base_fiel: clamp(c.base_fiel),
+      autoridade_institucional: clamp(c.autoridade_institucional),
     };
-    const rejection_score = Math.round(
+
+    const negativeScore =
       (components.polarizacao + components.desgaste + components.antagonismo_ideologico +
-        components.fragilidade_narrativa + components.exposicao_negativa) / 5
-    );
+        components.fragilidade_narrativa + components.exposicao_negativa) / 5;
+    const positiveShield =
+      (components.aprovacao + components.base_fiel + components.autoridade_institucional) / 3;
+    let rejeicaoFinal = negativeScore - (positiveShield * 0.35);
+
+    // Redutor para presidentes em exercício
+    const roleStr = (candidate.role_title || '').toLowerCase();
+    if (roleStr.includes('presidente')) {
+      rejeicaoFinal *= 0.90;
+    }
+
+    const rejection_score = Math.max(0, Math.min(100, Math.round(rejeicaoFinal)));
     analysis.components = components;
     analysis.rejection_score = rejection_score;
     analysis.rejection_level = levelFromScore(rejection_score);
+    analysis.negative_score = Math.round(negativeScore);
+    analysis.positive_shield = Math.round(positiveShield);
 
     return new Response(JSON.stringify({
       analysis,
-      candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region },
+      candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region, role_title: candidate.role_title },
       period: { key: periodKey, label: periodLabel, range_days: rangeDays, recent_weight: recentWeight, historical_weight: historicalWeight },
       ai_provider: aiProvider,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
