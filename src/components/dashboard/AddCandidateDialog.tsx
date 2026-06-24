@@ -521,7 +521,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                   {helperText && <p className="text-xs text-muted-foreground">{helperText}</p>}
                 </Field>
               ) : (
-                <Field label="Base municipal" error={errors.state || errors.city} required>
+                <Field label="Estado e cidade" error={errors.state || errors.city} required>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <Select value={state} onValueChange={setState} disabled={isPending}>
                       <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Estado" /></SelectTrigger>
