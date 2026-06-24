@@ -1,122 +1,71 @@
-# Painel Administrativo Unificado + SEO Completo
 
-## 1. Painel Administrativo Unificado
+# Refator Catálogo de Candidatos — Base TSE Nacional
 
-Hoje as funções administrativas estão dispersas em várias rotas (`AdminDashboard`, `AdminUsers`, `AdminFinance`, `AdminPlans`, `AdminSubscriptions`, `AdminCandidates`, `AdminAnalytics`, `AdminSecurity`, `AdminLogs`, `AdminSystem`, `AdminSettings`, `AdminApiSettings`, `AdminSeo`).
+## 1. Nova tabela `politicians` (substitui `public_candidates_catalog` como fonte do catálogo)
 
-**Plano:**
+Migration cria:
 
-- Criar `src/pages/dashboard/admin/AdminCenter.tsx` — uma única página com abas (`Tabs` do shadcn):
-  - **Visão Geral** — KPIs atuais do `AdminDashboard` (usuários, MRR, planos, crescimento)
-  - **Usuários** — conteúdo do `AdminUsers` (lista, filtros, banir, editar, criar)
-  - **Assinaturas & Planos** — `AdminSubscriptions` + `AdminPlans`
-  - **Financeiro** — `AdminFinance`
-  - **Candidatos** — `AdminCandidates`
-  - **Analytics** — `AdminAnalytics`
-  - **Segurança & Logs** — `AdminSecurity` + `AdminLogs`
-  - **Sistema** — `AdminSystem` + `AdminApiSettings`
-  - **SEO** — novo `AdminSeoComplete` (ver seção 2)
-  - **Configurações** — `AdminSettings`
-- Refatorar as páginas existentes para exportar um **componente interno** (ex.: `AdminUsersInner`) sem o wrapper de layout, e o `AdminCenter` importa cada um dentro de um `TabsContent`.
-- Em `Dashboard.tsx`:
-  - Adicionar rota `/dashboard/admin` → `AdminCenter`
-  - Aceitar query `?tab=usuarios` para abrir aba específica (deep-link)
-  - Manter rotas antigas redirecionando para `/dashboard/admin?tab=...` (compatibilidade com sidebar atual)
-- Atualizar `AppSidebar.tsx` para mostrar apenas **uma entrada** "Painel ADM" (no grupo administrativo), removendo as várias entradas atuais. Sub-itens viram abas dentro da página.
+- `politicians` com colunas: `id`, `tse_id` (SQ_CANDIDATO), `nome`, `nome_urna`, `nome_normalizado`, `cpf_hash`, `partido_sigla`, `partido_nome`, `numero_partido`, `cargo` (enum textual: presidente, vice_presidente, governador, vice_governador, senador, deputado_federal, deputado_estadual, deputado_distrital, prefeito, vice_prefeito, vereador, ministro, presidente_partido), `regiao` (norte/nordeste/centro_oeste/sudeste/sul/nacional), `estado` (UF), `municipio`, `eleito` (bool), `ativo` (bool), `ano_eleicao`, `foto_url`, `redes_sociais` (jsonb), `popularidade` (numeric), `search_tsv` (tsvector gerado), `created_at`, `updated_at`.
+- Índices: GIN em `search_tsv` e em `nome_normalizado gin_trgm_ops`; BTREE em `(cargo, estado, partido_sigla)` e `(ativo, eleito, popularidade desc)`; unique em `tse_id`.
+- Trigger `politicians_refresh` atualiza `nome_normalizado` (`unaccent(lower(nome))`) e `search_tsv` em insert/update.
+- RLS: SELECT público (`anon`, `authenticated`); INSERT/UPDATE/DELETE restritos a `service_role` (ETL).
+- GRANTS conforme regra do projeto.
+- RPC `search_politicians(q, p_cargo[], p_partido[], p_regiao[], p_estado[], p_municipio, p_only_eleitos, p_limit, p_offset)` retornando rows + `total_count` + `suggestions` (top 5 via similarity quando q não retorna nada).
+- RPC `suggest_politicians(q, limit)` usando `similarity()` para "Você quis dizer…".
 
-## 2. SEO Completo
+## 2. Edge Function ETL `etl-tse-politicians`
 
-Substituir `AdminSeo.tsx` por um módulo completo `AdminSeoComplete` com seções:
+- Baixa CSVs do TSE Dados Abertos por ano (2022 federais, 2024 municipais) — URLs oficiais `cdn.tse.jus.br`.
+- Streaming + parse CSV (`;`, latin1) chunk a chunk para não estourar memória.
+- Normaliza cargo TSE → enum interno; deriva `regiao` da UF.
+- Upsert em lotes de 1000 por `tse_id`.
+- Marca `ativo=false` em registros não vistos no ciclo (soft delete).
+- Logs em `edge_function_logs`; idempotente.
+- Auth: somente `service_role` (chamado pelo cron). `verify_jwt = false` + validação por token interno.
 
-### a) Meta Tags por Rota
-Mantém o que já existe em `seo_settings` (title, description, keywords, OG, canonical, noindex) com editor melhorado, validação de tamanho e preview Google/Facebook/Twitter.
+## 3. Cron diário
 
-### b) Códigos de Verificação
-Nova tabela `seo_verifications`:
-- `google_site_verification`
-- `bing_site_verification`
-- `yandex_verification`
-- `pinterest_verification`
-- `facebook_domain_verification`
+- `pg_cron` + `pg_net` agendam POST diário às 04:00 BRT para a edge function.
+- Insert via tool `supabase--insert` (contém URL/key específicos do projeto).
 
-Campos viram `<meta>` aplicados via `react-helmet-async` em `App.tsx`.
+## 4. Seed inicial
 
-### c) IDs de Rastreamento (Tracking)
-Nova tabela `seo_tracking`:
-- `google_analytics_id` (GA4 G-XXXX)
-- `google_tag_manager_id` (GTM-XXXX)
-- `facebook_pixel_id`
-- `tiktok_pixel_id`
-- `linkedin_insight_id`
-- `hotjar_id`
-- `clarity_id` (Microsoft Clarity)
-- `enabled` (boolean por integração)
+- Edge function dispara automaticamente no primeiro deploy via botão admin (não bloqueia migration).
+- Admin: botão "Sincronizar TSE agora" em `AdminCandidates.tsx`.
 
-Component `TrackingScripts.tsx` injeta scripts no `<head>` via Helmet quando habilitado e o usuário deu consentimento de cookies (integra com `CookieConsent`).
+## 5. Frontend
 
-### d) Sitemap & robots.txt
-- Painel mostra conteúdo atual de `/sitemap.xml` e `/robots.txt` (fetch client-side)
-- Botão "Regenerar sitemap" chama edge function `generate-sitemap` que escreve em `seo_artifacts` (tabela cache) com todas as rotas + candidatos públicos
-- Editor de `robots.txt` salvo em `seo_artifacts` e servido pela edge function `serve-robots`
-- Mostra última atualização, número de URLs, tamanho
+- `useCatalogSearch.ts`: trocar RPC `search_catalog` → `search_politicians`; expor `suggestions` e `totalCount`.
+- `CatalogFilters.tsx`: filtros por cargo (lista completa), partido (autocomplete), região, estado (UF), município (texto), toggle "Somente eleitos".
+- `CandidatesCatalog.tsx`: paginação tradicional 50/página (substitui scroll infinito conforme pedido); banner "Você quis dizer: X, Y, Z?" quando `total=0` e `suggestions.length>0`.
+- `CandidateCatalogCard.tsx`: já cobre foto/nome/partido/cargo/estado/redes; adicionar badge "Eleito".
+- Remover toda referência ao catálogo antigo `public_candidates_catalog` no frontend do catálogo (a tabela permanece para outras features que dependem dela).
 
-### e) Status & Saúde SEO
-Card de status agregado:
-- ✅/❌ Title e description configurados em todas as rotas principais
-- ✅/❌ OG image global definido
-- ✅/❌ Pelo menos um código de verificação ativo
-- ✅/❌ GA/GTM configurado
-- ✅/❌ Sitemap gerado nos últimos 7 dias
-- ✅/❌ robots.txt presente
-- ✅/❌ Canonical apontando para domínio oficial
-- Score 0-100 + lista de pendências acionáveis
+## 6. Busca fuzzy
 
-### Migrações SQL
-```sql
-CREATE TABLE public.seo_verifications (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  provider text UNIQUE NOT NULL,
-  code text NOT NULL,
-  updated_at timestamptz DEFAULT now()
-);
-GRANT SELECT ON public.seo_verifications TO anon, authenticated;
-GRANT ALL ON public.seo_verifications TO service_role;
-ALTER TABLE public.seo_verifications ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "public read" ON public.seo_verifications FOR SELECT USING (true);
-CREATE POLICY "admin write" ON public.seo_verifications FOR ALL TO authenticated
-  USING (public.has_role(auth.uid(), 'admin')) WITH CHECK (public.has_role(auth.uid(), 'admin'));
+- 100% no banco via `pg_trgm` + `unaccent`:
+  - tsquery em `search_tsv` (peso A: nome, B: partido, C: cargo+estado)
+  - fallback `similarity(nome_normalizado, unaccent(lower(q))) > 0.25` ordenado por similaridade
+  - `suggestions`: top 5 nomes distintos por similaridade quando 0 resultados.
 
-CREATE TABLE public.seo_tracking (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  provider text UNIQUE NOT NULL,
-  tracking_id text NOT NULL,
-  enabled boolean DEFAULT true,
-  updated_at timestamptz DEFAULT now()
-);
--- mesmos GRANT/RLS
+## 7. Arquivos
 
-CREATE TABLE public.seo_artifacts (
-  id text PRIMARY KEY,   -- 'sitemap' | 'robots'
-  content text NOT NULL,
-  url_count int,
-  generated_at timestamptz DEFAULT now()
-);
--- public read, admin write
-```
+Criar:
+- `supabase/functions/etl-tse-politicians/index.ts`
 
-### Helmet integração
-- Instalar `react-helmet-async`
-- Provider em `src/main.tsx`
-- Novo componente `SeoHead.tsx` lê `seo_verifications` + `seo_tracking` (React Query, cache 5min) e injeta no `<head>` em toda navegação
+Editar:
+- `src/hooks/useCatalogSearch.ts`
+- `src/components/dashboard/CatalogFilters.tsx`
+- `src/components/dashboard/CandidateCatalogCard.tsx`
+- `src/pages/dashboard/CandidatesCatalog.tsx`
+- `src/pages/admin/AdminCandidates.tsx` (botão sync)
 
-## Arquivos a criar/editar
-- **Novos**: `AdminCenter.tsx`, `AdminSeoComplete.tsx`, `TrackingScripts.tsx`, `SeoHead.tsx`, 3 migrações SQL, edge function `generate-sitemap`, edge function `serve-robots`
-- **Editar**: `Dashboard.tsx` (rotas/redirects), `AppSidebar.tsx` (entrada única), `main.tsx` (HelmetProvider), todas as páginas Admin atuais (extrair `*Inner` exportado)
-- **Manter** as rotas antigas como redirect para preservar links/sidebar até estabilizar
+Migrations:
+- Criação da tabela + RPCs + RLS + grants.
+- Insert (não migration) com `cron.schedule` para o job diário.
 
-## Detalhes técnicos
-- Tudo em pt-BR
-- `AdminCenter` protegido por `<AdminRoute>`
-- Tabs com URL state (`useSearchParams`) para deep-link
-- Preview SERP usa cores e tipografia padrão do shadcn, nada hardcoded
-- Não tocar em `RealTimeMonitor`, `RadarPolitico`, `NetworkView`, `RegionalAnalysis` (mudanças recentes)
+## 8. Observações técnicas
+
+- Dataset TSE completo de candidatos 2022+2024 fica ~600MB descompactado. A função processa em streaming por UF para caber no tempo limite (até 150s) — se necessário, divide em múltiplas execuções por UF via parâmetro `?uf=SP`.
+- Primeiro carregamento total pode levar várias horas distribuídas (uma chamada por UF). O cron diário só pega deltas (upsert).
+- `popularidade` inicial = heurística (1.0 eleitos federais, 0.8 estaduais, 0.5 municipais); pode ser refinada depois com dados de menções.

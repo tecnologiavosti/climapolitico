@@ -2,3 +2,6 @@ project_id = "okazmxhoviblxtxtjzzc"
 
 [functions.admin-update-user-temp]
 verify_jwt = false
+
+[functions.etl-tse-politicians]
+verify_jwt = false

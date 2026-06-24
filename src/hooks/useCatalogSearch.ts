@@ -1,61 +1,83 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface CatalogFilters {
   q?: string;
-  position?: string;
-  party?: string;
-  state?: string;
-  city?: string;
-  region?: string;
-  order?: "relevance" | "popularity" | "name";
+  cargo?: string[];
+  partido?: string[];
+  regiao?: string[];
+  estado?: string[];
+  municipio?: string;
+  onlyEleitos?: boolean;
+  page?: number;
 }
 
-export interface CatalogRow {
+export interface PoliticianRow {
   id: string;
-  full_name: string;
-  party: string | null;
-  party_number: string | null;
+  tse_id: string | null;
+  nome: string;
+  nome_urna: string | null;
+  partido_sigla: string | null;
+  partido_nome: string | null;
+  numero_partido: string | null;
   cargo: string | null;
-  state: string | null;
-  city: string | null;
-  macro_region: string | null;
-  region: string | null;
-  photo_url: string | null;
-  monitorable_networks: string[] | null;
-  social_links: Record<string, string> | null;
-  social_media_link: string | null;
-  description: string | null;
-  popularity_score: number;
+  regiao: string | null;
+  estado: string | null;
+  municipio: string | null;
+  eleito: boolean;
+  ano_eleicao: number | null;
+  foto_url: string | null;
+  redes_sociais: Record<string, string> | null;
+  popularidade: number;
+  similarity: number;
   total_count: number;
 }
 
-const PAGE_SIZE = 24;
+export interface Suggestion {
+  id: string;
+  nome: string;
+  partido_sigla: string | null;
+  cargo: string | null;
+  estado: string | null;
+  similarity: number;
+}
+
+export const PAGE_SIZE = 50;
 
 export function useCatalogSearch(filters: CatalogFilters) {
-  return useInfiniteQuery({
-    queryKey: ["catalog-search", filters],
-    initialPageParam: 0,
-    queryFn: async ({ pageParam }) => {
-      const { data, error } = await (supabase as any).rpc("search_catalog", {
+  const page = filters.page ?? 0;
+  return useQuery({
+    queryKey: ["politicians-search", filters],
+    queryFn: async () => {
+      const params = {
         q: filters.q?.trim() || null,
-        p_position: filters.position || null,
-        p_party: filters.party || null,
-        p_state: filters.state || null,
-        p_city: filters.city || null,
-        p_region: filters.region || null,
-        p_order: filters.order || "relevance",
+        p_cargo: filters.cargo?.length ? filters.cargo : null,
+        p_partido: filters.partido?.length ? filters.partido : null,
+        p_regiao: filters.regiao?.length ? filters.regiao : null,
+        p_estado: filters.estado?.length ? filters.estado : null,
+        p_municipio: filters.municipio?.trim() || null,
+        p_only_eleitos: !!filters.onlyEleitos,
         p_limit: PAGE_SIZE,
-        p_offset: pageParam as number,
-      });
-      if (error) throw error;
-      return {
-        rows: (data ?? []) as CatalogRow[],
-        nextOffset: (data?.length ?? 0) === PAGE_SIZE ? (pageParam as number) + PAGE_SIZE : null,
-        total: (data?.[0]?.total_count as number) ?? 0,
+        p_offset: page * PAGE_SIZE,
       };
+
+      const { data, error } = await (supabase as any).rpc("search_politicians", params);
+      if (error) throw error;
+
+      const rows = (data ?? []) as PoliticianRow[];
+      const total = rows[0]?.total_count ?? 0;
+
+      let suggestions: Suggestion[] = [];
+      if (rows.length === 0 && filters.q?.trim()) {
+        const { data: sug } = await (supabase as any).rpc("suggest_politicians", {
+          q: filters.q.trim(),
+          p_limit: 5,
+        });
+        suggestions = (sug ?? []) as Suggestion[];
+      }
+
+      return { rows, total: Number(total), suggestions, page };
     },
-    getNextPageParam: (last) => last.nextOffset,
     staleTime: 60_000,
   });
 }
