@@ -55,36 +55,38 @@ export interface Suggestion {
 
 export const PAGE_SIZE = 50;
 
+export async function searchTSECandidates(filters: CatalogFilters) {
+  const payload = {
+    q: filters.q?.trim() || null,
+    cargo: filters.cargo?.length ? filters.cargo.map(normalize) : null,
+    partido: filters.partido?.length ? filters.partido.map(normalize) : null,
+    regiao: filters.regiao?.length ? filters.regiao.map(normalize) : null,
+    estado: filters.estado?.length ? filters.estado.map((uf) => uf.toUpperCase()) : null,
+    municipio: filters.municipio?.trim() || null,
+    onlyEleitos: !!filters.onlyEleitos,
+    page: filters.page ?? 0,
+  };
+  console.log("TSE Query", payload);
+  const { data, error } = await supabase.functions.invoke("tse-search", { body: payload });
+  if (error) throw error;
+
+  const rows = (data?.rows ?? []) as PoliticianRow[];
+  console.log("TSE Results", rows.length);
+  return {
+    rows,
+    total: Number(data?.total ?? 0),
+    suggestions: (data?.suggestions ?? []) as Suggestion[],
+    normalized: (data?.normalized ?? {}) as Record<string, string>,
+    notice: (data?.message ?? data?.notice ?? null) as string | null,
+    fallback: !!data?.fallback,
+    page: data?.page ?? 0,
+  };
+}
+
 export function useCatalogSearch(filters: CatalogFilters) {
   return useQuery({
     queryKey: ["tse-search", filters],
-    queryFn: async () => {
-      const payload = {
-        q: filters.q?.trim() || null,
-        cargo: filters.cargo?.length ? filters.cargo.map(normalize) : null,
-        partido: filters.partido?.length ? filters.partido.map(normalize) : null,
-        regiao: filters.regiao?.length ? filters.regiao.map(normalize) : null,
-        estado: filters.estado?.length ? filters.estado.map((uf) => uf.toUpperCase()) : null,
-        municipio: filters.municipio?.trim() || null,
-        onlyEleitos: !!filters.onlyEleitos,
-        page: filters.page ?? 0,
-      };
-      console.log("TSE Query", payload);
-      const { data, error } = await supabase.functions.invoke("tse-search", { body: payload });
-      if (error) throw error;
-
-      const rows = (data?.rows ?? []) as PoliticianRow[];
-      console.log("TSE Results", rows.length);
-      return {
-        rows,
-        total: Number(data?.total ?? 0),
-        suggestions: (data?.suggestions ?? []) as Suggestion[],
-        normalized: (data?.normalized ?? {}) as Record<string, string>,
-        notice: (data?.message ?? data?.notice ?? null) as string | null,
-        fallback: !!data?.fallback,
-        page: data?.page ?? 0,
-      };
-    },
+    queryFn: () => searchTSECandidates(filters),
     staleTime: 60_000,
   });
 }
