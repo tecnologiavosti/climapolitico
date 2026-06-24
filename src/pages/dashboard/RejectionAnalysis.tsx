@@ -162,6 +162,27 @@ const RejectionAnalysisPage = () => {
               </SelectContent>
             </Select>
 
+            <Select value={period} onValueChange={(v) => setPeriod(v as PeriodKey)}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Período" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7d">Últimos 7 dias</SelectItem>
+                <SelectItem value="30d">Últimos 30 dias</SelectItem>
+                <SelectItem value="90d">Últimos 90 dias</SelectItem>
+                <SelectItem value="1y">Último ano</SelectItem>
+                <SelectItem value="custom">Personalizado</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {period === "custom" && (
+              <DateRangePicker
+                dateRange={customRange}
+                onDateRangeChange={setCustomRange}
+                className="w-[280px]"
+              />
+            )}
+
             <Button onClick={handleAnalyze} disabled={isAnalyzing || !selectedCandidate}>
               {isAnalyzing ? (
                 <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />{analysisResult ? "Reanalisando..." : "Analisando..."}</>
@@ -172,6 +193,9 @@ const RejectionAnalysisPage = () => {
               )}
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground mt-3">
+            Análise reputacional baseada no período selecionado — a IA recalibra peso entre narrativas recentes e desgaste estrutural.
+          </p>
         </CardContent>
       </Card>
 
