@@ -316,6 +316,29 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
               </div>
             )}
 
+            {catalogMatch && (
+              <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/[0.08] px-3 py-2 animate-in fade-in-0 slide-in-from-top-1 duration-200">
+                <div className="flex items-center gap-2 text-sm min-w-0">
+                  <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="font-semibold truncate">Candidato identificado: {catalogMatch.fullName}</div>
+                    <div className="text-[11px] text-muted-foreground truncate">
+                      {[catalogMatch.meta?.position, catalogMatch.meta?.party, catalogMatch.meta?.state].filter(Boolean).join(" · ")}
+                    </div>
+                  </div>
+                </div>
+                <Button type="button" size="sm" variant="secondary" className="h-7 rounded-lg shrink-0" onClick={() => applySuggestion(catalogMatch)}>
+                  Autopreencher
+                </Button>
+              </div>
+            )}
+
+            {debouncedName.trim().length >= 3 && suggestions.length === 0 && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Candidato não encontrado no catálogo. Preencha partido, cargo e localização manualmente.
+              </p>
+            )}
+
             {scopeBadge && (
               <Badge variant="outline" className={cn("mt-2 font-medium", scopeBadge.cls)}>
                 {scopeBadge.label}
