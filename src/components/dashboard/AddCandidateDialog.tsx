@@ -467,16 +467,21 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
           </Field>
 
 
-          {/* Cargo */}
-          <Field label="Cargo" error={errors.position} required>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
-              {POSITIONS.map(({ name, Icon }) => {
-                const selected = position === name;
+          {/* Tipo de perfil */}
+          <Field label="Tipo de perfil" required>
+            <div className="grid grid-cols-3 gap-2.5">
+              {PROFILE_TYPES.map(({ id, label, Icon }) => {
+                const selected = profileType === id;
                 return (
                   <button
-                    key={name}
+                    key={id}
                     type="button"
-                    onClick={() => handlePosition(name)}
+                    onClick={() => {
+                      setProfileType(id);
+                      if (id !== "politico") {
+                        setPosition(""); setState(""); setCity("");
+                      }
+                    }}
                     disabled={isPending}
                     className={cn(
                       "group flex flex-col items-start gap-2 p-3.5 rounded-xl border text-left transition-all duration-200",
@@ -493,7 +498,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                       <Icon className="h-4 w-4" />
                     </div>
                     <span className={cn("text-sm font-medium leading-tight", selected ? "text-foreground" : "text-muted-foreground group-hover:text-foreground")}>
-                      {name}
+                      {label}
                     </span>
                   </button>
                 );
@@ -501,8 +506,44 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
             </div>
           </Field>
 
-          {/* Localização — condicional ao cargo */}
-          {scope !== "none" && (
+          {/* Cargo — somente para Político */}
+          {requiresPosition && (
+            <Field label="Cargo" error={errors.position} required>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                {POSITIONS.map(({ name, Icon }) => {
+                  const selected = position === name;
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => handlePosition(name)}
+                      disabled={isPending}
+                      className={cn(
+                        "group flex flex-col items-start gap-2 p-3.5 rounded-xl border text-left transition-all duration-200",
+                        "hover:border-primary/40 hover:shadow-sm hover:-translate-y-0.5",
+                        selected
+                          ? "border-primary/60 bg-gradient-to-br from-primary/10 to-primary/[0.02] ring-1 ring-primary/30 shadow-md"
+                          : "border-border/70 bg-muted/20",
+                      )}
+                    >
+                      <div className={cn(
+                        "h-8 w-8 rounded-lg flex items-center justify-center transition-colors",
+                        selected ? "bg-primary/15 text-primary" : "bg-background text-muted-foreground group-hover:text-foreground",
+                      )}>
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <span className={cn("text-sm font-medium leading-tight", selected ? "text-foreground" : "text-muted-foreground group-hover:text-foreground")}>
+                        {name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+          )}
+
+          {/* Localização — condicional ao cargo (apenas para Político) */}
+          {requiresPosition && scope !== "none" && (
             <div className="animate-in fade-in-0 slide-in-from-top-2 duration-300">
               {scope === "national" ? (
                 <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-cyan-500/5 px-4 py-3 flex items-center gap-3">
@@ -546,6 +587,8 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
               )}
             </div>
           )}
+
+
 
 
           {/* Preview — só aparece quando nome, partido e cargo estão definidos */}
