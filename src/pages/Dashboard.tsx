@@ -3,7 +3,8 @@ import { useNavigate, useLocation, Routes, Route, Navigate } from "react-router-
 import { useAuth } from "@/hooks/useAuth";
 import { useSessionHealthCheck } from "@/hooks/useSessionHealthCheck";
 import { Button } from "@/components/ui/button";
-import { LogOut, BarChart3 } from "lucide-react";
+import { LogOut } from "lucide-react";
+import logoAsset from "@/assets/clima-politico-logo.jpg.asset.json";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -112,10 +113,12 @@ const Dashboard = () => {
               <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
                 <SidebarTrigger aria-label="Abrir ou fechar menu lateral" className="hidden md:inline-flex" />
                 <div className="flex items-center gap-2 md:hidden">
-                  <div className="p-1.5 bg-gradient-primary rounded-lg">
-                    <BarChart3 className="h-4 w-4 text-white" />
-                  </div>
-                  <span className="font-bold text-base bg-gradient-primary bg-clip-text text-transparent truncate">
+                  <img
+                    src={logoAsset.url}
+                    alt="Clima Político"
+                    className="brand-logo h-[34px] w-[34px] rounded-full object-contain ring-1 ring-border shrink-0"
+                  />
+                  <span className="font-bold text-base text-foreground truncate">
                     Clima Político
                   </span>
                 </div>
