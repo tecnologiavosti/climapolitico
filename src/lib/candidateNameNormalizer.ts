@@ -162,8 +162,6 @@ export const KNOWN_POLITICIANS: KnownPolitician[] = [
   politician({ name: "Simone Tebet", aliases: ["tebet", "simone"], party: "MDB", office: "Ministro" }),
   politician({ name: "Fernando Haddad", aliases: ["haddad"], party: "PT", office: "Ministro" }),
   politician({ name: "Marina Silva", aliases: ["marina"], party: "REDE", office: "Ministro" }),
-  politician({ name: "Ciro Gomes", aliases: ["ciro"], party: "PDT", office: "Ex-candidato" }),
-  politician({ name: "Pablo Marçal", aliases: ["marçal", "marcal", "pablo marcal"], party: "PRTB", office: "Ex-candidato", state: "SP" }),
   politician({ name: "Lucas Pavanato", aliases: ["pavanato", "lucas pavanato"], party: "PL", office: "Vereador", state: "SP", city: "São Paulo" }),
   politician({ name: "Eduardo Paes", aliases: ["eduardo paes", "paes", "prefeito rio"], party: "PSD", office: "Prefeito", state: "RJ", city: "Rio de Janeiro" }),
   politician({ name: "Ricardo Nunes", aliases: ["ricardo nunes", "nunes", "prefeito sao paulo"], party: "MDB", office: "Prefeito", state: "SP", city: "São Paulo" }),

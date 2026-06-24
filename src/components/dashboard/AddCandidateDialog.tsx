@@ -358,10 +358,10 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
               <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-primary/30 bg-primary/[0.06] px-3 py-2 animate-in fade-in-0 slide-in-from-top-1 duration-200">
                 <div className="flex items-center gap-2 text-sm">
                   <Wand2 className="h-4 w-4 text-primary" />
-                  <span>Correção sugerida: <strong>{autoCorrect.fullName}</strong></span>
+                  <span>Você quis dizer: <strong>{autoCorrect.fullName}</strong></span>
                 </div>
                 <Button type="button" size="sm" variant="secondary" className="h-7 rounded-lg" onClick={() => applySuggestion(autoCorrect)}>
-                  Aplicar
+                  Usar candidato
                 </Button>
               </div>
             )}
@@ -380,14 +380,14 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                         <div className="text-sm truncate">{s.fullName}</div>
                           {(s.meta?.party || s.meta?.position || s.meta?.state) && (
                             <div className="text-[11px] text-muted-foreground truncate">
-                              {[s.meta?.position, s.meta?.state, s.meta?.city].filter(Boolean).join(" - ")} · {s.meta?.party}
+                              {[s.meta?.position, s.meta?.state, s.meta?.city].filter(Boolean).join(" - ")}{s.meta?.party ? ` · ${s.meta.party}` : ""}
                             </div>
                           )}
                         </div>
                         <Badge variant="outline" className="text-[10px] shrink-0">{Math.round(s.similarity * 100)}%</Badge>
                       </div>
                       <Button type="button" size="sm" variant="ghost" className="h-7 rounded-lg shrink-0" onClick={() => applySuggestion(s)}>
-                        Usar sugestão
+                        Usar candidato
                       </Button>
                     </li>
                   ))}
