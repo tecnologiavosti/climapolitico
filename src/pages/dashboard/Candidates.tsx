@@ -119,11 +119,11 @@ export default function Candidates() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
-      const isNationalPosition = payload.position === 'Presidente';
-      const inferred = resolveInitialMetadata({ fullName: payload.fullName, region: payload.state });
+      // Sem defaults automáticos: usa exatamente o que o usuário/IA preencheu.
+      const isNationalPosition = payload.position === 'Presidente' || payload.position === 'Vice-presidente';
       const regionFinal = isNationalPosition
         ? 'Brasil'
-        : (inferred.region || `${payload.state} — ${payload.region}`);
+        : (payload.state ? `${payload.state} — ${payload.region}` : (payload.region || null));
 
       const tiktokLink = payload.socials.tiktok?.trim() || null;
 
@@ -133,7 +133,7 @@ export default function Candidates() {
           user_id: user.id,
           full_name: payload.fullName,
           region: regionFinal,
-          party: payload.party || inferred.party,
+          party: payload.party || null,
           social_media_link: tiktokLink,
         })
         .select()
