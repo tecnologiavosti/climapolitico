@@ -353,3 +353,59 @@ All colors MUST be HSL.
 .aurora .brand-logo {
   filter: drop-shadow(0 0 12px rgba(30, 181, 232, 0.18));
 }
+
+/* Aurora theme - improve contrast on titles, icons, labels */
+.aurora h1,
+.aurora h2,
+.aurora h3,
+.aurora .page-title,
+.aurora .section-title {
+  color: #FFFFFF !important;
+  font-weight: 700;
+  text-shadow: 0 0 12px rgba(30, 181, 232, 0.18);
+}
+
+.aurora p.text-muted-foreground,
+.aurora .text-muted-foreground {
+  color: #D6E8FF !important;
+  opacity: 0.92;
+}
+
+.aurora h1 svg,
+.aurora h2 svg,
+.aurora h3 svg,
+.aurora header svg,
+.aurora [class*="CardHeader"] svg,
+.aurora [class*="card-header"] svg {
+  color: #67E8F9 !important;
+  filter: drop-shadow(0 0 8px rgba(103, 232, 249, 0.25));
+  transition: color 0.2s ease;
+}
+
+.aurora h1 svg:hover,
+.aurora h2 svg:hover,
+.aurora h3 svg:hover {
+  color: #FFFFFF !important;
+}
+
+.aurora label,
+.aurora [class*="FormLabel"] {
+  color: #F8FAFC !important;
+  font-weight: 600;
+}
+
+/* Dark theme parity */
+.dark h1,
+.dark h2,
+.dark h3,
+.dark .page-title,
+.dark .section-title {
+  color: #FFFFFF;
+}
+
+.dark h1 svg,
+.dark h2 svg,
+.dark h3 svg,
+.dark header svg {
+  color: #67E8F9;
+}
