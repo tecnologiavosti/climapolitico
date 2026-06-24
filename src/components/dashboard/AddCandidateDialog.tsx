@@ -138,6 +138,7 @@ interface Props {
 export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onSubmit, knownNames = [] }: Props) {
   const [fullName, setFullName] = useState("");
   const [debouncedName, setDebouncedName] = useState("");
+  const [profileType, setProfileType] = useState<ProfileType>("politico");
   const [party, setParty] = useState("");
   const [position, setPosition] = useState("");
   const [state, setState] = useState("");
