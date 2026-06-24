@@ -10,6 +10,111 @@ const VALID_OFFICES = new Set([
   "Vereador", "Presidente de partido",
 ]);
 
+function normalizeName(value: string) {
+  return (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\w\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function levenshtein(a: string, b: string) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  const curr = new Array(b.length + 1).fill(0);
+  for (let i = 1; i <= a.length; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    for (let j = 0; j <= b.length; j++) prev[j] = curr[j];
+  }
+  return prev[b.length];
+}
+
+function similarity(a: string, b: string) {
+  const na = normalizeName(a);
+  const nb = normalizeName(b);
+  if (!na || !nb) return 0;
+  if (na === nb) return 1;
+  const contains = nb.includes(na) || na.includes(nb) ? 0.9 : 0;
+  const lev = 1 - levenshtein(na, nb) / Math.max(na.length, nb.length);
+  return Math.max(contains, lev);
+}
+
+function asArray<T>(value: T | T[] | undefined | null): T[] {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+async function lookupOfficialSources(name: string) {
+  const headers = { Accept: "application/json", "User-Agent": "ClimaPolitico/1.0" };
+
+  try {
+    const url = `https://legis.senado.leg.br/dadosabertos/senador/lista/atual?nome=${encodeURIComponent(name)}`;
+    const resp = await fetch(url, { headers });
+    if (resp.ok) {
+      const json: any = await resp.json().catch(() => null);
+      const senators = asArray(json?.ListaParlamentarEmExercicio?.Parlamentares?.Parlamentar);
+      const best = senators
+        .map((s: any) => {
+          const id = s?.IdentificacaoParlamentar ?? {};
+          const officialName = String(id?.NomeParlamentar ?? id?.NomeCompletoParlamentar ?? "").trim();
+          return { id, officialName, score: similarity(name, officialName) };
+        })
+        .filter((s) => s.officialName && s.score >= 0.75)
+        .sort((a, b) => b.score - a.score)[0];
+      if (best) {
+        return {
+          found: true,
+          name: best.officialName,
+          party: best.id?.SiglaPartidoParlamentar ?? null,
+          office: "Senador",
+          state: best.id?.UfParlamentar ?? null,
+          city: null,
+          confidence: Math.max(0.86, Math.min(0.98, best.score)),
+          rationale: "Encontrado na base pública do Senado Federal.",
+        };
+      }
+    }
+  } catch (e) {
+    console.warn("[lookup-candidate-ai] senate lookup failed", e);
+  }
+
+  try {
+    const url = `https://dadosabertos.camara.leg.br/api/v2/deputados?nome=${encodeURIComponent(name)}&itens=10&ordem=ASC&ordenarPor=nome`;
+    const resp = await fetch(url, { headers });
+    if (resp.ok) {
+      const json: any = await resp.json().catch(() => null);
+      const best = asArray(json?.dados)
+        .map((d: any) => ({ d, score: similarity(name, String(d?.nome ?? "")) }))
+        .filter((item) => item.d?.nome && item.score >= 0.75)
+        .sort((a, b) => b.score - a.score)[0];
+      if (best) {
+        return {
+          found: true,
+          name: best.d.nome,
+          party: best.d.siglaPartido ?? null,
+          office: "Deputado Federal",
+          state: best.d.siglaUf ?? null,
+          city: null,
+          confidence: Math.max(0.86, Math.min(0.98, best.score)),
+          rationale: "Encontrado na base pública da Câmara dos Deputados.",
+        };
+      }
+    }
+  } catch (e) {
+    console.warn("[lookup-candidate-ai] chamber lookup failed", e);
+  }
+
+  return null;
+}
+
 const SYSTEM = `Você é um especialista em política brasileira. Sua tarefa é identificar
 políticos brasileiros (em qualquer esfera: federal, estadual, municipal) pelo nome,
 mesmo com erros ortográficos, falta de acentos, apelidos ou nomes parciais.
@@ -56,6 +161,13 @@ Deno.serve(async (req) => {
     if (name.length < 3) {
       return new Response(JSON.stringify({ found: false, error: "name too short" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const official = await lookupOfficialSources(name);
+    if (official) {
+      return new Response(JSON.stringify(official), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
