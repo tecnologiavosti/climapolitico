@@ -142,8 +142,48 @@ All colors MUST be HSL.
   .dark body,
   .dark #root {
     background: var(--gradient-app) !important;
+    background-attachment: fixed !important;
     color: hsl(var(--foreground));
   }
+
+  .dark main {
+    background: transparent;
+  }
+
+  /* Overlay sutil para profundidade no dashboard interno */
+  .dark body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(135deg, rgba(255,255,255,0.02), rgba(255,255,255,0));
+    opacity: 0.7;
+    z-index: 0;
+  }
+
+  /* Cards premium sobre o fundo escuro */
+  .dark [class*="rounded-"][class*="border"],
+  .dark .card,
+  .dark [data-card] {
+    backdrop-filter: blur(14px);
+  }
+
+  /* Sidebar com gradiente translúcido */
+  .dark [data-sidebar="sidebar"] {
+    background: linear-gradient(180deg, rgba(6,40,92,0.95) 0%, rgba(11,77,145,0.90) 100%) !important;
+    backdrop-filter: blur(12px);
+  }
+
+  /* Recharts: contraste com fundo escuro */
+  .dark .recharts-cartesian-grid line {
+    stroke: rgba(255,255,255,0.06) !important;
+  }
+  .dark .recharts-cartesian-axis-tick text,
+  .dark .recharts-legend-item-text {
+    fill: #E2E8F0 !important;
+    color: #E2E8F0 !important;
+  }
+
 
 }
 
