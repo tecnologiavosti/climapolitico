@@ -154,7 +154,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   const suggestions = useMemo<NameSuggestion[]>(() => {
     const q = debouncedName.trim();
     if (q.length < 2) return [];
-    return suggestCandidateNames(q, knownNames, 0.72);
+    return suggestCandidateNames(q, knownNames, 0.75);
   }, [debouncedName, knownNames]);
 
   const autoCorrect = suggestions.find((s) => s.similarity >= 0.98) ?? null;
