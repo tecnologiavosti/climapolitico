@@ -66,8 +66,8 @@ const Dashboard = () => {
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { theme, setTheme } = useTheme();
   useSessionHealthCheck();
+
 
   const ADMIN_PATHS = [
     "/dashboard/admin",
