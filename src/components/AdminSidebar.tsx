@@ -1,4 +1,5 @@
 import { NavLink as RRNavLink, Link, useLocation } from "react-router-dom";
+import logoAsset from "@/assets/clima-politico-logo.jpg.asset.json";
 import {
   Shield,
   FileText,
