@@ -2773,38 +2773,71 @@ export type Database = {
       public_candidates_catalog: {
         Row: {
           category: string | null
+          city: string | null
           created_at: string
           description: string | null
           full_name: string
           id: string
           is_active: boolean
+          macro_region: string | null
+          monitorable_networks: string[] | null
+          name_normalized: string | null
           party: string | null
+          party_number: string | null
+          photo_url: string | null
+          popularity_score: number
+          position: string | null
           region: string | null
+          search_tsv: unknown
+          social_links: Json | null
           social_media_link: string | null
+          state: string | null
           updated_at: string
         }
         Insert: {
           category?: string | null
+          city?: string | null
           created_at?: string
           description?: string | null
           full_name: string
           id?: string
           is_active?: boolean
+          macro_region?: string | null
+          monitorable_networks?: string[] | null
+          name_normalized?: string | null
           party?: string | null
+          party_number?: string | null
+          photo_url?: string | null
+          popularity_score?: number
+          position?: string | null
           region?: string | null
+          search_tsv?: unknown
+          social_links?: Json | null
           social_media_link?: string | null
+          state?: string | null
           updated_at?: string
         }
         Update: {
           category?: string | null
+          city?: string | null
           created_at?: string
           description?: string | null
           full_name?: string
           id?: string
           is_active?: boolean
+          macro_region?: string | null
+          monitorable_networks?: string[] | null
+          name_normalized?: string | null
           party?: string | null
+          party_number?: string | null
+          photo_url?: string | null
+          popularity_score?: number
+          position?: string | null
           region?: string | null
+          search_tsv?: unknown
+          social_links?: Json | null
           social_media_link?: string | null
+          state?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -5136,7 +5169,40 @@ export type Database = {
         Args: { p_days?: number }
         Returns: Json
       }
+      search_catalog: {
+        Args: {
+          p_city?: string
+          p_limit?: number
+          p_offset?: number
+          p_order?: string
+          p_party?: string
+          p_position?: string
+          p_region?: string
+          p_state?: string
+          q?: string
+        }
+        Returns: {
+          cargo: string
+          city: string
+          description: string
+          full_name: string
+          id: string
+          macro_region: string
+          monitorable_networks: string[]
+          party: string
+          party_number: string
+          photo_url: string
+          popularity_score: number
+          region: string
+          social_links: Json
+          social_media_link: string
+          state: string
+          total_count: number
+        }[]
+      }
       should_skip_collector: { Args: { _name: string }; Returns: boolean }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
       social_interaction_political_score: {
         Args: {
           _author?: string
@@ -5146,6 +5212,7 @@ export type Database = {
         }
         Returns: Json
       }
+      uf_to_macro_region: { Args: { uf: string }; Returns: string }
       unaccent: { Args: { "": string }; Returns: string }
       verify_api_key: {
         Args: { _required_scope: string; _token: string }

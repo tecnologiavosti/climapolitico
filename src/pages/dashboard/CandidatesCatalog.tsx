@@ -1,54 +1,56 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Search, Plus, Check, Users, Loader2, ShieldCheck } from "lucide-react";
+import { Users, Loader2, ShieldCheck, Plus } from "lucide-react";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
-import { HelpTooltip } from "@/components/ui/help-tooltip";
+import { useCatalogSearch, type CatalogFilters as Filters, type CatalogRow } from "@/hooks/useCatalogSearch";
+import { CatalogFilters } from "@/components/dashboard/CatalogFilters";
+import { CandidateCatalogCard } from "@/components/dashboard/CandidateCatalogCard";
+
+const POSITIONS: [string, string][] = [
+  ["presidente", "Presidente"], ["vice_presidente", "Vice-presidente"],
+  ["ministro", "Ministro"], ["governador", "Governador"], ["vice_governador", "Vice-governador"],
+  ["senador", "Senador"], ["deputado_federal", "Deputado Federal"],
+  ["deputado_estadual", "Deputado Estadual"], ["deputado_distrital", "Deputado Distrital"],
+  ["prefeito", "Prefeito"], ["vice_prefeito", "Vice-prefeito"], ["vereador", "Vereador"],
+  ["presidente_partido", "Presidente de Partido"], ["ex_candidato", "Ex-candidato"],
+];
+
+function useDebounced<T>(value: T, ms = 300): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
 
 export default function CandidatesCatalog() {
   const queryClient = useQueryClient();
-  const [searchTerm, setSearchTerm] = useState("");
   const { isAdmin } = useAdminCheck();
-  const [addOpen, setAddOpen] = useState(false);
-  const [newCand, setNewCand] = useState({
-    full_name: "",
-    party: "",
-    region: "",
-    description: "",
-    social_media_link: "",
-  });
+  const [rawFilters, setRawFilters] = useState<Filters>({ order: "relevance" });
+  const debouncedQ = useDebounced(rawFilters.q ?? "", 300);
+  const filters = useMemo<Filters>(() => ({ ...rawFilters, q: debouncedQ }), [rawFilters, debouncedQ]);
 
-  const { data: catalog = [], isLoading } = useQuery({
-    queryKey: ["public-catalog"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("public_candidates_catalog")
-        .select("*")
-        .eq("is_active", true)
-        .order("full_name");
-      if (error) throw error;
-      return data;
-    },
-  });
+  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useCatalogSearch(filters);
+  const rows = useMemo(() => data?.pages.flatMap((p) => p.rows) ?? [], [data]);
+  const total = data?.pages[0]?.total ?? 0;
 
   const { data: myCandidates = [] } = useQuery({
     queryKey: ["my-candidates-names"],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
-      const { data, error } = await supabase
-        .from("candidates")
-        .select("full_name")
-        .eq("user_id", user.id);
+      const { data, error } = await supabase.from("candidates").select("full_name").eq("user_id", user.id);
       if (error) throw error;
       return data.map((c) => c.full_name.toLowerCase());
     },
@@ -59,34 +61,25 @@ export default function CandidatesCatalog() {
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
-      const { data } = await supabase
-        .from("subscriptions")
-        .select("*")
-        .eq("user_id", user.id)
-        .single();
+      const { data } = await supabase.from("subscriptions").select("*").eq("user_id", user.id).single();
       return data;
     },
   });
 
   const adoptMutation = useMutation({
-    mutationFn: async (candidate: typeof catalog[number]) => {
+    mutationFn: async (candidate: CatalogRow) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Não autenticado");
-
-      const { data: existing } = await supabase
-        .from("candidates")
-        .select("id")
-        .eq("user_id", user.id);
-
+      const { data: existing } = await supabase.from("candidates").select("id").eq("user_id", user.id);
       if (subscription && existing && existing.length >= subscription.max_candidates) {
         throw new Error(`Limite de ${subscription.max_candidates} candidatos atingido. Faça upgrade do plano.`);
       }
-
+      const region = [candidate.city, candidate.state].filter(Boolean).join(", ") || candidate.region || candidate.state || null;
       const { error } = await supabase.from("candidates").insert({
         user_id: user.id,
         full_name: candidate.full_name,
         party: candidate.party,
-        region: candidate.region,
+        region,
         social_media_link: candidate.social_media_link,
       });
       if (error) throw error;
@@ -99,7 +92,27 @@ export default function CandidatesCatalog() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  // Admin-only: adicionar novo candidato ao catálogo público
+  // Infinite scroll sentinel
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+        fetchNextPage();
+      }
+    }, { rootMargin: "400px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  // Admin create
+  const [addOpen, setAddOpen] = useState(false);
+  const [newCand, setNewCand] = useState({
+    full_name: "", party: "", party_number: "", position: "", state: "", city: "",
+    photo_url: "", description: "", social_media_link: "",
+  });
+
   const createCatalogMutation = useMutation({
     mutationFn: async () => {
       if (!isAdmin) throw new Error("Apenas administradores podem adicionar ao catálogo");
@@ -107,31 +120,28 @@ export default function CandidatesCatalog() {
       const { error } = await supabase.from("public_candidates_catalog").insert({
         full_name: newCand.full_name.trim(),
         party: newCand.party.trim() || null,
-        region: newCand.region.trim() || null,
+        party_number: newCand.party_number.trim() || null,
+        position: newCand.position || null,
+        state: newCand.state.trim().toUpperCase() || null,
+        city: newCand.city.trim() || null,
+        photo_url: newCand.photo_url.trim() || null,
         description: newCand.description.trim() || null,
         social_media_link: newCand.social_media_link.trim() || null,
         is_active: true,
-      });
+      } as any);
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["public-catalog"] });
+      queryClient.invalidateQueries({ queryKey: ["catalog-search"] });
       toast.success("Candidato adicionado ao catálogo público!");
       setAddOpen(false);
-      setNewCand({ full_name: "", party: "", region: "", description: "", social_media_link: "" });
+      setNewCand({ full_name: "", party: "", party_number: "", position: "", state: "", city: "", photo_url: "", description: "", social_media_link: "" });
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const filtered = catalog.filter(
-    (c) =>
-      c.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (c.party && c.party.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (c.region && c.region.toLowerCase().includes(searchTerm.toLowerCase())),
-  );
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
@@ -139,20 +149,18 @@ export default function CandidatesCatalog() {
             Catálogo de Candidatos
           </h1>
           <p className="text-muted-foreground mt-1">
-            Adicione candidatos do catálogo público à sua conta para iniciar o monitoramento
+            Base política nacional — busque, filtre e adicione candidatos ao seu monitoramento
           </p>
         </div>
         {isAdmin && (
           <Dialog open={addOpen} onOpenChange={setAddOpen}>
             <DialogTrigger asChild>
-              <HelpTooltip text="Só admin: cadastra um candidato novo pra todo mundo poder usar.">
-                <Button>
-                  <ShieldCheck className="h-4 w-4 mr-2" />
-                  Adicionar ao catálogo
-                </Button>
-              </HelpTooltip>
+              <Button>
+                <ShieldCheck className="h-4 w-4 mr-2" />
+                Adicionar ao catálogo
+              </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Novo candidato no catálogo público</DialogTitle>
                 <DialogDescription>
@@ -161,54 +169,52 @@ export default function CandidatesCatalog() {
               </DialogHeader>
               <div className="space-y-3">
                 <div>
-                  <Label htmlFor="cat-name">Nome completo *</Label>
-                  <Input
-                    id="cat-name"
-                    value={newCand.full_name}
-                    onChange={(e) => setNewCand({ ...newCand, full_name: e.target.value })}
-                  />
+                  <Label>Nome completo *</Label>
+                  <Input value={newCand.full_name} onChange={(e) => setNewCand({ ...newCand, full_name: e.target.value })} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label htmlFor="cat-party">Partido</Label>
-                    <Input
-                      id="cat-party"
-                      value={newCand.party}
-                      onChange={(e) => setNewCand({ ...newCand, party: e.target.value })}
-                    />
+                    <Label>Cargo</Label>
+                    <Select value={newCand.position || undefined} onValueChange={(v) => setNewCand({ ...newCand, position: v })}>
+                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectContent>
+                        {POSITIONS.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
-                    <Label htmlFor="cat-region">Região</Label>
-                    <Input
-                      id="cat-region"
-                      value={newCand.region}
-                      onChange={(e) => setNewCand({ ...newCand, region: e.target.value })}
-                    />
+                    <Label>Partido</Label>
+                    <Input value={newCand.party} onChange={(e) => setNewCand({ ...newCand, party: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label>Número do partido</Label>
+                    <Input value={newCand.party_number} onChange={(e) => setNewCand({ ...newCand, party_number: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label>UF</Label>
+                    <Input maxLength={2} value={newCand.state} onChange={(e) => setNewCand({ ...newCand, state: e.target.value.toUpperCase() })} />
+                  </div>
+                  <div>
+                    <Label>Município</Label>
+                    <Input value={newCand.city} onChange={(e) => setNewCand({ ...newCand, city: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label>Foto (URL)</Label>
+                    <Input value={newCand.photo_url} onChange={(e) => setNewCand({ ...newCand, photo_url: e.target.value })} />
                   </div>
                 </div>
                 <div>
-                  <Label htmlFor="cat-social">Link de rede social</Label>
-                  <Input
-                    id="cat-social"
-                    value={newCand.social_media_link}
-                    onChange={(e) => setNewCand({ ...newCand, social_media_link: e.target.value })}
-                  />
+                  <Label>Link rede social</Label>
+                  <Input value={newCand.social_media_link} onChange={(e) => setNewCand({ ...newCand, social_media_link: e.target.value })} />
                 </div>
                 <div>
-                  <Label htmlFor="cat-desc">Descrição</Label>
-                  <Textarea
-                    id="cat-desc"
-                    value={newCand.description}
-                    onChange={(e) => setNewCand({ ...newCand, description: e.target.value })}
-                  />
+                  <Label>Descrição</Label>
+                  <Textarea value={newCand.description} onChange={(e) => setNewCand({ ...newCand, description: e.target.value })} />
                 </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setAddOpen(false)}>Cancelar</Button>
-                <Button
-                  onClick={() => createCatalogMutation.mutate()}
-                  disabled={createCatalogMutation.isPending}
-                >
+                <Button onClick={() => createCatalogMutation.mutate()} disabled={createCatalogMutation.isPending}>
                   {createCatalogMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                   Salvar
                 </Button>
@@ -218,73 +224,34 @@ export default function CandidatesCatalog() {
         )}
       </div>
 
-      <Card>
-        <CardContent className="pt-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <HelpTooltip text="Digite aqui pra achar um candidato pelo nome, partido ou região.">
-              <Input
-                placeholder="Buscar por nome, partido ou região..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </HelpTooltip>
-          </div>
-        </CardContent>
-      </Card>
+      <CatalogFilters filters={rawFilters} onChange={setRawFilters} totalResults={isLoading ? undefined : total} />
 
       {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Skeleton key={i} className="h-48 w-full" />
-          ))}
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-56 w-full" />)}
         </div>
-      ) : filtered.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            Nenhum candidato encontrado.
-          </CardContent>
-        </Card>
+      ) : rows.length === 0 ? (
+        <Card><CardContent className="py-12 text-center text-muted-foreground">Nenhum candidato encontrado com esses filtros.</CardContent></Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((c) => {
-            const alreadyAdded = myCandidates.includes(c.full_name.toLowerCase());
-            return (
-              <Card key={c.id} className="hover-lift transition-all">
-                <CardHeader>
-                  <CardTitle className="text-lg">{c.full_name}</CardTitle>
-                  <CardDescription className="flex flex-wrap gap-2">
-                    {c.party && <Badge variant="secondary">{c.party}</Badge>}
-                    {c.region && <Badge variant="outline">{c.region}</Badge>}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {c.description && (
-                    <p className="text-sm text-muted-foreground line-clamp-2">{c.description}</p>
-                  )}
-                  <HelpTooltip text={alreadyAdded ? "Esse já está na sua conta. Pra mexer nele, vai na aba Candidatos." : "Clique aqui pra começar a acompanhar esse candidato na sua conta."}>
-                    <Button
-                      className="w-full"
-                      variant={alreadyAdded ? "outline" : "default"}
-                      disabled={alreadyAdded || adoptMutation.isPending}
-                      onClick={() => adoptMutation.mutate(c)}
-                    >
-                      {adoptMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : alreadyAdded ? (
-                        <Check className="h-4 w-4 mr-2" />
-                      ) : (
-                        <Plus className="h-4 w-4 mr-2" />
-                      )}
-                      {alreadyAdded ? "Já adicionado" : "Adicionar à minha conta"}
-                    </Button>
-                  </HelpTooltip>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+        <>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {rows.map((c) => (
+              <CandidateCatalogCard
+                key={c.id}
+                candidate={c}
+                alreadyAdded={myCandidates.includes(c.full_name.toLowerCase())}
+                isAdding={adoptMutation.isPending && adoptMutation.variables?.id === c.id}
+                onAdd={(cand) => adoptMutation.mutate(cand)}
+              />
+            ))}
+          </div>
+          <div ref={sentinelRef} className="h-12 flex items-center justify-center">
+            {isFetchingNextPage && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
+            {!hasNextPage && rows.length > 0 && (
+              <span className="text-xs text-muted-foreground">Fim dos resultados</span>
+            )}
+          </div>
+        </>
       )}
     </div>
   );
