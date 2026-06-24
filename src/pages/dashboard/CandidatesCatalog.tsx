@@ -33,6 +33,7 @@ export default function CandidatesCatalog() {
   const rows = data?.rows ?? [];
   const total = data?.total ?? 0;
   const suggestions = data?.suggestions ?? [];
+  const normalized = data?.normalized ?? {};
   const page = filters.page ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -103,6 +104,16 @@ export default function CandidatesCatalog() {
         onChange={setRawFilters}
         totalResults={isLoading ? undefined : total}
       />
+
+      {Object.keys(normalized).length > 0 && (
+        <div className="text-xs text-muted-foreground bg-muted/50 border rounded-md px-3 py-2 flex items-center gap-2">
+          <Sparkles className="h-3 w-3 text-primary" />
+          IA corrigiu sua busca para:
+          {normalized.q && <span className="font-medium text-foreground">"{normalized.q}"</span>}
+          {normalized.municipio && <span className="font-medium text-foreground">{normalized.municipio}</span>}
+        </div>
+      )}
+
 
       {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
