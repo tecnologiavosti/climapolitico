@@ -565,6 +565,20 @@ export default function Candidates() {
   });
 
   const handleAddCandidate = (payload: AddCandidatePayload) => {
+    const match = findDuplicateCandidate(
+      payload.fullName,
+      (candidates ?? []).map((c: any) => ({ id: c.id, full_name: c.full_name })),
+    );
+    if (match) {
+      if (match.exact) {
+        toast.error(
+          `Candidato já cadastrado: "${match.candidate.full_name}". Diferença apenas de acento/maiúsculas/pontuação.`,
+        );
+        return;
+      }
+      setDuplicateMatch({ match, payload });
+      return;
+    }
     addCandidateMutation.mutate(payload);
   };
 
