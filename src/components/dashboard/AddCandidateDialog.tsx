@@ -258,7 +258,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   const scopeBadge = useMemo(() => {
     if (scope === "national") return { label: "Atuação nacional · cobertura Brasil", cls: "bg-gradient-to-r from-emerald-500/15 to-cyan-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30" };
     if (scope === "state") return { label: "Monitoramento estadual", cls: "bg-gradient-to-r from-blue-500/15 to-indigo-500/15 text-blue-600 dark:text-blue-300 border-blue-500/30" };
-    if (scope === "municipal") return { label: "Base municipal", cls: "bg-gradient-to-r from-amber-500/15 to-orange-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30" };
+    if (scope === "municipal") return { label: "Monitoramento municipal", cls: "bg-gradient-to-r from-amber-500/15 to-orange-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30" };
     return null;
   }, [scope]);
 
@@ -521,7 +521,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                   {helperText && <p className="text-xs text-muted-foreground">{helperText}</p>}
                 </Field>
               ) : (
-                <Field label="Base municipal" error={errors.state || errors.city} required>
+                <Field label="Estado e cidade" error={errors.state || errors.city} required>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <Select value={state} onValueChange={setState} disabled={isPending}>
                       <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Estado" /></SelectTrigger>
