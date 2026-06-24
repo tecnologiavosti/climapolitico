@@ -180,7 +180,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   };
 
   const reset = () => {
-    setFullName(""); setParty(""); setPosition(""); setState(""); setCity(""); setErrors({});
+    setFullName(""); setDebouncedName(""); setParty(""); setPosition(""); setState(""); setCity(""); setErrors({});
   };
 
   const handleSubmit = (e: React.FormEvent) => {
