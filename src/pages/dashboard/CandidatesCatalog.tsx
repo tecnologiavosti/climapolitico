@@ -29,13 +29,15 @@ export default function CandidatesCatalog() {
     [rawFilters, debouncedQ, debouncedMuni]
   );
 
-  const { data, isLoading, isFetching } = useCatalogSearch(filters);
+  const { data, isLoading, isFetching, isSuccess } = useCatalogSearch(filters);
   const rows = data?.rows ?? [];
   const total = data?.total ?? 0;
   const suggestions = data?.suggestions ?? [];
   const normalized = data?.normalized ?? {};
+  const notice = data?.notice ?? null;
   const page = filters.page ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const busy = isLoading || isFetching;
 
   const { data: myCandidates = [] } = useQuery({
     queryKey: ["my-candidates-names"],
@@ -102,8 +104,14 @@ export default function CandidatesCatalog() {
       <CatalogFilters
         filters={rawFilters}
         onChange={setRawFilters}
-        totalResults={isLoading ? undefined : total}
+        totalResults={busy || !isSuccess ? undefined : total}
       />
+
+      {notice && (
+        <div className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 rounded-md px-3 py-2">
+          {notice}
+        </div>
+      )}
 
       {Object.keys(normalized).length > 0 && (
         <div className="text-xs text-muted-foreground bg-muted/50 border rounded-md px-3 py-2 flex items-center gap-2">
@@ -115,11 +123,14 @@ export default function CandidatesCatalog() {
       )}
 
 
-      {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-56 w-full" />)}
+      {busy ? (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground text-center">Consultando base nacional do TSE...</p>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-56 w-full" />)}
+          </div>
         </div>
-      ) : rows.length === 0 ? (
+      ) : isSuccess && rows.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center space-y-4">
             <p className="text-muted-foreground">Nenhum político encontrado com esses filtros.</p>

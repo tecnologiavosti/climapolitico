@@ -47,21 +47,22 @@ export const PAGE_SIZE = 50;
 
 export function useCatalogSearch(filters: CatalogFilters) {
   return useQuery({
-    queryKey: ["politicians-ai-search", filters],
+    queryKey: ["tse-search", filters],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("search-politicians-ai", {
-        body: {
-          q: filters.q?.trim() || null,
-          cargo: filters.cargo?.length ? filters.cargo : null,
-          partido: filters.partido?.length ? filters.partido : null,
-          regiao: filters.regiao?.length ? filters.regiao : null,
-          estado: filters.estado?.length ? filters.estado : null,
-          municipio: filters.municipio?.trim() || null,
-          onlyEleitos: !!filters.onlyEleitos,
-          page: filters.page ?? 0,
-        },
-      });
+      const payload = {
+        q: filters.q?.trim() || null,
+        cargo: filters.cargo?.length ? filters.cargo : null,
+        partido: filters.partido?.length ? filters.partido : null,
+        regiao: filters.regiao?.length ? filters.regiao : null,
+        estado: filters.estado?.length ? filters.estado : null,
+        municipio: filters.municipio?.trim() || null,
+        onlyEleitos: !!filters.onlyEleitos,
+        page: filters.page ?? 0,
+      };
+      console.log("[catalog] Filtros enviados:", payload);
+      const { data, error } = await supabase.functions.invoke("tse-search", { body: payload });
       if (error) throw error;
+      console.log("[catalog] Resultados TSE:", data);
 
       const rows = (data?.rows ?? []) as PoliticianRow[];
       return {
@@ -69,9 +70,10 @@ export function useCatalogSearch(filters: CatalogFilters) {
         total: Number(data?.total ?? 0),
         suggestions: (data?.suggestions ?? []) as Suggestion[],
         normalized: (data?.normalized ?? {}) as Record<string, string>,
+        notice: (data?.notice ?? null) as string | null,
         page: data?.page ?? 0,
       };
     },
-    staleTime: 5 * 60_000,
+    staleTime: 60_000,
   });
 }
