@@ -133,7 +133,26 @@ export const KNOWN_POLITICIANS: KnownPolitician[] = [
   { fullName: "Kim Kataguiri", aliases: ["kim", "kim kataguiri"], party: "UNIÃO", position: "Deputado Federal", state: "SP" },
   { fullName: "Marcel van Hattem", aliases: ["marcel", "van hattem", "marcel van hattem"], party: "NOVO", position: "Deputado Federal", state: "RS" },
   { fullName: "Eduardo Paes", aliases: ["eduardo paes", "paes"], party: "PSD", position: "Prefeito", state: "RJ" },
-  { fullName: "Ricardo Nunes", aliases: ["ricardo nunes"], party: "MDB", position: "Prefeito", state: "SP" },
+  { fullName: "Ricardo Nunes", aliases: ["ricardo nunes", "nunes"], party: "MDB", position: "Prefeito", state: "SP" },
+  // Prefeitos de capitais e cidades-chave
+  { fullName: "Gustavo Martinelli", aliases: ["martinelli", "gustavo marti", "prefeito de jundiai", "prefeito jundiai"], party: "REPUBLICANOS", position: "Prefeito", state: "SP" },
+  { fullName: "Fuad Noman", aliases: ["fuad", "fuad noman", "prefeito de bh"], party: "PSD", position: "Prefeito", state: "MG" },
+  { fullName: "Topázio Neto", aliases: ["topazio", "topazio neto"], party: "PSD", position: "Prefeito", state: "SC" },
+  { fullName: "Sebastião Melo", aliases: ["melo", "sebastiao melo"], party: "MDB", position: "Prefeito", state: "RS" },
+  { fullName: "Eduardo Pimentel", aliases: ["pimentel", "eduardo pimentel"], party: "PSD", position: "Prefeito", state: "PR" },
+  { fullName: "Bruno Reis", aliases: ["bruno reis", "prefeito salvador"], party: "UNIÃO", position: "Prefeito", state: "BA" },
+  { fullName: "João Campos", aliases: ["joao campos", "prefeito recife"], party: "PSB", position: "Prefeito", state: "PE" },
+  { fullName: "Evandro Leitão", aliases: ["evandro", "evandro leitao"], party: "PT", position: "Prefeito", state: "CE" },
+  { fullName: "David Almeida", aliases: ["david almeida", "prefeito manaus"], party: "AVANTE", position: "Prefeito", state: "AM" },
+  { fullName: "Igor Normando", aliases: ["normando", "igor normando"], party: "MDB", position: "Prefeito", state: "PA" },
+  // Governadores adicionais
+  { fullName: "Rafael Fonteles", aliases: ["fonteles", "rafael fonteles"], party: "PT", position: "Governador", state: "PI" },
+  { fullName: "Fátima Bezerra", aliases: ["fatima", "fatima bezerra"], party: "PT", position: "Governadora", state: "RN" },
+  { fullName: "Paulo Dantas", aliases: ["paulo dantas"], party: "MDB", position: "Governador", state: "AL" },
+  { fullName: "Renato Casagrande", aliases: ["casagrande"], party: "PSB", position: "Governador", state: "ES" },
+  { fullName: "Carlos Brandão", aliases: ["brandao", "carlos brandao"], party: "PSB", position: "Governador", state: "MA" },
+  { fullName: "Jorginho Mello", aliases: ["jorginho mello"], party: "PL", position: "Governador", state: "SC" },
+  { fullName: "Ratinho Junior", aliases: ["ratinho", "ratinho jr"], party: "PSD", position: "Governador", state: "PR" },
 ];
 
 export interface NameSuggestion {
