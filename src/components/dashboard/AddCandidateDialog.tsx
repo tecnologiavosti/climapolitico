@@ -143,6 +143,17 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
 
   const autoCorrect = suggestions.find((s) => s.similarity >= 0.98) ?? null;
 
+  const applySuggestion = (s: NameSuggestion) => {
+    setFullName(s.fullName);
+    if (s.meta?.party && !party) setParty(s.meta.party);
+    if (s.meta?.position && !position) {
+      setPosition(s.meta.position);
+      const next = scopeOf(s.meta.position);
+      if (next === "national") { setState(""); setCity(""); }
+    }
+    if (s.meta?.state && !state) setState(s.meta.state);
+  };
+
   const scope = scopeOf(position);
   const canSubmit =
     !!fullName.trim() && !!party && !!position && !isPending &&
