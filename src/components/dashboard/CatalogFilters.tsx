@@ -18,6 +18,9 @@ const POSITIONS: [string, string][] = [
   ["prefeito", "Prefeito"],
   ["vice_prefeito", "Vice-prefeito"],
   ["vereador", "Vereador"],
+  ["ministro", "Ministro de Estado"],
+  ["presidente_partido", "Presidente de Partido"],
+  ["pre_candidato", "Pré-candidato 2026"],
 ];
 
 const REGIONS: [string, string][] = [
