@@ -175,7 +175,7 @@ export default function CandidatesCatalog() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label>Cargo</Label>
-                    <Select value={newCand.position} onValueChange={(v) => setNewCand({ ...newCand, position: v })}>
+                    <Select value={newCand.position || undefined} onValueChange={(v) => setNewCand({ ...newCand, position: v })}>
                       <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                       <SelectContent>
                         {POSITIONS.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
