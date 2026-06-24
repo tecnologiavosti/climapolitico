@@ -68,11 +68,15 @@ const POSITIONS: { name: string; Icon: React.ComponentType<{ className?: string 
   { name: "Deputado Estadual", Icon: FileText },
   { name: "Deputado Distrital", Icon: FileText },
   { name: "Vereador", Icon: User },
-  // Outros
+  // Partidário
   { name: "Presidente de partido", Icon: Landmark },
-  { name: "Ex-candidato", Icon: User },
-  { name: "Influenciador político", Icon: User },
-  { name: "Jornalista político", Icon: User },
+];
+
+type ProfileType = "politico" | "figura" | "midia";
+const PROFILE_TYPES: { id: ProfileType; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: "politico", label: "Político", Icon: Landmark },
+  { id: "figura", label: "Figura Pública", Icon: User },
+  { id: "midia", label: "Mídia/Jornalismo", Icon: FileText },
 ];
 
 const NATIONAL_POSITIONS = new Set(["Presidente", "Vice-presidente", "Ministro", "Presidente de partido"]);
