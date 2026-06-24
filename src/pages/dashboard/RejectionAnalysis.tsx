@@ -244,7 +244,7 @@ const RejectionAnalysisPage = () => {
                 </p>
                 <p className="text-2xl font-bold mt-2 tracking-wide">{level.label}</p>
                 <p className="text-xs opacity-80 mt-3 flex items-center justify-center gap-1.5">
-                  <Sparkles className="h-3.5 w-3.5" /> Inferência estratégica por IA — sem uso de menções coletadas
+                  <Sparkles className="h-3.5 w-3.5" /> Leitura estratégica IA · {PERIOD_LABEL[period]}
                 </p>
               </div>
             </CardContent>
