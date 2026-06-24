@@ -209,7 +209,7 @@ const RejectionAnalysisPage = () => {
             exit={{ opacity: 0, scale: 0.98 }}
             transition={{ duration: 0.3 }}
           >
-            <RejectionLoading candidateName={candidateName} periodLabel="Inferência IA" />
+            <RejectionLoading candidateName={candidateName} periodLabel={PERIOD_LABEL[period]} />
           </motion.div>
         )}
       </AnimatePresence>
