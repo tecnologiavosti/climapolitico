@@ -371,7 +371,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
             {!autoCorrect && suggestions.length > 0 && (
               <div className="mt-2 rounded-xl border border-border/70 bg-popover/95 backdrop-blur shadow-sm overflow-hidden animate-in fade-in-0 slide-in-from-top-1 duration-200">
                 <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/40">
-                  Sugestões encontradas
+                  Você quis dizer:
                 </div>
                 <ul className="divide-y divide-border/50">
                   {suggestions.map((s) => (
