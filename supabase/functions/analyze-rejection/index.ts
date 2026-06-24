@@ -64,8 +64,7 @@ serve(async (req) => {
 - Nome: ${candidate.full_name}
 - Partido: ${candidate.party || 'não informado'}
 - Região/UF: ${candidate.region || 'não informada'}
-- Cargo/posição: ${(candidate as any).position || 'não informado'}
-- Ideologia presumida: ${(candidate as any).ideology || 'inferir a partir do partido e perfil público'}
+- Cargo/posição e ideologia: inferir a partir do partido, região e perfil público brasileiro contemporâneo.
 
 TAREFA — INTELIGÊNCIA PREDITIVA DE REJEIÇÃO (sem usar dados coletados):
 
