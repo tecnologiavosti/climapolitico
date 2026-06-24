@@ -78,6 +78,8 @@ function scoreColor(n: number): string {
 const RejectionAnalysisPage = () => {
   const { user } = useAuth();
   const [selectedCandidate, setSelectedCandidate] = useState<string>("");
+  const [period, setPeriod] = useState<PeriodKey>("30d");
+  const [customRange, setCustomRange] = useState<DateRange | undefined>();
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -101,11 +103,20 @@ const RejectionAnalysisPage = () => {
       toast.error("Selecione um candidato");
       return;
     }
+    if (period === "custom" && (!customRange?.from || !customRange?.to)) {
+      toast.error("Selecione o intervalo personalizado");
+      return;
+    }
     setIsAnalyzing(true);
     setAnalysisResult(null);
     try {
       const { data, error } = await supabase.functions.invoke('analyze-rejection', {
-        body: { candidateId: selectedCandidate },
+        body: {
+          candidateId: selectedCandidate,
+          period,
+          customStart: customRange?.from?.toISOString(),
+          customEnd: customRange?.to?.toISOString(),
+        },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -130,7 +141,7 @@ const RejectionAnalysisPage = () => {
           Mapa de Rejeição Política
         </h1>
         <p className="text-muted-foreground mt-1">
-          Inteligência preditiva: score de rejeição inferido por IA a partir do perfil político, partido, ideologia e arquétipo narrativo.
+          Leitura estratégica IA considerando o intervalo escolhido — recalcula narrativas, polarização e desgaste conforme o período.
         </p>
       </div>
 
