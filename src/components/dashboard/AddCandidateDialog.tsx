@@ -108,6 +108,7 @@ const STATE_NAMES: Record<string, string> = {
 const ALL_STATES = Object.keys(STATE_NAMES).sort();
 
 export type AddCandidatePayload = {
+  profileType: "politician";
   fullName: string;
   party: string;
   position: string;
@@ -298,6 +299,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
 
     const region = scope === "national" ? "Brasil" : (STATE_TO_REGION[state] ?? "");
     onSubmit({
+      profileType: "politician",
       fullName, party, position, region,
       state,
       city: city.trim() || undefined,
