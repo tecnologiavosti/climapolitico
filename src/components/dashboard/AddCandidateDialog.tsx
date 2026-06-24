@@ -13,7 +13,7 @@ import {
   Sparkles, Check, ChevronsUpDown, Wand2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { nameSimilarity, normalizeCandidateName } from "@/lib/candidateNameNormalizer";
+import { normalizeCandidateName, suggestCandidateNames, type NameSuggestion } from "@/lib/candidateNameNormalizer";
 
 type Party = { sigla: string; nome: string; numero: number };
 
