@@ -8,12 +8,24 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { DateRangePicker } from "@/components/DateRangePicker";
+import type { DateRange } from "react-day-picker";
 import {
   AlertTriangle, Brain, Lightbulb, Users, Flame,
   MessageSquareQuote, Megaphone, Target, TrendingDown, RefreshCw, Sparkles
 } from "lucide-react";
 import { toast } from "sonner";
 import RejectionLoading from "@/components/dashboard/RejectionLoading";
+
+type PeriodKey = "7d" | "30d" | "90d" | "1y" | "custom";
+
+const PERIOD_LABEL: Record<PeriodKey, string> = {
+  "7d": "Últimos 7 dias",
+  "30d": "Últimos 30 dias",
+  "90d": "Últimos 90 dias",
+  "1y": "Último ano",
+  "custom": "Personalizado",
+};
 
 interface Components {
   polarizacao: number;
