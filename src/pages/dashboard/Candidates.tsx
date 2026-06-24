@@ -20,6 +20,7 @@ import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, Chevron
 // ArrowUpRight, ArrowDownRight, Minus removidos temporariamente (coluna Tendência oculta)
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 import { AddCandidateDialog, type AddCandidatePayload } from "@/components/dashboard/AddCandidateDialog";
+import { findDuplicateCandidate, type DuplicateMatch } from "@/lib/candidateNameNormalizer";
 
 // Zod validation schema
 const urlOpt = z.string().trim().refine((val) => !val || val.startsWith("http://") || val.startsWith("https://"), {
