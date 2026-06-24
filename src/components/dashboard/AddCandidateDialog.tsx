@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -72,16 +72,10 @@ const POSITIONS: { name: string; Icon: React.ComponentType<{ className?: string 
   { name: "Presidente de partido", Icon: Landmark },
 ];
 
-type ProfileType = "politico" | "figura" | "midia";
-const PROFILE_TYPES: { id: ProfileType; label: string; Icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: "politico", label: "Político", Icon: Landmark },
-  { id: "figura", label: "Figura Pública", Icon: User },
-  { id: "midia", label: "Mídia/Jornalismo", Icon: FileText },
-];
-
 const NATIONAL_POSITIONS = new Set(["Presidente", "Vice-presidente", "Ministro", "Presidente de partido"]);
 const STATE_POSITIONS = new Set(["Governador", "Vice-governador", "Secretário Estadual", "Senador", "Deputado Federal", "Deputado Estadual", "Deputado Distrital"]);
 const MUNICIPAL_POSITIONS = new Set(["Prefeito", "Vice-prefeito", "Secretário Municipal", "Vereador"]);
+const VALID_POSITIONS = new Set(POSITIONS.map((p) => p.name));
 
 type Scope = "national" | "state" | "municipal" | "none";
 const scopeOf = (p: string): Scope =>
@@ -138,7 +132,6 @@ interface Props {
 export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onSubmit, knownNames = [] }: Props) {
   const [fullName, setFullName] = useState("");
   const [debouncedName, setDebouncedName] = useState("");
-  const [profileType, setProfileType] = useState<ProfileType>("politico");
   const [party, setParty] = useState("");
   const [position, setPosition] = useState("");
   const [state, setState] = useState("");
@@ -161,26 +154,27 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
 
   const applySuggestion = (s: NameSuggestion) => {
     setFullName(s.fullName);
-    if (s.meta?.party && !party) setParty(s.meta.party);
-    if (s.meta?.position && !position) {
+    if (s.meta?.party) setParty(s.meta.party);
+    if (s.meta?.position && VALID_POSITIONS.has(s.meta.position)) {
       setPosition(s.meta.position);
       const next = scopeOf(s.meta.position);
       if (next === "national") { setState(""); setCity(""); }
     }
-    if (s.meta?.state && !state) setState(s.meta.state);
+    if (s.meta?.state) setState(s.meta.state);
+    if (s.meta?.city) setCity(s.meta.city);
   };
 
   // Match exato no catálogo (>= 95%) — usado para card "Candidato identificado"
   const catalogMatch = useMemo(() => {
     const top = suggestions[0];
+    if (top && normalizeCandidateName(fullName) !== normalizeCandidateName(top.fullName)) return null;
     if (top && top.similarity >= 0.95 && top.meta) return top;
     return null;
-  }, [suggestions]);
+  }, [fullName, suggestions]);
 
   // Debug
   useEffect(() => {
     if (!debouncedName.trim()) return;
-    // eslint-disable-next-line no-console
     console.log("[Candidate metadata]", {
       name: debouncedName,
       foundInCatalog: !!catalogMatch,
@@ -203,6 +197,19 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   const [aiLookup, setAiLookup] = useState<AiLookup | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
 
+  const hydrateFromAiLookup = useCallback((lookup: AiLookup) => {
+    if (!lookup.found || (lookup.confidence ?? 0) <= 0.8) return;
+    if (lookup.name) setFullName(lookup.name);
+    if (lookup.party) setParty(lookup.party);
+    if (lookup.office && VALID_POSITIONS.has(lookup.office)) {
+      setPosition(lookup.office);
+      const next = scopeOf(lookup.office);
+      if (next === "national") { setState(""); setCity(""); }
+    }
+    if (lookup.state) setState(lookup.state);
+    if (lookup.city) setCity(lookup.city);
+  }, []);
+
   useEffect(() => {
     const q = debouncedName.trim();
     setAiLookup(null);
@@ -224,8 +231,9 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
           console.warn("[lookup-candidate-ai] error", error);
           setAiLookup(null);
         } else {
-          setAiLookup(data as AiLookup);
-          // eslint-disable-next-line no-console
+          const lookup = data as AiLookup;
+          setAiLookup(lookup);
+          hydrateFromAiLookup(lookup);
           console.log("[Candidate AI lookup]", { name: q, result: data });
         }
       } finally {
@@ -233,28 +241,19 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
       }
     })();
     return () => { cancelled = true; };
-  }, [debouncedName, catalogMatch, suggestions.length, party, position, state]);
+  }, [debouncedName, catalogMatch, suggestions.length, party, position, state, hydrateFromAiLookup]);
 
   const applyAiLookup = () => {
     if (!aiLookup || !aiLookup.found) return;
-    if (aiLookup.name) setFullName(aiLookup.name);
-    if (aiLookup.party) setParty(aiLookup.party);
-    if (aiLookup.office) {
-      setPosition(aiLookup.office);
-      const next = scopeOf(aiLookup.office);
-      if (next === "national") { setState(""); setCity(""); }
-    }
-    if (aiLookup.state) setState(aiLookup.state);
-    if (aiLookup.city) setCity(aiLookup.city);
+    hydrateFromAiLookup(aiLookup);
   };
 
 
 
   const scope = scopeOf(position);
-  const requiresPosition = profileType === "politico";
   const canSubmit =
-    !!fullName.trim() && !!party && (!requiresPosition || !!position) && !isPending &&
-    (!requiresPosition || scope === "national" || (scope === "state" && !!state) || (scope === "municipal" && !!state && !!city.trim()));
+    !!fullName.trim() && !!party && !!position && !isPending &&
+    (scope === "national" || (scope === "state" && !!state) || (scope === "municipal" && !!state && !!city.trim()));
 
   const scopeBadge = useMemo(() => {
     if (scope === "national") return { label: "Atuação nacional · cobertura Brasil", cls: "bg-gradient-to-r from-emerald-500/15 to-cyan-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30" };
@@ -282,7 +281,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   };
 
   const reset = () => {
-    setFullName(""); setDebouncedName(""); setProfileType("politico");
+    setFullName(""); setDebouncedName("");
     setParty(""); setPosition(""); setState(""); setCity(""); setErrors({});
   };
 
@@ -291,19 +290,17 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     const errs: Record<string, string> = {};
     if (fullName.trim().length < 3) errs.fullName = "Nome deve ter no mínimo 3 caracteres";
     if (!party) errs.party = "Selecione um partido";
-    if (requiresPosition && !position) errs.position = "Selecione um cargo";
-    if (requiresPosition && scope !== "national" && !state) errs.state = "Selecione um estado";
-    if (requiresPosition && scope === "municipal" && !city.trim()) errs.city = "Informe a cidade";
+    if (!position) errs.position = "Selecione um cargo político";
+    if (scope !== "national" && !state) errs.state = "Selecione um estado";
+    if (scope === "municipal" && !city.trim()) errs.city = "Informe a cidade";
     setErrors(errs);
     if (Object.keys(errs).length) return;
 
-    const effectivePosition = requiresPosition ? position : (profileType === "midia" ? "Mídia/Jornalismo" : "Figura Pública");
-    const effectiveScope = requiresPosition ? scope : "national";
-    const region = effectiveScope === "national" ? "Brasil" : (STATE_TO_REGION[state] ?? "");
+    const region = scope === "national" ? "Brasil" : (STATE_TO_REGION[state] ?? "");
     onSubmit({
-      fullName, party, position: effectivePosition, region,
-      state: requiresPosition ? state : "",
-      city: requiresPosition ? (city.trim() || undefined) : undefined,
+      fullName, party, position, region,
+      state,
+      city: city.trim() || undefined,
       socials: {}, photoFile: null,
     });
   };
@@ -360,10 +357,10 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
               <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-primary/30 bg-primary/[0.06] px-3 py-2 animate-in fade-in-0 slide-in-from-top-1 duration-200">
                 <div className="flex items-center gap-2 text-sm">
                   <Wand2 className="h-4 w-4 text-primary" />
-                  <span>Correção sugerida: <strong>{autoCorrect.fullName}</strong></span>
+                  <span>Você quis dizer: <strong>{autoCorrect.fullName}</strong></span>
                 </div>
                 <Button type="button" size="sm" variant="secondary" className="h-7 rounded-lg" onClick={() => applySuggestion(autoCorrect)}>
-                  Aplicar
+                  Usar candidato
                 </Button>
               </div>
             )}
@@ -379,17 +376,17 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                       <div className="flex items-center gap-2 min-w-0">
                         <Sparkles className="h-3.5 w-3.5 text-primary shrink-0" />
                         <div className="min-w-0">
-                          <div className="text-sm truncate">{s.fullName}</div>
+                        <div className="text-sm truncate">{s.fullName}</div>
                           {(s.meta?.party || s.meta?.position || s.meta?.state) && (
                             <div className="text-[11px] text-muted-foreground truncate">
-                              {[s.meta?.position, s.meta?.party, s.meta?.state].filter(Boolean).join(" · ")}
+                              {[s.meta?.position, s.meta?.state, s.meta?.city].filter(Boolean).join(" - ")}{s.meta?.party ? ` · ${s.meta.party}` : ""}
                             </div>
                           )}
                         </div>
                         <Badge variant="outline" className="text-[10px] shrink-0">{Math.round(s.similarity * 100)}%</Badge>
                       </div>
                       <Button type="button" size="sm" variant="ghost" className="h-7 rounded-lg shrink-0" onClick={() => applySuggestion(s)}>
-                        Usar sugestão
+                        Usar candidato
                       </Button>
                     </li>
                   ))}
@@ -421,7 +418,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
               </div>
             )}
 
-            {!catalogMatch && suggestions.length === 0 && aiLookup?.found && (
+            {!catalogMatch && suggestions.length === 0 && aiLookup?.found && (aiLookup.confidence ?? 0) > 0.8 && (
               <div className="mt-2 rounded-xl border border-emerald-500/40 bg-emerald-500/[0.08] px-3 py-2 animate-in fade-in-0 slide-in-from-top-1 duration-200">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-sm min-w-0">
@@ -466,22 +463,16 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
             <PartyCombobox value={party} onChange={setParty} disabled={isPending} />
           </Field>
 
-
-          {/* Tipo de perfil */}
-          <Field label="Tipo de perfil" required>
-            <div className="grid grid-cols-3 gap-2.5">
-              {PROFILE_TYPES.map(({ id, label, Icon }) => {
-                const selected = profileType === id;
+          {/* Cargo político */}
+          <Field label="Cargo" error={errors.position} required>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+              {POSITIONS.map(({ name, Icon }) => {
+                const selected = position === name;
                 return (
                   <button
-                    key={id}
+                    key={name}
                     type="button"
-                    onClick={() => {
-                      setProfileType(id);
-                      if (id !== "politico") {
-                        setPosition(""); setState(""); setCity("");
-                      }
-                    }}
+                    onClick={() => handlePosition(name)}
                     disabled={isPending}
                     className={cn(
                       "group flex flex-col items-start gap-2 p-3.5 rounded-xl border text-left transition-all duration-200",
@@ -498,7 +489,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                       <Icon className="h-4 w-4" />
                     </div>
                     <span className={cn("text-sm font-medium leading-tight", selected ? "text-foreground" : "text-muted-foreground group-hover:text-foreground")}>
-                      {label}
+                      {name}
                     </span>
                   </button>
                 );
@@ -506,44 +497,8 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
             </div>
           </Field>
 
-          {/* Cargo — somente para Político */}
-          {requiresPosition && (
-            <Field label="Cargo" error={errors.position} required>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
-                {POSITIONS.map(({ name, Icon }) => {
-                  const selected = position === name;
-                  return (
-                    <button
-                      key={name}
-                      type="button"
-                      onClick={() => handlePosition(name)}
-                      disabled={isPending}
-                      className={cn(
-                        "group flex flex-col items-start gap-2 p-3.5 rounded-xl border text-left transition-all duration-200",
-                        "hover:border-primary/40 hover:shadow-sm hover:-translate-y-0.5",
-                        selected
-                          ? "border-primary/60 bg-gradient-to-br from-primary/10 to-primary/[0.02] ring-1 ring-primary/30 shadow-md"
-                          : "border-border/70 bg-muted/20",
-                      )}
-                    >
-                      <div className={cn(
-                        "h-8 w-8 rounded-lg flex items-center justify-center transition-colors",
-                        selected ? "bg-primary/15 text-primary" : "bg-background text-muted-foreground group-hover:text-foreground",
-                      )}>
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <span className={cn("text-sm font-medium leading-tight", selected ? "text-foreground" : "text-muted-foreground group-hover:text-foreground")}>
-                        {name}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </Field>
-          )}
-
-          {/* Localização — condicional ao cargo (apenas para Político) */}
-          {requiresPosition && scope !== "none" && (
+          {/* Localização — condicional ao cargo */}
+          {scope !== "none" && (
             <div className="animate-in fade-in-0 slide-in-from-top-2 duration-300">
               {scope === "national" ? (
                 <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-cyan-500/5 px-4 py-3 flex items-center gap-3">
@@ -591,8 +546,8 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
 
 
 
-          {/* Preview — só aparece quando nome e partido (+ cargo se Político) estão definidos */}
-          {fullName.trim() && party && (!requiresPosition || position) && (
+          {/* Preview — só aparece quando nome, partido e cargo são válidos */}
+          {fullName.trim() && party && position && (
             <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-muted/40 via-muted/20 to-transparent p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Sparkles className="h-3.5 w-3.5 text-primary" />
@@ -607,10 +562,8 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                   <div className="text-sm text-muted-foreground truncate">
                     {[
                       party,
-                      requiresPosition ? position : (profileType === "midia" ? "Mídia/Jornalismo" : "Figura Pública"),
-                      requiresPosition
-                        ? (scope === "national" ? "Brasil" : (city && state ? `${city}/${state}` : (state && (STATE_NAMES[state] ?? state))))
-                        : "Brasil",
+                      position,
+                      scope === "national" ? "Brasil" : (city && state ? `${city}/${state}` : (state && (STATE_NAMES[state] ?? state))),
                     ].filter(Boolean).join(" · ")}
                   </div>
                 </div>
