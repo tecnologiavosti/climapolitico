@@ -467,9 +467,12 @@ All colors MUST be HSL.
   opacity: 1 !important;
 }
 .dark [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"] svg,
-.aurora [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"] svg {
-  color: #67E8F9 !important;
-  stroke: #67E8F9 !important;
+.aurora [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"] svg,
+.dark [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"] svg *,
+.aurora [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"] svg * {
+  color: #FFFFFF !important;
+  stroke: #FFFFFF !important;
+  fill: none !important;
   opacity: 1 !important;
 }
 
