@@ -693,6 +693,51 @@ export default function Candidates() {
         </div>
       </div>
 
+      <AlertDialog
+        open={!!duplicateMatch}
+        onOpenChange={(v) => { if (!v) setDuplicateMatch(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Candidato parecido já cadastrado</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm">
+                <p>Encontramos um candidato muito similar ao nome digitado.</p>
+                <div className="rounded-lg border bg-muted/40 p-3 space-y-1">
+                  <div><span className="text-muted-foreground">Nome salvo:</span> <strong>{duplicateMatch?.match.candidate.full_name}</strong></div>
+                  <div><span className="text-muted-foreground">Nome inserido:</span> <strong>{duplicateMatch?.payload.fullName}</strong></div>
+                  <div><span className="text-muted-foreground">Similaridade:</span> {Math.round((duplicateMatch?.match.similarity ?? 0) * 100)}%</div>
+                </div>
+                <p className="text-muted-foreground">Você quis dizer <strong>{duplicateMatch?.match.candidate.full_name}</strong>?</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDuplicateMatch(null)}>Cancelar</AlertDialogCancel>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (duplicateMatch) setExpandedCandidate(duplicateMatch.match.candidate.id);
+                setDuplicateMatch(null);
+                setDialogOpen(false);
+              }}
+            >
+              Ir para candidato
+            </Button>
+            <AlertDialogAction
+              onClick={() => {
+                if (duplicateMatch) addCandidateMutation.mutate(duplicateMatch.payload);
+                setDuplicateMatch(null);
+              }}
+            >
+              Cadastrar mesmo assim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+
+
       {/* Search */}
       <Card className="p-4">
         <div className="relative">
