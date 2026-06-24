@@ -347,3 +347,9 @@ All colors MUST be HSL.
     @apply animate-fade-in;
   }
 }
+
+/* Brand logo glow on dark/aurora themes */
+.dark .brand-logo,
+.aurora .brand-logo {
+  filter: drop-shadow(0 0 12px rgba(30, 181, 232, 0.18));
+}
