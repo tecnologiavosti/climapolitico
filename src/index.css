@@ -75,27 +75,27 @@ All colors MUST be HSL.
 
 
   .dark {
-    /* Clima Político — dark premium (app interno) */
-    --background: 222 56% 4%;            /* #05070D */
+    /* Clima Político — Dark (terminal financeiro) */
+    --background: 222 47% 5%;            /* #020617 */
     --foreground: 210 40% 98%;           /* #F8FAFC */
 
-    --card: 222 47% 8%;                  /* #0F172A surface */
+    --card: 217 33% 12%;                 /* #111827 */
     --card-foreground: 210 40% 98%;
 
-    --popover: 222 47% 8%;
+    --popover: 217 33% 12%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 217 88% 22%;              /* #082B66 */
+    --primary: 217 88% 22%;
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 197 82% 51%;         /* #1EB5E8 */
+    --primary-glow: 197 82% 51%;
 
-    --secondary: 215 28% 17%;            /* #1F2937 */
+    --secondary: 215 28% 17%;
     --secondary-foreground: 210 40% 98%;
 
     --muted: 217 33% 14%;
-    --muted-foreground: 215 20% 70%;     /* #94A3B8 */
+    --muted-foreground: 213 27% 79%;     /* #CBD5E1 */
 
-    --accent: 197 82% 51%;               /* #1EB5E8 */
+    --accent: 187 92% 69%;               /* #67E8F9 */
     --accent-foreground: 222 47% 6%;
 
     --success: 142 71% 45%;
@@ -112,46 +112,101 @@ All colors MUST be HSL.
     --ring: 197 82% 51%;
 
     --gradient-primary: linear-gradient(135deg, hsl(217 88% 22%), hsl(197 82% 51%));
-    --gradient-secondary: linear-gradient(180deg, hsl(222 56% 4%), hsl(222 47% 8%));
+    --gradient-secondary: linear-gradient(180deg, #020617, #111827);
     --gradient-hero: linear-gradient(135deg, hsl(217 88% 22%) 0%, hsl(210 86% 31%) 55%, hsl(197 82% 51%) 100%);
     --gradient-auth: radial-gradient(circle at top right, hsl(197 82% 51%) 0%, hsl(217 88% 22%) 70%);
-    --gradient-sidebar: linear-gradient(180deg, hsl(222 56% 4%) 0%, hsl(217 88% 22%) 100%);
-    --gradient-app:
-      radial-gradient(circle at 15% 20%, rgba(30,181,232,0.22) 0%, transparent 30%),
-      radial-gradient(circle at 85% 15%, rgba(11,77,145,0.28) 0%, transparent 35%),
-      radial-gradient(circle at 50% 75%, rgba(8,43,102,0.32) 0%, transparent 40%),
-      linear-gradient(180deg, #071226 0%, #0A1B38 50%, #081427 100%);
-    --gradient-sidebar-app: linear-gradient(180deg, rgba(6,40,92,0.95) 0%, rgba(11,77,145,0.90) 100%);
+    --gradient-sidebar: linear-gradient(180deg, #030712 0%, #0B1220 100%);
+    --gradient-app: linear-gradient(180deg, #020617 0%, #111827 100%);
 
     --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.4);
     --shadow-md: 0 4px 12px -1px hsl(0 0% 0% / 0.5);
     --shadow-lg: 0 10px 35px hsl(0 0% 0% / 0.55);
     --shadow-glow: 0 0 25px hsl(197 82% 51% / 0.35);
 
-    --sidebar-background: 222 56% 4%;
+    --sidebar-background: 222 47% 3%;    /* #030712 */
     --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 197 82% 51%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 197 82% 51%;
+    --sidebar-primary: 187 92% 69%;
+    --sidebar-primary-foreground: 222 47% 6%;
+    --sidebar-accent: 187 92% 69%;
     --sidebar-accent-foreground: 222 47% 6%;
-    --sidebar-border: 0 0% 100% / 0.08;
+    --sidebar-border: 215 27% 14%;
     --sidebar-ring: 197 82% 51%;
   }
 
-  .dark html,
-  .dark body,
-  .dark #root {
+  .aurora {
+    /* Clima Político — Aurora IA (high-tech analytics) */
+    --background: 222 56% 8%;
+    --foreground: 0 0% 100%;             /* #FFFFFF */
+
+    --card: 222 47% 12%;                 /* rgba(15,23,42,0.82) base */
+    --card-foreground: 0 0% 100%;
+
+    --popover: 222 47% 12%;
+    --popover-foreground: 0 0% 100%;
+
+    --primary: 217 88% 22%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 197 82% 51%;
+
+    --secondary: 215 28% 17%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 217 33% 14%;
+    --muted-foreground: 212 100% 92%;    /* #D6E8FF */
+
+    --accent: 187 92% 69%;               /* #67E8F9 */
+    --accent-foreground: 222 47% 6%;
+
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 187 92% 69% / 0.12;
+    --input: 215 27% 22%;
+    --ring: 187 92% 69%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(217 88% 22%), hsl(197 82% 51%));
+    --gradient-secondary: linear-gradient(180deg, hsl(222 56% 8%), hsl(222 47% 12%));
+    --gradient-hero: linear-gradient(135deg, hsl(217 88% 22%) 0%, hsl(210 86% 31%) 55%, hsl(197 82% 51%) 100%);
+    --gradient-auth: radial-gradient(circle at top right, hsl(197 82% 51%) 0%, hsl(217 88% 22%) 70%);
+    --gradient-sidebar: linear-gradient(180deg, rgba(6,40,92,0.95) 0%, rgba(11,77,145,0.90) 100%);
+    --gradient-app:
+      radial-gradient(circle at 15% 20%, rgba(30,181,232,0.22) 0%, transparent 30%),
+      radial-gradient(circle at 85% 15%, rgba(11,77,145,0.28) 0%, transparent 35%),
+      radial-gradient(circle at 50% 75%, rgba(8,43,102,0.32) 0%, transparent 40%),
+      linear-gradient(180deg, #071226 0%, #0A1B38 50%, #081427 100%);
+
+    --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.4);
+    --shadow-md: 0 4px 12px -1px hsl(0 0% 0% / 0.5);
+    --shadow-lg: 0 12px 45px rgba(0,0,0,0.35);
+    --shadow-glow: 0 0 30px hsl(187 92% 69% / 0.35);
+
+    --sidebar-background: 217 88% 19%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 187 92% 69%;
+    --sidebar-primary-foreground: 222 47% 6%;
+    --sidebar-accent: 187 92% 69%;
+    --sidebar-accent-foreground: 222 47% 6%;
+    --sidebar-border: 0 0% 100% / 0.08;
+    --sidebar-ring: 187 92% 69%;
+  }
+
+  .dark html, .dark body, .dark #root,
+  .aurora html, .aurora body, .aurora #root {
     background: var(--gradient-app) !important;
     background-attachment: fixed !important;
     color: hsl(var(--foreground));
   }
 
-  .dark main {
-    background: transparent;
-  }
+  .dark main, .aurora main { background: transparent; }
 
-  /* Overlay sutil para profundidade no dashboard interno */
-  .dark body::before {
+  /* Overlay sutil para profundidade — apenas Aurora */
+  .aurora body::before {
     content: "";
     position: fixed;
     inset: 0;
@@ -161,28 +216,32 @@ All colors MUST be HSL.
     z-index: 0;
   }
 
-  /* Cards premium sobre o fundo escuro */
-  .dark [class*="rounded-"][class*="border"],
-  .dark .card,
-  .dark [data-card] {
-    backdrop-filter: blur(14px);
-  }
-
-  /* Sidebar com gradiente translúcido */
-  .dark [data-sidebar="sidebar"] {
-    background: linear-gradient(180deg, rgba(6,40,92,0.95) 0%, rgba(11,77,145,0.90) 100%) !important;
+  /* Cards translúcidos Aurora */
+  .aurora [data-sidebar="sidebar"] {
+    background: var(--gradient-sidebar) !important;
     backdrop-filter: blur(12px);
   }
 
-  /* Recharts: contraste com fundo escuro */
-  .dark .recharts-cartesian-grid line {
+  /* Recharts: contraste em dark e aurora */
+  .dark .recharts-cartesian-grid line,
+  .aurora .recharts-cartesian-grid line {
     stroke: rgba(255,255,255,0.06) !important;
   }
   .dark .recharts-cartesian-axis-tick text,
-  .dark .recharts-legend-item-text {
+  .dark .recharts-legend-item-text,
+  .aurora .recharts-cartesian-axis-tick text,
+  .aurora .recharts-legend-item-text {
     fill: #E2E8F0 !important;
     color: #E2E8F0 !important;
   }
+
+  /* Transição suave ao trocar tema */
+  html, body, *, *::before, *::after {
+    transition: background-color 0.4s ease, color 0.3s ease, border-color 0.3s ease;
+  }
+
+}
+
 
 
 }
