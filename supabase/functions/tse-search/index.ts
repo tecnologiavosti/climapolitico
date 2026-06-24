@@ -85,12 +85,20 @@ const CARGO_ALIASES: Record<string, string> = {
   viceprefeita: "vice_prefeito",
   vereador: "vereador",
   vereadora: "vereador",
+  ministro: "ministro",
+  ministra: "ministro",
+  "presidente de partido": "presidente_partido",
+  "presidente partidario": "presidente_partido",
+  "pre candidato": "pre_candidato",
+  "pre candidata": "pre_candidato",
+  precandidato: "pre_candidato",
 };
 
 function normalizeCargoKey(value: string): string | null {
   if (CARGO_CODE[value]) return value;
+  if (AI_ONLY_CARGOS.has(value)) return value;
   const n = normalize(value);
-  return CARGO_ALIASES[n] ?? null;
+  return CARGO_ALIASES[n] ?? (AI_ONLY_CARGOS.has(n) ? n : null);
 }
 
 async function tseJson(url: string) {
