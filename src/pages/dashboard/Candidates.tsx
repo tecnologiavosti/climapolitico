@@ -20,6 +20,7 @@ import { Search, UserPlus, Trash2, Brain, Loader2, Youtube, ChevronDown, Chevron
 // ArrowUpRight, ArrowDownRight, Minus removidos temporariamente (coluna Tendência oculta)
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 import { AddCandidateDialog, type AddCandidatePayload } from "@/components/dashboard/AddCandidateDialog";
+import { findDuplicateCandidate, type DuplicateMatch } from "@/lib/candidateNameNormalizer";
 
 // Zod validation schema
 const urlOpt = z.string().trim().refine((val) => !val || val.startsWith("http://") || val.startsWith("https://"), {
@@ -60,6 +61,10 @@ export default function Candidates() {
   const [candidateToDelete, setCandidateToDelete] = useState<string | null>(null);
   const [expandedCandidate, setExpandedCandidate] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [duplicateMatch, setDuplicateMatch] = useState<
+    | { match: DuplicateMatch<{ id: string; full_name: string }>; payload: AddCandidatePayload }
+    | null
+  >(null);
 
   // Open add-candidate dialog automatically when navigated with ?add=1 (from sidebar)
   const [searchParams, setSearchParams] = useSearchParams();
@@ -560,6 +565,20 @@ export default function Candidates() {
   });
 
   const handleAddCandidate = (payload: AddCandidatePayload) => {
+    const match = findDuplicateCandidate(
+      payload.fullName,
+      (candidates ?? []).map((c: any) => ({ id: c.id, full_name: c.full_name })),
+    );
+    if (match) {
+      if (match.exact) {
+        toast.error(
+          `Candidato já cadastrado: "${match.candidate.full_name}". Diferença apenas de acento/maiúsculas/pontuação.`,
+        );
+        return;
+      }
+      setDuplicateMatch({ match, payload });
+      return;
+    }
     addCandidateMutation.mutate(payload);
   };
 
@@ -673,6 +692,51 @@ export default function Candidates() {
           />
         </div>
       </div>
+
+      <AlertDialog
+        open={!!duplicateMatch}
+        onOpenChange={(v) => { if (!v) setDuplicateMatch(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Candidato parecido já cadastrado</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm">
+                <p>Encontramos um candidato muito similar ao nome digitado.</p>
+                <div className="rounded-lg border bg-muted/40 p-3 space-y-1">
+                  <div><span className="text-muted-foreground">Nome salvo:</span> <strong>{duplicateMatch?.match.candidate.full_name}</strong></div>
+                  <div><span className="text-muted-foreground">Nome inserido:</span> <strong>{duplicateMatch?.payload.fullName}</strong></div>
+                  <div><span className="text-muted-foreground">Similaridade:</span> {Math.round((duplicateMatch?.match.similarity ?? 0) * 100)}%</div>
+                </div>
+                <p className="text-muted-foreground">Você quis dizer <strong>{duplicateMatch?.match.candidate.full_name}</strong>?</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDuplicateMatch(null)}>Cancelar</AlertDialogCancel>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (duplicateMatch) setExpandedCandidate(duplicateMatch.match.candidate.id);
+                setDuplicateMatch(null);
+                setDialogOpen(false);
+              }}
+            >
+              Ir para candidato
+            </Button>
+            <AlertDialogAction
+              onClick={() => {
+                if (duplicateMatch) addCandidateMutation.mutate(duplicateMatch.payload);
+                setDuplicateMatch(null);
+              }}
+            >
+              Cadastrar mesmo assim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+
 
       {/* Search */}
       <Card className="p-4">
