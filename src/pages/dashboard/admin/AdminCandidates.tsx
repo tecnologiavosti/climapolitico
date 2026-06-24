@@ -129,10 +129,11 @@ function Inner() {
 
   return (
     <div className="space-y-4 p-6">
+      <TseSyncCard />
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Candidatos (Catálogo Público)</h1>
-          <p className="text-muted-foreground">Gerencie o catálogo global de candidatos disponíveis para todos os usuários.</p>
+          <h1 className="text-3xl font-bold">Candidatos (Catálogo Público legado)</h1>
+          <p className="text-muted-foreground">Catálogo manual antigo. A nova base nacional vem do pipeline TSE acima.</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-2" /> Adicionar</Button></DialogTrigger>
