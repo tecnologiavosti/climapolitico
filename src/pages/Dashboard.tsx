@@ -3,8 +3,8 @@ import { useNavigate, useLocation, Routes, Route, Navigate } from "react-router-
 import { useAuth } from "@/hooks/useAuth";
 import { useSessionHealthCheck } from "@/hooks/useSessionHealthCheck";
 import { Button } from "@/components/ui/button";
-import { LogOut, Sun, Moon, BarChart3 } from "lucide-react";
-import { useTheme } from "next-themes";
+import { LogOut, BarChart3 } from "lucide-react";
+import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { AdminSidebar } from "@/components/AdminSidebar";
@@ -66,8 +66,8 @@ const Dashboard = () => {
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { theme, setTheme } = useTheme();
   useSessionHealthCheck();
+
 
   const ADMIN_PATHS = [
     "/dashboard/admin",
@@ -93,16 +93,8 @@ const Dashboard = () => {
     validateOnboardingTargets();
   }, []);
 
-  // Força tema dark premium em todo o app interno (dashboard logado)
-  useEffect(() => {
-    const root = document.documentElement;
-    const prev = root.classList.contains("dark");
-    root.classList.add("dark");
-    if (theme !== "dark") setTheme("dark");
-    return () => {
-      if (!prev) root.classList.remove("dark");
-    };
-  }, [setTheme, theme]);
+
+
 
   if (authLoading) return <PageLoader />;
 
@@ -132,14 +124,8 @@ const Dashboard = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0" data-onboarding="user-menu">
-                <Button
-                  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                  variant="outline"
-                  size="icon"
-                  aria-label={theme === "dark" ? "Mudar para tema claro" : "Mudar para tema escuro"}
-                >
-                  {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                </Button>
+                <ThemeSwitcher />
+
                 <Button onClick={signOut} variant="outline" size="sm" className="hover-lift" aria-label="Sair da conta">
                   <LogOut className="h-4 w-4 sm:mr-2" />
                   <span className="hidden sm:inline">Sair</span>
