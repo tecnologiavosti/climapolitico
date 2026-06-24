@@ -438,8 +438,28 @@ All colors MUST be HSL.
 }
 .dark [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"],
 .aurora [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"] {
-  color: #FFFFFF;
-  background: rgba(103, 232, 249, 0.12);
+  color: #FFFFFF !important;
+  font-weight: 600;
+  background: rgba(56, 189, 248, 0.16) !important;
+  position: relative;
+}
+.aurora [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"] {
+  background: linear-gradient(90deg, rgba(34, 211, 238, 0.22), rgba(59, 130, 246, 0.14)) !important;
+}
+.dark [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"]::before,
+.aurora [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10%;
+  height: 80%;
+  width: 3px;
+  border-radius: 999px;
+  background: #22D3EE;
+}
+.dark [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"] *,
+.aurora [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"] * {
+  color: #FFFFFF !important;
 }
 .dark [data-sidebar="sidebar"] svg,
 .aurora [data-sidebar="sidebar"] svg {
@@ -448,8 +468,18 @@ All colors MUST be HSL.
 }
 .dark [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"] svg,
 .aurora [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"] svg {
-  color: #FFFFFF;
+  color: #67E8F9 !important;
+  stroke: #67E8F9 !important;
+  opacity: 1 !important;
 }
+
+/* Light theme active state — texto/ícone azul vívido, fundo translúcido */
+:root:not(.dark):not(.aurora) [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"] {
+  background: rgba(37, 99, 235, 0.12) !important;
+  color: #1D4ED8 !important;
+  font-weight: 600;
+}
+
 
 /* Onboarding / Tutorial — força contraste alto independente do tema */
 .dark [class*="z-\\[10000\\]"],
