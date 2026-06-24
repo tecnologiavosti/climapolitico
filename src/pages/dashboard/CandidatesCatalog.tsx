@@ -33,6 +33,7 @@ export default function CandidatesCatalog() {
   const rows = data?.rows ?? [];
   const total = data?.total ?? 0;
   const suggestions = data?.suggestions ?? [];
+  const normalized = data?.normalized ?? {};
   const page = filters.page ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
