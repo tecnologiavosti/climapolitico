@@ -129,6 +129,11 @@ export const KNOWN_POLITICIANS: KnownPolitician[] = [
   { fullName: "Marina Silva", aliases: ["marina"], party: "REDE", position: "Ministro" },
   { fullName: "Gleisi Hoffmann", aliases: ["gleisi"], party: "PT" },
   { fullName: "Sergio Moro", aliases: ["moro", "sérgio moro"], party: "UNIÃO", position: "Senador", state: "PR" },
+  { fullName: "Lucas Pavanato", aliases: ["pavanato", "lucas pavanato"], party: "PL", position: "Deputado Estadual", state: "SP" },
+  { fullName: "Kim Kataguiri", aliases: ["kim", "kim kataguiri"], party: "UNIÃO", position: "Deputado Federal", state: "SP" },
+  { fullName: "Marcel van Hattem", aliases: ["marcel", "van hattem", "marcel van hattem"], party: "NOVO", position: "Deputado Federal", state: "RS" },
+  { fullName: "Eduardo Paes", aliases: ["eduardo paes", "paes"], party: "PSD", position: "Prefeito", state: "RJ" },
+  { fullName: "Ricardo Nunes", aliases: ["ricardo nunes"], party: "MDB", position: "Prefeito", state: "SP" },
 ];
 
 export interface NameSuggestion {
