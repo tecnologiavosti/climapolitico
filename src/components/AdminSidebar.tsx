@@ -92,10 +92,12 @@ export function AdminSidebar() {
     <Sidebar className={isCollapsed ? "w-14" : "w-[17rem]"}>
       <SidebarContent>
         <div className="p-4 border-b">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-gradient-primary rounded-lg">
-              <Shield className="h-5 w-5 text-white" />
-            </div>
+          <div className="flex items-center gap-2.5">
+            <img
+              src={logoAsset.url}
+              alt="Clima Político"
+              className={`brand-logo rounded-full object-contain ring-1 ring-border shrink-0 ${isCollapsed ? "h-[34px] w-[34px]" : "h-[42px] w-[42px]"}`}
+            />
             {!isCollapsed && (
               <div className="min-w-0">
                 <div className="font-bold text-base leading-tight">Painel ADM</div>
