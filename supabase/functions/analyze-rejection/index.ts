@@ -76,7 +76,7 @@ serve(async (req) => {
 
     const { data: candidate, error: candError } = await supabaseClient
       .from('candidates')
-      .select('id, full_name, party, region, role_title')
+      .select('id, full_name, party, region')
       .eq('id', candidateId)
       .eq('user_id', user.id)
       .single();
