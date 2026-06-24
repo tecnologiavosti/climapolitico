@@ -3,6 +3,13 @@ import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
+const VALID_OFFICES = new Set([
+  "Presidente", "Vice-presidente", "Ministro", "Governador", "Vice-governador",
+  "Secretário Estadual", "Prefeito", "Vice-prefeito", "Secretário Municipal",
+  "Senador", "Deputado Federal", "Deputado Estadual", "Deputado Distrital",
+  "Vereador", "Presidente de partido",
+]);
+
 const SYSTEM = `Você é um especialista em política brasileira. Sua tarefa é identificar
 políticos brasileiros (em qualquer esfera: federal, estadual, municipal) pelo nome,
 mesmo com erros ortográficos, falta de acentos, apelidos ou nomes parciais.
@@ -95,14 +102,18 @@ Deno.serve(async (req) => {
     let parsed: any = {};
     try { parsed = JSON.parse(raw); } catch { parsed = { found: false }; }
 
+    const confidence = typeof parsed.confidence === "number" ? parsed.confidence : 0;
+    const office = typeof parsed.office === "string" && VALID_OFFICES.has(parsed.office) ? parsed.office : null;
+    const highConfidence = !!parsed.found && confidence > 0.8 && !!parsed.name && !!parsed.party && !!office;
+
     const result = {
-      found: !!parsed.found && (parsed.confidence ?? 0) >= 0.5,
+      found: highConfidence,
       name: parsed.name ?? null,
       party: parsed.party ?? null,
-      office: parsed.office ?? null,
+      office,
       state: parsed.state ?? null,
       city: parsed.city ?? null,
-      confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0,
+      confidence,
       rationale: parsed.rationale ?? null,
     };
 

@@ -167,9 +167,10 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   // Match exato no catálogo (>= 95%) — usado para card "Candidato identificado"
   const catalogMatch = useMemo(() => {
     const top = suggestions[0];
+    if (top && normalizeCandidateName(fullName) !== normalizeCandidateName(top.fullName)) return null;
     if (top && top.similarity >= 0.95 && top.meta) return top;
     return null;
-  }, [suggestions]);
+  }, [fullName, suggestions]);
 
   // Debug
   useEffect(() => {
