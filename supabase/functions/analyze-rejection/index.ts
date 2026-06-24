@@ -76,7 +76,7 @@ serve(async (req) => {
 
     const { data: candidate, error: candError } = await supabaseClient
       .from('candidates')
-      .select('id, full_name, party, region, role_title')
+      .select('id, full_name, party, region')
       .eq('id', candidateId)
       .eq('user_id', user.id)
       .single();
@@ -212,9 +212,8 @@ Regras: 4 a 6 perfis em who_rejects, 3 a 6 narrativas em attack_narratives, 3 a 
       (components.aprovacao + components.base_fiel + components.autoridade_institucional) / 3;
     let rejeicaoFinal = negativeScore - (positiveShield * 0.35);
 
-    // Redutor para presidentes em exercício
-    const roleStr = (candidate.role_title || '').toLowerCase();
-    if (roleStr.includes('presidente')) {
+    // Redutor para presidentes em exercício (inferido pela autoridade institucional máxima)
+    if (components.autoridade_institucional >= 90) {
       rejeicaoFinal *= 0.90;
     }
 
@@ -227,7 +226,7 @@ Regras: 4 a 6 perfis em who_rejects, 3 a 6 narrativas em attack_narratives, 3 a 
 
     return new Response(JSON.stringify({
       analysis,
-      candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region, role_title: candidate.role_title },
+      candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region },
       period: { key: periodKey, label: periodLabel, range_days: rangeDays, recent_weight: recentWeight, historical_weight: historicalWeight },
       ai_provider: aiProvider,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
