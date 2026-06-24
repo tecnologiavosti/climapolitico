@@ -5,7 +5,9 @@ import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 const TSE = "https://divulgacandcontas.tse.jus.br/divulga/rest/v1";
 
 // Election IDs
-const ID_ELEICAO_FEDERAL_2022 = 545; // Eleições Gerais 2022
+// 544 = 1º turno das Eleições Gerais 2022. 545 é 2º turno e retorna listas vazias
+// para vários cargos, inclusive Presidente/Vice-presidente.
+const ID_ELEICAO_FEDERAL_2022 = 544;
 const ID_ELEICAO_MUNICIPAL_2024 = 619; // Eleições Municipais 2024
 
 // Cargo code per TSE
@@ -38,14 +40,53 @@ const UF_OF_REGION: Record<string, string[]> = {
   norte: ["AC", "AM", "AP", "PA", "RO", "RR", "TO"],
   nordeste: ["AL", "BA", "CE", "MA", "PB", "PE", "PI", "RN", "SE"],
   "centro-oeste": ["DF", "GO", "MT", "MS"],
+  "centro oeste": ["DF", "GO", "MT", "MS"],
   sudeste: ["ES", "MG", "RJ", "SP"],
   sul: ["PR", "RS", "SC"],
 };
 
 const PAGE_SIZE = 50;
 
-const stripAccents = (s: string) =>
-  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+const normalize = (str: string | null | undefined) =>
+  String(str ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .toLowerCase()
+    .trim();
+
+const stripAccents = normalize;
+
+const CARGO_ALIASES: Record<string, string> = {
+  presidente: "presidente",
+  "vice presidente": "vice_presidente",
+  vicepresidente: "vice_presidente",
+  governador: "governador",
+  "vice governador": "vice_governador",
+  vicegovernador: "vice_governador",
+  senador: "senador",
+  "deputada federal": "deputado_federal",
+  "deputado federal": "deputado_federal",
+  "deputada estadual": "deputado_estadual",
+  "deputado estadual": "deputado_estadual",
+  "deputada distrital": "deputado_distrital",
+  "deputado distrital": "deputado_distrital",
+  prefeito: "prefeito",
+  prefeita: "prefeito",
+  "vice prefeito": "vice_prefeito",
+  "vice prefeita": "vice_prefeito",
+  viceprefeito: "vice_prefeito",
+  viceprefeita: "vice_prefeito",
+  vereador: "vereador",
+  vereadora: "vereador",
+};
+
+function normalizeCargoKey(value: string): string | null {
+  if (CARGO_CODE[value]) return value;
+  const n = normalize(value);
+  return CARGO_ALIASES[n] ?? null;
+}
 
 async function tseJson(url: string) {
   const r = await fetch(url, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" } });
@@ -123,36 +164,38 @@ function mapCandidate(raw: any, ctx: { uf: string; municipio: string | null; ano
   };
 }
 
-async function fetchFederal(uf: string, cargoKey: string): Promise<CandidateOut[]> {
+type TSEFetchResult = { rows: CandidateOut[]; failed: boolean };
+
+async function fetchFederal(uf: string, cargoKey: string): Promise<TSEFetchResult> {
   const code = CARGO_CODE[cargoKey];
-  if (!code) return [];
+  if (!code) return { rows: [], failed: false };
   const ueCode = cargoKey === "presidente" || cargoKey === "vice_presidente" ? "BR" : uf;
   const url = `${TSE}/candidatura/listar/2022/${ueCode}/${ID_ELEICAO_FEDERAL_2022}/${code}/candidatos`;
   try {
     const j = await tseJson(url);
     const list: any[] = j.candidatos ?? [];
-    return list.map((c) => mapCandidate(c, { uf, municipio: null, ano: 2022, idEleicao: ID_ELEICAO_FEDERAL_2022, ueCode }));
+    return { rows: list.map((c) => mapCandidate(c, { uf, municipio: null, ano: 2022, idEleicao: ID_ELEICAO_FEDERAL_2022, ueCode })), failed: false };
   } catch (e) {
     console.error("[tse-search] federal fetch failed:", e);
-    return [];
+    return { rows: [], failed: true };
   }
 }
 
-async function fetchMunicipal(uf: string, municipioNome: string, cargoKey: string): Promise<CandidateOut[]> {
+async function fetchMunicipal(uf: string, municipioNome: string, cargoKey: string): Promise<TSEFetchResult> {
   const code = CARGO_CODE[cargoKey];
-  if (!code) return [];
+  if (!code) return { rows: [], failed: false };
   const munis = await getMunicipios(uf, ID_ELEICAO_MUNICIPAL_2024);
   const target = stripAccents(municipioNome);
   const muni = munis.find((m) => m.normalized === target) ?? munis.find((m) => m.normalized.includes(target));
-  if (!muni) return [];
+  if (!muni) return { rows: [], failed: false };
   const url = `${TSE}/candidatura/listar/2024/${muni.codigo}/${ID_ELEICAO_MUNICIPAL_2024}/${code}/candidatos`;
   try {
     const j = await tseJson(url);
     const list: any[] = j.candidatos ?? [];
-    return list.map((c) => mapCandidate(c, { uf, municipio: muni.nome, ano: 2024, idEleicao: ID_ELEICAO_MUNICIPAL_2024, ueCode: muni.codigo }));
+    return { rows: list.map((c) => mapCandidate(c, { uf, municipio: muni.nome, ano: 2024, idEleicao: ID_ELEICAO_MUNICIPAL_2024, ueCode: muni.codigo })), failed: false };
   } catch (e) {
     console.error("[tse-search] municipal fetch failed:", e);
-    return [];
+    return { rows: [], failed: true };
   }
 }
 
@@ -167,14 +210,37 @@ interface Filters {
   page?: number;
 }
 
+function csvParam(value: string | null): string[] | null {
+  if (!value) return null;
+  return value.split(",").map((v) => v.trim()).filter(Boolean);
+}
+
+async function readFilters(req: Request): Promise<Filters> {
+  if (req.method === "GET") {
+    const url = new URL(req.url);
+    return {
+      q: url.searchParams.get("name") ?? url.searchParams.get("q"),
+      cargo: csvParam(url.searchParams.get("cargo")),
+      partido: csvParam(url.searchParams.get("partido")),
+      regiao: csvParam(url.searchParams.get("regiao")),
+      estado: csvParam(url.searchParams.get("estado")),
+      municipio: url.searchParams.get("municipio"),
+      onlyEleitos: ["1", "true", "sim"].includes(normalize(url.searchParams.get("somenteEleitos") ?? url.searchParams.get("onlyEleitos"))),
+      page: Number(url.searchParams.get("page") ?? 0),
+    };
+  }
+
+  return await req.json().catch(() => ({}));
+}
+
 function resolveUfs(f: Filters): string[] {
   if (f.estado?.length) return f.estado.map((u) => u.toUpperCase());
-  if (f.regiao?.length) return f.regiao.flatMap((r) => UF_OF_REGION[r] ?? []);
+  if (f.regiao?.length) return f.regiao.flatMap((r) => UF_OF_REGION[normalize(r)] ?? []);
   return Object.keys(REGION_OF_UF);
 }
 
 function resolveCargos(f: Filters): string[] {
-  if (f.cargo?.length) return f.cargo;
+  if (f.cargo?.length) return [...new Set(f.cargo.map((c) => normalizeCargoKey(c)).filter(Boolean))] as string[];
   // Without cargo: default to the top federal cargos to keep request bounded.
   return ["presidente", "governador", "senador", "deputado_federal"];
 }
@@ -183,12 +249,23 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const f: Filters = await req.json().catch(() => ({}));
+    const f = await readFilters(req);
     console.log("[tse-search] filters:", JSON.stringify(f));
 
     const cargos = resolveCargos(f);
     const ufs = resolveUfs(f);
     const wantsMunicipal = cargos.some((c) => MUNICIPAL_CARGOS.has(c));
+
+    if (f.cargo?.length && cargos.length === 0) {
+      return new Response(JSON.stringify({
+        rows: [],
+        total: 0,
+        suggestions: [],
+        normalized: {},
+        page: f.page ?? 0,
+        notice: "Cargo não reconhecido para consulta ao TSE.",
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     // Municipal requires UF + município
     if (wantsMunicipal && (!f.estado?.length || !f.municipio)) {
@@ -206,7 +283,7 @@ Deno.serve(async (req) => {
     const federalCargos = cargos.filter((c) => FEDERAL_CARGOS.has(c));
     const municipalCargos = cargos.filter((c) => MUNICIPAL_CARGOS.has(c));
 
-    const tasks: Promise<CandidateOut[]>[] = [];
+    const tasks: Promise<TSEFetchResult>[] = [];
 
     for (const cargo of federalCargos) {
       const targetUfs = (cargo === "presidente" || cargo === "vice_presidente") ? ["BR"] : ufs;
@@ -218,14 +295,29 @@ Deno.serve(async (req) => {
       }
     }
 
-    const results = (await Promise.all(tasks)).flat();
+    const fetched = await Promise.all(tasks);
+    const results = fetched.flatMap((r) => r.rows);
+    const failedRequests = fetched.filter((r) => r.failed).length;
     console.log(`[tse-search] tse returned ${results.length} candidates across ${tasks.length} requests`);
+
+    if (tasks.length > 0 && failedRequests === tasks.length) {
+      return new Response(JSON.stringify({
+        fallback: true,
+        error: "TSE_SERVICE_UNAVAILABLE",
+        message: "Não foi possível consultar base do TSE agora.",
+        rows: [],
+        total: 0,
+        suggestions: [],
+        normalized: {},
+        page: f.page ?? 0,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     // Client-side filters
     let filtered = results;
     if (f.partido?.length) {
-      const set = new Set(f.partido.map((p) => p.toUpperCase()));
-      filtered = filtered.filter((c) => c.partido_sigla && set.has(c.partido_sigla.toUpperCase()));
+      const set = new Set(f.partido.map((p) => normalize(p)));
+      filtered = filtered.filter((c) => c.partido_sigla && set.has(normalize(c.partido_sigla)));
     }
     if (f.q) {
       const q = stripAccents(f.q);
@@ -243,12 +335,21 @@ Deno.serve(async (req) => {
     console.log(`[tse-search] returning ${rows.length}/${total} (page ${page})`);
 
     return new Response(JSON.stringify({
-      rows, total, suggestions: [], normalized: {}, page,
+      rows, total, suggestions: [], normalized: {}, page, fallback: false,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     console.error("[tse-search] error:", e);
-    return new Response(JSON.stringify({ error: String(e), rows: [], total: 0, suggestions: [] }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return new Response(JSON.stringify({
+      fallback: true,
+      error: "SERVICE_FAILED",
+      message: "Não foi possível consultar base do TSE agora.",
+      rows: [],
+      total: 0,
+      suggestions: [],
+      normalized: {},
+      page: 0,
+    }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

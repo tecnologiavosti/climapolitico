@@ -29,12 +29,13 @@ export default function CandidatesCatalog() {
     [rawFilters, debouncedQ, debouncedMuni]
   );
 
-  const { data, isLoading, isFetching, isSuccess } = useCatalogSearch(filters);
+  const { data, isLoading, isFetching, isSuccess, isError } = useCatalogSearch(filters);
   const rows = data?.rows ?? [];
   const total = data?.total ?? 0;
   const suggestions = data?.suggestions ?? [];
   const normalized = data?.normalized ?? {};
   const notice = data?.notice ?? null;
+  const fallback = !!data?.fallback || isError;
   const page = filters.page ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const busy = isLoading || isFetching;
@@ -130,6 +131,12 @@ export default function CandidatesCatalog() {
             {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-56 w-full" />)}
           </div>
         </div>
+      ) : fallback ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-muted-foreground">Não foi possível consultar base do TSE agora.</p>
+          </CardContent>
+        </Card>
       ) : isSuccess && rows.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center space-y-4">
