@@ -7,11 +7,15 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-type Confidence = 'baixa' | 'moderada' | 'boa' | 'alta';
-function getConfidence(n: number): Confidence {
-  if (n < 10) return 'baixa';
-  if (n < 30) return 'moderada';
-  if (n < 80) return 'boa';
+function clamp(n: any): number {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return 50;
+  return Math.max(0, Math.min(100, Math.round(v)));
+}
+
+function levelFromScore(score: number): 'baixa' | 'moderada' | 'alta' {
+  if (score <= 30) return 'baixa';
+  if (score <= 60) return 'moderada';
   return 'alta';
 }
 
@@ -34,7 +38,7 @@ serve(async (req) => {
       });
     }
 
-    const { candidateId, daysBack = 7 } = await req.json();
+    const { candidateId } = await req.json();
     if (!candidateId) {
       return new Response(JSON.stringify({ error: 'candidateId é obrigatório' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -54,97 +58,67 @@ serve(async (req) => {
       });
     }
 
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - daysBack);
+    const systemMsg = `Você é um estrategista político sênior brasileiro especializado em inteligência reputacional preditiva e war room eleitoral. Sua análise é 100% inferencial — você NÃO usa comentários reais, menções, posts ou evidências coletadas. Você infere a rejeição estritamente a partir do perfil político do candidato: cargo, partido, ideologia, região, rivalidades, trajetória pública conhecida e arquétipo narrativo. Nunca cite "comentários", "evidências", "menções" ou "posts coletados". Toda frase representativa que você gerar é SIMULADA por IA com base em padrões narrativos brasileiros — nunca apresentada como real. Responda sempre em português do Brasil.`;
 
-    let negativeComments: any[] = [];
-    let offset = 0;
-    const pageSize = 1000;
+    const userPrompt = `CANDIDATO ALVO:
+- Nome: ${candidate.full_name}
+- Partido: ${candidate.party || 'não informado'}
+- Região/UF: ${candidate.region || 'não informada'}
+- Cargo/posição e ideologia: inferir a partir do partido, região e perfil público brasileiro contemporâneo.
 
-    while (true) {
-      const { data: page, error: pageError } = await supabaseClient
-        .from('social_interactions')
-        .select('comment_text, comment_author, sentiment_score, likes_count, replies_count, social_network, created_at')
-        .eq('candidate_id', candidateId)
-        .eq('sentiment_label', 'Negativo')
-        .gte('created_at', startDate.toISOString())
-        .order('created_at', { ascending: false })
-        .range(offset, offset + pageSize - 1);
+TAREFA — INTELIGÊNCIA PREDITIVA DE REJEIÇÃO (sem usar dados coletados):
 
-      if (pageError) break;
-      if (!page || page.length === 0) break;
-      negativeComments = [...negativeComments, ...page];
-      if (page.length < pageSize) break;
-      offset += pageSize;
-    }
-
-    const evidenceCount = negativeComments.length;
-    const confidence = getConfidence(evidenceCount);
-    const lowSample = evidenceCount < 30;
-    const noEvidence = evidenceCount === 0;
-
-    const sampleForAI = negativeComments
-      .filter(c => c.comment_text)
-      .map(c => ({
-        text: String(c.comment_text).substring(0, 280),
-        score: (c.likes_count || 0) + (c.replies_count || 0) * 1.5,
-      }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 25)
-      .map(c => c.text);
-
-    // hard cap to avoid context overflow
-    let totalChars = 0;
-    const cappedSample: string[] = [];
-    for (const t of sampleForAI) {
-      if (totalChars + t.length > 12000) break;
-      cappedSample.push(t);
-      totalChars += t.length;
-    }
-
-    const systemMsg = `Você é um estrategista político sênior brasileiro, especializado em reputação eleitoral, war room e mitigação de rejeição. Você SEMPRE gera uma análise reputacional plausível. Quando não houver comentários coletados, baseie a análise no perfil público do candidato (nome, partido, região), no contexto político brasileiro contemporâneo e em padrões reputacionais típicos do espectro ao qual ele pertence — SEM inventar escândalos, falas, citações ou estatísticas específicas. Toda inferência deve ser interpretativa e clara como tal. Nunca recuse a análise por baixo volume. Responda em português do Brasil.`;
-
-    const evidenceBlock = noEvidence
-      ? `EVIDÊNCIAS REAIS: nenhuma menção negativa foi coletada nesta janela.
-Gere uma análise reputacional baseada APENAS em: perfil partidário, região, espectro ideológico provável, posicionamento histórico público amplamente conhecido e padrões de rejeição típicos desse perfil no Brasil. NÃO invente escândalos ou citações específicas. Em "comment_clusters" e "rejection_language" use exemplos representativos plausíveis marcados como inferência (ex.: "(inferência)").`
-      : `EVIDÊNCIAS REAIS (${cappedSample.length} comentários negativos de maior engajamento${lowSample ? ' — amostragem pequena, extraia o máximo possível mesmo assim' : ''}):
-${cappedSample.map((c, i) => `${i + 1}. ${c}`).join('\n')}`;
-
-    const userPrompt = `CANDIDATO: ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}${candidate.region ? ` — ${candidate.region}` : ''}
-JANELA: últimos ${daysBack} dias
-${evidenceBlock}
-
-Sua tarefa:
-- Por que ele é rejeitado?
-- Por quem?
-- Com qual intensidade?
-- Quais ataques mais ferem sua imagem?
-- Como mitigar?
+Calcule um score de rejeição (0–100) como a média de 5 componentes (0–100 cada):
+1. polarizacao — quanto divide opiniões (ex.: Lula alto, prefeito técnico baixo).
+2. desgaste — tempo de exposição pública e histórico (presidente alto, novato baixo).
+3. antagonismo_ideologico — rejeição em grupos opostos (direita vs esquerda, agro vs urbano progressista).
+4. fragilidade_narrativa — facilidade de ataque (corrupção, velha política, elitismo, radicalismo, inexperiência).
+5. exposicao_negativa — probabilidade de narrativas negativas ganharem força.
 
 Responda EXCLUSIVAMENTE em JSON válido no formato:
 {
-  "rejection_level": "baixa|moderada|alta|critica|explosiva",
-  "diagnosis": "3 a 5 parágrafos curtos explicando origem, intensidade e perfil dos críticos, separados por \\n\\n",
-  "rejection_vectors": [
-    {"name":"...","weight":"baixo|medio|alto|critico","type":"moral|politico|ideologico|emocional|economico","explanation":"..."}
+  "components": {
+    "polarizacao": 0-100,
+    "desgaste": 0-100,
+    "antagonismo_ideologico": 0-100,
+    "fragilidade_narrativa": 0-100,
+    "exposicao_negativa": 0-100
+  },
+  "diagnosis": "2 a 4 parágrafos curtos, separados por \\n\\n, explicando por que esse candidato gera rejeição — SEM citar evidências, comentários ou menções. Inferência estratégica pura.",
+  "who_rejects": [
+    {"profile": "Ex.: Jovens urbanos progressistas / Evangélicos conservadores / Setor empresarial / Eleitor anti-establishment", "reason": "Por que esse grupo rejeita."}
   ],
-  "who_rejects": [{"profile":"...","reason":"..."}],
-  "destructive_narratives": [{"narrative":"...","danger":"medio|alto|critico","why_it_works":"..."}],
-  "rejection_language": {"raiva":["..."],"deboche":["..."],"medo":["..."]},
-  "comment_clusters": [{"theme":"...","representative_quote":"...","frequency_label":"..."}],
-  "vulnerability_points": [{"group":"Mulheres|Jovens|Centro político|Nordeste|Eleitor moderado|Evangélicos|Agro|Classe média|...","explanation":"..."}],
-  "mitigation": {"comunicacao":["..."],"posicionamento":["..."],"crise":["..."],"narrativa":["..."]}
+  "attack_narratives": [
+    {"narrative": "Frase curta de ataque (ex.: 'Representa a velha política')", "why_it_works": "Por que esse ataque tende a ganhar tração contra esse perfil."}
+  ],
+  "emotional_language": {
+    "raiva": ["clusters semânticos curtos: corrupção, abandono, privilégio..."],
+    "deboche": ["ultrapassado, desconectado, irrelevante..."],
+    "medo": ["retrocesso, instabilidade, radicalização..."]
+  },
+  "simulated_narratives": [
+    "Frase sintética 1 (simulada por IA, jamais real)",
+    "Frase sintética 2",
+    "Frase sintética 3"
+  ],
+  "vulnerability_points": [
+    {"group": "Ex.: Jovens 18–29 / Capitais / Sudeste / Eleitor moderado", "explanation": "Por que ele perde votos aqui."}
+  ],
+  "mitigation": {
+    "comunicacao": ["recomendação 1", "recomendação 2"],
+    "posicionamento": ["..."],
+    "crise": ["..."],
+    "narrativa": ["..."]
+  }
 }
 
-Regras: máximo 8 vetores, máximo 5 clusters. SEMPRE retorne o JSON completo, mesmo sem evidências.`;
+Regras: 4 a 6 perfis em who_rejects, 3 a 6 narrativas em attack_narratives, 3 a 6 frases em simulated_narratives, 3 a 5 em cada cluster de emotional_language, 3 a 5 vulnerability_points, 2 a 4 itens em cada frente de mitigation. NUNCA mencione comentários reais, evidências coletadas ou contagem de menções.`;
 
     function safeParse(raw: string | null | undefined): any | null {
       if (!raw) return null;
       let s = raw.trim();
-      // strip code fences
       s = s.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
       try { return JSON.parse(s); } catch (_) {}
-      // try to extract the largest JSON object
       const first = s.indexOf('{');
       const last = s.lastIndexOf('}');
       if (first !== -1 && last > first) {
@@ -153,147 +127,47 @@ Regras: máximo 8 vetores, máximo 5 clusters. SEMPRE retorne o JSON completo, m
       return null;
     }
 
-    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-
     let analysis: any = null;
     let aiProvider = 'none';
-    let usedFallback = false;
 
-    // ---- Retry Cerebras up to 3x ----
-    for (let attempt = 0; attempt < 3 && !analysis; attempt++) {
-      try {
-        if (attempt > 0) await sleep(attempt * 1500);
-        const result = await callAICerebrasFirst({
-          systemMsg, userPrompt, jsonMode: true,
-          maxTokens: 3500, temperature: 0.4, tag: 'rejection-mapa',
-        });
-        const parsed = safeParse(result.content);
-        if (parsed) { analysis = parsed; aiProvider = `${result.provider}:${result.model}`; }
-      } catch (e) {
-        console.warn(`[REJECTION] Cerebras tentativa ${attempt + 1} falhou:`, (e as Error).message);
-      }
-    }
-
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    const callLovable = async (useJsonMode: boolean) => {
-      const body: any = {
-        model: 'google/gemini-3-flash-preview',
-        messages: [
-          { role: 'system', content: systemMsg },
-          { role: 'user', content: useJsonMode ? userPrompt : userPrompt + '\n\nResponda APENAS com o objeto JSON, sem texto antes/depois e sem cercas de código.' },
-        ],
-      };
-      if (useJsonMode) body.response_format = { type: 'json_object' };
-      const r = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+    try {
+      const result = await callAICerebrasFirst({
+        systemMsg, userPrompt, jsonMode: true,
+        maxTokens: 3500, temperature: 0.5, tag: 'rejection-ia',
       });
-      if (!r.ok) {
-        console.warn(`[REJECTION] Lovable AI (json=${useJsonMode}) HTTP ${r.status}:`, (await r.text()).slice(0, 300));
-        return null;
-      }
-      const j = await r.json();
-      return safeParse(j.choices?.[0]?.message?.content);
-    };
-
-    // ---- Retry Lovable (JSON then text) up to 3x cada ----
-    if (LOVABLE_API_KEY) {
-      for (const mode of [true, false]) {
-        for (let attempt = 0; attempt < 3 && !analysis; attempt++) {
-          try {
-            if (attempt > 0) await sleep(attempt * 2000);
-            const parsed = await callLovable(mode);
-            if (parsed) {
-              analysis = parsed;
-              aiProvider = `lovable:gemini-3-flash${mode ? '' : ':text'}`;
-            }
-          } catch (e) {
-            console.error(`[REJECTION] Lovable AI (json=${mode}) tentativa ${attempt + 1}:`, e);
-          }
-        }
-      }
+      const parsed = safeParse(result.content);
+      if (parsed) { analysis = parsed; aiProvider = `${result.provider}:${result.model}`; }
+    } catch (e) {
+      console.error('[REJECTION-IA] AI failure:', (e as Error).message);
     }
 
-    // ---- FALLBACK HEURÍSTICO LOCAL (sem IA) ----
     if (!analysis) {
-      console.warn('[REJECTION] Todos providers de IA falharam — usando fallback heurístico local.');
-      usedFallback = true;
-      aiProvider = 'local:heuristic';
-
-      const stop = new Set(['que','para','com','dos','das','uma','não','nao','você','voce','este','esse','essa','isso','mais','muito','tudo','nada','pelo','pela','como','quando','onde','quem','qual','sobre','seus','suas','meus','minhas','aqui','você','foi','são','sao','tem','têm','ter','vai','vou','tá','ta','né','pra','por','sem','também','tambem','desse','dessa','assim','agora','tudo']);
-      const freq = new Map<string, number>();
-      for (const t of cappedSample) {
-        for (const w of t.toLowerCase().replace(/[^\p{L}\s]/gu, ' ').split(/\s+/)) {
-          if (w.length < 4 || stop.has(w)) continue;
-          freq.set(w, (freq.get(w) || 0) + 1);
-        }
-      }
-      const topWords = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([w]) => w);
-      const level = evidenceCount >= 100 ? 'alta' : evidenceCount >= 40 ? 'moderada' : 'baixa';
-      const quote = cappedSample[0] || '(sem citação disponível)';
-
-      analysis = {
-        rejection_level: level,
-        diagnosis:
-          `Análise gerada localmente a partir de ${evidenceCount} evidências negativas coletadas — o serviço de IA está temporariamente indisponível.\n\n` +
-          `Palavras mais recorrentes nos comentários críticos: ${topWords.join(', ') || 'amostragem insuficiente'}.\n\n` +
-          `Esses termos sugerem os principais focos de rejeição contra ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}. Para um diagnóstico estratégico completo, reanalise quando a IA voltar a responder.`,
-        rejection_vectors: topWords.slice(0, 5).map((w, i) => ({
-          name: w.charAt(0).toUpperCase() + w.slice(1),
-          weight: i < 2 ? 'alto' : 'medio',
-          type: 'politico',
-          explanation: `Termo recorrente nos comentários negativos coletados (${freq.get(w)} ocorrências).`,
-        })),
-        who_rejects: [
-          { profile: 'Eleitor crítico nas redes sociais', reason: 'Engajamento negativo concentrado nos comentários coletados.' },
-        ],
-        destructive_narratives: topWords.slice(0, 3).map(w => ({
-          narrative: `Críticas associadas a "${w}"`,
-          danger: 'medio',
-          why_it_works: 'Repetição orgânica nos comentários reais — narrativa já circulando.',
-        })),
-        rejection_language: {
-          raiva: topWords.slice(0, 4),
-          deboche: topWords.slice(4, 8),
-          medo: topWords.slice(8, 12),
-        },
-        comment_clusters: [{
-          theme: 'Comentário de maior engajamento',
-          representative_quote: quote,
-          frequency_label: `${evidenceCount} comentários negativos no período`,
-        }],
-        vulnerability_points: [
-          { group: 'Eleitor digital ativo', explanation: 'Concentração de críticas em plataformas sociais.' },
-        ],
-        mitigation: {
-          comunicacao: ['Reanalisar quando o provedor de IA voltar para obter recomendações detalhadas.'],
-          posicionamento: ['Monitorar os termos recorrentes acima como sinais de risco reputacional.'],
-          crise: ['Acompanhar manualmente os comentários de maior engajamento listados.'],
-          narrativa: ['Mapear contra-narrativas para os termos críticos mais frequentes.'],
-        },
-      };
+      return new Response(JSON.stringify({ error: 'IA estratégica temporariamente indisponível. Tente novamente em instantes.' }), {
+        status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
+    // Normalize components and compute score server-side (source of truth).
+    const c = analysis.components || {};
+    const components = {
+      polarizacao: clamp(c.polarizacao),
+      desgaste: clamp(c.desgaste),
+      antagonismo_ideologico: clamp(c.antagonismo_ideologico),
+      fragilidade_narrativa: clamp(c.fragilidade_narrativa),
+      exposicao_negativa: clamp(c.exposicao_negativa),
+    };
+    const rejection_score = Math.round(
+      (components.polarizacao + components.desgaste + components.antagonismo_ideologico +
+        components.fragilidade_narrativa + components.exposicao_negativa) / 5
+    );
+    analysis.components = components;
+    analysis.rejection_score = rejection_score;
+    analysis.rejection_level = levelFromScore(rejection_score);
+
     return new Response(JSON.stringify({
       analysis,
-      evidenceCount,
-      confidence,
-      usedFallback,
       candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region },
-      period: { daysBack, startDate: startDate.toISOString(), endDate: new Date().toISOString() },
-      ai_provider: aiProvider
-    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-
-
-    return new Response(JSON.stringify({
-      analysis,
-      evidenceCount,
-      confidence,
-
-      candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region },
-      period: { daysBack, startDate: startDate.toISOString(), endDate: new Date().toISOString() },
-      ai_provider: aiProvider
+      ai_provider: aiProvider,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
