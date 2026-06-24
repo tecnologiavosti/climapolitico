@@ -226,7 +226,7 @@ Regras: 4 a 6 perfis em who_rejects, 3 a 6 narrativas em attack_narratives, 3 a 
 
     return new Response(JSON.stringify({
       analysis,
-      candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region, role_title: candidate.role_title },
+      candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region },
       period: { key: periodKey, label: periodLabel, range_days: rangeDays, recent_weight: recentWeight, historical_weight: historicalWeight },
       ai_provider: aiProvider,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
