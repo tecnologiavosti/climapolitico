@@ -591,8 +591,8 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
 
 
 
-          {/* Preview — só aparece quando nome, partido e cargo estão definidos */}
-          {fullName.trim() && party && position && (
+          {/* Preview — só aparece quando nome e partido (+ cargo se Político) estão definidos */}
+          {fullName.trim() && party && (!requiresPosition || position) && (
             <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-muted/40 via-muted/20 to-transparent p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Sparkles className="h-3.5 w-3.5 text-primary" />
@@ -605,7 +605,13 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                 <div className="min-w-0">
                   <div className="text-base font-semibold truncate">{fullName.trim()}</div>
                   <div className="text-sm text-muted-foreground truncate">
-                    {[party, position, scope === "national" ? "Brasil" : (city && state ? `${city}/${state}` : (state && (STATE_NAMES[state] ?? state)))].filter(Boolean).join(" · ")}
+                    {[
+                      party,
+                      requiresPosition ? position : (profileType === "midia" ? "Mídia/Jornalismo" : "Figura Pública"),
+                      requiresPosition
+                        ? (scope === "national" ? "Brasil" : (city && state ? `${city}/${state}` : (state && (STATE_NAMES[state] ?? state))))
+                        : "Brasil",
+                    ].filter(Boolean).join(" · ")}
                   </div>
                 </div>
               </div>
