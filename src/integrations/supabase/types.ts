@@ -2644,6 +2644,81 @@ export type Database = {
         }
         Relationships: []
       }
+      politicians: {
+        Row: {
+          ano_eleicao: number | null
+          ativo: boolean
+          cargo: string | null
+          cpf_hash: string | null
+          created_at: string
+          eleito: boolean
+          estado: string | null
+          foto_url: string | null
+          id: string
+          municipio: string | null
+          nome: string
+          nome_normalizado: string | null
+          nome_urna: string | null
+          numero_partido: string | null
+          partido_nome: string | null
+          partido_sigla: string | null
+          popularidade: number
+          redes_sociais: Json | null
+          regiao: string | null
+          search_tsv: unknown
+          tse_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          ano_eleicao?: number | null
+          ativo?: boolean
+          cargo?: string | null
+          cpf_hash?: string | null
+          created_at?: string
+          eleito?: boolean
+          estado?: string | null
+          foto_url?: string | null
+          id?: string
+          municipio?: string | null
+          nome: string
+          nome_normalizado?: string | null
+          nome_urna?: string | null
+          numero_partido?: string | null
+          partido_nome?: string | null
+          partido_sigla?: string | null
+          popularidade?: number
+          redes_sociais?: Json | null
+          regiao?: string | null
+          search_tsv?: unknown
+          tse_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ano_eleicao?: number | null
+          ativo?: boolean
+          cargo?: string | null
+          cpf_hash?: string | null
+          created_at?: string
+          eleito?: boolean
+          estado?: string | null
+          foto_url?: string | null
+          id?: string
+          municipio?: string | null
+          nome?: string
+          nome_normalizado?: string | null
+          nome_urna?: string | null
+          numero_partido?: string | null
+          partido_nome?: string | null
+          partido_sigla?: string | null
+          popularidade?: number
+          redes_sociais?: Json | null
+          regiao?: string | null
+          search_tsv?: unknown
+          tse_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           active_session_id: string | null
@@ -5200,6 +5275,39 @@ export type Database = {
           total_count: number
         }[]
       }
+      search_politicians: {
+        Args: {
+          p_cargo?: string[]
+          p_estado?: string[]
+          p_limit?: number
+          p_municipio?: string
+          p_offset?: number
+          p_only_eleitos?: boolean
+          p_partido?: string[]
+          p_regiao?: string[]
+          q?: string
+        }
+        Returns: {
+          ano_eleicao: number
+          cargo: string
+          eleito: boolean
+          estado: string
+          foto_url: string
+          id: string
+          municipio: string
+          nome: string
+          nome_urna: string
+          numero_partido: string
+          partido_nome: string
+          partido_sigla: string
+          popularidade: number
+          redes_sociais: Json
+          regiao: string
+          similarity: number
+          total_count: number
+          tse_id: string
+        }[]
+      }
       should_skip_collector: { Args: { _name: string }; Returns: boolean }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
@@ -5211,6 +5319,17 @@ export type Database = {
           _text: string
         }
         Returns: Json
+      }
+      suggest_politicians: {
+        Args: { p_limit?: number; q: string }
+        Returns: {
+          cargo: string
+          estado: string
+          id: string
+          nome: string
+          partido_sigla: string
+          similarity: number
+        }[]
       }
       uf_to_macro_region: { Args: { uf: string }; Returns: string }
       unaccent: { Args: { "": string }; Returns: string }
