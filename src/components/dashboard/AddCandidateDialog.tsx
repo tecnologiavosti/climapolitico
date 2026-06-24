@@ -417,7 +417,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
             {!catalogMatch && suggestions.length === 0 && debouncedName.trim().length >= 4 && aiLoading && (
               <div className="mt-2 flex items-center gap-2 rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Buscando em fontes públicas (TSE, Câmara, Senado, prefeituras)…
+                Buscando nas bases públicas (TSE, Câmara, Senado, prefeituras)…
               </div>
             )}
 
