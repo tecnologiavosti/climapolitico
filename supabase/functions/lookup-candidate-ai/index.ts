@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const callGateway = async () => fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         "Lovable-API-Key": LOVABLE_API_KEY,
@@ -67,11 +67,24 @@ Deno.serve(async (req) => {
       }),
     });
 
+    let resp = await callGateway();
+    // Retry on 429 with exponential backoff + jitter
+    for (let attempt = 1; attempt <= 3 && resp.status === 429; attempt++) {
+      const wait = Math.min(8000, 600 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 400);
+      console.warn(`[lookup-candidate-ai] 429 — retry ${attempt}/3 in ${wait}ms`);
+      await new Promise((r) => setTimeout(r, wait));
+      resp = await callGateway();
+    }
+
     if (!resp.ok) {
-      const text = await resp.text();
+      const text = await resp.text().catch(() => "");
       console.error("[lookup-candidate-ai] gateway error", resp.status, text);
-      return new Response(JSON.stringify({ found: false, error: "ai_gateway_error", status: resp.status }), {
-        status: resp.status === 429 || resp.status === 402 ? resp.status : 502,
+      // Always return 200 with found=false so the client UI degrades gracefully
+      const friendly =
+        resp.status === 429 ? "rate_limited" :
+        resp.status === 402 ? "credits_exhausted" : "ai_gateway_error";
+      return new Response(JSON.stringify({ found: false, error: friendly, status: resp.status }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
