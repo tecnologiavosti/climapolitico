@@ -38,12 +38,39 @@ serve(async (req) => {
       });
     }
 
-    const { candidateId } = await req.json();
+    const body = await req.json();
+    const { candidateId, period, customStart, customEnd } = body || {};
     if (!candidateId) {
       return new Response(JSON.stringify({ error: 'candidateId é obrigatório' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
+
+    // Temporal weighting: recent (curto prazo) vs historical (estrutural)
+    type PeriodKey = '7d' | '30d' | '90d' | '1y' | 'custom';
+    const periodKey: PeriodKey = (['7d','30d','90d','1y','custom'].includes(period) ? period : '30d') as PeriodKey;
+    const PERIOD_LABEL: Record<PeriodKey, string> = {
+      '7d': 'Últimos 7 dias', '30d': 'Últimos 30 dias', '90d': 'Últimos 90 dias',
+      '1y': 'Último ano', 'custom': 'Intervalo personalizado',
+    };
+    let recentWeight = 0.5;
+    let historicalWeight = 0.5;
+    let rangeDays = 30;
+    if (periodKey === '7d') { recentWeight = 0.4; historicalWeight = 0.6; rangeDays = 7; }
+    else if (periodKey === '30d') { recentWeight = 0.5; historicalWeight = 0.5; rangeDays = 30; }
+    else if (periodKey === '90d') { recentWeight = 0.3; historicalWeight = 0.7; rangeDays = 90; }
+    else if (periodKey === '1y') { recentWeight = 0.1; historicalWeight = 0.9; rangeDays = 365; }
+    else if (periodKey === 'custom' && customStart && customEnd) {
+      const ms = new Date(customEnd).getTime() - new Date(customStart).getTime();
+      rangeDays = Math.max(1, Math.round(ms / (1000 * 60 * 60 * 24)));
+      const temporalFactor = Math.min(1, rangeDays / 365);
+      // longer range -> more weight on historical
+      historicalWeight = Math.min(0.9, 0.4 + temporalFactor * 0.5);
+      recentWeight = 1 - historicalWeight;
+    }
+    const periodLabel = periodKey === 'custom' && customStart && customEnd
+      ? `Personalizado (${rangeDays} dias)`
+      : PERIOD_LABEL[periodKey];
 
     const { data: candidate, error: candError } = await supabaseClient
       .from('candidates')
@@ -58,7 +85,7 @@ serve(async (req) => {
       });
     }
 
-    const systemMsg = `Você é um estrategista político sênior brasileiro especializado em inteligência reputacional preditiva e war room eleitoral. Sua análise é 100% inferencial — você NÃO usa comentários reais, menções, posts ou evidências coletadas. Você infere a rejeição estritamente a partir do perfil político do candidato: cargo, partido, ideologia, região, rivalidades, trajetória pública conhecida e arquétipo narrativo. Nunca cite "comentários", "evidências", "menções" ou "posts coletados". Toda frase representativa que você gerar é SIMULADA por IA com base em padrões narrativos brasileiros — nunca apresentada como real. Responda sempre em português do Brasil.`;
+    const systemMsg = `Você é um estrategista político sênior brasileiro especializado em inteligência reputacional preditiva e war room eleitoral. Sua análise é 100% inferencial — você NÃO usa comentários reais, menções, posts ou evidências coletadas. Você infere a rejeição estritamente a partir do perfil político do candidato e do CONTEXTO TEMPORAL solicitado (recorte do período). Nunca cite "comentários", "evidências", "menções" ou "posts coletados". Toda frase representativa que você gerar é SIMULADA por IA com base em padrões narrativos brasileiros — nunca apresentada como real. Responda sempre em português do Brasil.`;
 
     const userPrompt = `CANDIDATO ALVO:
 - Nome: ${candidate.full_name}
