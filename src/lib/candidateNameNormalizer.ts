@@ -152,7 +152,6 @@ export const KNOWN_POLITICIANS: KnownPolitician[] = [
   { fullName: "Renato Casagrande", aliases: ["casagrande"], party: "PSB", position: "Governador", state: "ES" },
   { fullName: "Carlos Brandão", aliases: ["brandao", "carlos brandao"], party: "PSB", position: "Governador", state: "MA" },
   { fullName: "Jorginho Mello", aliases: ["jorginho mello"], party: "PL", position: "Governador", state: "SC" },
-  { fullName: "Ratinho Junior", aliases: ["ratinho", "ratinho jr"], party: "PSD", position: "Governador", state: "PR" },
 ];
 
 export interface NameSuggestion {
