@@ -409,3 +409,79 @@ All colors MUST be HSL.
 .dark header svg {
   color: #67E8F9;
 }
+
+/* ============================================================
+   CONTRAST PATCH — Dark & Aurora
+   Garante WCAG AA em sidebar, ícones, labels e onboarding.
+   ============================================================ */
+
+/* Sidebar — títulos, links e ícones */
+.dark [data-sidebar="sidebar"],
+.aurora [data-sidebar="sidebar"] {
+  color: #F8FAFC;
+}
+.dark [data-sidebar="sidebar"] [data-sidebar="group-label"],
+.aurora [data-sidebar="sidebar"] [data-sidebar="group-label"] {
+  color: #E2E8F0 !important;
+  opacity: 1 !important;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.dark [data-sidebar="sidebar"] [data-sidebar="menu-button"],
+.aurora [data-sidebar="sidebar"] [data-sidebar="menu-button"] {
+  color: #E2E8F0;
+}
+.dark [data-sidebar="sidebar"] [data-sidebar="menu-button"]:hover,
+.aurora [data-sidebar="sidebar"] [data-sidebar="menu-button"]:hover {
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, 0.06);
+}
+.dark [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"],
+.aurora [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"] {
+  color: #FFFFFF;
+  background: rgba(103, 232, 249, 0.12);
+}
+.dark [data-sidebar="sidebar"] svg,
+.aurora [data-sidebar="sidebar"] svg {
+  color: #67E8F9;
+  opacity: 1 !important;
+}
+.dark [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"] svg,
+.aurora [data-sidebar="sidebar"] [data-sidebar="menu-button"][data-active="true"] svg {
+  color: #FFFFFF;
+}
+
+/* Onboarding / Tutorial — força contraste alto independente do tema */
+.dark [class*="z-\\[10000\\]"],
+.aurora [class*="z-\\[10000\\]"] {
+  background: rgba(15, 23, 42, 0.96) !important;
+  border-color: rgba(103, 232, 249, 0.35) !important;
+  color: #F8FAFC !important;
+}
+.dark [class*="z-\\[10000\\]"] *,
+.aurora [class*="z-\\[10000\\]"] * {
+  color: #F8FAFC;
+}
+.dark [class*="z-\\[10000\\]"] svg,
+.aurora [class*="z-\\[10000\\]"] svg {
+  color: #67E8F9 !important;
+  opacity: 1 !important;
+}
+.dark [class*="z-\\[10000\\]"] [class*="text-muted-foreground"],
+.aurora [class*="z-\\[10000\\]"] [class*="text-muted-foreground"] {
+  color: #CBD5E1 !important;
+}
+
+/* Labels secundárias e descrições — mínimo de contraste AA */
+.dark .text-muted-foreground,
+.aurora .text-muted-foreground {
+  color: #CBD5E1 !important;
+  opacity: 1 !important;
+}
+
+/* Ícones genéricos em headers/cards nunca abaixo de 0.9 de opacidade */
+.dark svg,
+.aurora svg {
+  opacity: 1;
+}
+
