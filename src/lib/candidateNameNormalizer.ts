@@ -179,6 +179,7 @@ export const KNOWN_POLITICIANS: KnownPolitician[] = [
 
 const politicianFuse = new Fuse(KNOWN_POLITICIANS, {
   includeScore: true,
+  ignoreDiacritics: true,
   ignoreLocation: true,
   threshold: 0.25,
   keys: [
@@ -187,7 +188,8 @@ const politicianFuse = new Fuse(KNOWN_POLITICIANS, {
     { name: "searchableTokens", weight: 0.2 },
   ],
   getFn: (obj, path) => {
-    const value = Fuse.config.getFn(obj, path);
+    const parts = Array.isArray(path) ? path : path.split(".");
+    const value = parts.reduce<any>((acc, key) => acc?.[key], obj);
     if (Array.isArray(value)) return value.map((item) => normalizeCandidateName(String(item)));
     return normalizeCandidateName(String(value ?? ""));
   },
