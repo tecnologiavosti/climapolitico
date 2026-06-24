@@ -282,7 +282,8 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   };
 
   const reset = () => {
-    setFullName(""); setDebouncedName(""); setParty(""); setPosition(""); setState(""); setCity(""); setErrors({});
+    setFullName(""); setDebouncedName(""); setProfileType("politico");
+    setParty(""); setPosition(""); setState(""); setCity(""); setErrors({});
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -290,15 +291,19 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     const errs: Record<string, string> = {};
     if (fullName.trim().length < 3) errs.fullName = "Nome deve ter no mínimo 3 caracteres";
     if (!party) errs.party = "Selecione um partido";
-    if (!position) errs.position = "Selecione um cargo";
-    if (scope !== "national" && !state) errs.state = "Selecione um estado";
-    if (scope === "municipal" && !city.trim()) errs.city = "Informe a cidade";
+    if (requiresPosition && !position) errs.position = "Selecione um cargo";
+    if (requiresPosition && scope !== "national" && !state) errs.state = "Selecione um estado";
+    if (requiresPosition && scope === "municipal" && !city.trim()) errs.city = "Informe a cidade";
     setErrors(errs);
     if (Object.keys(errs).length) return;
 
-    const region = scope === "national" ? "Brasil" : (STATE_TO_REGION[state] ?? "");
+    const effectivePosition = requiresPosition ? position : (profileType === "midia" ? "Mídia/Jornalismo" : "Figura Pública");
+    const effectiveScope = requiresPosition ? scope : "national";
+    const region = effectiveScope === "national" ? "Brasil" : (STATE_TO_REGION[state] ?? "");
     onSubmit({
-      fullName, party, position, region, state, city: city.trim() || undefined,
+      fullName, party, position: effectivePosition, region,
+      state: requiresPosition ? state : "",
+      city: requiresPosition ? (city.trim() || undefined) : undefined,
       socials: {}, photoFile: null,
     });
   };
