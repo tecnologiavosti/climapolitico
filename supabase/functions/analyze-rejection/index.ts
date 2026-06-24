@@ -103,12 +103,19 @@ CONTEXTO TEMPORAL DA ANÁLISE:
 
 TAREFA — INTELIGÊNCIA PREDITIVA DE REJEIÇÃO (sem usar dados coletados):
 
-Calcule um score de rejeição (0–100) como a média de 5 componentes (0–100 cada), já ponderados pelo contexto temporal acima:
-1. polarizacao — quanto divide opiniões (ex.: Lula alto, prefeito técnico baixo).
-2. desgaste — tempo de exposição pública e histórico (presidente alto, novato baixo).
-3. antagonismo_ideologico — rejeição em grupos opostos (direita vs esquerda, agro vs urbano progressista).
+Calcule 5 VETORES NEGATIVOS (0–100 cada), ponderados pelo contexto temporal acima:
+1. polarizacao — quanto divide opiniões.
+2. desgaste — tempo de exposição pública e histórico.
+3. antagonismo_ideologico — rejeição em grupos opostos.
 4. fragilidade_narrativa — facilidade de ataque (corrupção, velha política, elitismo, radicalismo, inexperiência).
 5. exposicao_negativa — probabilidade de narrativas negativas ganharem força no período.
+
+E também 3 VETORES DE PROTEÇÃO / ESCUDO REPUTACIONAL (0–100 cada), que mitigam a rejeição:
+6. aprovacao — nível inferido de aprovação pública/popular ativa.
+7. base_fiel — solidez e tamanho de base eleitoral leal e mobilizada.
+8. autoridade_institucional — capital político institucional, peso de cargo, influência sobre agenda e narrativa nacional.
+
+Importante: candidatos altamente competitivos (ex.: presidentes em exercício, líderes nacionais) devem ter vetores de proteção altos mesmo quando o desgaste e polarização também forem altos. NÃO infle artificialmente a rejeição de quem possui ampla base e capital institucional.
 
 Responda EXCLUSIVAMENTE em JSON válido no formato:
 {
@@ -117,7 +124,10 @@ Responda EXCLUSIVAMENTE em JSON válido no formato:
     "desgaste": 0-100,
     "antagonismo_ideologico": 0-100,
     "fragilidade_narrativa": 0-100,
-    "exposicao_negativa": 0-100
+    "exposicao_negativa": 0-100,
+    "aprovacao": 0-100,
+    "base_fiel": 0-100,
+    "autoridade_institucional": 0-100
   },
   "diagnosis": "2 a 4 parágrafos curtos, separados por \\n\\n, explicando por que esse candidato gera rejeição — SEM citar evidências, comentários ou menções. Inferência estratégica pura.",
   "who_rejects": [
