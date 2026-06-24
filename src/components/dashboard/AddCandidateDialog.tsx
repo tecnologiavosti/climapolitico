@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import {
   UserPlus, Loader2, Landmark, Building2, Building, Scroll, FileText, ClipboardList, User,
-  Sparkles, Check, ChevronsUpDown,
+  Sparkles, Check, ChevronsUpDown, Wand2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { nameSimilarity, normalizeCandidateName } from "@/lib/candidateNameNormalizer";
 
 type Party = { sigla: string; nome: string; numero: number };
 
