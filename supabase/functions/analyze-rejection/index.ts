@@ -38,12 +38,39 @@ serve(async (req) => {
       });
     }
 
-    const { candidateId } = await req.json();
+    const body = await req.json();
+    const { candidateId, period, customStart, customEnd } = body || {};
     if (!candidateId) {
       return new Response(JSON.stringify({ error: 'candidateId é obrigatório' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
+
+    // Temporal weighting: recent (curto prazo) vs historical (estrutural)
+    type PeriodKey = '7d' | '30d' | '90d' | '1y' | 'custom';
+    const periodKey: PeriodKey = (['7d','30d','90d','1y','custom'].includes(period) ? period : '30d') as PeriodKey;
+    const PERIOD_LABEL: Record<PeriodKey, string> = {
+      '7d': 'Últimos 7 dias', '30d': 'Últimos 30 dias', '90d': 'Últimos 90 dias',
+      '1y': 'Último ano', 'custom': 'Intervalo personalizado',
+    };
+    let recentWeight = 0.5;
+    let historicalWeight = 0.5;
+    let rangeDays = 30;
+    if (periodKey === '7d') { recentWeight = 0.4; historicalWeight = 0.6; rangeDays = 7; }
+    else if (periodKey === '30d') { recentWeight = 0.5; historicalWeight = 0.5; rangeDays = 30; }
+    else if (periodKey === '90d') { recentWeight = 0.3; historicalWeight = 0.7; rangeDays = 90; }
+    else if (periodKey === '1y') { recentWeight = 0.1; historicalWeight = 0.9; rangeDays = 365; }
+    else if (periodKey === 'custom' && customStart && customEnd) {
+      const ms = new Date(customEnd).getTime() - new Date(customStart).getTime();
+      rangeDays = Math.max(1, Math.round(ms / (1000 * 60 * 60 * 24)));
+      const temporalFactor = Math.min(1, rangeDays / 365);
+      // longer range -> more weight on historical
+      historicalWeight = Math.min(0.9, 0.4 + temporalFactor * 0.5);
+      recentWeight = 1 - historicalWeight;
+    }
+    const periodLabel = periodKey === 'custom' && customStart && customEnd
+      ? `Personalizado (${rangeDays} dias)`
+      : PERIOD_LABEL[periodKey];
 
     const { data: candidate, error: candError } = await supabaseClient
       .from('candidates')
@@ -58,7 +85,7 @@ serve(async (req) => {
       });
     }
 
-    const systemMsg = `Você é um estrategista político sênior brasileiro especializado em inteligência reputacional preditiva e war room eleitoral. Sua análise é 100% inferencial — você NÃO usa comentários reais, menções, posts ou evidências coletadas. Você infere a rejeição estritamente a partir do perfil político do candidato: cargo, partido, ideologia, região, rivalidades, trajetória pública conhecida e arquétipo narrativo. Nunca cite "comentários", "evidências", "menções" ou "posts coletados". Toda frase representativa que você gerar é SIMULADA por IA com base em padrões narrativos brasileiros — nunca apresentada como real. Responda sempre em português do Brasil.`;
+    const systemMsg = `Você é um estrategista político sênior brasileiro especializado em inteligência reputacional preditiva e war room eleitoral. Sua análise é 100% inferencial — você NÃO usa comentários reais, menções, posts ou evidências coletadas. Você infere a rejeição estritamente a partir do perfil político do candidato e do CONTEXTO TEMPORAL solicitado (recorte do período). Nunca cite "comentários", "evidências", "menções" ou "posts coletados". Toda frase representativa que você gerar é SIMULADA por IA com base em padrões narrativos brasileiros — nunca apresentada como real. Responda sempre em português do Brasil.`;
 
     const userPrompt = `CANDIDATO ALVO:
 - Nome: ${candidate.full_name}
@@ -66,14 +93,20 @@ serve(async (req) => {
 - Região/UF: ${candidate.region || 'não informada'}
 - Cargo/posição e ideologia: inferir a partir do partido, região e perfil público brasileiro contemporâneo.
 
+CONTEXTO TEMPORAL DA ANÁLISE:
+- Período selecionado: ${periodLabel} (${rangeDays} dias).
+- Peso para narrativas RECENTES (curto prazo, momento atual, viralizações, falas polêmicas, escândalos recentes): ${Math.round(recentWeight * 100)}%.
+- Peso para narrativas HISTÓRICAS / ESTRUTURAIS (desgaste acumulado, reputação consolidada, rejeição estrutural de longo prazo): ${Math.round(historicalWeight * 100)}%.
+- Recalibre TODOS os componentes e o diagnóstico aplicando essa ponderação: períodos curtos sensibilizam mais a 'exposicao_negativa' e 'fragilidade_narrativa' atuais; períodos longos sensibilizam mais 'desgaste' e 'antagonismo_ideologico' estrutural. Mudança de percepção, evolução da polarização, ataques recentes vs históricos e tendência reputacional devem refletir o intervalo.
+
 TAREFA — INTELIGÊNCIA PREDITIVA DE REJEIÇÃO (sem usar dados coletados):
 
-Calcule um score de rejeição (0–100) como a média de 5 componentes (0–100 cada):
+Calcule um score de rejeição (0–100) como a média de 5 componentes (0–100 cada), já ponderados pelo contexto temporal acima:
 1. polarizacao — quanto divide opiniões (ex.: Lula alto, prefeito técnico baixo).
 2. desgaste — tempo de exposição pública e histórico (presidente alto, novato baixo).
 3. antagonismo_ideologico — rejeição em grupos opostos (direita vs esquerda, agro vs urbano progressista).
 4. fragilidade_narrativa — facilidade de ataque (corrupção, velha política, elitismo, radicalismo, inexperiência).
-5. exposicao_negativa — probabilidade de narrativas negativas ganharem força.
+5. exposicao_negativa — probabilidade de narrativas negativas ganharem força no período.
 
 Responda EXCLUSIVAMENTE em JSON válido no formato:
 {
@@ -167,6 +200,7 @@ Regras: 4 a 6 perfis em who_rejects, 3 a 6 narrativas em attack_narratives, 3 a 
     return new Response(JSON.stringify({
       analysis,
       candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region },
+      period: { key: periodKey, label: periodLabel, range_days: rangeDays, recent_weight: recentWeight, historical_weight: historicalWeight },
       ai_provider: aiProvider,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 

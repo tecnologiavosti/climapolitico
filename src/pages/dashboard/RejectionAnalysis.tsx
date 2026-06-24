@@ -8,12 +8,24 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { DateRangePicker } from "@/components/DateRangePicker";
+import type { DateRange } from "react-day-picker";
 import {
   AlertTriangle, Brain, Lightbulb, Users, Flame,
   MessageSquareQuote, Megaphone, Target, TrendingDown, RefreshCw, Sparkles
 } from "lucide-react";
 import { toast } from "sonner";
 import RejectionLoading from "@/components/dashboard/RejectionLoading";
+
+type PeriodKey = "7d" | "30d" | "90d" | "1y" | "custom";
+
+const PERIOD_LABEL: Record<PeriodKey, string> = {
+  "7d": "Últimos 7 dias",
+  "30d": "Últimos 30 dias",
+  "90d": "Últimos 90 dias",
+  "1y": "Último ano",
+  "custom": "Personalizado",
+};
 
 interface Components {
   polarizacao: number;
@@ -66,6 +78,8 @@ function scoreColor(n: number): string {
 const RejectionAnalysisPage = () => {
   const { user } = useAuth();
   const [selectedCandidate, setSelectedCandidate] = useState<string>("");
+  const [period, setPeriod] = useState<PeriodKey>("30d");
+  const [customRange, setCustomRange] = useState<DateRange | undefined>();
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -89,11 +103,20 @@ const RejectionAnalysisPage = () => {
       toast.error("Selecione um candidato");
       return;
     }
+    if (period === "custom" && (!customRange?.from || !customRange?.to)) {
+      toast.error("Selecione o intervalo personalizado");
+      return;
+    }
     setIsAnalyzing(true);
     setAnalysisResult(null);
     try {
       const { data, error } = await supabase.functions.invoke('analyze-rejection', {
-        body: { candidateId: selectedCandidate },
+        body: {
+          candidateId: selectedCandidate,
+          period,
+          customStart: customRange?.from?.toISOString(),
+          customEnd: customRange?.to?.toISOString(),
+        },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -118,7 +141,7 @@ const RejectionAnalysisPage = () => {
           Mapa de Rejeição Política
         </h1>
         <p className="text-muted-foreground mt-1">
-          Inteligência preditiva: score de rejeição inferido por IA a partir do perfil político, partido, ideologia e arquétipo narrativo.
+          Leitura estratégica IA considerando o intervalo escolhido — recalcula narrativas, polarização e desgaste conforme o período.
         </p>
       </div>
 
@@ -139,6 +162,27 @@ const RejectionAnalysisPage = () => {
               </SelectContent>
             </Select>
 
+            <Select value={period} onValueChange={(v) => setPeriod(v as PeriodKey)}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Período" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7d">Últimos 7 dias</SelectItem>
+                <SelectItem value="30d">Últimos 30 dias</SelectItem>
+                <SelectItem value="90d">Últimos 90 dias</SelectItem>
+                <SelectItem value="1y">Último ano</SelectItem>
+                <SelectItem value="custom">Personalizado</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {period === "custom" && (
+              <DateRangePicker
+                dateRange={customRange}
+                onDateRangeChange={setCustomRange}
+                className="w-[280px]"
+              />
+            )}
+
             <Button onClick={handleAnalyze} disabled={isAnalyzing || !selectedCandidate}>
               {isAnalyzing ? (
                 <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />{analysisResult ? "Reanalisando..." : "Analisando..."}</>
@@ -149,6 +193,9 @@ const RejectionAnalysisPage = () => {
               )}
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground mt-3">
+            Análise reputacional baseada no período selecionado — a IA recalibra peso entre narrativas recentes e desgaste estrutural.
+          </p>
         </CardContent>
       </Card>
 
@@ -162,7 +209,7 @@ const RejectionAnalysisPage = () => {
             exit={{ opacity: 0, scale: 0.98 }}
             transition={{ duration: 0.3 }}
           >
-            <RejectionLoading candidateName={candidateName} periodLabel="Inferência IA" />
+            <RejectionLoading candidateName={candidateName} periodLabel={PERIOD_LABEL[period]} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -197,7 +244,7 @@ const RejectionAnalysisPage = () => {
                 </p>
                 <p className="text-2xl font-bold mt-2 tracking-wide">{level.label}</p>
                 <p className="text-xs opacity-80 mt-3 flex items-center justify-center gap-1.5">
-                  <Sparkles className="h-3.5 w-3.5" /> Inferência estratégica por IA — sem uso de menções coletadas
+                  <Sparkles className="h-3.5 w-3.5" /> Leitura estratégica IA · {PERIOD_LABEL[period]}
                 </p>
               </div>
             </CardContent>
