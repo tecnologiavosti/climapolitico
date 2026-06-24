@@ -116,7 +116,12 @@ All colors MUST be HSL.
     --gradient-hero: linear-gradient(135deg, hsl(217 88% 22%) 0%, hsl(210 86% 31%) 55%, hsl(197 82% 51%) 100%);
     --gradient-auth: radial-gradient(circle at top right, hsl(197 82% 51%) 0%, hsl(217 88% 22%) 70%);
     --gradient-sidebar: linear-gradient(180deg, hsl(222 56% 4%) 0%, hsl(217 88% 22%) 100%);
-    --gradient-app: linear-gradient(180deg, #05070D 0%, #0A1020 45%, #111827 100%);
+    --gradient-app:
+      radial-gradient(circle at 15% 20%, rgba(30,181,232,0.22) 0%, transparent 30%),
+      radial-gradient(circle at 85% 15%, rgba(11,77,145,0.28) 0%, transparent 35%),
+      radial-gradient(circle at 50% 75%, rgba(8,43,102,0.32) 0%, transparent 40%),
+      linear-gradient(180deg, #071226 0%, #0A1B38 50%, #081427 100%);
+    --gradient-sidebar-app: linear-gradient(180deg, rgba(6,40,92,0.95) 0%, rgba(11,77,145,0.90) 100%);
 
     --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.4);
     --shadow-md: 0 4px 12px -1px hsl(0 0% 0% / 0.5);
