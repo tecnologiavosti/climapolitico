@@ -40,6 +40,7 @@ const UF_OF_REGION: Record<string, string[]> = {
   norte: ["AC", "AM", "AP", "PA", "RO", "RR", "TO"],
   nordeste: ["AL", "BA", "CE", "MA", "PB", "PE", "PI", "RN", "SE"],
   "centro-oeste": ["DF", "GO", "MT", "MS"],
+  "centro oeste": ["DF", "GO", "MT", "MS"],
   sudeste: ["ES", "MG", "RJ", "SP"],
   sul: ["PR", "RS", "SC"],
 };
@@ -209,6 +210,29 @@ interface Filters {
   page?: number;
 }
 
+function csvParam(value: string | null): string[] | null {
+  if (!value) return null;
+  return value.split(",").map((v) => v.trim()).filter(Boolean);
+}
+
+async function readFilters(req: Request): Promise<Filters> {
+  if (req.method === "GET") {
+    const url = new URL(req.url);
+    return {
+      q: url.searchParams.get("name") ?? url.searchParams.get("q"),
+      cargo: csvParam(url.searchParams.get("cargo")),
+      partido: csvParam(url.searchParams.get("partido")),
+      regiao: csvParam(url.searchParams.get("regiao")),
+      estado: csvParam(url.searchParams.get("estado")),
+      municipio: url.searchParams.get("municipio"),
+      onlyEleitos: ["1", "true", "sim"].includes(normalize(url.searchParams.get("somenteEleitos") ?? url.searchParams.get("onlyEleitos"))),
+      page: Number(url.searchParams.get("page") ?? 0),
+    };
+  }
+
+  return await req.json().catch(() => ({}));
+}
+
 function resolveUfs(f: Filters): string[] {
   if (f.estado?.length) return f.estado.map((u) => u.toUpperCase());
   if (f.regiao?.length) return f.regiao.flatMap((r) => UF_OF_REGION[normalize(r)] ?? []);
@@ -225,7 +249,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const f: Filters = await req.json().catch(() => ({}));
+    const f = await readFilters(req);
     console.log("[tse-search] filters:", JSON.stringify(f));
 
     const cargos = resolveCargos(f);
