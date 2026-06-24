@@ -251,9 +251,10 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
 
 
   const scope = scopeOf(position);
+  const requiresPosition = profileType === "politico";
   const canSubmit =
-    !!fullName.trim() && !!party && !!position && !isPending &&
-    (scope === "national" || (scope === "state" && !!state) || (scope === "municipal" && !!state && !!city.trim()));
+    !!fullName.trim() && !!party && (!requiresPosition || !!position) && !isPending &&
+    (!requiresPosition || scope === "national" || (scope === "state" && !!state) || (scope === "municipal" && !!state && !!city.trim()));
 
   const scopeBadge = useMemo(() => {
     if (scope === "national") return { label: "Atuação nacional · cobertura Brasil", cls: "bg-gradient-to-r from-emerald-500/15 to-cyan-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30" };
