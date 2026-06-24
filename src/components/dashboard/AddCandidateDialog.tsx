@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -198,7 +198,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   const [aiLookup, setAiLookup] = useState<AiLookup | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
 
-  const hydrateFromAiLookup = (lookup: AiLookup) => {
+  const hydrateFromAiLookup = useCallback((lookup: AiLookup) => {
     if (!lookup.found || (lookup.confidence ?? 0) <= 0.8) return;
     if (lookup.name) setFullName(lookup.name);
     if (lookup.party) setParty(lookup.party);
@@ -209,7 +209,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     }
     if (lookup.state) setState(lookup.state);
     if (lookup.city) setCity(lookup.city);
-  };
+  }, []);
 
   useEffect(() => {
     const q = debouncedName.trim();
@@ -243,7 +243,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
       }
     })();
     return () => { cancelled = true; };
-  }, [debouncedName, catalogMatch, suggestions.length, party, position, state]);
+  }, [debouncedName, catalogMatch, suggestions.length, party, position, state, hydrateFromAiLookup]);
 
   const applyAiLookup = () => {
     if (!aiLookup || !aiLookup.found) return;
