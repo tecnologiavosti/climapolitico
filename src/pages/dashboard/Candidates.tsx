@@ -61,6 +61,10 @@ export default function Candidates() {
   const [candidateToDelete, setCandidateToDelete] = useState<string | null>(null);
   const [expandedCandidate, setExpandedCandidate] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [duplicateMatch, setDuplicateMatch] = useState<
+    | { match: DuplicateMatch<{ id: string; full_name: string }>; payload: AddCandidatePayload }
+    | null
+  >(null);
 
   // Open add-candidate dialog automatically when navigated with ?add=1 (from sidebar)
   const [searchParams, setSearchParams] = useSearchParams();
