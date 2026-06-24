@@ -47,6 +47,11 @@ const UF_OF_REGION: Record<string, string[]> = {
 
 const PAGE_SIZE = 50;
 
+const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+
+// Cargos que o TSE histórico (2022/2024) NÃO cobre — sempre via IA 2026.
+const AI_ONLY_CARGOS = new Set(["ministro", "presidente_partido", "pre_candidato"]);
+
 const normalize = (str: string | null | undefined) =>
   String(str ?? "")
     .normalize("NFD")
