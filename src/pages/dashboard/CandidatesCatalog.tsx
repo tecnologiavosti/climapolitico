@@ -98,7 +98,7 @@ export default function CandidatesCatalog() {
           Catálogo de Candidatos
         </h1>
         <p className="text-muted-foreground mt-1">
-          Base nacional de políticos do Brasil — dados oficiais do TSE, atualizados diariamente.
+          Base política nacional 2026 — TSE + cenário vivo (governadores, ministros, presidentes partidários, pré-candidatos) via IA.
         </p>
       </div>
 
