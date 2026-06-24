@@ -515,3 +515,97 @@ All colors MUST be HSL.
   opacity: 1;
 }
 
+/* ============================================================
+   GLOBAL CONTRAST OVERRIDE — Dark & Aurora
+   Remove cores fixas escuras em ícones e textos.
+   ============================================================ */
+
+/* Tokens semânticos de ícone/texto por tema */
+:root {
+  --icon-primary: #1e3a8a;
+  --text-strong: #111827;
+  --text-soft: #374151;
+}
+.dark {
+  --icon-primary: #67e8f9;
+  --text-strong: #f8fafc;
+  --text-soft: #cbd5e1;
+}
+.aurora {
+  --icon-primary: #7dd3fc;
+  --text-strong: #ffffff;
+  --text-soft: #dbeafe;
+}
+
+/* Neutraliza utilitários escuros do Tailwind em dark/aurora */
+.dark .text-black,
+.dark .text-slate-900,
+.dark .text-slate-800,
+.dark .text-zinc-900,
+.dark .text-zinc-800,
+.dark .text-gray-900,
+.dark .text-gray-800,
+.dark .text-neutral-900,
+.dark .text-blue-900,
+.aurora .text-black,
+.aurora .text-slate-900,
+.aurora .text-slate-800,
+.aurora .text-zinc-900,
+.aurora .text-zinc-800,
+.aurora .text-gray-900,
+.aurora .text-gray-800,
+.aurora .text-neutral-900,
+.aurora .text-blue-900 {
+  color: var(--text-strong) !important;
+}
+
+.dark .fill-black,
+.dark .fill-slate-900,
+.dark .fill-gray-900,
+.aurora .fill-black,
+.aurora .fill-slate-900,
+.aurora .fill-gray-900 {
+  fill: var(--icon-primary) !important;
+}
+.dark .stroke-black,
+.dark .stroke-slate-900,
+.dark .stroke-gray-900,
+.aurora .stroke-black,
+.aurora .stroke-slate-900,
+.aurora .stroke-gray-900 {
+  stroke: var(--icon-primary) !important;
+}
+
+/* Ícones dentro de Dialog/Modal, Dropdown e Cards herdam cor do tema */
+.dark [role="dialog"] svg,
+.aurora [role="dialog"] svg,
+.dark [role="menu"] svg,
+.aurora [role="menu"] svg {
+  color: var(--icon-primary);
+  opacity: 1 !important;
+}
+
+/* Header e ícone central de cards em dark/aurora */
+.dark [role="dialog"] header svg,
+.aurora [role="dialog"] header svg,
+.dark .intelligence-center svg,
+.aurora .intelligence-center svg {
+  color: var(--icon-primary) !important;
+  stroke: currentColor;
+}
+
+/* Cards de cargo (modal Adicionar Candidato) */
+.dark [role="dialog"] [data-card="role-option"][data-selected="true"],
+.aurora [role="dialog"] [data-card="role-option"][data-selected="true"] {
+  border-color: rgba(103, 232, 249, 0.6) !important;
+  box-shadow: 0 0 0 1px rgba(103, 232, 249, 0.35), 0 0 16px rgba(103, 232, 249, 0.18);
+}
+.dark [role="dialog"] [data-card="role-option"][data-selected="true"] svg,
+.aurora [role="dialog"] [data-card="role-option"][data-selected="true"] svg {
+  color: #67e8f9 !important;
+}
+.dark [role="dialog"] [data-card="role-option"][data-selected="true"] *,
+.aurora [role="dialog"] [data-card="role-option"][data-selected="true"] * {
+  color: #ffffff;
+}
+
