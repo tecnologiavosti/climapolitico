@@ -13,10 +13,12 @@ function clamp(n: any): number {
   return Math.max(0, Math.min(100, Math.round(v)));
 }
 
-function levelFromScore(score: number): 'baixa' | 'moderada' | 'alta' {
-  if (score <= 30) return 'baixa';
-  if (score <= 60) return 'moderada';
-  return 'alta';
+function levelFromScore(score: number): 'baixa' | 'moderada' | 'alta' | 'critica' | 'extrema' {
+  if (score <= 25) return 'baixa';
+  if (score <= 50) return 'moderada';
+  if (score <= 70) return 'alta';
+  if (score <= 85) return 'critica';
+  return 'extrema';
 }
 
 serve(async (req) => {
@@ -74,7 +76,7 @@ serve(async (req) => {
 
     const { data: candidate, error: candError } = await supabaseClient
       .from('candidates')
-      .select('id, full_name, party, region')
+      .select('id, full_name, party, region, role_title')
       .eq('id', candidateId)
       .eq('user_id', user.id)
       .single();
@@ -101,12 +103,19 @@ CONTEXTO TEMPORAL DA ANÁLISE:
 
 TAREFA — INTELIGÊNCIA PREDITIVA DE REJEIÇÃO (sem usar dados coletados):
 
-Calcule um score de rejeição (0–100) como a média de 5 componentes (0–100 cada), já ponderados pelo contexto temporal acima:
-1. polarizacao — quanto divide opiniões (ex.: Lula alto, prefeito técnico baixo).
-2. desgaste — tempo de exposição pública e histórico (presidente alto, novato baixo).
-3. antagonismo_ideologico — rejeição em grupos opostos (direita vs esquerda, agro vs urbano progressista).
+Calcule 5 VETORES NEGATIVOS (0–100 cada), ponderados pelo contexto temporal acima:
+1. polarizacao — quanto divide opiniões.
+2. desgaste — tempo de exposição pública e histórico.
+3. antagonismo_ideologico — rejeição em grupos opostos.
 4. fragilidade_narrativa — facilidade de ataque (corrupção, velha política, elitismo, radicalismo, inexperiência).
 5. exposicao_negativa — probabilidade de narrativas negativas ganharem força no período.
+
+E também 3 VETORES DE PROTEÇÃO / ESCUDO REPUTACIONAL (0–100 cada), que mitigam a rejeição:
+6. aprovacao — nível inferido de aprovação pública/popular ativa.
+7. base_fiel — solidez e tamanho de base eleitoral leal e mobilizada.
+8. autoridade_institucional — capital político institucional, peso de cargo, influência sobre agenda e narrativa nacional.
+
+Importante: candidatos altamente competitivos (ex.: presidentes em exercício, líderes nacionais) devem ter vetores de proteção altos mesmo quando o desgaste e polarização também forem altos. NÃO infle artificialmente a rejeição de quem possui ampla base e capital institucional.
 
 Responda EXCLUSIVAMENTE em JSON válido no formato:
 {
@@ -115,7 +124,10 @@ Responda EXCLUSIVAMENTE em JSON válido no formato:
     "desgaste": 0-100,
     "antagonismo_ideologico": 0-100,
     "fragilidade_narrativa": 0-100,
-    "exposicao_negativa": 0-100
+    "exposicao_negativa": 0-100,
+    "aprovacao": 0-100,
+    "base_fiel": 0-100,
+    "autoridade_institucional": 0-100
   },
   "diagnosis": "2 a 4 parágrafos curtos, separados por \\n\\n, explicando por que esse candidato gera rejeição — SEM citar evidências, comentários ou menções. Inferência estratégica pura.",
   "who_rejects": [
@@ -188,18 +200,34 @@ Regras: 4 a 6 perfis em who_rejects, 3 a 6 narrativas em attack_narratives, 3 a 
       antagonismo_ideologico: clamp(c.antagonismo_ideologico),
       fragilidade_narrativa: clamp(c.fragilidade_narrativa),
       exposicao_negativa: clamp(c.exposicao_negativa),
+      aprovacao: clamp(c.aprovacao),
+      base_fiel: clamp(c.base_fiel),
+      autoridade_institucional: clamp(c.autoridade_institucional),
     };
-    const rejection_score = Math.round(
+
+    const negativeScore =
       (components.polarizacao + components.desgaste + components.antagonismo_ideologico +
-        components.fragilidade_narrativa + components.exposicao_negativa) / 5
-    );
+        components.fragilidade_narrativa + components.exposicao_negativa) / 5;
+    const positiveShield =
+      (components.aprovacao + components.base_fiel + components.autoridade_institucional) / 3;
+    let rejeicaoFinal = negativeScore - (positiveShield * 0.35);
+
+    // Redutor para presidentes em exercício
+    const roleStr = (candidate.role_title || '').toLowerCase();
+    if (roleStr.includes('presidente')) {
+      rejeicaoFinal *= 0.90;
+    }
+
+    const rejection_score = Math.max(0, Math.min(100, Math.round(rejeicaoFinal)));
     analysis.components = components;
     analysis.rejection_score = rejection_score;
     analysis.rejection_level = levelFromScore(rejection_score);
+    analysis.negative_score = Math.round(negativeScore);
+    analysis.positive_shield = Math.round(positiveShield);
 
     return new Response(JSON.stringify({
       analysis,
-      candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region },
+      candidate: { id: candidate.id, full_name: candidate.full_name, party: candidate.party, region: candidate.region, role_title: candidate.role_title },
       period: { key: periodKey, label: periodLabel, range_days: rangeDays, recent_weight: recentWeight, historical_weight: historicalWeight },
       ai_provider: aiProvider,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

@@ -40,7 +40,7 @@ interface VulnerabilityPoint { group: string; explanation: string; }
 
 interface RejectionAnalysis {
   rejection_score: number;
-  rejection_level: 'baixa' | 'moderada' | 'alta';
+  rejection_level: 'baixa' | 'moderada' | 'alta' | 'critica' | 'extrema';
   components: Components;
   diagnosis: string;
   who_rejects: WhoRejects[];
@@ -59,6 +59,8 @@ const levelConfig: Record<string, { label: string; bg: string; ring: string; tex
   baixa:    { label: "BAIXA",    bg: "bg-emerald-500", ring: "ring-emerald-500/30", text: "text-emerald-50" },
   moderada: { label: "MODERADA", bg: "bg-amber-500",   ring: "ring-amber-500/30",   text: "text-amber-50" },
   alta:     { label: "ALTA",     bg: "bg-rose-600",    ring: "ring-rose-600/30",    text: "text-rose-50" },
+  critica:  { label: "CRÍTICA",  bg: "bg-red-700",     ring: "ring-red-700/30",     text: "text-red-50" },
+  extrema:  { label: "EXTREMA",  bg: "bg-red-900",     ring: "ring-red-900/40",     text: "text-red-50" },
 };
 
 const componentLabels: Record<keyof Components, string> = {
