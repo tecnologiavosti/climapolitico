@@ -124,14 +124,8 @@ const Dashboard = () => {
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0" data-onboarding="user-menu">
-                <Button
-                  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                  variant="outline"
-                  size="icon"
-                  aria-label={theme === "dark" ? "Mudar para tema claro" : "Mudar para tema escuro"}
-                >
-                  {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                </Button>
+                <ThemeSwitcher />
+
                 <Button onClick={signOut} variant="outline" size="sm" className="hover-lift" aria-label="Sair da conta">
                   <LogOut className="h-4 w-4 sm:mr-2" />
                   <span className="hidden sm:inline">Sair</span>
