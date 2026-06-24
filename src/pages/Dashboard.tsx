@@ -93,16 +93,8 @@ const Dashboard = () => {
     validateOnboardingTargets();
   }, []);
 
-  // Força tema dark premium em todo o app interno (dashboard logado)
-  useEffect(() => {
-    const root = document.documentElement;
-    const prev = root.classList.contains("dark");
-    root.classList.add("dark");
-    if (theme !== "dark") setTheme("dark");
-    return () => {
-      if (!prev) root.classList.remove("dark");
-    };
-  }, [setTheme, theme]);
+
+
 
   if (authLoading) return <PageLoader />;
 
