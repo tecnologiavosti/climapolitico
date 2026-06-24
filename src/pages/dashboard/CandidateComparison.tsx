@@ -471,7 +471,7 @@ const CandidateComparisonPage = () => {
       <motion.div {...fadeIn} className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <HelpTooltip text="Central de inteligência política comparativa, 100% IA. Atualização manual com cache inteligente por período.">
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2 text-white">
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2 text-foreground">
               <Sparkles className="h-7 w-7 text-primary" />
               Comparação Estratégica
             </h1>
