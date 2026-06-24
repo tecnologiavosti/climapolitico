@@ -185,6 +185,65 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     });
   }, [debouncedName, catalogMatch]);
 
+  // ===== Camada 2: Busca nacional via IA quando catálogo local não acha =====
+  type AiLookup = {
+    found: boolean;
+    name: string | null;
+    party: string | null;
+    office: string | null;
+    state: string | null;
+    city: string | null;
+    confidence: number;
+  };
+  const [aiLookup, setAiLookup] = useState<AiLookup | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  useEffect(() => {
+    const q = debouncedName.trim();
+    setAiLookup(null);
+    // Só consulta IA se: nome >= 4 chars, sem match local, e ainda não preencheu metadata
+    if (q.length < 4) return;
+    if (catalogMatch) return;
+    if (suggestions.length > 0) return;
+    if (party || position || state) return;
+
+    let cancelled = false;
+    setAiLoading(true);
+    (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("lookup-candidate-ai", {
+          body: { name: q },
+        });
+        if (cancelled) return;
+        if (error) {
+          console.warn("[lookup-candidate-ai] error", error);
+          setAiLookup(null);
+        } else {
+          setAiLookup(data as AiLookup);
+          // eslint-disable-next-line no-console
+          console.log("[Candidate AI lookup]", { name: q, result: data });
+        }
+      } finally {
+        if (!cancelled) setAiLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [debouncedName, catalogMatch, suggestions.length, party, position, state]);
+
+  const applyAiLookup = () => {
+    if (!aiLookup || !aiLookup.found) return;
+    if (aiLookup.name) setFullName(aiLookup.name);
+    if (aiLookup.party) setParty(aiLookup.party);
+    if (aiLookup.office) {
+      setPosition(aiLookup.office);
+      const next = scopeOf(aiLookup.office);
+      if (next === "national") { setState(""); setCity(""); }
+    }
+    if (aiLookup.state) setState(aiLookup.state);
+    if (aiLookup.city) setCity(aiLookup.city);
+  };
+
+
 
   const scope = scopeOf(position);
   const canSubmit =
