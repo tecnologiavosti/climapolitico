@@ -243,13 +243,13 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
               autoComplete="off"
             />
 
-            {autoCorrect && normalizeCandidateName(fullName) !== normalizeCandidateName(autoCorrect.name) && (
+            {autoCorrect && normalizeCandidateName(fullName) !== normalizeCandidateName(autoCorrect.fullName) && (
               <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-primary/30 bg-primary/[0.06] px-3 py-2 animate-in fade-in-0 slide-in-from-top-1 duration-200">
                 <div className="flex items-center gap-2 text-sm">
                   <Wand2 className="h-4 w-4 text-primary" />
-                  <span>Correção sugerida: <strong>{autoCorrect.name}</strong></span>
+                  <span>Correção sugerida: <strong>{autoCorrect.fullName}</strong></span>
                 </div>
-                <Button type="button" size="sm" variant="secondary" className="h-7 rounded-lg" onClick={() => setFullName(autoCorrect.name)}>
+                <Button type="button" size="sm" variant="secondary" className="h-7 rounded-lg" onClick={() => applySuggestion(autoCorrect)}>
                   Aplicar
                 </Button>
               </div>
@@ -258,17 +258,24 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
             {!autoCorrect && suggestions.length > 0 && (
               <div className="mt-2 rounded-xl border border-border/70 bg-popover/95 backdrop-blur shadow-sm overflow-hidden animate-in fade-in-0 slide-in-from-top-1 duration-200">
                 <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/40">
-                  Você quis dizer:
+                  Sugestões encontradas
                 </div>
                 <ul className="divide-y divide-border/50">
                   {suggestions.map((s) => (
-                    <li key={s.name} className="flex items-center justify-between gap-2 px-3 py-2 hover:bg-muted/40 transition-colors">
+                    <li key={s.fullName} className="flex items-center justify-between gap-2 px-3 py-2 hover:bg-muted/40 transition-colors">
                       <div className="flex items-center gap-2 min-w-0">
                         <Sparkles className="h-3.5 w-3.5 text-primary shrink-0" />
-                        <span className="text-sm truncate">{s.name}</span>
-                        <Badge variant="outline" className="text-[10px]">{Math.round(s.sim * 100)}%</Badge>
+                        <div className="min-w-0">
+                          <div className="text-sm truncate">{s.fullName}</div>
+                          {(s.meta?.party || s.meta?.position || s.meta?.state) && (
+                            <div className="text-[11px] text-muted-foreground truncate">
+                              {[s.meta?.position, s.meta?.party, s.meta?.state].filter(Boolean).join(" · ")}
+                            </div>
+                          )}
+                        </div>
+                        <Badge variant="outline" className="text-[10px] shrink-0">{Math.round(s.similarity * 100)}%</Badge>
                       </div>
-                      <Button type="button" size="sm" variant="ghost" className="h-7 rounded-lg shrink-0" onClick={() => setFullName(s.name)}>
+                      <Button type="button" size="sm" variant="ghost" className="h-7 rounded-lg shrink-0" onClick={() => applySuggestion(s)}>
                         Usar sugestão
                       </Button>
                     </li>
