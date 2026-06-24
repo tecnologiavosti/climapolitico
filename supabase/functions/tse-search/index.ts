@@ -358,25 +358,16 @@ Deno.serve(async (req) => {
         suggestions: [],
         normalized: {},
         page: f.page ?? 0,
-        notice: "Cargo não reconhecido para consulta ao TSE.",
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    // Municipal requires UF + município
-    if (wantsMunicipal && (!f.estado?.length || !f.municipio)) {
-      return new Response(JSON.stringify({
-        rows: [],
-        total: 0,
-        suggestions: [],
-        normalized: {},
-        page: f.page ?? 0,
-        notice: "Para cargos municipais (prefeito, vice, vereador), informe Estado e Município.",
+        notice: "Cargo não reconhecido.",
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // Limit fan-out for federal queries when no UF chosen + no presidential
     const federalCargos = cargos.filter((c) => FEDERAL_CARGOS.has(c));
     const municipalCargos = cargos.filter((c) => MUNICIPAL_CARGOS.has(c));
+    const aiOnlyCargos = cargos.filter((c) => AI_ONLY_CARGOS.has(c));
+    // Municipal requires UF + município (apenas se TSE municipal foi solicitado)
+    const municipalReady = !wantsMunicipal || (f.estado?.length && f.municipio);
 
     const tasks: Promise<TSEFetchResult>[] = [];
 
@@ -384,50 +375,73 @@ Deno.serve(async (req) => {
       const targetUfs = (cargo === "presidente" || cargo === "vice_presidente") ? ["BR"] : ufs;
       for (const uf of targetUfs) tasks.push(fetchFederal(uf, cargo));
     }
-    for (const cargo of municipalCargos) {
-      for (const uf of (f.estado ?? []).map((u) => u.toUpperCase())) {
-        tasks.push(fetchMunicipal(uf, f.municipio!, cargo));
+    if (municipalReady) {
+      for (const cargo of municipalCargos) {
+        for (const uf of (f.estado ?? []).map((u) => u.toUpperCase())) {
+          tasks.push(fetchMunicipal(uf, f.municipio!, cargo));
+        }
       }
     }
 
     const fetched = await Promise.all(tasks);
-    const results = fetched.flatMap((r) => r.rows);
+    const tseResults = fetched.flatMap((r) => r.rows);
     const failedRequests = fetched.filter((r) => r.failed).length;
-    console.log(`[tse-search] tse returned ${results.length} candidates across ${tasks.length} requests`);
+    const tseFailed = tasks.length > 0 && failedRequests === tasks.length;
+    console.log(`[tse-search] tse returned ${tseResults.length} via ${tasks.length} reqs (failed=${failedRequests})`);
 
-    if (tasks.length > 0 && failedRequests === tasks.length) {
+    // Client-side filters em TSE
+    let filteredTse = tseResults;
+    if (f.partido?.length) {
+      const set = new Set(f.partido.map((p) => normalize(p)));
+      filteredTse = filteredTse.filter((c) => c.partido_sigla && set.has(normalize(c.partido_sigla)));
+    }
+    if (f.q) {
+      const q = stripAccents(f.q);
+      filteredTse = filteredTse.filter((c) =>
+        stripAccents(c.nome).includes(q) || (c.nome_urna && stripAccents(c.nome_urna).includes(q))
+      );
+    }
+    if (f.onlyEleitos) filteredTse = filteredTse.filter((c) => c.eleito);
+
+    // IA 2026: complementa quando TSE vazio, cargos AI-only, busca por nome sem hit, ou municipal sem UF/município
+    const needAi =
+      aiOnlyCargos.length > 0 ||
+      filteredTse.length === 0 ||
+      (!!f.q && filteredTse.length < 5) ||
+      (wantsMunicipal && !municipalReady) ||
+      tseFailed;
+
+    let aiRows: CandidateOut[] = [];
+    if (needAi) {
+      const aiCargos = [...new Set([...cargos, ...aiOnlyCargos])];
+      aiRows = await aiPoliticalLookup(f, aiCargos);
+      // dedupe por nome+UF
+      const seen = new Set(filteredTse.map((c) => `${normalize(c.nome)}|${c.estado ?? ""}`));
+      aiRows = aiRows.filter((c) => {
+        const k = `${normalize(c.nome)}|${c.estado ?? ""}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+      console.log(`[tse-search] AI 2026 added ${aiRows.length} profiles`);
+    }
+
+    const merged = [...filteredTse, ...aiRows];
+    const total = merged.length;
+    const page = Math.max(0, Number(f.page ?? 0));
+    const rows = merged.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+      .map((r) => ({ ...r, total_count: total }));
+
+    if (total === 0 && tseFailed) {
       return new Response(JSON.stringify({
         fallback: true,
         error: "TSE_SERVICE_UNAVAILABLE",
         message: "Não foi possível consultar base do TSE agora.",
-        rows: [],
-        total: 0,
-        suggestions: [],
-        normalized: {},
-        page: f.page ?? 0,
+        rows: [], total: 0, suggestions: [], normalized: {}, page,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Client-side filters
-    let filtered = results;
-    if (f.partido?.length) {
-      const set = new Set(f.partido.map((p) => normalize(p)));
-      filtered = filtered.filter((c) => c.partido_sigla && set.has(normalize(c.partido_sigla)));
-    }
-    if (f.q) {
-      const q = stripAccents(f.q);
-      filtered = filtered.filter((c) =>
-        stripAccents(c.nome).includes(q) || (c.nome_urna && stripAccents(c.nome_urna).includes(q))
-      );
-    }
-    if (f.onlyEleitos) filtered = filtered.filter((c) => c.eleito);
-
-    const total = filtered.length;
-    const page = Math.max(0, Number(f.page ?? 0));
-    const rows = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-      .map((r) => ({ ...r, total_count: total }));
-
-    console.log(`[tse-search] returning ${rows.length}/${total} (page ${page})`);
+    console.log(`[tse-search] returning ${rows.length}/${total} (page ${page}, ai=${aiRows.length})`);
 
     return new Response(JSON.stringify({
       rows, total, suggestions: [], normalized: {}, page, fallback: false,
