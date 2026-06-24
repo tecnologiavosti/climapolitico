@@ -215,7 +215,12 @@ const politicianFuse = new Fuse(KNOWN_POLITICIANS, {
   ],
   getFn: (obj, path) => {
     const parts = Array.isArray(path) ? path : path.split(".");
-    const value = parts.reduce<any>((acc, key) => acc?.[key], obj);
+    const value = parts.reduce<unknown>((acc, key) => {
+      if (acc && typeof acc === "object" && key in acc) {
+        return (acc as Record<string, unknown>)[key];
+      }
+      return undefined;
+    }, obj);
     if (Array.isArray(value)) return value.map((item) => normalizeCandidateName(String(item)));
     return normalizeCandidateName(String(value ?? ""));
   },
@@ -310,7 +315,6 @@ export function suggestCandidateNames(
     .slice(0, 5);
 
   if (typeof console !== "undefined") {
-    // eslint-disable-next-line no-console
     console.log("[CandidateSuggestion]", {
       input: q,
       normalized: canonicalQ,

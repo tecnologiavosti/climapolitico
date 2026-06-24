@@ -175,7 +175,6 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   // Debug
   useEffect(() => {
     if (!debouncedName.trim()) return;
-    // eslint-disable-next-line no-console
     console.log("[Candidate metadata]", {
       name: debouncedName,
       foundInCatalog: !!catalogMatch,
@@ -235,7 +234,6 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
           const lookup = data as AiLookup;
           setAiLookup(lookup);
           hydrateFromAiLookup(lookup);
-          // eslint-disable-next-line no-console
           console.log("[Candidate AI lookup]", { name: q, result: data });
         }
       } finally {
