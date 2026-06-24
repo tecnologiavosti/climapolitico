@@ -612,3 +612,33 @@ All colors MUST be HSL.
   color: #ffffff;
 }
 
+
+/* Headers/títulos de página — ícones sempre claros em dark/aurora */
+.dark h1 svg,
+.dark h2 svg,
+.dark .page-title svg,
+.aurora h1 svg,
+.aurora h2 svg,
+.aurora .page-title svg {
+  color: #67e8f9 !important;
+  stroke: currentColor !important;
+  opacity: 1 !important;
+}
+
+/* Garante que SVGs herdem currentColor (neutraliza fill/stroke pretos inline) */
+.dark svg [fill="#000"],
+.dark svg [fill="#000000"],
+.dark svg [fill="black"],
+.aurora svg [fill="#000"],
+.aurora svg [fill="#000000"],
+.aurora svg [fill="black"] {
+  fill: currentColor !important;
+}
+.dark svg [stroke="#000"],
+.dark svg [stroke="#000000"],
+.dark svg [stroke="black"],
+.aurora svg [stroke="#000"],
+.aurora svg [stroke="#000000"],
+.aurora svg [stroke="black"] {
+  stroke: currentColor !important;
+}
