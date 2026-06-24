@@ -115,16 +115,39 @@ interface Props {
   isPending: boolean;
   trigger?: React.ReactNode;
   onSubmit: (data: AddCandidatePayload) => void;
+  /** Nomes já cadastrados (conta do usuário + catálogo público) para sugestão e dedup. */
+  knownNames?: string[];
 }
 
 
-export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onSubmit }: Props) {
+export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onSubmit, knownNames = [] }: Props) {
   const [fullName, setFullName] = useState("");
+  const [debouncedName, setDebouncedName] = useState("");
   const [party, setParty] = useState("");
   const [position, setPosition] = useState("");
   const [state, setState] = useState("");
   const [city, setCity] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Debounce 300ms para sugestões
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedName(fullName), 300);
+    return () => clearTimeout(t);
+  }, [fullName]);
+
+  const suggestions = useMemo(() => {
+    const q = debouncedName.trim();
+    if (q.length < 3 || knownNames.length === 0) return [] as Array<{ name: string; sim: number }>;
+    const canonicalQ = normalizeCandidateName(q);
+    const ranked = knownNames
+      .map((n) => ({ name: n, sim: nameSimilarity(q, n) }))
+      .filter((r) => r.sim >= 0.8 && normalizeCandidateName(r.name) !== canonicalQ)
+      .sort((a, b) => b.sim - a.sim)
+      .slice(0, 4);
+    return ranked;
+  }, [debouncedName, knownNames]);
+
+  const autoCorrect = suggestions.find((s) => s.sim >= 0.98) ?? null;
 
   const scope = scopeOf(position);
   const canSubmit =
