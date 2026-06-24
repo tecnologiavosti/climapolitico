@@ -51,22 +51,32 @@ const PARTIES: Party[] = [
 ];
 
 const POSITIONS: { name: string; Icon: React.ComponentType<{ className?: string }> }[] = [
+  // Executivo
   { name: "Presidente", Icon: Landmark },
   { name: "Vice-presidente", Icon: Landmark },
   { name: "Ministro", Icon: Scroll },
   { name: "Governador", Icon: Building2 },
   { name: "Vice-governador", Icon: Building2 },
+  { name: "Secretário Estadual", Icon: Building2 },
+  { name: "Prefeito", Icon: Building },
+  { name: "Vice-prefeito", Icon: Building },
+  { name: "Secretário Municipal", Icon: Building },
+  // Legislativo
   { name: "Senador", Icon: Scroll },
   { name: "Deputado Federal", Icon: ClipboardList },
   { name: "Deputado Estadual", Icon: FileText },
-  { name: "Prefeito", Icon: Building },
-  { name: "Vice-prefeito", Icon: Building },
+  { name: "Deputado Distrital", Icon: FileText },
   { name: "Vereador", Icon: User },
+  // Outros
+  { name: "Presidente de partido", Icon: Landmark },
+  { name: "Ex-candidato", Icon: User },
+  { name: "Influenciador político", Icon: User },
+  { name: "Jornalista político", Icon: User },
 ];
 
-const NATIONAL_POSITIONS = new Set(["Presidente", "Vice-presidente", "Ministro"]);
-const STATE_POSITIONS = new Set(["Governador", "Vice-governador", "Senador", "Deputado Federal", "Deputado Estadual"]);
-const MUNICIPAL_POSITIONS = new Set(["Prefeito", "Vice-prefeito", "Vereador"]);
+const NATIONAL_POSITIONS = new Set(["Presidente", "Vice-presidente", "Ministro", "Presidente de partido"]);
+const STATE_POSITIONS = new Set(["Governador", "Vice-governador", "Secretário Estadual", "Senador", "Deputado Federal", "Deputado Estadual", "Deputado Distrital"]);
+const MUNICIPAL_POSITIONS = new Set(["Prefeito", "Vice-prefeito", "Secretário Municipal", "Vereador"]);
 
 type Scope = "national" | "state" | "municipal" | "none";
 const scopeOf = (p: string): Scope =>
