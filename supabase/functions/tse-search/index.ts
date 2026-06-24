@@ -47,6 +47,11 @@ const UF_OF_REGION: Record<string, string[]> = {
 
 const PAGE_SIZE = 50;
 
+const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+
+// Cargos que o TSE histórico (2022/2024) NÃO cobre — sempre via IA 2026.
+const AI_ONLY_CARGOS = new Set(["ministro", "presidente_partido", "pre_candidato"]);
+
 const normalize = (str: string | null | undefined) =>
   String(str ?? "")
     .normalize("NFD")
@@ -80,12 +85,20 @@ const CARGO_ALIASES: Record<string, string> = {
   viceprefeita: "vice_prefeito",
   vereador: "vereador",
   vereadora: "vereador",
+  ministro: "ministro",
+  ministra: "ministro",
+  "presidente de partido": "presidente_partido",
+  "presidente partidario": "presidente_partido",
+  "pre candidato": "pre_candidato",
+  "pre candidata": "pre_candidato",
+  precandidato: "pre_candidato",
 };
 
 function normalizeCargoKey(value: string): string | null {
   if (CARGO_CODE[value]) return value;
+  if (AI_ONLY_CARGOS.has(value)) return value;
   const n = normalize(value);
-  return CARGO_ALIASES[n] ?? null;
+  return CARGO_ALIASES[n] ?? (AI_ONLY_CARGOS.has(n) ? n : null);
 }
 
 async function tseJson(url: string) {
@@ -241,8 +254,90 @@ function resolveUfs(f: Filters): string[] {
 
 function resolveCargos(f: Filters): string[] {
   if (f.cargo?.length) return [...new Set(f.cargo.map((c) => normalizeCargoKey(c)).filter(Boolean))] as string[];
-  // Without cargo: default to the top federal cargos to keep request bounded.
-  return ["presidente", "governador", "senador", "deputado_federal"];
+  // Without cargo: default to top federal cargos + cargos vivos 2026 cobertos pela IA.
+  return ["presidente", "governador", "senador", "deputado_federal", "ministro", "presidente_partido"];
+}
+
+const CARGO_LABEL: Record<string, string> = {
+  presidente: "Presidente da República",
+  vice_presidente: "Vice-presidente",
+  governador: "Governador",
+  vice_governador: "Vice-governador",
+  senador: "Senador",
+  deputado_federal: "Deputado Federal",
+  deputado_estadual: "Deputado Estadual",
+  deputado_distrital: "Deputado Distrital",
+  prefeito: "Prefeito",
+  vice_prefeito: "Vice-prefeito",
+  vereador: "Vereador",
+  ministro: "Ministro de Estado",
+  presidente_partido: "Presidente Nacional de Partido",
+  pre_candidato: "Pré-candidato 2026",
+};
+
+async function aiPoliticalLookup(f: Filters, cargos: string[]): Promise<CandidateOut[]> {
+  if (!LOVABLE_API_KEY) return [];
+  const cargoNames = cargos.map((c) => CARGO_LABEL[c] ?? c).join(", ");
+  const ufs = (f.estado ?? []).join(", ");
+  const partidos = (f.partido ?? []).join(", ");
+  const municipio = f.municipio ?? "";
+  const nome = f.q ?? "";
+
+  const system = `Você é um especialista no cenário político brasileiro atual (2025-2026).
+Conhece presidente, vice, ministros, governadores, vice-governadores, senadores, deputados federais/estaduais/distritais, prefeitos, vice-prefeitos, vereadores em exercício, presidentes nacionais de partidos e pré-candidatos declarados para 2026.
+Inclui figuras como Lula, Bolsonaro, Tarcísio de Freitas, Ratinho Júnior, Ronaldo Caiado, Romeu Zema, Pablo Marçal, Flávio Bolsonaro, Nikolas Ferreira, Gustavo Martinelli e equivalentes.
+Devolva APENAS JSON: {"politicos":[{"nome":"...","partido":"SIGLA","cargo":"presidente|vice_presidente|governador|vice_governador|senador|deputado_federal|deputado_estadual|deputado_distrital|prefeito|vice_prefeito|vereador|ministro|presidente_partido|pre_candidato","estado":"UF","municipio":"...|null","eleito":true|false,"confidence":0-1}]}.
+Máximo 30 itens. Só políticos REAIS e atuais. Nunca invente nomes.`;
+
+  const user = `Busca:
+- nome contém: ${nome || "(qualquer)"}
+- cargos: ${cargoNames || "qualquer"}
+- estados (UF): ${ufs || "qualquer"}
+- partidos: ${partidos || "qualquer"}
+- município: ${municipio || "qualquer"}
+- somente eleitos/em exercício: ${f.onlyEleitos ? "sim" : "não"}`;
+
+  try {
+    const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-3-flash-preview",
+        messages: [{ role: "system", content: system }, { role: "user", content: user }],
+        response_format: { type: "json_object" },
+      }),
+    });
+    if (!r.ok) {
+      console.error("[tse-search] AI lookup failed:", r.status, await r.text().catch(() => ""));
+      return [];
+    }
+    const j = await r.json();
+    const parsed = JSON.parse(j?.choices?.[0]?.message?.content ?? "{}");
+    const list: any[] = parsed?.politicos ?? [];
+    return list.map((p, i) => ({
+      id: `ai-${i}-${normalize(p.nome).replace(/\s+/g, "-")}`,
+      tse_id: null,
+      nome: String(p.nome ?? ""),
+      nome_urna: null,
+      partido_sigla: p.partido ? String(p.partido).toUpperCase() : null,
+      partido_nome: null,
+      numero_partido: null,
+      cargo: normalizeCargoKey(String(p.cargo ?? "")) ?? String(p.cargo ?? null),
+      regiao: p.estado ? (REGION_OF_UF[String(p.estado).toUpperCase()] ?? null) : null,
+      estado: p.estado ? String(p.estado).toUpperCase() : null,
+      municipio: p.municipio ?? null,
+      eleito: !!p.eleito,
+      ano_eleicao: null,
+      foto_url: null,
+      redes_sociais: null,
+      popularidade: Number(p.confidence ?? 0.5),
+      similarity: Number(p.confidence ?? 0.5),
+      total_count: 0,
+    } satisfies CandidateOut));
+  } catch (e) {
+    console.error("[tse-search] AI lookup exception:", e);
+    return [];
+  }
 }
 
 Deno.serve(async (req) => {
@@ -263,25 +358,16 @@ Deno.serve(async (req) => {
         suggestions: [],
         normalized: {},
         page: f.page ?? 0,
-        notice: "Cargo não reconhecido para consulta ao TSE.",
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    // Municipal requires UF + município
-    if (wantsMunicipal && (!f.estado?.length || !f.municipio)) {
-      return new Response(JSON.stringify({
-        rows: [],
-        total: 0,
-        suggestions: [],
-        normalized: {},
-        page: f.page ?? 0,
-        notice: "Para cargos municipais (prefeito, vice, vereador), informe Estado e Município.",
+        notice: "Cargo não reconhecido.",
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // Limit fan-out for federal queries when no UF chosen + no presidential
     const federalCargos = cargos.filter((c) => FEDERAL_CARGOS.has(c));
     const municipalCargos = cargos.filter((c) => MUNICIPAL_CARGOS.has(c));
+    const aiOnlyCargos = cargos.filter((c) => AI_ONLY_CARGOS.has(c));
+    // Municipal requires UF + município (apenas se TSE municipal foi solicitado)
+    const municipalReady = !wantsMunicipal || (f.estado?.length && f.municipio);
 
     const tasks: Promise<TSEFetchResult>[] = [];
 
@@ -289,50 +375,73 @@ Deno.serve(async (req) => {
       const targetUfs = (cargo === "presidente" || cargo === "vice_presidente") ? ["BR"] : ufs;
       for (const uf of targetUfs) tasks.push(fetchFederal(uf, cargo));
     }
-    for (const cargo of municipalCargos) {
-      for (const uf of (f.estado ?? []).map((u) => u.toUpperCase())) {
-        tasks.push(fetchMunicipal(uf, f.municipio!, cargo));
+    if (municipalReady) {
+      for (const cargo of municipalCargos) {
+        for (const uf of (f.estado ?? []).map((u) => u.toUpperCase())) {
+          tasks.push(fetchMunicipal(uf, f.municipio!, cargo));
+        }
       }
     }
 
     const fetched = await Promise.all(tasks);
-    const results = fetched.flatMap((r) => r.rows);
+    const tseResults = fetched.flatMap((r) => r.rows);
     const failedRequests = fetched.filter((r) => r.failed).length;
-    console.log(`[tse-search] tse returned ${results.length} candidates across ${tasks.length} requests`);
+    const tseFailed = tasks.length > 0 && failedRequests === tasks.length;
+    console.log(`[tse-search] tse returned ${tseResults.length} via ${tasks.length} reqs (failed=${failedRequests})`);
 
-    if (tasks.length > 0 && failedRequests === tasks.length) {
+    // Client-side filters em TSE
+    let filteredTse = tseResults;
+    if (f.partido?.length) {
+      const set = new Set(f.partido.map((p) => normalize(p)));
+      filteredTse = filteredTse.filter((c) => c.partido_sigla && set.has(normalize(c.partido_sigla)));
+    }
+    if (f.q) {
+      const q = stripAccents(f.q);
+      filteredTse = filteredTse.filter((c) =>
+        stripAccents(c.nome).includes(q) || (c.nome_urna && stripAccents(c.nome_urna).includes(q))
+      );
+    }
+    if (f.onlyEleitos) filteredTse = filteredTse.filter((c) => c.eleito);
+
+    // IA 2026: complementa quando TSE vazio, cargos AI-only, busca por nome sem hit, ou municipal sem UF/município
+    const needAi =
+      aiOnlyCargos.length > 0 ||
+      filteredTse.length === 0 ||
+      (!!f.q && filteredTse.length < 5) ||
+      (wantsMunicipal && !municipalReady) ||
+      tseFailed;
+
+    let aiRows: CandidateOut[] = [];
+    if (needAi) {
+      const aiCargos = [...new Set([...cargos, ...aiOnlyCargos])];
+      aiRows = await aiPoliticalLookup(f, aiCargos);
+      // dedupe por nome+UF
+      const seen = new Set(filteredTse.map((c) => `${normalize(c.nome)}|${c.estado ?? ""}`));
+      aiRows = aiRows.filter((c) => {
+        const k = `${normalize(c.nome)}|${c.estado ?? ""}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+      console.log(`[tse-search] AI 2026 added ${aiRows.length} profiles`);
+    }
+
+    const merged = [...filteredTse, ...aiRows];
+    const total = merged.length;
+    const page = Math.max(0, Number(f.page ?? 0));
+    const rows = merged.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+      .map((r) => ({ ...r, total_count: total }));
+
+    if (total === 0 && tseFailed) {
       return new Response(JSON.stringify({
         fallback: true,
         error: "TSE_SERVICE_UNAVAILABLE",
         message: "Não foi possível consultar base do TSE agora.",
-        rows: [],
-        total: 0,
-        suggestions: [],
-        normalized: {},
-        page: f.page ?? 0,
+        rows: [], total: 0, suggestions: [], normalized: {}, page,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Client-side filters
-    let filtered = results;
-    if (f.partido?.length) {
-      const set = new Set(f.partido.map((p) => normalize(p)));
-      filtered = filtered.filter((c) => c.partido_sigla && set.has(normalize(c.partido_sigla)));
-    }
-    if (f.q) {
-      const q = stripAccents(f.q);
-      filtered = filtered.filter((c) =>
-        stripAccents(c.nome).includes(q) || (c.nome_urna && stripAccents(c.nome_urna).includes(q))
-      );
-    }
-    if (f.onlyEleitos) filtered = filtered.filter((c) => c.eleito);
-
-    const total = filtered.length;
-    const page = Math.max(0, Number(f.page ?? 0));
-    const rows = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-      .map((r) => ({ ...r, total_count: total }));
-
-    console.log(`[tse-search] returning ${rows.length}/${total} (page ${page})`);
+    console.log(`[tse-search] returning ${rows.length}/${total} (page ${page}, ai=${aiRows.length})`);
 
     return new Response(JSON.stringify({
       rows, total, suggestions: [], normalized: {}, page, fallback: false,
