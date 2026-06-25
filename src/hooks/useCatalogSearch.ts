@@ -67,6 +67,7 @@ export async function searchTSECandidates(filters: CatalogFilters) {
     onlyEleitos: !!filters.onlyEleitos,
     page: filters.page ?? 0,
   };
+  console.log("SENDING QUERY", payload);
   console.log("TSE Query", payload);
   const params = new URLSearchParams();
   if (payload.q) params.set("q", payload.q);
