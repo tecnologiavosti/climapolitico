@@ -378,7 +378,11 @@ Retorne até 50 itens compatíveis com os filtros. Só políticos REAIS e atuais
   try {
     const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
-      headers: { "Lovable-API-Key": LOVABLE_API_KEY, "Content-Type": "application/json" },
+      headers: {
+        "Lovable-API-Key": LOVABLE_API_KEY,
+        "X-Lovable-AIG-SDK": "rest",
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: [{ role: "system", content: system }, { role: "user", content: user }],
