@@ -266,9 +266,10 @@ const Auth = () => {
                   value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} required disabled={loading} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="signup-password">Senha (mín. 6 caracteres)</Label>
+                <Label htmlFor="signup-password">Senha</Label>
                 <Input id="signup-password" type="password" placeholder="••••••••"
                   value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)} required disabled={loading} />
+                <PasswordChecklist password={signupPassword} />
               </div>
               <Button type="submit" className="w-full bg-gradient-primary" disabled={loading}>
                 {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Criando...</> : "Criar Conta"}
