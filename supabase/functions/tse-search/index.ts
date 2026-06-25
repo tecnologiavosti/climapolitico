@@ -245,6 +245,7 @@ function mapCandidate(raw: any, ctx: { uf: string; municipio: string | null; ano
   ].filter(Boolean).join(" ").toString().toLowerCase();
   const cargoCode = Number(raw.cargo?.codigo ?? raw.cdCargo ?? 0);
   const cargoKey = cargoKeyFromCode(cargoCode);
+  const eleito = /eleito|eleita|reeleito|reeleita/.test(desc) && !/n[ãa]o eleito|suplente/.test(desc);
   return {
     id: sq || crypto.randomUUID(),
     tse_id: sq || null,
@@ -257,7 +258,8 @@ function mapCandidate(raw: any, ctx: { uf: string; municipio: string | null; ano
     regiao: REGION_OF_UF[ctx.uf] ?? null,
     estado: ctx.uf,
     municipio: ctx.municipio,
-    eleito: /eleito|eleita|reeleito|reeleita/.test(desc) && !/n[ãa]o eleito|suplente/.test(desc),
+    eleito,
+    categoria: eleito ? "eleito" : "ex_candidato",
     ano_eleicao: ctx.ano,
     foto_url: sq ? `https://divulgacandcontas.tse.jus.br/divulga/rest/arquivo/img/${ctx.idEleicao}/${ctx.ueCode}/${sq}.jpeg` : null,
     redes_sociais: null,
