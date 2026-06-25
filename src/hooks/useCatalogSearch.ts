@@ -106,10 +106,11 @@ export async function searchTSECandidates(filters: CatalogFilters) {
   };
 }
 
-export function useCatalogSearch(filters: CatalogFilters) {
+export function useCatalogSearch(filters: CatalogFilters | null) {
   return useQuery({
     queryKey: ["tse-search", filters],
-    queryFn: () => searchTSECandidates(filters),
+    queryFn: () => searchTSECandidates(filters as CatalogFilters),
+    enabled: !!filters,
     staleTime: 60_000,
   });
 }

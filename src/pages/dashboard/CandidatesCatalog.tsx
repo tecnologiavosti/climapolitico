@@ -1,119 +1,82 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Users, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
+import { Users, ChevronLeft, ChevronRight, Sparkles, Search, Loader2 } from "lucide-react";
 import { useCatalogSearch, PAGE_SIZE, type CatalogFilters as Filters, type PoliticianRow } from "@/hooks/useCatalogSearch";
 import { CatalogFilters } from "@/components/dashboard/CatalogFilters";
 import { CandidateCatalogCard } from "@/components/dashboard/CandidateCatalogCard";
 
-function useDebounced<T>(value: T, ms = 300): T {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setV(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return v;
-}
+// Cargos que exigem estado + município
+const REQUIRES_MUNICIPIO = new Set(["prefeito", "vice_prefeito", "vereador"]);
+// Cargos estaduais que exigem estado
+const REQUIRES_ESTADO = new Set([
+  "governador", "vice_governador", "senador",
+  "deputado_federal", "deputado_estadual", "deputado_distrital",
+]);
 
-function normalize(str: string | null | undefined) {
-  return String(str ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9 ]/g, " ")
-    .replace(/\s+/g, " ")
-    .toLowerCase()
-    .trim();
-}
-
-function matchesSelectedFilters(candidate: PoliticianRow, filters: Filters) {
-  const selectedCargo = filters.cargo?.[0] ?? null;
-  const selectedRegion = filters.regiao?.[0] ?? null;
-  const selectedState = filters.estado?.[0] ?? null;
-  const selectedCity = filters.municipio ?? null;
-
-  if (selectedCargo && normalize(candidate.cargo) !== normalize(selectedCargo)) {
-    console.log("DISCARDED:", { reason: "cargo", expected: normalize(selectedCargo), got: normalize(candidate.cargo), nome: candidate.nome });
-    return false;
+function validate(f: Filters): { ok: boolean; message?: string } {
+  const cargo = f.cargo?.[0];
+  if (!cargo && !f.q?.trim()) {
+    return { ok: false, message: "Selecione ao menos o cargo ou informe um nome." };
   }
-  if (selectedRegion && normalize(candidate.regiao) !== normalize(selectedRegion)) {
-    console.log("DISCARDED:", { reason: "regiao", expected: normalize(selectedRegion), got: normalize(candidate.regiao), nome: candidate.nome });
-    return false;
+  if (cargo && REQUIRES_MUNICIPIO.has(cargo)) {
+    if (!f.estado?.[0] || !f.municipio?.trim()) {
+      const label = cargo === "vereador" ? "vereadores" : "prefeitos";
+      return { ok: false, message: `Para buscar ${label}, selecione estado e município.` };
+    }
   }
-  if (selectedState && normalize(candidate.estado) !== normalize(selectedState)) {
-    console.log("DISCARDED:", { reason: "estado", expected: normalize(selectedState), got: normalize(candidate.estado), nome: candidate.nome });
-    return false;
+  if (cargo && REQUIRES_ESTADO.has(cargo) && !f.estado?.[0]) {
+    return { ok: false, message: "Para buscar este cargo, selecione um estado." };
   }
-  if (selectedCity && normalize(candidate.municipio) !== normalize(selectedCity)) {
-    console.log("DISCARDED:", { reason: "municipio", expected: normalize(selectedCity), got: normalize(candidate.municipio), nome: candidate.nome });
-    return false;
-  }
-  return true;
+  return { ok: true };
 }
 
 export default function CandidatesCatalog() {
   const queryClient = useQueryClient();
-  const [rawFilters, setRawFiltersInner] = useState<Filters>({});
-  const setRawFilters = (next: Filters | ((f: Filters) => Filters)) => {
-    setRawFiltersInner((prev) => {
-      const computed = typeof next === "function" ? (next as (f: Filters) => Filters)(prev) : next;
-      console.log("[CandidatesCatalog] setRawFilters →", computed);
-      return computed;
-    });
-  };
-  const debouncedQ = useDebounced(rawFilters.q ?? "", 350);
-  const debouncedMuni = useDebounced(rawFilters.municipio ?? "", 350);
-  const filters = useMemo<Filters>(
-    () => ({ ...rawFilters, q: debouncedQ, municipio: debouncedMuni }),
-    [rawFilters, debouncedQ, debouncedMuni]
-  );
+  // Filtros editáveis (UI). NÃO disparam busca.
+  const [pendingFilters, setPendingFilters] = useState<Filters>({});
+  // Filtros aplicados — só estes disparam a query.
+  const [appliedFilters, setAppliedFilters] = useState<Filters | null>(null);
 
-  console.log("[CandidatesCatalog] STATE before query →", {
-    selectedCargo: rawFilters.cargo?.[0] ?? null,
-    selectedState: rawFilters.estado?.[0] ?? null,
-    selectedRegion: rawFilters.regiao?.[0] ?? null,
-    selectedCity: rawFilters.municipio ?? null,
-    debouncedMuni,
-    debouncedQ,
-    mergedFilters: filters,
-  });
-
-  const { data, isLoading, isFetching, isSuccess, isError } = useCatalogSearch(filters);
+  const { data, isLoading, isFetching, isSuccess, isError, error } = useCatalogSearch(appliedFilters);
   const rows = data?.rows ?? [];
-  const visibleRows = useMemo(() => {
-    const filtered = rows.filter((candidate) => matchesSelectedFilters(candidate, filters));
-    console.log("AFTER FRONT FILTER:", filtered.length, "of", rows.length);
-    return filtered;
-  }, [rows, filters]);
   const total = data?.total ?? 0;
   const suggestions = data?.suggestions ?? [];
-  const normalized = data?.normalized ?? {};
-  const notice = data?.notice ?? null;
   const lastUpdated = data?.lastUpdated ?? null;
-  const nationalOnly = data?.nationalOnly ?? false;
   const partial = data?.partial ?? false;
   const sources = data?.sources ?? [];
-  const fallback = !!data?.fallback || isError;
-  const page = filters.page ?? 0;
+  const page = appliedFilters?.page ?? 0;
   const exactTotal = data?.exactTotal !== false;
   const hasNext = data?.hasMore ?? (page < Math.max(1, Math.ceil(total / PAGE_SIZE)) - 1);
   const totalPages = exactTotal ? Math.max(1, Math.ceil(total / PAGE_SIZE)) : page + (hasNext ? 2 : 1);
-  const busy = isLoading || isFetching;
+  const busy = !!appliedFilters && (isLoading || isFetching);
 
-  useEffect(() => {
-    if (!isSuccess) return;
-    console.log("Catalog filters", {
-      selectedCargo: filters.cargo?.[0] ?? null,
-      selectedRegion: filters.regiao?.[0] ?? null,
-      selectedState: filters.estado?.[0] ?? null,
-      selectedCity: filters.municipio ?? null,
-      totalBeforeFilter: rows.length,
-      totalAfterFilter: visibleRows.length,
-    });
-  }, [filters.cargo, filters.regiao, filters.estado, filters.municipio, isSuccess, rows.length, visibleRows.length]);
+  const handleSearch = () => {
+    console.log("SEARCH BUTTON CLICKED");
+    const v = validate(pendingFilters);
+    console.log("Validation", v);
+    if (!v.ok) {
+      toast.error(v.message ?? "Filtros inválidos.");
+      return;
+    }
+    const next = { ...pendingFilters, page: 0 };
+    console.log("TSE Query", next);
+    setAppliedFilters(next);
+  };
+
+  // Quando o usuário muda o cargo, esconder resultados antigos.
+  const handleFiltersChange = (next: Filters) => {
+    const prevCargo = pendingFilters.cargo?.[0];
+    const newCargo = next.cargo?.[0];
+    setPendingFilters(next);
+    if (prevCargo !== newCargo && appliedFilters) {
+      setAppliedFilters(null);
+    }
+  };
 
   const { data: myCandidates = [] } = useQuery({
     queryKey: ["my-candidates-names"],
@@ -163,7 +126,20 @@ export default function CandidatesCatalog() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const goPage = (p: number) => setRawFilters((f) => ({ ...f, page: Math.max(0, exactTotal ? Math.min(p, totalPages - 1) : p) }));
+  const goPage = (p: number) => {
+    if (!appliedFilters) return;
+    const target = Math.max(0, exactTotal ? Math.min(p, totalPages - 1) : p);
+    setAppliedFilters({ ...appliedFilters, page: target });
+  };
+
+  const sourceLabel = useMemo(() => {
+    if (!sources.length) return null;
+    const hasTse = sources.some((s) => s.startsWith("tse"));
+    const hasWeb = sources.includes("firecrawl");
+    if (hasTse && hasWeb) return "TSE + Web";
+    if (hasTse) return "TSE";
+    return "Web";
+  }, [sources]);
 
   return (
     <div className="space-y-4">
@@ -173,24 +149,50 @@ export default function CandidatesCatalog() {
           Catálogo de Candidatos
         </h1>
         <p className="text-muted-foreground mt-1">
-          Base política nacional 2026 — TSE + cenário vivo (governadores, ministros, presidentes partidários, pré-candidatos) via IA.
+          Base eleitoral oficial — TSE 2024 (municipal) + 2022 (federal/estadual).
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 text-xs bg-primary/5 text-primary border border-primary/20 rounded-md px-3 py-2">
-        <Sparkles className="h-3 w-3" />
-        <span className="font-medium">Crawler eleitoral 2026 — TSE oficial + busca web em tempo real</span>
-        {lastUpdated && <span className="text-muted-foreground">· atualizado {new Date(lastUpdated).toLocaleTimeString("pt-BR")}</span>}
-        {sources.length > 0 && (
-          <span className="text-muted-foreground">
-            · {sources.some((s: string) => s.startsWith("tse")) && sources.includes("firecrawl")
-              ? "Fonte: TSE + Web"
-              : sources.some((s: string) => s.startsWith("tse"))
-              ? "Fonte: TSE"
-              : "Fonte: Web"}
-          </span>
+      <CatalogFilters
+        filters={pendingFilters}
+        onChange={handleFiltersChange}
+        onSubmit={handleSearch}
+        disabled={busy}
+        totalResults={appliedFilters && isSuccess && exactTotal && !busy ? total : undefined}
+      />
+
+      <Button
+        size="lg"
+        className="w-full"
+        onClick={handleSearch}
+        disabled={busy}
+      >
+        {busy ? (
+          <>
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            Buscando candidatos...
+          </>
+        ) : (
+          <>
+            <Search className="h-4 w-4 mr-2" />
+            Buscar candidatos
+          </>
         )}
-      </div>
+      </Button>
+
+      {appliedFilters && sourceLabel && !busy && isSuccess && (
+        <div className="flex flex-wrap items-center gap-2 text-xs bg-primary/5 text-primary border border-primary/20 rounded-md px-3 py-2">
+          <Sparkles className="h-3 w-3" />
+          <span className="font-medium">
+            {total.toLocaleString("pt-BR")} candidato(s) encontrado(s). Fonte: {sourceLabel}
+          </span>
+          {lastUpdated && (
+            <span className="text-muted-foreground">
+              · {new Date(lastUpdated).toLocaleTimeString("pt-BR")}
+            </span>
+          )}
+        </div>
+      )}
 
       {partial && (
         <div className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 rounded-md px-3 py-2">
@@ -198,48 +200,43 @@ export default function CandidatesCatalog() {
         </div>
       )}
 
-      <CatalogFilters
-        filters={rawFilters}
-        onChange={setRawFilters}
-        totalResults={busy || !isSuccess || !exactTotal ? undefined : total}
-      />
-
-      {notice && (
-        <div className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 rounded-md px-3 py-2">
-          {notice}
-        </div>
-      )}
-
-      {Object.keys(normalized).length > 0 && (
-        <div className="text-xs text-muted-foreground bg-muted/50 border rounded-md px-3 py-2 flex items-center gap-2">
-          <Sparkles className="h-3 w-3 text-primary" />
-          IA corrigiu sua busca para:
-          {normalized.q && <span className="font-medium text-foreground">"{normalized.q}"</span>}
-          {normalized.municipio && <span className="font-medium text-foreground">{normalized.municipio}</span>}
-        </div>
-      )}
-
-
-      {busy ? (
-        <div className="space-y-3">
-          <div className="text-center space-y-1">
-            <p className="text-sm font-medium">Consultando bases eleitorais…</p>
-            <p className="text-xs text-muted-foreground">TSE oficial + busca web em tempo real — pode levar até 60s para coletas amplas.</p>
-          </div>
+      {!appliedFilters ? (
+        <Card>
+          <CardContent className="py-16 text-center space-y-2">
+            <Search className="h-10 w-10 mx-auto text-muted-foreground/50" />
+            <p className="text-sm font-medium">Defina os filtros e clique em Buscar candidatos</p>
+            <p className="text-xs text-muted-foreground">
+              Para prefeito e vereador, selecione estado e município. Para deputado, governador e senador, selecione um estado.
+            </p>
+          </CardContent>
+        </Card>
+      ) : busy ? (
+        <div className="space-y-4">
+          <Card>
+            <CardContent className="py-10 text-center space-y-3">
+              <Loader2 className="h-8 w-8 mx-auto animate-spin text-primary" />
+              <div>
+                <p className="text-sm font-semibold">Buscando candidatos no TSE...</p>
+                <p className="text-xs text-muted-foreground">Consultando base oficial eleitoral</p>
+                <p className="text-xs text-muted-foreground">Isso pode levar alguns segundos</p>
+              </div>
+            </CardContent>
+          </Card>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-56 w-full" />)}
           </div>
         </div>
-      ) : fallback ? (
+      ) : isError ? (
         <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">Não foi possível consultar base do TSE agora.</p>
+          <CardContent className="py-12 text-center space-y-2">
+            <p className="text-sm font-medium text-destructive">Erro ao consultar TSE. Tente novamente.</p>
+            <p className="text-xs text-muted-foreground">{(error as Error)?.message}</p>
           </CardContent>
         </Card>
-      ) : isSuccess && visibleRows.length === 0 ? (
+      ) : isSuccess && rows.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center space-y-4">
-            <p className="text-muted-foreground">Nenhum candidato encontrado com esses filtros</p>
+            <p className="text-muted-foreground">Nenhum candidato encontrado para os filtros selecionados.</p>
             {suggestions.length > 0 && (
               <div className="space-y-2">
                 <p className="text-sm flex items-center justify-center gap-2">
@@ -252,7 +249,11 @@ export default function CandidatesCatalog() {
                       key={s.id}
                       size="sm"
                       variant="outline"
-                      onClick={() => setRawFilters({ q: s.nome, page: 0 })}
+                      onClick={() => {
+                        const next = { ...pendingFilters, q: s.nome, page: 0 };
+                        setPendingFilters(next);
+                        setAppliedFilters(next);
+                      }}
                     >
                       {s.nome}
                       {s.partido_sigla && <span className="ml-1 text-xs text-muted-foreground">({s.partido_sigla})</span>}
@@ -266,30 +267,28 @@ export default function CandidatesCatalog() {
       ) : (
         <>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {visibleRows.map((c) => {
-              if (filters.cargo?.[0] && normalize(c.cargo) !== normalize(filters.cargo[0])) return null;
-              return (
-                <CandidateCatalogCard
-                  key={c.id}
-                  candidate={c}
-                  alreadyAdded={myCandidates.includes(c.nome.toLowerCase())}
-                  isAdding={adoptMutation.isPending && adoptMutation.variables?.id === c.id}
-                  onAdd={(cand) => adoptMutation.mutate(cand)}
-                />
-              );
-            })}
+            {rows.map((c) => (
+              <CandidateCatalogCard
+                key={c.id}
+                candidate={c}
+                alreadyAdded={myCandidates.includes(c.nome.toLowerCase())}
+                isAdding={adoptMutation.isPending && adoptMutation.variables?.id === c.id}
+                onAdd={(cand) => adoptMutation.mutate(cand)}
+              />
+            ))}
           </div>
 
           <div className="flex items-center justify-between pt-2">
             <span className="text-xs text-muted-foreground">
-              {exactTotal ? `Página ${page + 1} de ${totalPages.toLocaleString("pt-BR")}` : `Página ${page + 1} · 50 por página${hasNext ? " · há mais resultados" : ""}`}
-              {isFetching && " · atualizando…"}
+              {exactTotal
+                ? `Página ${page + 1} de ${totalPages.toLocaleString("pt-BR")}`
+                : `Página ${page + 1} · 50 por página${hasNext ? " · há mais resultados" : ""}`}
             </span>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" disabled={page === 0 || isFetching} onClick={() => goPage(page - 1)}>
+              <Button size="sm" variant="outline" disabled={page === 0 || busy} onClick={() => goPage(page - 1)}>
                 <ChevronLeft className="h-4 w-4 mr-1" /> Anterior
               </Button>
-              <Button size="sm" variant="outline" disabled={!hasNext || isFetching} onClick={() => goPage(page + 1)}>
+              <Button size="sm" variant="outline" disabled={!hasNext || busy} onClick={() => goPage(page + 1)}>
                 Próxima <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
             </div>
