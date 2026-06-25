@@ -33,8 +33,9 @@ const NON_TSE_CARGOS = new Set(["ministro", "presidente_partido", "pre_candidato
 const MUNICIPAL_CARGOS = new Set(["prefeito", "vice_prefeito", "vereador"]);
 const FEDERAL_BR_CARGOS = new Set(["presidente", "vice_presidente"]);
 
-const ELEICAO_MUN_2024 = 619;
-const ELEICAO_FED_2022 = 544;
+// IDs reais do endpoint /eleicao/ordinarias do TSE
+const ELEICAO_MUN_2024 = 2045202024;
+const ELEICAO_FED_2022 = 2040602022;
 
 const UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
 const UF_DICT: Record<string, string> = {
