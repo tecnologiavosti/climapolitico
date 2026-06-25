@@ -725,15 +725,19 @@ Deno.serve(async (req) => {
     // TSE oficial é consultado em paralelo apenas como reforço quando disponível.
     const liveCargos = f.cargo?.length ? cargos : [...new Set([...cargos, ...AI_ONLY_CARGOS])];
 
-    const [auxiliaryRows, aiRows] = page === 0
+    const [auxiliaryRows, aiResult] = page === 0
       ? await Promise.all([
           wikidataAuxiliaryLookup(f, liveCargos),
           aiPoliticalLookup(f, liveCargos),
         ])
-      : [[], []];
+      : [[] as CandidateOut[], { rows: [] as CandidateOut[], error: null as string | null }];
+
+    const aiRows = aiResult.rows;
+    const aiError = aiResult.error;
 
     const sourceUsed = {
       ai: aiRows.length,
+      aiError,
       wikidata: auxiliaryRows.length,
       tse: tsePage.rows.length,
       tse2026Available,
@@ -766,6 +770,9 @@ Deno.serve(async (req) => {
     });
 
     if (rows.length === 0) {
+      const notice = aiError
+        ? `Não foi possível consultar a base política agora: ${aiError}`
+        : "Nenhum candidato encontrado.";
       return new Response(JSON.stringify({
         rows: [],
         total: 0,
@@ -775,9 +782,9 @@ Deno.serve(async (req) => {
         normalized: {},
         page,
         pageSize: PAGE_SIZE,
-        fallback: false,
+        fallback: !!aiError,
         sourceUsed,
-        notice: "Nenhum candidato encontrado.",
+        notice,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
