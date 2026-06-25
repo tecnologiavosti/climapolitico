@@ -191,7 +191,7 @@ export default function CandidatesCatalog() {
       ) : isSuccess && visibleRows.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center space-y-4">
-            <p className="text-muted-foreground">Nenhum candidato encontrado para os filtros selecionados.</p>
+            <p className="text-muted-foreground">Nenhum candidato encontrado com esses filtros</p>
             {suggestions.length > 0 && (
               <div className="space-y-2">
                 <p className="text-sm flex items-center justify-center gap-2">
