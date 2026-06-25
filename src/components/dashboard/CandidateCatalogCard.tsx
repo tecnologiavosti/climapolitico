@@ -69,11 +69,30 @@ function CandidateCatalogCardBase({ candidate: c, alreadyAdded, isAdding, onAdd 
           )}
           {location && <Badge variant="outline">{location}</Badge>}
           {!location && c.regiao && <Badge variant="outline">{c.regiao}</Badge>}
-          {c.eleito && (
-            <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white">
-              <Award className="h-3 w-3 mr-1" /> Eleito
-            </Badge>
-          )}
+          {(() => {
+            const cat = c.categoria ?? (c.eleito ? "eleito" : null);
+            if (cat === "eleito") return (
+              <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white">
+                <Award className="h-3 w-3 mr-1" /> Eleito
+              </Badge>
+            );
+            if (cat === "ex_candidato") return (
+              <Badge variant="outline" className="border-amber-500 text-amber-700 dark:text-amber-400">
+                Ex-candidato
+              </Badge>
+            );
+            if (cat === "pre_candidato") return (
+              <Badge variant="outline" className="border-sky-500 text-sky-700 dark:text-sky-400">
+                Pré-candidato
+              </Badge>
+            );
+            if (cat === "lideranca_local") return (
+              <Badge variant="outline" className="border-purple-500 text-purple-700 dark:text-purple-400">
+                Liderança local
+              </Badge>
+            );
+            return null;
+          })()}
         </div>
 
         {networks.length > 0 && (

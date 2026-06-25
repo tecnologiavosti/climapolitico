@@ -222,6 +222,7 @@ interface CandidateOut {
   estado: string | null;
   municipio: string | null;
   eleito: boolean;
+  categoria: "eleito" | "ex_candidato" | "pre_candidato" | "lideranca_local" | null;
   ano_eleicao: number | null;
   foto_url: string | null;
   redes_sociais: Record<string, string> | null;
@@ -244,6 +245,7 @@ function mapCandidate(raw: any, ctx: { uf: string; municipio: string | null; ano
   ].filter(Boolean).join(" ").toString().toLowerCase();
   const cargoCode = Number(raw.cargo?.codigo ?? raw.cdCargo ?? 0);
   const cargoKey = cargoKeyFromCode(cargoCode);
+  const eleito = /eleito|eleita|reeleito|reeleita/.test(desc) && !/n[ãa]o eleito|suplente/.test(desc);
   return {
     id: sq || crypto.randomUUID(),
     tse_id: sq || null,
@@ -256,7 +258,8 @@ function mapCandidate(raw: any, ctx: { uf: string; municipio: string | null; ano
     regiao: REGION_OF_UF[ctx.uf] ?? null,
     estado: ctx.uf,
     municipio: ctx.municipio,
-    eleito: /eleito|eleita|reeleito|reeleita/.test(desc) && !/n[ãa]o eleito|suplente/.test(desc),
+    eleito,
+    categoria: eleito ? "eleito" : "ex_candidato",
     ano_eleicao: ctx.ano,
     foto_url: sq ? `https://divulgacandcontas.tse.jus.br/divulga/rest/arquivo/img/${ctx.idEleicao}/${ctx.ueCode}/${sq}.jpeg` : null,
     redes_sociais: null,
@@ -598,6 +601,7 @@ function rowFromWikidata(binding: Record<string, any>, idx: number, fallbackCarg
     estado: state ? state.toUpperCase() : null,
     municipio: null,
     eleito: cargo !== "pre_candidato",
+    categoria: cargo === "pre_candidato" ? "pre_candidato" : (cargo === "presidente_partido" ? "lideranca_local" : "eleito"),
     ano_eleicao: null,
     foto_url: null,
     redes_sociais: null,
@@ -668,12 +672,14 @@ type FetchTask =
   | { kind: "municipal"; uf: string; municipio: { codigo: string; nome: string }; cargo: string };
 
 function asPoliticalLiveRow(row: CandidateOut, sourceYear: number): CandidateOut {
+  const isElected = row.eleito === true;
   return {
     ...row,
     id: `political-live-2026-${sourceYear}-${row.id}`,
     ano_eleicao: null,
-    popularidade: Math.max(row.popularidade, 0.86),
-    similarity: Math.max(row.similarity, 0.86),
+    categoria: isElected ? "eleito" : "ex_candidato",
+    popularidade: Math.max(row.popularidade, isElected ? 0.86 : 0.55),
+    similarity: Math.max(row.similarity, isElected ? 0.86 : 0.55),
   };
 }
 
@@ -703,7 +709,10 @@ async function politicalLiveBaseLookup(f: Filters, cargos: string[], ufs: string
           for (const cargo of municipalCargos) {
             const result = await fetchMunicipalByCode(uf, municipio, cargo, municipalElection);
             if (result.failed) failed += 1;
-            rows.push(...result.rows.filter(isCurrentMandateRow).map((row) => asPoliticalLiveRow(row, municipalElection.ano)));
+            const filteredRows = f.onlyEleitos
+              ? result.rows.filter(isCurrentMandateRow)
+              : result.rows;
+            rows.push(...filteredRows.map((row) => asPoliticalLiveRow(row, municipalElection.ano)));
           }
         }
       }
@@ -731,7 +740,10 @@ async function politicalLiveBaseLookup(f: Filters, cargos: string[], ufs: string
         for (const uf of targetUfs) {
           const result = await fetchFederal(uf, cargo, election);
           if (result.failed) failed += 1;
-          rows.push(...result.rows.filter(isCurrentMandateRow).map((row) => asPoliticalLiveRow(row, election.ano)));
+          const filteredRows = f.onlyEleitos
+            ? result.rows.filter(isCurrentMandateRow)
+            : result.rows;
+          rows.push(...filteredRows.map((row) => asPoliticalLiveRow(row, election.ano)));
         }
       }
     }
