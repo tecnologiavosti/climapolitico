@@ -1456,6 +1456,8 @@ Deno.serve(async (req) => {
         fallback: !!aiError,
         sourceUsed,
         notice,
+        last_updated: LIVE_2026_LAST_UPDATED,
+        nationalOnly,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
