@@ -687,6 +687,14 @@ Deno.serve(async (req) => {
 
   try {
     const f = await readFilters(req);
+    console.log("Search Filters", {
+      nome: f.q ?? null,
+      cargo: f.cargo ?? null,
+      partido: f.partido ?? null,
+      regiao: f.regiao ?? null,
+      estado: f.estado ?? null,
+      cidade: f.municipio ?? null,
+    });
     console.log("[tse-search] filters:", JSON.stringify(f));
 
     const cargos = resolveCargos(f);
