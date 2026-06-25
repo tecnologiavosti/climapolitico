@@ -131,10 +131,12 @@ interface OutRow {
 // ============ CAMADA 1 — TSE ============
 async function tseFetch<T>(path: string, deadline: number): Promise<T | null> {
   if (Date.now() > deadline) return null;
+  const url = `${TSE_BASE}${path}`;
+  console.log("TSE REQUEST:", url);
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 8000);
-    const r = await fetch(`${TSE_BASE}${path}`, {
+    const r = await fetch(url, {
       signal: ctrl.signal,
       headers: {
         "User-Agent": "Mozilla/5.0 ClimaPolitico/2.0",
@@ -143,24 +145,39 @@ async function tseFetch<T>(path: string, deadline: number): Promise<T | null> {
       },
     });
     clearTimeout(t);
-    if (!r.ok) return null;
-    return await r.json() as T;
-  } catch {
+    if (!r.ok) {
+      const body = await r.text().catch(() => "");
+      console.log(`TSE HTTP ${r.status} ${url} :: ${body.slice(0, 200)}`);
+      return null;
+    }
+    const json = await r.json() as T;
+    return json;
+  } catch (e) {
+    console.log(`TSE FETCH ERROR ${url}:`, (e as Error).message);
     return null;
   }
 }
 
-async function listMunicipios(ano: number, cdEleicao: number, uf: string, deadline: number) {
-  const data = await tseFetch<any>(`/eleicao/buscar/${ano}/${cdEleicao}/${uf}/municipios`, deadline);
-  const arr = data?.municipios ?? data ?? [];
-  return Array.isArray(arr) ? arr.map((m: any) => ({ codigo: Number(m.codigo ?? m.cdMunicipio), nome: String(m.nome ?? m.nm) })) : [];
+async function listMunicipios(_ano: number, cdEleicao: number, uf: string, deadline: number) {
+  // Endpoint correto: /eleicao/buscar/{UF}/{cdEleicao}/municipios
+  const data = await tseFetch<any>(`/eleicao/buscar/${uf}/${cdEleicao}/municipios`, deadline);
+  const arr = data?.municipios ?? [];
+  const out = Array.isArray(arr)
+    ? arr.map((m: any) => ({
+        codigo: Number(m.codigo ?? m.sigla ?? m.cdMunicipio),
+        nome: String(m.nome ?? m.nm ?? ""),
+      })).filter((m) => m.codigo > 0 && m.nome)
+    : [];
+  console.log(`TSE municipios ${uf}/${cdEleicao} → ${out.length}`);
+  return out;
 }
 
 async function fetchCandidatos(ano: number, escopo: string | number, cdEleicao: number, cargoCodigo: number, deadline: number) {
   const data = await tseFetch<any>(`/candidatura/listar/${ano}/${escopo}/${cdEleicao}/${cargoCodigo}/candidatos`, deadline);
-  const list = data?.candidatos ?? data ?? [];
+  const list = data?.candidatos ?? [];
   return Array.isArray(list) ? list : [];
 }
+
 
 function statusFromTse(desc: string | undefined): { label: string; eleito: boolean; categoria: string } {
   const n = normalize(desc ?? "");
