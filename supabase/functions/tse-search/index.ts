@@ -903,9 +903,11 @@ Deno.serve(async (req) => {
 
     // Filtro estrito determinístico
     const afterStrictFilter = pool.filter((candidate) => matchesClientFilters(candidate, f));
-    const offset = page * PAGE_SIZE;
+    const offset = shouldUsePoliticalLiveBase ? page * PAGE_SIZE : 0;
     const merged = afterStrictFilter.slice(offset, offset + PAGE_SIZE);
-    const hasMore = afterStrictFilter.length > offset + PAGE_SIZE || (!shouldUsePoliticalLiveBase && tsePage.hasMore);
+    const hasMore = shouldUsePoliticalLiveBase
+      ? afterStrictFilter.length > offset + PAGE_SIZE
+      : afterStrictFilter.length > PAGE_SIZE || tsePage.hasMore;
     const exactTotal = shouldUsePoliticalLiveBase || afterStrictFilter.length > 0;
     const total = exactTotal ? afterStrictFilter.length : page * PAGE_SIZE + merged.length + (hasMore ? PAGE_SIZE : 0);
     const rows = merged.map((r) => ({ ...r, total_count: total }));
