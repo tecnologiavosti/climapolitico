@@ -10,21 +10,9 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 
-const routeNames: Record<string, string> = {
-  dashboard: "Dashboard",
-  candidates: "Candidatos",
-  analytics: "Análises",
-  "analytics-advanced": "Analytics Avançado",
-  "speech-analysis": "Análise de Fala",
-  ranking: "Ranking",
-  undecided: "Público Indeciso",
-  "social-media-report": "Relatório por Rede Social",
-  ai: "IA & Insights",
-  admin: "Administração",
-  notifications: "Notificações",
-  subscription: "Assinatura",
-  settings: "Configurações",
-};
+import { ROUTE_TITLES } from "@/lib/routeTitles";
+
+const routeNames: Record<string, string> = ROUTE_TITLES;
 
 export const Breadcrumbs = () => {
   const location = useLocation();

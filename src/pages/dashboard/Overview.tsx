@@ -18,6 +18,7 @@ import { HelpTooltip } from "@/components/ui/help-tooltip";
 import { NetworkLegendWithTooltips } from "@/components/dashboard/NetworkLegendWithTooltips";
 import { isHiddenNetwork } from "@/lib/networkVisibility";
 import { ReactionsPerPost } from "@/components/dashboard/ReactionsPerPost";
+import { EmptyCandidatesCTA } from "@/components/dashboard/EmptyCandidatesCTA";
 
 
 
@@ -394,6 +395,7 @@ export default function Overview() {
 
   return (
     <div className="space-y-6">
+      {!loadingCandidates && totalCandidates === 0 && <EmptyCandidatesCTA />}
       {/* Candidate Selector for Consolidated View */}
       <Card className="p-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">

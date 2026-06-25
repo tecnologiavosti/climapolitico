@@ -13,8 +13,9 @@ import logoAsset from "@/assets/clima-politico-logo.jpg.asset.json";
 import { z } from "zod";
 import { consumeTrialAfterLogin, getTrialStart, queueTrialCelebration, startTrial } from "@/lib/trial";
 
+import { PasswordChecklist, isPasswordValid } from "@/components/auth/PasswordChecklist";
+
 const emailSchema = z.string().email("Email inválido");
-const passwordSchema = z.string().min(6, "Senha deve ter no mínimo 6 caracteres");
 const fullNameSchema = z.string().min(2, "Nome deve ter no mínimo 2 caracteres");
 const getAuthOrigin = () => {
   if (typeof window === "undefined") return "";
@@ -62,11 +63,14 @@ const Auth = () => {
     e.preventDefault();
     try {
       emailSchema.parse(loginEmail);
-      passwordSchema.parse(loginPassword);
     } catch (error) {
       if (error instanceof z.ZodError) {
         toast({ title: "Erro de validação", description: error.issues[0].message, variant: "destructive" });
       }
+      return;
+    }
+    if (!loginPassword) {
+      toast({ title: "Erro de validação", description: "Informe sua senha", variant: "destructive" });
       return;
     }
     setLoading(true);
@@ -80,7 +84,7 @@ const Auth = () => {
       setLoading(false);
       return;
     }
-    toast({ title: "Login realizado!", description: "Redirecionando..." });
+    toast({ title: "Bem-vindo ao Clima Político", description: "Redirecionando..." });
     setLoading(false);
   };
 
@@ -89,11 +93,18 @@ const Auth = () => {
     try {
       fullNameSchema.parse(signupFullName);
       emailSchema.parse(signupEmail);
-      passwordSchema.parse(signupPassword);
     } catch (error) {
       if (error instanceof z.ZodError) {
         toast({ title: "Erro de validação", description: error.issues[0].message, variant: "destructive" });
       }
+      return;
+    }
+    if (!isPasswordValid(signupPassword)) {
+      toast({
+        title: "Senha não atende aos requisitos",
+        description: "Verifique a lista de requisitos abaixo do campo Senha.",
+        variant: "destructive",
+      });
       return;
     }
     setLoading(true);
@@ -109,10 +120,20 @@ const Auth = () => {
         description: error.message === "User already registered" ? "Este email já está cadastrado" : error.message,
         variant: "destructive",
       });
-    } else {
-      toast({ title: "Conta criada!", description: "Verifique seu email para confirmar." });
-      setSignupEmail(""); setSignupPassword(""); setSignupFullName(""); setSignupOrganization("");
+      setLoading(false);
+      return;
     }
+    // Auto-confirm está ativado no backend — entramos direto sem confirmação por email.
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: signupEmail,
+      password: signupPassword,
+    });
+    if (signInError) {
+      toast({ title: "Conta criada!", description: "Faça login para continuar." });
+    } else {
+      toast({ title: "Bem-vindo ao Clima Político", description: "Sua conta foi criada com sucesso!" });
+    }
+    setSignupEmail(""); setSignupPassword(""); setSignupFullName(""); setSignupOrganization("");
     setLoading(false);
   };
 
@@ -245,9 +266,10 @@ const Auth = () => {
                   value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} required disabled={loading} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="signup-password">Senha (mín. 6 caracteres)</Label>
+                <Label htmlFor="signup-password">Senha</Label>
                 <Input id="signup-password" type="password" placeholder="••••••••"
                   value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)} required disabled={loading} />
+                <PasswordChecklist password={signupPassword} />
               </div>
               <Button type="submit" className="w-full bg-gradient-primary" disabled={loading}>
                 {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Criando...</> : "Criar Conta"}
