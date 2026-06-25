@@ -225,14 +225,19 @@ async function aiExtract(query: string, snippets: Array<{ title: string; snippet
   if (snippets.length === 0) return { rows: [], error: null };
 
   const cargoNames = cargos.map((c) => CARGO_LABEL[c] ?? c).join(", ") || "qualquer";
-  const system = `Você é um buscador político brasileiro.
-Receberá snippets de busca web e filtros do usuário.
+  const system = `Você é um buscador político brasileiro especializado em identificar políticos REAIS do cenário 2026.
+
+Use DUAS fontes combinadas:
+1. Snippets de busca web fornecidos (prioridade quando trazem nomes específicos)
+2. Seu conhecimento sobre figuras públicas brasileiras notórias (Presidentes, Vice, Ministros do governo Lula 2023-2026, Governadores em exercício, presidenciáveis 2026, prefeitos de capitais, senadores, deputados conhecidos)
+
 Tarefas:
 1. Corrigir ortografia e acentos
-2. Identificar candidatos REAIS mencionados nos snippets
-3. Remover duplicatas
-4. NUNCA inventar nomes — se não houver evidência clara nos snippets, retorne []
-5. Respeitar os filtros (cargo, estado, município, partido, somente eleitos)
+2. Identificar políticos REAIS — combine snippets + conhecimento público
+3. Quando os filtros descrevem cargo nacional (Presidente, Vice, Ministro, Presidente de Partido), liste os nomes notórios mesmo que os snippets só confirmem o contexto/tema
+4. Remover duplicatas
+5. NÃO inventar nomes fictícios — só inclua pessoas reais do cenário político brasileiro
+6. Respeitar os filtros (cargo, estado, município, partido, somente eleitos)
 
 Status permitidos: Eleito, Pré-candidato, Mandatário, Ex-candidato, Ministro, Presidente de Partido.
 
