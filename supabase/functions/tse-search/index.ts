@@ -1,14 +1,10 @@
 // Real-time TSE search via DivulgaCandContas public API.
-// No local catalog, no mock. Each request hits TSE directly.
+// No local catalog, no saved JSON, no curated/static candidate base.
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
 const TSE = "https://divulgacandcontas.tse.jus.br/divulga/rest/v1";
-
-// Election IDs
-// 544 = 1º turno das Eleições Gerais 2022. 545 é 2º turno e retorna listas vazias
-// para vários cargos, inclusive Presidente/Vice-presidente.
-const ID_ELEICAO_FEDERAL_2022 = 544;
-const ID_ELEICAO_MUNICIPAL_2024 = 619; // Eleições Municipais 2024
+const WIKIDATA_SPARQL = "https://query.wikidata.org/sparql";
+const TARGET_YEAR = 2026;
 
 // Cargo code per TSE
 const CARGO_CODE: Record<string, number> = {
@@ -27,6 +23,7 @@ const CARGO_CODE: Record<string, number> = {
 
 const FEDERAL_CARGOS = new Set(["presidente", "vice_presidente", "governador", "vice_governador", "senador", "deputado_federal", "deputado_estadual", "deputado_distrital"]);
 const MUNICIPAL_CARGOS = new Set(["prefeito", "vice_prefeito", "vereador"]);
+const ELECTORAL_CARGOS = [...FEDERAL_CARGOS, ...MUNICIPAL_CARGOS];
 
 const REGION_OF_UF: Record<string, string> = {
   AC: "norte", AM: "norte", AP: "norte", PA: "norte", RO: "norte", RR: "norte", TO: "norte",
@@ -46,10 +43,11 @@ const UF_OF_REGION: Record<string, string[]> = {
 };
 
 const PAGE_SIZE = 50;
+const TSE_REQUEST_TIMEOUT_MS = 12_000;
 
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
-// Cargos que o TSE histórico (2022/2024) NÃO cobre — sempre via IA 2026.
+// Cargos que o TSE de candidaturas NÃO cobre — sempre via base auxiliar/IA 2026.
 const AI_ONLY_CARGOS = new Set(["ministro", "presidente_partido", "pre_candidato"]);
 
 const normalize = (str: string | null | undefined) =>
@@ -102,9 +100,76 @@ function normalizeCargoKey(value: string): string | null {
 }
 
 async function tseJson(url: string) {
-  const r = await fetch(url, { headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" } });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TSE_REQUEST_TIMEOUT_MS);
+  const r = await fetch(url, {
+    signal: controller.signal,
+    headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" },
+  }).finally(() => clearTimeout(timeout));
   if (!r.ok) throw new Error(`TSE ${r.status} ${url}`);
   return r.json();
+}
+
+function escapeSparqlString(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, " ");
+}
+
+async function wikidataSparql(query: string) {
+  const url = `${WIKIDATA_SPARQL}?${new URLSearchParams({ format: "json", query }).toString()}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TSE_REQUEST_TIMEOUT_MS);
+  const r = await fetch(url, {
+    signal: controller.signal,
+    headers: {
+      Accept: "application/sparql-results+json, application/json",
+      "User-Agent": "ClimaPolitico/1.0 political-catalog",
+    },
+  }).finally(() => clearTimeout(timeout));
+  if (!r.ok) throw new Error(`Wikidata ${r.status}`);
+  return r.json();
+}
+
+interface TseElection {
+  id: number;
+  ano: number;
+  nomeEleicao: string;
+  tipoAbrangencia: "F" | "M" | string;
+  dataEleicao?: string | null;
+}
+
+const electionsCache = new Map<string, { at: number; rows: TseElection[] }>();
+
+async function getOrdinaryElections(): Promise<TseElection[]> {
+  const cached = electionsCache.get("ordinarias");
+  if (cached && Date.now() - cached.at < 6 * 60 * 60 * 1000) return cached.rows;
+  try {
+    const rows = (await tseJson(`${TSE}/eleicao/ordinarias`)) as TseElection[];
+    electionsCache.set("ordinarias", { at: Date.now(), rows });
+    return rows;
+  } catch (e) {
+    console.error("[tse-search] elections discovery failed:", e);
+    // Últimas eleições oficiais conhecidas; usadas somente quando o endpoint de descoberta falha.
+    return [
+      { id: 2045202024, ano: 2024, nomeEleicao: "Eleições Municipais 2024", tipoAbrangencia: "M" },
+      { id: 2040602022, ano: 2022, nomeEleicao: "Eleição Geral Federal 2022", tipoAbrangencia: "F" },
+    ];
+  }
+}
+
+async function resolveElection(kind: "F" | "M") {
+  const rows = (await getOrdinaryElections())
+    .filter((e) => e.tipoAbrangencia === kind && Number(e.ano) <= TARGET_YEAR)
+    .sort((a, b) => Number(b.ano) - Number(a.ano) || Number(b.id) - Number(a.id));
+
+  const exact = rows.find((e) => Number(e.ano) === TARGET_YEAR);
+  const election = exact ?? rows[0];
+  if (!election) throw new Error(`TSE election not found for ${kind}`);
+  return {
+    id: Number(election.id),
+    ano: Number(election.ano),
+    name: election.nomeEleicao,
+    isTargetYear: Number(election.ano) === TARGET_YEAR,
+  };
 }
 
 const municipiosCache = new Map<string, Array<{ codigo: string; nome: string; normalized: string }>>();
@@ -179,37 +244,41 @@ function mapCandidate(raw: any, ctx: { uf: string; municipio: string | null; ano
 
 type TSEFetchResult = { rows: CandidateOut[]; failed: boolean };
 
-async function fetchFederal(uf: string, cargoKey: string): Promise<TSEFetchResult> {
+async function fetchFederal(uf: string, cargoKey: string, election: { id: number; ano: number }): Promise<TSEFetchResult> {
   const code = CARGO_CODE[cargoKey];
   if (!code) return { rows: [], failed: false };
   const ueCode = cargoKey === "presidente" || cargoKey === "vice_presidente" ? "BR" : uf;
-  const url = `${TSE}/candidatura/listar/2022/${ueCode}/${ID_ELEICAO_FEDERAL_2022}/${code}/candidatos`;
+  const url = `${TSE}/candidatura/listar/${election.ano}/${ueCode}/${election.id}/${code}/candidatos`;
   try {
     const j = await tseJson(url);
     const list: any[] = j.candidatos ?? [];
-    return { rows: list.map((c) => mapCandidate(c, { uf, municipio: null, ano: 2022, idEleicao: ID_ELEICAO_FEDERAL_2022, ueCode })), failed: false };
+    return { rows: list.map((c) => mapCandidate(c, { uf: ueCode === "BR" ? "BR" : uf, municipio: null, ano: election.ano, idEleicao: election.id, ueCode })), failed: false };
   } catch (e) {
     console.error("[tse-search] federal fetch failed:", e);
     return { rows: [], failed: true };
   }
 }
 
-async function fetchMunicipal(uf: string, municipioNome: string, cargoKey: string): Promise<TSEFetchResult> {
+async function fetchMunicipalByCode(uf: string, municipio: { codigo: string; nome: string }, cargoKey: string, election: { id: number; ano: number }): Promise<TSEFetchResult> {
   const code = CARGO_CODE[cargoKey];
   if (!code) return { rows: [], failed: false };
-  const munis = await getMunicipios(uf, ID_ELEICAO_MUNICIPAL_2024);
-  const target = stripAccents(municipioNome);
-  const muni = munis.find((m) => m.normalized === target) ?? munis.find((m) => m.normalized.includes(target));
-  if (!muni) return { rows: [], failed: false };
-  const url = `${TSE}/candidatura/listar/2024/${muni.codigo}/${ID_ELEICAO_MUNICIPAL_2024}/${code}/candidatos`;
+  const url = `${TSE}/candidatura/listar/${election.ano}/${municipio.codigo}/${election.id}/${code}/candidatos`;
   try {
     const j = await tseJson(url);
     const list: any[] = j.candidatos ?? [];
-    return { rows: list.map((c) => mapCandidate(c, { uf, municipio: muni.nome, ano: 2024, idEleicao: ID_ELEICAO_MUNICIPAL_2024, ueCode: muni.codigo })), failed: false };
+    return { rows: list.map((c) => mapCandidate(c, { uf, municipio: municipio.nome, ano: election.ano, idEleicao: election.id, ueCode: municipio.codigo })), failed: false };
   } catch (e) {
     console.error("[tse-search] municipal fetch failed:", e);
     return { rows: [], failed: true };
   }
+}
+
+async function resolveMunicipiosForUf(uf: string, municipioNome: string | null | undefined, election: { id: number }) {
+  const munis = await getMunicipios(uf, election.id);
+  if (!municipioNome) return munis;
+  const target = stripAccents(municipioNome);
+  const muni = munis.find((m) => m.normalized === target) ?? munis.find((m) => m.normalized.includes(target));
+  return muni ? [muni] : [];
 }
 
 interface Filters {
@@ -254,8 +323,8 @@ function resolveUfs(f: Filters): string[] {
 
 function resolveCargos(f: Filters): string[] {
   if (f.cargo?.length) return [...new Set(f.cargo.map((c) => normalizeCargoKey(c)).filter(Boolean))] as string[];
-  // Without cargo: default to top federal cargos + cargos vivos 2026 cobertos pela IA.
-  return ["presidente", "governador", "senador", "deputado_federal", "ministro", "presidente_partido"];
+  // Sem cargo: todos os cargos eleitorais + cargos políticos vivos cobertos por base auxiliar.
+  return [...ELECTORAL_CARGOS, ...AI_ONLY_CARGOS];
 }
 
 const CARGO_LABEL: Record<string, string> = {
@@ -275,6 +344,44 @@ const CARGO_LABEL: Record<string, string> = {
   pre_candidato: "Pré-candidato 2026",
 };
 
+function scoreTextSimilarity(a: string, b: string) {
+  const aa = normalize(a);
+  const bb = normalize(b);
+  if (!aa || !bb) return 0;
+  if (aa.includes(bb) || bb.includes(aa)) return 1;
+  const words = bb.split(" ").filter(Boolean);
+  if (words.length > 1 && words.every((w) => aa.includes(w))) return 0.92;
+  const grams = (s: string) => new Set(Array.from({ length: Math.max(0, s.length - 1) }, (_, i) => s.slice(i, i + 2)));
+  const ga = grams(aa);
+  const gb = grams(bb);
+  if (!ga.size || !gb.size) return 0;
+  let overlap = 0;
+  gb.forEach((g) => { if (ga.has(g)) overlap += 1; });
+  return (2 * overlap) / (ga.size + gb.size);
+}
+
+function matchesClientFilters(c: CandidateOut, f: Filters) {
+  if (f.estado?.length && c.estado && c.estado !== "BR") {
+    const set = new Set(f.estado.map((uf) => uf.toUpperCase()));
+    if (!set.has(c.estado.toUpperCase())) return false;
+  }
+  if (f.regiao?.length && c.regiao) {
+    const set = new Set(f.regiao.map((r) => normalize(r)));
+    if (!set.has(normalize(c.regiao))) return false;
+  }
+  if (f.municipio && c.municipio && !normalize(c.municipio).includes(normalize(f.municipio))) return false;
+  if (f.partido?.length) {
+    const set = new Set(f.partido.map((p) => normalize(p)));
+    if (!c.partido_sigla || !set.has(normalize(c.partido_sigla))) return false;
+  }
+  if (f.q) {
+    const haystack = `${c.nome} ${c.nome_urna ?? ""}`;
+    if (scoreTextSimilarity(haystack, f.q) < 0.58) return false;
+  }
+  if (f.onlyEleitos && !c.eleito) return false;
+  return true;
+}
+
 async function aiPoliticalLookup(f: Filters, cargos: string[]): Promise<CandidateOut[]> {
   if (!LOVABLE_API_KEY) return [];
   const cargoNames = cargos.map((c) => CARGO_LABEL[c] ?? c).join(", ");
@@ -287,7 +394,7 @@ async function aiPoliticalLookup(f: Filters, cargos: string[]): Promise<Candidat
 Conhece presidente, vice, ministros, governadores, vice-governadores, senadores, deputados federais/estaduais/distritais, prefeitos, vice-prefeitos, vereadores em exercício, presidentes nacionais de partidos e pré-candidatos declarados para 2026.
 Inclui figuras como Lula, Bolsonaro, Tarcísio de Freitas, Ratinho Júnior, Ronaldo Caiado, Romeu Zema, Pablo Marçal, Flávio Bolsonaro, Nikolas Ferreira, Gustavo Martinelli e equivalentes.
 Devolva APENAS JSON: {"politicos":[{"nome":"...","partido":"SIGLA","cargo":"presidente|vice_presidente|governador|vice_governador|senador|deputado_federal|deputado_estadual|deputado_distrital|prefeito|vice_prefeito|vereador|ministro|presidente_partido|pre_candidato","estado":"UF","municipio":"...|null","eleito":true|false,"confidence":0-1}]}.
-Máximo 30 itens. Só políticos REAIS e atuais. Nunca invente nomes.`;
+Retorne até 50 itens compatíveis com os filtros. Só políticos REAIS e atuais. Nunca invente nomes.`;
 
   const user = `Busca:
 - nome contém: ${nome || "(qualquer)"}
@@ -300,7 +407,11 @@ Máximo 30 itens. Só políticos REAIS e atuais. Nunca invente nomes.`;
   try {
     const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      headers: {
+        "Lovable-API-Key": LOVABLE_API_KEY,
+        "X-Lovable-AIG-SDK": "rest",
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: [{ role: "system", content: system }, { role: "user", content: user }],
@@ -333,11 +444,185 @@ Máximo 30 itens. Só políticos REAIS e atuais. Nunca invente nomes.`;
       popularidade: Number(p.confidence ?? 0.5),
       similarity: Number(p.confidence ?? 0.5),
       total_count: 0,
-    } satisfies CandidateOut));
+    } satisfies CandidateOut)).filter((row) => matchesClientFilters(row, f));
   } catch (e) {
     console.error("[tse-search] AI lookup exception:", e);
     return [];
   }
+}
+
+function cargoFromOfficeLabel(label: string | null | undefined) {
+  const n = normalize(label);
+  if (n.includes("vice presidente")) return "vice_presidente";
+  if (n.includes("presidente do brasil") || n.includes("presidente da republica")) return "presidente";
+  if (n.includes("governador")) return "governador";
+  if (n.includes("senador")) return "senador";
+  if (n.includes("camara dos deputados") || n.includes("deputado federal")) return "deputado_federal";
+  if (n.includes("deputado estadual")) return "deputado_estadual";
+  if (n.includes("deputado distrital")) return "deputado_distrital";
+  if (n.includes("prefeito")) return "prefeito";
+  if (n.includes("vereador")) return "vereador";
+  if (n.includes("ministro")) return "ministro";
+  return "pre_candidato";
+}
+
+function getBindingValue(binding: Record<string, any>, key: string): string | null {
+  return binding?.[key]?.value ? String(binding[key].value) : null;
+}
+
+function rowFromWikidata(binding: Record<string, any>, idx: number, fallbackCargo: string | null): CandidateOut | null {
+  const name = getBindingValue(binding, "personLabel") ?? getBindingValue(binding, "ptLabel");
+  if (!name) return null;
+  const partyShort = getBindingValue(binding, "partyShort");
+  const partyName = getBindingValue(binding, "partyLabel");
+  const office = getBindingValue(binding, "officeLabel");
+  const state = getBindingValue(binding, "stateUf");
+  const cargo = fallbackCargo ?? cargoFromOfficeLabel(office);
+  return {
+    id: `wikidata-${idx}-${normalize(name).replace(/\s+/g, "-")}`,
+    tse_id: null,
+    nome: name,
+    nome_urna: null,
+    partido_sigla: partyShort && normalize(partyShort).length <= 12 ? partyShort.toUpperCase() : null,
+    partido_nome: partyName,
+    numero_partido: null,
+    cargo,
+    regiao: state ? (REGION_OF_UF[state.toUpperCase()] ?? null) : null,
+    estado: state ? state.toUpperCase() : null,
+    municipio: null,
+    eleito: cargo !== "pre_candidato",
+    ano_eleicao: null,
+    foto_url: null,
+    redes_sociais: null,
+    popularidade: 0.72,
+    similarity: 0.72,
+    total_count: 0,
+  };
+}
+
+async function wikidataAuxiliaryLookup(f: Filters, cargos: string[]): Promise<CandidateOut[]> {
+  const rows: CandidateOut[] = [];
+  const wantsPartyPresident = cargos.includes("presidente_partido");
+  const q = normalize(f.q);
+  const rawQ = String(f.q ?? "").trim().toLowerCase();
+  const labelFilter = q
+    ? `FILTER(CONTAINS(LCASE(STR(?ptLabel)), "${escapeSparqlString(rawQ)}") || CONTAINS(LCASE(STR(?ptLabel)), "${escapeSparqlString(q)}"))`
+    : "";
+
+  try {
+    if (wantsPartyPresident) {
+      const query = `
+SELECT ?person ?personLabel ?ptLabel ?partyLabel ?partyShort WHERE {
+  ?party wdt:P31/wdt:P279* wd:Q7278; wdt:P17 wd:Q155; wdt:P488 ?person.
+  ?person rdfs:label ?ptLabel FILTER(LANG(?ptLabel) = "pt").
+  ${labelFilter}
+  OPTIONAL { ?party wdt:P1813 ?partyShort. FILTER(LANG(?partyShort) = "pt" || LANG(?partyShort) = "" || LANG(?partyShort) = "und") }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "pt,en". }
+} LIMIT 50`;
+      const data = await wikidataSparql(query);
+      for (const [idx, binding] of ((data?.results?.bindings ?? []) as any[]).entries()) {
+        const row = rowFromWikidata(binding, idx, "presidente_partido");
+        if (row && matchesClientFilters(row, f)) rows.push(row);
+      }
+    }
+
+    if (q && rows.length < PAGE_SIZE) {
+      const query = `
+SELECT ?person ?personLabel ?ptLabel ?officeLabel ?partyLabel ?partyShort WHERE {
+  ?person wdt:P27 wd:Q155; rdfs:label ?ptLabel.
+  FILTER(LANG(?ptLabel) = "pt")
+  ${labelFilter}
+  { ?person wdt:P106/wdt:P279* wd:Q82955. } UNION { ?person wdt:P39 ?office. }
+  OPTIONAL { ?person wdt:P39 ?office. }
+  OPTIONAL { ?person wdt:P102 ?party. OPTIONAL { ?party wdt:P1813 ?partyShort. FILTER(LANG(?partyShort) = "pt" || LANG(?partyShort) = "" || LANG(?partyShort) = "und") } }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "pt,en". }
+} LIMIT 50`;
+      const data = await wikidataSparql(query);
+      for (const [idx, binding] of ((data?.results?.bindings ?? []) as any[]).entries()) {
+        const row = rowFromWikidata(binding, idx + rows.length, null);
+        if (row && cargos.includes(row.cargo ?? "") && matchesClientFilters(row, f)) rows.push(row);
+      }
+    }
+  } catch (e) {
+    console.error("[tse-search] Wikidata auxiliary lookup failed:", e);
+  }
+
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    const key = `${normalize(row.nome)}|${row.cargo ?? ""}|${row.partido_sigla ?? row.partido_nome ?? ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, PAGE_SIZE);
+}
+
+type FetchTask =
+  | { kind: "federal"; uf: string; cargo: string }
+  | { kind: "municipal"; uf: string; municipio: { codigo: string; nome: string }; cargo: string };
+
+async function buildTasks(f: Filters, cargos: string[], ufs: string[], elections: { federal: { id: number; ano: number }; municipal: { id: number; ano: number } }) {
+  const tasks: FetchTask[] = [];
+  const federalCargos = cargos.filter((c) => FEDERAL_CARGOS.has(c));
+  const municipalCargos = cargos.filter((c) => MUNICIPAL_CARGOS.has(c));
+
+  for (const cargo of federalCargos) {
+    const targetUfs = (cargo === "presidente" || cargo === "vice_presidente") ? ["BR"] : ufs;
+    for (const uf of targetUfs) tasks.push({ kind: "federal", uf, cargo });
+  }
+
+  if (municipalCargos.length > 0) {
+    const targetUfs = ufs.filter((uf) => uf !== "BR");
+    const municipalLists = await Promise.all(targetUfs.map(async (uf) => ({ uf, municipios: await resolveMunicipiosForUf(uf, f.municipio, elections.municipal) })));
+    for (const { uf, municipios } of municipalLists) {
+      for (const municipio of municipios) {
+        for (const cargo of municipalCargos) tasks.push({ kind: "municipal", uf, municipio, cargo });
+      }
+    }
+  }
+
+  return tasks;
+}
+
+async function executePagedTseSearch(f: Filters, tasks: FetchTask[], elections: { federal: { id: number; ano: number }; municipal: { id: number; ano: number } }) {
+  const page = Math.max(0, Number(f.page ?? 0));
+  const offset = page * PAGE_SIZE;
+  let skipped = 0;
+  let attempted = 0;
+  let failed = 0;
+  let exhausted = true;
+  const collected: CandidateOut[] = [];
+  const seen = new Set<string>();
+
+  for (const task of tasks) {
+    attempted += 1;
+    const result = task.kind === "federal"
+      ? await fetchFederal(task.uf, task.cargo, elections.federal)
+      : await fetchMunicipalByCode(task.uf, task.municipio, task.cargo, elections.municipal);
+    if (result.failed) failed += 1;
+
+    for (const row of result.rows) {
+      if (!matchesClientFilters(row, f)) continue;
+      const key = `${row.tse_id ?? normalize(row.nome)}|${row.estado ?? ""}|${row.municipio ?? ""}|${row.cargo ?? ""}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (skipped < offset) {
+        skipped += 1;
+        continue;
+      }
+      collected.push(row);
+      if (collected.length > PAGE_SIZE) {
+        exhausted = false;
+        break;
+      }
+    }
+    if (!exhausted) break;
+  }
+
+  const hasMore = collected.length > PAGE_SIZE || !exhausted;
+  const rows = collected.slice(0, PAGE_SIZE);
+  const exactTotal = exhausted;
+  const total = exactTotal ? offset + rows.length : offset + rows.length + PAGE_SIZE;
+  return { rows, total, exactTotal, hasMore, attempted, failed };
 }
 
 Deno.serve(async (req) => {
@@ -349,7 +634,7 @@ Deno.serve(async (req) => {
 
     const cargos = resolveCargos(f);
     const ufs = resolveUfs(f);
-    const wantsMunicipal = cargos.some((c) => MUNICIPAL_CARGOS.has(c));
+    const page = Math.max(0, Number(f.page ?? 0));
 
     if (f.cargo?.length && cargos.length === 0) {
       return new Response(JSON.stringify({
@@ -362,63 +647,38 @@ Deno.serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Limit fan-out for federal queries when no UF chosen + no presidential
-    const federalCargos = cargos.filter((c) => FEDERAL_CARGOS.has(c));
-    const municipalCargos = cargos.filter((c) => MUNICIPAL_CARGOS.has(c));
     const aiOnlyCargos = cargos.filter((c) => AI_ONLY_CARGOS.has(c));
-    // Municipal requires UF + município (apenas se TSE municipal foi solicitado)
-    const municipalReady = !wantsMunicipal || (f.estado?.length && f.municipio);
+    const [federalElection, municipalElection] = await Promise.all([resolveElection("F"), resolveElection("M")]);
+    const elections = { federal: federalElection, municipal: municipalElection };
+    const tasks = await buildTasks(f, cargos, ufs, elections);
+    const tsePage = await executePagedTseSearch(f, tasks, elections);
+    const tseFailed = tasks.length > 0 && tsePage.failed === tsePage.attempted;
+    console.log(`[tse-search] TSE Results ${tsePage.rows.length} via ${tsePage.attempted} reqs (failed=${tsePage.failed}, hasMore=${tsePage.hasMore})`);
 
-    const tasks: Promise<TSEFetchResult>[] = [];
-
-    for (const cargo of federalCargos) {
-      const targetUfs = (cargo === "presidente" || cargo === "vice_presidente") ? ["BR"] : ufs;
-      for (const uf of targetUfs) tasks.push(fetchFederal(uf, cargo));
-    }
-    if (municipalReady) {
-      for (const cargo of municipalCargos) {
-        for (const uf of (f.estado ?? []).map((u) => u.toUpperCase())) {
-          tasks.push(fetchMunicipal(uf, f.municipio!, cargo));
-        }
-      }
-    }
-
-    const fetched = await Promise.all(tasks);
-    const tseResults = fetched.flatMap((r) => r.rows);
-    const failedRequests = fetched.filter((r) => r.failed).length;
-    const tseFailed = tasks.length > 0 && failedRequests === tasks.length;
-    console.log(`[tse-search] tse returned ${tseResults.length} via ${tasks.length} reqs (failed=${failedRequests})`);
-
-    // Client-side filters em TSE
-    let filteredTse = tseResults;
-    if (f.partido?.length) {
-      const set = new Set(f.partido.map((p) => normalize(p)));
-      filteredTse = filteredTse.filter((c) => c.partido_sigla && set.has(normalize(c.partido_sigla)));
-    }
-    if (f.q) {
-      const q = stripAccents(f.q);
-      filteredTse = filteredTse.filter((c) =>
-        stripAccents(c.nome).includes(q) || (c.nome_urna && stripAccents(c.nome_urna).includes(q))
-      );
-    }
-    if (f.onlyEleitos) filteredTse = filteredTse.filter((c) => c.eleito);
-
-    // IA 2026: complementa quando TSE vazio, cargos AI-only, busca por nome sem hit, ou municipal sem UF/município
-    const needAi =
+    // Base auxiliar 2026: cobre cargos não eleitorais e complementa quando o TSE oficial não tem retorno.
+    const needAi = page === 0 && (
       aiOnlyCargos.length > 0 ||
-      filteredTse.length === 0 ||
-      (!!f.q && filteredTse.length < 5) ||
-      (wantsMunicipal && !municipalReady) ||
-      tseFailed;
+      tsePage.rows.length === 0 ||
+      (!!f.q && tsePage.rows.length < 5) ||
+      tseFailed ||
+      !federalElection.isTargetYear ||
+      !municipalElection.isTargetYear
+    );
+
+    let auxiliaryRows: CandidateOut[] = [];
+    if (needAi) {
+      auxiliaryRows = await wikidataAuxiliaryLookup(f, cargos);
+      console.log(`[tse-search] Wikidata auxiliary added ${auxiliaryRows.length} profiles`);
+    }
 
     let aiRows: CandidateOut[] = [];
     if (needAi) {
       const aiCargos = [...new Set([...cargos, ...aiOnlyCargos])];
       aiRows = await aiPoliticalLookup(f, aiCargos);
       // dedupe por nome+UF
-      const seen = new Set(filteredTse.map((c) => `${normalize(c.nome)}|${c.estado ?? ""}`));
+      const seen = new Set([...tsePage.rows, ...auxiliaryRows].map((c) => `${normalize(c.nome)}|${c.estado ?? ""}|${c.cargo ?? ""}`));
       aiRows = aiRows.filter((c) => {
-        const k = `${normalize(c.nome)}|${c.estado ?? ""}`;
+        const k = `${normalize(c.nome)}|${c.estado ?? ""}|${c.cargo ?? ""}`;
         if (seen.has(k)) return false;
         seen.add(k);
         return true;
@@ -426,11 +686,11 @@ Deno.serve(async (req) => {
       console.log(`[tse-search] AI 2026 added ${aiRows.length} profiles`);
     }
 
-    const merged = [...filteredTse, ...aiRows];
-    const total = merged.length;
-    const page = Math.max(0, Number(f.page ?? 0));
-    const rows = merged.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-      .map((r) => ({ ...r, total_count: total }));
+    const merged = page === 0 ? [...tsePage.rows, ...auxiliaryRows, ...aiRows].slice(0, PAGE_SIZE) : tsePage.rows;
+    const hasMore = tsePage.hasMore || (page === 0 && tsePage.rows.length + auxiliaryRows.length + aiRows.length > PAGE_SIZE);
+    const exactTotal = tsePage.exactTotal && auxiliaryRows.length === 0 && aiRows.length === 0 && federalElection.isTargetYear && municipalElection.isTargetYear;
+    const total = exactTotal ? tsePage.total : page * PAGE_SIZE + merged.length + (hasMore ? PAGE_SIZE : 0);
+    const rows = merged.map((r) => ({ ...r, total_count: total }));
 
     if (total === 0 && tseFailed) {
       return new Response(JSON.stringify({
@@ -441,10 +701,28 @@ Deno.serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    console.log(`[tse-search] returning ${rows.length}/${total} (page ${page}, ai=${aiRows.length})`);
+    const notices: string[] = [];
+    if (!federalElection.isTargetYear || !municipalElection.isTargetYear) {
+      notices.push(`TSE ainda não publicou candidaturas oficiais de ${TARGET_YEAR}; consulta usando TSE em tempo real (${federalElection.ano}/${municipalElection.ano}) e base auxiliar 2026.`);
+    }
+    if (tasks.length === 0 && aiOnlyCargos.length > 0) {
+      notices.push("Cargo consultado em base auxiliar, pois não existe como candidatura eleitoral no TSE.");
+    }
+
+    console.log(`[tse-search] returning ${rows.length}/${total} (page ${page}, auxiliary=${auxiliaryRows.length}, ai=${aiRows.length}, exact=${exactTotal})`);
 
     return new Response(JSON.stringify({
-      rows, total, suggestions: [], normalized: {}, page, fallback: false,
+      rows,
+      total,
+      hasMore,
+      exactTotal,
+      suggestions: [],
+      normalized: {},
+      page,
+      pageSize: PAGE_SIZE,
+      fallback: false,
+      sourceYears: { target: TARGET_YEAR, federal: federalElection.ano, municipal: municipalElection.ano },
+      notice: notices.join(" ") || null,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     console.error("[tse-search] error:", e);

@@ -85,6 +85,8 @@ export async function searchTSECandidates(filters: CatalogFilters) {
   return {
     rows,
     total: Number(data?.total ?? 0),
+    hasMore: !!data?.hasMore,
+    exactTotal: data?.exactTotal !== false,
     suggestions: (data?.suggestions ?? []) as Suggestion[],
     normalized: (data?.normalized ?? {}) as Record<string, string>,
     notice: (data?.message ?? data?.notice ?? null) as string | null,

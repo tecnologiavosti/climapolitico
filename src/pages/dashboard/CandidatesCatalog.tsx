@@ -37,7 +37,9 @@ export default function CandidatesCatalog() {
   const notice = data?.notice ?? null;
   const fallback = !!data?.fallback || isError;
   const page = filters.page ?? 0;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const exactTotal = data?.exactTotal !== false;
+  const hasNext = data?.hasMore ?? (page < Math.max(1, Math.ceil(total / PAGE_SIZE)) - 1);
+  const totalPages = exactTotal ? Math.max(1, Math.ceil(total / PAGE_SIZE)) : page + (hasNext ? 2 : 1);
   const busy = isLoading || isFetching;
 
   const { data: myCandidates = [] } = useQuery({
@@ -88,7 +90,7 @@ export default function CandidatesCatalog() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const goPage = (p: number) => setRawFilters((f) => ({ ...f, page: Math.max(0, Math.min(p, totalPages - 1)) }));
+  const goPage = (p: number) => setRawFilters((f) => ({ ...f, page: Math.max(0, exactTotal ? Math.min(p, totalPages - 1) : p) }));
 
   return (
     <div className="space-y-4">
@@ -105,7 +107,7 @@ export default function CandidatesCatalog() {
       <CatalogFilters
         filters={rawFilters}
         onChange={setRawFilters}
-        totalResults={busy || !isSuccess ? undefined : total}
+        totalResults={busy || !isSuccess || !exactTotal ? undefined : total}
       />
 
       {notice && (
@@ -180,14 +182,14 @@ export default function CandidatesCatalog() {
 
           <div className="flex items-center justify-between pt-2">
             <span className="text-xs text-muted-foreground">
-              Página {page + 1} de {totalPages.toLocaleString("pt-BR")}
+              {exactTotal ? `Página ${page + 1} de ${totalPages.toLocaleString("pt-BR")}` : `Página ${page + 1} · 50 por página${hasNext ? " · há mais resultados" : ""}`}
               {isFetching && " · atualizando…"}
             </span>
             <div className="flex gap-2">
               <Button size="sm" variant="outline" disabled={page === 0 || isFetching} onClick={() => goPage(page - 1)}>
                 <ChevronLeft className="h-4 w-4 mr-1" /> Anterior
               </Button>
-              <Button size="sm" variant="outline" disabled={page >= totalPages - 1 || isFetching} onClick={() => goPage(page + 1)}>
+              <Button size="sm" variant="outline" disabled={!hasNext || isFetching} onClick={() => goPage(page + 1)}>
                 Próxima <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
             </div>
