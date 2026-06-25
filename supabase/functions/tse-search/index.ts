@@ -47,6 +47,8 @@ const TSE_REQUEST_TIMEOUT_MS = 12_000;
 
 const CEREBRAS_API_KEY = Deno.env.get("CEREBRAS_API_KEY");
 const CEREBRAS_MODEL = "llama-3.3-70b";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
 // Cargos que o TSE de candidaturas NÃO cobre — sempre via base auxiliar/IA 2026.
 const AI_ONLY_CARGOS = new Set(["ministro", "presidente_partido", "pre_candidato"]);
