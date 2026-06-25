@@ -504,7 +504,10 @@ async function wikidataAuxiliaryLookup(f: Filters, cargos: string[]): Promise<Ca
   const rows: CandidateOut[] = [];
   const wantsPartyPresident = cargos.includes("presidente_partido");
   const q = normalize(f.q);
-  const labelFilter = q ? `FILTER(CONTAINS(LCASE(STR(?ptLabel)), "${escapeSparqlString(q)}"))` : "";
+  const rawQ = String(f.q ?? "").trim().toLowerCase();
+  const labelFilter = q
+    ? `FILTER(CONTAINS(LCASE(STR(?ptLabel)), "${escapeSparqlString(rawQ)}") || CONTAINS(LCASE(STR(?ptLabel)), "${escapeSparqlString(q)}"))`
+    : "";
 
   try {
     if (wantsPartyPresident) {
