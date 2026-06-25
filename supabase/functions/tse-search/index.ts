@@ -62,6 +62,15 @@ const normalize = (str: string | null | undefined) =>
 
 const stripAccents = normalize;
 
+// Stopwords típicas em nomes brasileiros — removidas para matching fuzzy.
+const NAME_STOPWORDS = new Set(["da", "de", "do", "dos", "das", "e", "di", "du"]);
+function normalizeForSearch(str: string | null | undefined): string {
+  return normalize(str)
+    .split(" ")
+    .filter((w) => w && !NAME_STOPWORDS.has(w))
+    .join(" ");
+}
+
 const CARGO_ALIASES: Record<string, string> = {
   presidente: "presidente",
   "vice presidente": "vice_presidente",
