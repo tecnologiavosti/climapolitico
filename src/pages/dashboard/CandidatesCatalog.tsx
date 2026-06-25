@@ -66,7 +66,11 @@ export default function CandidatesCatalog() {
 
   const { data, isLoading, isFetching, isSuccess, isError } = useCatalogSearch(filters);
   const rows = data?.rows ?? [];
-  const visibleRows = useMemo(() => rows.filter((candidate) => matchesSelectedFilters(candidate, filters)), [rows, filters]);
+  const visibleRows = useMemo(() => {
+    const filtered = rows.filter((candidate) => matchesSelectedFilters(candidate, filters));
+    console.log("AFTER FRONT FILTER:", filtered.length, "of", rows.length);
+    return filtered;
+  }, [rows, filters]);
   const total = data?.total ?? 0;
   const suggestions = data?.suggestions ?? [];
   const normalized = data?.normalized ?? {};
