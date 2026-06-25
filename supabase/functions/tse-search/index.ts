@@ -941,6 +941,13 @@ Deno.serve(async (req) => {
     const rows = merged.map((r) => ({ ...r, total_count: total }));
 
     console.log({
+      search: f.q ?? null,
+      cargo: f.cargo ?? null,
+      source: shouldUsePoliticalLiveBase ? (liveBase.sources.join("+") || "political_live_2026") : "tse_2026_candidates",
+      foundCount: rows.length,
+    });
+
+    console.log({
       filters: f,
       sourceUsed,
       resultsCount: rows.length,
