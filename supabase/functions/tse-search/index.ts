@@ -3,6 +3,7 @@
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
 const TSE = "https://divulgacandcontas.tse.jus.br/divulga/rest/v1";
+const WIKIDATA_SPARQL = "https://query.wikidata.org/sparql";
 const TARGET_YEAR = 2026;
 
 // Cargo code per TSE
@@ -106,6 +107,25 @@ async function tseJson(url: string) {
     headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" },
   }).finally(() => clearTimeout(timeout));
   if (!r.ok) throw new Error(`TSE ${r.status} ${url}`);
+  return r.json();
+}
+
+function escapeSparqlString(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, " ");
+}
+
+async function wikidataSparql(query: string) {
+  const url = `${WIKIDATA_SPARQL}?${new URLSearchParams({ format: "json", query }).toString()}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TSE_REQUEST_TIMEOUT_MS);
+  const r = await fetch(url, {
+    signal: controller.signal,
+    headers: {
+      Accept: "application/sparql-results+json, application/json",
+      "User-Agent": "ClimaPolitico/1.0 political-catalog",
+    },
+  }).finally(() => clearTimeout(timeout));
+  if (!r.ok) throw new Error(`Wikidata ${r.status}`);
   return r.json();
 }
 
@@ -420,6 +440,108 @@ Retorne até 50 itens compatíveis com os filtros. Só políticos REAIS e atuais
     console.error("[tse-search] AI lookup exception:", e);
     return [];
   }
+}
+
+function cargoFromOfficeLabel(label: string | null | undefined) {
+  const n = normalize(label);
+  if (n.includes("vice presidente")) return "vice_presidente";
+  if (n.includes("presidente do brasil") || n.includes("presidente da republica")) return "presidente";
+  if (n.includes("governador")) return "governador";
+  if (n.includes("senador")) return "senador";
+  if (n.includes("camara dos deputados") || n.includes("deputado federal")) return "deputado_federal";
+  if (n.includes("deputado estadual")) return "deputado_estadual";
+  if (n.includes("deputado distrital")) return "deputado_distrital";
+  if (n.includes("prefeito")) return "prefeito";
+  if (n.includes("vereador")) return "vereador";
+  if (n.includes("ministro")) return "ministro";
+  return "pre_candidato";
+}
+
+function getBindingValue(binding: Record<string, any>, key: string): string | null {
+  return binding?.[key]?.value ? String(binding[key].value) : null;
+}
+
+function rowFromWikidata(binding: Record<string, any>, idx: number, fallbackCargo: string | null): CandidateOut | null {
+  const name = getBindingValue(binding, "personLabel") ?? getBindingValue(binding, "ptLabel");
+  if (!name) return null;
+  const partyShort = getBindingValue(binding, "partyShort");
+  const partyName = getBindingValue(binding, "partyLabel");
+  const office = getBindingValue(binding, "officeLabel");
+  const state = getBindingValue(binding, "stateUf");
+  const cargo = fallbackCargo ?? cargoFromOfficeLabel(office);
+  return {
+    id: `wikidata-${idx}-${normalize(name).replace(/\s+/g, "-")}`,
+    tse_id: null,
+    nome: name,
+    nome_urna: null,
+    partido_sigla: partyShort && normalize(partyShort).length <= 12 ? partyShort.toUpperCase() : null,
+    partido_nome: partyName,
+    numero_partido: null,
+    cargo,
+    regiao: state ? (REGION_OF_UF[state.toUpperCase()] ?? null) : null,
+    estado: state ? state.toUpperCase() : null,
+    municipio: null,
+    eleito: cargo !== "pre_candidato",
+    ano_eleicao: null,
+    foto_url: null,
+    redes_sociais: null,
+    popularidade: 0.72,
+    similarity: 0.72,
+    total_count: 0,
+  };
+}
+
+async function wikidataAuxiliaryLookup(f: Filters, cargos: string[]): Promise<CandidateOut[]> {
+  const rows: CandidateOut[] = [];
+  const wantsPartyPresident = cargos.includes("presidente_partido");
+  const q = normalize(f.q);
+  const labelFilter = q ? `FILTER(CONTAINS(LCASE(STR(?ptLabel)), "${escapeSparqlString(q)}"))` : "";
+
+  try {
+    if (wantsPartyPresident) {
+      const query = `
+SELECT ?person ?personLabel ?ptLabel ?partyLabel ?partyShort WHERE {
+  ?party wdt:P31/wdt:P279* wd:Q7278; wdt:P17 wd:Q155; wdt:P488 ?person.
+  ?person rdfs:label ?ptLabel FILTER(LANG(?ptLabel) = "pt").
+  ${labelFilter}
+  OPTIONAL { ?party wdt:P1813 ?partyShort. FILTER(LANG(?partyShort) = "pt" || LANG(?partyShort) = "" || LANG(?partyShort) = "und") }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "pt,en". }
+} LIMIT 50`;
+      const data = await wikidataSparql(query);
+      for (const [idx, binding] of ((data?.results?.bindings ?? []) as any[]).entries()) {
+        const row = rowFromWikidata(binding, idx, "presidente_partido");
+        if (row && matchesClientFilters(row, f)) rows.push(row);
+      }
+    }
+
+    if (q && rows.length < PAGE_SIZE) {
+      const query = `
+SELECT ?person ?personLabel ?ptLabel ?officeLabel ?partyLabel ?partyShort WHERE {
+  ?person wdt:P27 wd:Q155; rdfs:label ?ptLabel.
+  FILTER(LANG(?ptLabel) = "pt")
+  ${labelFilter}
+  { ?person wdt:P106/wdt:P279* wd:Q82955. } UNION { ?person wdt:P39 ?office. }
+  OPTIONAL { ?person wdt:P39 ?office. }
+  OPTIONAL { ?person wdt:P102 ?party. OPTIONAL { ?party wdt:P1813 ?partyShort. FILTER(LANG(?partyShort) = "pt" || LANG(?partyShort) = "" || LANG(?partyShort) = "und") } }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "pt,en". }
+} LIMIT 50`;
+      const data = await wikidataSparql(query);
+      for (const [idx, binding] of ((data?.results?.bindings ?? []) as any[]).entries()) {
+        const row = rowFromWikidata(binding, idx + rows.length, null);
+        if (row && cargos.includes(row.cargo ?? "") && matchesClientFilters(row, f)) rows.push(row);
+      }
+    }
+  } catch (e) {
+    console.error("[tse-search] Wikidata auxiliary lookup failed:", e);
+  }
+
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    const key = `${normalize(row.nome)}|${row.cargo ?? ""}|${row.partido_sigla ?? row.partido_nome ?? ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, PAGE_SIZE);
 }
 
 type FetchTask =
