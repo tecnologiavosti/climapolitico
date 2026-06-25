@@ -157,20 +157,20 @@ async function getOrdinaryElections(): Promise<TseElection[]> {
 }
 
 async function resolveElection(kind: "F" | "M") {
+  // Foco 2026: só usar eleição oficial se for do ano-alvo. Sem fallback para 2022/2024.
   const rows = (await getOrdinaryElections())
-    .filter((e) => e.tipoAbrangencia === kind && Number(e.ano) <= TARGET_YEAR)
-    .sort((a, b) => Number(b.ano) - Number(a.ano) || Number(b.id) - Number(a.id));
-
-  const exact = rows.find((e) => Number(e.ano) === TARGET_YEAR);
-  const election = exact ?? rows[0];
-  if (!election) throw new Error(`TSE election not found for ${kind}`);
+    .filter((e) => e.tipoAbrangencia === kind && Number(e.ano) === TARGET_YEAR)
+    .sort((a, b) => Number(b.id) - Number(a.id));
+  const election = rows[0];
+  if (!election) return null;
   return {
     id: Number(election.id),
     ano: Number(election.ano),
     name: election.nomeEleicao,
-    isTargetYear: Number(election.ano) === TARGET_YEAR,
+    isTargetYear: true,
   };
 }
+
 
 const municipiosCache = new Map<string, Array<{ codigo: string; nome: string; normalized: string }>>();
 
@@ -390,11 +390,13 @@ async function aiPoliticalLookup(f: Filters, cargos: string[]): Promise<Candidat
   const municipio = f.municipio ?? "";
   const nome = f.q ?? "";
 
-  const system = `Você é um especialista no cenário político brasileiro atual (2025-2026).
-Conhece presidente, vice, ministros, governadores, vice-governadores, senadores, deputados federais/estaduais/distritais, prefeitos, vice-prefeitos, vereadores em exercício, presidentes nacionais de partidos e pré-candidatos declarados para 2026.
-Inclui figuras como Lula, Bolsonaro, Tarcísio de Freitas, Ratinho Júnior, Ronaldo Caiado, Romeu Zema, Pablo Marçal, Flávio Bolsonaro, Nikolas Ferreira, Gustavo Martinelli e equivalentes.
+  const system = `Você é um especialista no cenário político brasileiro VIVO para 2026.
+Conhece presidente, vice, ministros de Estado, governadores, vice-governadores, senadores em mandato, deputados federais/estaduais/distritais em exercício, prefeitos e vice-prefeitos em exercício, vereadores em exercício, presidentes nacionais de partidos e pré-candidatos declarados/cotados para 2026.
+Inclui obrigatoriamente figuras como Lula, Geraldo Alckmin, Bolsonaro, Tarcísio de Freitas, Ratinho Júnior, Ronaldo Caiado, Romeu Zema, Eduardo Leite, Cláudio Castro, Pablo Marçal, Flávio Bolsonaro, Eduardo Bolsonaro, Nikolas Ferreira, Damares Alves, Sergio Moro, Simone Tebet, Ciro Gomes, Gleisi Hoffmann, Valdemar Costa Neto, André Janones, Gustavo Martinelli (Prefeito de Jundiaí/SP, UNIÃO) e equivalentes regionais.
+Para CADA filtro, devolva o máximo de políticos REAIS atualmente atuantes que se enquadrem — não limite a poucos nomes famosos.
 Devolva APENAS JSON: {"politicos":[{"nome":"...","partido":"SIGLA","cargo":"presidente|vice_presidente|governador|vice_governador|senador|deputado_federal|deputado_estadual|deputado_distrital|prefeito|vice_prefeito|vereador|ministro|presidente_partido|pre_candidato","estado":"UF","municipio":"...|null","eleito":true|false,"confidence":0-1}]}.
-Retorne até 50 itens compatíveis com os filtros. Só políticos REAIS e atuais. Nunca invente nomes.`;
+Retorne até 50 itens. Só políticos REAIS e atuais (mandato 2023-2026 ou pré-candidatura 2026). Nunca invente nomes.`;
+
 
   const user = `Busca:
 - nome contém: ${nome || "(qualquer)"}
@@ -560,19 +562,21 @@ type FetchTask =
   | { kind: "federal"; uf: string; cargo: string }
   | { kind: "municipal"; uf: string; municipio: { codigo: string; nome: string }; cargo: string };
 
-async function buildTasks(f: Filters, cargos: string[], ufs: string[], elections: { federal: { id: number; ano: number }; municipal: { id: number; ano: number } }) {
+async function buildTasks(f: Filters, cargos: string[], ufs: string[], elections: { federal: { id: number; ano: number } | null; municipal: { id: number; ano: number } | null }) {
   const tasks: FetchTask[] = [];
-  const federalCargos = cargos.filter((c) => FEDERAL_CARGOS.has(c));
-  const municipalCargos = cargos.filter((c) => MUNICIPAL_CARGOS.has(c));
+  const federalCargos = elections.federal ? cargos.filter((c) => FEDERAL_CARGOS.has(c)) : [];
+  const municipalCargos = elections.municipal ? cargos.filter((c) => MUNICIPAL_CARGOS.has(c)) : [];
 
-  for (const cargo of federalCargos) {
-    const targetUfs = (cargo === "presidente" || cargo === "vice_presidente") ? ["BR"] : ufs;
-    for (const uf of targetUfs) tasks.push({ kind: "federal", uf, cargo });
+  if (elections.federal) {
+    for (const cargo of federalCargos) {
+      const targetUfs = (cargo === "presidente" || cargo === "vice_presidente") ? ["BR"] : ufs;
+      for (const uf of targetUfs) tasks.push({ kind: "federal", uf, cargo });
+    }
   }
 
-  if (municipalCargos.length > 0) {
+  if (elections.municipal && municipalCargos.length > 0) {
     const targetUfs = ufs.filter((uf) => uf !== "BR");
-    const municipalLists = await Promise.all(targetUfs.map(async (uf) => ({ uf, municipios: await resolveMunicipiosForUf(uf, f.municipio, elections.municipal) })));
+    const municipalLists = await Promise.all(targetUfs.map(async (uf) => ({ uf, municipios: await resolveMunicipiosForUf(uf, f.municipio, elections.municipal!) })));
     for (const { uf, municipios } of municipalLists) {
       for (const municipio of municipios) {
         for (const cargo of municipalCargos) tasks.push({ kind: "municipal", uf, municipio, cargo });
@@ -583,7 +587,8 @@ async function buildTasks(f: Filters, cargos: string[], ufs: string[], elections
   return tasks;
 }
 
-async function executePagedTseSearch(f: Filters, tasks: FetchTask[], elections: { federal: { id: number; ano: number }; municipal: { id: number; ano: number } }) {
+
+async function executePagedTseSearch(f: Filters, tasks: FetchTask[], elections: { federal: { id: number; ano: number } | null; municipal: { id: number; ano: number } | null }) {
   const page = Math.max(0, Number(f.page ?? 0));
   const offset = page * PAGE_SIZE;
   let skipped = 0;
@@ -596,8 +601,8 @@ async function executePagedTseSearch(f: Filters, tasks: FetchTask[], elections: 
   for (const task of tasks) {
     attempted += 1;
     const result = task.kind === "federal"
-      ? await fetchFederal(task.uf, task.cargo, elections.federal)
-      : await fetchMunicipalByCode(task.uf, task.municipio, task.cargo, elections.municipal);
+      ? await fetchFederal(task.uf, task.cargo, elections.federal!)
+      : await fetchMunicipalByCode(task.uf, task.municipio, task.cargo, elections.municipal!);
     if (result.failed) failed += 1;
 
     for (const row of result.rows) {
@@ -625,6 +630,7 @@ async function executePagedTseSearch(f: Filters, tasks: FetchTask[], elections: 
   return { rows, total, exactTotal, hasMore, attempted, failed };
 }
 
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -647,52 +653,44 @@ Deno.serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const aiOnlyCargos = cargos.filter((c) => AI_ONLY_CARGOS.has(c));
     const [federalElection, municipalElection] = await Promise.all([resolveElection("F"), resolveElection("M")]);
     const elections = { federal: federalElection, municipal: municipalElection };
+    const tse2026Available = !!(federalElection || municipalElection);
     const tasks = await buildTasks(f, cargos, ufs, elections);
     const tsePage = await executePagedTseSearch(f, tasks, elections);
     const tseFailed = tasks.length > 0 && tsePage.failed === tsePage.attempted;
-    console.log(`[tse-search] TSE Results ${tsePage.rows.length} via ${tsePage.attempted} reqs (failed=${tsePage.failed}, hasMore=${tsePage.hasMore})`);
+    console.log(`[tse-search] TSE 2026 Results ${tsePage.rows.length} via ${tsePage.attempted} reqs (failed=${tsePage.failed}, hasMore=${tsePage.hasMore}, available=${tse2026Available})`);
 
-    // Base auxiliar 2026: cobre cargos não eleitorais e complementa quando o TSE oficial não tem retorno.
-    const needAi = page === 0 && (
-      aiOnlyCargos.length > 0 ||
-      tsePage.rows.length === 0 ||
-      (!!f.q && tsePage.rows.length < 5) ||
-      tseFailed ||
-      !federalElection.isTargetYear ||
-      !municipalElection.isTargetYear
-    );
+    // Base política VIVA 2026: sempre ativa na primeira página para cobrir mandatários,
+    // ministros, presidentes partidários, pré-candidatos e quando TSE 2026 ainda não publicou.
+    const needLive = page === 0;
 
     let auxiliaryRows: CandidateOut[] = [];
-    if (needAi) {
-      auxiliaryRows = await wikidataAuxiliaryLookup(f, cargos);
-      console.log(`[tse-search] Wikidata auxiliary added ${auxiliaryRows.length} profiles`);
-    }
-
     let aiRows: CandidateOut[] = [];
-    if (needAi) {
-      const aiCargos = [...new Set([...cargos, ...aiOnlyCargos])];
-      aiRows = await aiPoliticalLookup(f, aiCargos);
-      // dedupe por nome+UF
+    if (needLive) {
+      const liveCargos = [...new Set([...cargos, ...AI_ONLY_CARGOS])];
+      const [aux, ai] = await Promise.all([
+        wikidataAuxiliaryLookup(f, liveCargos),
+        aiPoliticalLookup(f, liveCargos),
+      ]);
+      auxiliaryRows = aux;
       const seen = new Set([...tsePage.rows, ...auxiliaryRows].map((c) => `${normalize(c.nome)}|${c.estado ?? ""}|${c.cargo ?? ""}`));
-      aiRows = aiRows.filter((c) => {
+      aiRows = ai.filter((c) => {
         const k = `${normalize(c.nome)}|${c.estado ?? ""}|${c.cargo ?? ""}`;
         if (seen.has(k)) return false;
         seen.add(k);
         return true;
       });
-      console.log(`[tse-search] AI 2026 added ${aiRows.length} profiles`);
+      console.log(`[tse-search] Live 2026 base: wikidata=${auxiliaryRows.length} ai=${aiRows.length}`);
     }
 
     const merged = page === 0 ? [...tsePage.rows, ...auxiliaryRows, ...aiRows].slice(0, PAGE_SIZE) : tsePage.rows;
     const hasMore = tsePage.hasMore || (page === 0 && tsePage.rows.length + auxiliaryRows.length + aiRows.length > PAGE_SIZE);
-    const exactTotal = tsePage.exactTotal && auxiliaryRows.length === 0 && aiRows.length === 0 && federalElection.isTargetYear && municipalElection.isTargetYear;
+    const exactTotal = tsePage.exactTotal && auxiliaryRows.length === 0 && aiRows.length === 0 && tse2026Available;
     const total = exactTotal ? tsePage.total : page * PAGE_SIZE + merged.length + (hasMore ? PAGE_SIZE : 0);
     const rows = merged.map((r) => ({ ...r, total_count: total }));
 
-    if (total === 0 && tseFailed) {
+    if (total === 0 && tseFailed && auxiliaryRows.length === 0 && aiRows.length === 0) {
       return new Response(JSON.stringify({
         fallback: true,
         error: "TSE_SERVICE_UNAVAILABLE",
@@ -702,14 +700,11 @@ Deno.serve(async (req) => {
     }
 
     const notices: string[] = [];
-    if (!federalElection.isTargetYear || !municipalElection.isTargetYear) {
-      notices.push(`TSE ainda não publicou candidaturas oficiais de ${TARGET_YEAR}; consulta usando TSE em tempo real (${federalElection.ano}/${municipalElection.ano}) e base auxiliar 2026.`);
-    }
-    if (tasks.length === 0 && aiOnlyCargos.length > 0) {
-      notices.push("Cargo consultado em base auxiliar, pois não existe como candidatura eleitoral no TSE.");
+    if (!tse2026Available) {
+      notices.push(`TSE ainda não publicou candidaturas oficiais de ${TARGET_YEAR}. Resultados vêm da base política viva 2026 (mandatários, ministros, presidentes partidários e pré-candidatos).`);
     }
 
-    console.log(`[tse-search] returning ${rows.length}/${total} (page ${page}, auxiliary=${auxiliaryRows.length}, ai=${aiRows.length}, exact=${exactTotal})`);
+    console.log(`[tse-search] returning ${rows.length}/${total} (page ${page}, tse2026=${tsePage.rows.length}, live=${auxiliaryRows.length + aiRows.length}, exact=${exactTotal})`);
 
     return new Response(JSON.stringify({
       rows,
@@ -721,9 +716,10 @@ Deno.serve(async (req) => {
       page,
       pageSize: PAGE_SIZE,
       fallback: false,
-      sourceYears: { target: TARGET_YEAR, federal: federalElection.ano, municipal: municipalElection.ano },
+      sourceYears: { target: TARGET_YEAR, federal: federalElection?.ano ?? null, municipal: municipalElection?.ano ?? null },
       notice: notices.join(" ") || null,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
   } catch (e) {
     console.error("[tse-search] error:", e);
     return new Response(JSON.stringify({
