@@ -331,15 +331,24 @@ Deno.serve(async (req) => {
   try {
     const f = await readFilters(req);
     const { query, cargos } = buildQuery(f);
-    console.log("[dynamic-search]", { filters: f, query, cargos });
+    console.log("QUERY:", query);
+    console.log("[dynamic-search] filters:", JSON.stringify(f), "cargos:", cargos);
 
     const snippets = await duckDuckGoSearch(query);
-    const extra = (f.q || f.municipio) && snippets.length < 10
+    const extra = snippets.length < 8
       ? await duckDuckGoSearch(`${query} site:wikipedia.org OR site:gov.br OR site:tse.jus.br`)
       : [];
     const allSnippets = [...snippets, ...extra];
+    console.log("SEARCH RESULTS:", allSnippets.length, allSnippets.slice(0, 3).map((s) => ({ title: s.title, url: s.url })));
+
+    if (allSnippets.length === 0) {
+      throw new Error("Search provider indisponível");
+    }
 
     const { rows, error } = await aiExtract(query, allSnippets, f, cargos);
+    if (error) {
+      throw new Error(error);
+    }
 
     // filtros determinísticos extras (cargo / município / UF)
     const cargoSet = new Set(cargos);
@@ -356,7 +365,7 @@ Deno.serve(async (req) => {
     const total = filtered.length;
     const paged = filtered.slice(f.page * PAGE_SIZE, (f.page + 1) * PAGE_SIZE).map((r) => ({ ...r, total_count: total }));
 
-    console.log("[dynamic-search] result", { query, snippets: allSnippets.length, extracted: rows.length, filtered: total });
+    console.log("FINAL RESULTS:", { query, snippets: allSnippets.length, extracted: rows.length, filtered: total, sample: paged.slice(0, 3).map((r) => r.nome) });
 
     return new Response(JSON.stringify({
       rows: paged,
@@ -367,21 +376,24 @@ Deno.serve(async (req) => {
       normalized: {},
       page: f.page,
       pageSize: PAGE_SIZE,
-      fallback: !!error && paged.length === 0,
+      fallback: false,
       sourceUsed: { web: allSnippets.length, ai: rows.length, query },
       notice: paged.length === 0
-        ? (error ? `Não foi possível consultar a internet agora: ${error}` : "Nenhum candidato encontrado com esses filtros")
+        ? "Nenhum candidato encontrado com esses filtros"
         : "Resultado obtido em tempo real da internet — confirme antes de usar.",
       query,
       last_updated: new Date().toISOString(),
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
-    console.error("[dynamic-search] error:", e);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[dynamic-search] FAIL:", msg);
     return new Response(JSON.stringify({
       fallback: true,
-      error: "SERVICE_FAILED",
-      message: "Não foi possível consultar a internet agora.",
-      rows: [], total: 0, suggestions: [], normalized: {}, page: 0,
+      error: msg,
+      message: msg,
+      notice: msg,
+      rows: [], total: 0, hasMore: false, exactTotal: true,
+      suggestions: [], normalized: {}, page: 0, pageSize: PAGE_SIZE,
     }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
