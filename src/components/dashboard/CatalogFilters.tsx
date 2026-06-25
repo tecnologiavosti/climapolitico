@@ -37,11 +37,13 @@ interface Props {
   filters: Filters;
   onChange: (f: Filters) => void;
   totalResults?: number;
+  disabled?: boolean;
+  onSubmit?: () => void;
 }
 
 const ALL = "__all__";
 
-export function CatalogFilters({ filters, onChange, totalResults }: Props) {
+export function CatalogFilters({ filters, onChange, totalResults, disabled, onSubmit }: Props) {
   // Single-select wrappers (RPC accepts arrays — pass [v] or undefined)
   const setSingle = (k: "cargo" | "partido" | "regiao" | "estado", v: string) => {
     const next = { ...filters, page: 0, [k]: v === ALL ? undefined : [v] };
@@ -55,14 +57,15 @@ export function CatalogFilters({ filters, onChange, totalResults }: Props) {
   );
 
   return (
-    <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 py-3 border-b">
+    <fieldset disabled={disabled} className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 py-3 border-b disabled:opacity-60">
       <div className="space-y-3">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar por nome (tolera acentos e erros de digitação)…"
+            placeholder="Buscar por nome (Enter para buscar)…"
             value={filters.q ?? ""}
             onChange={(e) => onChange({ ...filters, page: 0, q: e.target.value })}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onSubmit?.(); } }}
             className="pl-10"
           />
         </div>
