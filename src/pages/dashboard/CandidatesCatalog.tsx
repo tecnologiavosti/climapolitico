@@ -60,6 +60,8 @@ export default function CandidatesCatalog() {
   const suggestions = data?.suggestions ?? [];
   const normalized = data?.normalized ?? {};
   const notice = data?.notice ?? null;
+  const lastUpdated = data?.lastUpdated ?? null;
+  const nationalOnly = data?.nationalOnly ?? false;
   const fallback = !!data?.fallback || isError;
   const page = filters.page ?? 0;
   const exactTotal = data?.exactTotal !== false;
