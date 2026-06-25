@@ -62,6 +62,8 @@ export default function CandidatesCatalog() {
   const notice = data?.notice ?? null;
   const lastUpdated = data?.lastUpdated ?? null;
   const nationalOnly = data?.nationalOnly ?? false;
+  const partial = data?.partial ?? false;
+  const sources = data?.sources ?? [];
   const fallback = !!data?.fallback || isError;
   const page = filters.page ?? 0;
   const exactTotal = data?.exactTotal !== false;
