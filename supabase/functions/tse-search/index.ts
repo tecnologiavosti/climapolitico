@@ -1472,9 +1472,13 @@ Deno.serve(async (req) => {
       pageSize: PAGE_SIZE,
       fallback: false,
       sourceUsed,
-      notice: dynamicAiUsed && dynamicAiRows.length > 0
-        ? "Resultados sugeridos pela IA a partir de fontes públicas (fora da base oficial). Confirme antes de usar."
-        : null,
+      notice: nationalOnly
+        ? "Cenário político vivo 2026 — base curada de presidenciáveis, ministros e lideranças partidárias."
+        : (dynamicAiUsed && dynamicAiRows.length > 0
+          ? "Resultados sugeridos pela IA a partir de fontes públicas (fora da base oficial). Confirme antes de usar."
+          : null),
+      last_updated: LIVE_2026_LAST_UPDATED,
+      nationalOnly,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (e) {
