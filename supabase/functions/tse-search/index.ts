@@ -381,12 +381,17 @@ const CARGO_LABEL: Record<string, string> = {
 };
 
 function scoreTextSimilarity(a: string, b: string) {
-  const aa = normalize(a);
-  const bb = normalize(b);
+  const aa = normalizeForSearch(a);
+  const bb = normalizeForSearch(b);
   if (!aa || !bb) return 0;
   if (aa.includes(bb) || bb.includes(aa)) return 1;
-  const words = bb.split(" ").filter(Boolean);
-  if (words.length > 1 && words.every((w) => aa.includes(w))) return 0.92;
+  const wordsB = bb.split(" ").filter(Boolean);
+  const wordsA = new Set(aa.split(" ").filter(Boolean));
+  if (wordsB.length > 0) {
+    const hits = wordsB.filter((w) => wordsA.has(w) || [...wordsA].some((wa) => wa.includes(w) || w.includes(wa))).length;
+    const ratio = hits / wordsB.length;
+    if (ratio >= 0.5) return Math.max(0.7, ratio);
+  }
   const grams = (s: string) => new Set(Array.from({ length: Math.max(0, s.length - 1) }, (_, i) => s.slice(i, i + 2)));
   const ga = grams(aa);
   const gb = grams(bb);
