@@ -19,6 +19,30 @@ function useDebounced<T>(value: T, ms = 300): T {
   return v;
 }
 
+function normalize(str: string | null | undefined) {
+  return String(str ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .toLowerCase()
+    .trim();
+}
+
+function matchesSelectedFilters(candidate: PoliticianRow, filters: Filters) {
+  const selectedCargo = filters.cargo?.[0] ?? null;
+  const selectedRegion = filters.regiao?.[0] ?? null;
+  const selectedState = filters.estado?.[0] ?? null;
+  const selectedCity = filters.municipio ?? null;
+
+  if (selectedCargo && normalize(candidate.cargo) !== normalize(selectedCargo)) return false;
+  if (selectedRegion && normalize(candidate.regiao) !== normalize(selectedRegion)) return false;
+  if (selectedState && normalize(candidate.estado) !== normalize(selectedState)) return false;
+  if (selectedCity && normalize(candidate.municipio) !== normalize(selectedCity)) return false;
+
+  return true;
+}
+
 export default function CandidatesCatalog() {
   const queryClient = useQueryClient();
   const [rawFilters, setRawFilters] = useState<Filters>({});
@@ -31,6 +55,7 @@ export default function CandidatesCatalog() {
 
   const { data, isLoading, isFetching, isSuccess, isError } = useCatalogSearch(filters);
   const rows = data?.rows ?? [];
+  const visibleRows = useMemo(() => rows.filter((candidate) => matchesSelectedFilters(candidate, filters)), [rows, filters]);
   const total = data?.total ?? 0;
   const suggestions = data?.suggestions ?? [];
   const normalized = data?.normalized ?? {};
@@ -41,6 +66,18 @@ export default function CandidatesCatalog() {
   const hasNext = data?.hasMore ?? (page < Math.max(1, Math.ceil(total / PAGE_SIZE)) - 1);
   const totalPages = exactTotal ? Math.max(1, Math.ceil(total / PAGE_SIZE)) : page + (hasNext ? 2 : 1);
   const busy = isLoading || isFetching;
+
+  useEffect(() => {
+    if (!isSuccess) return;
+    console.log("Catalog filters", {
+      selectedCargo: filters.cargo?.[0] ?? null,
+      selectedRegion: filters.regiao?.[0] ?? null,
+      selectedState: filters.estado?.[0] ?? null,
+      selectedCity: filters.municipio ?? null,
+      totalBeforeFilter: rows.length,
+      totalAfterFilter: visibleRows.length,
+    });
+  }, [filters.cargo, filters.regiao, filters.estado, filters.municipio, isSuccess, rows.length, visibleRows.length]);
 
   const { data: myCandidates = [] } = useQuery({
     queryKey: ["my-candidates-names"],
@@ -139,10 +176,10 @@ export default function CandidatesCatalog() {
             <p className="text-muted-foreground">Não foi possível consultar base do TSE agora.</p>
           </CardContent>
         </Card>
-      ) : isSuccess && rows.length === 0 ? (
+      ) : isSuccess && visibleRows.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center space-y-4">
-            <p className="text-muted-foreground">Nenhum político encontrado com esses filtros.</p>
+            <p className="text-muted-foreground">Nenhum candidato encontrado para os filtros selecionados.</p>
             {suggestions.length > 0 && (
               <div className="space-y-2">
                 <p className="text-sm flex items-center justify-center gap-2">
@@ -169,15 +206,18 @@ export default function CandidatesCatalog() {
       ) : (
         <>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {rows.map((c) => (
-              <CandidateCatalogCard
-                key={c.id}
-                candidate={c}
-                alreadyAdded={myCandidates.includes(c.nome.toLowerCase())}
-                isAdding={adoptMutation.isPending && adoptMutation.variables?.id === c.id}
-                onAdd={(cand) => adoptMutation.mutate(cand)}
-              />
-            ))}
+            {visibleRows.map((c) => {
+              if (filters.cargo?.[0] && normalize(c.cargo) !== normalize(filters.cargo[0])) return null;
+              return (
+                <CandidateCatalogCard
+                  key={c.id}
+                  candidate={c}
+                  alreadyAdded={myCandidates.includes(c.nome.toLowerCase())}
+                  isAdding={adoptMutation.isPending && adoptMutation.variables?.id === c.id}
+                  onAdd={(cand) => adoptMutation.mutate(cand)}
+                />
+              );
+            })}
           </div>
 
           <div className="flex items-center justify-between pt-2">
