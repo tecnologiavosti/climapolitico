@@ -254,10 +254,17 @@ async function searchTSE(cargoKey: string, f: Filters, deadline: number): Promis
     if (Date.now() > deadline) { partial = true; break; }
     if (isMun) {
       const municipios = await listMunicipios(ano, cdEleicao, uf, deadline);
+      if (municipios.length === 0) {
+        throw new Error(`TSE crawler failed: não foi possível listar municípios de ${uf} (eleição ${cdEleicao}).`);
+      }
       let alvo = municipios;
       if (f.municipio) {
         const n = normalize(f.municipio);
         alvo = municipios.filter((m) => normalize(m.nome).includes(n));
+        console.log(`[tse] match município "${f.municipio}" em ${uf} → ${alvo.map((m) => `${m.nome}(${m.codigo})`).join(", ") || "NENHUM"}`);
+        if (alvo.length === 0) {
+          throw new Error(`Município "${f.municipio}" não encontrado em ${uf} no TSE.`);
+        }
       }
       console.log(`[tse] ${uf} ${cargoKey} → ${alvo.length} municípios alvo`);
       const lists = await mapWithLimit(alvo, TSE_CONCURRENCY, async (m) => {
@@ -272,6 +279,7 @@ async function searchTSE(cargoKey: string, f: Filters, deadline: number): Promis
       for (const c of list) { const r = mapTse(c, cargoKey, uf, null, ano); if (r) out.push(r); }
     }
   }
+  console.log(`RESULT COUNT TSE/${cargoKey}: ${out.length}`);
   return { rows: out, partial };
 }
 
