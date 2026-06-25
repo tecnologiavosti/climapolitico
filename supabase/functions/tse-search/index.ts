@@ -225,8 +225,8 @@ const STATUS_TO_CATEGORIA: Record<string, CandidateOut["categoria"]> = {
 };
 
 async function aiExtract(query: string, snippets: Array<{ title: string; snippet: string; url: string }>, f: Filters, cargos: string[]): Promise<{ rows: CandidateOut[]; error: string | null }> {
-  if (!CEREBRAS_API_KEY) return { rows: [], error: "CEREBRAS_API_KEY ausente" };
   if (snippets.length === 0) return { rows: [], error: null };
+  if (!CEREBRAS_API_KEY && !LOVABLE_API_KEY) return { rows: [], error: "Nenhuma chave de IA disponível" };
 
   const cargoNames = cargos.map((c) => CARGO_LABEL[c] ?? c).join(", ") || "qualquer";
   const system = `Você é um buscador político brasileiro.
@@ -260,34 +260,57 @@ ${snippets.slice(0, 15).map((r, i) => `[${i + 1}] ${r.title}\n${r.snippet}\nURL:
 
 Retorne até 30 candidatos. JSON válido.`;
 
-  try {
-    const r = await fetch("https://api.cerebras.ai/v1/chat/completions", {
-      method: "POST",
+  const providers: Array<{ name: string; url: string; headers: Record<string, string>; model: string }> = [];
+  if (CEREBRAS_API_KEY) {
+    providers.push({
+      name: "cerebras",
+      url: "https://api.cerebras.ai/v1/chat/completions",
       headers: { Authorization: `Bearer ${CEREBRAS_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: CEREBRAS_MODEL,
-        messages: [{ role: "system", content: system }, { role: "user", content: user }],
-        response_format: { type: "json_object" },
-        temperature: 0.2,
-        max_tokens: 3000,
-      }),
+      model: CEREBRAS_MODEL,
     });
-    if (!r.ok) {
-      const txt = await r.text().catch(() => "");
-      console.error("[cerebras] failed:", r.status, txt.slice(0, 200));
-      return { rows: [], error: `Cerebras ${r.status}` };
-    }
-    const j = await r.json();
-    const raw = j?.choices?.[0]?.message?.content ?? "";
-    console.log("CEREBRAS RAW:", typeof raw === "string" ? raw.slice(0, 2000) : raw);
-    let parsed: any;
-    try { parsed = extractJsonFromResponse(raw); }
-    catch (e) {
-      console.error("[cerebras] parse failed:", e);
-      return { rows: [], error: "Cerebras parsing failed" };
-    }
-    const list: any[] = parsed?.resultados ?? parsed?.results ?? (Array.isArray(parsed) ? parsed : []);
-    const seen = new Set<string>();
+  }
+  if (LOVABLE_API_KEY) {
+    providers.push({
+      name: "lovable-gateway",
+      url: "https://ai.gateway.lovable.dev/v1/chat/completions",
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      model: GATEWAY_MODEL,
+    });
+  }
+
+  let lastError = "";
+  for (const p of providers) {
+    try {
+      const r = await fetch(p.url, {
+        method: "POST",
+        headers: p.headers,
+        body: JSON.stringify({
+          model: p.model,
+          messages: [{ role: "system", content: system }, { role: "user", content: user }],
+          response_format: { type: "json_object" },
+          temperature: 0.2,
+          max_tokens: 3000,
+        }),
+      });
+      if (!r.ok) {
+        const txt = await r.text().catch(() => "");
+        console.error(`[${p.name}] failed:`, r.status, txt.slice(0, 300));
+        lastError = `${p.name} ${r.status}`;
+        continue;
+      }
+      const j = await r.json();
+      const raw = j?.choices?.[0]?.message?.content ?? "";
+      console.log(`CEREBRAS RAW (${p.name}):`, typeof raw === "string" ? raw.slice(0, 2000) : raw);
+      let parsed: any;
+      try { parsed = extractJsonFromResponse(raw); }
+      catch (e) {
+        console.error(`[${p.name}] parse failed:`, e);
+        lastError = "Cerebras parsing failed";
+        continue;
+      }
+      const list: any[] = parsed?.resultados ?? parsed?.results ?? (Array.isArray(parsed) ? parsed : []);
+      const seen = new Set<string>();
+      const rows: CandidateOut[] = [];
     const rows: CandidateOut[] = [];
     list.forEach((p, idx) => {
       if (!p?.nome) return;
