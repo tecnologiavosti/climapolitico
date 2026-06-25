@@ -35,11 +35,22 @@ function matchesSelectedFilters(candidate: PoliticianRow, filters: Filters) {
   const selectedState = filters.estado?.[0] ?? null;
   const selectedCity = filters.municipio ?? null;
 
-  if (selectedCargo && normalize(candidate.cargo) !== normalize(selectedCargo)) return false;
-  if (selectedRegion && normalize(candidate.regiao) !== normalize(selectedRegion)) return false;
-  if (selectedState && normalize(candidate.estado) !== normalize(selectedState)) return false;
-  if (selectedCity && normalize(candidate.municipio) !== normalize(selectedCity)) return false;
-
+  if (selectedCargo && normalize(candidate.cargo) !== normalize(selectedCargo)) {
+    console.log("DISCARDED:", { reason: "cargo", expected: normalize(selectedCargo), got: normalize(candidate.cargo), nome: candidate.nome });
+    return false;
+  }
+  if (selectedRegion && normalize(candidate.regiao) !== normalize(selectedRegion)) {
+    console.log("DISCARDED:", { reason: "regiao", expected: normalize(selectedRegion), got: normalize(candidate.regiao), nome: candidate.nome });
+    return false;
+  }
+  if (selectedState && normalize(candidate.estado) !== normalize(selectedState)) {
+    console.log("DISCARDED:", { reason: "estado", expected: normalize(selectedState), got: normalize(candidate.estado), nome: candidate.nome });
+    return false;
+  }
+  if (selectedCity && normalize(candidate.municipio) !== normalize(selectedCity)) {
+    console.log("DISCARDED:", { reason: "municipio", expected: normalize(selectedCity), got: normalize(candidate.municipio), nome: candidate.nome });
+    return false;
+  }
   return true;
 }
 
