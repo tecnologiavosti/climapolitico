@@ -1299,6 +1299,8 @@ Deno.serve(async (req) => {
       wikidata: auxiliaryRows.length,
       tse: tsePage.rows.length,
       tse2026Available,
+      cache: cacheRows.length,
+      ddgCerebras: ddgRows.length,
       aiDynamic: dynamicAiUsed ? dynamicAiRows.length : null,
     };
 
