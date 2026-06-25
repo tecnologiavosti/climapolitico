@@ -223,7 +223,6 @@ const STATUS_TO_CATEGORIA: Record<string, CandidateOut["categoria"]> = {
 
 async function aiExtract(query: string, snippets: Array<{ title: string; snippet: string; url: string }>, f: Filters, cargos: string[]): Promise<{ rows: CandidateOut[]; error: string | null }> {
   if (snippets.length === 0) return { rows: [], error: null };
-  if (!CEREBRAS_API_KEY && !LOVABLE_API_KEY) return { rows: [], error: "Nenhuma chave de IA disponível" };
 
   const cargoNames = cargos.map((c) => CARGO_LABEL[c] ?? c).join(", ") || "qualquer";
   const system = `Você é um buscador político brasileiro.
@@ -257,96 +256,66 @@ ${snippets.slice(0, 15).map((r, i) => `[${i + 1}] ${r.title}\n${r.snippet}\nURL:
 
 Retorne até 30 candidatos. JSON válido.`;
 
-  const providers: Array<{ name: string; url: string; headers: Record<string, string>; model: string }> = [];
-  if (CEREBRAS_API_KEY) {
-    providers.push({
-      name: "cerebras",
-      url: "https://api.cerebras.ai/v1/chat/completions",
-      headers: { Authorization: `Bearer ${CEREBRAS_API_KEY}`, "Content-Type": "application/json" },
-      model: CEREBRAS_MODEL,
+  let aiResult;
+  try {
+    aiResult = await callAICerebrasFirst({
+      systemMsg: system,
+      userPrompt: user,
+      jsonMode: true,
+      maxTokens: 3000,
+      temperature: 0.2,
+      tag: "tse-search",
+      maxRetries: 1,
     });
-  }
-  if (LOVABLE_API_KEY) {
-    providers.push({
-      name: "lovable-gateway",
-      url: "https://ai.gateway.lovable.dev/v1/chat/completions",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-      model: GATEWAY_MODEL,
-    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[ai] all providers failed:", msg);
+    return { rows: [], error: `IA indisponível: ${msg.slice(0, 200)}` };
   }
 
-  let lastError = "";
-  for (const p of providers) {
-    try {
-      const r = await fetch(p.url, {
-        method: "POST",
-        headers: p.headers,
-        body: JSON.stringify({
-          model: p.model,
-          messages: [{ role: "system", content: system }, { role: "user", content: user }],
-          response_format: { type: "json_object" },
-          temperature: 0.2,
-          max_tokens: 3000,
-        }),
-      });
-      if (!r.ok) {
-        const txt = await r.text().catch(() => "");
-        console.error(`[${p.name}] failed:`, r.status, txt.slice(0, 300));
-        lastError = `${p.name} ${r.status}`;
-        continue;
-      }
-      const j = await r.json();
-      const raw = j?.choices?.[0]?.message?.content ?? "";
-      console.log(`CEREBRAS RAW (${p.name}):`, typeof raw === "string" ? raw.slice(0, 2000) : raw);
-      let parsed: any;
-      try { parsed = extractJsonFromResponse(raw); }
-      catch (e) {
-        console.error(`[${p.name}] parse failed:`, e);
-        lastError = "Cerebras parsing failed";
-        continue;
-      }
-      const list: any[] = parsed?.resultados ?? parsed?.results ?? (Array.isArray(parsed) ? parsed : []);
-      const seen = new Set<string>();
-      const rows: CandidateOut[] = [];
-      list.forEach((p, idx) => {
-        if (!p?.nome) return;
-        const cargoKey = normalizeCargoKey(p.cargo ?? "") ?? (cargos[0] ?? null);
-        const uf = (p.estado ?? "").toString().toUpperCase().slice(0, 2) || null;
-        const status = normalize(p.status ?? "");
-        const categoria = STATUS_TO_CATEGORIA[status] ?? "lideranca_local";
-        const dedupKey = `${normalize(p.nome)}|${cargoKey ?? ""}|${uf ?? ""}|${normalize(p.cidade ?? "")}`;
-        if (seen.has(dedupKey)) return;
-        seen.add(dedupKey);
-        rows.push({
-          id: `web-${idx}-${normalize(p.nome).replace(/\s+/g, "-")}`,
-          tse_id: null,
-          nome: String(p.nome),
-          nome_urna: null,
-          partido_sigla: p.partido ? String(p.partido).toUpperCase().slice(0, 16) : null,
-          partido_nome: null,
-          numero_partido: null,
-          cargo: cargoKey,
-          regiao: null,
-          estado: uf,
-          municipio: p.cidade ? String(p.cidade) : (f.municipio ?? null),
-          eleito: categoria === "eleito",
-          categoria,
-          ano_eleicao: null,
-          foto_url: null,
-          redes_sociais: null,
-          popularidade: 0.7,
-          similarity: 1,
-          total_count: 0,
-        });
-      });
-      console.log(`[${p.name}] extracted ${rows.length} candidate(s)`);
-      return { rows, error: null };
-    } catch (e) {
-      console.error(`[${p.name}] error:`, e);
-      lastError = e instanceof Error ? e.message : String(e);
-    }
+  console.log(`CEREBRAS RAW (${aiResult.provider}/${aiResult.model}):`, aiResult.content.slice(0, 2000));
+  let parsed: any;
+  try { parsed = extractJsonFromResponse(aiResult.content); }
+  catch (e) {
+    console.error("[ai] parse failed:", e);
+    return { rows: [], error: "Cerebras parsing failed" };
   }
-  return { rows: [], error: lastError || "AI indisponível" };
+  const list: any[] = parsed?.resultados ?? parsed?.results ?? (Array.isArray(parsed) ? parsed : []);
+  const seen = new Set<string>();
+  const rows: CandidateOut[] = [];
+  list.forEach((p, idx) => {
+    if (!p?.nome) return;
+    const cargoKey = normalizeCargoKey(p.cargo ?? "") ?? (cargos[0] ?? null);
+    const uf = (p.estado ?? "").toString().toUpperCase().slice(0, 2) || null;
+    const status = normalize(p.status ?? "");
+    const categoria = STATUS_TO_CATEGORIA[status] ?? "lideranca_local";
+    const dedupKey = `${normalize(p.nome)}|${cargoKey ?? ""}|${uf ?? ""}|${normalize(p.cidade ?? "")}`;
+    if (seen.has(dedupKey)) return;
+    seen.add(dedupKey);
+    rows.push({
+      id: `web-${idx}-${normalize(p.nome).replace(/\s+/g, "-")}`,
+      tse_id: null,
+      nome: String(p.nome),
+      nome_urna: null,
+      partido_sigla: p.partido ? String(p.partido).toUpperCase().slice(0, 16) : null,
+      partido_nome: null,
+      numero_partido: null,
+      cargo: cargoKey,
+      regiao: null,
+      estado: uf,
+      municipio: p.cidade ? String(p.cidade) : (f.municipio ?? null),
+      eleito: categoria === "eleito",
+      categoria,
+      ano_eleicao: null,
+      foto_url: null,
+      redes_sociais: null,
+      popularidade: 0.7,
+      similarity: 1,
+      total_count: 0,
+    });
+  });
+  console.log(`[ai] extracted ${rows.length} candidate(s) via ${aiResult.provider}`);
+  return { rows, error: null };
 }
 
 Deno.serve(async (req) => {
