@@ -56,13 +56,30 @@ function matchesSelectedFilters(candidate: PoliticianRow, filters: Filters) {
 
 export default function CandidatesCatalog() {
   const queryClient = useQueryClient();
-  const [rawFilters, setRawFilters] = useState<Filters>({});
+  const [rawFilters, setRawFiltersInner] = useState<Filters>({});
+  const setRawFilters = (next: Filters | ((f: Filters) => Filters)) => {
+    setRawFiltersInner((prev) => {
+      const computed = typeof next === "function" ? (next as (f: Filters) => Filters)(prev) : next;
+      console.log("[CandidatesCatalog] setRawFilters →", computed);
+      return computed;
+    });
+  };
   const debouncedQ = useDebounced(rawFilters.q ?? "", 350);
   const debouncedMuni = useDebounced(rawFilters.municipio ?? "", 350);
   const filters = useMemo<Filters>(
     () => ({ ...rawFilters, q: debouncedQ, municipio: debouncedMuni }),
     [rawFilters, debouncedQ, debouncedMuni]
   );
+
+  console.log("[CandidatesCatalog] STATE before query →", {
+    selectedCargo: rawFilters.cargo?.[0] ?? null,
+    selectedState: rawFilters.estado?.[0] ?? null,
+    selectedRegion: rawFilters.regiao?.[0] ?? null,
+    selectedCity: rawFilters.municipio ?? null,
+    debouncedMuni,
+    debouncedQ,
+    mergedFilters: filters,
+  });
 
   const { data, isLoading, isFetching, isSuccess, isError } = useCatalogSearch(filters);
   const rows = data?.rows ?? [];
