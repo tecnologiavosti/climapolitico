@@ -211,15 +211,82 @@ interface CandidateOut {
 }
 
 const STATUS_TO_CATEGORIA: Record<string, CandidateOut["categoria"]> = {
-  "eleito": "eleito",
-  "mandatario": "lideranca_local",
-  "ministro": "lideranca_local",
-  "presidente de partido": "lideranca_local",
-  "lideranca": "lideranca_local",
-  "pre-candidato": "pre_candidato",
-  "precandidato": "pre_candidato",
-  "ex-candidato": "ex_candidato",
+  "Eleito": "eleito",
+  "Mandatário": "lideranca_local",
+  "Ministro": "lideranca_local",
+  "Presidente de Partido": "lideranca_local",
+  "Possível presidenciável": "pre_candidato",
+  "Nome especulado": "pre_candidato",
+  "Ex-candidato": "ex_candidato",
 };
+
+// Dicionário fixo UF — IA NUNCA define UF diretamente
+const UF_DICT: Record<string, string> = {
+  "acre": "AC", "alagoas": "AL", "amapa": "AP", "amazonas": "AM",
+  "bahia": "BA", "ceara": "CE", "distrito federal": "DF", "df": "DF",
+  "espirito santo": "ES", "goias": "GO", "maranhao": "MA",
+  "mato grosso": "MT", "mato grosso do sul": "MS", "minas gerais": "MG",
+  "para": "PA", "paraiba": "PB", "parana": "PR", "pernambuco": "PE",
+  "piaui": "PI", "rio de janeiro": "RJ", "rio grande do norte": "RN",
+  "rio grande do sul": "RS", "rondonia": "RO", "roraima": "RR",
+  "santa catarina": "SC", "sao paulo": "SP", "sergipe": "SE", "tocantins": "TO",
+  "ac": "AC", "al": "AL", "ap": "AP", "am": "AM", "ba": "BA", "ce": "CE",
+  "es": "ES", "go": "GO", "ma": "MA", "mt": "MT", "ms": "MS", "mg": "MG",
+  "pa": "PA", "pb": "PB", "pr": "PR", "pe": "PE", "pi": "PI", "rj": "RJ",
+  "rn": "RN", "rs": "RS", "ro": "RO", "rr": "RR", "sc": "SC", "sp": "SP",
+  "se": "SE", "to": "TO",
+};
+const VALID_UFS = new Set(Object.values(UF_DICT));
+
+function resolveUF(raw: unknown): string | null {
+  if (!raw) return null;
+  const n = normalize(String(raw)).replace(/\./g, "").trim();
+  if (UF_DICT[n]) return UF_DICT[n];
+  const parts = n.split(/[\s\-,/]+/);
+  for (const p of parts) if (UF_DICT[p]) return UF_DICT[p];
+  return null;
+}
+
+function canonicalStatus(raw: string): string {
+  const n = normalize(raw);
+  if (n.includes("eleito")) return "Eleito";
+  if (n.includes("mandat")) return "Mandatário";
+  if (n.startsWith("ex") || n.includes("ex-candidato") || n.includes("ex candidato")) return "Ex-candidato";
+  if (n.includes("ministro")) return "Ministro";
+  if (n.includes("presidente de partido") || n.includes("president partid")) return "Presidente de Partido";
+  if (n.includes("oficial") && n.includes("candidato")) return "Possível presidenciável";
+  if (n.includes("possivel") || n.includes("presidenciavel")) return "Possível presidenciável";
+  if (n.includes("especul")) return "Nome especulado";
+  // "pré-candidato" sem "oficial" → vira "Nome especulado"
+  return "Nome especulado";
+}
+
+// Blacklist de falecidos (nomes normalizados)
+const DECEASED_BLACKLIST = new Set([
+  "getulio vargas", "eneas carneiro", "ulysses guimaraes", "tancredo neves",
+  "juscelino kubitschek", "joao goulart", "leonel brizola", "mario covas",
+  "itamar franco", "eduardo campos", "teotonio vilela", "miguel arraes",
+  "luiz carlos prestes", "carlos lacerda", "ademar de barros",
+  "antonio carlos magalhaes", "marco maciel", "severino cavalcanti",
+  "franco montoro", "orestes quercia", "fernando henrique cardoso filho",
+  "marisa letizia", "bumlai",
+]);
+
+// Presidenciáveis 2026 de alta relevância nacional (confidence ≥ 85)
+const PRESIDENTIAL_2026 = new Set([
+  "lula|silva", "lula", "jair|bolsonaro", "tarcisio|freitas", "ronaldo|caiado",
+  "ratinho|junior", "romeu|zema", "simone|tebet", "pablo|marcal", "ciro|gomes",
+  "michelle|bolsonaro", "eduardo|leite", "eduardo|bolsonaro", "flavio|bolsonaro",
+  "helder|barbalho", "rodrigo|pacheco", "joao|doria",
+]);
+
+function nameKey(nome: string): string {
+  const stop = new Set(["da", "de", "do", "dos", "das", "e"]);
+  const tokens = normalize(nome).split(/\s+/).filter((t) => t && !stop.has(t));
+  if (tokens.length === 0) return normalize(nome);
+  if (tokens.length === 1) return tokens[0];
+  return `${tokens[0]}|${tokens[tokens.length - 1]}`;
+}
 
 async function aiExtract(query: string, snippets: Array<{ title: string; snippet: string; url: string }>, f: Filters, cargos: string[]): Promise<{ rows: CandidateOut[]; error: string | null }> {
   if (snippets.length === 0) return { rows: [], error: null };
