@@ -276,8 +276,15 @@ Retorne até 30 candidatos. JSON válido.`;
       return { rows: [], error: `Cerebras ${r.status}` };
     }
     const j = await r.json();
-    const parsed = JSON.parse(j?.choices?.[0]?.message?.content ?? "{}");
-    const list: any[] = parsed?.resultados ?? parsed?.results ?? [];
+    const raw = j?.choices?.[0]?.message?.content ?? "";
+    console.log("CEREBRAS RAW:", typeof raw === "string" ? raw.slice(0, 2000) : raw);
+    let parsed: any;
+    try { parsed = extractJsonFromResponse(raw); }
+    catch (e) {
+      console.error("[cerebras] parse failed:", e);
+      return { rows: [], error: "Cerebras parsing failed" };
+    }
+    const list: any[] = parsed?.resultados ?? parsed?.results ?? (Array.isArray(parsed) ? parsed : []);
     const seen = new Set<string>();
     const rows: CandidateOut[] = [];
     list.forEach((p, idx) => {
