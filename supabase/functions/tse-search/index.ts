@@ -361,6 +361,15 @@ function scoreTextSimilarity(a: string, b: string) {
 }
 
 function matchesClientFilters(c: CandidateOut, f: Filters) {
+  if (f.estado?.length && c.estado && c.estado !== "BR") {
+    const set = new Set(f.estado.map((uf) => uf.toUpperCase()));
+    if (!set.has(c.estado.toUpperCase())) return false;
+  }
+  if (f.regiao?.length && c.regiao) {
+    const set = new Set(f.regiao.map((r) => normalize(r)));
+    if (!set.has(normalize(c.regiao))) return false;
+  }
+  if (f.municipio && c.municipio && !normalize(c.municipio).includes(normalize(f.municipio))) return false;
   if (f.partido?.length) {
     const set = new Set(f.partido.map((p) => normalize(p)));
     if (!c.partido_sigla || !set.has(normalize(c.partido_sigla))) return false;
@@ -653,12 +662,18 @@ Deno.serve(async (req) => {
       !municipalElection.isTargetYear
     );
 
+    let auxiliaryRows: CandidateOut[] = [];
+    if (needAi) {
+      auxiliaryRows = await wikidataAuxiliaryLookup(f, cargos);
+      console.log(`[tse-search] Wikidata auxiliary added ${auxiliaryRows.length} profiles`);
+    }
+
     let aiRows: CandidateOut[] = [];
     if (needAi) {
       const aiCargos = [...new Set([...cargos, ...aiOnlyCargos])];
       aiRows = await aiPoliticalLookup(f, aiCargos);
       // dedupe por nome+UF
-      const seen = new Set(tsePage.rows.map((c) => `${normalize(c.nome)}|${c.estado ?? ""}|${c.cargo ?? ""}`));
+      const seen = new Set([...tsePage.rows, ...auxiliaryRows].map((c) => `${normalize(c.nome)}|${c.estado ?? ""}|${c.cargo ?? ""}`));
       aiRows = aiRows.filter((c) => {
         const k = `${normalize(c.nome)}|${c.estado ?? ""}|${c.cargo ?? ""}`;
         if (seen.has(k)) return false;
@@ -668,9 +683,9 @@ Deno.serve(async (req) => {
       console.log(`[tse-search] AI 2026 added ${aiRows.length} profiles`);
     }
 
-    const merged = page === 0 ? [...tsePage.rows, ...aiRows].slice(0, PAGE_SIZE) : tsePage.rows;
-    const hasMore = tsePage.hasMore || (page === 0 && tsePage.rows.length + aiRows.length > PAGE_SIZE);
-    const exactTotal = tsePage.exactTotal && aiRows.length === 0;
+    const merged = page === 0 ? [...tsePage.rows, ...auxiliaryRows, ...aiRows].slice(0, PAGE_SIZE) : tsePage.rows;
+    const hasMore = tsePage.hasMore || (page === 0 && tsePage.rows.length + auxiliaryRows.length + aiRows.length > PAGE_SIZE);
+    const exactTotal = tsePage.exactTotal && auxiliaryRows.length === 0 && aiRows.length === 0;
     const total = exactTotal ? tsePage.total : page * PAGE_SIZE + merged.length + (hasMore ? PAGE_SIZE : 0);
     const rows = merged.map((r) => ({ ...r, total_count: total }));
 
@@ -691,7 +706,7 @@ Deno.serve(async (req) => {
       notices.push("Cargo consultado em base auxiliar, pois não existe como candidatura eleitoral no TSE.");
     }
 
-    console.log(`[tse-search] returning ${rows.length}/${total} (page ${page}, ai=${aiRows.length}, exact=${exactTotal})`);
+    console.log(`[tse-search] returning ${rows.length}/${total} (page ${page}, auxiliary=${auxiliaryRows.length}, ai=${aiRows.length}, exact=${exactTotal})`);
 
     return new Response(JSON.stringify({
       rows,
