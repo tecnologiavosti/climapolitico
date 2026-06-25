@@ -672,12 +672,14 @@ type FetchTask =
   | { kind: "municipal"; uf: string; municipio: { codigo: string; nome: string }; cargo: string };
 
 function asPoliticalLiveRow(row: CandidateOut, sourceYear: number): CandidateOut {
+  const isElected = row.eleito === true;
   return {
     ...row,
     id: `political-live-2026-${sourceYear}-${row.id}`,
     ano_eleicao: null,
-    popularidade: Math.max(row.popularidade, 0.86),
-    similarity: Math.max(row.similarity, 0.86),
+    categoria: isElected ? "eleito" : "ex_candidato",
+    popularidade: Math.max(row.popularidade, isElected ? 0.86 : 0.55),
+    similarity: Math.max(row.similarity, isElected ? 0.86 : 0.55),
   };
 }
 
