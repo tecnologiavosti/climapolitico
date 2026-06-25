@@ -143,6 +143,13 @@ export default function CandidatesCatalog() {
         </p>
       </div>
 
+      <div className="flex items-center gap-2 text-xs bg-primary/5 text-primary border border-primary/20 rounded-md px-3 py-2">
+        <Sparkles className="h-3 w-3" />
+        <span className="font-medium">Cenário político atualizado em tempo real — 2026</span>
+        {lastUpdated && <span className="text-muted-foreground">· última atualização {new Date(lastUpdated).toLocaleDateString("pt-BR")}</span>}
+        {nationalOnly && <span className="text-muted-foreground">· base viva (sem TSE histórico)</span>}
+      </div>
+
       <CatalogFilters
         filters={rawFilters}
         onChange={setRawFilters}
