@@ -854,20 +854,29 @@ Deno.serve(async (req) => {
     const tseFailed = tasks.length > 0 && tsePage.failed === tsePage.attempted;
     console.log(`[tse-search] TSE 2026 Results ${tsePage.rows.length} via ${tsePage.attempted} reqs (failed=${tsePage.failed}, hasMore=${tsePage.hasMore}, available=${tse2026Available})`);
 
-    // OPÇÃO B: pipeline IA em tempo real.
-    // Fonte primária = IA roteada por cargo (prefeituras/câmaras/TSE/Senado/AL/etc).
-    // TSE oficial é consultado em paralelo apenas como reforço quando disponível.
+    // 2026: se o TSE ainda não publicou candidaturas oficiais, usar base política viva.
     const liveCargos = f.cargo?.length ? cargos : [...new Set([...cargos, ...AI_ONLY_CARGOS])];
+    const shouldUsePoliticalLiveBase = TARGET_YEAR === 2026 && (!tse2026Available || tsePage.rows.length === 0 || tseFailed);
+    const liveBase = shouldUsePoliticalLiveBase
+      ? await politicalLiveBaseLookup(f, liveCargos, ufs)
+      : { rows: [] as CandidateOut[], sources: [] as string[], failed: 0 };
+
+    console.log({
+      city: f.municipio ?? null,
+      year: TARGET_YEAR,
+      source: shouldUsePoliticalLiveBase ? liveBase.sources.join("+") || "political_live_2026" : "tse_2026_candidates",
+      results: shouldUsePoliticalLiveBase ? liveBase.rows.length : tsePage.rows.length,
+    });
 
     // Etapa 1: coletar dados brutos de fontes públicas (TSE + Wikidata).
     const auxiliaryRows = page === 0 ? await wikidataAuxiliaryLookup(f, liveCargos) : [];
 
     // Etapa 2: enviar dados brutos para Cerebras fazer matching/ranking/dedup.
     // Cerebras NÃO inventa candidatos — só rankeia o que veio das fontes públicas.
-    const rawPool = [...tsePage.rows, ...auxiliaryRows];
+    const rawPool = [...liveBase.rows, ...tsePage.rows, ...auxiliaryRows];
     const aiResult = page === 0
       ? await aiPoliticalLookup(f, liveCargos, rawPool)
-      : { rows: [] as CandidateOut[], error: null as string | null };
+      : { rows: rawPool as CandidateOut[], error: null as string | null };
 
     const aiRows = aiResult.rows;
     const aiError = aiResult.error;
@@ -875,6 +884,8 @@ Deno.serve(async (req) => {
     const sourceUsed = {
       ai: aiRows.length,
       aiError,
+      politicalLiveBase: liveBase.rows.length,
+      politicalLiveSources: liveBase.sources,
       wikidata: auxiliaryRows.length,
       tse: tsePage.rows.length,
       tse2026Available,
@@ -892,10 +903,11 @@ Deno.serve(async (req) => {
 
     // Filtro estrito determinístico
     const afterStrictFilter = pool.filter((candidate) => matchesClientFilters(candidate, f));
-    const merged = afterStrictFilter.slice(0, PAGE_SIZE);
-    const hasMore = afterStrictFilter.length > PAGE_SIZE || tsePage.hasMore;
-    const exactTotal = false;
-    const total = page * PAGE_SIZE + merged.length + (hasMore ? PAGE_SIZE : 0);
+    const offset = page * PAGE_SIZE;
+    const merged = afterStrictFilter.slice(offset, offset + PAGE_SIZE);
+    const hasMore = afterStrictFilter.length > offset + PAGE_SIZE || (!shouldUsePoliticalLiveBase && tsePage.hasMore);
+    const exactTotal = shouldUsePoliticalLiveBase || afterStrictFilter.length > 0;
+    const total = exactTotal ? afterStrictFilter.length : page * PAGE_SIZE + merged.length + (hasMore ? PAGE_SIZE : 0);
     const rows = merged.map((r) => ({ ...r, total_count: total }));
 
     console.log({
