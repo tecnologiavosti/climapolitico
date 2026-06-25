@@ -249,6 +249,9 @@ async function searchTSE(cargoKey: string, f: Filters, deadline: number): Promis
   if (isMun && ufsTarget.length === 0) {
     throw new Error("Para cargos municipais (prefeito/vereador), informe ao menos um estado.");
   }
+  if (isMun && !f.municipio) {
+    throw new Error("Para cargos municipais (prefeito/vereador), informe também o município — buscar em um estado inteiro excede o limite de processamento.");
+  }
 
   for (const uf of ufsTarget) {
     if (Date.now() > deadline) { partial = true; break; }
