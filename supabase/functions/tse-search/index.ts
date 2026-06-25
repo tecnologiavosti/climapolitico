@@ -1,470 +1,325 @@
-// Catálogo Político 100% dinâmico — busca em tempo real via web (DuckDuckGo) + Cerebras.
-// Sem TSE local, sem cache, sem Supabase, sem base salva.
+// Catálogo Político — busca REAL via API oficial TSE (divulgacandcontas)
+// Fonte: https://divulgacandcontas.tse.jus.br/divulga/rest/v1
+// Sem IA gerando candidatos. Sem mock. Sem hardcoded. Dados oficiais paginados.
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
-import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 
 const PAGE_SIZE = 50;
+const TSE_BASE = "https://divulgacandcontas.tse.jus.br/divulga/rest/v1";
 
-const VALID_CARGOS = [
-  "presidente", "vice_presidente", "governador", "vice_governador",
-  "senador", "deputado_federal", "deputado_estadual", "deputado_distrital",
-  "prefeito", "vice_prefeito", "vereador", "ministro", "presidente_partido", "pre_candidato",
-];
+// Códigos de cargo conforme TSE
+const CARGO_TO_TSE: Record<string, number> = {
+  presidente: 1, vice_presidente: 2,
+  governador: 3, vice_governador: 4,
+  senador: 5, deputado_federal: 6, deputado_estadual: 7, deputado_distrital: 8,
+  prefeito: 11, vice_prefeito: 12, vereador: 13,
+};
 
 const CARGO_LABEL: Record<string, string> = {
-  presidente: "Presidente da República",
-  vice_presidente: "Vice-presidente",
-  governador: "Governador",
-  vice_governador: "Vice-governador",
-  senador: "Senador",
-  deputado_federal: "Deputado Federal",
-  deputado_estadual: "Deputado Estadual",
-  deputado_distrital: "Deputado Distrital",
-  prefeito: "Prefeito",
-  vice_prefeito: "Vice-prefeito",
-  vereador: "Vereador",
-  ministro: "Ministro",
-  presidente_partido: "Presidente de Partido",
-  pre_candidato: "Pré-candidato 2026",
+  presidente: "Presidente da República", vice_presidente: "Vice-presidente",
+  governador: "Governador", vice_governador: "Vice-governador",
+  senador: "Senador", deputado_federal: "Deputado Federal",
+  deputado_estadual: "Deputado Estadual", deputado_distrital: "Deputado Distrital",
+  prefeito: "Prefeito", vice_prefeito: "Vice-prefeito", vereador: "Vereador",
 };
 
-const CARGO_PLURAL: Record<string, string> = {
-  presidente: "presidenciáveis",
-  vice_presidente: "vice-presidentes",
-  governador: "governadores",
-  vice_governador: "vice-governadores",
-  senador: "senadores",
-  deputado_federal: "deputados federais",
-  deputado_estadual: "deputados estaduais",
-  deputado_distrital: "deputados distritais",
-  prefeito: "prefeitos",
-  vice_prefeito: "vice-prefeitos",
-  vereador: "vereadores",
-  ministro: "ministros",
-  presidente_partido: "presidentes de partido",
-  pre_candidato: "pré-candidatos 2026",
-};
+const MUNICIPAL_CARGOS = new Set(["prefeito", "vice_prefeito", "vereador"]);
+const FEDERAL_BR_CARGOS = new Set(["presidente", "vice_presidente"]);
 
-function normalize(s: string | null | undefined) {
+// Eleições oficiais
+// 2024 municipal 1º turno = 619, 2º turno = 620
+// 2022 federal/estadual 1º turno = 544, 2º turno = 545
+const ELEICAO_MUN_2024 = 619;
+const ELEICAO_FED_2022 = 544;
+
+const UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
+const UF_DICT: Record<string, string> = {
+  "acre":"AC","alagoas":"AL","amapa":"AP","amazonas":"AM","bahia":"BA","ceara":"CE",
+  "distrito federal":"DF","df":"DF","espirito santo":"ES","goias":"GO","maranhao":"MA",
+  "mato grosso":"MT","mato grosso do sul":"MS","minas gerais":"MG","para":"PA",
+  "paraiba":"PB","parana":"PR","pernambuco":"PE","piaui":"PI","rio de janeiro":"RJ",
+  "rio grande do norte":"RN","rio grande do sul":"RS","rondonia":"RO","roraima":"RR",
+  "santa catarina":"SC","sao paulo":"SP","sergipe":"SE","tocantins":"TO",
+};
+for (const uf of UFS) UF_DICT[uf.toLowerCase()] = uf;
+
+function normalize(s: unknown): string {
   return String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
+function resolveUF(raw: unknown): string | null {
+  if (!raw) return null;
+  const n = normalize(raw).replace(/\./g, "");
+  if (UF_DICT[n]) return UF_DICT[n];
+  for (const part of n.split(/[\s,\-\/]+/)) if (UF_DICT[part]) return UF_DICT[part];
+  return null;
 }
 
 function normalizeCargoKey(raw: string): string | null {
   const n = normalize(raw).replace(/[^a-z ]/g, "").replace(/\s+/g, "_");
-  if (VALID_CARGOS.includes(n)) return n;
-  // tentativas comuns
-  const map: Record<string, string> = {
+  if (CARGO_TO_TSE[n]) return n;
+  const aliases: Record<string, string> = {
     "vice": "vice_presidente",
     "presidente_da_republica": "presidente",
-    "presidente_partido": "presidente_partido",
     "deputado": "deputado_federal",
-    "pre_candidato_2026": "pre_candidato",
-    "precandidato": "pre_candidato",
   };
-  return map[n] ?? null;
+  return aliases[n] ?? null;
 }
 
 interface Filters {
   q: string | null;
-  cargo: string[] | null;
-  partido: string[] | null;
-  regiao: string[] | null;
-  estado: string[] | null;
+  cargos: string[];
+  partidos: string[];
+  ufs: string[];
   municipio: string | null;
   onlyEleitos: boolean;
   page: number;
 }
 
-function csvParam(v: string | null) {
-  if (!v) return null;
-  return v.split(",").map((x) => x.trim()).filter(Boolean);
-}
-
 async function readFilters(req: Request): Promise<Filters> {
   const url = new URL(req.url);
   let body: any = {};
-  if (req.method === "POST") {
-    try { body = await req.json(); } catch { /* noop */ }
-  }
+  if (req.method === "POST") { try { body = await req.json(); } catch { /* noop */ } }
   const get = (k: string) => body[k] ?? url.searchParams.get(k);
-  const getArr = (k: string) => {
-    if (Array.isArray(body[k])) return body[k] as string[];
-    return csvParam(url.searchParams.get(k));
-  };
+  const csv = (v: string | null | undefined) => v ? String(v).split(",").map((x) => x.trim()).filter(Boolean) : [];
+  const arr = (k: string) => Array.isArray(body[k]) ? body[k] as string[] : csv(url.searchParams.get(k));
+
+  const cargosRaw = arr("cargo");
+  const cargos = cargosRaw.map((c) => normalizeCargoKey(c)).filter((c): c is string => !!c);
+
   return {
     q: (get("q") as string | null)?.trim() || null,
-    cargo: getArr("cargo"),
-    partido: getArr("partido"),
-    regiao: getArr("regiao"),
-    estado: getArr("estado"),
+    cargos,
+    partidos: arr("partido").map((p) => p.toUpperCase()),
+    ufs: arr("estado").map((u) => resolveUF(u) ?? "").filter(Boolean),
     municipio: (get("municipio") as string | null)?.trim() || null,
     onlyEleitos: String(get("somenteEleitos") ?? get("onlyEleitos") ?? "") === "true" || body.onlyEleitos === true,
     page: Math.max(0, Number(get("page") ?? 0)),
   };
 }
 
-function buildQuery(f: Filters): { query: string; cargos: string[] } {
-  const cargos = (f.cargo ?? []).map((c) => normalizeCargoKey(c) ?? "").filter(Boolean);
-  const cargoMain = cargos[0] ?? null;
-  const cargoTerm = cargoMain
-    ? (f.q ? (CARGO_LABEL[cargoMain] ?? cargoMain).toLowerCase() : (CARGO_PLURAL[cargoMain] ?? cargoMain))
-    : (f.q ? "político" : "políticos");
-
-  // caso especial: presidente sem nome → "presidenciáveis brasil 2026"
-  if (!f.q && cargoMain === "presidente") {
-    return { query: "presidenciáveis brasil 2026", cargos };
-  }
-
-  const parts: string[] = [];
-  if (f.q) parts.push(cargoTerm, f.municipio ?? "", (f.estado ?? []).join(" ").toLowerCase(), f.q, (f.partido ?? []).join(" "));
-  else parts.push(cargoTerm, f.municipio ?? "", (f.estado ?? []).join(" ").toLowerCase(), (f.partido ?? []).join(" "));
-
-  if (f.onlyEleitos) parts.push("eleitos");
-  if (!f.municipio && !f.estado?.length && !f.q) parts.push("brasil 2026");
-
-  const query = parts.filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
-  return { query: query || "políticos brasil 2026", cargos };
+interface TseCandidato {
+  id?: number;
+  sqCandidato?: number;
+  nomeUrna?: string;
+  nomeCompleto?: string;
+  nm?: string;
+  nmU?: string;
+  cargo?: { codigo?: number; nome?: string };
+  partido?: { sigla?: string; numero?: number; nome?: string };
+  numero?: number;
+  descricaoSituacao?: string;
+  st?: string; // status abreviado
+  fotoUrl?: string;
+  st_eleicao?: string;
 }
 
-async function duckDuckGoSearch(query: string): Promise<Array<{ title: string; snippet: string; url: string }>> {
-  const endpoints = [
-    `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
-    `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`,
-  ];
-  for (const url of endpoints) {
-    try {
-      const r = await fetch(url, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-          "Accept": "text/html,application/xhtml+xml",
-          "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
-        },
-      });
-      console.log(`[ddg] ${url} → HTTP ${r.status}`);
-      if (!r.ok) continue;
-      const html = await r.text();
-      const results: Array<{ title: string; snippet: string; url: string }> = [];
-      const strip = (s: string) => s.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
-      const cleanUrl = (raw: string) => {
-        const uddg = raw.match(/[?&]uddg=([^&]+)/);
-        if (uddg) { try { return decodeURIComponent(uddg[1]); } catch { /* noop */ } }
-        return raw;
-      };
-      // html.duckduckgo.com layout
-      const reHtml = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:class="result__snippet"[^>]*>([\s\S]*?)<\/a>|<td[^>]*class="result-snippet"[^>]*>([\s\S]*?)<\/td>)/g;
-      let m: RegExpExecArray | null;
-      while ((m = reHtml.exec(html)) !== null && results.length < 20) {
-        results.push({ title: strip(m[2]), snippet: strip(m[3] ?? m[4] ?? ""), url: cleanUrl(m[1]) });
-      }
-      // lite.duckduckgo.com layout fallback
-      if (results.length === 0) {
-        const reLite = /<a[^>]+class="result-link"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<td[^>]*class="result-snippet"[^>]*>([\s\S]*?)<\/td>/g;
-        while ((m = reLite.exec(html)) !== null && results.length < 20) {
-          results.push({ title: strip(m[2]), snippet: strip(m[3]), url: cleanUrl(m[1]) });
-        }
-      }
-      console.log(`[ddg] "${query}" → ${results.length} results (html length=${html.length})`);
-      if (results.length === 0) console.log("[ddg] html sample:", html.slice(0, 500));
-      if (results.length > 0) return results;
-    } catch (e) {
-      console.error("[ddg] error:", e);
-    }
-  }
-  return [];
-}
-
-function extractJsonFromResponse(response: string): unknown {
-  let cleaned = response.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-  const jsonStart = cleaned.search(/[\{\[]/);
-  if (jsonStart === -1) throw new Error("No JSON found in response");
-  const opener = cleaned[jsonStart];
-  const closer = opener === "[" ? "]" : "}";
-  const jsonEnd = cleaned.lastIndexOf(closer);
-  if (jsonEnd === -1) throw new Error("No JSON terminator in response");
-  cleaned = cleaned.substring(jsonStart, jsonEnd + 1);
-  try { return JSON.parse(cleaned); } catch {
-    cleaned = cleaned.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]").replace(/[\x00-\x1F\x7F]/g, "");
-    return JSON.parse(cleaned);
-  }
-}
-
-interface CandidateOut {
-  id: string;
-  tse_id: null;
-  nome: string;
-  nome_urna: null;
-  partido_sigla: string | null;
-  partido_nome: null;
-  numero_partido: null;
-  cargo: string | null;
-  regiao: null;
-  estado: string | null;
-  municipio: string | null;
-  eleito: boolean;
-  categoria: "eleito" | "ex_candidato" | "pre_candidato" | "lideranca_local";
-  ano_eleicao: null;
-  foto_url: null;
-  redes_sociais: null;
-  popularidade: number;
-  similarity: number;
-  total_count: number;
-}
-
-const STATUS_TO_CATEGORIA: Record<string, CandidateOut["categoria"]> = {
-  "Eleito": "eleito",
-  "Mandatário": "lideranca_local",
-  "Ministro": "lideranca_local",
-  "Presidente de Partido": "lideranca_local",
-  "Possível presidenciável": "pre_candidato",
-  "Nome especulado": "pre_candidato",
-  "Ex-candidato": "ex_candidato",
-};
-
-// Dicionário fixo UF — IA NUNCA define UF diretamente
-const UF_DICT: Record<string, string> = {
-  "acre": "AC", "alagoas": "AL", "amapa": "AP", "amazonas": "AM",
-  "bahia": "BA", "ceara": "CE", "distrito federal": "DF", "df": "DF",
-  "espirito santo": "ES", "goias": "GO", "maranhao": "MA",
-  "mato grosso": "MT", "mato grosso do sul": "MS", "minas gerais": "MG",
-  "para": "PA", "paraiba": "PB", "parana": "PR", "pernambuco": "PE",
-  "piaui": "PI", "rio de janeiro": "RJ", "rio grande do norte": "RN",
-  "rio grande do sul": "RS", "rondonia": "RO", "roraima": "RR",
-  "santa catarina": "SC", "sao paulo": "SP", "sergipe": "SE", "tocantins": "TO",
-  "ac": "AC", "al": "AL", "ap": "AP", "am": "AM", "ba": "BA", "ce": "CE",
-  "es": "ES", "go": "GO", "ma": "MA", "mt": "MT", "ms": "MS", "mg": "MG",
-  "pa": "PA", "pb": "PB", "pr": "PR", "pe": "PE", "pi": "PI", "rj": "RJ",
-  "rn": "RN", "rs": "RS", "ro": "RO", "rr": "RR", "sc": "SC", "sp": "SP",
-  "se": "SE", "to": "TO",
-};
-const VALID_UFS = new Set(Object.values(UF_DICT));
-
-function resolveUF(raw: unknown): string | null {
-  if (!raw) return null;
-  const n = normalize(String(raw)).replace(/\./g, "").trim();
-  if (UF_DICT[n]) return UF_DICT[n];
-  const parts = n.split(/[\s\-,/]+/);
-  for (const p of parts) if (UF_DICT[p]) return UF_DICT[p];
-  return null;
-}
-
-function canonicalStatus(raw: string): string {
-  const n = normalize(raw);
-  if (n.includes("eleito")) return "Eleito";
-  if (n.includes("mandat")) return "Mandatário";
-  if (n.startsWith("ex") || n.includes("ex-candidato") || n.includes("ex candidato")) return "Ex-candidato";
-  if (n.includes("ministro")) return "Ministro";
-  if (n.includes("presidente de partido") || n.includes("president partid")) return "Presidente de Partido";
-  if (n.includes("oficial") && n.includes("candidato")) return "Possível presidenciável";
-  if (n.includes("possivel") || n.includes("presidenciavel")) return "Possível presidenciável";
-  if (n.includes("especul")) return "Nome especulado";
-  // "pré-candidato" sem "oficial" → vira "Nome especulado"
-  return "Nome especulado";
-}
-
-// Blacklist de falecidos (nomes normalizados)
-const DECEASED_BLACKLIST = new Set([
-  "getulio vargas", "eneas carneiro", "ulysses guimaraes", "tancredo neves",
-  "juscelino kubitschek", "joao goulart", "leonel brizola", "mario covas",
-  "itamar franco", "eduardo campos", "teotonio vilela", "miguel arraes",
-  "luiz carlos prestes", "carlos lacerda", "ademar de barros",
-  "antonio carlos magalhaes", "marco maciel", "severino cavalcanti",
-  "franco montoro", "orestes quercia", "fernando henrique cardoso filho",
-  "marisa letizia", "bumlai",
-]);
-
-// Presidenciáveis 2026 de alta relevância nacional (confidence ≥ 85)
-const PRESIDENTIAL_2026 = new Set([
-  "lula|silva", "lula", "jair|bolsonaro", "tarcisio|freitas", "ronaldo|caiado",
-  "ratinho|junior", "romeu|zema", "simone|tebet", "pablo|marcal", "ciro|gomes",
-  "michelle|bolsonaro", "eduardo|leite", "eduardo|bolsonaro", "flavio|bolsonaro",
-  "helder|barbalho", "rodrigo|pacheco", "joao|doria",
-]);
-
-function nameKey(nome: string): string {
-  const stop = new Set(["da", "de", "do", "dos", "das", "e"]);
-  const tokens = normalize(nome).split(/\s+/).filter((t) => t && !stop.has(t));
-  if (tokens.length === 0) return normalize(nome);
-  if (tokens.length === 1) return tokens[0];
-  return `${tokens[0]}|${tokens[tokens.length - 1]}`;
-}
-
-async function aiExtract(query: string, snippets: Array<{ title: string; snippet: string; url: string }>, f: Filters, cargos: string[]): Promise<{ rows: CandidateOut[]; error: string | null }> {
-  if (snippets.length === 0) return { rows: [], error: null };
-
-  const cargoNames = cargos.map((c) => CARGO_LABEL[c] ?? c).join(", ") || "qualquer";
-  const system = `Você é um buscador político brasileiro especializado em identificar políticos REAIS, VIVOS e ATIVOS no cenário 2026.
-
-Use DUAS fontes combinadas:
-1. Snippets de busca web fornecidos
-2. Seu conhecimento sobre figuras públicas brasileiras notórias (governo Lula 2023-2026, governadores em exercício, presidenciáveis 2026, prefeitos, senadores, deputados)
-
-REGRAS OBRIGATÓRIAS:
-1. NUNCA inclua pessoas falecidas (ex: Getúlio Vargas, Enéas Carneiro, Ulysses Guimarães, Tancredo Neves, Eduardo Campos, Mário Covas, Itamar Franco)
-2. NUNCA invente nomes fictícios
-3. Para estado: escreva o nome COMPLETO do estado (ex: "São Paulo", "Rio de Janeiro", "Minas Gerais"). NUNCA use siglas truncadas tipo "SÃ", "RI", "MI".
-4. status DEVE ser EXATAMENTE um destes valores: "Eleito", "Mandatário", "Ex-candidato", "Possível presidenciável", "Nome especulado", "Ministro", "Presidente de Partido". NÃO use "Pré-candidato" salvo se houver anúncio OFICIAL nos snippets.
-5. confidence: número 0-100 indicando o quanto você tem certeza de que a pessoa é real, está viva e ocupa o cargo. Use ≥85 só para figuras nacionais notórias confirmadas.
-6. Remova duplicatas (mesma pessoa com nomes variados)
-7. Para cargo Presidente: inclua APENAS candidatos oficiais OU nomes de alta relevância nacional 2026 (Lula, Bolsonaro, Tarcísio, Caiado, Zema, Ratinho Jr, Tebet, Marçal, Ciro etc)
-
-Responda APENAS JSON:
-{"resultados":[{"nome":"","cargo":"","partido":"","estado":"","cidade":"","status":"","confidence":0}]}
-
-cargo DEVE ser um destes: ${VALID_CARGOS.join(", ")}.`;
-
-  const user = `Filtros:
-- nome: ${f.q ?? "(qualquer)"}
-- cargo: ${cargoNames}
-- partido: ${(f.partido ?? []).join(", ") || "(qualquer)"}
-- estado: ${(f.estado ?? []).join(", ") || "(qualquer)"}
-- município: ${f.municipio ?? "(qualquer)"}
-- somente eleitos: ${f.onlyEleitos ? "sim" : "não"}
-
-Query usada: ${query}
-
-Snippets web (DuckDuckGo):
-${snippets.slice(0, 15).map((r, i) => `[${i + 1}] ${r.title}\n${r.snippet}\nURL: ${r.url}`).join("\n\n")}
-
-Retorne até 30 candidatos. JSON válido.`;
-
-  let aiResult;
+async function tseFetch<T>(path: string): Promise<T | null> {
+  const url = `${TSE_BASE}${path}`;
   try {
-    aiResult = await callAICerebrasFirst({
-      systemMsg: system,
-      userPrompt: user,
-      jsonMode: true,
-      maxTokens: 3000,
-      temperature: 0.2,
-      tag: "tse-search",
-      maxRetries: 1,
+    const r = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 ClimaPolitico/1.0",
+        "Accept": "application/json",
+        "Referer": "https://divulgacandcontas.tse.jus.br/",
+      },
     });
+    if (!r.ok) { console.log(`[tse] ${path} → HTTP ${r.status}`); return null; }
+    return await r.json() as T;
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("[ai] all providers failed:", msg);
-    return { rows: [], error: `IA indisponível: ${msg.slice(0, 200)}` };
+    console.error(`[tse] ${path} fetch error:`, e);
+    return null;
+  }
+}
+
+// Lista municípios de uma UF para um ano de eleição
+async function listMunicipios(ano: number, cdEleicao: number, uf: string): Promise<Array<{ codigo: number; nome: string }>> {
+  const data = await tseFetch<any>(`/eleicao/buscar/${ano}/${cdEleicao}/${uf}/municipios`);
+  const arr = data?.municipios ?? data ?? [];
+  return Array.isArray(arr) ? arr.map((m: any) => ({ codigo: Number(m.codigo ?? m.cdMunicipio), nome: String(m.nome ?? m.nm) })) : [];
+}
+
+// Busca candidatos de um cargo num escopo (município ou UF/BR)
+async function fetchCandidatos(ano: number, escopo: string | number, cdEleicao: number, cargoCodigo: number): Promise<TseCandidato[]> {
+  const data = await tseFetch<any>(`/candidatura/listar/${ano}/${escopo}/${cdEleicao}/${cargoCodigo}/candidatos`);
+  const list = data?.candidatos ?? data ?? [];
+  return Array.isArray(list) ? list : [];
+}
+
+function statusFromTse(desc: string | undefined): { label: string; eleito: boolean; categoria: string } {
+  const n = normalize(desc ?? "");
+  if (n.includes("eleito") || n === "el") return { label: "Eleito", eleito: true, categoria: "eleito" };
+  if (n.includes("nao eleito") || n.includes("não eleito") || n === "ne" || n === "nelei") return { label: "Não eleito", eleito: false, categoria: "ex_candidato" };
+  if (n.includes("suplente")) return { label: "Suplente", eleito: false, categoria: "ex_candidato" };
+  if (n.includes("indef") || n.includes("renunc") || n.includes("cassad")) return { label: "Inválido", eleito: false, categoria: "ex_candidato" };
+  return { label: "Candidato", eleito: false, categoria: "ex_candidato" };
+}
+
+interface OutRow {
+  id: string; tse_id: string | null; nome: string; nome_urna: string | null;
+  partido_sigla: string | null; partido_nome: string | null; numero_partido: string | null;
+  cargo: string | null; regiao: null; estado: string | null; municipio: string | null;
+  eleito: boolean; categoria: string; ano_eleicao: number | null;
+  foto_url: string | null; redes_sociais: null; popularidade: number; similarity: number; total_count: number;
+}
+
+function mapCandidato(c: any, cargoKey: string, uf: string | null, municipio: string | null, ano: number): OutRow | null {
+  const nome = c.nomeCompleto ?? c.nm ?? c.nomeUrna ?? c.nmU;
+  if (!nome) return null;
+  const nomeUrna = c.nomeUrna ?? c.nmU ?? null;
+  const sq = c.sqCandidato ?? c.id ?? c.sq ?? null;
+  const partidoSigla = c.partido?.sigla ?? c.sgPartido ?? null;
+  const partidoNumero = c.partido?.numero ?? c.nrPartido ?? null;
+  const partidoNome = c.partido?.nome ?? c.nmPartido ?? null;
+  const desc = c.descricaoSituacao ?? c.descricaoSituacaoCandidato ?? c.dsSit ?? c.st ?? "";
+  const st = statusFromTse(desc);
+  return {
+    id: `tse-${ano}-${sq ?? `${nome}-${uf ?? ""}-${municipio ?? ""}`}`,
+    tse_id: sq ? String(sq) : null,
+    nome: String(nome),
+    nome_urna: nomeUrna ? String(nomeUrna) : null,
+    partido_sigla: partidoSigla ? String(partidoSigla).toUpperCase() : null,
+    partido_nome: partidoNome ? String(partidoNome) : null,
+    numero_partido: partidoNumero != null ? String(partidoNumero) : null,
+    cargo: cargoKey,
+    regiao: null,
+    estado: uf,
+    municipio: municipio,
+    eleito: st.eleito,
+    categoria: st.categoria,
+    ano_eleicao: ano,
+    foto_url: c.fotoUrl ?? null,
+    redes_sociais: null,
+    popularidade: st.eleito ? 1 : 0.5,
+    similarity: 1,
+    total_count: 0,
+  };
+}
+
+// Concorrência limitada
+async function mapWithLimit<T, R>(items: T[], limit: number, fn: (item: T, idx: number) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let i = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const idx = i++;
+      if (idx >= items.length) return;
+      results[idx] = await fn(items[idx], idx);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+// Resolve um cargo num escopo (uf+municipio?) → lista de candidatos
+async function searchCargo(cargoKey: string, f: Filters): Promise<OutRow[]> {
+  const cargoCodigo = CARGO_TO_TSE[cargoKey];
+  if (!cargoCodigo) return [];
+  const isMun = MUNICIPAL_CARGOS.has(cargoKey);
+  const isBR = FEDERAL_BR_CARGOS.has(cargoKey);
+  const ano = isMun ? 2024 : 2022;
+  const cdEleicao = isMun ? ELEICAO_MUN_2024 : ELEICAO_FED_2022;
+  const out: OutRow[] = [];
+
+  if (isBR) {
+    const list = await fetchCandidatos(ano, "BR", cdEleicao, cargoCodigo);
+    console.log(`[tse] presidente/vice → ${list.length} candidatos`);
+    for (const c of list) {
+      const r = mapCandidato(c, cargoKey, null, null, ano);
+      if (r) out.push(r);
+    }
+    return out;
   }
 
-  console.log(`CEREBRAS RAW (${aiResult.provider}/${aiResult.model}):`, aiResult.content.slice(0, 2000));
-  let parsed: any;
-  try { parsed = extractJsonFromResponse(aiResult.content); }
-  catch (e) {
-    console.error("[ai] parse failed:", e);
-    return { rows: [], error: "Cerebras parsing failed" };
+  const ufsTarget = f.ufs.length > 0 ? f.ufs : (isMun ? [] : UFS);
+  if (isMun && ufsTarget.length === 0) {
+    // Sem UF + municipal: muito amplo, pedir filtro
+    throw new Error("Para cargos municipais (prefeito/vereador), informe ao menos um estado.");
   }
-  const list: any[] = parsed?.resultados ?? parsed?.results ?? (Array.isArray(parsed) ? parsed : []);
-  const isPresidente = cargos.length === 1 && cargos[0] === "presidente";
-  const seenName = new Map<string, number>();
-  const rows: CandidateOut[] = [];
-  list.forEach((p, idx) => {
-    if (!p?.nome) return;
-    const nome = String(p.nome).trim();
-    const nNome = normalize(nome);
 
-    // 1. Falecidos — blacklist
-    if (DECEASED_BLACKLIST.has(nNome)) {
-      console.log(`[filter] dropped deceased: ${nome}`);
-      return;
-    }
-    for (const dead of DECEASED_BLACKLIST) {
-      if (nNome.includes(dead)) { console.log(`[filter] dropped deceased(match): ${nome}`); return; }
-    }
-
-    // 2. UF resolvida pelo dicionário (IA não define UF livremente)
-    const uf = resolveUF(p.estado);
-
-    // 3. Status canônico
-    const statusCanonical = canonicalStatus(String(p.status ?? ""));
-    const categoria = STATUS_TO_CATEGORIA[statusCanonical] ?? "pre_candidato";
-
-    // 4. Confidence — para Presidente, exigir ≥85 ou estar no PRESIDENTIAL_2026
-    const conf = Number(p.confidence ?? 0);
-    const key = nameKey(nome);
-    if (isPresidente) {
-      const isNotorio = PRESIDENTIAL_2026.has(key) || [...PRESIDENTIAL_2026].some((k) => key.includes(k.split("|")[0]) && key.includes(k.split("|")[1] ?? ""));
-      if (conf < 85 && !isNotorio) {
-        console.log(`[filter] dropped low-conf presidente: ${nome} conf=${conf}`);
-        return;
+  for (const uf of ufsTarget) {
+    if (isMun) {
+      const municipios = await listMunicipios(ano, cdEleicao, uf);
+      console.log(`[tse] ${uf} → ${municipios.length} municípios`);
+      let alvo = municipios;
+      if (f.municipio) {
+        const n = normalize(f.municipio);
+        alvo = municipios.filter((m) => normalize(m.nome).includes(n));
+        console.log(`[tse] filtro município "${f.municipio}" → ${alvo.length} matches`);
+      }
+      // Limite de segurança: se >120 municípios e sem filtro, abortar para não estourar timeout
+      if (alvo.length > 120) {
+        throw new Error(`UF ${uf} tem ${alvo.length} municípios — refine pelo município para evitar timeout.`);
+      }
+      const lists = await mapWithLimit(alvo, 8, async (m) => {
+        const list = await fetchCandidatos(ano, m.codigo, cdEleicao, cargoCodigo);
+        return list.map((c) => mapCandidato(c, cargoKey, uf, m.nome, ano)).filter((r): r is OutRow => !!r);
+      });
+      for (const sub of lists) out.push(...sub);
+    } else {
+      // Estadual/federal por UF: o escopo é a sigla da UF
+      const list = await fetchCandidatos(ano, uf, cdEleicao, cargoCodigo);
+      console.log(`[tse] ${uf} ${cargoKey} → ${list.length} candidatos`);
+      for (const c of list) {
+        const r = mapCandidato(c, cargoKey, uf, null, ano);
+        if (r) out.push(r);
       }
     }
+  }
+  return out;
+}
 
-    // 5. Dedup por nome normalizado (primeiro+último token)
-    const prevIdx = seenName.get(key);
-    if (prevIdx !== undefined) {
-      // mantém o de maior confidence / nome mais completo
-      const prev = rows[prevIdx];
-      if (nome.length > prev.nome.length) prev.nome = nome;
-      return;
+function dedupe(rows: OutRow[]): OutRow[] {
+  const seen = new Map<string, OutRow>();
+  for (const r of rows) {
+    const key = `${r.tse_id ?? normalize(r.nome)}|${r.cargo}|${r.estado ?? ""}|${r.municipio ?? ""}`;
+    const prev = seen.get(key);
+    if (!prev || (r.eleito && !prev.eleito)) seen.set(key, r);
+  }
+  return [...seen.values()];
+}
+
+function applyFilters(rows: OutRow[], f: Filters): OutRow[] {
+  const q = normalize(f.q);
+  return rows.filter((r) => {
+    if (f.onlyEleitos && !r.eleito) return false;
+    if (f.partidos.length && !f.partidos.includes((r.partido_sigla ?? "").toUpperCase())) return false;
+    if (q) {
+      const hay = normalize(`${r.nome} ${r.nome_urna ?? ""}`);
+      if (!hay.includes(q)) {
+        // fuzzy leve: todas as palavras do query precisam aparecer
+        const tokens = q.split(/\s+/).filter(Boolean);
+        if (!tokens.every((t) => hay.includes(t))) return false;
+      }
     }
-    seenName.set(key, rows.length);
-
-    const cargoKey = normalizeCargoKey(p.cargo ?? "") ?? (cargos[0] ?? null);
-    rows.push({
-      id: `web-${idx}-${nNome.replace(/\s+/g, "-")}`,
-      tse_id: null,
-      nome,
-      nome_urna: null,
-      partido_sigla: p.partido ? String(p.partido).toUpperCase().slice(0, 16) : null,
-      partido_nome: null,
-      numero_partido: null,
-      cargo: cargoKey,
-      regiao: null,
-      estado: uf,
-      municipio: p.cidade ? String(p.cidade) : (f.municipio ?? null),
-      eleito: categoria === "eleito",
-      categoria,
-      ano_eleicao: null,
-      foto_url: null,
-      redes_sociais: null,
-      popularidade: Math.max(0.5, Math.min(1, conf / 100)),
-      similarity: 1,
-      total_count: 0,
-    });
+    return true;
   });
-  console.log(`[ai] extracted ${rows.length} candidate(s) via ${aiResult.provider} (presidente=${isPresidente})`);
-  return { rows, error: null };
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-
   try {
     const f = await readFilters(req);
-    const { query, cargos } = buildQuery(f);
-    console.log("QUERY:", query);
-    console.log("[dynamic-search] filters:", JSON.stringify(f), "cargos:", cargos);
+    console.log("FILTROS:", JSON.stringify(f));
 
-    const snippets = await duckDuckGoSearch(query);
-    const extra = snippets.length < 8
-      ? await duckDuckGoSearch(`${query} site:wikipedia.org OR site:gov.br OR site:tse.jus.br`)
-      : [];
-    const allSnippets = [...snippets, ...extra];
-    console.log("SEARCH RESULTS:", allSnippets.length, allSnippets.slice(0, 3).map((s) => ({ title: s.title, url: s.url })));
-
-    if (allSnippets.length === 0) {
-      throw new Error("Search provider indisponível");
+    if (f.cargos.length === 0) {
+      throw new Error("Selecione ao menos um cargo (Presidente, Governador, Senador, Deputado, Prefeito, Vereador...).");
     }
 
-    const { rows, error } = await aiExtract(query, allSnippets, f, cargos);
-    if (error) {
-      throw new Error(error);
+    const all: OutRow[] = [];
+    for (const cargo of f.cargos) {
+      console.log(`SOURCE: TSE divulgacandcontas | cargo=${cargo}`);
+      const rows = await searchCargo(cargo, f);
+      console.log(`RAW RESULTS (${cargo}): ${rows.length}`);
+      all.push(...rows);
     }
 
-    // filtros determinísticos extras (cargo / município / UF)
-    const cargoSet = new Set(cargos);
-    const ufSet = new Set((f.estado ?? []).map((u) => u.toUpperCase()));
-    const munNorm = normalize(f.municipio);
-    const filtered = rows.filter((r) => {
-      if (cargoSet.size > 0 && r.cargo && !cargoSet.has(r.cargo)) return false;
-      if (ufSet.size > 0 && r.estado && !ufSet.has(r.estado)) return false;
-      if (munNorm && r.municipio && !normalize(r.municipio).includes(munNorm)) return false;
-      if (f.onlyEleitos && r.categoria !== "eleito") return false;
-      return true;
-    });
+    const deduped = dedupe(all);
+    const filtered = applyFilters(deduped, f);
+    console.log(`NORMALIZED: ${deduped.length} | FINAL COUNT: ${filtered.length}`);
 
     const total = filtered.length;
-    const paged = filtered.slice(f.page * PAGE_SIZE, (f.page + 1) * PAGE_SIZE).map((r) => ({ ...r, total_count: total }));
-
-    console.log("FINAL RESULTS:", { query, snippets: allSnippets.length, extracted: rows.length, filtered: total, sample: paged.slice(0, 3).map((r) => r.nome) });
+    const start = f.page * PAGE_SIZE;
+    const paged = filtered.slice(start, start + PAGE_SIZE).map((r) => ({ ...r, total_count: total }));
 
     return new Response(JSON.stringify({
       rows: paged,
@@ -476,21 +331,17 @@ Deno.serve(async (req) => {
       page: f.page,
       pageSize: PAGE_SIZE,
       fallback: false,
-      sourceUsed: { web: allSnippets.length, ai: rows.length, query },
       notice: paged.length === 0
-        ? "Nenhum candidato encontrado com esses filtros"
-        : "Resultado obtido em tempo real da internet — confirme antes de usar.",
-      query,
+        ? "Nenhum candidato encontrado nos registros oficiais do TSE."
+        : `Dados oficiais do TSE — ${total} candidato(s) encontrado(s).`,
       last_updated: new Date().toISOString(),
+      source: "tse.divulgacandcontas",
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.error("[dynamic-search] FAIL:", msg);
+    console.error("[tse-search] FAIL:", msg);
     return new Response(JSON.stringify({
-      fallback: true,
-      error: msg,
-      message: msg,
-      notice: msg,
+      fallback: true, error: msg, message: msg, notice: msg,
       rows: [], total: 0, hasMore: false, exactTotal: true,
       suggestions: [], normalized: {}, page: 0, pageSize: PAGE_SIZE,
     }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
