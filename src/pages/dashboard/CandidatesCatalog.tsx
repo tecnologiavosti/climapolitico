@@ -149,7 +149,15 @@ export default function CandidatesCatalog() {
         <Sparkles className="h-3 w-3" />
         <span className="font-medium">Crawler eleitoral 2026 — TSE oficial + busca web em tempo real</span>
         {lastUpdated && <span className="text-muted-foreground">· atualizado {new Date(lastUpdated).toLocaleTimeString("pt-BR")}</span>}
-        {sources.length > 0 && <span className="text-muted-foreground">· fontes: {sources.join(", ")}</span>}
+        {sources.length > 0 && (
+          <span className="text-muted-foreground">
+            · {sources.some((s: string) => s.startsWith("tse")) && sources.includes("firecrawl")
+              ? "Fonte: TSE + Web"
+              : sources.some((s: string) => s.startsWith("tse"))
+              ? "Fonte: TSE"
+              : "Fonte: Web"}
+          </span>
+        )}
       </div>
 
       {partial && (
