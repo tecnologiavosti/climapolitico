@@ -588,7 +588,7 @@ async function buildTasks(f: Filters, cargos: string[], ufs: string[], elections
 }
 
 
-async function executePagedTseSearch(f: Filters, tasks: FetchTask[], elections: { federal: { id: number; ano: number }; municipal: { id: number; ano: number } }) {
+async function executePagedTseSearch(f: Filters, tasks: FetchTask[], elections: { federal: { id: number; ano: number } | null; municipal: { id: number; ano: number } | null }) {
   const page = Math.max(0, Number(f.page ?? 0));
   const offset = page * PAGE_SIZE;
   let skipped = 0;
@@ -601,8 +601,8 @@ async function executePagedTseSearch(f: Filters, tasks: FetchTask[], elections: 
   for (const task of tasks) {
     attempted += 1;
     const result = task.kind === "federal"
-      ? await fetchFederal(task.uf, task.cargo, elections.federal)
-      : await fetchMunicipalByCode(task.uf, task.municipio, task.cargo, elections.municipal);
+      ? await fetchFederal(task.uf, task.cargo, elections.federal!)
+      : await fetchMunicipalByCode(task.uf, task.municipio, task.cargo, elections.municipal!);
     if (result.failed) failed += 1;
 
     for (const row of result.rows) {
@@ -629,6 +629,7 @@ async function executePagedTseSearch(f: Filters, tasks: FetchTask[], elections: 
   const total = exactTotal ? offset + rows.length : offset + rows.length + PAGE_SIZE;
   return { rows, total, exactTotal, hasMore, attempted, failed };
 }
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
