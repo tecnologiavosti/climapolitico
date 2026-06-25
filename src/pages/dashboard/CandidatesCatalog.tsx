@@ -123,6 +123,7 @@ export default function CandidatesCatalog() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["my-candidates-names"] });
       queryClient.invalidateQueries({ queryKey: ["candidates"] });
+      queryClient.invalidateQueries({ queryKey: ["candidates-overview"] });
       toast.success("Candidato adicionado à sua conta!");
     },
     onError: (e: Error) => toast.error(e.message),
