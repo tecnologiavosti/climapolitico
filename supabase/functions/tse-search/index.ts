@@ -3,7 +3,9 @@
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
 const CEREBRAS_API_KEY = Deno.env.get("CEREBRAS_API_KEY");
+const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 const CEREBRAS_MODEL = "llama-3.3-70b";
+const GATEWAY_MODEL = "google/gemini-2.5-flash";
 const PAGE_SIZE = 50;
 
 const VALID_CARGOS = [
