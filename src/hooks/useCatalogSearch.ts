@@ -93,6 +93,8 @@ export async function searchTSECandidates(filters: CatalogFilters) {
     notice: (data?.message ?? data?.notice ?? null) as string | null,
     fallback: !!data?.fallback,
     page: data?.page ?? 0,
+    lastUpdated: (data?.last_updated ?? null) as string | null,
+    nationalOnly: !!data?.nationalOnly,
   };
 }
 
