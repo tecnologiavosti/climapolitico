@@ -172,6 +172,21 @@ async function resolveElection(kind: "F" | "M") {
   };
 }
 
+async function resolvePublishedElectionsBeforeTarget(kind: "F" | "M", maxCount = 1) {
+  const rows = (await getOrdinaryElections())
+    .filter((e) => e.tipoAbrangencia === kind && Number(e.ano) < TARGET_YEAR)
+    .sort((a, b) => {
+      const yearDiff = Number(b.ano) - Number(a.ano);
+      return yearDiff !== 0 ? yearDiff : Number(b.id) - Number(a.id);
+    });
+
+  return rows.slice(0, maxCount).map((e) => ({
+    id: Number(e.id),
+    ano: Number(e.ano),
+    name: e.nomeEleicao,
+  }));
+}
+
 
 const municipiosCache = new Map<string, Array<{ codigo: string; nome: string; normalized: string }>>();
 
@@ -649,6 +664,88 @@ SELECT ?person ?personLabel ?ptLabel ?officeLabel ?partyLabel ?partyShort WHERE 
 type FetchTask =
   | { kind: "federal"; uf: string; cargo: string }
   | { kind: "municipal"; uf: string; municipio: { codigo: string; nome: string }; cargo: string };
+
+function asPoliticalLiveRow(row: CandidateOut, sourceYear: number): CandidateOut {
+  return {
+    ...row,
+    id: `political-live-2026-${sourceYear}-${row.id}`,
+    ano_eleicao: null,
+    popularidade: Math.max(row.popularidade, 0.86),
+    similarity: Math.max(row.similarity, 0.86),
+  };
+}
+
+function isCurrentMandateRow(row: CandidateOut) {
+  return row.eleito === true;
+}
+
+async function politicalLiveBaseLookup(f: Filters, cargos: string[], ufs: string[]): Promise<{ rows: CandidateOut[]; sources: string[]; failed: number }> {
+  const rows: CandidateOut[] = [];
+  const sources = new Set<string>();
+  let failed = 0;
+  const municipalCargos = cargos.filter((c) => MUNICIPAL_CARGOS.has(c));
+  const federalCargos = cargos.filter((c) => FEDERAL_CARGOS.has(c));
+
+  if (municipalCargos.length > 0 && f.municipio) {
+    const [municipalElection] = await resolvePublishedElectionsBeforeTarget("M", 1);
+    if (municipalElection) {
+      sources.add(`political_live_2026:tse_${municipalElection.ano}_municipal_elected`);
+      const targetUfs = ufs.filter((uf) => uf !== "BR");
+      const municipalLists = await Promise.all(targetUfs.map(async (uf) => ({
+        uf,
+        municipios: await resolveMunicipiosForUf(uf, f.municipio, municipalElection),
+      })));
+
+      for (const { uf, municipios } of municipalLists) {
+        for (const municipio of municipios) {
+          for (const cargo of municipalCargos) {
+            const result = await fetchMunicipalByCode(uf, municipio, cargo, municipalElection);
+            if (result.failed) failed += 1;
+            rows.push(...result.rows.filter(isCurrentMandateRow).map((row) => asPoliticalLiveRow(row, municipalElection.ano)));
+          }
+        }
+      }
+    }
+  }
+
+  if (f.municipio) {
+    return { rows: rows.filter((row) => matchesClientFilters(row, f)), sources: [...sources], failed };
+  }
+
+  if (federalCargos.length > 0) {
+    const needsSenators = federalCargos.includes("senador");
+    const federalElections = await resolvePublishedElectionsBeforeTarget("F", needsSenators ? 2 : 1);
+
+    for (const election of federalElections) {
+      const cargosForElection = federalCargos.filter((cargo) => {
+        if (cargo === "senador") return election.ano >= TARGET_YEAR - 8;
+        return election.ano === federalElections[0]?.ano;
+      });
+      if (cargosForElection.length === 0) continue;
+      sources.add(`political_live_2026:tse_${election.ano}_federal_elected`);
+
+      for (const cargo of cargosForElection) {
+        const targetUfs = (cargo === "presidente" || cargo === "vice_presidente") ? ["BR"] : ufs.filter((uf) => uf !== "BR");
+        for (const uf of targetUfs) {
+          const result = await fetchFederal(uf, cargo, election);
+          if (result.failed) failed += 1;
+          rows.push(...result.rows.filter(isCurrentMandateRow).map((row) => asPoliticalLiveRow(row, election.ano)));
+        }
+      }
+    }
+  }
+
+  const seen = new Set<string>();
+  const filtered = rows.filter((row) => {
+    if (!matchesClientFilters(row, f)) return false;
+    const key = `${normalize(row.nome)}|${row.cargo ?? ""}|${row.estado ?? ""}|${normalize(row.municipio)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return { rows: filtered, sources: [...sources], failed };
+}
 
 async function buildTasks(f: Filters, cargos: string[], ufs: string[], elections: { federal: { id: number; ano: number } | null; municipal: { id: number; ano: number } | null }) {
   const tasks: FetchTask[] = [];
