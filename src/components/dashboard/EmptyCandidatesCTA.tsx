@@ -16,8 +16,8 @@ export const EmptyCandidatesCTA = () => (
 
     <div className="relative flex flex-col gap-4 text-primary-foreground sm:flex-row sm:items-center sm:justify-between">
       <div className="space-y-2 max-w-xl">
-        <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-medium backdrop-blur-sm">
-          <Sparkles className="h-3.5 w-3.5" />
+        <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-medium backdrop-blur-sm text-primary-foreground">
+          <Sparkles className="h-3.5 w-3.5" aria-hidden />
           Comece por aqui
         </div>
         <h2 className="text-xl sm:text-2xl font-bold leading-tight">
@@ -31,12 +31,11 @@ export const EmptyCandidatesCTA = () => (
       <Button
         asChild
         size="lg"
-        variant="secondary"
-        className="shrink-0 shadow-lg hover-lift font-semibold"
+        className="shrink-0 shadow-lg hover-lift font-semibold bg-white text-primary hover:bg-white/90 dark:bg-white dark:text-primary"
       >
         <Link to="/dashboard/candidates-catalog">
           Adicionar candidato
-          <ArrowRight className="ml-2 h-4 w-4" />
+          <ArrowRight className="ml-2 h-4 w-4 text-primary" aria-hidden />
         </Link>
       </Button>
     </div>
