@@ -756,12 +756,15 @@ Deno.serve(async (req) => {
     // TSE oficial é consultado em paralelo apenas como reforço quando disponível.
     const liveCargos = f.cargo?.length ? cargos : [...new Set([...cargos, ...AI_ONLY_CARGOS])];
 
-    const [auxiliaryRows, aiResult] = page === 0
-      ? await Promise.all([
-          wikidataAuxiliaryLookup(f, liveCargos),
-          aiPoliticalLookup(f, liveCargos),
-        ])
-      : [[] as CandidateOut[], { rows: [] as CandidateOut[], error: null as string | null }];
+    // Etapa 1: coletar dados brutos de fontes públicas (TSE + Wikidata).
+    const auxiliaryRows = page === 0 ? await wikidataAuxiliaryLookup(f, liveCargos) : [];
+
+    // Etapa 2: enviar dados brutos para Cerebras fazer matching/ranking/dedup.
+    // Cerebras NÃO inventa candidatos — só rankeia o que veio das fontes públicas.
+    const rawPool = [...tsePage.rows, ...auxiliaryRows];
+    const aiResult = page === 0
+      ? await aiPoliticalLookup(f, liveCargos, rawPool)
+      : { rows: [] as CandidateOut[], error: null as string | null };
 
     const aiRows = aiResult.rows;
     const aiError = aiResult.error;
