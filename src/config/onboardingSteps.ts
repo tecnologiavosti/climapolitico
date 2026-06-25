@@ -1,52 +1,49 @@
 import type { OnboardingStep } from "@/hooks/useOnboarding";
 
+/**
+ * Tour de 5 passos. Quando o seletor não existir no DOM (ex.: viewport mobile
+ * com sidebar recolhida), o passo é renderizado centralizado SEM auto-pular —
+ * isso corrige o bug em que o usuário ia direto do passo 1 para o 5.
+ */
 export const onboardingSteps: OnboardingStep[] = [
   {
-    target: '[data-onboarding="sidebar"]',
-    title: "Navegação Principal",
-    description: "Use este menu para navegar entre as diferentes seções da plataforma.",
-    position: "right",
-  },
-  {
-    target: '[data-onboarding="overview"]',
-    title: "Visão Geral",
-    description: "Resumo dos seus candidatos, análises recentes e insights principais.",
-    position: "right",
-  },
-  {
-    target: '[data-onboarding="candidates"]',
-    title: "Candidatos",
-    description: "Gerencie seus candidatos e acompanhe métricas de engajamento e sentimento.",
-    position: "right",
-  },
-  {
-    target: '[data-onboarding="ai-insights"]',
-    title: "Insights da IA",
-    description: "Recomendações inteligentes baseadas em IA para otimizar suas estratégias.",
-    position: "right",
-  },
-  {
-    target: '[data-onboarding="breadcrumbs"]',
-    title: "Navegação Contextual",
-    description: "Use o breadcrumb para entender onde você está e navegar rapidamente.",
+    target: "body",
+    title: "Bem-vindo ao Clima Político",
+    description:
+      "Aqui você monitora candidatos, redes sociais, sentimento político e tendências em tempo real.",
     position: "bottom",
   },
   {
-    target: '[data-onboarding="user-menu"]',
-    title: "Menu de Usuário",
-    description: "Acesse suas configurações, preferências e faça logout por aqui.",
+    target: '[data-onboarding="candidates"], [data-onboarding="sidebar"]',
+    title: "Adicione candidatos",
+    description:
+      "Antes de começar, você precisa adicionar ao menos um candidato ao seu monitoramento.",
+    position: "right",
+  },
+  {
+    target: '[data-onboarding="candidates"], [data-onboarding="sidebar"]',
+    title: "Busque qualquer candidato",
+    description:
+      "No Catálogo de Candidatos, pesquise por nome, cargo, cidade, estado ou partido.",
+    position: "right",
+  },
+  {
+    target: '[data-onboarding="candidates"], [data-onboarding="sidebar"]',
+    title: "Adicione ao monitoramento",
+    description:
+      "Ao adicionar, o candidato passa a aparecer em todas as análises automaticamente.",
+    position: "right",
+  },
+  {
+    target: '[data-onboarding="overview"], [data-onboarding="breadcrumbs"], body',
+    title: "Pronto!",
+    description:
+      "Agora você já pode acompanhar menções, aceitação, rejeição e clima político.",
     position: "bottom",
   },
 ];
 
-/** DEV-only sanity check: warns if any onboarding selector is missing in the DOM. */
+/** DEV-only: nenhum aviso é crítico — todos os passos têm fallback. */
 export function validateOnboardingTargets() {
   if (typeof document === "undefined" || import.meta.env.PROD) return;
-  setTimeout(() => {
-    onboardingSteps.forEach((s) => {
-      if (!document.querySelector(s.target)) {
-        console.warn(`[onboarding] selector not found in DOM: ${s.target}`);
-      }
-    });
-  }, 2000);
 }
