@@ -562,19 +562,21 @@ type FetchTask =
   | { kind: "federal"; uf: string; cargo: string }
   | { kind: "municipal"; uf: string; municipio: { codigo: string; nome: string }; cargo: string };
 
-async function buildTasks(f: Filters, cargos: string[], ufs: string[], elections: { federal: { id: number; ano: number }; municipal: { id: number; ano: number } }) {
+async function buildTasks(f: Filters, cargos: string[], ufs: string[], elections: { federal: { id: number; ano: number } | null; municipal: { id: number; ano: number } | null }) {
   const tasks: FetchTask[] = [];
-  const federalCargos = cargos.filter((c) => FEDERAL_CARGOS.has(c));
-  const municipalCargos = cargos.filter((c) => MUNICIPAL_CARGOS.has(c));
+  const federalCargos = elections.federal ? cargos.filter((c) => FEDERAL_CARGOS.has(c)) : [];
+  const municipalCargos = elections.municipal ? cargos.filter((c) => MUNICIPAL_CARGOS.has(c)) : [];
 
-  for (const cargo of federalCargos) {
-    const targetUfs = (cargo === "presidente" || cargo === "vice_presidente") ? ["BR"] : ufs;
-    for (const uf of targetUfs) tasks.push({ kind: "federal", uf, cargo });
+  if (elections.federal) {
+    for (const cargo of federalCargos) {
+      const targetUfs = (cargo === "presidente" || cargo === "vice_presidente") ? ["BR"] : ufs;
+      for (const uf of targetUfs) tasks.push({ kind: "federal", uf, cargo });
+    }
   }
 
-  if (municipalCargos.length > 0) {
+  if (elections.municipal && municipalCargos.length > 0) {
     const targetUfs = ufs.filter((uf) => uf !== "BR");
-    const municipalLists = await Promise.all(targetUfs.map(async (uf) => ({ uf, municipios: await resolveMunicipiosForUf(uf, f.municipio, elections.municipal) })));
+    const municipalLists = await Promise.all(targetUfs.map(async (uf) => ({ uf, municipios: await resolveMunicipiosForUf(uf, f.municipio, elections.municipal!) })));
     for (const { uf, municipios } of municipalLists) {
       for (const municipio of municipios) {
         for (const cargo of municipalCargos) tasks.push({ kind: "municipal", uf, municipio, cargo });
@@ -584,6 +586,7 @@ async function buildTasks(f: Filters, cargos: string[], ufs: string[], elections
 
   return tasks;
 }
+
 
 async function executePagedTseSearch(f: Filters, tasks: FetchTask[], elections: { federal: { id: number; ano: number }; municipal: { id: number; ano: number } }) {
   const page = Math.max(0, Number(f.page ?? 0));
