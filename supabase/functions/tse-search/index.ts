@@ -473,7 +473,7 @@ Deno.serve(async (req) => {
 
     const deduped = dedupe(all);
     const filtered = applyFilters(deduped, f);
-    console.log(`NORMALIZED: ${deduped.length} | FINAL COUNT: ${filtered.length}`);
+    console.log(`NORMALIZED: ${deduped.length} | RESULT COUNT: ${filtered.length}`);
 
     const total = filtered.length;
     const start = f.page * PAGE_SIZE;
