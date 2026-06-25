@@ -60,6 +60,8 @@ export default function CandidatesCatalog() {
   const suggestions = data?.suggestions ?? [];
   const normalized = data?.normalized ?? {};
   const notice = data?.notice ?? null;
+  const lastUpdated = data?.lastUpdated ?? null;
+  const nationalOnly = data?.nationalOnly ?? false;
   const fallback = !!data?.fallback || isError;
   const page = filters.page ?? 0;
   const exactTotal = data?.exactTotal !== false;
@@ -139,6 +141,13 @@ export default function CandidatesCatalog() {
         <p className="text-muted-foreground mt-1">
           Base política nacional 2026 — TSE + cenário vivo (governadores, ministros, presidentes partidários, pré-candidatos) via IA.
         </p>
+      </div>
+
+      <div className="flex items-center gap-2 text-xs bg-primary/5 text-primary border border-primary/20 rounded-md px-3 py-2">
+        <Sparkles className="h-3 w-3" />
+        <span className="font-medium">Cenário político atualizado em tempo real — 2026</span>
+        {lastUpdated && <span className="text-muted-foreground">· última atualização {new Date(lastUpdated).toLocaleDateString("pt-BR")}</span>}
+        {nationalOnly && <span className="text-muted-foreground">· base viva (sem TSE histórico)</span>}
       </div>
 
       <CatalogFilters
