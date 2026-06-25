@@ -575,6 +575,102 @@ ${JSON.stringify(compactCandidates)}`;
   }
 }
 
+// Fallback dinâmico: quando nenhuma fonte estruturada (TSE/Wikidata/live) retornou nada,
+// pede à IA para sugerir candidatos reais conhecidos a partir do conhecimento do modelo.
+// Resultado vem marcado como `lideranca_local` (não confundir com base oficial).
+async function aiDynamicLookup(f: Filters, cargos: string[]): Promise<{ rows: CandidateOut[]; error: string | null }> {
+  if (!CEREBRAS_API_KEY) return { rows: [], error: "CEREBRAS_API_KEY ausente" };
+  const nome = (f.q ?? "").trim();
+  const municipio = (f.municipio ?? "").trim();
+  const ufs = (f.estado ?? []).join(",");
+  const cargoNames = cargos.map((c) => CARGO_LABEL[c] ?? c).join(", ");
+  // Só vale a pena se houver pista mínima (nome OU município).
+  if (!nome && !municipio) return { rows: [], error: null };
+
+  const query = [cargoNames, f.onlyEleitos ? "eleito" : "", municipio, ufs, nome].filter(Boolean).join(" ").trim();
+  console.log("[tse-search] AI dynamic lookup query:", query);
+
+  const system = `Você é um especialista em política brasileira com conhecimento atualizado de prefeitos, vereadores, deputados, senadores e lideranças locais de todos os 5.570 municípios.
+
+Receberá filtros de busca (nome, cargo, município, UF). Devolva candidatos REAIS que você conhece com alta confiança.
+
+REGRAS RÍGIDAS:
+- NUNCA invente nomes. Se não tiver certeza, retorne lista vazia.
+- Só inclua políticos que você confirma existirem na cidade/estado informados.
+- Devolva no MÁXIMO 10 resultados.
+- Aplicar matching fuzzy (ex: "Tiago da Luz" == "Tiago Luz", "Joao" == "João").
+
+Retorne APENAS JSON:
+{"resultados":[{"nome":"","cargo":"","partido":"","estado":"","cidade":"","eleito":true,"confianca":0}]}
+
+confianca: 0-100 (sua certeza de que a pessoa existe e o cargo está correto).`;
+
+  const user = `Filtros:
+- nome: ${nome || "(qualquer)"}
+- cargos válidos: ${cargoNames || "qualquer"}
+- UF: ${ufs || "qualquer"}
+- município: ${municipio || "qualquer"}
+- somente eleitos: ${f.onlyEleitos ? "sim" : "não"}
+
+Liste apenas políticos brasileiros REAIS que você conhece e que casem com esses filtros.`;
+
+  try {
+    const r = await fetch("https://api.cerebras.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${CEREBRAS_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: CEREBRAS_MODEL,
+        messages: [{ role: "system", content: system }, { role: "user", content: user }],
+        response_format: { type: "json_object" },
+        temperature: 0.2,
+        max_tokens: 1500,
+      }),
+    });
+    if (!r.ok) {
+      const body = await r.text().catch(() => "");
+      console.error("[tse-search] AI dynamic lookup failed:", r.status, body);
+      return { rows: [], error: `IA dinâmica indisponível (HTTP ${r.status}).` };
+    }
+    const j = await r.json();
+    const parsed = JSON.parse(j?.choices?.[0]?.message?.content ?? "{}");
+    const list: any[] = parsed?.resultados ?? [];
+    const rows: CandidateOut[] = list
+      .filter((p) => Number(p?.confianca ?? 0) >= 65 && p?.nome)
+      .map((p, idx) => {
+        const cargo = normalizeCargoKey(p.cargo ?? "") ?? (cargos[0] ?? null);
+        const uf = (p.estado ?? "").toUpperCase().slice(0, 2) || null;
+        const isElected = p.eleito !== false;
+        return {
+          id: `ai-dynamic-${idx}-${normalize(p.nome).replace(/\s+/g, "-")}`,
+          tse_id: null,
+          nome: String(p.nome),
+          nome_urna: null,
+          partido_sigla: p.partido ? String(p.partido).toUpperCase().slice(0, 12) : null,
+          partido_nome: null,
+          numero_partido: null,
+          cargo,
+          regiao: uf ? (REGION_OF_UF[uf] ?? null) : null,
+          estado: uf,
+          municipio: p.cidade ? String(p.cidade) : (municipio || null),
+          eleito: isElected,
+          categoria: "lideranca_local",
+          ano_eleicao: null,
+          foto_url: null,
+          redes_sociais: null,
+          popularidade: Number(p.confianca ?? 65) / 100,
+          similarity: Number(p.confianca ?? 65) / 100,
+          total_count: 0,
+        } satisfies CandidateOut;
+      })
+      .filter((row) => matchesClientFilters(row, f));
+    console.log(`[tse-search] AI dynamic lookup returned ${rows.length} candidate(s)`);
+    return { rows, error: null };
+  } catch (error) {
+    console.error("[tse-search] AI dynamic lookup error:", error);
+    return { rows: [], error: error instanceof Error ? error.message : "Falha IA dinâmica" };
+  }
+}
+
 function cargoFromOfficeLabel(label: string | null | undefined) {
   const n = normalize(label);
   if (n.includes("vice presidente")) return "vice_presidente";
