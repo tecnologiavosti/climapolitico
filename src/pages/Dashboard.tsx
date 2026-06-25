@@ -17,6 +17,7 @@ import { useOnboarding } from "@/hooks/useOnboarding";
 import { OnboardingTour } from "@/components/onboarding/OnboardingTour";
 import { onboardingSteps, validateOnboardingTargets } from "@/config/onboardingSteps";
 import { TrialCelebration } from "@/components/TrialCelebration";
+import { friendlyRouteTitle } from "@/lib/routeTitles";
 
 // Lazy-load das rotas: cada página só baixa o JS quando o usuário entra nela.
 const Overview = lazy(() => import("./dashboard/Overview"));
