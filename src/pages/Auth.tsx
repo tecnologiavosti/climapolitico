@@ -13,8 +13,9 @@ import logoAsset from "@/assets/clima-politico-logo.jpg.asset.json";
 import { z } from "zod";
 import { consumeTrialAfterLogin, getTrialStart, queueTrialCelebration, startTrial } from "@/lib/trial";
 
+import { PasswordChecklist, isPasswordValid } from "@/components/auth/PasswordChecklist";
+
 const emailSchema = z.string().email("Email inválido");
-const passwordSchema = z.string().min(6, "Senha deve ter no mínimo 6 caracteres");
 const fullNameSchema = z.string().min(2, "Nome deve ter no mínimo 2 caracteres");
 const getAuthOrigin = () => {
   if (typeof window === "undefined") return "";
@@ -62,11 +63,14 @@ const Auth = () => {
     e.preventDefault();
     try {
       emailSchema.parse(loginEmail);
-      passwordSchema.parse(loginPassword);
     } catch (error) {
       if (error instanceof z.ZodError) {
         toast({ title: "Erro de validação", description: error.issues[0].message, variant: "destructive" });
       }
+      return;
+    }
+    if (!loginPassword) {
+      toast({ title: "Erro de validação", description: "Informe sua senha", variant: "destructive" });
       return;
     }
     setLoading(true);
@@ -80,7 +84,7 @@ const Auth = () => {
       setLoading(false);
       return;
     }
-    toast({ title: "Login realizado!", description: "Redirecionando..." });
+    toast({ title: "Bem-vindo ao Clima Político", description: "Redirecionando..." });
     setLoading(false);
   };
 
