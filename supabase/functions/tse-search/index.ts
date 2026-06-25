@@ -128,31 +128,64 @@ function buildQuery(f: Filters): { query: string; cargos: string[] } {
 }
 
 async function duckDuckGoSearch(query: string): Promise<Array<{ title: string; snippet: string; url: string }>> {
-  try {
-    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-    const r = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; ClimaPoliticoBot/1.0)", "Accept": "text/html" },
-    });
-    if (!r.ok) {
-      console.warn("[ddg] failed:", r.status);
-      return [];
+  const endpoints = [
+    `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+    `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`,
+  ];
+  for (const url of endpoints) {
+    try {
+      const r = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml",
+          "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+        },
+      });
+      console.log(`[ddg] ${url} → HTTP ${r.status}`);
+      if (!r.ok) continue;
+      const html = await r.text();
+      const results: Array<{ title: string; snippet: string; url: string }> = [];
+      const strip = (s: string) => s.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
+      const cleanUrl = (raw: string) => {
+        const uddg = raw.match(/[?&]uddg=([^&]+)/);
+        if (uddg) { try { return decodeURIComponent(uddg[1]); } catch { /* noop */ } }
+        return raw;
+      };
+      // html.duckduckgo.com layout
+      const reHtml = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:class="result__snippet"[^>]*>([\s\S]*?)<\/a>|<td[^>]*class="result-snippet"[^>]*>([\s\S]*?)<\/td>)/g;
+      let m: RegExpExecArray | null;
+      while ((m = reHtml.exec(html)) !== null && results.length < 20) {
+        results.push({ title: strip(m[2]), snippet: strip(m[3] ?? m[4] ?? ""), url: cleanUrl(m[1]) });
+      }
+      // lite.duckduckgo.com layout fallback
+      if (results.length === 0) {
+        const reLite = /<a[^>]+class="result-link"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<td[^>]*class="result-snippet"[^>]*>([\s\S]*?)<\/td>/g;
+        while ((m = reLite.exec(html)) !== null && results.length < 20) {
+          results.push({ title: strip(m[2]), snippet: strip(m[3]), url: cleanUrl(m[1]) });
+        }
+      }
+      console.log(`[ddg] "${query}" → ${results.length} results (html length=${html.length})`);
+      if (results.length === 0) console.log("[ddg] html sample:", html.slice(0, 500));
+      if (results.length > 0) return results;
+    } catch (e) {
+      console.error("[ddg] error:", e);
     }
-    const html = await r.text();
-    const results: Array<{ title: string; snippet: string; url: string }> = [];
-    const re = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
-    let m: RegExpExecArray | null;
-    const strip = (s: string) => s.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim();
-    while ((m = re.exec(html)) !== null && results.length < 20) {
-      let clean = m[1];
-      const uddg = clean.match(/[?&]uddg=([^&]+)/);
-      if (uddg) { try { clean = decodeURIComponent(uddg[1]); } catch { /* noop */ } }
-      results.push({ title: strip(m[2]), snippet: strip(m[3]), url: clean });
-    }
-    console.log(`[ddg] "${query}" → ${results.length}`);
-    return results;
-  } catch (e) {
-    console.error("[ddg] error:", e);
-    return [];
+  }
+  return [];
+}
+
+function extractJsonFromResponse(response: string): unknown {
+  let cleaned = response.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+  const jsonStart = cleaned.search(/[\{\[]/);
+  if (jsonStart === -1) throw new Error("No JSON found in response");
+  const opener = cleaned[jsonStart];
+  const closer = opener === "[" ? "]" : "}";
+  const jsonEnd = cleaned.lastIndexOf(closer);
+  if (jsonEnd === -1) throw new Error("No JSON terminator in response");
+  cleaned = cleaned.substring(jsonStart, jsonEnd + 1);
+  try { return JSON.parse(cleaned); } catch {
+    cleaned = cleaned.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]").replace(/[\x00-\x1F\x7F]/g, "");
+    return JSON.parse(cleaned);
   }
 }
 
