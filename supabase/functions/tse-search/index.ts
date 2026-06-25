@@ -501,6 +501,7 @@ Deno.serve(async (req) => {
     const deduped = dedupe(all);
     const filtered = applyFilters(deduped, f);
     console.log(`NORMALIZED: ${deduped.length} | RESULT COUNT: ${filtered.length}`);
+    console.log("CRAWLER RETURNED", filtered.length);
     console.log("BACKEND FINAL COUNT:", filtered.length);
     console.log("FIRST 5 BACKEND:", JSON.stringify(filtered.slice(0, 5).map((r) => ({
       nome: r.nome, cargo: r.cargo, estado: r.estado, municipio: r.municipio, eleito: r.eleito, fonte: r.fonte,
