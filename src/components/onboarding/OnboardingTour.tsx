@@ -103,7 +103,10 @@ export const OnboardingTour = ({
     };
   }, [targetElement, isActive, step.position]);
 
-  if (!isActive || !targetElement) return null;
+  if (!isActive) return null;
+
+  // Sem target → renderiza centralizado com overlay escurecido (não pula o passo).
+  const centered = !targetElement;
 
   const progress = ((currentStep + 1) / totalSteps) * 100;
   const isFirstStep = currentStep === 0;
