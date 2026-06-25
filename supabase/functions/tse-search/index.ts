@@ -361,15 +361,20 @@ function scoreTextSimilarity(a: string, b: string) {
 }
 
 function matchesClientFilters(c: CandidateOut, f: Filters) {
-  if (f.estado?.length && c.estado && c.estado !== "BR") {
+  if (f.cargo?.length) {
+    const set = new Set(f.cargo.map((cargo) => normalizeCargoKey(cargo) ?? normalize(cargo)));
+    const candidateCargo = c.cargo ? (normalizeCargoKey(c.cargo) ?? normalize(c.cargo)) : null;
+    if (!candidateCargo || !set.has(candidateCargo)) return false;
+  }
+  if (f.estado?.length) {
     const set = new Set(f.estado.map((uf) => uf.toUpperCase()));
-    if (!set.has(c.estado.toUpperCase())) return false;
+    if (!c.estado || !set.has(c.estado.toUpperCase())) return false;
   }
-  if (f.regiao?.length && c.regiao) {
+  if (f.regiao?.length) {
     const set = new Set(f.regiao.map((r) => normalize(r)));
-    if (!set.has(normalize(c.regiao))) return false;
+    if (!c.regiao || !set.has(normalize(c.regiao))) return false;
   }
-  if (f.municipio && c.municipio && !normalize(c.municipio).includes(normalize(f.municipio))) return false;
+  if (f.municipio && normalize(c.municipio) !== normalize(f.municipio)) return false;
   if (f.partido?.length) {
     const set = new Set(f.partido.map((p) => normalize(p)));
     if (!c.partido_sigla || !set.has(normalize(c.partido_sigla))) return false;
@@ -392,7 +397,8 @@ async function aiPoliticalLookup(f: Filters, cargos: string[]): Promise<Candidat
 
   const system = `Você é um especialista no cenário político brasileiro VIVO para 2026.
 Conhece presidente, vice, ministros de Estado, governadores, vice-governadores, senadores em mandato, deputados federais/estaduais/distritais em exercício, prefeitos e vice-prefeitos em exercício, vereadores em exercício, presidentes nacionais de partidos e pré-candidatos declarados/cotados para 2026.
-Inclui obrigatoriamente figuras como Lula, Geraldo Alckmin, Bolsonaro, Tarcísio de Freitas, Ratinho Júnior, Ronaldo Caiado, Romeu Zema, Eduardo Leite, Cláudio Castro, Pablo Marçal, Flávio Bolsonaro, Eduardo Bolsonaro, Nikolas Ferreira, Damares Alves, Sergio Moro, Simone Tebet, Ciro Gomes, Gleisi Hoffmann, Valdemar Costa Neto, André Janones, Gustavo Martinelli (Prefeito de Jundiaí/SP, UNIÃO) e equivalentes regionais.
+Respeite TODOS os filtros de forma determinística. Se cargo, UF, região ou município forem informados, só retorne políticos que correspondam exatamente a esses filtros.
+Nunca use políticos nacionais famosos para preencher busca municipal ou regional. Se não houver correspondência exata, retorne lista vazia.
 Para CADA filtro, devolva o máximo de políticos REAIS atualmente atuantes que se enquadrem — não limite a poucos nomes famosos.
 Devolva APENAS JSON: {"politicos":[{"nome":"...","partido":"SIGLA","cargo":"presidente|vice_presidente|governador|vice_governador|senador|deputado_federal|deputado_estadual|deputado_distrital|prefeito|vice_prefeito|vereador|ministro|presidente_partido|pre_candidato","estado":"UF","municipio":"...|null","eleito":true|false,"confidence":0-1}]}.
 Retorne até 50 itens. Só políticos REAIS e atuais (mandato 2023-2026 ou pré-candidatura 2026). Nunca invente nomes.`;
@@ -668,7 +674,7 @@ Deno.serve(async (req) => {
     let auxiliaryRows: CandidateOut[] = [];
     let aiRows: CandidateOut[] = [];
     if (needLive) {
-      const liveCargos = [...new Set([...cargos, ...AI_ONLY_CARGOS])];
+      const liveCargos = f.cargo?.length ? cargos : [...new Set([...cargos, ...AI_ONLY_CARGOS])];
       const [aux, ai] = await Promise.all([
         wikidataAuxiliaryLookup(f, liveCargos),
         aiPoliticalLookup(f, liveCargos),
@@ -684,11 +690,22 @@ Deno.serve(async (req) => {
       console.log(`[tse-search] Live 2026 base: wikidata=${auxiliaryRows.length} ai=${aiRows.length}`);
     }
 
-    const merged = page === 0 ? [...tsePage.rows, ...auxiliaryRows, ...aiRows].slice(0, PAGE_SIZE) : tsePage.rows;
-    const hasMore = tsePage.hasMore || (page === 0 && tsePage.rows.length + auxiliaryRows.length + aiRows.length > PAGE_SIZE);
+    const beforeStrictFilter = page === 0 ? [...tsePage.rows, ...auxiliaryRows, ...aiRows] : tsePage.rows;
+    const afterStrictFilter = beforeStrictFilter.filter((candidate) => matchesClientFilters(candidate, f));
+    const merged = afterStrictFilter.slice(0, PAGE_SIZE);
+    const hasMore = tsePage.hasMore || (page === 0 && afterStrictFilter.length > PAGE_SIZE);
     const exactTotal = tsePage.exactTotal && auxiliaryRows.length === 0 && aiRows.length === 0 && tse2026Available;
     const total = exactTotal ? tsePage.total : page * PAGE_SIZE + merged.length + (hasMore ? PAGE_SIZE : 0);
     const rows = merged.map((r) => ({ ...r, total_count: total }));
+
+    console.log("Catalog filters", {
+      selectedCargo: f.cargo?.[0] ?? null,
+      selectedRegion: f.regiao?.[0] ?? null,
+      selectedState: f.estado?.[0] ?? null,
+      selectedCity: f.municipio ?? null,
+      totalBeforeFilter: beforeStrictFilter.length,
+      totalAfterFilter: afterStrictFilter.length,
+    });
 
     if (total === 0 && tseFailed && auxiliaryRows.length === 0 && aiRows.length === 0) {
       return new Response(JSON.stringify({
