@@ -66,9 +66,12 @@ export const useOnboarding = (steps: OnboardingStep[], enabled: boolean = true) 
     }
   }, [user]);
 
-  // Resolve target com timeout — evita loop infinito quando seletor não existe
+  // Resolve target com timeout. Se NÃO encontrar dentro do prazo, o passo é
+  // renderizado centralizado (targetElement = null) — NUNCA auto-avança, para
+  // o usuário sempre ver os 5 passos manualmente.
   useEffect(() => {
     if (!isActive || !steps[currentStep]) return;
+    setTargetElement(null);
 
     let elapsed = 0;
     let timer: number | undefined;
@@ -82,20 +85,14 @@ export const useOnboarding = (steps: OnboardingStep[], enabled: boolean = true) 
       }
       elapsed += FIND_INTERVAL_MS;
       if (elapsed >= FIND_TIMEOUT_MS) {
-        // Pula automaticamente este passo
-        if (currentStep < steps.length - 1) {
-          setCurrentStep((s) => s + 1);
-        } else if (!skippedRef.current) {
-          skippedRef.current = true;
-          complete();
-        }
+        // Mantém targetElement = null → tooltip renderiza centralizado.
         return;
       }
       timer = window.setTimeout(tick, FIND_INTERVAL_MS);
     };
     tick();
     return () => { if (timer) clearTimeout(timer); };
-  }, [isActive, currentStep, steps, complete]);
+  }, [isActive, currentStep, steps]);
 
   const next = useCallback(() => {
     if (currentStep < steps.length - 1) {

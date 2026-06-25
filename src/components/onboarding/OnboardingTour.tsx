@@ -103,7 +103,10 @@ export const OnboardingTour = ({
     };
   }, [targetElement, isActive, step.position]);
 
-  if (!isActive || !targetElement) return null;
+  if (!isActive) return null;
+
+  // Sem target → renderiza centralizado com overlay escurecido (não pula o passo).
+  const centered = !targetElement;
 
   const progress = ((currentStep + 1) / totalSteps) * 100;
   const isFirstStep = currentStep === 0;
@@ -111,19 +114,27 @@ export const OnboardingTour = ({
 
   return (
     <>
-      <OnboardingSpotlight targetElement={targetElement} />
+      {centered ? (
+        <div className="fixed inset-0 z-[9998] bg-black/70 animate-fade-in" />
+      ) : (
+        <OnboardingSpotlight targetElement={targetElement} />
+      )}
 
       {/* Tooltip Card */}
       <Card
         className={cn(
-          "fixed z-[10000] w-[400px] shadow-2xl border-2 border-primary/20 animate-scale-in",
+          "fixed z-[10000] w-[min(400px,calc(100vw-2rem))] shadow-2xl border-2 border-primary/20 animate-scale-in",
           "bg-background/95 backdrop-blur-sm"
         )}
-        style={{
-          top: `${tooltipPosition.top}px`,
-          left: `${tooltipPosition.left}px`,
-          transition: "all 0.3s ease-out",
-        }}
+        style={
+          centered
+            ? { top: "50%", left: "50%", transform: "translate(-50%, -50%)" }
+            : {
+                top: `${tooltipPosition.top}px`,
+                left: `${tooltipPosition.left}px`,
+                transition: "all 0.3s ease-out",
+              }
+        }
       >
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between">
