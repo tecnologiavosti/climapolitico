@@ -601,6 +601,7 @@ function rowFromWikidata(binding: Record<string, any>, idx: number, fallbackCarg
     estado: state ? state.toUpperCase() : null,
     municipio: null,
     eleito: cargo !== "pre_candidato",
+    categoria: cargo === "pre_candidato" ? "pre_candidato" : (cargo === "presidente_partido" ? "lideranca_local" : "eleito"),
     ano_eleicao: null,
     foto_url: null,
     redes_sociais: null,
