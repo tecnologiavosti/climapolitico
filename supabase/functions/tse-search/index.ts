@@ -777,10 +777,10 @@ Deno.serve(async (req) => {
       tse2026Available,
     };
 
-    // Dedup por (nome|cargo|estado|municipio)
+    // Dedup por (nome|cargo|estado|municipio) — aiRows já vem rankeado pelo Cerebras.
     const seen = new Set<string>();
     const dedupKey = (c: CandidateOut) => `${normalize(c.nome)}|${c.cargo ?? ""}|${c.estado ?? ""}|${normalize(c.municipio)}`;
-    const pool = [...aiRows, ...auxiliaryRows, ...tsePage.rows].filter((c) => {
+    const pool = aiRows.filter((c) => {
       const k = dedupKey(c);
       if (seen.has(k)) return false;
       seen.add(k);
