@@ -653,52 +653,44 @@ Deno.serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const aiOnlyCargos = cargos.filter((c) => AI_ONLY_CARGOS.has(c));
     const [federalElection, municipalElection] = await Promise.all([resolveElection("F"), resolveElection("M")]);
     const elections = { federal: federalElection, municipal: municipalElection };
+    const tse2026Available = !!(federalElection || municipalElection);
     const tasks = await buildTasks(f, cargos, ufs, elections);
     const tsePage = await executePagedTseSearch(f, tasks, elections);
     const tseFailed = tasks.length > 0 && tsePage.failed === tsePage.attempted;
-    console.log(`[tse-search] TSE Results ${tsePage.rows.length} via ${tsePage.attempted} reqs (failed=${tsePage.failed}, hasMore=${tsePage.hasMore})`);
+    console.log(`[tse-search] TSE 2026 Results ${tsePage.rows.length} via ${tsePage.attempted} reqs (failed=${tsePage.failed}, hasMore=${tsePage.hasMore}, available=${tse2026Available})`);
 
-    // Base auxiliar 2026: cobre cargos não eleitorais e complementa quando o TSE oficial não tem retorno.
-    const needAi = page === 0 && (
-      aiOnlyCargos.length > 0 ||
-      tsePage.rows.length === 0 ||
-      (!!f.q && tsePage.rows.length < 5) ||
-      tseFailed ||
-      !federalElection.isTargetYear ||
-      !municipalElection.isTargetYear
-    );
+    // Base política VIVA 2026: sempre ativa na primeira página para cobrir mandatários,
+    // ministros, presidentes partidários, pré-candidatos e quando TSE 2026 ainda não publicou.
+    const needLive = page === 0;
 
     let auxiliaryRows: CandidateOut[] = [];
-    if (needAi) {
-      auxiliaryRows = await wikidataAuxiliaryLookup(f, cargos);
-      console.log(`[tse-search] Wikidata auxiliary added ${auxiliaryRows.length} profiles`);
-    }
-
     let aiRows: CandidateOut[] = [];
-    if (needAi) {
-      const aiCargos = [...new Set([...cargos, ...aiOnlyCargos])];
-      aiRows = await aiPoliticalLookup(f, aiCargos);
-      // dedupe por nome+UF
+    if (needLive) {
+      const liveCargos = [...new Set([...cargos, ...AI_ONLY_CARGOS])];
+      const [aux, ai] = await Promise.all([
+        wikidataAuxiliaryLookup(f, liveCargos),
+        aiPoliticalLookup(f, liveCargos),
+      ]);
+      auxiliaryRows = aux;
       const seen = new Set([...tsePage.rows, ...auxiliaryRows].map((c) => `${normalize(c.nome)}|${c.estado ?? ""}|${c.cargo ?? ""}`));
-      aiRows = aiRows.filter((c) => {
+      aiRows = ai.filter((c) => {
         const k = `${normalize(c.nome)}|${c.estado ?? ""}|${c.cargo ?? ""}`;
         if (seen.has(k)) return false;
         seen.add(k);
         return true;
       });
-      console.log(`[tse-search] AI 2026 added ${aiRows.length} profiles`);
+      console.log(`[tse-search] Live 2026 base: wikidata=${auxiliaryRows.length} ai=${aiRows.length}`);
     }
 
     const merged = page === 0 ? [...tsePage.rows, ...auxiliaryRows, ...aiRows].slice(0, PAGE_SIZE) : tsePage.rows;
     const hasMore = tsePage.hasMore || (page === 0 && tsePage.rows.length + auxiliaryRows.length + aiRows.length > PAGE_SIZE);
-    const exactTotal = tsePage.exactTotal && auxiliaryRows.length === 0 && aiRows.length === 0 && federalElection.isTargetYear && municipalElection.isTargetYear;
+    const exactTotal = tsePage.exactTotal && auxiliaryRows.length === 0 && aiRows.length === 0 && tse2026Available;
     const total = exactTotal ? tsePage.total : page * PAGE_SIZE + merged.length + (hasMore ? PAGE_SIZE : 0);
     const rows = merged.map((r) => ({ ...r, total_count: total }));
 
-    if (total === 0 && tseFailed) {
+    if (total === 0 && tseFailed && auxiliaryRows.length === 0 && aiRows.length === 0) {
       return new Response(JSON.stringify({
         fallback: true,
         error: "TSE_SERVICE_UNAVAILABLE",
@@ -708,14 +700,11 @@ Deno.serve(async (req) => {
     }
 
     const notices: string[] = [];
-    if (!federalElection.isTargetYear || !municipalElection.isTargetYear) {
-      notices.push(`TSE ainda não publicou candidaturas oficiais de ${TARGET_YEAR}; consulta usando TSE em tempo real (${federalElection.ano}/${municipalElection.ano}) e base auxiliar 2026.`);
-    }
-    if (tasks.length === 0 && aiOnlyCargos.length > 0) {
-      notices.push("Cargo consultado em base auxiliar, pois não existe como candidatura eleitoral no TSE.");
+    if (!tse2026Available) {
+      notices.push(`TSE ainda não publicou candidaturas oficiais de ${TARGET_YEAR}. Resultados vêm da base política viva 2026 (mandatários, ministros, presidentes partidários e pré-candidatos).`);
     }
 
-    console.log(`[tse-search] returning ${rows.length}/${total} (page ${page}, auxiliary=${auxiliaryRows.length}, ai=${aiRows.length}, exact=${exactTotal})`);
+    console.log(`[tse-search] returning ${rows.length}/${total} (page ${page}, tse2026=${tsePage.rows.length}, live=${auxiliaryRows.length + aiRows.length}, exact=${exactTotal})`);
 
     return new Response(JSON.stringify({
       rows,
@@ -727,9 +716,10 @@ Deno.serve(async (req) => {
       page,
       pageSize: PAGE_SIZE,
       fallback: false,
-      sourceYears: { target: TARGET_YEAR, federal: federalElection.ano, municipal: municipalElection.ano },
+      sourceYears: { target: TARGET_YEAR, federal: federalElection?.ano ?? null, municipal: municipalElection?.ano ?? null },
       notice: notices.join(" ") || null,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
   } catch (e) {
     console.error("[tse-search] error:", e);
     return new Response(JSON.stringify({
