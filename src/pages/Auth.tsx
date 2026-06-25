@@ -93,11 +93,18 @@ const Auth = () => {
     try {
       fullNameSchema.parse(signupFullName);
       emailSchema.parse(signupEmail);
-      passwordSchema.parse(signupPassword);
     } catch (error) {
       if (error instanceof z.ZodError) {
         toast({ title: "Erro de validação", description: error.issues[0].message, variant: "destructive" });
       }
+      return;
+    }
+    if (!isPasswordValid(signupPassword)) {
+      toast({
+        title: "Senha não atende aos requisitos",
+        description: "Verifique a lista de requisitos abaixo do campo Senha.",
+        variant: "destructive",
+      });
       return;
     }
     setLoading(true);
@@ -113,10 +120,20 @@ const Auth = () => {
         description: error.message === "User already registered" ? "Este email já está cadastrado" : error.message,
         variant: "destructive",
       });
-    } else {
-      toast({ title: "Conta criada!", description: "Verifique seu email para confirmar." });
-      setSignupEmail(""); setSignupPassword(""); setSignupFullName(""); setSignupOrganization("");
+      setLoading(false);
+      return;
     }
+    // Auto-confirm está ativado no backend — entramos direto sem confirmação por email.
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: signupEmail,
+      password: signupPassword,
+    });
+    if (signInError) {
+      toast({ title: "Conta criada!", description: "Faça login para continuar." });
+    } else {
+      toast({ title: "Bem-vindo ao Clima Político", description: "Sua conta foi criada com sucesso!" });
+    }
+    setSignupEmail(""); setSignupPassword(""); setSignupFullName(""); setSignupOrganization("");
     setLoading(false);
   };
 
