@@ -292,24 +292,23 @@ async function aiExtract(query: string, snippets: Array<{ title: string; snippet
   if (snippets.length === 0) return { rows: [], error: null };
 
   const cargoNames = cargos.map((c) => CARGO_LABEL[c] ?? c).join(", ") || "qualquer";
-  const system = `Você é um buscador político brasileiro especializado em identificar políticos REAIS do cenário 2026.
+  const system = `Você é um buscador político brasileiro especializado em identificar políticos REAIS, VIVOS e ATIVOS no cenário 2026.
 
 Use DUAS fontes combinadas:
-1. Snippets de busca web fornecidos (prioridade quando trazem nomes específicos)
-2. Seu conhecimento sobre figuras públicas brasileiras notórias (Presidentes, Vice, Ministros do governo Lula 2023-2026, Governadores em exercício, presidenciáveis 2026, prefeitos de capitais, senadores, deputados conhecidos)
+1. Snippets de busca web fornecidos
+2. Seu conhecimento sobre figuras públicas brasileiras notórias (governo Lula 2023-2026, governadores em exercício, presidenciáveis 2026, prefeitos, senadores, deputados)
 
-Tarefas:
-1. Corrigir ortografia e acentos
-2. Identificar políticos REAIS — combine snippets + conhecimento público
-3. Quando os filtros descrevem cargo nacional (Presidente, Vice, Ministro, Presidente de Partido), liste os nomes notórios mesmo que os snippets só confirmem o contexto/tema
-4. Remover duplicatas
-5. NÃO inventar nomes fictícios — só inclua pessoas reais do cenário político brasileiro
-6. Respeitar os filtros (cargo, estado, município, partido, somente eleitos)
-
-Status permitidos: Eleito, Pré-candidato, Mandatário, Ex-candidato, Ministro, Presidente de Partido.
+REGRAS OBRIGATÓRIAS:
+1. NUNCA inclua pessoas falecidas (ex: Getúlio Vargas, Enéas Carneiro, Ulysses Guimarães, Tancredo Neves, Eduardo Campos, Mário Covas, Itamar Franco)
+2. NUNCA invente nomes fictícios
+3. Para estado: escreva o nome COMPLETO do estado (ex: "São Paulo", "Rio de Janeiro", "Minas Gerais"). NUNCA use siglas truncadas tipo "SÃ", "RI", "MI".
+4. status DEVE ser EXATAMENTE um destes valores: "Eleito", "Mandatário", "Ex-candidato", "Possível presidenciável", "Nome especulado", "Ministro", "Presidente de Partido". NÃO use "Pré-candidato" salvo se houver anúncio OFICIAL nos snippets.
+5. confidence: número 0-100 indicando o quanto você tem certeza de que a pessoa é real, está viva e ocupa o cargo. Use ≥85 só para figuras nacionais notórias confirmadas.
+6. Remova duplicatas (mesma pessoa com nomes variados)
+7. Para cargo Presidente: inclua APENAS candidatos oficiais OU nomes de alta relevância nacional 2026 (Lula, Bolsonaro, Tarcísio, Caiado, Zema, Ratinho Jr, Tebet, Marçal, Ciro etc)
 
 Responda APENAS JSON:
-{"resultados":[{"nome":"","cargo":"","partido":"","estado":"","cidade":"","status":""}]}
+{"resultados":[{"nome":"","cargo":"","partido":"","estado":"","cidade":"","status":"","confidence":0}]}
 
 cargo DEVE ser um destes: ${VALID_CARGOS.join(", ")}.`;
 
@@ -353,21 +352,56 @@ Retorne até 30 candidatos. JSON válido.`;
     return { rows: [], error: "Cerebras parsing failed" };
   }
   const list: any[] = parsed?.resultados ?? parsed?.results ?? (Array.isArray(parsed) ? parsed : []);
-  const seen = new Set<string>();
+  const isPresidente = cargos.length === 1 && cargos[0] === "presidente";
+  const seenName = new Map<string, number>();
   const rows: CandidateOut[] = [];
   list.forEach((p, idx) => {
     if (!p?.nome) return;
+    const nome = String(p.nome).trim();
+    const nNome = normalize(nome);
+
+    // 1. Falecidos — blacklist
+    if (DECEASED_BLACKLIST.has(nNome)) {
+      console.log(`[filter] dropped deceased: ${nome}`);
+      return;
+    }
+    for (const dead of DECEASED_BLACKLIST) {
+      if (nNome.includes(dead)) { console.log(`[filter] dropped deceased(match): ${nome}`); return; }
+    }
+
+    // 2. UF resolvida pelo dicionário (IA não define UF livremente)
+    const uf = resolveUF(p.estado);
+
+    // 3. Status canônico
+    const statusCanonical = canonicalStatus(String(p.status ?? ""));
+    const categoria = STATUS_TO_CATEGORIA[statusCanonical] ?? "pre_candidato";
+
+    // 4. Confidence — para Presidente, exigir ≥85 ou estar no PRESIDENTIAL_2026
+    const conf = Number(p.confidence ?? 0);
+    const key = nameKey(nome);
+    if (isPresidente) {
+      const isNotorio = PRESIDENTIAL_2026.has(key) || [...PRESIDENTIAL_2026].some((k) => key.includes(k.split("|")[0]) && key.includes(k.split("|")[1] ?? ""));
+      if (conf < 85 && !isNotorio) {
+        console.log(`[filter] dropped low-conf presidente: ${nome} conf=${conf}`);
+        return;
+      }
+    }
+
+    // 5. Dedup por nome normalizado (primeiro+último token)
+    const prevIdx = seenName.get(key);
+    if (prevIdx !== undefined) {
+      // mantém o de maior confidence / nome mais completo
+      const prev = rows[prevIdx];
+      if (nome.length > prev.nome.length) prev.nome = nome;
+      return;
+    }
+    seenName.set(key, rows.length);
+
     const cargoKey = normalizeCargoKey(p.cargo ?? "") ?? (cargos[0] ?? null);
-    const uf = (p.estado ?? "").toString().toUpperCase().slice(0, 2) || null;
-    const status = normalize(p.status ?? "");
-    const categoria = STATUS_TO_CATEGORIA[status] ?? "lideranca_local";
-    const dedupKey = `${normalize(p.nome)}|${cargoKey ?? ""}|${uf ?? ""}|${normalize(p.cidade ?? "")}`;
-    if (seen.has(dedupKey)) return;
-    seen.add(dedupKey);
     rows.push({
-      id: `web-${idx}-${normalize(p.nome).replace(/\s+/g, "-")}`,
+      id: `web-${idx}-${nNome.replace(/\s+/g, "-")}`,
       tse_id: null,
-      nome: String(p.nome),
+      nome,
       nome_urna: null,
       partido_sigla: p.partido ? String(p.partido).toUpperCase().slice(0, 16) : null,
       partido_nome: null,
@@ -381,12 +415,12 @@ Retorne até 30 candidatos. JSON válido.`;
       ano_eleicao: null,
       foto_url: null,
       redes_sociais: null,
-      popularidade: 0.7,
+      popularidade: Math.max(0.5, Math.min(1, conf / 100)),
       similarity: 1,
       total_count: 0,
     });
   });
-  console.log(`[ai] extracted ${rows.length} candidate(s) via ${aiResult.provider}`);
+  console.log(`[ai] extracted ${rows.length} candidate(s) via ${aiResult.provider} (presidente=${isPresidente})`);
   return { rows, error: null };
 }
 
