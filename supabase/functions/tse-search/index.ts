@@ -157,20 +157,20 @@ async function getOrdinaryElections(): Promise<TseElection[]> {
 }
 
 async function resolveElection(kind: "F" | "M") {
+  // Foco 2026: só usar eleição oficial se for do ano-alvo. Sem fallback para 2022/2024.
   const rows = (await getOrdinaryElections())
-    .filter((e) => e.tipoAbrangencia === kind && Number(e.ano) <= TARGET_YEAR)
-    .sort((a, b) => Number(b.ano) - Number(a.ano) || Number(b.id) - Number(a.id));
-
-  const exact = rows.find((e) => Number(e.ano) === TARGET_YEAR);
-  const election = exact ?? rows[0];
-  if (!election) throw new Error(`TSE election not found for ${kind}`);
+    .filter((e) => e.tipoAbrangencia === kind && Number(e.ano) === TARGET_YEAR)
+    .sort((a, b) => Number(b.id) - Number(a.id));
+  const election = rows[0];
+  if (!election) return null;
   return {
     id: Number(election.id),
     ano: Number(election.ano),
     name: election.nomeEleicao,
-    isTargetYear: Number(election.ano) === TARGET_YEAR,
+    isTargetYear: true,
   };
 }
+
 
 const municipiosCache = new Map<string, Array<{ codigo: string; nome: string; normalized: string }>>();
 
