@@ -19,17 +19,19 @@ const REQUIRES_ESTADO = new Set([
 ]);
 
 function validate(f: Filters): { ok: boolean; message?: string } {
+  // Busca por nome ignora filtros mínimos
+  if (f.q?.trim()) return { ok: true };
   const cargo = f.cargo?.[0];
-  if (!cargo && !f.q?.trim()) {
+  if (!cargo) {
     return { ok: false, message: "Selecione ao menos o cargo ou informe um nome." };
   }
-  if (cargo && REQUIRES_MUNICIPIO.has(cargo)) {
+  if (REQUIRES_MUNICIPIO.has(cargo)) {
     if (!f.estado?.[0] || !f.municipio?.trim()) {
       const label = cargo === "vereador" ? "vereadores" : "prefeitos";
       return { ok: false, message: `Para buscar ${label}, selecione estado e município.` };
     }
   }
-  if (cargo && REQUIRES_ESTADO.has(cargo) && !f.estado?.[0]) {
+  if (REQUIRES_ESTADO.has(cargo) && !f.estado?.[0]) {
     return { ok: false, message: "Para buscar este cargo, selecione um estado." };
   }
   return { ok: true };
