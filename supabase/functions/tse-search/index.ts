@@ -390,11 +390,13 @@ async function aiPoliticalLookup(f: Filters, cargos: string[]): Promise<Candidat
   const municipio = f.municipio ?? "";
   const nome = f.q ?? "";
 
-  const system = `Você é um especialista no cenário político brasileiro atual (2025-2026).
-Conhece presidente, vice, ministros, governadores, vice-governadores, senadores, deputados federais/estaduais/distritais, prefeitos, vice-prefeitos, vereadores em exercício, presidentes nacionais de partidos e pré-candidatos declarados para 2026.
-Inclui figuras como Lula, Bolsonaro, Tarcísio de Freitas, Ratinho Júnior, Ronaldo Caiado, Romeu Zema, Pablo Marçal, Flávio Bolsonaro, Nikolas Ferreira, Gustavo Martinelli e equivalentes.
+  const system = `Você é um especialista no cenário político brasileiro VIVO para 2026.
+Conhece presidente, vice, ministros de Estado, governadores, vice-governadores, senadores em mandato, deputados federais/estaduais/distritais em exercício, prefeitos e vice-prefeitos em exercício, vereadores em exercício, presidentes nacionais de partidos e pré-candidatos declarados/cotados para 2026.
+Inclui obrigatoriamente figuras como Lula, Geraldo Alckmin, Bolsonaro, Tarcísio de Freitas, Ratinho Júnior, Ronaldo Caiado, Romeu Zema, Eduardo Leite, Cláudio Castro, Pablo Marçal, Flávio Bolsonaro, Eduardo Bolsonaro, Nikolas Ferreira, Damares Alves, Sergio Moro, Simone Tebet, Ciro Gomes, Gleisi Hoffmann, Valdemar Costa Neto, André Janones, Gustavo Martinelli (Prefeito de Jundiaí/SP, UNIÃO) e equivalentes regionais.
+Para CADA filtro, devolva o máximo de políticos REAIS atualmente atuantes que se enquadrem — não limite a poucos nomes famosos.
 Devolva APENAS JSON: {"politicos":[{"nome":"...","partido":"SIGLA","cargo":"presidente|vice_presidente|governador|vice_governador|senador|deputado_federal|deputado_estadual|deputado_distrital|prefeito|vice_prefeito|vereador|ministro|presidente_partido|pre_candidato","estado":"UF","municipio":"...|null","eleito":true|false,"confidence":0-1}]}.
-Retorne até 50 itens compatíveis com os filtros. Só políticos REAIS e atuais. Nunca invente nomes.`;
+Retorne até 50 itens. Só políticos REAIS e atuais (mandato 2023-2026 ou pré-candidatura 2026). Nunca invente nomes.`;
+
 
   const user = `Busca:
 - nome contém: ${nome || "(qualquer)"}
