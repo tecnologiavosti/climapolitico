@@ -62,6 +62,8 @@ export default function CandidatesCatalog() {
   const notice = data?.notice ?? null;
   const lastUpdated = data?.lastUpdated ?? null;
   const nationalOnly = data?.nationalOnly ?? false;
+  const partial = data?.partial ?? false;
+  const sources = data?.sources ?? [];
   const fallback = !!data?.fallback || isError;
   const page = filters.page ?? 0;
   const exactTotal = data?.exactTotal !== false;
@@ -143,12 +145,18 @@ export default function CandidatesCatalog() {
         </p>
       </div>
 
-      <div className="flex items-center gap-2 text-xs bg-primary/5 text-primary border border-primary/20 rounded-md px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 text-xs bg-primary/5 text-primary border border-primary/20 rounded-md px-3 py-2">
         <Sparkles className="h-3 w-3" />
-        <span className="font-medium">Cenário político atualizado em tempo real — 2026</span>
-        {lastUpdated && <span className="text-muted-foreground">· última atualização {new Date(lastUpdated).toLocaleDateString("pt-BR")}</span>}
-        {nationalOnly && <span className="text-muted-foreground">· base viva (sem TSE histórico)</span>}
+        <span className="font-medium">Crawler eleitoral 2026 — TSE oficial + busca web em tempo real</span>
+        {lastUpdated && <span className="text-muted-foreground">· atualizado {new Date(lastUpdated).toLocaleTimeString("pt-BR")}</span>}
+        {sources.length > 0 && <span className="text-muted-foreground">· fontes: {sources.join(", ")}</span>}
       </div>
+
+      {partial && (
+        <div className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 rounded-md px-3 py-2">
+          Resultado parcial — o crawler atingiu o tempo limite. Refine pelo município ou estado para coleta completa.
+        </div>
+      )}
 
       <CatalogFilters
         filters={rawFilters}
@@ -175,8 +183,8 @@ export default function CandidatesCatalog() {
       {busy ? (
         <div className="space-y-3">
           <div className="text-center space-y-1">
-            <p className="text-sm font-medium">Consultando internet em tempo real…</p>
-            <p className="text-xs text-muted-foreground">Buscando candidatos compatíveis…</p>
+            <p className="text-sm font-medium">Consultando bases eleitorais…</p>
+            <p className="text-xs text-muted-foreground">TSE oficial + busca web em tempo real — pode levar até 60s para coletas amplas.</p>
           </div>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-56 w-full" />)}

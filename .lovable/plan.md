@@ -1,71 +1,93 @@
 
-# Refator Catálogo de Candidatos — Base TSE Nacional
+# Crawler Estruturado — Catálogo Político 2026
 
-## 1. Nova tabela `politicians` (substitui `public_candidates_catalog` como fonte do catálogo)
+## Realidade técnica (leia antes de aprovar)
 
-Migration cria:
+Não existe nenhuma fonte única que entregue "500 vereadores de Lavras 2026" hoje:
 
-- `politicians` com colunas: `id`, `tse_id` (SQ_CANDIDATO), `nome`, `nome_urna`, `nome_normalizado`, `cpf_hash`, `partido_sigla`, `partido_nome`, `numero_partido`, `cargo` (enum textual: presidente, vice_presidente, governador, vice_governador, senador, deputado_federal, deputado_estadual, deputado_distrital, prefeito, vice_prefeito, vereador, ministro, presidente_partido), `regiao` (norte/nordeste/centro_oeste/sudeste/sul/nacional), `estado` (UF), `municipio`, `eleito` (bool), `ativo` (bool), `ano_eleicao`, `foto_url`, `redes_sociais` (jsonb), `popularidade` (numeric), `search_tsv` (tsvector gerado), `created_at`, `updated_at`.
-- Índices: GIN em `search_tsv` e em `nome_normalizado gin_trgm_ops`; BTREE em `(cargo, estado, partido_sigla)` e `(ativo, eleito, popularidade desc)`; unique em `tse_id`.
-- Trigger `politicians_refresh` atualiza `nome_normalizado` (`unaccent(lower(nome))`) e `search_tsv` em insert/update.
-- RLS: SELECT público (`anon`, `authenticated`); INSERT/UPDATE/DELETE restritos a `service_role` (ETL).
-- GRANTS conforme regra do projeto.
-- RPC `search_politicians(q, p_cargo[], p_partido[], p_regiao[], p_estado[], p_municipio, p_only_eleitos, p_limit, p_offset)` retornando rows + `total_count` + `suggestions` (top 5 via similarity quando q não retorna nada).
-- RPC `suggest_politicians(q, limit)` usando `similarity()` para "Você quis dizer…".
+- **TSE 2026**: registro de candidaturas só abre em **agosto/2026**. Antes disso, a API oficial não tem 2026.
+- **TSE 2024 (municipal) e 2022 (federal/estadual)**: já implementado, é a base sólida e paginada.
+- **TREs, Câmaras Municipais, Assembleias**: ~5.570 municípios + 27 estados, cada um com site/HTML próprio. Não há API padronizada. Escrever 5.570 scrapers é inviável e quebra a cada redesign.
+- **Scraping Google/Bing**: bloqueia bots, viola ToS, resultado instável.
+- **DuckDuckGo + Firecrawl**: viável como fallback, mas devolve links, não uma lista estruturada de 500 candidatos.
 
-## 2. Edge Function ETL `etl-tse-politicians`
+Portanto, a regra "se existem 500, retornar 500" só é cumprível **dentro da base TSE oficial** (2024 municipal + 2022 federal). Para 2026, o catálogo será necessariamente parcial até o TSE publicar — qualquer outra abordagem inventa dados.
 
-- Baixa CSVs do TSE Dados Abertos por ano (2022 federais, 2024 municipais) — URLs oficiais `cdn.tse.jus.br`.
-- Streaming + parse CSV (`;`, latin1) chunk a chunk para não estourar memória.
-- Normaliza cargo TSE → enum interno; deriva `regiao` da UF.
-- Upsert em lotes de 1000 por `tse_id`.
-- Marca `ativo=false` em registros não vistos no ciclo (soft delete).
-- Logs em `edge_function_logs`; idempotente.
-- Auth: somente `service_role` (chamado pelo cron). `verify_jwt = false` + validação por token interno.
+## O que vou construir
 
-## 3. Cron diário
+Crawler em cascata com 3 camadas reais, sem LLM gerando candidatos:
 
-- `pg_cron` + `pg_net` agendam POST diário às 04:00 BRT para a edge function.
-- Insert via tool `supabase--insert` (contém URL/key específicos do projeto).
+### Camada 1 — TSE oficial (já existe, vou reforçar)
+- `divulgacandcontas.tse.jus.br` 2024 + 2022.
+- Paginação completa por município (sem truncar): remover o limite atual de 120 municípios, substituir por **streaming com cache em memória + timeout suave**. Se passar de 60s, retorna o que coletou e marca `partial: true`.
+- Concorrência: 8 requests paralelos com retry exponencial (3 tentativas).
 
-## 4. Seed inicial
+### Camada 2 — Firecrawl search (fallback estruturado)
+- Quando TSE não tem o cargo (Ministro, Presidente de partido, pré-candidato 2026) **ou** quando usuário busca por nome livre.
+- Usa connector Firecrawl: `search(query, { limit: 50, scrapeOptions: { formats: ['markdown'] } })`.
+- Query builder determinístico:
+  - cargo + cidade + UF + "2026" / "candidatos" / "eleitos"
+  - nome puro quando informado
+- Parse: extrai nome/partido/cargo de listas estruturadas (Wikipedia, G1, UOL, sites oficiais). **Não pede pro LLM inventar** — só usa LLM (Cerebras) para normalizar nomes parseados.
 
-- Edge function dispara automaticamente no primeiro deploy via botão admin (não bloqueia migration).
-- Admin: botão "Sincronizar TSE agora" em `AdminCandidates.tsx`.
+### Camada 3 — Cerebras (apenas normalização)
+- Correção ortográfica de nome digitado ("gustav martinel" → "Gustavo Martinelli").
+- Deduplicação semântica ("Carlos Eduardo Leite" == "Eduardo Leite").
+- **Nunca** gera lista de candidatos.
 
-## 5. Frontend
+## Pipeline
 
-- `useCatalogSearch.ts`: trocar RPC `search_catalog` → `search_politicians`; expor `suggestions` e `totalCount`.
-- `CatalogFilters.tsx`: filtros por cargo (lista completa), partido (autocomplete), região, estado (UF), município (texto), toggle "Somente eleitos".
-- `CandidatesCatalog.tsx`: paginação tradicional 50/página (substitui scroll infinito conforme pedido); banner "Você quis dizer: X, Y, Z?" quando `total=0` e `suggestions.length>0`.
-- `CandidateCatalogCard.tsx`: já cobre foto/nome/partido/cargo/estado/redes; adicionar badge "Eleito".
-- Remover toda referência ao catálogo antigo `public_candidates_catalog` no frontend do catálogo (a tabela permanece para outras features que dependem dela).
+```text
+filtros → queryBuilder → [TSE cascade] → [Firecrawl fallback]
+       → normalize(UF dict) → dedupe(nameKey) → paginate(50)
+       → { rows, total, partial, sources[] }
+```
 
-## 6. Busca fuzzy
+## Schema de resposta
 
-- 100% no banco via `pg_trgm` + `unaccent`:
-  - tsquery em `search_tsv` (peso A: nome, B: partido, C: cargo+estado)
-  - fallback `similarity(nome_normalizado, unaccent(lower(q))) > 0.25` ordenado por similaridade
-  - `suggestions`: top 5 nomes distintos por similaridade quando 0 resultados.
+```ts
+{
+  rows: Candidate[],   // página atual
+  total: number,        // total real coletado
+  page, pageSize: 50,
+  hasMore: boolean,
+  partial: boolean,     // true se crawler abortou por timeout
+  sources: ['tse-2024', 'firecrawl'],
+  last_updated: ISO,
+}
+```
 
-## 7. Arquivos
+`Candidate`: id, nome, nomeCompleto, cargo, partido, numeroPartido, cidade, estado(UF), status, fonte, confidence.
 
-Criar:
-- `supabase/functions/etl-tse-politicians/index.ts`
+## Normalização (backend, não IA)
 
-Editar:
-- `src/hooks/useCatalogSearch.ts`
-- `src/components/dashboard/CatalogFilters.tsx`
-- `src/components/dashboard/CandidateCatalogCard.tsx`
-- `src/pages/dashboard/CandidatesCatalog.tsx`
-- `src/pages/admin/AdminCandidates.tsx` (botão sync)
+- `UF_DICT` fixo (já existe) — IA nunca define UF.
+- Status whitelist: Eleito, Candidato, Ex-candidato, Mandatário, Possível presidenciável.
+- Dedupe por `firstToken|lastToken|cargo|UF`.
 
-Migrations:
-- Criação da tabela + RPCs + RLS + grants.
-- Insert (não migration) com `cron.schedule` para o job diário.
+## Frontend
 
-## 8. Observações técnicas
+- Loading com mensagens rotativas: "Consultando bases eleitorais…", "Coletando resultados…", contador parcial via SSE **opcional** (v2, não nessa entrega).
+- Banner amarelo se `partial: true`: "Resultado parcial — refine os filtros para coleta completa".
+- Paginação 50/página (já existe).
+- Logs `console.log` em FILTROS/QUERY/SOURCE/RAW/NORMALIZED/FINAL COUNT (já existem no edge — vou estender pro frontend).
 
-- Dataset TSE completo de candidatos 2022+2024 fica ~600MB descompactado. A função processa em streaming por UF para caber no tempo limite (até 150s) — se necessário, divide em múltiplas execuções por UF via parâmetro `?uf=SP`.
-- Primeiro carregamento total pode levar várias horas distribuídas (uma chamada por UF). O cron diário só pega deltas (upsert).
-- `popularidade` inicial = heurística (1.0 eleitos federais, 0.8 estaduais, 0.5 municipais); pode ser refinada depois com dados de menções.
+## Detalhes técnicos
+
+- Arquivo único: `supabase/functions/tse-search/index.ts` continua sendo o orquestrador (renomear conceitualmente para "catalog-search", mas mantenho o nome do endpoint para não quebrar frontend).
+- Adiciona `firecrawlSearch()` quando: cargo ∈ {ministro, presidente_partido, pre_candidato} OU `q` preenchido sem cargo OU TSE devolve 0.
+- Cerebras: chamada única no final só pra dedupe semântica + correção de `q`.
+- Requer connector **Firecrawl** linkado (vou pedir confirmação antes de chamar `standard_connectors--connect`).
+
+## O que NÃO vou fazer (e por quê)
+
+- ❌ Scrapers individuais por TRE/Câmara/Assembleia → 5.000+ alvos sem padrão, manutenção impossível.
+- ❌ Scraping direto Google/Bing → bloqueio + ToS.
+- ❌ LLM gerando lista de candidatos → alucinação garantida (foi o problema anterior).
+- ❌ Garantir "500 de 500" para 2026 antes do TSE publicar → impossível, qualquer um que prometa isso está inventando.
+
+## Confirmações que preciso
+
+1. **Aprova essa arquitetura realista** (TSE + Firecrawl + Cerebras-só-normaliza), ciente de que 2026 será parcial até agosto?
+2. **Posso linkar o connector Firecrawl** agora? (necessário para camada 2)
+3. **Cargos não-TSE** (Ministro, Presidente de partido): aceita que venham só de Firecrawl + Wikipedia, com `confidence < 100` e badge "fonte: web"?
