@@ -44,7 +44,9 @@ const ALL = "__all__";
 export function CatalogFilters({ filters, onChange, totalResults }: Props) {
   // Single-select wrappers (RPC accepts arrays — pass [v] or undefined)
   const setSingle = (k: "cargo" | "partido" | "regiao" | "estado", v: string) => {
-    onChange({ ...filters, page: 0, [k]: v === ALL ? undefined : [v] });
+    const next = { ...filters, page: 0, [k]: v === ALL ? undefined : [v] };
+    console.log(`[CatalogFilters] setSingle ${k} =`, v, "→ next:", next);
+    onChange(next);
   };
 
   const hasFilters = !!(
@@ -102,7 +104,11 @@ export function CatalogFilters({ filters, onChange, totalResults }: Props) {
           <Input
             placeholder="Município"
             value={filters.municipio ?? ""}
-            onChange={(e) => onChange({ ...filters, page: 0, municipio: e.target.value })}
+            onChange={(e) => {
+              const next = { ...filters, page: 0, municipio: e.target.value };
+              console.log("[CatalogFilters] municipio =", e.target.value, "→ next:", next);
+              onChange(next);
+            }}
           />
 
           <div className="flex items-center gap-2 px-2 border rounded-md">
