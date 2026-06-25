@@ -415,14 +415,14 @@ function matchesClientFilters(c: CandidateOut, f: Filters) {
     const set = new Set(f.regiao.map((r) => normalize(r)));
     if (!c.regiao || !set.has(normalize(c.regiao))) return false;
   }
-  if (f.municipio && normalize(c.municipio) !== normalize(f.municipio)) return false;
+  if (f.municipio && normalizeForSearch(c.municipio) !== normalizeForSearch(f.municipio)) return false;
   if (f.partido?.length) {
     const set = new Set(f.partido.map((p) => normalize(p)));
     if (!c.partido_sigla || !set.has(normalize(c.partido_sigla))) return false;
   }
   if (f.q) {
     const haystack = `${c.nome} ${c.nome_urna ?? ""}`;
-    if (scoreTextSimilarity(haystack, f.q) < 0.58) return false;
+    if (scoreTextSimilarity(haystack, f.q) < 0.65) return false;
   }
   if (f.onlyEleitos && !c.eleito) return false;
   return true;
