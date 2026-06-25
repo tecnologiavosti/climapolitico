@@ -104,7 +104,11 @@ export function CatalogFilters({ filters, onChange, totalResults }: Props) {
           <Input
             placeholder="Município"
             value={filters.municipio ?? ""}
-            onChange={(e) => onChange({ ...filters, page: 0, municipio: e.target.value })}
+            onChange={(e) => {
+              const next = { ...filters, page: 0, municipio: e.target.value };
+              console.log("[CatalogFilters] municipio =", e.target.value, "→ next:", next);
+              onChange(next);
+            }}
           />
 
           <div className="flex items-center gap-2 px-2 border rounded-md">
