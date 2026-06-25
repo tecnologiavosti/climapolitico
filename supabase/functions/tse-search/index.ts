@@ -222,6 +222,7 @@ interface CandidateOut {
   estado: string | null;
   municipio: string | null;
   eleito: boolean;
+  categoria: "eleito" | "ex_candidato" | "pre_candidato" | "lideranca_local" | null;
   ano_eleicao: number | null;
   foto_url: string | null;
   redes_sociais: Record<string, string> | null;
