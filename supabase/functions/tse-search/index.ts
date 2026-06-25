@@ -387,6 +387,33 @@ function matchesClientFilters(c: CandidateOut, f: Filters) {
   return true;
 }
 
+function pickSourcesForCargos(cargos: string[]): string[] {
+  const s = new Set<string>();
+  for (const c of cargos) {
+    if (c === "vereador" || c === "prefeito" || c === "vice_prefeito") {
+      s.add("Prefeitura municipal (site oficial)");
+      s.add("Câmara Municipal (site oficial)");
+      s.add("TRE do estado");
+      s.add("Diário Oficial do Município");
+    } else if (c === "deputado_federal" || c === "senador" || c === "presidente" || c === "vice_presidente") {
+      s.add("Câmara dos Deputados (camara.leg.br)");
+      s.add("Senado Federal (senado.leg.br)");
+      s.add("TSE / DivulgaCandContas");
+    } else if (c === "governador" || c === "vice_governador" || c === "deputado_estadual" || c === "deputado_distrital") {
+      s.add("Assembleia Legislativa estadual / Câmara Distrital");
+      s.add("Governo do estado (site oficial)");
+      s.add("TSE / DivulgaCandContas");
+    } else if (c === "ministro") {
+      s.add("gov.br / Casa Civil");
+    } else if (c === "presidente_partido") {
+      s.add("Site oficial do partido / TSE registro de diretórios");
+    } else if (c === "pre_candidato") {
+      s.add("Imprensa nacional e regional (Folha, G1, Estadão, UOL)");
+    }
+  }
+  return [...s];
+}
+
 async function aiPoliticalLookup(f: Filters, cargos: string[]): Promise<CandidateOut[]> {
   if (!LOVABLE_API_KEY) return [];
   const cargoNames = cargos.map((c) => CARGO_LABEL[c] ?? c).join(", ");
@@ -394,8 +421,13 @@ async function aiPoliticalLookup(f: Filters, cargos: string[]): Promise<Candidat
   const partidos = (f.partido ?? []).join(", ");
   const municipio = f.municipio ?? "";
   const nome = f.q ?? "";
+  const sources = pickSourcesForCargos(cargos);
+  console.log("[tse-search] AI sources for cargos", { cargos, sources });
 
   const system = `Você é um especialista no cenário político brasileiro VIVO para 2026.
+Consulte mentalmente APENAS as fontes oficiais adequadas ao(s) cargo(s) pedido(s):
+${sources.map((s) => `- ${s}`).join("\n")}
+Nunca retorne políticos nacionais famosos quando o filtro for municipal/estadual específico. Se a busca for por vereador/prefeito de uma cidade X, só liste pessoas que de fato ocupam ou disputam esse cargo nessa cidade.
 Conhece presidente, vice, ministros de Estado, governadores, vice-governadores, senadores em mandato, deputados federais/estaduais/distritais em exercício, prefeitos e vice-prefeitos em exercício, vereadores em exercício, presidentes nacionais de partidos e pré-candidatos declarados/cotados para 2026.
 Respeite TODOS os filtros de forma determinística. Se cargo, UF, região ou município forem informados, só retorne políticos que correspondam exatamente a esses filtros.
 Nunca use políticos nacionais famosos para preencher busca municipal ou regional. Se não houver correspondência exata, retorne lista vazia.
