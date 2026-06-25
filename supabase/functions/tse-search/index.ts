@@ -998,12 +998,27 @@ Deno.serve(async (req) => {
     // Etapa 2: enviar dados brutos para Cerebras fazer matching/ranking/dedup.
     // Cerebras NÃO inventa candidatos — só rankeia o que veio das fontes públicas.
     const rawPool = [...liveBase.rows, ...tsePage.rows, ...auxiliaryRows];
+
+    // Etapa 2b: fallback dinâmico via IA — se nenhuma fonte estruturada retornou nada,
+    // pede à IA para sugerir políticos reais conhecidos a partir dos filtros (vereadores
+    // municipais, lideranças locais que não estão na base de 28k).
+    let dynamicAiRows: CandidateOut[] = [];
+    let dynamicAiError: string | null = null;
+    let dynamicAiUsed = false;
+    if (page === 0 && rawPool.length === 0) {
+      dynamicAiUsed = true;
+      const dyn = await aiDynamicLookup(f, liveCargos);
+      dynamicAiRows = dyn.rows;
+      dynamicAiError = dyn.error;
+      rawPool.push(...dynamicAiRows);
+    }
+
     const aiResult = page === 0
       ? await aiPoliticalLookup(f, liveCargos, rawPool)
       : { rows: rawPool as CandidateOut[], error: null as string | null };
 
     const aiRows = aiResult.rows;
-    const aiError = aiResult.error;
+    const aiError = aiResult.error ?? dynamicAiError;
 
     const sourceUsed = {
       ai: aiRows.length,
