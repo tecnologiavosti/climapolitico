@@ -133,6 +133,6 @@ export function CatalogFilters({ filters, onChange, totalResults, disabled, onSu
           )}
         </div>
       </div>
-    </div>
+    </fieldset>
   );
 }
