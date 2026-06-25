@@ -415,93 +415,123 @@ function pickSourcesForCargos(cargos: string[]): string[] {
   return [...s];
 }
 
-async function aiPoliticalLookup(f: Filters, cargos: string[]): Promise<{ rows: CandidateOut[]; error: string | null }> {
-  if (!LOVABLE_API_KEY) {
-    console.warn("[tse-search] AI lookup skipped: LOVABLE_API_KEY missing");
-    return { rows: [], error: "LOVABLE_API_KEY ausente" };
+async function aiPoliticalLookup(f: Filters, cargos: string[], rawCandidates: CandidateOut[]): Promise<{ rows: CandidateOut[]; error: string | null }> {
+  if (!CEREBRAS_API_KEY) {
+    console.warn("[tse-search] AI lookup skipped: CEREBRAS_API_KEY missing");
+    return { rows: rawCandidates, error: "CEREBRAS_API_KEY ausente" };
+  }
+  if (rawCandidates.length === 0) {
+    return { rows: [], error: null };
   }
   const cargoNames = cargos.map((c) => CARGO_LABEL[c] ?? c).join(", ");
   const ufs = (f.estado ?? []).join(", ");
   const partidos = (f.partido ?? []).join(", ");
   const municipio = f.municipio ?? "";
   const nome = f.q ?? "";
-  const sources = pickSourcesForCargos(cargos);
-  console.log("Calling external political search");
-  console.log("Source used:", sources);
-  console.log("[tse-search] AI sources for cargos", { cargos, sources });
+  console.log("Calling Cerebras matching engine", { model: CEREBRAS_MODEL, candidates: rawCandidates.length });
+  console.log("Source used:", "cerebras");
 
-  const system = `Você é um especialista no cenário político brasileiro VIVO para 2026.
-Consulte mentalmente APENAS as fontes oficiais adequadas ao(s) cargo(s) pedido(s):
-${sources.map((s) => `- ${s}`).join("\n")}
-Nunca retorne políticos nacionais famosos quando o filtro for municipal/estadual específico. Se a busca for por vereador/prefeito de uma cidade X, só liste pessoas que de fato ocupam ou disputam esse cargo nessa cidade.
-Conhece presidente, vice, ministros de Estado, governadores, vice-governadores, senadores em mandato, deputados federais/estaduais/distritais em exercício, prefeitos e vice-prefeitos em exercício, vereadores em exercício, presidentes nacionais de partidos e pré-candidatos declarados/cotados para 2026.
-Respeite TODOS os filtros de forma determinística. Se cargo, UF, região ou município forem informados, só retorne políticos que correspondam exatamente a esses filtros.
-Nunca use políticos nacionais famosos para preencher busca municipal ou regional. Se não houver correspondência exata, retorne lista vazia.
-Para CADA filtro, devolva o máximo de políticos REAIS atualmente atuantes que se enquadrem — não limite a poucos nomes famosos.
-Devolva APENAS JSON: {"politicos":[{"nome":"...","partido":"SIGLA","cargo":"presidente|vice_presidente|governador|vice_governador|senador|deputado_federal|deputado_estadual|deputado_distrital|prefeito|vice_prefeito|vereador|ministro|presidente_partido|pre_candidato","estado":"UF","municipio":"...|null","eleito":true|false,"confidence":0-1}]}.
-Retorne até 50 itens. Só políticos REAIS e atuais (mandato 2023-2026 ou pré-candidatura 2026). Nunca invente nomes.`;
+  const system = `Você é um motor de matching político brasileiro.
 
+Receberá:
+- filtros do usuário
+- candidatos brutos vindos de fontes públicas
 
-  const user = `Busca:
+Tarefas:
+1. Corrigir erros ortográficos
+2. Normalizar acentos
+3. Aplicar matching semântico
+4. Rankear resultados por relevância
+5. Nunca inventar candidatos — use SOMENTE nomes que aparecem na lista de candidatos brutos.
+
+Retornar APENAS JSON no formato:
+{"resultados":[{"nome":"","cargo":"","partido":"","estado":"","cidade":"","score":0}]}
+
+score: 0-100 (relevância em relação aos filtros).
+Devolva todos os candidatos compatíveis ordenados por score decrescente. Não invente cargos, partidos ou cidades — copie dos candidatos brutos.`;
+
+  const compactCandidates = rawCandidates.slice(0, 200).map((c, i) => ({
+    i,
+    nome: c.nome,
+    cargo: c.cargo,
+    partido: c.partido_sigla,
+    estado: c.estado,
+    cidade: c.municipio,
+  }));
+
+  const user = `Filtros do usuário:
 - nome contém: ${nome || "(qualquer)"}
 - cargos: ${cargoNames || "qualquer"}
 - estados (UF): ${ufs || "qualquer"}
 - partidos: ${partidos || "qualquer"}
 - município: ${municipio || "qualquer"}
-- somente eleitos/em exercício: ${f.onlyEleitos ? "sim" : "não"}`;
+- somente eleitos: ${f.onlyEleitos ? "sim" : "não"}
+
+Candidatos brutos (fontes públicas TSE/Wikidata):
+${JSON.stringify(compactCandidates)}`;
 
   try {
-    const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const r = await fetch("https://api.cerebras.ai/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Lovable-API-Key": LOVABLE_API_KEY,
-        "X-Lovable-AIG-SDK": "rest",
+        Authorization: `Bearer ${CEREBRAS_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: CEREBRAS_MODEL,
         messages: [{ role: "system", content: system }, { role: "user", content: user }],
         response_format: { type: "json_object" },
+        temperature: 0.1,
+        max_tokens: 4000,
       }),
     });
     if (!r.ok) {
       const body = await r.text().catch(() => "");
-      console.error("External results: [] — AI lookup failed:", r.status, body);
-      const reason = r.status === 429
-        ? "Limite de uso da IA atingido temporariamente. Tente novamente em alguns instantes."
-        : r.status === 402
-          ? "Créditos de IA esgotados no workspace."
-          : `IA indisponível (HTTP ${r.status}).`;
-      return { rows: [], error: reason };
+      console.error("External results: [] — Cerebras failed:", r.status, body);
+      // Fallback: devolve dados brutos filtrados sem ranking IA.
+      return {
+        rows: rawCandidates,
+        error: r.status === 429
+          ? "Cerebras com limite de uso. Mostrando dados brutos sem ranking."
+          : `Cerebras indisponível (HTTP ${r.status}). Mostrando dados brutos sem ranking.`,
+      };
     }
     const j = await r.json();
     const parsed = JSON.parse(j?.choices?.[0]?.message?.content ?? "{}");
-    const list: any[] = parsed?.politicos ?? [];
-    console.log("External results:", { raw: list.length });
-    const mapped = list.map((p, i) => ({
-      id: `ai-${i}-${normalize(p.nome).replace(/\s+/g, "-")}`,
-      tse_id: null,
-      nome: String(p.nome ?? ""),
-      nome_urna: null,
-      partido_sigla: p.partido ? String(p.partido).toUpperCase() : null,
-      partido_nome: null,
-      numero_partido: null,
-      cargo: normalizeCargoKey(String(p.cargo ?? "")) ?? String(p.cargo ?? null),
-      regiao: p.estado ? (REGION_OF_UF[String(p.estado).toUpperCase()] ?? null) : null,
-      estado: p.estado ? String(p.estado).toUpperCase() : null,
-      municipio: p.municipio ?? null,
-      eleito: !!p.eleito,
-      ano_eleicao: null,
-      foto_url: null,
-      redes_sociais: null,
-      popularidade: Number(p.confidence ?? 0.5),
-      similarity: Number(p.confidence ?? 0.5),
-      total_count: 0,
-    } satisfies CandidateOut)).filter((row) => matchesClientFilters(row, f));
+    const list: any[] = parsed?.resultados ?? parsed?.politicos ?? [];
+    console.log("Cerebras results:", { raw: list.length });
+
+    // Mapear de volta para os candidatos brutos (Cerebras NÃO inventa: usa apenas nomes existentes).
+    const byKey = new Map<string, CandidateOut>();
+    for (const c of rawCandidates) {
+      byKey.set(`${normalize(c.nome)}|${c.estado ?? ""}|${normalize(c.municipio)}`, c);
+    }
+    const ranked: CandidateOut[] = [];
+    const seen = new Set<string>();
+    for (const p of list) {
+      const key = `${normalize(p.nome)}|${(p.estado ?? "").toUpperCase()}|${normalize(p.cidade)}`;
+      const match = byKey.get(key)
+        ?? rawCandidates.find((c) => normalize(c.nome) === normalize(p.nome));
+      if (!match) continue;
+      const dedup = `${normalize(match.nome)}|${match.cargo ?? ""}|${match.estado ?? ""}|${normalize(match.municipio)}`;
+      if (seen.has(dedup)) continue;
+      seen.add(dedup);
+      const score = Number(p.score ?? 50) / 100;
+      ranked.push({ ...match, similarity: score, popularidade: score });
+    }
+
+    const mapped = ranked.filter((row) => matchesClientFilters(row, f));
+    // Se Cerebras descartou tudo mas há dados brutos válidos, devolve os brutos como fallback.
+    if (mapped.length === 0 && rawCandidates.length > 0) {
+      return { rows: rawCandidates.filter((row) => matchesClientFilters(row, f)), error: null };
+    }
     return { rows: mapped, error: null };
   } catch (error) {
     console.error("Search error", error);
-    return { rows: [], error: error instanceof Error ? error.message : "Falha na IA" };
+    return {
+      rows: rawCandidates,
+      error: error instanceof Error ? `Cerebras: ${error.message}` : "Falha no matching IA",
+    };
   }
 }
 
