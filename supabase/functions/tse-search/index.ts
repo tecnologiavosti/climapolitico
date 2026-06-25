@@ -450,6 +450,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
     const f = await readFilters(req);
+    console.log("SERVER RECEIVED", JSON.stringify(f));
     console.log("FILTERS:", JSON.stringify(f));
     if (f.cargos.length === 0 && !f.q) {
       throw new Error("Selecione ao menos um cargo ou informe um nome para busca.");
