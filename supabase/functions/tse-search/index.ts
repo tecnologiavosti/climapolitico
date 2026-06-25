@@ -1257,15 +1257,31 @@ Deno.serve(async (req) => {
     // Etapa 2b: fallback dinâmico via IA — se nenhuma fonte estruturada retornou nada,
     // pede à IA para sugerir políticos reais conhecidos a partir dos filtros (vereadores
     // municipais, lideranças locais que não estão na base de 28k).
+    // Etapa 2b: fallback em camadas — cache (Supabase) → DuckDuckGo+Cerebras → IA pura.
     let dynamicAiRows: CandidateOut[] = [];
     let dynamicAiError: string | null = null;
     let dynamicAiUsed = false;
+    let cacheRows: CandidateOut[] = [];
+    let ddgRows: CandidateOut[] = [];
     if (page === 0 && rawPool.length === 0) {
-      dynamicAiUsed = true;
-      const dyn = await aiDynamicLookup(f, liveCargos);
-      dynamicAiRows = dyn.rows;
-      dynamicAiError = dyn.error;
-      rawPool.push(...dynamicAiRows);
+      // 1) cache local
+      cacheRows = await catalogCacheLookup(f, liveCargos);
+      rawPool.push(...cacheRows);
+
+      // 2) DuckDuckGo + Cerebras
+      if (rawPool.length === 0) {
+        ddgRows = await ddgCerebrasLookup(f, liveCargos);
+        rawPool.push(...ddgRows);
+      }
+
+      // 3) IA pura (conhecimento do modelo)
+      if (rawPool.length === 0) {
+        dynamicAiUsed = true;
+        const dyn = await aiDynamicLookup(f, liveCargos);
+        dynamicAiRows = dyn.rows;
+        dynamicAiError = dyn.error;
+        rawPool.push(...dynamicAiRows);
+      }
     }
 
     const aiResult = page === 0
