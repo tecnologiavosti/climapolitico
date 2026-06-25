@@ -190,7 +190,9 @@ async function resolvePublishedElectionsBeforeTarget(kind: "F" | "M", maxCount =
 
 const municipiosCache = new Map<string, Array<{ codigo: string; nome: string; normalized: string }>>();
 
-async function getMunicipios(uf: string, idEleicao: number) {
+type MunicipioTse = { codigo: string; nome: string; normalized: string };
+
+async function getMunicipios(uf: string, idEleicao: number): Promise<MunicipioTse[]> {
   const key = `${uf}-${idEleicao}`;
   if (municipiosCache.has(key)) return municipiosCache.get(key)!;
   try {
@@ -295,11 +297,11 @@ async function fetchMunicipalByCode(uf: string, municipio: { codigo: string; nom
   }
 }
 
-async function resolveMunicipiosForUf(uf: string, municipioNome: string | null | undefined, election: { id: number }) {
+async function resolveMunicipiosForUf(uf: string, municipioNome: string | null | undefined, election: { id: number }): Promise<MunicipioTse[]> {
   const munis = await getMunicipios(uf, election.id);
   if (!municipioNome) return munis;
   const target = stripAccents(municipioNome);
-  const muni = munis.find((m) => m.normalized === target) ?? munis.find((m) => m.normalized.includes(target));
+  const muni = munis.find((m: MunicipioTse) => m.normalized === target) ?? munis.find((m: MunicipioTse) => m.normalized.includes(target));
   return muni ? [muni] : [];
 }
 
