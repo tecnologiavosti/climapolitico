@@ -1028,6 +1028,7 @@ Deno.serve(async (req) => {
       wikidata: auxiliaryRows.length,
       tse: tsePage.rows.length,
       tse2026Available,
+      aiDynamic: dynamicAiUsed ? dynamicAiRows.length : null,
     };
 
     // Dedup por (nome|cargo|estado|municipio) — aiRows já vem rankeado pelo Cerebras.
