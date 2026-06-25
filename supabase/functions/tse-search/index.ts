@@ -424,10 +424,16 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
     const f = await readFilters(req);
-    console.log("FILTROS:", JSON.stringify(f));
+    console.log("FILTERS:", JSON.stringify(f));
     if (f.cargos.length === 0 && !f.q) {
       throw new Error("Selecione ao menos um cargo ou informe um nome para busca.");
     }
+    const eletivos = f.cargos.filter((c) => !!CARGO_TO_TSE[c]);
+    const naoEletivos = f.cargos.filter((c) => NON_TSE_CARGOS.has(c));
+    const sourcePlan = eletivos.length > 0 && naoEletivos.length === 0 ? "TSE"
+      : naoEletivos.length > 0 && eletivos.length === 0 ? "WEB"
+      : eletivos.length > 0 ? "TSE+WEB" : "WEB";
+    console.log("SOURCE:", sourcePlan);
 
     const deadline = Date.now() + SOFT_TIMEOUT_MS;
     const all: OutRow[] = [];
