@@ -174,7 +174,10 @@ export default function CandidatesCatalog() {
 
       {busy ? (
         <div className="space-y-3">
-          <p className="text-sm text-muted-foreground text-center">Consultando fontes públicas em tempo real…</p>
+          <div className="text-center space-y-1">
+            <p className="text-sm font-medium">Consultando internet em tempo real…</p>
+            <p className="text-xs text-muted-foreground">Buscando candidatos compatíveis…</p>
+          </div>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-56 w-full" />)}
           </div>
