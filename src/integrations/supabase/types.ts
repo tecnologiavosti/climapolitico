@@ -2437,6 +2437,57 @@ export type Database = {
         }
         Relationships: []
       }
+      political_catalog: {
+        Row: {
+          cargo: string | null
+          city: string | null
+          confidence: number | null
+          created_at: string
+          full_name: string
+          id: string
+          normalized_name: string
+          party: string | null
+          party_number: string | null
+          region: string | null
+          source: string | null
+          state: string | null
+          status: string | null
+          updated_at: string
+        }
+        Insert: {
+          cargo?: string | null
+          city?: string | null
+          confidence?: number | null
+          created_at?: string
+          full_name: string
+          id?: string
+          normalized_name: string
+          party?: string | null
+          party_number?: string | null
+          region?: string | null
+          source?: string | null
+          state?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cargo?: string | null
+          city?: string | null
+          confidence?: number | null
+          created_at?: string
+          full_name?: string
+          id?: string
+          normalized_name?: string
+          party?: string | null
+          party_number?: string | null
+          region?: string | null
+          source?: string | null
+          state?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       political_events: {
         Row: {
           ai_cause: string | null
