@@ -53,6 +53,93 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "
 // Cargos que o TSE de candidaturas NÃO cobre — sempre via base auxiliar/IA 2026.
 const AI_ONLY_CARGOS = new Set(["ministro", "presidente_partido", "pre_candidato"]);
 
+// Cargos "nacionais/presidenciais" — nunca usar TSE histórico (evita Eymael/Padre Kelmon de 2022).
+// Sempre usar cenário político vivo 2026 + Cerebras/Wikidata.
+const NATIONAL_LIVE_CARGOS = new Set([
+  "presidente",
+  "vice_presidente",
+  "ministro",
+  "presidente_partido",
+  "pre_candidato",
+]);
+
+// Cenário político vivo 2026 — base curada de presidenciáveis e lideranças nacionais.
+// Usada quando o usuário filtra por Presidente/Vice/Ministro/Presidente de Partido/Pré-candidato.
+const LIVE_2026_CENARIO: Array<{
+  nome: string;
+  cargo: string;
+  partido_sigla: string | null;
+  estado: string | null;
+  categoria: "eleito" | "pre_candidato" | "lideranca_local";
+  popularidade: number;
+}> = [
+  // Presidente em exercício
+  { nome: "Luiz Inácio Lula da Silva", cargo: "presidente", partido_sigla: "PT", estado: "BR", categoria: "eleito", popularidade: 1.0 },
+  { nome: "Geraldo Alckmin", cargo: "vice_presidente", partido_sigla: "PSB", estado: "BR", categoria: "eleito", popularidade: 0.95 },
+  // Presidenciáveis 2026 (pré-candidatos / lideranças com pretensão nacional)
+  { nome: "Jair Bolsonaro", cargo: "pre_candidato", partido_sigla: "PL", estado: "SP", categoria: "pre_candidato", popularidade: 0.98 },
+  { nome: "Tarcísio de Freitas", cargo: "pre_candidato", partido_sigla: "REPUBLICANOS", estado: "SP", categoria: "pre_candidato", popularidade: 0.94 },
+  { nome: "Ronaldo Caiado", cargo: "pre_candidato", partido_sigla: "UNIÃO", estado: "GO", categoria: "pre_candidato", popularidade: 0.88 },
+  { nome: "Ratinho Júnior", cargo: "pre_candidato", partido_sigla: "PSD", estado: "PR", categoria: "pre_candidato", popularidade: 0.86 },
+  { nome: "Romeu Zema", cargo: "pre_candidato", partido_sigla: "NOVO", estado: "MG", categoria: "pre_candidato", popularidade: 0.87 },
+  { nome: "Simone Tebet", cargo: "pre_candidato", partido_sigla: "MDB", estado: "MS", categoria: "pre_candidato", popularidade: 0.78 },
+  { nome: "Pablo Marçal", cargo: "pre_candidato", partido_sigla: "PRTB", estado: "SP", categoria: "pre_candidato", popularidade: 0.82 },
+  { nome: "Eduardo Leite", cargo: "pre_candidato", partido_sigla: "PSDB", estado: "RS", categoria: "pre_candidato", popularidade: 0.7 },
+  { nome: "Michelle Bolsonaro", cargo: "pre_candidato", partido_sigla: "PL", estado: "DF", categoria: "pre_candidato", popularidade: 0.75 },
+  { nome: "Ciro Gomes", cargo: "pre_candidato", partido_sigla: "PSDB", estado: "CE", categoria: "pre_candidato", popularidade: 0.72 },
+  { nome: "Flávio Bolsonaro", cargo: "pre_candidato", partido_sigla: "PL", estado: "RJ", categoria: "pre_candidato", popularidade: 0.74 },
+  // Ministros-chave do governo Lula (amostra)
+  { nome: "Fernando Haddad", cargo: "ministro", partido_sigla: "PT", estado: "BR", categoria: "lideranca_local", popularidade: 0.85 },
+  { nome: "Rui Costa", cargo: "ministro", partido_sigla: "PT", estado: "BR", categoria: "lideranca_local", popularidade: 0.7 },
+  { nome: "Alexandre Padilha", cargo: "ministro", partido_sigla: "PT", estado: "BR", categoria: "lideranca_local", popularidade: 0.65 },
+  { nome: "Camilo Santana", cargo: "ministro", partido_sigla: "PT", estado: "BR", categoria: "lideranca_local", popularidade: 0.7 },
+  { nome: "Marina Silva", cargo: "ministro", partido_sigla: "REDE", estado: "BR", categoria: "lideranca_local", popularidade: 0.78 },
+  { nome: "Sonia Guajajara", cargo: "ministro", partido_sigla: "PSOL", estado: "BR", categoria: "lideranca_local", popularidade: 0.68 },
+  { nome: "Anielle Franco", cargo: "ministro", partido_sigla: "PT", estado: "BR", categoria: "lideranca_local", popularidade: 0.65 },
+  { nome: "Esther Dweck", cargo: "ministro", partido_sigla: "PT", estado: "BR", categoria: "lideranca_local", popularidade: 0.6 },
+  { nome: "Wellington Dias", cargo: "ministro", partido_sigla: "PT", estado: "BR", categoria: "lideranca_local", popularidade: 0.62 },
+  { nome: "Carlos Lupi", cargo: "ministro", partido_sigla: "PDT", estado: "BR", categoria: "lideranca_local", popularidade: 0.6 },
+  // Presidentes de partidos nacionais
+  { nome: "Gleisi Hoffmann", cargo: "presidente_partido", partido_sigla: "PT", estado: "BR", categoria: "lideranca_local", popularidade: 0.78 },
+  { nome: "Valdemar Costa Neto", cargo: "presidente_partido", partido_sigla: "PL", estado: "BR", categoria: "lideranca_local", popularidade: 0.72 },
+  { nome: "Antonio Rueda", cargo: "presidente_partido", partido_sigla: "UNIÃO", estado: "BR", categoria: "lideranca_local", popularidade: 0.6 },
+  { nome: "Marcos Pereira", cargo: "presidente_partido", partido_sigla: "REPUBLICANOS", estado: "BR", categoria: "lideranca_local", popularidade: 0.6 },
+  { nome: "Gilberto Kassab", cargo: "presidente_partido", partido_sigla: "PSD", estado: "BR", categoria: "lideranca_local", popularidade: 0.7 },
+  { nome: "Carlos Siqueira", cargo: "presidente_partido", partido_sigla: "PSB", estado: "BR", categoria: "lideranca_local", popularidade: 0.55 },
+  { nome: "Baleia Rossi", cargo: "presidente_partido", partido_sigla: "MDB", estado: "BR", categoria: "lideranca_local", popularidade: 0.6 },
+  { nome: "Eduardo Jorge", cargo: "presidente_partido", partido_sigla: "PV", estado: "BR", categoria: "lideranca_local", popularidade: 0.5 },
+  { nome: "Paula Belmonte", cargo: "presidente_partido", partido_sigla: "CIDADANIA", estado: "BR", categoria: "lideranca_local", popularidade: 0.5 },
+];
+
+const LIVE_2026_LAST_UPDATED = "2026-06-25";
+
+function buildLive2026Rows(cargosFilter: Set<string>, f: Filters): CandidateOut[] {
+  return LIVE_2026_CENARIO
+    .filter((p) => cargosFilter.has(p.cargo))
+    .map((p, idx) => ({
+      id: `live2026-${idx}-${normalize(p.nome).replace(/\s+/g, "-")}`,
+      tse_id: null,
+      nome: p.nome,
+      nome_urna: null,
+      partido_sigla: p.partido_sigla,
+      partido_nome: null,
+      numero_partido: null,
+      cargo: p.cargo,
+      regiao: p.estado ? (REGION_OF_UF[p.estado] ?? "nacional") : "nacional",
+      estado: p.estado,
+      municipio: null,
+      eleito: p.categoria === "eleito",
+      categoria: p.categoria,
+      ano_eleicao: p.categoria === "eleito" ? 2022 : null,
+      foto_url: null,
+      redes_sociais: null,
+      popularidade: p.popularidade,
+      similarity: 1,
+      total_count: 0,
+    } satisfies CandidateOut))
+    .filter((row) => matchesClientFilters(row, f));
+}
+
 const normalize = (str: string | null | undefined) =>
   String(str ?? "")
     .normalize("NFD")
