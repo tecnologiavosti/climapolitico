@@ -1330,16 +1330,21 @@ Deno.serve(async (req) => {
 
     // 2026: se o TSE ainda não publicou candidaturas oficiais, usar base política viva.
     const liveCargos = f.cargo?.length ? cargos : [...new Set([...cargos, ...AI_ONLY_CARGOS])];
-    const shouldUsePoliticalLiveBase = TARGET_YEAR === 2026 && (!tse2026Available || tsePage.rows.length === 0 || tseFailed);
+    const shouldUsePoliticalLiveBase = !nationalOnly && TARGET_YEAR === 2026 && (!tse2026Available || tsePage.rows.length === 0 || tseFailed);
     const liveBase = shouldUsePoliticalLiveBase
       ? await politicalLiveBaseLookup(f, liveCargos, ufs)
       : { rows: [] as CandidateOut[], sources: [] as string[], failed: 0 };
 
+    // Cenário político vivo 2026 curado (Presidente / Vice / Ministros / Pres. Partido / Pré-candidatos).
+    const cargosForLive = new Set(nationalOnly ? cargos : liveCargos.filter((c) => NATIONAL_LIVE_CARGOS.has(c)));
+    const live2026Rows = cargosForLive.size > 0 ? buildLive2026Rows(cargosForLive, f) : [];
+
     console.log({
       city: f.municipio ?? null,
       year: TARGET_YEAR,
-      source: shouldUsePoliticalLiveBase ? liveBase.sources.join("+") || "political_live_2026" : "tse_2026_candidates",
-      results: shouldUsePoliticalLiveBase ? liveBase.rows.length : tsePage.rows.length,
+      source: nationalOnly ? "live_political_catalog_2026" : (shouldUsePoliticalLiveBase ? liveBase.sources.join("+") || "political_live_2026" : "tse_2026_candidates"),
+      results: nationalOnly ? live2026Rows.length : (shouldUsePoliticalLiveBase ? liveBase.rows.length : tsePage.rows.length),
+      nationalOnly,
     });
 
     // Etapa 1: coletar dados brutos de fontes públicas (TSE + Wikidata).
@@ -1347,7 +1352,7 @@ Deno.serve(async (req) => {
 
     // Etapa 2: enviar dados brutos para Cerebras fazer matching/ranking/dedup.
     // Cerebras NÃO inventa candidatos — só rankeia o que veio das fontes públicas.
-    const rawPool = [...liveBase.rows, ...tsePage.rows, ...auxiliaryRows];
+    const rawPool = [...live2026Rows, ...liveBase.rows, ...tsePage.rows, ...auxiliaryRows];
 
     // Etapa 2b: fallback dinâmico via IA — se nenhuma fonte estruturada retornou nada,
     // pede à IA para sugerir políticos reais conhecidos a partir dos filtros (vereadores
