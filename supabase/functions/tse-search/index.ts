@@ -1097,7 +1097,9 @@ Deno.serve(async (req) => {
       pageSize: PAGE_SIZE,
       fallback: false,
       sourceUsed,
-      notice: null,
+      notice: dynamicAiUsed && dynamicAiRows.length > 0
+        ? "Resultados sugeridos pela IA a partir de fontes públicas (fora da base oficial). Confirme antes de usar."
+        : null,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (e) {
