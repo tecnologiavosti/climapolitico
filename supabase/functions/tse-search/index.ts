@@ -1312,13 +1312,21 @@ Deno.serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const [federalElection, municipalElection] = await Promise.all([resolveElection("F"), resolveElection("M")]);
+    // Quando todos os cargos solicitados são nacionais/presidenciais, não consultar TSE histórico
+    // (evita resultados desatualizados como Eymael/Padre Kelmon de 2022). Usar cenário vivo 2026.
+    const nationalOnly = cargos.length > 0 && cargos.every((c) => NATIONAL_LIVE_CARGOS.has(c));
+
+    const [federalElection, municipalElection] = nationalOnly
+      ? [null, null]
+      : await Promise.all([resolveElection("F"), resolveElection("M")]);
     const elections = { federal: federalElection, municipal: municipalElection };
     const tse2026Available = !!(federalElection || municipalElection);
-    const tasks = await buildTasks(f, cargos, ufs, elections);
-    const tsePage = await executePagedTseSearch(f, tasks, elections);
+    const tasks = nationalOnly ? [] : await buildTasks(f, cargos, ufs, elections);
+    const tsePage = nationalOnly
+      ? { rows: [] as CandidateOut[], total: 0, exactTotal: true, hasMore: false, attempted: 0, failed: 0 }
+      : await executePagedTseSearch(f, tasks, elections);
     const tseFailed = tasks.length > 0 && tsePage.failed === tsePage.attempted;
-    console.log(`[tse-search] TSE 2026 Results ${tsePage.rows.length} via ${tsePage.attempted} reqs (failed=${tsePage.failed}, hasMore=${tsePage.hasMore}, available=${tse2026Available})`);
+    console.log(`[tse-search] TSE 2026 Results ${tsePage.rows.length} via ${tsePage.attempted} reqs (failed=${tsePage.failed}, hasMore=${tsePage.hasMore}, available=${tse2026Available}, nationalOnly=${nationalOnly})`);
 
     // 2026: se o TSE ainda não publicou candidaturas oficiais, usar base política viva.
     const liveCargos = f.cargo?.length ? cargos : [...new Set([...cargos, ...AI_ONLY_CARGOS])];
