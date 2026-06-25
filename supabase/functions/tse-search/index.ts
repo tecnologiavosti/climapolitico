@@ -62,6 +62,15 @@ const normalize = (str: string | null | undefined) =>
 
 const stripAccents = normalize;
 
+// Stopwords típicas em nomes brasileiros — removidas para matching fuzzy.
+const NAME_STOPWORDS = new Set(["da", "de", "do", "dos", "das", "e", "di", "du"]);
+function normalizeForSearch(str: string | null | undefined): string {
+  return normalize(str)
+    .split(" ")
+    .filter((w) => w && !NAME_STOPWORDS.has(w))
+    .join(" ");
+}
+
 const CARGO_ALIASES: Record<string, string> = {
   presidente: "presidente",
   "vice presidente": "vice_presidente",
@@ -372,12 +381,17 @@ const CARGO_LABEL: Record<string, string> = {
 };
 
 function scoreTextSimilarity(a: string, b: string) {
-  const aa = normalize(a);
-  const bb = normalize(b);
+  const aa = normalizeForSearch(a);
+  const bb = normalizeForSearch(b);
   if (!aa || !bb) return 0;
   if (aa.includes(bb) || bb.includes(aa)) return 1;
-  const words = bb.split(" ").filter(Boolean);
-  if (words.length > 1 && words.every((w) => aa.includes(w))) return 0.92;
+  const wordsB = bb.split(" ").filter(Boolean);
+  const wordsA = new Set(aa.split(" ").filter(Boolean));
+  if (wordsB.length > 0) {
+    const hits = wordsB.filter((w) => wordsA.has(w) || [...wordsA].some((wa) => wa.includes(w) || w.includes(wa))).length;
+    const ratio = hits / wordsB.length;
+    if (ratio >= 0.5) return Math.max(0.7, ratio);
+  }
   const grams = (s: string) => new Set(Array.from({ length: Math.max(0, s.length - 1) }, (_, i) => s.slice(i, i + 2)));
   const ga = grams(aa);
   const gb = grams(bb);
@@ -401,14 +415,14 @@ function matchesClientFilters(c: CandidateOut, f: Filters) {
     const set = new Set(f.regiao.map((r) => normalize(r)));
     if (!c.regiao || !set.has(normalize(c.regiao))) return false;
   }
-  if (f.municipio && normalize(c.municipio) !== normalize(f.municipio)) return false;
+  if (f.municipio && normalizeForSearch(c.municipio) !== normalizeForSearch(f.municipio)) return false;
   if (f.partido?.length) {
     const set = new Set(f.partido.map((p) => normalize(p)));
     if (!c.partido_sigla || !set.has(normalize(c.partido_sigla))) return false;
   }
   if (f.q) {
     const haystack = `${c.nome} ${c.nome_urna ?? ""}`;
-    if (scoreTextSimilarity(haystack, f.q) < 0.58) return false;
+    if (scoreTextSimilarity(haystack, f.q) < 0.65) return false;
   }
   if (f.onlyEleitos && !c.eleito) return false;
   return true;
@@ -925,6 +939,13 @@ Deno.serve(async (req) => {
     const exactTotal = shouldUsePoliticalLiveBase || afterStrictFilter.length > 0;
     const total = exactTotal ? afterStrictFilter.length : page * PAGE_SIZE + merged.length + (hasMore ? PAGE_SIZE : 0);
     const rows = merged.map((r) => ({ ...r, total_count: total }));
+
+    console.log({
+      search: f.q ?? null,
+      cargo: f.cargo ?? null,
+      source: shouldUsePoliticalLiveBase ? (liveBase.sources.join("+") || "political_live_2026") : "tse_2026_candidates",
+      foundCount: rows.length,
+    });
 
     console.log({
       filters: f,
