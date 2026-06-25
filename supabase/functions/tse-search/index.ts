@@ -33,8 +33,9 @@ const NON_TSE_CARGOS = new Set(["ministro", "presidente_partido", "pre_candidato
 const MUNICIPAL_CARGOS = new Set(["prefeito", "vice_prefeito", "vereador"]);
 const FEDERAL_BR_CARGOS = new Set(["presidente", "vice_presidente"]);
 
-const ELEICAO_MUN_2024 = 619;
-const ELEICAO_FED_2022 = 544;
+// IDs reais do endpoint /eleicao/ordinarias do TSE
+const ELEICAO_MUN_2024 = 2045202024;
+const ELEICAO_FED_2022 = 2040602022;
 
 const UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
 const UF_DICT: Record<string, string> = {
@@ -131,10 +132,12 @@ interface OutRow {
 // ============ CAMADA 1 — TSE ============
 async function tseFetch<T>(path: string, deadline: number): Promise<T | null> {
   if (Date.now() > deadline) return null;
+  const url = `${TSE_BASE}${path}`;
+  console.log("TSE REQUEST:", url);
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 8000);
-    const r = await fetch(`${TSE_BASE}${path}`, {
+    const r = await fetch(url, {
       signal: ctrl.signal,
       headers: {
         "User-Agent": "Mozilla/5.0 ClimaPolitico/2.0",
@@ -143,24 +146,39 @@ async function tseFetch<T>(path: string, deadline: number): Promise<T | null> {
       },
     });
     clearTimeout(t);
-    if (!r.ok) return null;
-    return await r.json() as T;
-  } catch {
+    if (!r.ok) {
+      const body = await r.text().catch(() => "");
+      console.log(`TSE HTTP ${r.status} ${url} :: ${body.slice(0, 200)}`);
+      return null;
+    }
+    const json = await r.json() as T;
+    return json;
+  } catch (e) {
+    console.log(`TSE FETCH ERROR ${url}:`, (e as Error).message);
     return null;
   }
 }
 
-async function listMunicipios(ano: number, cdEleicao: number, uf: string, deadline: number) {
-  const data = await tseFetch<any>(`/eleicao/buscar/${ano}/${cdEleicao}/${uf}/municipios`, deadline);
-  const arr = data?.municipios ?? data ?? [];
-  return Array.isArray(arr) ? arr.map((m: any) => ({ codigo: Number(m.codigo ?? m.cdMunicipio), nome: String(m.nome ?? m.nm) })) : [];
+async function listMunicipios(_ano: number, cdEleicao: number, uf: string, deadline: number) {
+  // Endpoint correto: /eleicao/buscar/{UF}/{cdEleicao}/municipios
+  const data = await tseFetch<any>(`/eleicao/buscar/${uf}/${cdEleicao}/municipios`, deadline);
+  const arr = data?.municipios ?? [];
+  const out = Array.isArray(arr)
+    ? arr.map((m: any) => ({
+        codigo: Number(m.codigo ?? m.sigla ?? m.cdMunicipio),
+        nome: String(m.nome ?? m.nm ?? ""),
+      })).filter((m) => m.codigo > 0 && m.nome)
+    : [];
+  console.log(`TSE municipios ${uf}/${cdEleicao} → ${out.length}`);
+  return out;
 }
 
 async function fetchCandidatos(ano: number, escopo: string | number, cdEleicao: number, cargoCodigo: number, deadline: number) {
   const data = await tseFetch<any>(`/candidatura/listar/${ano}/${escopo}/${cdEleicao}/${cargoCodigo}/candidatos`, deadline);
-  const list = data?.candidatos ?? data ?? [];
+  const list = data?.candidatos ?? [];
   return Array.isArray(list) ? list : [];
 }
+
 
 function statusFromTse(desc: string | undefined): { label: string; eleito: boolean; categoria: string } {
   const n = normalize(desc ?? "");
@@ -236,10 +254,17 @@ async function searchTSE(cargoKey: string, f: Filters, deadline: number): Promis
     if (Date.now() > deadline) { partial = true; break; }
     if (isMun) {
       const municipios = await listMunicipios(ano, cdEleicao, uf, deadline);
+      if (municipios.length === 0) {
+        throw new Error(`TSE crawler failed: não foi possível listar municípios de ${uf} (eleição ${cdEleicao}).`);
+      }
       let alvo = municipios;
       if (f.municipio) {
         const n = normalize(f.municipio);
         alvo = municipios.filter((m) => normalize(m.nome).includes(n));
+        console.log(`[tse] match município "${f.municipio}" em ${uf} → ${alvo.map((m) => `${m.nome}(${m.codigo})`).join(", ") || "NENHUM"}`);
+        if (alvo.length === 0) {
+          throw new Error(`Município "${f.municipio}" não encontrado em ${uf} no TSE.`);
+        }
       }
       console.log(`[tse] ${uf} ${cargoKey} → ${alvo.length} municípios alvo`);
       const lists = await mapWithLimit(alvo, TSE_CONCURRENCY, async (m) => {
@@ -254,6 +279,7 @@ async function searchTSE(cargoKey: string, f: Filters, deadline: number): Promis
       for (const c of list) { const r = mapTse(c, cargoKey, uf, null, ano); if (r) out.push(r); }
     }
   }
+  console.log(`RESULT COUNT TSE/${cargoKey}: ${out.length}`);
   return { rows: out, partial };
 }
 
