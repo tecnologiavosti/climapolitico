@@ -1,11 +1,8 @@
 // Catálogo Político 100% dinâmico — busca em tempo real via web (DuckDuckGo) + Cerebras.
 // Sem TSE local, sem cache, sem Supabase, sem base salva.
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 
-const CEREBRAS_API_KEY = Deno.env.get("CEREBRAS_API_KEY");
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-const CEREBRAS_MODEL = "llama-3.3-70b";
-const GATEWAY_MODEL = "google/gemini-3-flash-preview";
 const PAGE_SIZE = 50;
 
 const VALID_CARGOS = [
