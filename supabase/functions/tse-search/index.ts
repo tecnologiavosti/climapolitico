@@ -311,43 +311,45 @@ Retorne até 30 candidatos. JSON válido.`;
       const list: any[] = parsed?.resultados ?? parsed?.results ?? (Array.isArray(parsed) ? parsed : []);
       const seen = new Set<string>();
       const rows: CandidateOut[] = [];
-    const rows: CandidateOut[] = [];
-    list.forEach((p, idx) => {
-      if (!p?.nome) return;
-      const cargoKey = normalizeCargoKey(p.cargo ?? "") ?? (cargos[0] ?? null);
-      const uf = (p.estado ?? "").toString().toUpperCase().slice(0, 2) || null;
-      const status = normalize(p.status ?? "");
-      const categoria = STATUS_TO_CATEGORIA[status] ?? "lideranca_local";
-      const dedupKey = `${normalize(p.nome)}|${cargoKey ?? ""}|${uf ?? ""}|${normalize(p.cidade ?? "")}`;
-      if (seen.has(dedupKey)) return;
-      seen.add(dedupKey);
-      rows.push({
-        id: `web-${idx}-${normalize(p.nome).replace(/\s+/g, "-")}`,
-        tse_id: null,
-        nome: String(p.nome),
-        nome_urna: null,
-        partido_sigla: p.partido ? String(p.partido).toUpperCase().slice(0, 16) : null,
-        partido_nome: null,
-        numero_partido: null,
-        cargo: cargoKey,
-        regiao: null,
-        estado: uf,
-        municipio: p.cidade ? String(p.cidade) : (f.municipio ?? null),
-        eleito: categoria === "eleito",
-        categoria,
-        ano_eleicao: null,
-        foto_url: null,
-        redes_sociais: null,
-        popularidade: 0.7,
-        similarity: 1,
-        total_count: 0,
+      list.forEach((p, idx) => {
+        if (!p?.nome) return;
+        const cargoKey = normalizeCargoKey(p.cargo ?? "") ?? (cargos[0] ?? null);
+        const uf = (p.estado ?? "").toString().toUpperCase().slice(0, 2) || null;
+        const status = normalize(p.status ?? "");
+        const categoria = STATUS_TO_CATEGORIA[status] ?? "lideranca_local";
+        const dedupKey = `${normalize(p.nome)}|${cargoKey ?? ""}|${uf ?? ""}|${normalize(p.cidade ?? "")}`;
+        if (seen.has(dedupKey)) return;
+        seen.add(dedupKey);
+        rows.push({
+          id: `web-${idx}-${normalize(p.nome).replace(/\s+/g, "-")}`,
+          tse_id: null,
+          nome: String(p.nome),
+          nome_urna: null,
+          partido_sigla: p.partido ? String(p.partido).toUpperCase().slice(0, 16) : null,
+          partido_nome: null,
+          numero_partido: null,
+          cargo: cargoKey,
+          regiao: null,
+          estado: uf,
+          municipio: p.cidade ? String(p.cidade) : (f.municipio ?? null),
+          eleito: categoria === "eleito",
+          categoria,
+          ano_eleicao: null,
+          foto_url: null,
+          redes_sociais: null,
+          popularidade: 0.7,
+          similarity: 1,
+          total_count: 0,
+        });
       });
-    });
-    return { rows, error: null };
-  } catch (e) {
-    console.error("[cerebras] error:", e);
-    return { rows: [], error: e instanceof Error ? e.message : String(e) };
+      console.log(`[${p.name}] extracted ${rows.length} candidate(s)`);
+      return { rows, error: null };
+    } catch (e) {
+      console.error(`[${p.name}] error:`, e);
+      lastError = e instanceof Error ? e.message : String(e);
+    }
   }
+  return { rows: [], error: lastError || "AI indisponível" };
 }
 
 Deno.serve(async (req) => {
