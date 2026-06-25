@@ -1,5 +1,5 @@
-// Real-time TSE search via DivulgaCandContas public API.
-// No local catalog, no saved JSON, no curated/static candidate base.
+// Real-time political catalog via public sources.
+// 2026 candidacies are used only when officially published; otherwise use live public officeholder sources.
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
 const TSE = "https://divulgacandcontas.tse.jus.br/divulga/rest/v1";
@@ -172,10 +172,27 @@ async function resolveElection(kind: "F" | "M") {
   };
 }
 
+async function resolvePublishedElectionsBeforeTarget(kind: "F" | "M", maxCount = 1) {
+  const rows = (await getOrdinaryElections())
+    .filter((e) => e.tipoAbrangencia === kind && Number(e.ano) < TARGET_YEAR)
+    .sort((a, b) => {
+      const yearDiff = Number(b.ano) - Number(a.ano);
+      return yearDiff !== 0 ? yearDiff : Number(b.id) - Number(a.id);
+    });
+
+  return rows.slice(0, maxCount).map((e) => ({
+    id: Number(e.id),
+    ano: Number(e.ano),
+    name: e.nomeEleicao,
+  }));
+}
+
 
 const municipiosCache = new Map<string, Array<{ codigo: string; nome: string; normalized: string }>>();
 
-async function getMunicipios(uf: string, idEleicao: number) {
+type MunicipioTse = { codigo: string; nome: string; normalized: string };
+
+async function getMunicipios(uf: string, idEleicao: number): Promise<MunicipioTse[]> {
   const key = `${uf}-${idEleicao}`;
   if (municipiosCache.has(key)) return municipiosCache.get(key)!;
   try {
@@ -218,7 +235,13 @@ const cargoKeyFromCode = (n: number): string =>
 
 function mapCandidate(raw: any, ctx: { uf: string; municipio: string | null; ano: number; idEleicao: number; ueCode: string }): CandidateOut {
   const sq = String(raw.id ?? raw.sqCandidato ?? "");
-  const desc = (raw.descricaoSituacao ?? raw.desSituacaoCandidatura ?? "").toString().toLowerCase();
+  const desc = [
+    raw.descricaoSituacao,
+    raw.desSituacaoCandidatura,
+    raw.descricaoTotalizacao,
+    raw.descSituacaoTotalizacao,
+    raw.situacaoTotalizacao,
+  ].filter(Boolean).join(" ").toString().toLowerCase();
   const cargoCode = Number(raw.cargo?.codigo ?? raw.cdCargo ?? 0);
   const cargoKey = cargoKeyFromCode(cargoCode);
   return {
@@ -233,7 +256,7 @@ function mapCandidate(raw: any, ctx: { uf: string; municipio: string | null; ano
     regiao: REGION_OF_UF[ctx.uf] ?? null,
     estado: ctx.uf,
     municipio: ctx.municipio,
-    eleito: /eleito|reeleito/.test(desc) && !/n[ãa]o eleito/.test(desc),
+    eleito: /eleito|eleita|reeleito|reeleita/.test(desc) && !/n[ãa]o eleito|suplente/.test(desc),
     ano_eleicao: ctx.ano,
     foto_url: sq ? `https://divulgacandcontas.tse.jus.br/divulga/rest/arquivo/img/${ctx.idEleicao}/${ctx.ueCode}/${sq}.jpeg` : null,
     redes_sociais: null,
@@ -274,11 +297,11 @@ async function fetchMunicipalByCode(uf: string, municipio: { codigo: string; nom
   }
 }
 
-async function resolveMunicipiosForUf(uf: string, municipioNome: string | null | undefined, election: { id: number }) {
+async function resolveMunicipiosForUf(uf: string, municipioNome: string | null | undefined, election: { id: number }): Promise<MunicipioTse[]> {
   const munis = await getMunicipios(uf, election.id);
   if (!municipioNome) return munis;
   const target = stripAccents(municipioNome);
-  const muni = munis.find((m) => m.normalized === target) ?? munis.find((m) => m.normalized.includes(target));
+  const muni = munis.find((m: MunicipioTse) => m.normalized === target) ?? munis.find((m: MunicipioTse) => m.normalized.includes(target));
   return muni ? [muni] : [];
 }
 
@@ -644,6 +667,88 @@ type FetchTask =
   | { kind: "federal"; uf: string; cargo: string }
   | { kind: "municipal"; uf: string; municipio: { codigo: string; nome: string }; cargo: string };
 
+function asPoliticalLiveRow(row: CandidateOut, sourceYear: number): CandidateOut {
+  return {
+    ...row,
+    id: `political-live-2026-${sourceYear}-${row.id}`,
+    ano_eleicao: null,
+    popularidade: Math.max(row.popularidade, 0.86),
+    similarity: Math.max(row.similarity, 0.86),
+  };
+}
+
+function isCurrentMandateRow(row: CandidateOut) {
+  return row.eleito === true;
+}
+
+async function politicalLiveBaseLookup(f: Filters, cargos: string[], ufs: string[]): Promise<{ rows: CandidateOut[]; sources: string[]; failed: number }> {
+  const rows: CandidateOut[] = [];
+  const sources = new Set<string>();
+  let failed = 0;
+  const municipalCargos = cargos.filter((c) => MUNICIPAL_CARGOS.has(c));
+  const federalCargos = cargos.filter((c) => FEDERAL_CARGOS.has(c));
+
+  if (municipalCargos.length > 0 && f.municipio) {
+    const [municipalElection] = await resolvePublishedElectionsBeforeTarget("M", 1);
+    if (municipalElection) {
+      sources.add(`political_live_2026:tse_${municipalElection.ano}_municipal_elected`);
+      const targetUfs = ufs.filter((uf) => uf !== "BR");
+      const municipalLists = await Promise.all(targetUfs.map(async (uf) => ({
+        uf,
+        municipios: await resolveMunicipiosForUf(uf, f.municipio, municipalElection),
+      })));
+
+      for (const { uf, municipios } of municipalLists) {
+        for (const municipio of municipios) {
+          for (const cargo of municipalCargos) {
+            const result = await fetchMunicipalByCode(uf, municipio, cargo, municipalElection);
+            if (result.failed) failed += 1;
+            rows.push(...result.rows.filter(isCurrentMandateRow).map((row) => asPoliticalLiveRow(row, municipalElection.ano)));
+          }
+        }
+      }
+    }
+  }
+
+  if (f.municipio) {
+    return { rows: rows.filter((row) => matchesClientFilters(row, f)), sources: [...sources], failed };
+  }
+
+  if (federalCargos.length > 0) {
+    const needsSenators = federalCargos.includes("senador");
+    const federalElections = await resolvePublishedElectionsBeforeTarget("F", needsSenators ? 2 : 1);
+
+    for (const election of federalElections) {
+      const cargosForElection = federalCargos.filter((cargo) => {
+        if (cargo === "senador") return election.ano >= TARGET_YEAR - 8;
+        return election.ano === federalElections[0]?.ano;
+      });
+      if (cargosForElection.length === 0) continue;
+      sources.add(`political_live_2026:tse_${election.ano}_federal_elected`);
+
+      for (const cargo of cargosForElection) {
+        const targetUfs = (cargo === "presidente" || cargo === "vice_presidente") ? ["BR"] : ufs.filter((uf) => uf !== "BR");
+        for (const uf of targetUfs) {
+          const result = await fetchFederal(uf, cargo, election);
+          if (result.failed) failed += 1;
+          rows.push(...result.rows.filter(isCurrentMandateRow).map((row) => asPoliticalLiveRow(row, election.ano)));
+        }
+      }
+    }
+  }
+
+  const seen = new Set<string>();
+  const filtered = rows.filter((row) => {
+    if (!matchesClientFilters(row, f)) return false;
+    const key = `${normalize(row.nome)}|${row.cargo ?? ""}|${row.estado ?? ""}|${normalize(row.municipio)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return { rows: filtered, sources: [...sources], failed };
+}
+
 async function buildTasks(f: Filters, cargos: string[], ufs: string[], elections: { federal: { id: number; ano: number } | null; municipal: { id: number; ano: number } | null }) {
   const tasks: FetchTask[] = [];
   const federalCargos = elections.federal ? cargos.filter((c) => FEDERAL_CARGOS.has(c)) : [];
@@ -751,20 +856,29 @@ Deno.serve(async (req) => {
     const tseFailed = tasks.length > 0 && tsePage.failed === tsePage.attempted;
     console.log(`[tse-search] TSE 2026 Results ${tsePage.rows.length} via ${tsePage.attempted} reqs (failed=${tsePage.failed}, hasMore=${tsePage.hasMore}, available=${tse2026Available})`);
 
-    // OPÇÃO B: pipeline IA em tempo real.
-    // Fonte primária = IA roteada por cargo (prefeituras/câmaras/TSE/Senado/AL/etc).
-    // TSE oficial é consultado em paralelo apenas como reforço quando disponível.
+    // 2026: se o TSE ainda não publicou candidaturas oficiais, usar base política viva.
     const liveCargos = f.cargo?.length ? cargos : [...new Set([...cargos, ...AI_ONLY_CARGOS])];
+    const shouldUsePoliticalLiveBase = TARGET_YEAR === 2026 && (!tse2026Available || tsePage.rows.length === 0 || tseFailed);
+    const liveBase = shouldUsePoliticalLiveBase
+      ? await politicalLiveBaseLookup(f, liveCargos, ufs)
+      : { rows: [] as CandidateOut[], sources: [] as string[], failed: 0 };
+
+    console.log({
+      city: f.municipio ?? null,
+      year: TARGET_YEAR,
+      source: shouldUsePoliticalLiveBase ? liveBase.sources.join("+") || "political_live_2026" : "tse_2026_candidates",
+      results: shouldUsePoliticalLiveBase ? liveBase.rows.length : tsePage.rows.length,
+    });
 
     // Etapa 1: coletar dados brutos de fontes públicas (TSE + Wikidata).
     const auxiliaryRows = page === 0 ? await wikidataAuxiliaryLookup(f, liveCargos) : [];
 
     // Etapa 2: enviar dados brutos para Cerebras fazer matching/ranking/dedup.
     // Cerebras NÃO inventa candidatos — só rankeia o que veio das fontes públicas.
-    const rawPool = [...tsePage.rows, ...auxiliaryRows];
+    const rawPool = [...liveBase.rows, ...tsePage.rows, ...auxiliaryRows];
     const aiResult = page === 0
       ? await aiPoliticalLookup(f, liveCargos, rawPool)
-      : { rows: [] as CandidateOut[], error: null as string | null };
+      : { rows: rawPool as CandidateOut[], error: null as string | null };
 
     const aiRows = aiResult.rows;
     const aiError = aiResult.error;
@@ -772,6 +886,8 @@ Deno.serve(async (req) => {
     const sourceUsed = {
       ai: aiRows.length,
       aiError,
+      politicalLiveBase: liveBase.rows.length,
+      politicalLiveSources: liveBase.sources,
       wikidata: auxiliaryRows.length,
       tse: tsePage.rows.length,
       tse2026Available,
@@ -789,10 +905,13 @@ Deno.serve(async (req) => {
 
     // Filtro estrito determinístico
     const afterStrictFilter = pool.filter((candidate) => matchesClientFilters(candidate, f));
-    const merged = afterStrictFilter.slice(0, PAGE_SIZE);
-    const hasMore = afterStrictFilter.length > PAGE_SIZE || tsePage.hasMore;
-    const exactTotal = false;
-    const total = page * PAGE_SIZE + merged.length + (hasMore ? PAGE_SIZE : 0);
+    const offset = shouldUsePoliticalLiveBase ? page * PAGE_SIZE : 0;
+    const merged = afterStrictFilter.slice(offset, offset + PAGE_SIZE);
+    const hasMore = shouldUsePoliticalLiveBase
+      ? afterStrictFilter.length > offset + PAGE_SIZE
+      : afterStrictFilter.length > PAGE_SIZE || tsePage.hasMore;
+    const exactTotal = shouldUsePoliticalLiveBase || afterStrictFilter.length > 0;
+    const total = exactTotal ? afterStrictFilter.length : page * PAGE_SIZE + merged.length + (hasMore ? PAGE_SIZE : 0);
     const rows = merged.map((r) => ({ ...r, total_count: total }));
 
     console.log({
