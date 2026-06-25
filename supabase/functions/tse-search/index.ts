@@ -1,5 +1,5 @@
-// Real-time TSE search via DivulgaCandContas public API.
-// No local catalog, no saved JSON, no curated/static candidate base.
+// Real-time political catalog via public sources.
+// 2026 candidacies are used only when officially published; otherwise use live public officeholder sources.
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
 const TSE = "https://divulgacandcontas.tse.jus.br/divulga/rest/v1";
@@ -218,7 +218,13 @@ const cargoKeyFromCode = (n: number): string =>
 
 function mapCandidate(raw: any, ctx: { uf: string; municipio: string | null; ano: number; idEleicao: number; ueCode: string }): CandidateOut {
   const sq = String(raw.id ?? raw.sqCandidato ?? "");
-  const desc = (raw.descricaoSituacao ?? raw.desSituacaoCandidatura ?? "").toString().toLowerCase();
+  const desc = [
+    raw.descricaoSituacao,
+    raw.desSituacaoCandidatura,
+    raw.descricaoTotalizacao,
+    raw.descSituacaoTotalizacao,
+    raw.situacaoTotalizacao,
+  ].filter(Boolean).join(" ").toString().toLowerCase();
   const cargoCode = Number(raw.cargo?.codigo ?? raw.cdCargo ?? 0);
   const cargoKey = cargoKeyFromCode(cargoCode);
   return {
@@ -233,7 +239,7 @@ function mapCandidate(raw: any, ctx: { uf: string; municipio: string | null; ano
     regiao: REGION_OF_UF[ctx.uf] ?? null,
     estado: ctx.uf,
     municipio: ctx.municipio,
-    eleito: /eleito|reeleito/.test(desc) && !/n[ãa]o eleito/.test(desc),
+    eleito: /eleito|eleita|reeleito|reeleita/.test(desc) && !/n[ãa]o eleito|suplente/.test(desc),
     ano_eleicao: ctx.ano,
     foto_url: sq ? `https://divulgacandcontas.tse.jus.br/divulga/rest/arquivo/img/${ctx.idEleicao}/${ctx.ueCode}/${sq}.jpeg` : null,
     redes_sociais: null,
