@@ -95,6 +95,8 @@ export async function searchTSECandidates(filters: CatalogFilters) {
     page: data?.page ?? 0,
     lastUpdated: (data?.last_updated ?? null) as string | null,
     nationalOnly: !!data?.nationalOnly,
+    partial: !!data?.partial,
+    sources: (data?.sources ?? []) as string[],
   };
 }
 
