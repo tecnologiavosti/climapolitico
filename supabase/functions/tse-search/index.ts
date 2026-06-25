@@ -709,7 +709,10 @@ async function politicalLiveBaseLookup(f: Filters, cargos: string[], ufs: string
           for (const cargo of municipalCargos) {
             const result = await fetchMunicipalByCode(uf, municipio, cargo, municipalElection);
             if (result.failed) failed += 1;
-            rows.push(...result.rows.filter(isCurrentMandateRow).map((row) => asPoliticalLiveRow(row, municipalElection.ano)));
+            const filteredRows = f.onlyEleitos
+              ? result.rows.filter(isCurrentMandateRow)
+              : result.rows;
+            rows.push(...filteredRows.map((row) => asPoliticalLiveRow(row, municipalElection.ano)));
           }
         }
       }
@@ -737,7 +740,10 @@ async function politicalLiveBaseLookup(f: Filters, cargos: string[], ufs: string
         for (const uf of targetUfs) {
           const result = await fetchFederal(uf, cargo, election);
           if (result.failed) failed += 1;
-          rows.push(...result.rows.filter(isCurrentMandateRow).map((row) => asPoliticalLiveRow(row, election.ano)));
+          const filteredRows = f.onlyEleitos
+            ? result.rows.filter(isCurrentMandateRow)
+            : result.rows;
+          rows.push(...filteredRows.map((row) => asPoliticalLiveRow(row, election.ano)));
         }
       }
     }
