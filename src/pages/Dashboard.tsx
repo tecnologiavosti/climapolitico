@@ -113,15 +113,20 @@ const Dashboard = () => {
             <div className="flex items-center justify-between gap-2 px-3 sm:px-6 py-3 sm:py-4">
               <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
                 <SidebarTrigger aria-label="Abrir ou fechar menu lateral" className="hidden md:inline-flex" />
-                <div className="flex items-center gap-2 md:hidden">
+                <div className="flex items-center gap-2 md:hidden min-w-0">
                   <img
                     src={logoAsset.url}
                     alt="Clima Político"
                     className="brand-logo h-[34px] w-[34px] rounded-full object-contain ring-1 ring-border shrink-0"
                   />
-                  <span className="font-bold text-base text-foreground truncate">
-                    Clima Político
-                  </span>
+                  <div className="min-w-0">
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground leading-none">
+                      Clima Político
+                    </div>
+                    <div className="font-semibold text-sm text-foreground truncate leading-tight">
+                      {friendlyRouteTitle(location.pathname)}
+                    </div>
+                  </div>
                 </div>
                 <div data-onboarding="breadcrumbs" className="min-w-0 overflow-hidden hidden sm:block">
                   <Breadcrumbs />
