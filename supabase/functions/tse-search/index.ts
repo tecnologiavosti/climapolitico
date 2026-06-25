@@ -414,14 +414,19 @@ function pickSourcesForCargos(cargos: string[]): string[] {
   return [...s];
 }
 
-async function aiPoliticalLookup(f: Filters, cargos: string[]): Promise<CandidateOut[]> {
-  if (!LOVABLE_API_KEY) return [];
+async function aiPoliticalLookup(f: Filters, cargos: string[]): Promise<{ rows: CandidateOut[]; error: string | null }> {
+  if (!LOVABLE_API_KEY) {
+    console.warn("[tse-search] AI lookup skipped: LOVABLE_API_KEY missing");
+    return { rows: [], error: "LOVABLE_API_KEY ausente" };
+  }
   const cargoNames = cargos.map((c) => CARGO_LABEL[c] ?? c).join(", ");
   const ufs = (f.estado ?? []).join(", ");
   const partidos = (f.partido ?? []).join(", ");
   const municipio = f.municipio ?? "";
   const nome = f.q ?? "";
   const sources = pickSourcesForCargos(cargos);
+  console.log("Calling external political search");
+  console.log("Source used:", sources);
   console.log("[tse-search] AI sources for cargos", { cargos, sources });
 
   const system = `Você é um especialista no cenário político brasileiro VIVO para 2026.
@@ -459,13 +464,20 @@ Retorne até 50 itens. Só políticos REAIS e atuais (mandato 2023-2026 ou pré-
       }),
     });
     if (!r.ok) {
-      console.error("[tse-search] AI lookup failed:", r.status, await r.text().catch(() => ""));
-      return [];
+      const body = await r.text().catch(() => "");
+      console.error("External results: [] — AI lookup failed:", r.status, body);
+      const reason = r.status === 429
+        ? "Limite de uso da IA atingido temporariamente. Tente novamente em alguns instantes."
+        : r.status === 402
+          ? "Créditos de IA esgotados no workspace."
+          : `IA indisponível (HTTP ${r.status}).`;
+      return { rows: [], error: reason };
     }
     const j = await r.json();
     const parsed = JSON.parse(j?.choices?.[0]?.message?.content ?? "{}");
     const list: any[] = parsed?.politicos ?? [];
-    return list.map((p, i) => ({
+    console.log("External results:", { raw: list.length });
+    const mapped = list.map((p, i) => ({
       id: `ai-${i}-${normalize(p.nome).replace(/\s+/g, "-")}`,
       tse_id: null,
       nome: String(p.nome ?? ""),
@@ -485,9 +497,10 @@ Retorne até 50 itens. Só políticos REAIS e atuais (mandato 2023-2026 ou pré-
       similarity: Number(p.confidence ?? 0.5),
       total_count: 0,
     } satisfies CandidateOut)).filter((row) => matchesClientFilters(row, f));
-  } catch (e) {
-    console.error("[tse-search] AI lookup exception:", e);
-    return [];
+    return { rows: mapped, error: null };
+  } catch (error) {
+    console.error("Search error", error);
+    return { rows: [], error: error instanceof Error ? error.message : "Falha na IA" };
   }
 }
 
@@ -674,6 +687,14 @@ Deno.serve(async (req) => {
 
   try {
     const f = await readFilters(req);
+    console.log("Search Filters", {
+      nome: f.q ?? null,
+      cargo: f.cargo ?? null,
+      partido: f.partido ?? null,
+      regiao: f.regiao ?? null,
+      estado: f.estado ?? null,
+      cidade: f.municipio ?? null,
+    });
     console.log("[tse-search] filters:", JSON.stringify(f));
 
     const cargos = resolveCargos(f);
@@ -704,15 +725,19 @@ Deno.serve(async (req) => {
     // TSE oficial é consultado em paralelo apenas como reforço quando disponível.
     const liveCargos = f.cargo?.length ? cargos : [...new Set([...cargos, ...AI_ONLY_CARGOS])];
 
-    const [auxiliaryRows, aiRows] = page === 0
+    const [auxiliaryRows, aiResult] = page === 0
       ? await Promise.all([
           wikidataAuxiliaryLookup(f, liveCargos),
           aiPoliticalLookup(f, liveCargos),
         ])
-      : [[], []];
+      : [[] as CandidateOut[], { rows: [] as CandidateOut[], error: null as string | null }];
+
+    const aiRows = aiResult.rows;
+    const aiError = aiResult.error;
 
     const sourceUsed = {
       ai: aiRows.length,
+      aiError,
       wikidata: auxiliaryRows.length,
       tse: tsePage.rows.length,
       tse2026Available,
@@ -745,6 +770,9 @@ Deno.serve(async (req) => {
     });
 
     if (rows.length === 0) {
+      const notice = aiError
+        ? `Não foi possível consultar a base política agora: ${aiError}`
+        : "Nenhum candidato encontrado.";
       return new Response(JSON.stringify({
         rows: [],
         total: 0,
@@ -754,9 +782,9 @@ Deno.serve(async (req) => {
         normalized: {},
         page,
         pageSize: PAGE_SIZE,
-        fallback: false,
+        fallback: !!aiError,
         sourceUsed,
-        notice: "Nenhum candidato encontrado.",
+        notice,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
