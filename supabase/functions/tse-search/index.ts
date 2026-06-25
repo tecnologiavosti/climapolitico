@@ -941,6 +941,259 @@ async function executePagedTseSearch(f: Filters, tasks: FetchTask[], elections: 
   return { rows, total, exactTotal, hasMore, attempted, failed };
 }
 
+// ============================================================================
+// political_catalog cache + DuckDuckGo enrichment
+// ============================================================================
+
+const STATUS_OF_CATEGORIA: Record<string, string> = {
+  eleito: "Eleito",
+  ex_candidato: "Ex-candidato",
+  pre_candidato: "Pré-candidato",
+  lideranca_local: "Mandatário",
+};
+
+const CATEGORIA_OF_STATUS: Record<string, CandidateOut["categoria"]> = {
+  "eleito": "eleito",
+  "mandatario": "lideranca_local",
+  "ministro": "lideranca_local",
+  "presidente de partido": "lideranca_local",
+  "pre-candidato": "pre_candidato",
+  "ex-candidato": "ex_candidato",
+};
+
+async function catalogCacheLookup(f: Filters, cargos: string[]): Promise<CandidateOut[]> {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return [];
+  try {
+    const params = new URLSearchParams();
+    params.set("select", "*");
+    params.set("limit", "50");
+    const q = normalize(f.q);
+    if (q) params.append("normalized_name", `ilike.*${q.replace(/\s+/g, "*")}*`);
+    if (f.municipio) params.append("city", `ilike.*${f.municipio.replace(/\s+/g, "*")}*`);
+    if (f.estado?.length) params.append("state", `in.(${f.estado.map((s) => s.toUpperCase()).join(",")})`);
+    if (cargos.length) params.append("cargo", `in.(${cargos.join(",")})`);
+
+    const url = `${SUPABASE_URL}/rest/v1/political_catalog?${params.toString()}`;
+    const r = await fetch(url, {
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+    });
+    if (!r.ok) {
+      console.warn("[catalog] cache lookup failed:", r.status);
+      return [];
+    }
+    const rows = await r.json() as any[];
+    console.log(`[catalog] cache lookup hits: ${rows.length}`);
+    return rows.map((row, idx) => {
+      const cargo = row.cargo ?? null;
+      const categoria = (row.status && CATEGORIA_OF_STATUS[normalize(row.status)]) ?? "lideranca_local";
+      return {
+        id: `cache-${row.id ?? idx}`,
+        tse_id: null,
+        nome: row.full_name,
+        nome_urna: null,
+        partido_sigla: row.party ?? null,
+        partido_nome: null,
+        numero_partido: row.party_number ?? null,
+        cargo,
+        regiao: row.region ?? (row.state ? REGION_OF_UF[row.state] ?? null : null),
+        estado: row.state ?? null,
+        municipio: row.city ?? null,
+        eleito: categoria === "eleito",
+        categoria,
+        ano_eleicao: null,
+        foto_url: null,
+        redes_sociais: null,
+        popularidade: Number(row.confidence ?? 70) / 100,
+        similarity: Number(row.confidence ?? 70) / 100,
+        total_count: 0,
+      } satisfies CandidateOut;
+    });
+  } catch (e) {
+    console.error("[catalog] cache lookup error:", e);
+    return [];
+  }
+}
+
+async function catalogCacheUpsert(rows: CandidateOut[]): Promise<void> {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || rows.length === 0) return;
+  try {
+    const payload = rows.map((r) => ({
+      full_name: r.nome,
+      normalized_name: normalize(r.nome),
+      cargo: r.cargo,
+      party: r.partido_sigla,
+      party_number: r.numero_partido,
+      region: r.regiao,
+      state: r.estado,
+      city: r.municipio,
+      status: r.categoria ? (STATUS_OF_CATEGORIA[r.categoria] ?? "Mandatário") : "Mandatário",
+      source: "duckduckgo+cerebras",
+      confidence: Math.round((r.popularidade ?? 0.7) * 100),
+    }));
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/political_catalog`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) {
+      const txt = await r.text().catch(() => "");
+      console.warn("[catalog] cache upsert failed:", r.status, txt.slice(0, 200));
+    } else {
+      console.log(`[catalog] cached ${payload.length} entries`);
+    }
+  } catch (e) {
+    console.error("[catalog] cache upsert error:", e);
+  }
+}
+
+async function duckDuckGoSearch(query: string): Promise<Array<{ title: string; snippet: string; url: string }>> {
+  try {
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const r = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; ClimaPoliticoBot/1.0)",
+        "Accept": "text/html",
+      },
+    });
+    if (!r.ok) {
+      console.warn("[ddg] failed:", r.status);
+      return [];
+    }
+    const html = await r.text();
+    const results: Array<{ title: string; snippet: string; url: string }> = [];
+    const blockRe = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+    let m: RegExpExecArray | null;
+    while ((m = blockRe.exec(html)) !== null && results.length < 15) {
+      const stripTags = (s: string) => s.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim();
+      const rawUrl = m[1];
+      // DDG wraps results in /l/?uddg=<encoded>
+      let cleanUrl = rawUrl;
+      const uddg = rawUrl.match(/[?&]uddg=([^&]+)/);
+      if (uddg) { try { cleanUrl = decodeURIComponent(uddg[1]); } catch { /* noop */ } }
+      results.push({ title: stripTags(m[2]), snippet: stripTags(m[3]), url: cleanUrl });
+    }
+    console.log(`[ddg] "${query}" → ${results.length} results`);
+    return results;
+  } catch (e) {
+    console.error("[ddg] error:", e);
+    return [];
+  }
+}
+
+async function ddgCerebrasLookup(f: Filters, cargos: string[]): Promise<CandidateOut[]> {
+  if (!CEREBRAS_API_KEY) return [];
+  const nome = (f.q ?? "").trim();
+  const municipio = (f.municipio ?? "").trim();
+  const ufs = (f.estado ?? []).join(",");
+  const cargoNames = cargos.map((c) => CARGO_LABEL[c] ?? c).join(" ");
+  if (!nome && !municipio) return [];
+
+  const queryParts = [nome, cargoNames, municipio, ufs, "politica brasil"].filter(Boolean);
+  const query = queryParts.join(" ").trim();
+  const webResults = await duckDuckGoSearch(query);
+  if (webResults.length === 0) return [];
+
+  const system = `Você é um buscador político nacional brasileiro.
+Tarefa:
+1. Analisar resultados de busca web
+2. Corrigir ortografia e acentos
+3. Detectar candidatos REAIS mencionados nos resultados
+4. Extrair dados estruturados
+5. NUNCA inventar candidatos — se não houver evidência clara nos snippets, retorne []
+
+Status permitidos: Eleito, Pré-candidato, Mandatário, Ex-candidato, Ministro, Presidente de Partido.
+
+Responda APENAS JSON:
+{"resultados":[{"full_name":"","cargo":"","party":"","party_number":"","state":"","city":"","status":"","confidence":0}]}
+
+Regras:
+- confidence mínima: 70
+- remover duplicatas
+- cargo deve estar entre: presidente, vice_presidente, governador, vice_governador, senador, deputado_federal, deputado_estadual, deputado_distrital, prefeito, vice_prefeito, vereador, ministro, presidente_partido, pre_candidato`;
+
+  const snippets = webResults.slice(0, 15).map((r, i) =>
+    `[${i + 1}] ${r.title}\n${r.snippet}\nURL: ${r.url}`
+  ).join("\n\n");
+
+  const user = `Filtros do usuário:
+- Nome: ${nome || "(qualquer)"}
+- Cargo: ${cargoNames || "(qualquer)"}
+- Estado: ${ufs || "(qualquer)"}
+- Cidade: ${municipio || "(qualquer)"}
+
+Resultados web (DuckDuckGo):
+${snippets}
+
+Retorne JSON válido.`;
+
+  try {
+    const r = await fetch("https://api.cerebras.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${CEREBRAS_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: CEREBRAS_MODEL,
+        messages: [{ role: "system", content: system }, { role: "user", content: user }],
+        response_format: { type: "json_object" },
+        temperature: 0.2,
+        max_tokens: 2000,
+      }),
+    });
+    if (!r.ok) {
+      console.error("[ddg+cerebras] failed:", r.status);
+      return [];
+    }
+    const j = await r.json();
+    const parsed = JSON.parse(j?.choices?.[0]?.message?.content ?? "{}");
+    const list: any[] = parsed?.resultados ?? [];
+    const rows: CandidateOut[] = list
+      .filter((p) => Number(p?.confidence ?? 0) >= 70 && p?.full_name)
+      .map((p, idx) => {
+        const cargo = normalizeCargoKey(p.cargo ?? "") ?? (cargos[0] ?? null);
+        const uf = (p.state ?? "").toUpperCase().slice(0, 2) || null;
+        const statusKey = normalize(p.status ?? "");
+        const categoria = CATEGORIA_OF_STATUS[statusKey] ?? "lideranca_local";
+        return {
+          id: `ddg-${idx}-${normalize(p.full_name).replace(/\s+/g, "-")}`,
+          tse_id: null,
+          nome: String(p.full_name),
+          nome_urna: null,
+          partido_sigla: p.party ? String(p.party).toUpperCase().slice(0, 12) : null,
+          partido_nome: null,
+          numero_partido: p.party_number ? String(p.party_number) : null,
+          cargo,
+          regiao: uf ? (REGION_OF_UF[uf] ?? null) : null,
+          estado: uf,
+          municipio: p.city ? String(p.city) : (municipio || null),
+          eleito: categoria === "eleito",
+          categoria,
+          ano_eleicao: null,
+          foto_url: null,
+          redes_sociais: null,
+          popularidade: Number(p.confidence ?? 70) / 100,
+          similarity: Number(p.confidence ?? 70) / 100,
+          total_count: 0,
+        } satisfies CandidateOut;
+      })
+      .filter((row) => matchesClientFilters(row, f));
+    console.log(`[ddg+cerebras] returned ${rows.length} candidate(s)`);
+    // Cache em background
+    if (rows.length > 0) {
+      catalogCacheUpsert(rows).catch(() => { /* noop */ });
+    }
+    return rows;
+  } catch (e) {
+    console.error("[ddg+cerebras] error:", e);
+    return [];
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
