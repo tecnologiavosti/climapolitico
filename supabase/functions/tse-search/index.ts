@@ -387,6 +387,33 @@ function matchesClientFilters(c: CandidateOut, f: Filters) {
   return true;
 }
 
+function pickSourcesForCargos(cargos: string[]): string[] {
+  const s = new Set<string>();
+  for (const c of cargos) {
+    if (c === "vereador" || c === "prefeito" || c === "vice_prefeito") {
+      s.add("Prefeitura municipal (site oficial)");
+      s.add("Câmara Municipal (site oficial)");
+      s.add("TRE do estado");
+      s.add("Diário Oficial do Município");
+    } else if (c === "deputado_federal" || c === "senador" || c === "presidente" || c === "vice_presidente") {
+      s.add("Câmara dos Deputados (camara.leg.br)");
+      s.add("Senado Federal (senado.leg.br)");
+      s.add("TSE / DivulgaCandContas");
+    } else if (c === "governador" || c === "vice_governador" || c === "deputado_estadual" || c === "deputado_distrital") {
+      s.add("Assembleia Legislativa estadual / Câmara Distrital");
+      s.add("Governo do estado (site oficial)");
+      s.add("TSE / DivulgaCandContas");
+    } else if (c === "ministro") {
+      s.add("gov.br / Casa Civil");
+    } else if (c === "presidente_partido") {
+      s.add("Site oficial do partido / TSE registro de diretórios");
+    } else if (c === "pre_candidato") {
+      s.add("Imprensa nacional e regional (Folha, G1, Estadão, UOL)");
+    }
+  }
+  return [...s];
+}
+
 async function aiPoliticalLookup(f: Filters, cargos: string[]): Promise<CandidateOut[]> {
   if (!LOVABLE_API_KEY) return [];
   const cargoNames = cargos.map((c) => CARGO_LABEL[c] ?? c).join(", ");
@@ -394,8 +421,13 @@ async function aiPoliticalLookup(f: Filters, cargos: string[]): Promise<Candidat
   const partidos = (f.partido ?? []).join(", ");
   const municipio = f.municipio ?? "";
   const nome = f.q ?? "";
+  const sources = pickSourcesForCargos(cargos);
+  console.log("[tse-search] AI sources for cargos", { cargos, sources });
 
   const system = `Você é um especialista no cenário político brasileiro VIVO para 2026.
+Consulte mentalmente APENAS as fontes oficiais adequadas ao(s) cargo(s) pedido(s):
+${sources.map((s) => `- ${s}`).join("\n")}
+Nunca retorne políticos nacionais famosos quando o filtro for municipal/estadual específico. Se a busca for por vereador/prefeito de uma cidade X, só liste pessoas que de fato ocupam ou disputam esse cargo nessa cidade.
 Conhece presidente, vice, ministros de Estado, governadores, vice-governadores, senadores em mandato, deputados federais/estaduais/distritais em exercício, prefeitos e vice-prefeitos em exercício, vereadores em exercício, presidentes nacionais de partidos e pré-candidatos declarados/cotados para 2026.
 Respeite TODOS os filtros de forma determinística. Se cargo, UF, região ou município forem informados, só retorne políticos que correspondam exatamente a esses filtros.
 Nunca use políticos nacionais famosos para preencher busca municipal ou regional. Se não houver correspondência exata, retorne lista vazia.
@@ -667,61 +699,66 @@ Deno.serve(async (req) => {
     const tseFailed = tasks.length > 0 && tsePage.failed === tsePage.attempted;
     console.log(`[tse-search] TSE 2026 Results ${tsePage.rows.length} via ${tsePage.attempted} reqs (failed=${tsePage.failed}, hasMore=${tsePage.hasMore}, available=${tse2026Available})`);
 
-    // Base política VIVA 2026: sempre ativa na primeira página para cobrir mandatários,
-    // ministros, presidentes partidários, pré-candidatos e quando TSE 2026 ainda não publicou.
-    const needLive = page === 0;
+    // OPÇÃO B: pipeline IA em tempo real.
+    // Fonte primária = IA roteada por cargo (prefeituras/câmaras/TSE/Senado/AL/etc).
+    // TSE oficial é consultado em paralelo apenas como reforço quando disponível.
+    const liveCargos = f.cargo?.length ? cargos : [...new Set([...cargos, ...AI_ONLY_CARGOS])];
 
-    let auxiliaryRows: CandidateOut[] = [];
-    let aiRows: CandidateOut[] = [];
-    if (needLive) {
-      const liveCargos = f.cargo?.length ? cargos : [...new Set([...cargos, ...AI_ONLY_CARGOS])];
-      const [aux, ai] = await Promise.all([
-        wikidataAuxiliaryLookup(f, liveCargos),
-        aiPoliticalLookup(f, liveCargos),
-      ]);
-      auxiliaryRows = aux;
-      const seen = new Set([...tsePage.rows, ...auxiliaryRows].map((c) => `${normalize(c.nome)}|${c.estado ?? ""}|${c.cargo ?? ""}`));
-      aiRows = ai.filter((c) => {
-        const k = `${normalize(c.nome)}|${c.estado ?? ""}|${c.cargo ?? ""}`;
-        if (seen.has(k)) return false;
-        seen.add(k);
-        return true;
-      });
-      console.log(`[tse-search] Live 2026 base: wikidata=${auxiliaryRows.length} ai=${aiRows.length}`);
-    }
+    const [auxiliaryRows, aiRows] = page === 0
+      ? await Promise.all([
+          wikidataAuxiliaryLookup(f, liveCargos),
+          aiPoliticalLookup(f, liveCargos),
+        ])
+      : [[], []];
 
-    const beforeStrictFilter = page === 0 ? [...tsePage.rows, ...auxiliaryRows, ...aiRows] : tsePage.rows;
-    const afterStrictFilter = beforeStrictFilter.filter((candidate) => matchesClientFilters(candidate, f));
-    const merged = afterStrictFilter.slice(0, PAGE_SIZE);
-    const hasMore = tsePage.hasMore || (page === 0 && afterStrictFilter.length > PAGE_SIZE);
-    const exactTotal = tsePage.exactTotal && auxiliaryRows.length === 0 && aiRows.length === 0 && tse2026Available;
-    const total = exactTotal ? tsePage.total : page * PAGE_SIZE + merged.length + (hasMore ? PAGE_SIZE : 0);
-    const rows = merged.map((r) => ({ ...r, total_count: total }));
+    const sourceUsed = {
+      ai: aiRows.length,
+      wikidata: auxiliaryRows.length,
+      tse: tsePage.rows.length,
+      tse2026Available,
+    };
 
-    console.log("Catalog filters", {
-      selectedCargo: f.cargo?.[0] ?? null,
-      selectedRegion: f.regiao?.[0] ?? null,
-      selectedState: f.estado?.[0] ?? null,
-      selectedCity: f.municipio ?? null,
-      totalBeforeFilter: beforeStrictFilter.length,
-      totalAfterFilter: afterStrictFilter.length,
+    // Dedup por (nome|cargo|estado|municipio)
+    const seen = new Set<string>();
+    const dedupKey = (c: CandidateOut) => `${normalize(c.nome)}|${c.cargo ?? ""}|${c.estado ?? ""}|${normalize(c.municipio)}`;
+    const pool = [...aiRows, ...auxiliaryRows, ...tsePage.rows].filter((c) => {
+      const k = dedupKey(c);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
     });
 
-    if (total === 0 && tseFailed && auxiliaryRows.length === 0 && aiRows.length === 0) {
+    // Filtro estrito determinístico
+    const afterStrictFilter = pool.filter((candidate) => matchesClientFilters(candidate, f));
+    const merged = afterStrictFilter.slice(0, PAGE_SIZE);
+    const hasMore = afterStrictFilter.length > PAGE_SIZE || tsePage.hasMore;
+    const exactTotal = false;
+    const total = page * PAGE_SIZE + merged.length + (hasMore ? PAGE_SIZE : 0);
+    const rows = merged.map((r) => ({ ...r, total_count: total }));
+
+    console.log({
+      filters: f,
+      sourceUsed,
+      resultsCount: rows.length,
+      poolBeforeFilter: pool.length,
+      poolAfterFilter: afterStrictFilter.length,
+    });
+
+    if (rows.length === 0) {
       return new Response(JSON.stringify({
-        fallback: true,
-        error: "TSE_SERVICE_UNAVAILABLE",
-        message: "Não foi possível consultar base do TSE agora.",
-        rows: [], total: 0, suggestions: [], normalized: {}, page,
+        rows: [],
+        total: 0,
+        hasMore: false,
+        exactTotal: true,
+        suggestions: [],
+        normalized: {},
+        page,
+        pageSize: PAGE_SIZE,
+        fallback: false,
+        sourceUsed,
+        notice: "Nenhum candidato encontrado.",
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-
-    const notices: string[] = [];
-    if (!tse2026Available) {
-      notices.push(`TSE ainda não publicou candidaturas oficiais de ${TARGET_YEAR}. Resultados vêm da base política viva 2026 (mandatários, ministros, presidentes partidários e pré-candidatos).`);
-    }
-
-    console.log(`[tse-search] returning ${rows.length}/${total} (page ${page}, tse2026=${tsePage.rows.length}, live=${auxiliaryRows.length + aiRows.length}, exact=${exactTotal})`);
 
     return new Response(JSON.stringify({
       rows,
@@ -733,8 +770,8 @@ Deno.serve(async (req) => {
       page,
       pageSize: PAGE_SIZE,
       fallback: false,
-      sourceYears: { target: TARGET_YEAR, federal: federalElection?.ano ?? null, municipal: municipalElection?.ano ?? null },
-      notice: notices.join(" ") || null,
+      sourceUsed,
+      notice: null,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (e) {
@@ -742,7 +779,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       fallback: true,
       error: "SERVICE_FAILED",
-      message: "Não foi possível consultar base do TSE agora.",
+      message: "Não foi possível consultar a base política agora.",
       rows: [],
       total: 0,
       suggestions: [],
