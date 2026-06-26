@@ -318,11 +318,8 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     setErrors(errs);
     if (Object.keys(errs).length) return;
 
-    // Score baixo + sem plausibilidade estrutural + nenhuma fonte encontrou: pedir confirmação.
-    if (validationScore < 30 && structuralScore < 80 && !overrideConfirmed) {
-      setConfirmOpen(true);
-      return;
-    }
+    // Não bloqueia por score de IA — apenas alerta na UI. Usuário sempre pode adicionar.
+
 
     submitPayload();
   };
