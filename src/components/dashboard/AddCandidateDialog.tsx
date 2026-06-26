@@ -78,6 +78,8 @@ export type AddCandidatePayload = {
   profileType: "politician";
   fullName: string;
   party: string;
+  partyName?: string;
+  partyNumber?: number;
   position: string;
   region: string;
   state: string;
