@@ -459,3 +459,171 @@ const RejectionAnalysisPage = () => {
 };
 
 export default RejectionAnalysisPage;
+
+// ──────────────────────────────────────────────────────────────────
+// Strategic comments section
+// ──────────────────────────────────────────────────────────────────
+
+interface StrategicGroup {
+  profile: string;
+  reason: string;
+  objective: string;
+  tone: string;
+  comments: { type: string; text: string }[];
+}
+
+function StrategicCommentsCard({
+  candidateId,
+  groups,
+}: {
+  candidateId: string;
+  groups: WhoRejects[];
+}) {
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<StrategicGroup[] | null>(null);
+  const [variation, setVariation] = useState(0);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const generate = async (nextVariation: number) => {
+    if (!candidateId || groups.length === 0) {
+      toast.error("Análise não disponível");
+      return;
+    }
+    setLoading(true);
+    try {
+      const { data: res, error } = await supabase.functions.invoke('generate-rejection-comments', {
+        body: { candidateId, groups, variation: nextVariation },
+      });
+      if (error) throw error;
+      if (res?.error) throw new Error(res.error);
+      setData(res?.groups ?? []);
+      setVariation(nextVariation);
+      toast.success("Comentários estratégicos gerados.");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao gerar comentários");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copy = async (key: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 1500);
+    } catch {
+      toast.error("Não foi possível copiar");
+    }
+  };
+
+  const initials = (name: string) =>
+    name.split(/\s+/).slice(0, 2).map((s) => s[0]).join("").toUpperCase();
+
+  return (
+    <Card className="border-primary/30">
+      <CardHeader className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div>
+          <CardTitle className="flex items-center gap-2 text-primary">
+            <MessageCircle className="h-5 w-5" />
+            Comentários estratégicos para reduzir rejeição
+          </CardTitle>
+          <CardDescription>
+            Mensagens sugeridas por IA para redes sociais com foco nos grupos que mais rejeitam o candidato.
+          </CardDescription>
+        </div>
+        <Button
+          onClick={() => generate(variation + 1)}
+          disabled={loading}
+          variant={data ? "outline" : "default"}
+          size="sm"
+        >
+          {loading ? (
+            <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Gerando…</>
+          ) : data ? (
+            <><Sparkles className="mr-2 h-4 w-4" />Gerar novos comentários</>
+          ) : (
+            <><Sparkles className="mr-2 h-4 w-4" />Gerar comentários estratégicos</>
+          )}
+        </Button>
+      </CardHeader>
+      <CardContent>
+        {!data && !loading && (
+          <div className="border border-dashed rounded-lg p-8 text-center text-sm text-muted-foreground">
+            Clique em <span className="font-medium text-foreground">"Gerar comentários estratégicos"</span> para transformar
+            a análise em conteúdo prático para social media.
+          </div>
+        )}
+
+        {loading && !data && (
+          <div className="border border-dashed rounded-lg p-8 text-center text-sm text-muted-foreground animate-pulse">
+            Gerando mensagens humanizadas por IA…
+          </div>
+        )}
+
+        {data && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {data.map((g, gi) => (
+              <motion.div
+                key={`${variation}-${gi}`}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25, delay: gi * 0.05 }}
+                className="border rounded-xl p-4 bg-card space-y-3"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="h-10 w-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-sm flex-shrink-0">
+                    {initials(g.profile)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-semibold text-foreground leading-tight">{g.profile}</h4>
+                    <p className="text-xs text-muted-foreground mt-0.5">{g.reason}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-md bg-muted/40 p-2">
+                    <p className="font-semibold text-foreground mb-0.5">Objetivo</p>
+                    <p className="text-muted-foreground">{g.objective}</p>
+                  </div>
+                  <div className="rounded-md bg-muted/40 p-2">
+                    <p className="font-semibold text-foreground mb-0.5">Tom ideal</p>
+                    <p className="text-muted-foreground">{g.tone}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {g.comments?.map((c, ci) => {
+                    const key = `${gi}-${ci}-${variation}`;
+                    const copied = copiedKey === key;
+                    return (
+                      <div
+                        key={ci}
+                        className="group relative rounded-2xl rounded-tl-sm border bg-muted/30 hover:bg-muted/60 transition-all p-3 pr-10"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] uppercase tracking-wider font-semibold text-primary/80">
+                            Comentário {ci + 1}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">{c.type}</span>
+                        </div>
+                        <p className="text-sm text-foreground leading-snug whitespace-pre-line">{c.text}</p>
+                        <button
+                          type="button"
+                          onClick={() => copy(key, c.text)}
+                          aria-label="Copiar comentário"
+                          className="absolute top-2 right-2 h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-background opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                        >
+                          {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
