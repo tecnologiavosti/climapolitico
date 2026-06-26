@@ -149,12 +149,16 @@ export default function CandidatesCatalog() {
 
   const sourceLabel = useMemo(() => {
     if (!sources.length) return null;
+    const hasDb = sources.includes("catalog-db");
     const hasTse = sources.some((s) => s.startsWith("tse"));
-    const hasWeb = sources.includes("firecrawl");
+    const hasWeb = sources.includes("firecrawl") || sources.includes("web") || sources.includes("ai-lookup");
+    if (hasDb && !hasTse && !hasWeb) return "Banco TSE";
     if (hasTse && hasWeb) return "TSE + Web";
     if (hasTse) return "TSE";
+    if (hasDb) return "Banco TSE";
     return "Web";
   }, [sources]);
+
 
   return (
     <div className="space-y-4">
