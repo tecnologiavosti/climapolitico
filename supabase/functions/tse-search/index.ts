@@ -393,17 +393,73 @@ const STATUS_TO_CATEGORIA: Record<string, string> = {
   "possivel presidenciavel": "pre_candidato",
 };
 
+async function cerebrasDirectLookup(name: string, cargoKey: string | null): Promise<Array<{ nome: string; partido: string | null; cargo: string; cidade: string | null; uf: string | null; status: string }>> {
+  const key = Deno.env.get("CEREBRAS_API_KEY");
+  if (!key) { console.log("[ai-lookup] CEREBRAS_API_KEY ausente"); return []; }
+  const prompt = `Você conhece a política brasileira atual (2024-2026). O usuário procura por: "${name}"${cargoKey ? ` (cargo: ${CARGO_LABEL[cargoKey] ?? cargoKey})` : ""}.
+
+Retorne APENAS políticos REAIS cujo nome corresponda (exato ou parcial) à busca. Inclua prefeitos, vereadores, deputados, senadores, governadores, ministros, etc.
+NÃO invente. Se não conhecer ninguém com esse nome, retorne {"candidatos":[]}.
+
+Formato JSON estrito:
+{"candidatos":[{"nome":"Nome Completo","partido":"SIGLA ou null","cargo":"prefeito|vice_prefeito|vereador|deputado_federal|deputado_estadual|senador|governador|presidente|ministro|pre_candidato","cidade":"Cidade ou null","uf":"Nome do estado por extenso ou null","status":"Eleito|Candidato|Ex-candidato|Mandatário"}]}`;
+  try {
+    const r = await fetch("https://api.cerebras.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "llama-3.3-70b",
+        messages: [
+          { role: "system", content: "Você é uma base de conhecimento sobre políticos brasileiros. Retorna APENAS JSON válido. Nunca inventa pessoas." },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0,
+        response_format: { type: "json_object" },
+        max_tokens: 1500,
+      }),
+    });
+    if (!r.ok) { console.log(`[ai-lookup] HTTP ${r.status}`); return []; }
+    const data = await r.json();
+    const content = data?.choices?.[0]?.message?.content ?? "{}";
+    const parsed = JSON.parse(content);
+    const arr = parsed?.candidatos ?? [];
+    return Array.isArray(arr) ? arr.map((c: any) => ({
+      nome: String(c.nome ?? "").trim(),
+      partido: c.partido ? String(c.partido).toUpperCase() : null,
+      cargo: (c.cargo && typeof c.cargo === "string" ? normalizeCargoKey(c.cargo) : null) ?? cargoKey ?? "pre_candidato",
+      cidade: c.cidade ? String(c.cidade).trim() : null,
+      uf: c.uf ? String(c.uf).trim() : null,
+      status: String(c.status ?? "Candidato"),
+    })).filter((c) => c.nome.length > 2) : [];
+  } catch (e) {
+    console.log("[ai-lookup] erro:", (e as Error).message);
+    return [];
+  }
+}
+
 async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: number): Promise<OutRow[]> {
   const query = buildQuery(cargoKey, f);
   console.log("QUERY:", query);
   console.log("SOURCE: firecrawl");
   const results = await firecrawlSearch(query, deadline);
   console.log(`[firecrawl] ${results.length} páginas`);
-  if (results.length === 0 || Date.now() > deadline) return [];
 
-  const combined = results.slice(0, 5).map((r) => `# ${r.title}\n${r.markdown}`).join("\n\n---\n\n");
-  const extracted = await cerebrasExtract(combined, cargoKey, query);
-  console.log(`[cerebras] extraiu ${extracted.length} nomes`);
+  let extracted: Awaited<ReturnType<typeof cerebrasExtract>> = [];
+  let fonte = "firecrawl+web";
+
+  if (results.length > 0 && Date.now() < deadline) {
+    const combined = results.slice(0, 5).map((r) => `# ${r.title}\n${r.markdown}`).join("\n\n---\n\n");
+    extracted = await cerebrasExtract(combined, cargoKey, query);
+    console.log(`[cerebras] extraiu ${extracted.length} nomes`);
+  }
+
+  // Fallback: se não veio nada do Firecrawl e temos nome → consulta direta na base de conhecimento Cerebras
+  if (extracted.length === 0 && f.q && Date.now() < deadline) {
+    console.log(`[ai-lookup] firecrawl vazio — consultando Cerebras direto por "${f.q}"`);
+    extracted = await cerebrasDirectLookup(f.q, cargoKey);
+    console.log(`[ai-lookup] retornou ${extracted.length} candidatos`);
+    if (extracted.length > 0) fonte = "ai-lookup";
+  }
 
   return extracted.map((c, i) => {
     const uf = resolveUF(c.uf) ?? (f.ufs[0] ?? null);
@@ -418,7 +474,7 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
       eleito: categoria === "eleito", categoria, ano_eleicao: 2026,
       foto_url: null, redes_sociais: null,
       popularidade: 0.5, similarity: 1, total_count: 0,
-      fonte: "firecrawl+web", confidence: 75,
+      fonte, confidence: fonte === "ai-lookup" ? 60 : 75,
     } as OutRow;
   });
 }
