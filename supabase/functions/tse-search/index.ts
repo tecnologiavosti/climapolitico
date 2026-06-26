@@ -1013,13 +1013,12 @@ Deno.serve(async (req) => {
 
     const deduped = dedupe(all);
     const filtered = applyFilters(deduped, f);
-    console.log("RESULTS:", filtered.length);
-    console.log(`NORMALIZED: ${deduped.length} | RESULT COUNT: ${filtered.length}`);
-    console.log("CRAWLER RETURNED", filtered.length);
-    console.log("BACKEND FINAL COUNT:", filtered.length);
-    console.log("FIRST 5 BACKEND:", JSON.stringify(filtered.slice(0, 5).map((r) => ({
-      nome: r.nome, cargo: r.cargo, estado: r.estado, municipio: r.municipio, eleito: r.eleito, fonte: r.fonte,
+    console.log("FINAL COUNT:", filtered.length);
+    console.log("FINAL TOP10:", JSON.stringify(filtered.slice(0, 10).map((r) => ({
+      nome: r.nome, cargo: r.cargo, estado: r.estado, municipio: r.municipio, fonte: r.fonte,
     }))));
+    console.log(`NORMALIZED: ${deduped.length} | RESULT COUNT: ${filtered.length}`);
+
 
     const total = filtered.length;
     const start = f.page * PAGE_SIZE;
