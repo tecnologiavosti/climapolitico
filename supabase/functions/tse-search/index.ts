@@ -329,6 +329,7 @@ async function tseFetch<T>(path: string, deadline: number): Promise<T | null> {
   if (Date.now() > deadline) return null;
   const url = `${TSE_BASE}${path}`;
   console.log("TSE REQUEST:", url);
+  console.log("TSE REQUEST URL", url);
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 8000);
@@ -341,6 +342,7 @@ async function tseFetch<T>(path: string, deadline: number): Promise<T | null> {
       },
     });
     clearTimeout(t);
+    console.log("TSE STATUS", r.status);
     if (!r.ok) {
       const body = await r.text().catch(() => "");
       console.log(`TSE HTTP ${r.status} ${url} :: ${body.slice(0, 200)}`);
@@ -360,9 +362,11 @@ async function listMunicipios(_ano: number, cdEleicao: number, uf: string, deadl
   const arr = data?.municipios ?? [];
   const out = Array.isArray(arr)
     ? arr.map((m: any) => ({
-        codigo: Number(m.codigo ?? m.sigla ?? m.cdMunicipio),
+        // O código do município no TSE pode ter zero à esquerda (ex.: Tarauacá/AC = "01473").
+        // Converter para Number quebra o endpoint de candidatos e retorna lista vazia.
+        codigo: String(m.codigo ?? m.sigla ?? m.cdMunicipio ?? "").trim(),
         nome: String(m.nome ?? m.nm ?? ""),
-      })).filter((m) => m.codigo > 0 && m.nome)
+      })).filter((m) => m.codigo && m.nome)
     : [];
   console.log(`TSE municipios ${uf}/${cdEleicao} → ${out.length}`);
   return out;
