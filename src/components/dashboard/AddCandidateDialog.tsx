@@ -241,13 +241,15 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   // ===== Validação inteligente =====
   const formatOk = useMemo(() => isNameFormatValid(fullName), [fullName]);
   const blacklisted = useMemo(() => isBlacklisted(fullName), [fullName]);
-  const validationScore = useMemo(() => computeScore(fullName, {
-    foundInTse: !!catalogMatch,
-    foundOnWeb: !!(aiLookup?.found),
-    webConfidence: aiLookup?.confidence ?? 0,
-  }), [fullName, catalogMatch, aiLookup]);
-  const validationStatus = useMemo(
-    () => statusFromScore(validationScore, formatOk, blacklisted),
+  const validationScore = useMemo(
+    () => computeExistenceScore(fullName, {
+      foundInTse: !!catalogMatch,
+      ...signalsFromAiLookup(aiLookup),
+    }),
+    [fullName, catalogMatch, aiLookup],
+  );
+  const validationLevel = useMemo(
+    () => levelFromScore(validationScore, formatOk, blacklisted),
     [validationScore, formatOk, blacklisted],
   );
   const [overrideConfirmed, setOverrideConfirmed] = useState(false);
