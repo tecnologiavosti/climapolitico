@@ -705,6 +705,54 @@ async function webSearch(query: string, deadline: number): Promise<Array<{ url: 
   return google;
 }
 
+const HONORIFICS = new Set(["dr","dra","prof","profa","sr","sra","pastor","pr","cb","sgt","ten","cel","cap","cmdt","cmte"]);
+function stripHonorifics(q: string): string {
+  return normalize(q).split(/\s+/).filter((t) => t && !HONORIFICS.has(t.replace(/\./g, ""))).join(" ").trim();
+}
+
+function buildMultiQueries(f: Filters, cargoKey: string | null): string[] {
+  const name = (f.q ?? "").trim();
+  if (!name) return [buildQuery(cargoKey, f)];
+  const cargoLabel = cargoKey ? (CARGO_LABEL[cargoKey] ?? cargoKey).toLowerCase() : null;
+  const mun = f.municipio?.trim();
+  const uf = f.ufs[0] ?? null;
+  const out = new Set<string>();
+  // Fontes municipais primeiro (vereadores, prefeitos locais)
+  out.add(`"${name}" site:leg.br`);
+  out.add(`"${name}" site:gov.br`);
+  out.add(`"${name}" vereador`);
+  out.add(`"${name}" prefeito`);
+  out.add(`"${name}" política`);
+  if (mun) out.add(`"${name}" ${mun}`);
+  if (uf) out.add(`"${name}" ${uf}`);
+  if (cargoLabel) out.add(`"${name}" ${cargoLabel}${mun ? ` ${mun}` : ""}${uf ? ` ${uf}` : ""}`);
+  // Fallback geral (sem aspas) — pega o que escapa
+  out.add(buildQuery(cargoKey, f));
+  return [...out].slice(0, 6);
+}
+
+async function multiWebSearch(f: Filters, cargoKey: string | null, deadline: number) {
+  const queries = buildMultiQueries(f, cargoKey);
+  console.log("MULTI QUERIES:", JSON.stringify(queries));
+  const seen = new Set<string>();
+  const all: Array<{ url: string; title: string; markdown: string }> = [];
+  let municipalCount = 0;
+  for (const q of queries) {
+    if (Date.now() > deadline) break;
+    const r = await webSearch(q, deadline);
+    for (const it of r) {
+      if (seen.has(it.url)) continue;
+      seen.add(it.url);
+      if (/(leg\.br|sapl|gov\.br)/i.test(it.url)) municipalCount++;
+      all.push(it);
+    }
+    if (all.length >= 12) break;
+  }
+  console.log("MUNICIPAL COUNT:", municipalCount);
+  console.log("WEB COUNT:", all.length);
+  return all;
+}
+
 
 
 // Extrai candidatos do markdown via Cerebras (parser estruturado, NÃO gerador)
