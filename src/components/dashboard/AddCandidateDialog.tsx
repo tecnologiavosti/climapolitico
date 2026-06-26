@@ -279,7 +279,10 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     const region = scope === "national" ? "Brasil" : (STATE_TO_REGION[state] ?? "");
     onSubmit({
       profileType: "politician",
-      fullName, party, position, region,
+      fullName, party,
+      partyName: findPartyBySigla(party)?.nome,
+      partyNumber: findPartyBySigla(party)?.numero,
+      position, region,
       state,
       city: city.trim() || undefined,
       socials: {}, photoFile: null,
