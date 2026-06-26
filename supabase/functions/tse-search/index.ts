@@ -801,18 +801,24 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
 // ============ DEDUPE + FILTROS ============
 function dedupe(rows: OutRow[]): OutRow[] {
   const seen = new Map<string, OutRow>();
+  const mergeFonte = (a: string, b: string) => {
+    const parts = new Set([...(a || "").split("+"), ...(b || "").split("+")].map((s) => s.trim()).filter(Boolean));
+    return [...parts].join("+");
+  };
   for (const r of rows) {
     const key = r.tse_id
       ? `tse|${r.tse_id}`
       : `${nameKey(r.nome)}|${r.cargo}|${r.estado ?? ""}|${normalize(r.municipio ?? "")}`;
     const prev = seen.get(key);
     if (!prev) { seen.set(key, r); continue; }
-    // prefere TSE > Firecrawl, eleito > não eleito, maior confidence
     const score = (x: OutRow) => (x.fonte.startsWith("tse") ? 100 : 0) + (x.eleito ? 10 : 0) + x.confidence / 10;
-    if (score(r) > score(prev)) seen.set(key, r);
+    const winner = score(r) > score(prev) ? { ...r } : { ...prev };
+    winner.fonte = mergeFonte(prev.fonte, r.fonte);
+    seen.set(key, winner);
   }
   return [...seen.values()];
 }
+
 
 function levenshtein(a: string, b: string): number {
   if (a === b) return 0;
