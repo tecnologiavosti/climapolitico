@@ -446,6 +446,12 @@ const RejectionAnalysisPage = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* 10 — Strategic comments to reduce rejection */}
+          <StrategicCommentsCard
+            candidateId={selectedCandidate}
+            groups={analysis.who_rejects ?? []}
+          />
         </motion.div>
       )}
     </div>
