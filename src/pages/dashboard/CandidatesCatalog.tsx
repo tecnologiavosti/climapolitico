@@ -158,6 +158,47 @@ export default function CandidatesCatalog() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const manualAddMutation = useMutation({
+    mutationFn: async (p: AddCandidatePayload) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Não autenticado");
+      const { data: existing } = await supabase.from("candidates").select("id").eq("user_id", user.id);
+      if (subscription && existing && existing.length >= subscription.max_candidates) {
+        throw new Error(`Limite de ${subscription.max_candidates} candidatos atingido. Faça upgrade do plano.`);
+      }
+      const region = [p.city, p.state].filter(Boolean).join(", ") || p.region || p.state || null;
+      const { error } = await supabase.from("candidates").insert({
+        user_id: user.id,
+        full_name: p.fullName,
+        party: p.party,
+        region,
+        social_media_link: null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["my-candidates-names"] });
+      queryClient.invalidateQueries({ queryKey: ["candidates"] });
+      queryClient.invalidateQueries({ queryKey: ["candidates-overview"] });
+      toast.success("Candidato cadastrado com sucesso!");
+      setAddDialogOpen(false);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const dialogInitial = useMemo(() => {
+    const cargo = appliedFilters?.cargo?.[0] ?? pendingFilters.cargo?.[0];
+    const estado = appliedFilters?.estado?.[0] ?? pendingFilters.estado?.[0];
+    const municipio = appliedFilters?.municipio ?? pendingFilters.municipio;
+    const q = (appliedFilters?.q ?? searchQuery ?? "").trim();
+    return {
+      fullName: q,
+      position: cargo ? CARGO_TO_POSITION[cargo] : undefined,
+      state: estado,
+      city: municipio,
+    };
+  }, [appliedFilters, pendingFilters, searchQuery]);
+
   const goPage = (p: number) => {
     if (!appliedFilters) return;
     const target = Math.max(0, exactTotal ? Math.min(p, totalPages - 1) : p);
