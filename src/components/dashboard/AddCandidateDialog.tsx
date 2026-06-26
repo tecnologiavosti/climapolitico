@@ -237,9 +237,35 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
 
 
 
+  // ===== Validação inteligente =====
+  const formatOk = useMemo(() => isNameFormatValid(fullName), [fullName]);
+  const blacklisted = useMemo(() => isBlacklisted(fullName), [fullName]);
+  const validationScore = useMemo(() => computeScore(fullName, {
+    foundInTse: !!catalogMatch,
+    foundOnWeb: !!(aiLookup?.found),
+    webConfidence: aiLookup?.confidence ?? 0,
+  }), [fullName, catalogMatch, aiLookup]);
+  const validationStatus = useMemo(
+    () => statusFromScore(validationScore, formatOk, blacklisted),
+    [validationScore, formatOk, blacklisted],
+  );
+  const [overrideConfirmed, setOverrideConfirmed] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // Reset override quando nome muda
+  useEffect(() => { setOverrideConfirmed(false); }, [fullName]);
+
+  const nameError = useMemo(() => {
+    if (!fullName.trim()) return null;
+    if (blacklisted) return "Esse nome não parece ser um político brasileiro válido.";
+    if (!formatOk) return "Digite nome e sobrenome válidos.";
+    return null;
+  }, [fullName, formatOk, blacklisted]);
+
   const scope = scopeOf(position);
   const canSubmit =
-    !!fullName.trim() && !!party && !!position && !isPending &&
+    formatOk && !blacklisted && !!party && !!position && !isPending &&
+    (validationScore >= 30 || overrideConfirmed) &&
     (scope === "national" || (scope === "state" && !!state) || (scope === "municipal" && !!state && !!city.trim()));
 
   const scopeBadge = useMemo(() => {
