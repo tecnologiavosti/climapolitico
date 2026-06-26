@@ -681,6 +681,31 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
           </Button>
         </div>
       </DialogContent>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Candidato não encontrado</AlertDialogTitle>
+            <AlertDialogDescription>
+              Não encontramos <strong>{fullName.trim()}</strong> no TSE, web ou base política nacional.
+              Deseja adicionar manualmente mesmo assim?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setOverrideConfirmed(true);
+                setConfirmOpen(false);
+                // submete na próxima micro-task, após state propagar
+                setTimeout(() => submitPayload(), 0);
+              }}
+            >
+              Adicionar mesmo assim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }
