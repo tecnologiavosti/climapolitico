@@ -289,7 +289,7 @@ async function searchTSE(cargoKey: string, f: Filters, deadline: number): Promis
 // ============ CAMADA 2 — FIRECRAWL ============
 function buildQuery(cargoKey: string | null, f: Filters): string {
   const parts: string[] = [];
-  if (f.q) parts.push(f.q);
+  if (f.q) parts.push(`"${f.q}"`);
   if (cargoKey) {
     const label = CARGO_LABEL[cargoKey] ?? cargoKey;
     parts.push(cargoKey === "vereador" || cargoKey === "prefeito" ? `${label.toLowerCase()}es` : label.toLowerCase());
@@ -300,6 +300,8 @@ function buildQuery(cargoKey: string | null, f: Filters): string {
   if (cargoKey === "ministro" && !f.q) parts.push("governo lula 2026");
   if (cargoKey === "presidente_partido" && !f.q) parts.push("brasil 2026");
   if (cargoKey === "pre_candidato" && !f.q) parts.push("brasil 2026");
+  // Quando é busca apenas por nome, adicionar contexto político BR
+  if (f.q && !cargoKey) parts.push("político candidato brasil");
   return parts.filter(Boolean).join(" ").trim() || "candidatos brasil 2026";
 }
 
@@ -332,16 +334,19 @@ async function firecrawlSearch(query: string, deadline: number): Promise<Array<{
 }
 
 // Extrai candidatos do markdown via Cerebras (parser estruturado, NÃO gerador)
-async function cerebrasExtract(markdown: string, cargoKey: string, query: string): Promise<Array<{ nome: string; partido: string | null; cargo: string; cidade: string | null; uf: string | null; status: string }>> {
+async function cerebrasExtract(markdown: string, cargoKey: string | null, query: string): Promise<Array<{ nome: string; partido: string | null; cargo: string; cidade: string | null; uf: string | null; status: string }>> {
   const key = Deno.env.get("CEREBRAS_API_KEY");
   if (!key) return [];
-  const cargoLabel = CARGO_LABEL[cargoKey] ?? cargoKey;
-  const prompt = `Extraia APENAS candidatos políticos REAIS mencionados no texto abaixo para o cargo "${cargoLabel}".
-NÃO invente nomes. NÃO complete listas. Se o texto não mencionar um candidato explicitamente, ignore.
+  const cargoLabel = cargoKey ? (CARGO_LABEL[cargoKey] ?? cargoKey) : null;
+  const cargoLine = cargoLabel
+    ? `para o cargo "${cargoLabel}"`
+    : `de QUALQUER cargo político (presidente, governador, senador, deputado, prefeito, vereador, ministro, etc.)`;
+  const prompt = `Extraia APENAS políticos REAIS mencionados no texto abaixo ${cargoLine}.
+NÃO invente nomes. NÃO complete listas. Se o texto não mencionar a pessoa explicitamente, ignore.
 NÃO inclua pessoas falecidas. NÃO inclua personagens históricos.
 
-Para cada candidato encontrado, retorne JSON estritamente neste formato:
-{"candidatos":[{"nome":"Nome Completo","partido":"SIGLA ou null","cidade":"Cidade ou null","uf":"Nome do estado por extenso ou null","status":"Eleito|Candidato|Ex-candidato|Mandatário|Possível presidenciável"}]}
+Para cada pessoa encontrada, retorne JSON estritamente neste formato:
+{"candidatos":[{"nome":"Nome Completo","partido":"SIGLA ou null","cargo":"prefeito|vice_prefeito|vereador|deputado_federal|deputado_estadual|senador|governador|presidente|ministro|pre_candidato","cidade":"Cidade ou null","uf":"Nome do estado por extenso ou null","status":"Eleito|Candidato|Ex-candidato|Mandatário|Possível presidenciável"}]}
 
 Contexto da busca: "${query}"
 Texto:
@@ -369,7 +374,7 @@ ${markdown.slice(0, 6000)}`;
     return Array.isArray(arr) ? arr.map((c: any) => ({
       nome: String(c.nome ?? "").trim(),
       partido: c.partido ? String(c.partido).toUpperCase() : null,
-      cargo: cargoKey,
+      cargo: (c.cargo && typeof c.cargo === "string" ? normalizeCargoKey(c.cargo) : null) ?? cargoKey ?? "pre_candidato",
       cidade: c.cidade ? String(c.cidade).trim() : null,
       uf: c.uf ? String(c.uf).trim() : null,
       status: String(c.status ?? "Candidato"),
@@ -397,7 +402,7 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
   if (results.length === 0 || Date.now() > deadline) return [];
 
   const combined = results.slice(0, 5).map((r) => `# ${r.title}\n${r.markdown}`).join("\n\n---\n\n");
-  const extracted = await cerebrasExtract(combined, cargoKey ?? "pre_candidato", query);
+  const extracted = await cerebrasExtract(combined, cargoKey, query);
   console.log(`[cerebras] extraiu ${extracted.length} nomes`);
 
   return extracted.map((c, i) => {
@@ -408,7 +413,7 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
       id: `web-${normalize(c.nome).replace(/\s+/g, "-")}-${i}`,
       tse_id: null, nome: c.nome, nome_urna: null,
       partido_sigla: c.partido, partido_nome: null, numero_partido: null,
-      cargo: cargoKey ?? "pre_candidato", regiao: null,
+      cargo: c.cargo ?? cargoKey ?? "pre_candidato", regiao: null,
       estado: uf, municipio: c.cidade,
       eleito: categoria === "eleito", categoria, ano_eleicao: 2026,
       foto_url: null, redes_sociais: null,
@@ -434,6 +439,33 @@ function dedupe(rows: OutRow[]): OutRow[] {
   return [...seen.values()];
 }
 
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const v0 = new Array(b.length + 1).fill(0).map((_, i) => i);
+  const v1 = new Array(b.length + 1).fill(0);
+  for (let i = 0; i < a.length; i++) {
+    v1[0] = i + 1;
+    for (let j = 0; j < b.length; j++) {
+      const cost = a[i] === b[j] ? 0 : 1;
+      v1[j + 1] = Math.min(v1[j] + 1, v0[j + 1] + 1, v0[j] + cost);
+    }
+    for (let j = 0; j <= b.length; j++) v0[j] = v1[j];
+  }
+  return v1[b.length];
+}
+
+function fuzzyTokenMatch(hayTokens: string[], token: string): boolean {
+  if (token.length < 3) return hayTokens.some((h) => h.startsWith(token));
+  for (const h of hayTokens) {
+    if (h.includes(token) || token.includes(h)) return true;
+    const maxDist = Math.max(1, Math.floor(token.length * 0.25));
+    if (Math.abs(h.length - token.length) <= maxDist && levenshtein(h, token) <= maxDist) return true;
+  }
+  return false;
+}
+
 function applyFilters(rows: OutRow[], f: Filters): OutRow[] {
   const q = normalize(f.q);
   return rows.filter((r) => {
@@ -441,8 +473,13 @@ function applyFilters(rows: OutRow[], f: Filters): OutRow[] {
     if (f.partidos.length && !f.partidos.includes((r.partido_sigla ?? "").toUpperCase())) return false;
     if (q) {
       const hay = normalize(`${r.nome} ${r.nome_urna ?? ""}`);
+      const hayTokens = hay.split(/\s+/).filter(Boolean);
       const tokens = q.split(/\s+/).filter(Boolean);
-      if (!tokens.every((t) => hay.includes(t))) return false;
+      // 1) substring direta
+      if (hay.includes(q)) return true;
+      // 2) todos os tokens com fuzzy match
+      if (tokens.every((t) => fuzzyTokenMatch(hayTokens, t))) return true;
+      return false;
     }
     return true;
   });
