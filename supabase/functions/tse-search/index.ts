@@ -536,21 +536,15 @@ async function searchOpenDataYear(year: number, cargoKey: string | null, f: Filt
   return rows;
 }
 
-async function searchOpenData(cargoKey: string | null, f: Filters, deadline: number): Promise<OutRow[]> {
-  const years = cargoKey && MUNICIPAL_CARGOS.has(cargoKey)
-    ? [2024]
-    : cargoKey && CARGO_TO_TSE[cargoKey]
-    ? [2022, 2024]
-    : [2024, 2022];
-  const out: OutRow[] = [];
-  for (const year of years) {
-    if (Date.now() > deadline) break;
-    const rows = await searchOpenDataYear(year, cargoKey, f, deadline);
-    out.push(...rows);
-    if (rows.length > 0 && !cargoKey) break;
-  }
-  return out;
+async function searchOpenData(_cargoKey: string | null, _f: Filters, _deadline: number): Promise<OutRow[]> {
+  // DESATIVADO: o ZIP `consulta_cand_<ano>.zip` do TSE tem centenas de MB.
+  // Baixar + descompactar dentro da edge function estoura o limite de memória
+  // (erro 546 WORKER_RESOURCE_LIMIT). A busca por nome usa apenas a API
+  // divulgacand + cache no banco. Para popular o cache em massa, use o ETL
+  // dedicado (etl-tse-politicians), que roda fora do request do usuário.
+  return [];
 }
+
 
 async function mapWithLimit<T, R>(items: T[], limit: number, fn: (item: T, idx: number) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length);
