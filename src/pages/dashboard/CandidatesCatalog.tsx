@@ -404,6 +404,15 @@ export default function CandidatesCatalog() {
           </div>
         </>
       )}
+
+      <AddCandidateDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        isPending={manualAddMutation.isPending}
+        onSubmit={(payload) => manualAddMutation.mutate(payload)}
+        knownNames={myCandidates}
+        initialValues={dialogInitial}
+      />
     </div>
   );
 }
