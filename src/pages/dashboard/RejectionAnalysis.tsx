@@ -472,6 +472,8 @@ interface StrategicGroup {
   comments: { type: string; text: string }[];
 }
 
+const LS_KEY = "selectedRejectionGroup";
+
 function StrategicCommentsCard({
   candidateId,
   groups,
@@ -479,32 +481,80 @@ function StrategicCommentsCard({
   candidateId: string;
   groups: WhoRejects[];
 }) {
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<StrategicGroup[] | null>(null);
-  const [variation, setVariation] = useState(0);
+  // Map per-group results: profile -> StrategicGroup
+  const [results, setResults] = useState<Record<string, StrategicGroup>>({});
+  const [loadingGroup, setLoadingGroup] = useState<string | null>(null);
+  const [loadingAll, setLoadingAll] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem(LS_KEY) ?? "";
+  });
 
-  const generate = async (nextVariation: number) => {
-    if (!candidateId || groups.length === 0) {
+  // Ensure selected exists in current groups; default to first
+  useEffect(() => {
+    if (!groups.length) return;
+    const exists = groups.some((g) => g.profile === selected);
+    if (!exists) setSelected(groups[0].profile);
+  }, [groups, selected]);
+
+  useEffect(() => {
+    if (selected) localStorage.setItem(LS_KEY, selected);
+  }, [selected]);
+
+  const generateOne = async (profile: string) => {
+    const group = groups.find((g) => g.profile === profile);
+    if (!candidateId || !group) {
       toast.error("Análise não disponível");
       return;
     }
-    setLoading(true);
+    setLoadingGroup(profile);
     try {
       const { data: res, error } = await supabase.functions.invoke('generate-rejection-comments', {
-        body: { candidateId, groups, variation: nextVariation },
+        body: { candidateId, groups: [group], variation: Date.now() },
       });
       if (error) throw error;
       if (res?.error) throw new Error(res.error);
-      setData(res?.groups ?? []);
-      setVariation(nextVariation);
-      toast.success("Comentários estratégicos gerados.");
+      const generated: StrategicGroup | undefined = res?.groups?.[0];
+      if (generated) {
+        setResults((prev) => ({ ...prev, [profile]: generated }));
+      }
     } catch (err: any) {
       toast.error(err?.message ?? "Erro ao gerar comentários");
     } finally {
-      setLoading(false);
+      setLoadingGroup(null);
     }
   };
+
+  const generateAll = async () => {
+    if (!candidateId || groups.length === 0) return;
+    setLoadingAll(true);
+    try {
+      const { data: res, error } = await supabase.functions.invoke('generate-rejection-comments', {
+        body: { candidateId, groups, variation: Date.now() },
+      });
+      if (error) throw error;
+      if (res?.error) throw new Error(res.error);
+      const next: Record<string, StrategicGroup> = {};
+      (res?.groups ?? []).forEach((g: StrategicGroup) => {
+        next[g.profile] = g;
+      });
+      setResults((prev) => ({ ...prev, ...next }));
+      toast.success("Comentários gerados para todos os grupos.");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Erro ao gerar comentários");
+    } finally {
+      setLoadingAll(false);
+    }
+  };
+
+  // Auto-generate when user selects a group with no cached data
+  useEffect(() => {
+    if (selected && !results[selected] && !loadingGroup && !loadingAll) {
+      generateOne(selected);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
 
   const copy = async (key: string, text: string) => {
     try {
@@ -519,110 +569,181 @@ function StrategicCommentsCard({
   const initials = (name: string) =>
     name.split(/\s+/).slice(0, 2).map((s) => s[0]).join("").toUpperCase();
 
+  const activeData = selected ? results[selected] : undefined;
+  const isLoadingActive = loadingGroup === selected || (loadingAll && !activeData);
+
   return (
     <Card className="border-primary/30">
       <CardHeader className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <CardTitle className="flex items-center gap-2 text-primary">
             <MessageCircle className="h-5 w-5" />
-            Comentários estratégicos para reduzir rejeição
+            Comentários estratégicos
           </CardTitle>
           <CardDescription>
-            Mensagens sugeridas por IA para redes sociais com foco nos grupos que mais rejeitam o candidato.
+            Selecione um grupo para gerar mensagens específicas de redução de rejeição.
           </CardDescription>
         </div>
-        <Button
-          onClick={() => generate(variation + 1)}
-          disabled={loading}
-          variant={data ? "outline" : "default"}
-          size="sm"
-        >
-          {loading ? (
-            <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Gerando…</>
-          ) : data ? (
-            <><Sparkles className="mr-2 h-4 w-4" />Gerar novos comentários</>
-          ) : (
-            <><Sparkles className="mr-2 h-4 w-4" />Gerar comentários estratégicos</>
-          )}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            onClick={() => selected && generateOne(selected)}
+            disabled={!selected || loadingGroup === selected || loadingAll}
+            variant="outline"
+            size="sm"
+          >
+            {loadingGroup === selected ? (
+              <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Gerando…</>
+            ) : (
+              <><Sparkles className="mr-2 h-4 w-4" />Gerar novos comentários</>
+            )}
+          </Button>
+          <Button
+            onClick={generateAll}
+            disabled={loadingAll || groups.length === 0}
+            size="sm"
+          >
+            {loadingAll ? (
+              <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Gerando…</>
+            ) : (
+              <><Sparkles className="mr-2 h-4 w-4" />Gerar para todos</>
+            )}
+          </Button>
+        </div>
       </CardHeader>
-      <CardContent>
-        {!data && !loading && (
+      <CardContent className="space-y-4">
+        {/* Chips selector */}
+        {groups.length > 0 && (
+          <div className="-mx-1 overflow-x-auto scrollbar-none">
+            <div className="flex gap-2 px-1 pb-1 min-w-max">
+              {groups.map((g) => {
+                const active = g.profile === selected;
+                const hasData = !!results[g.profile];
+                return (
+                  <button
+                    key={g.profile}
+                    type="button"
+                    onClick={() => setSelected(g.profile)}
+                    className={`group relative whitespace-nowrap rounded-full border px-4 py-1.5 text-sm transition-all duration-200 hover:scale-[1.03] ${
+                      active
+                        ? "border-primary bg-primary/10 text-primary font-semibold shadow-[0_0_0_3px_hsl(var(--primary)/0.15)]"
+                        : "border-border bg-background text-muted-foreground hover:text-foreground hover:border-primary/40"
+                    }`}
+                  >
+                    {g.profile}
+                    {hasData && !active && (
+                      <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-primary/50 align-middle" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {groups.length === 0 && (
           <div className="border border-dashed rounded-lg p-8 text-center text-sm text-muted-foreground">
-            Clique em <span className="font-medium text-foreground">"Gerar comentários estratégicos"</span> para transformar
-            a análise em conteúdo prático para social media.
+            Nenhum grupo de rejeição disponível na análise.
           </div>
         )}
 
-        {loading && !data && (
-          <div className="border border-dashed rounded-lg p-8 text-center text-sm text-muted-foreground animate-pulse">
-            Gerando mensagens humanizadas por IA…
-          </div>
-        )}
+        {/* Active group content */}
+        <AnimatePresence mode="wait">
+          {isLoadingActive && (
+            <motion.div
+              key={`loading-${selected}`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="border border-dashed rounded-xl p-8 text-center space-y-3"
+            >
+              <RefreshCw className="h-5 w-5 mx-auto animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">
+                Gerando mensagens para este público…
+              </p>
+              <div className="space-y-2 max-w-md mx-auto pt-2">
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className="h-12 rounded-xl bg-muted/40 animate-pulse"
+                    style={{ animationDelay: `${i * 120}ms` }}
+                  />
+                ))}
+              </div>
+            </motion.div>
+          )}
 
-        {data && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {data.map((g, gi) => (
-              <motion.div
-                key={`${variation}-${gi}`}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.25, delay: gi * 0.05 }}
-                className="border rounded-xl p-4 bg-card space-y-3"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="h-10 w-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-sm flex-shrink-0">
-                    {initials(g.profile)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-foreground leading-tight">{g.profile}</h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">{g.reason}</p>
-                  </div>
+          {!isLoadingActive && activeData && (
+            <motion.div
+              key={`group-${selected}-${activeData.comments?.length ?? 0}`}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.25 }}
+              className="border rounded-xl p-4 bg-card space-y-3"
+            >
+              <div className="flex items-start gap-3">
+                <div className="h-10 w-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-sm flex-shrink-0">
+                  {initials(activeData.profile)}
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                  <div className="rounded-md bg-muted/40 p-2">
-                    <p className="font-semibold text-foreground mb-0.5">Objetivo</p>
-                    <p className="text-muted-foreground">{g.objective}</p>
-                  </div>
-                  <div className="rounded-md bg-muted/40 p-2">
-                    <p className="font-semibold text-foreground mb-0.5">Tom ideal</p>
-                    <p className="text-muted-foreground">{g.tone}</p>
-                  </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-semibold text-foreground leading-tight">{activeData.profile}</h4>
+                  <p className="text-xs text-muted-foreground mt-0.5">{activeData.reason}</p>
                 </div>
+              </div>
 
-                <div className="space-y-2">
-                  {g.comments?.map((c, ci) => {
-                    const key = `${gi}-${ci}-${variation}`;
-                    const copied = copiedKey === key;
-                    return (
-                      <div
-                        key={ci}
-                        className="group relative rounded-2xl rounded-tl-sm border bg-muted/30 hover:bg-muted/60 transition-all p-3 pr-10"
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] uppercase tracking-wider font-semibold text-primary/80">
-                            Comentário {ci + 1}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground">{c.type}</span>
-                        </div>
-                        <p className="text-sm text-foreground leading-snug whitespace-pre-line">{c.text}</p>
-                        <button
-                          type="button"
-                          onClick={() => copy(key, c.text)}
-                          aria-label="Copiar comentário"
-                          className="absolute top-2 right-2 h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-background opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
-                        >
-                          {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-                        </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <div className="rounded-md bg-muted/40 p-2">
+                  <p className="font-semibold text-foreground mb-0.5">Objetivo</p>
+                  <p className="text-muted-foreground">{activeData.objective}</p>
+                </div>
+                <div className="rounded-md bg-muted/40 p-2">
+                  <p className="font-semibold text-foreground mb-0.5">Tom ideal</p>
+                  <p className="text-muted-foreground">{activeData.tone}</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {activeData.comments?.map((c, ci) => {
+                  const key = `${selected}-${ci}`;
+                  const copied = copiedKey === key;
+                  return (
+                    <div
+                      key={ci}
+                      className="group relative rounded-2xl rounded-tl-sm border bg-muted/30 hover:bg-muted/60 transition-all p-3 pr-10"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] uppercase tracking-wider font-semibold text-primary/80">
+                          Comentário {ci + 1}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">{c.type}</span>
                       </div>
-                    );
-                  })}
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        )}
+                      <p className="text-sm text-foreground leading-snug whitespace-pre-line">{c.text}</p>
+                      <button
+                        type="button"
+                        onClick={() => copy(key, c.text)}
+                        aria-label="Copiar comentário"
+                        className="absolute top-2 right-2 h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-background opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                      >
+                        {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          )}
+
+          {!isLoadingActive && !activeData && groups.length > 0 && (
+            <motion.div
+              key="empty"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="border border-dashed rounded-xl p-8 text-center text-sm text-muted-foreground"
+            >
+              Selecione um grupo acima para gerar comentários estratégicos.
+            </motion.div>
+          )}
+        </AnimatePresence>
       </CardContent>
     </Card>
   );
