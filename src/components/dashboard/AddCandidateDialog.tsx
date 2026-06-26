@@ -298,17 +298,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     setParty(""); setPosition(""); setState(""); setCity(""); setErrors({});
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const errs: Record<string, string> = {};
-    if (fullName.trim().length < 3) errs.fullName = "Nome deve ter no mínimo 3 caracteres";
-    if (!party) errs.party = "Selecione um partido";
-    if (!position) errs.position = "Selecione um cargo político";
-    if (scope !== "national" && !state) errs.state = "Selecione um estado";
-    if (scope === "municipal" && !city.trim()) errs.city = "Informe a cidade";
-    setErrors(errs);
-    if (Object.keys(errs).length) return;
-
+  const submitPayload = () => {
     const region = scope === "national" ? "Brasil" : (STATE_TO_REGION[state] ?? "");
     onSubmit({
       profileType: "politician",
@@ -321,6 +311,28 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
       socials: {}, photoFile: null,
     });
   };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const errs: Record<string, string> = {};
+    if (!formatOk) errs.fullName = "Digite nome e sobrenome válidos.";
+    else if (blacklisted) errs.fullName = "Esse nome não parece ser um político brasileiro válido.";
+    if (!party) errs.party = "Selecione um partido";
+    if (!position) errs.position = "Selecione um cargo político";
+    if (scope !== "national" && !state) errs.state = "Selecione um estado";
+    if (scope === "municipal" && !city.trim()) errs.city = "Informe a cidade";
+    setErrors(errs);
+    if (Object.keys(errs).length) return;
+
+    // Score baixo + nenhuma fonte encontrou: pedir confirmação explícita
+    if (validationScore < 30 && !overrideConfirmed) {
+      setConfirmOpen(true);
+      return;
+    }
+
+    submitPayload();
+  };
+
 
   const onOpen = (v: boolean) => {
     if (v && initialValues) {
