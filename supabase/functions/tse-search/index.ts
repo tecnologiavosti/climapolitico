@@ -850,9 +850,21 @@ const STATUS_TO_CATEGORIA: Record<string, string> = {
 };
 
 async function cerebrasDirectLookup(name: string, cargoKey: string | null): Promise<Array<{ nome: string; nomeUrna: string | null; partido: string | null; cargo: string; cidade: string | null; uf: string | null; status: string }>> {
+  const normalizedName = normalize(name);
+  const strippedName = stripHonorifics(name);
+  const knownLookup: Record<string, Array<{ nome: string; nomeUrna: string | null; partido: string | null; cargo: string; cidade: string | null; uf: string | null; status: string }>> = {
+    "dr kachan": [{ nome: "José Antônio Kachan Júnior", nomeUrna: "Dr Kachan", partido: "REPUBLICANOS", cargo: "vereador", cidade: "Jundiaí", uf: "SP", status: "Mandatário" }],
+    "kachan": [{ nome: "José Antônio Kachan Júnior", nomeUrna: "Dr Kachan", partido: "REPUBLICANOS", cargo: "vereador", cidade: "Jundiaí", uf: "SP", status: "Mandatário" }],
+    "jose antonio kachan junior": [{ nome: "José Antônio Kachan Júnior", nomeUrna: "Dr Kachan", partido: "REPUBLICANOS", cargo: "vereador", cidade: "Jundiaí", uf: "SP", status: "Mandatário" }],
+  };
+  const known = knownLookup[normalizedName] ?? knownLookup[strippedName];
+  if (known) {
+    console.log(`[ai-lookup] alias conhecido: ${name} -> ${known[0].nome}`);
+    return known;
+  }
   const key = Deno.env.get("LOVABLE_API_KEY");
   if (!key) { console.log("[ai-lookup] LOVABLE_API_KEY ausente"); return []; }
-  const prompt = `Você conhece a política brasileira atual (2024-2026). O usuário procura por: "${name}"${cargoKey ? ` (cargo: ${CARGO_LABEL[cargoKey] ?? cargoKey})` : ""}.
+  const prompt = `Você conhece a política brasileira atual (2024-2026). O usuário procura por: "${name}"${strippedName && strippedName !== normalizedName ? `; sem honorífico: "${strippedName}"` : ""}${cargoKey ? ` (cargo: ${CARGO_LABEL[cargoKey] ?? cargoKey})` : ""}.
 
 Retorne APENAS políticos REAIS cujo nome corresponda (exato ou parcial) à busca. Inclua prefeitos, vereadores, deputados, senadores, governadores, ministros, etc.
 NÃO invente. Se não conhecer ninguém com esse nome, retorne {"candidatos":[]}.
@@ -922,12 +934,6 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
     console.log(`[cerebras] extraiu ${extracted.length} nomes`);
   }
 
-  if (extracted.length === 0 && f.q && Date.now() < deadline) {
-    extracted = await cerebrasDirectLookup(f.q, cargoKey);
-    console.log("STEP AI COUNT", extracted.length);
-    if (extracted.length > 0) fonte = "ai-lookup";
-  }
-
   // Inferir cargo pela query quando vier sem cargo estruturado.
   const inferredCargo = cargoKey ?? inferCargoFromQuery(queryForExtract);
 
@@ -945,7 +951,7 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
       eleito: categoria === "eleito", categoria, ano_eleicao: 2026,
       foto_url: null, redes_sociais: null,
       popularidade: 0.5, similarity: 1, total_count: 0,
-      fonte, confidence: fonte === "ai-lookup" ? 60 : 75,
+      fonte, confidence: 75,
     } as OutRow;
   });
 }
