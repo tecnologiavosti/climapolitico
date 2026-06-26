@@ -164,6 +164,17 @@ async function readFilters(req: Request): Promise<Filters> {
   const arr = (k: string) => Array.isArray(body[k]) ? body[k] as string[] : csv(url.searchParams.get(k));
   const cargosRaw = arr("cargo");
   const cargos = cargosRaw.map((c) => normalizeCargoKey(c)).filter((c): c is string => !!c);
+  // Whitelist final de cargos aceitos no catálogo
+  const ALLOWED_CARGOS = new Set([
+    "presidente", "governador", "senador",
+    "deputado_federal", "deputado_estadual",
+    "prefeito", "vice_prefeito", "vereador",
+  ]);
+  for (const c of cargos) {
+    if (!ALLOWED_CARGOS.has(c)) {
+      throw Object.assign(new Error(`Invalid cargo: ${c}`), { status: 400 });
+    }
+  }
   return {
     q: (get("q") as string | null)?.trim() || null,
     cargos,
