@@ -134,6 +134,8 @@ export default function Candidates() {
           full_name: payload.fullName,
           region: regionFinal,
           party: payload.party || null,
+          party_name: payload.partyName ?? null,
+          party_number: payload.partyNumber ?? null,
           social_media_link: tiktokLink,
         })
         .select()
