@@ -606,94 +606,101 @@ export default function Candidates() {
             </span>
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 w-full sm:w-auto [&>*]:flex-1 sm:[&>*]:flex-none [&_button]:w-full sm:[&_button]:w-auto">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  onClick={() => reanalyzeSentimentMutation.mutate()}
-                  disabled={reanalyzeSentimentMutation.isPending}
-                >
-                  {reanalyzeSentimentMutation.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                  )}
-                  Corrigir Sentimento
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Reprocessar comentários classificados incorretamente como Neutro</p>
-                <p className="text-xs text-muted-foreground">
-                  Processa até 500 comentários por execução
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto [&>div]:flex-1 sm:[&>div]:flex-none">
+          <div className="inline-flex items-center gap-1 rounded-md border bg-background pr-1.5 w-full sm:w-auto">
+            <Button
+              variant="ghost"
+              className="flex-1 sm:flex-none border-0"
+              onClick={() => reanalyzeSentimentMutation.mutate()}
+              disabled={reanalyzeSentimentMutation.isPending}
+            >
+              {reanalyzeSentimentMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              Recalcular Sentimento
+            </Button>
+            <InfoTip
+              text="Tenta recalcular automaticamente o sentimento político dos candidatos usando IA, corrigindo casos onde a análise de menções ficou neutra ou inconsistente."
+              side="bottom"
+            />
+          </div>
 
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  onClick={() => tiktokResolveBatchMutation.mutate()}
-                  disabled={tiktokResolveBatchMutation.isPending || candidates.length === 0}
-                >
-                  {tiktokResolveBatchMutation.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Wand2 className="mr-2 h-4 w-4" />
-                  )}
-                  Resolver TikTok em Lote
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Descobrir o @handle do TikTok de todos os candidatos sem link configurado</p>
-                <p className="text-xs text-muted-foreground">
-                  Processa em background com rate-limit (~25/min) para evitar bloqueios
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <div className="inline-flex items-center gap-1 rounded-md border bg-background pr-1.5 w-full sm:w-auto">
+            <Button
+              variant="ghost"
+              className="flex-1 sm:flex-none border-0"
+              onClick={() => tiktokResolveBatchMutation.mutate()}
+              disabled={tiktokResolveBatchMutation.isPending || candidates.length === 0}
+            >
+              {tiktokResolveBatchMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Wand2 className="mr-2 h-4 w-4" />
+              )}
+              Vincular TikTok
+            </Button>
+            <InfoTip
+              text="Busca e vincula perfis oficiais do TikTok para todos os candidatos que ainda estão sem conta conectada, em processamento em massa."
+              side="bottom"
+            />
+          </div>
 
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  onClick={() => discoverSocialLinksMutation.mutate()}
-                  disabled={discoverSocialLinksMutation.isPending || candidates.length === 0}
-                >
-                  {discoverSocialLinksMutation.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Search className="mr-2 h-4 w-4" />
-                  )}
-                  Descobrir IG/FB
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Descobre automaticamente Instagram e Facebook dos candidatos via busca</p>
-                <p className="text-xs text-muted-foreground">Resultados são salvos em links extras e usados pelo coletor Apify</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <div className="inline-flex items-center gap-1 rounded-md border bg-background pr-1.5 w-full sm:w-auto">
+            <Button
+              variant="ghost"
+              className="flex-1 sm:flex-none border-0"
+              onClick={() => discoverSocialLinksMutation.mutate()}
+              disabled={discoverSocialLinksMutation.isPending || candidates.length === 0}
+            >
+              {discoverSocialLinksMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Search className="mr-2 h-4 w-4" />
+              )}
+              Encontrar Instagram/Facebook
+            </Button>
+            <InfoTip
+              text="Procura automaticamente perfis oficiais de Instagram e Facebook dos candidatos usando IA + busca web, melhorando a cobertura social."
+              side="bottom"
+            />
+          </div>
 
-          <AddCandidateDialog
-            open={dialogOpen}
-            onOpenChange={setDialogOpen}
-            isPending={addCandidateMutation.isPending}
-            onSubmit={handleAddCandidate}
-            knownNames={(candidates ?? []).map((c: any) => c.full_name).filter(Boolean)}
-            trigger={
-              <Button title="Cadastra um novo candidato pra você começar a acompanhar.">
-                <UserPlus className="mr-2 h-4 w-4" />
-                Adicionar Candidato
-              </Button>
-            }
-          />
+          <div>
+            <AddCandidateDialog
+              open={dialogOpen}
+              onOpenChange={setDialogOpen}
+              isPending={addCandidateMutation.isPending}
+              onSubmit={handleAddCandidate}
+              knownNames={(candidates ?? []).map((c: any) => c.full_name).filter(Boolean)}
+              trigger={
+                <Button className="w-full sm:w-auto" title="Cadastra um novo candidato pra você começar a acompanhar.">
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  Adicionar Candidato
+                </Button>
+              }
+            />
+          </div>
         </div>
+      </div>
+
+      {showToolsHint && (
+        <div className="flex items-start justify-between gap-3 rounded-md border border-primary/20 bg-primary/5 px-4 py-2.5 text-sm animate-fade-in">
+          <p className="text-muted-foreground">
+            <span className="font-medium text-foreground">Dica:</span> passe o mouse (ou toque) nos ícones{" "}
+            <Info className="inline h-3.5 w-3.5 align-text-bottom text-primary" /> para entender cada ferramenta.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              localStorage.setItem("candidates_tools_hint_dismissed", "1");
+              setShowToolsHint(false);
+            }}
+            className="text-xs text-muted-foreground hover:text-foreground"
+          >
+            Entendi
+          </button>
       </div>
 
       <AlertDialog
