@@ -83,6 +83,9 @@ export default function CandidatesCatalog() {
   const handleFiltersChange = (next: Filters) => {
     const prevCargo = pendingFilters.cargo?.[0];
     const newCargo = next.cargo?.[0];
+    if ((next.q ?? "") !== searchQuery) {
+      setSearchQuery(next.q ?? "");
+    }
     setPendingFilters(next);
     if (prevCargo !== newCargo && appliedFilters) {
       setAppliedFilters(null);
