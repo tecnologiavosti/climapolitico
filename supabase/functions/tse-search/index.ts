@@ -372,7 +372,7 @@ ${markdown.slice(0, 6000)}`;
     return Array.isArray(arr) ? arr.map((c: any) => ({
       nome: String(c.nome ?? "").trim(),
       partido: c.partido ? String(c.partido).toUpperCase() : null,
-      cargo: cargoKey,
+      cargo: (c.cargo && typeof c.cargo === "string" ? normalizeCargoKey(c.cargo) : null) ?? cargoKey ?? "pre_candidato",
       cidade: c.cidade ? String(c.cidade).trim() : null,
       uf: c.uf ? String(c.uf).trim() : null,
       status: String(c.status ?? "Candidato"),
