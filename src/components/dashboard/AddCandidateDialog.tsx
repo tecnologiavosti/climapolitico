@@ -198,38 +198,47 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     if (lookup.city) setCity(lookup.city);
   }, []);
 
+  // Contexto suficiente para validar de fato (depende do cargo).
+  const ctxScope = scopeOf(position);
+  const hasEnoughContext =
+    !!fullName.trim() && !!party && !!position &&
+    (ctxScope === "national"
+      || (ctxScope === "state" && !!state)
+      || (ctxScope === "municipal" && !!state && !!city.trim()));
+
   useEffect(() => {
-    const q = debouncedName.trim();
+    const name = debouncedName.trim();
     setAiLookup(null);
-    // Só consulta IA se: nome >= 4 chars, sem match local, e ainda não preencheu metadata
-    if (q.length < 4) return;
+    if (name.length < 3) return;
     if (catalogMatch) return;
-    if (suggestions.length > 0) return;
-    if (party || position || state) return;
+    // Só dispara busca quando o contexto está completo (nome + cargo + partido + UF/cidade).
+    if (!hasEnoughContext) return;
+
+    // Query enriquecida ajuda a desambiguar apelidos (Dr Kachan → Kachan Júnior, vereador, Jundiaí, SP, Republicanos).
+    const enriched = [name, position, city, state, party].filter(Boolean).join(" ");
 
     let cancelled = false;
     setAiLoading(true);
     (async () => {
       try {
         const { data, error } = await supabase.functions.invoke("lookup-candidate-ai", {
-          body: { name: q },
+          body: { name: enriched, context: { party, office: position, state, city } },
         });
         if (cancelled) return;
         if (error) {
           console.warn("[lookup-candidate-ai] error", error);
           setAiLookup(null);
         } else {
-          const lookup = data as AiLookup;
-          setAiLookup(lookup);
-          hydrateFromAiLookup(lookup);
-          console.log("[Candidate AI lookup]", { name: q, result: data });
+          setAiLookup(data as AiLookup);
+          console.log("[Candidate AI lookup]", { query: enriched, result: data });
         }
       } finally {
         if (!cancelled) setAiLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [debouncedName, catalogMatch, suggestions.length, party, position, state, hydrateFromAiLookup]);
+  }, [debouncedName, catalogMatch, hasEnoughContext, party, position, state, city]);
+
 
   const applyAiLookup = () => {
     if (!aiLookup || !aiLookup.found) return;
