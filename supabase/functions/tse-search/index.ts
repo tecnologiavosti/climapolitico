@@ -400,7 +400,7 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
   if (results.length === 0 || Date.now() > deadline) return [];
 
   const combined = results.slice(0, 5).map((r) => `# ${r.title}\n${r.markdown}`).join("\n\n---\n\n");
-  const extracted = await cerebrasExtract(combined, cargoKey ?? "pre_candidato", query);
+  const extracted = await cerebrasExtract(combined, cargoKey, query);
   console.log(`[cerebras] extraiu ${extracted.length} nomes`);
 
   return extracted.map((c, i) => {
@@ -411,7 +411,7 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
       id: `web-${normalize(c.nome).replace(/\s+/g, "-")}-${i}`,
       tse_id: null, nome: c.nome, nome_urna: null,
       partido_sigla: c.partido, partido_nome: null, numero_partido: null,
-      cargo: cargoKey ?? "pre_candidato", regiao: null,
+      cargo: c.cargo ?? cargoKey ?? "pre_candidato", regiao: null,
       estado: uf, municipio: c.cidade,
       eleito: categoria === "eleito", categoria, ano_eleicao: 2026,
       foto_url: null, redes_sociais: null,
