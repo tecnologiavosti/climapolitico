@@ -329,6 +329,7 @@ async function tseFetch<T>(path: string, deadline: number): Promise<T | null> {
   if (Date.now() > deadline) return null;
   const url = `${TSE_BASE}${path}`;
   console.log("TSE REQUEST:", url);
+  console.log("TSE REQUEST URL", url);
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 8000);
@@ -341,6 +342,7 @@ async function tseFetch<T>(path: string, deadline: number): Promise<T | null> {
       },
     });
     clearTimeout(t);
+    console.log("TSE STATUS", r.status);
     if (!r.ok) {
       const body = await r.text().catch(() => "");
       console.log(`TSE HTTP ${r.status} ${url} :: ${body.slice(0, 200)}`);
@@ -360,9 +362,11 @@ async function listMunicipios(_ano: number, cdEleicao: number, uf: string, deadl
   const arr = data?.municipios ?? [];
   const out = Array.isArray(arr)
     ? arr.map((m: any) => ({
-        codigo: Number(m.codigo ?? m.sigla ?? m.cdMunicipio),
+        // O código do município no TSE pode ter zero à esquerda (ex.: Tarauacá/AC = "01473").
+        // Converter para Number quebra o endpoint de candidatos e retorna lista vazia.
+        codigo: String(m.codigo ?? m.sigla ?? m.cdMunicipio ?? "").trim(),
         nome: String(m.nome ?? m.nm ?? ""),
-      })).filter((m) => m.codigo > 0 && m.nome)
+      })).filter((m) => m.codigo && m.nome)
     : [];
   console.log(`TSE municipios ${uf}/${cdEleicao} → ${out.length}`);
   return out;
@@ -1320,7 +1324,9 @@ Deno.serve(async (req) => {
     // ============================================================
     if (!f.q) {
       console.log("ROUTING: catalog mode");
+      console.log("CATALOG MODE START");
       console.log("CATALOG MODE ACTIVE");
+      console.log("FILTERS RECEIVED", JSON.stringify(filterLog(f)));
       console.log("SQL FILTERS:", JSON.stringify({
         cargo: f.cargos, estado: f.ufs, municipio: f.municipio, onlyEleitos: f.onlyEleitos,
       }));
@@ -1347,12 +1353,15 @@ Deno.serve(async (req) => {
       let { data, count, error } = await runDbQuery();
       if (error) throw new Error(`Catálogo DB: ${error.message}`);
       let total = count ?? 0;
-      console.log("CACHE HIT?", total > 0 ? "HIT" : "MISS");
+      console.log(total > 0 ? "CACHE HIT" : "CACHE MISS");
       console.log("DB COUNT BEFORE PAGINATION:", total);
 
       let crawlError: string | null = null;
       let crawled = false;
+      let crawlerAttempted = false;
+      let liveFetched: OutRow[] = [];
       if (total === 0 && f.cargos.length > 0 && f.page === 0) {
+        crawlerAttempted = true;
         console.log("CACHE MISS — iniciando crawler TSE on-demand");
         const deadline = Date.now() + SOFT_TIMEOUT_MS;
         const crawlable = f.cargos.filter((c) => !!CARGO_TO_TSE[c]);
@@ -1361,6 +1370,7 @@ Deno.serve(async (req) => {
           try {
             console.log(`TSE REQUEST cargo=${cargo} ufs=${f.ufs.join(",")} mun=${f.municipio ?? "-"}`);
             const { rows } = await searchTSE(cargo, f, deadline);
+            console.log("TSE RAW COUNT", rows.length);
             console.log(`TSE RESULT COUNT cargo=${cargo}: ${rows.length}`);
             fetched.push(...rows);
           } catch (e) {
@@ -1371,6 +1381,11 @@ Deno.serve(async (req) => {
         }
         if (fetched.length > 0) {
           crawled = true;
+          liveFetched = fetched.filter((r) => {
+            if (f.onlyEleitos && !r.eleito) return false;
+            if (f.partidos.length && !f.partidos.includes((r.partido_sigla ?? "").toUpperCase())) return false;
+            return true;
+          });
           const upserts = fetched
             .filter((r) => r.tse_id)
             .map((r) => ({
@@ -1395,25 +1410,30 @@ Deno.serve(async (req) => {
             const { error: upErr } = await sb.from("politicians").upsert(upserts, { onConflict: "tse_id" });
             if (upErr) console.log("UPSERT ERROR:", upErr.message);
             else console.log(`UPSERT OK: ${upserts.length} candidatos cacheados`);
+            console.log("CACHE SAVE COUNT", upErr ? 0 : upserts.length);
           }
           const re = await runDbQuery();
           if (!re.error) { data = re.data; count = re.count; total = count ?? 0; }
+          if (total === 0 && liveFetched.length > 0) {
+            total = liveFetched.length;
+          }
         }
         if (!crawled && crawlError) {
           return new Response(JSON.stringify({
             rows: [], total: 0, hasMore: false, exactTotal: true,
             suggestions: [], normalized: {}, page: 0, pageSize: PAGE_SIZE, totalPages: 1,
-            fallback: false, partial: true, sources: ["catalog-db"],
+            fallback: false, partial: true, sources: ["tse-live"],
             error: `Falha ao consultar TSE ao vivo: ${crawlError}`,
             notice: `Falha ao consultar TSE ao vivo: ${crawlError}`,
-            last_updated: new Date().toISOString(), source: "catalog-db",
+            last_updated: new Date().toISOString(), source: "tse-live",
           }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
       }
 
+      console.log("FINAL COUNT", total);
       console.log("FINAL RESULT COUNT:", total);
       const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-      const rows = (data ?? []).map((r: any) => ({
+      const dbRows = (data ?? []).map((r: any) => ({
         id: r.id, tse_id: r.tse_id, nome: r.nome, nome_urna: r.nome_urna,
         partido_sigla: r.partido_sigla, partido_nome: r.partido_nome,
         numero_partido: r.numero_partido, cargo: r.cargo,
@@ -1425,6 +1445,11 @@ Deno.serve(async (req) => {
         similarity: 1, total_count: total,
         fonte: crawled ? "catalog-db+tse-live" : "catalog-db", confidence: 1,
       }));
+      const rows = dbRows.length > 0 ? dbRows : liveFetched.slice(0, PAGE_SIZE).map((r) => ({
+        ...r,
+        total_count: total,
+        fonte: "tse-live",
+      }));
       console.log("CATALOG DB COUNT:", rows.length, "TOTAL:", total, "PAGE:", f.page + 1, "/", totalPages);
       return new Response(JSON.stringify({
         rows, total,
@@ -1432,12 +1457,12 @@ Deno.serve(async (req) => {
         exactTotal: true, suggestions: [], normalized: {},
         page: f.page, pageSize: PAGE_SIZE, totalPages,
         fallback: false, partial: false,
-        sources: crawled ? ["catalog-db", "tse-live"] : ["catalog-db"],
+        sources: crawled ? ["catalog-db", "tse-live"] : crawlerAttempted ? ["tse-live"] : ["catalog-db"],
         notice: total === 0
-          ? "Nenhum candidato encontrado no TSE para esses filtros."
+          ? "Nenhum candidato encontrado no TSE ao vivo para esses filtros."
           : `${total.toLocaleString("pt-BR")} candidato(s) — página ${f.page + 1} de ${totalPages}${crawled ? " (sincronizado do TSE agora)" : ""}.`,
         last_updated: new Date().toISOString(),
-        source: crawled ? "tse-live" : "catalog-db",
+        source: crawled || crawlerAttempted ? "tse-live" : "catalog-db",
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
