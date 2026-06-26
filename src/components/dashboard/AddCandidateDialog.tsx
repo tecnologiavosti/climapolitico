@@ -182,6 +182,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     office: string | null;
     state: string | null;
     city: string | null;
+    pending?: boolean;
     error?: string;
   };
   const [aiLookup, setAiLookup] = useState<AiLookup | null>(null);
