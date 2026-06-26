@@ -332,16 +332,19 @@ async function firecrawlSearch(query: string, deadline: number): Promise<Array<{
 }
 
 // Extrai candidatos do markdown via Cerebras (parser estruturado, NÃO gerador)
-async function cerebrasExtract(markdown: string, cargoKey: string, query: string): Promise<Array<{ nome: string; partido: string | null; cargo: string; cidade: string | null; uf: string | null; status: string }>> {
+async function cerebrasExtract(markdown: string, cargoKey: string | null, query: string): Promise<Array<{ nome: string; partido: string | null; cargo: string; cidade: string | null; uf: string | null; status: string }>> {
   const key = Deno.env.get("CEREBRAS_API_KEY");
   if (!key) return [];
-  const cargoLabel = CARGO_LABEL[cargoKey] ?? cargoKey;
-  const prompt = `Extraia APENAS candidatos políticos REAIS mencionados no texto abaixo para o cargo "${cargoLabel}".
-NÃO invente nomes. NÃO complete listas. Se o texto não mencionar um candidato explicitamente, ignore.
+  const cargoLabel = cargoKey ? (CARGO_LABEL[cargoKey] ?? cargoKey) : null;
+  const cargoLine = cargoLabel
+    ? `para o cargo "${cargoLabel}"`
+    : `de QUALQUER cargo político (presidente, governador, senador, deputado, prefeito, vereador, ministro, etc.)`;
+  const prompt = `Extraia APENAS políticos REAIS mencionados no texto abaixo ${cargoLine}.
+NÃO invente nomes. NÃO complete listas. Se o texto não mencionar a pessoa explicitamente, ignore.
 NÃO inclua pessoas falecidas. NÃO inclua personagens históricos.
 
-Para cada candidato encontrado, retorne JSON estritamente neste formato:
-{"candidatos":[{"nome":"Nome Completo","partido":"SIGLA ou null","cidade":"Cidade ou null","uf":"Nome do estado por extenso ou null","status":"Eleito|Candidato|Ex-candidato|Mandatário|Possível presidenciável"}]}
+Para cada pessoa encontrada, retorne JSON estritamente neste formato:
+{"candidatos":[{"nome":"Nome Completo","partido":"SIGLA ou null","cargo":"prefeito|vice_prefeito|vereador|deputado_federal|deputado_estadual|senador|governador|presidente|ministro|pre_candidato","cidade":"Cidade ou null","uf":"Nome do estado por extenso ou null","status":"Eleito|Candidato|Ex-candidato|Mandatário|Possível presidenciável"}]}
 
 Contexto da busca: "${query}"
 Texto:
