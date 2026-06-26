@@ -7,24 +7,61 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useAdminAudit } from "@/hooks/useAdminAudit";
-import { Plus, Trash2, RefreshCw, Loader2 } from "lucide-react";
+import { Plus, Trash2, RefreshCw, Loader2, Landmark, Building2, Users2 } from "lucide-react";
 
 const UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
 
-function TseSyncCard() {
-  const [year, setYear] = useState("2024");
-  const [uf, setUf] = useState<string>("");
-  const [syncing, setSyncing] = useState(false);
+const MUNICIPAL_CARGOS = ["prefeito", "vice_prefeito", "vereador"];
+const NACIONAL_CARGOS = [
+  "presidente", "vice_presidente",
+  "governador", "vice_governador",
+  "senador",
+  "deputado_federal", "deputado_estadual", "deputado_distrital",
+];
 
-  async function sync() {
-    setSyncing(true);
+function TseSyncCard() {
+  const qc = useQueryClient();
+  const [uf, setUf] = useState<string>("");
+  const [syncing, setSyncing] = useState<"municipal" | "nacional" | null>(null);
+
+  const { data: counts, isLoading: loadingCounts } = useQuery({
+    queryKey: ["politicians-counts"],
+    queryFn: async () => {
+      async function countFor(cargos: string[]) {
+        const { count, error } = await supabase
+          .from("politicians")
+          .select("id", { count: "exact", head: true })
+          .in("cargo", cargos);
+        if (error) throw error;
+        return count ?? 0;
+      }
+      async function countCargo(cargo: string) {
+        const { count } = await supabase
+          .from("politicians")
+          .select("id", { count: "exact", head: true })
+          .eq("cargo", cargo);
+        return count ?? 0;
+      }
+      const [municipal, nacional, vereadores, prefeitos] = await Promise.all([
+        countFor(MUNICIPAL_CARGOS),
+        countFor(NACIONAL_CARGOS),
+        countCargo("vereador"),
+        countCargo("prefeito"),
+      ]);
+      return { municipal, nacional, vereadores, prefeitos };
+    },
+    refetchOnWindowFocus: false,
+  });
+
+  async function sync(kind: "municipal" | "nacional") {
+    setSyncing(kind);
     try {
+      const year = kind === "municipal" ? "2024" : "2022";
       const qs = new URLSearchParams({ year });
       if (uf) qs.set("uf", uf);
       const { data, error } = await supabase.functions.invoke(`etl-tse-politicians?${qs.toString()}`, {
@@ -32,11 +69,14 @@ function TseSyncCard() {
       });
       if (error) throw error;
       const total = (data?.results ?? []).reduce((s: number, r: any) => s + (r.upserted ?? 0), 0);
-      toast.success(`Sincronização concluída — ${total.toLocaleString("pt-BR")} políticos atualizados.`);
+      toast.success(
+        `Base ${kind === "municipal" ? "municipal (2024)" : "nacional/estadual (2022)"} sincronizada — ${total.toLocaleString("pt-BR")} políticos atualizados.`,
+      );
+      qc.invalidateQueries({ queryKey: ["politicians-counts"] });
     } catch (e: any) {
       toast.error(`Falha na sincronização TSE: ${e.message ?? e}`);
     } finally {
-      setSyncing(false);
+      setSyncing(null);
     }
   }
 
@@ -45,32 +85,63 @@ function TseSyncCard() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <RefreshCw className="h-5 w-5 text-primary" />
-          Sincronizar base TSE
+          Sincronizar bases TSE
         </CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-wrap items-end gap-3">
-        <div>
-          <Label className="text-xs">Ano eleitoral</Label>
-          <Input type="number" value={year} onChange={(e) => setYear(e.target.value)} className="w-28" />
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-md border bg-muted/30 p-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Building2 className="h-3.5 w-3.5" /> Vereadores
+            </div>
+            <div className="text-2xl font-bold">
+              {loadingCounts ? "…" : (counts?.vereadores ?? 0).toLocaleString("pt-BR")}
+            </div>
+          </div>
+          <div className="rounded-md border bg-muted/30 p-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Users2 className="h-3.5 w-3.5" /> Prefeitos
+            </div>
+            <div className="text-2xl font-bold">
+              {loadingCounts ? "…" : (counts?.prefeitos ?? 0).toLocaleString("pt-BR")}
+            </div>
+          </div>
+          <div className="rounded-md border bg-muted/30 p-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Landmark className="h-3.5 w-3.5" /> Nacionais / Estaduais
+            </div>
+            <div className="text-2xl font-bold">
+              {loadingCounts ? "…" : (counts?.nacional ?? 0).toLocaleString("pt-BR")}
+            </div>
+          </div>
         </div>
-        <div>
-          <Label className="text-xs">UF (vazio = todas, leva muito mais tempo)</Label>
-          <select
-            value={uf}
-            onChange={(e) => setUf(e.target.value)}
-            className="h-10 rounded-md border bg-background px-3 text-sm"
-          >
-            <option value="">Todas</option>
-            {UFS.map((u) => <option key={u} value={u}>{u}</option>)}
-          </select>
+
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <Label className="text-xs">UF (vazio = todas)</Label>
+            <select
+              value={uf}
+              onChange={(e) => setUf(e.target.value)}
+              className="h-10 rounded-md border bg-background px-3 text-sm"
+            >
+              <option value="">Todas</option>
+              {UFS.map((u) => <option key={u} value={u}>{u}</option>)}
+            </select>
+          </div>
+          <Button onClick={() => sync("municipal")} disabled={syncing !== null}>
+            {syncing === "municipal" ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Building2 className="h-4 w-4 mr-2" />}
+            Sincronizar base municipal (2024)
+          </Button>
+          <Button onClick={() => sync("nacional")} disabled={syncing !== null} variant="secondary">
+            {syncing === "nacional" ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Landmark className="h-4 w-4 mr-2" />}
+            Sincronizar base nacional (2022)
+          </Button>
         </div>
-        <Button onClick={sync} disabled={syncing}>
-          {syncing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-          Sincronizar agora
-        </Button>
-        <p className="text-xs text-muted-foreground basis-full">
-          Baixa os dados oficiais do TSE (consulta_cand) e atualiza a tabela <code>politicians</code>.
-          Roda automaticamente todo dia às 04:00 (BRT). Para a primeira carga completa, prefira sincronizar UF por UF.
+
+        <p className="text-xs text-muted-foreground">
+          <strong>Municipal (2024):</strong> Prefeito, Vice-prefeito, Vereador. <br />
+          <strong>Nacional/Estadual (2022):</strong> Presidente, Governador, Senador, Deputado Federal / Estadual / Distrital. <br />
+          Os dois conjuntos convivem na tabela <code>politicians</code> e o catálogo faz UNION automaticamente quando "Todos os cargos" está selecionado. Para a primeira carga, prefira sincronizar UF por UF.
         </p>
       </CardContent>
     </Card>
