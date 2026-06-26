@@ -1358,7 +1358,10 @@ Deno.serve(async (req) => {
 
       let crawlError: string | null = null;
       let crawled = false;
+      let crawlerAttempted = false;
+      let liveFetched: OutRow[] = [];
       if (total === 0 && f.cargos.length > 0 && f.page === 0) {
+        crawlerAttempted = true;
         console.log("CACHE MISS — iniciando crawler TSE on-demand");
         const deadline = Date.now() + SOFT_TIMEOUT_MS;
         const crawlable = f.cargos.filter((c) => !!CARGO_TO_TSE[c]);
@@ -1378,6 +1381,11 @@ Deno.serve(async (req) => {
         }
         if (fetched.length > 0) {
           crawled = true;
+          liveFetched = fetched.filter((r) => {
+            if (f.onlyEleitos && !r.eleito) return false;
+            if (f.partidos.length && !f.partidos.includes((r.partido_sigla ?? "").toUpperCase())) return false;
+            return true;
+          });
           const upserts = fetched
             .filter((r) => r.tse_id)
             .map((r) => ({
@@ -1406,15 +1414,18 @@ Deno.serve(async (req) => {
           }
           const re = await runDbQuery();
           if (!re.error) { data = re.data; count = re.count; total = count ?? 0; }
+          if (total === 0 && liveFetched.length > 0) {
+            total = liveFetched.length;
+          }
         }
         if (!crawled && crawlError) {
           return new Response(JSON.stringify({
             rows: [], total: 0, hasMore: false, exactTotal: true,
             suggestions: [], normalized: {}, page: 0, pageSize: PAGE_SIZE, totalPages: 1,
-            fallback: false, partial: true, sources: ["catalog-db"],
+            fallback: false, partial: true, sources: ["tse-live"],
             error: `Falha ao consultar TSE ao vivo: ${crawlError}`,
             notice: `Falha ao consultar TSE ao vivo: ${crawlError}`,
-            last_updated: new Date().toISOString(), source: "catalog-db",
+            last_updated: new Date().toISOString(), source: "tse-live",
           }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
       }
@@ -1422,7 +1433,7 @@ Deno.serve(async (req) => {
       console.log("FINAL COUNT", total);
       console.log("FINAL RESULT COUNT:", total);
       const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-      const rows = (data ?? []).map((r: any) => ({
+      const dbRows = (data ?? []).map((r: any) => ({
         id: r.id, tse_id: r.tse_id, nome: r.nome, nome_urna: r.nome_urna,
         partido_sigla: r.partido_sigla, partido_nome: r.partido_nome,
         numero_partido: r.numero_partido, cargo: r.cargo,
@@ -1434,6 +1445,11 @@ Deno.serve(async (req) => {
         similarity: 1, total_count: total,
         fonte: crawled ? "catalog-db+tse-live" : "catalog-db", confidence: 1,
       }));
+      const rows = dbRows.length > 0 ? dbRows : liveFetched.slice(0, PAGE_SIZE).map((r) => ({
+        ...r,
+        total_count: total,
+        fonte: "tse-live",
+      }));
       console.log("CATALOG DB COUNT:", rows.length, "TOTAL:", total, "PAGE:", f.page + 1, "/", totalPages);
       return new Response(JSON.stringify({
         rows, total,
@@ -1441,12 +1457,12 @@ Deno.serve(async (req) => {
         exactTotal: true, suggestions: [], normalized: {},
         page: f.page, pageSize: PAGE_SIZE, totalPages,
         fallback: false, partial: false,
-        sources: crawled ? ["catalog-db", "tse-live"] : ["catalog-db"],
+        sources: crawled ? ["catalog-db", "tse-live"] : crawlerAttempted ? ["tse-live"] : ["catalog-db"],
         notice: total === 0
-          ? "Nenhum candidato encontrado no TSE para esses filtros."
+          ? "Nenhum candidato encontrado no TSE ao vivo para esses filtros."
           : `${total.toLocaleString("pt-BR")} candidato(s) — página ${f.page + 1} de ${totalPages}${crawled ? " (sincronizado do TSE agora)" : ""}.`,
         last_updated: new Date().toISOString(),
-        source: crawled ? "tse-live" : "catalog-db",
+        source: crawled || crawlerAttempted ? "tse-live" : "catalog-db",
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
