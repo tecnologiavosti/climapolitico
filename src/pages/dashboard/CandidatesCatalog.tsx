@@ -5,10 +5,26 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Users, ChevronLeft, ChevronRight, Sparkles, Search, Loader2 } from "lucide-react";
+import { Users, ChevronLeft, ChevronRight, Sparkles, Search, Loader2, UserPlus, UserSearch } from "lucide-react";
 import { useCatalogSearch, PAGE_SIZE, type CatalogFilters as Filters, type PoliticianRow } from "@/hooks/useCatalogSearch";
 import { CatalogFilters } from "@/components/dashboard/CatalogFilters";
 import { CandidateCatalogCard } from "@/components/dashboard/CandidateCatalogCard";
+import { AddCandidateDialog, type AddCandidatePayload } from "@/components/dashboard/AddCandidateDialog";
+
+// Mapeia enum interno do catálogo -> label aceito pelo AddCandidateDialog
+const CARGO_TO_POSITION: Record<string, string> = {
+  presidente: "Presidente",
+  vice_presidente: "Vice-presidente",
+  governador: "Governador",
+  vice_governador: "Vice-governador",
+  senador: "Senador",
+  deputado_federal: "Deputado Federal",
+  deputado_estadual: "Deputado Estadual",
+  deputado_distrital: "Deputado Distrital",
+  prefeito: "Prefeito",
+  vice_prefeito: "Vice-prefeito",
+  vereador: "Vereador",
+};
 
 // Cargos que exigem estado + município
 const REQUIRES_MUNICIPIO = new Set(["prefeito", "vice_prefeito", "vereador"]);
