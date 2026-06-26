@@ -439,6 +439,33 @@ function dedupe(rows: OutRow[]): OutRow[] {
   return [...seen.values()];
 }
 
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const v0 = new Array(b.length + 1).fill(0).map((_, i) => i);
+  const v1 = new Array(b.length + 1).fill(0);
+  for (let i = 0; i < a.length; i++) {
+    v1[0] = i + 1;
+    for (let j = 0; j < b.length; j++) {
+      const cost = a[i] === b[j] ? 0 : 1;
+      v1[j + 1] = Math.min(v1[j] + 1, v0[j + 1] + 1, v0[j] + cost);
+    }
+    for (let j = 0; j <= b.length; j++) v0[j] = v1[j];
+  }
+  return v1[b.length];
+}
+
+function fuzzyTokenMatch(hayTokens: string[], token: string): boolean {
+  if (token.length < 3) return hayTokens.some((h) => h.startsWith(token));
+  for (const h of hayTokens) {
+    if (h.includes(token) || token.includes(h)) return true;
+    const maxDist = Math.max(1, Math.floor(token.length * 0.25));
+    if (Math.abs(h.length - token.length) <= maxDist && levenshtein(h, token) <= maxDist) return true;
+  }
+  return false;
+}
+
 function applyFilters(rows: OutRow[], f: Filters): OutRow[] {
   const q = normalize(f.q);
   return rows.filter((r) => {
@@ -446,8 +473,13 @@ function applyFilters(rows: OutRow[], f: Filters): OutRow[] {
     if (f.partidos.length && !f.partidos.includes((r.partido_sigla ?? "").toUpperCase())) return false;
     if (q) {
       const hay = normalize(`${r.nome} ${r.nome_urna ?? ""}`);
+      const hayTokens = hay.split(/\s+/).filter(Boolean);
       const tokens = q.split(/\s+/).filter(Boolean);
-      if (!tokens.every((t) => hay.includes(t))) return false;
+      // 1) substring direta
+      if (hay.includes(q)) return true;
+      // 2) todos os tokens com fuzzy match
+      if (tokens.every((t) => fuzzyTokenMatch(hayTokens, t))) return true;
+      return false;
     }
     return true;
   });
