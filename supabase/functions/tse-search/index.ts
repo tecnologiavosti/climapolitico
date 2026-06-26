@@ -189,12 +189,19 @@ interface OutRow {
 // Aliases políticos: chave normalizada -> nomes alternativos (também normalizados)
 const POLITICAL_ALIASES: Record<string, string[]> = {
   "lula": ["luiz inacio lula da silva", "presidente lula", "luiz lula", "lula da silva"],
+  "luiz inacio lula da silva": ["lula", "lula da silva"],
   "bolsonaro": ["jair messias bolsonaro", "jair bolsonaro"],
   "jair bolsonaro": ["jair messias bolsonaro", "bolsonaro"],
+  "flavio bolsonaro": ["flavio nantes bolsonaro"],
+  "eduardo bolsonaro": ["eduardo nantes bolsonaro"],
+  "carlos bolsonaro": ["carlos nantes bolsonaro"],
   "tarcisio": ["tarcisio gomes de freitas", "tarcisio de freitas"],
+  "tarcisio de freitas": ["tarcisio gomes de freitas", "tarcisio"],
   "alckmin": ["geraldo alckmin"],
   "ratinho": ["ratinho junior", "carlos massa junior", "ratinho jr"],
-  "zema": ["romeu zema"],
+  "ratinho jr": ["ratinho junior", "carlos massa junior", "ratinho"],
+  "ratinho junior": ["carlos massa junior", "ratinho", "ratinho jr"],
+  "zema": ["romeu zema", "romeu zema neto"],
   "temer": ["michel temer"],
   "haddad": ["fernando haddad"],
   "marina": ["marina silva"],
@@ -206,28 +213,51 @@ const POLITICAL_ALIASES: Record<string, string[]> = {
   "caiado": ["ronaldo caiado"],
   "mourao": ["hamilton mourao"],
   "kassab": ["gilberto kassab"],
-  "lira": ["arthur lira"],
+  "lira": ["arthur lira", "arthur cesar pereira de lira"],
+  "arthur lira": ["arthur cesar pereira de lira", "lira"],
   "martinelli": ["gustavo martinelli"],
   "paes": ["eduardo paes"],
   "nunes": ["ricardo nunes"],
+  "eduardo leite": ["eduardo figueiredo cavalheiro leite"],
+  "leite": ["eduardo leite", "eduardo figueiredo cavalheiro leite"],
+  "pacheco": ["rodrigo pacheco"],
   "dr kachan": ["jose antonio kachan junior", "kachan", "dr kachan junior"],
   "kachan": ["jose antonio kachan junior", "dr kachan", "dr kachan junior"],
   "jose antonio kachan junior": ["dr kachan", "kachan", "dr kachan junior"],
-  "ratinho jr": ["ratinho junior", "carlos massa junior", "ratinho"],
   "bocalon": ["ricardo bocalon"],
 };
+
+// Gera aliases automáticos a partir do nome do candidato.
+function generateAliases(name: string): string[] {
+  const n = normalize(name);
+  if (!n) return [];
+  const out = new Set<string>([n]);
+  const HONOR = new Set(["dr","dra","prof","profa","sr","sra","pastor","pr","padre","delegado","capitao","cb","sgt","ten","cel","cap"]);
+  const stripped = n.split(/\s+/).filter((t) => t && !HONOR.has(t.replace(/\./g, ""))).join(" ");
+  if (stripped && stripped !== n) out.add(stripped);
+  const tokens = stripped.split(/\s+/).filter((t) => t && !["da","de","do","das","dos","e"].includes(t));
+  if (tokens.length >= 1) out.add(tokens[tokens.length - 1]);
+  if (tokens.length >= 2) out.add(`${tokens[0]} ${tokens[tokens.length - 1]}`);
+  if (tokens.length >= 2) out.add(`${tokens[0]} ${tokens[1]}`);
+  return Array.from(out);
+}
 
 function expandAliases(q: string): string[] {
   const n = normalize(q);
   if (!n) return [];
   const set = new Set<string>([n]);
+  generateAliases(n).forEach((a) => set.add(a));
   if (POLITICAL_ALIASES[n]) POLITICAL_ALIASES[n].forEach((a) => set.add(normalize(a)));
-  // reverse lookup: query é um nome completo cuja chave curta existe
   for (const [key, vals] of Object.entries(POLITICAL_ALIASES)) {
     if (vals.some((v) => normalize(v) === n)) {
       set.add(key);
       vals.forEach((v) => set.add(normalize(v)));
     }
+  }
+  // Também tenta pelo último token (sobrenome) e pelo nome sem honorífico.
+  const lastTok = Array.from(set).flatMap((s) => s.split(/\s+/)).filter((t) => t.length >= 4);
+  for (const t of lastTok) {
+    if (POLITICAL_ALIASES[t]) POLITICAL_ALIASES[t].forEach((a) => set.add(normalize(a)));
   }
   return Array.from(set);
 }
@@ -852,16 +882,47 @@ const STATUS_TO_CATEGORIA: Record<string, string> = {
 async function cerebrasDirectLookup(name: string, cargoKey: string | null): Promise<Array<{ nome: string; nomeUrna: string | null; partido: string | null; cargo: string; cidade: string | null; uf: string | null; status: string }>> {
   const normalizedName = normalize(name);
   const strippedName = stripHonorifics(name);
+  const KACHAN = { nome: "José Antônio Kachan Júnior", nomeUrna: "Dr Kachan", partido: "REPUBLICANOS", cargo: "vereador", cidade: "Jundiaí", uf: "SP", status: "Mandatário" };
   const knownLookup: Record<string, Array<{ nome: string; nomeUrna: string | null; partido: string | null; cargo: string; cidade: string | null; uf: string | null; status: string }>> = {
-    "dr kachan": [{ nome: "José Antônio Kachan Júnior", nomeUrna: "Dr Kachan", partido: "REPUBLICANOS", cargo: "vereador", cidade: "Jundiaí", uf: "SP", status: "Mandatário" }],
-    "kachan": [{ nome: "José Antônio Kachan Júnior", nomeUrna: "Dr Kachan", partido: "REPUBLICANOS", cargo: "vereador", cidade: "Jundiaí", uf: "SP", status: "Mandatário" }],
-    "jose antonio kachan junior": [{ nome: "José Antônio Kachan Júnior", nomeUrna: "Dr Kachan", partido: "REPUBLICANOS", cargo: "vereador", cidade: "Jundiaí", uf: "SP", status: "Mandatário" }],
+    "dr kachan": [KACHAN], "kachan": [KACHAN], "jose antonio kachan junior": [KACHAN],
+    "lula": [{ nome: "Luiz Inácio Lula da Silva", nomeUrna: "Lula", partido: "PT", cargo: "presidente", cidade: null, uf: "BR", status: "Eleito" }],
+    "luiz inacio lula da silva": [{ nome: "Luiz Inácio Lula da Silva", nomeUrna: "Lula", partido: "PT", cargo: "presidente", cidade: null, uf: "BR", status: "Eleito" }],
+    "bolsonaro": [{ nome: "Jair Messias Bolsonaro", nomeUrna: "Jair Bolsonaro", partido: "PL", cargo: "ex_presidente", cidade: null, uf: "BR", status: "Ex-candidato" }],
+    "jair bolsonaro": [{ nome: "Jair Messias Bolsonaro", nomeUrna: "Jair Bolsonaro", partido: "PL", cargo: "ex_presidente", cidade: null, uf: "BR", status: "Ex-candidato" }],
+    "flavio bolsonaro": [{ nome: "Flávio Nantes Bolsonaro", nomeUrna: "Flávio Bolsonaro", partido: "PL", cargo: "senador", cidade: null, uf: "RJ", status: "Mandatário" }],
+    "eduardo bolsonaro": [{ nome: "Eduardo Nantes Bolsonaro", nomeUrna: "Eduardo Bolsonaro", partido: "PL", cargo: "deputado_federal", cidade: null, uf: "SP", status: "Mandatário" }],
+    "tarcisio": [{ nome: "Tarcísio Gomes de Freitas", nomeUrna: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "governador", cidade: null, uf: "SP", status: "Eleito" }],
+    "tarcisio de freitas": [{ nome: "Tarcísio Gomes de Freitas", nomeUrna: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "governador", cidade: null, uf: "SP", status: "Eleito" }],
+    "tarcisio gomes de freitas": [{ nome: "Tarcísio Gomes de Freitas", nomeUrna: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "governador", cidade: null, uf: "SP", status: "Eleito" }],
+    "lira": [{ nome: "Arthur César Pereira de Lira", nomeUrna: "Arthur Lira", partido: "PP", cargo: "deputado_federal", cidade: null, uf: "AL", status: "Mandatário" }],
+    "arthur lira": [{ nome: "Arthur César Pereira de Lira", nomeUrna: "Arthur Lira", partido: "PP", cargo: "deputado_federal", cidade: null, uf: "AL", status: "Mandatário" }],
+    "ratinho": [{ nome: "Carlos Roberto Massa Júnior", nomeUrna: "Ratinho Júnior", partido: "PSD", cargo: "governador", cidade: null, uf: "PR", status: "Eleito" }],
+    "ratinho jr": [{ nome: "Carlos Roberto Massa Júnior", nomeUrna: "Ratinho Júnior", partido: "PSD", cargo: "governador", cidade: null, uf: "PR", status: "Eleito" }],
+    "ratinho junior": [{ nome: "Carlos Roberto Massa Júnior", nomeUrna: "Ratinho Júnior", partido: "PSD", cargo: "governador", cidade: null, uf: "PR", status: "Eleito" }],
+    "eduardo leite": [{ nome: "Eduardo Figueiredo Cavalheiro Leite", nomeUrna: "Eduardo Leite", partido: "PSD", cargo: "governador", cidade: null, uf: "RS", status: "Eleito" }],
+    "leite": [{ nome: "Eduardo Figueiredo Cavalheiro Leite", nomeUrna: "Eduardo Leite", partido: "PSD", cargo: "governador", cidade: null, uf: "RS", status: "Eleito" }],
+    "zema": [{ nome: "Romeu Zema Neto", nomeUrna: "Romeu Zema", partido: "NOVO", cargo: "governador", cidade: null, uf: "MG", status: "Eleito" }],
+    "romeu zema": [{ nome: "Romeu Zema Neto", nomeUrna: "Romeu Zema", partido: "NOVO", cargo: "governador", cidade: null, uf: "MG", status: "Eleito" }],
+    "caiado": [{ nome: "Ronaldo Ramos Caiado", nomeUrna: "Ronaldo Caiado", partido: "UNIÃO", cargo: "governador", cidade: null, uf: "GO", status: "Eleito" }],
+    "haddad": [{ nome: "Fernando Haddad", nomeUrna: "Haddad", partido: "PT", cargo: "ministro", cidade: null, uf: "BR", status: "Mandatário" }],
+    "alckmin": [{ nome: "Geraldo José Rodrigues Alckmin Filho", nomeUrna: "Geraldo Alckmin", partido: "PSB", cargo: "vice_presidente", cidade: null, uf: "BR", status: "Eleito" }],
+    "pacheco": [{ nome: "Rodrigo Pacheco", nomeUrna: "Rodrigo Pacheco", partido: "PSD", cargo: "senador", cidade: null, uf: "MG", status: "Mandatário" }],
+    "boulos": [{ nome: "Guilherme Castro Boulos", nomeUrna: "Guilherme Boulos", partido: "PSOL", cargo: "deputado_federal", cidade: null, uf: "SP", status: "Mandatário" }],
+    "nikolas": [{ nome: "Nikolas Ferreira", nomeUrna: "Nikolas Ferreira", partido: "PL", cargo: "deputado_federal", cidade: null, uf: "MG", status: "Mandatário" }],
+    "nunes": [{ nome: "Ricardo Nunes", nomeUrna: "Ricardo Nunes", partido: "MDB", cargo: "prefeito", cidade: "São Paulo", uf: "SP", status: "Eleito" }],
+    "paes": [{ nome: "Eduardo Paes", nomeUrna: "Eduardo Paes", partido: "PSD", cargo: "prefeito", cidade: "Rio de Janeiro", uf: "RJ", status: "Eleito" }],
+    "moro": [{ nome: "Sergio Moro", nomeUrna: "Sergio Moro", partido: "UNIÃO", cargo: "senador", cidade: null, uf: "PR", status: "Mandatário" }],
+    "marina": [{ nome: "Marina Silva", nomeUrna: "Marina Silva", partido: "REDE", cargo: "ministro", cidade: null, uf: "BR", status: "Mandatário" }],
+    "tebet": [{ nome: "Simone Tebet", nomeUrna: "Simone Tebet", partido: "MDB", cargo: "ministro", cidade: null, uf: "BR", status: "Mandatário" }],
   };
-  const known = knownLookup[normalizedName] ?? knownLookup[strippedName];
+  const tryKeys = [normalizedName, strippedName, ...generateAliases(name)];
+  let known: typeof knownLookup[string] | undefined;
+  for (const k of tryKeys) { if (knownLookup[k]) { known = knownLookup[k]; break; } }
   if (known) {
     console.log(`[ai-lookup] alias conhecido: ${name} -> ${known[0].nome}`);
     return known;
   }
+
   const key = Deno.env.get("LOVABLE_API_KEY");
   if (!key) { console.log("[ai-lookup] LOVABLE_API_KEY ausente"); return []; }
   const prompt = `Você conhece a política brasileira atual (2024-2026). O usuário procura por: "${name}"${strippedName && strippedName !== normalizedName ? `; sem honorífico: "${strippedName}"` : ""}${cargoKey ? ` (cargo: ${CARGO_LABEL[cargoKey] ?? cargoKey})` : ""}.
