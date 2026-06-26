@@ -1318,6 +1318,65 @@ Deno.serve(async (req) => {
     if (f.cargos.length === 0 && !f.q) {
       throw new Error("Selecione ao menos um cargo ou informe um nome para busca.");
     }
+
+    // ============================================================
+    // SISTEMA 1 — CATÁLOGO MASSIVO (filtros estruturados, sem IA)
+    // Acionado quando NÃO há busca por nome. Lê direto do banco
+    // estruturado `politicians` (populado pelo ETL TSE) com paginação real.
+    // ============================================================
+    if (!f.q) {
+      console.log("MODE: CATALOG (structured DB) — no name query");
+      const sb = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      );
+      let qb = sb.from("politicians").select("*", { count: "exact" }).eq("ativo", true);
+      if (f.cargos.length) qb = qb.in("cargo", f.cargos);
+      if (f.ufs.length) qb = qb.in("estado", f.ufs);
+      if (f.partidos.length) qb = qb.in("partido_sigla", f.partidos);
+      if (f.municipio) qb = qb.ilike("municipio", `%${f.municipio}%`);
+      if (f.onlyEleitos) qb = qb.eq("eleito", true);
+      const start = f.page * PAGE_SIZE;
+      qb = qb.order("eleito", { ascending: false })
+             .order("popularidade", { ascending: false })
+             .order("nome", { ascending: true })
+             .range(start, start + PAGE_SIZE - 1);
+      const { data, count, error } = await qb;
+      if (error) throw new Error(`Catálogo DB: ${error.message}`);
+      const total = count ?? 0;
+      const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+      const rows = (data ?? []).map((r: any) => ({
+        id: r.id, tse_id: r.tse_id, nome: r.nome, nome_urna: r.nome_urna,
+        partido_sigla: r.partido_sigla, partido_nome: r.partido_nome,
+        numero_partido: r.numero_partido, cargo: r.cargo,
+        regiao: r.regiao, estado: r.estado, municipio: r.municipio,
+        eleito: !!r.eleito, categoria: r.eleito ? "eleito" : "ex_candidato",
+        ano_eleicao: r.ano_eleicao, foto_url: r.foto_url,
+        redes_sociais: r.redes_sociais ?? null,
+        popularidade: Number(r.popularidade ?? 0),
+        similarity: 1, total_count: total,
+        fonte: "catalog-db", confidence: 1,
+      }));
+      console.log("CATALOG DB COUNT:", rows.length, "TOTAL:", total, "PAGE:", f.page + 1, "/", totalPages);
+      return new Response(JSON.stringify({
+        rows, total,
+        hasMore: total > (f.page + 1) * PAGE_SIZE,
+        exactTotal: true, suggestions: [], normalized: {},
+        page: f.page, pageSize: PAGE_SIZE, totalPages,
+        fallback: false, partial: false, sources: ["catalog-db"],
+        notice: total === 0
+          ? "Nenhum candidato no banco com esses filtros. Rode o ETL TSE para popular."
+          : `${total.toLocaleString("pt-BR")} candidato(s) — página ${f.page + 1} de ${totalPages}.`,
+        last_updated: new Date().toISOString(),
+        source: "catalog-db",
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // ============================================================
+    // SISTEMA 2 — BUSCA POR NOME (pipeline híbrido)
+    // Banco → TSE → Web → IA. Mantido para nomes livres tipo "Dr Kachan".
+    // ============================================================
+    console.log("MODE: NAME SEARCH (hybrid pipeline)");
     const eletivos = f.cargos.filter((c) => !!CARGO_TO_TSE[c]);
     const naoEletivos = f.cargos.filter((c) => NON_TSE_CARGOS.has(c));
     const sourcePlan = eletivos.length > 0 && naoEletivos.length === 0 ? "TSE"
