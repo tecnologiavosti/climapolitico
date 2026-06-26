@@ -294,6 +294,18 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   const [overrideConfirmed, setOverrideConfirmed] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  // Score estrutural local (0–100): garante que falhas de API não derrubem candidatos plausíveis.
+  const structuralScore = useMemo(() => {
+    let s = 0;
+    if (formatOk && !blacklisted) s += 20;
+    if (party && findPartyBySigla(party)) s += 20;
+    if (position && VALID_POSITIONS.has(position)) s += 20;
+    const sc = scopeOf(position);
+    if (sc === "national" || (state && ALL_STATES.includes(state))) s += 20;
+    if (sc === "national" || sc === "state" || (sc === "municipal" && city.trim().length >= 2)) s += 20;
+    return s;
+  }, [formatOk, blacklisted, party, position, state, city]);
+
   // Reset override quando nome muda
   useEffect(() => { setOverrideConfirmed(false); }, [fullName]);
 
