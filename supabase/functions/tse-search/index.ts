@@ -591,13 +591,13 @@ async function searchTSE(cargoKey: string, f: Filters, deadline: number): Promis
 // ============ CAMADA 2 — FIRECRAWL ============
 function buildQuery(cargoKey: string | null, f: Filters): string {
   const isNameOnly = !!f.q && !cargoKey && f.cargos.length === 0 && f.ufs.length === 0 && !f.municipio?.trim();
-  if (isNameOnly) return `site:divulgacandcontas.tse.jus.br "${f.q}"`;
+  if (isNameOnly) return `${f.q} político candidato brasil site:divulgacandcontas.tse.jus.br OR site:google.com`;
 
   const parts: string[] = [];
-  if (f.q) parts.push(`"${f.q}"`);
+  if (f.q) parts.push(f.q); // sem aspas para busca mais ampla
   if (cargoKey) {
     const label = CARGO_LABEL[cargoKey] ?? cargoKey;
-    parts.push(cargoKey === "vereador" || cargoKey === "prefeito" ? `${label.toLowerCase()}es` : label.toLowerCase());
+    parts.push(label.toLowerCase());
   }
   if (f.municipio) parts.push(f.municipio);
   if (f.ufs[0]) parts.push(f.ufs[0]);
@@ -605,10 +605,28 @@ function buildQuery(cargoKey: string | null, f: Filters): string {
   if (cargoKey === "ministro" && !f.q) parts.push("governo lula 2026");
   if (cargoKey === "presidente_partido" && !f.q) parts.push("brasil 2026");
   if (cargoKey === "pre_candidato" && !f.q) parts.push("brasil 2026");
-  // Quando é busca por nome + filtros, adicionar contexto político BR
   if (f.q && !cargoKey) parts.push("político candidato brasil");
   return parts.filter(Boolean).join(" ").trim() || "candidatos brasil 2026";
 }
+
+// Inferir cargo a partir da query quando o extractor não devolve cargo.
+const CARGO_INFER_MAP: Array<[RegExp, string]> = [
+  [/\bvereador(es)?\b/i, "vereador"],
+  [/\bvice[\s-]?prefeito\b/i, "vice_prefeito"],
+  [/\bprefeito(s)?\b/i, "prefeito"],
+  [/\bdeputado federal\b/i, "deputado_federal"],
+  [/\bdeputado estadual\b/i, "deputado_estadual"],
+  [/\bdeputado distrital\b/i, "deputado_distrital"],
+  [/\bsenador(es)?\b/i, "senador"],
+  [/\bvice[\s-]?governador\b/i, "vice_governador"],
+  [/\bgovernador(es)?\b/i, "governador"],
+  [/\bpresidente\b/i, "presidente"],
+];
+function inferCargoFromQuery(query: string): string | null {
+  for (const [re, cargo] of CARGO_INFER_MAP) if (re.test(query)) return cargo;
+  return null;
+}
+
 
 async function firecrawlSearch(query: string, deadline: number): Promise<Array<{ url: string; title: string; markdown: string }>> {
   const key = Deno.env.get("FIRECRAWL_API_KEY");
@@ -758,10 +776,11 @@ Formato JSON estrito:
 
 async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: number): Promise<OutRow[]> {
   const query = buildQuery(cargoKey, f);
-  console.log("QUERY:", query);
-  console.log("SOURCE: firecrawl");
+  console.log("STEP WEB SEARCH START");
+  console.log("WEB QUERY:", query);
   const results = await firecrawlSearch(query, deadline);
-  console.log(`[firecrawl] ${results.length} páginas`);
+  console.log("STEP WEB COUNT:", results.length);
+  console.log("STEP WEB RAW:", JSON.stringify(results.slice(0, 10).map((r) => ({ url: r.url, title: r.title }))));
 
   let extracted: Awaited<ReturnType<typeof cerebrasExtract>> = [];
   let fonte = "firecrawl+web";
@@ -772,24 +791,27 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
     console.log(`[cerebras] extraiu ${extracted.length} nomes`);
   }
 
-  // Fallback: se não veio nada do Firecrawl e temos nome → consulta direta na base de conhecimento Cerebras
   if (extracted.length === 0 && f.q && Date.now() < deadline) {
-    console.log(`[ai-lookup] firecrawl vazio — consultando Cerebras direto por "${f.q}"`);
+    console.log(`[ai-lookup] firecrawl vazio — consultando IA direto por "${f.q}"`);
     extracted = await cerebrasDirectLookup(f.q, cargoKey);
     console.log(`[ai-lookup] retornou ${extracted.length} candidatos`);
     if (extracted.length > 0) fonte = "ai-lookup";
   }
 
+  // Inferir cargo pela query quando vier sem cargo estruturado.
+  const inferredCargo = cargoKey ?? inferCargoFromQuery(query);
+
   return extracted.map((c, i) => {
     const uf = resolveUF(c.uf) ?? (f.ufs[0] ?? null);
     const statusNorm = normalize(c.status);
     const categoria = STATUS_TO_CATEGORIA[statusNorm] ?? "pre_candidato";
+    const cargoFinal = c.cargo || inferredCargo || "pre_candidato";
     return {
       id: `web-${normalize(c.nome).replace(/\s+/g, "-")}-${i}`,
       tse_id: null, nome: c.nome, nome_urna: c.nomeUrna,
       partido_sigla: c.partido, partido_nome: null, numero_partido: null,
-      cargo: c.cargo ?? cargoKey ?? "pre_candidato", regiao: null,
-      estado: uf, municipio: c.cidade,
+      cargo: cargoFinal, regiao: null,
+      estado: uf, municipio: c.cidade ?? f.municipio ?? null,
       eleito: categoria === "eleito", categoria, ano_eleicao: 2026,
       foto_url: null, redes_sociais: null,
       popularidade: 0.5, similarity: 1, total_count: 0,
@@ -797,6 +819,7 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
     } as OutRow;
   });
 }
+
 
 // ============ DEDUPE + FILTROS ============
 function dedupe(rows: OutRow[]): OutRow[] {
@@ -849,18 +872,24 @@ function fuzzyTokenMatch(hayTokens: string[], token: string): boolean {
 
 function applyFilters(rows: OutRow[], f: Filters): OutRow[] {
   const q = normalize(f.q);
+  const selectedCargo = f.cargos[0] ?? null;
   console.log("CANDIDATES BEFORE FILTER:", rows.length);
   const candidates = rows.filter((r) => {
-    if (f.onlyEleitos && !r.eleito) return false;
-    if (f.partidos.length && !f.partidos.includes((r.partido_sigla ?? "").toUpperCase())) return false;
+    if (f.onlyEleitos && !r.eleito) {
+      console.log("DISCARDED", { candidate: r.nome, reason: "not-eleito", cargo: r.cargo, selectedCargo });
+      return false;
+    }
+    if (f.partidos.length && !f.partidos.includes((r.partido_sigla ?? "").toUpperCase())) {
+      console.log("DISCARDED", { candidate: r.nome, reason: "partido", partido: r.partido_sigla });
+      return false;
+    }
     if (q) {
       const hay = normalize(`${r.nome} ${r.nome_urna ?? ""}`);
       const hayTokens = hay.split(/\s+/).filter(Boolean);
       const tokens = q.split(/\s+/).filter(Boolean);
-      // 1) substring direta
       if (hay.includes(q)) return true;
-      // 2) todos os tokens com fuzzy match
       if (tokens.every((t) => fuzzyTokenMatch(hayTokens, t))) return true;
+      console.log("DISCARDED", { candidate: r.nome, reason: "name-mismatch", cargo: r.cargo, selectedCargo });
       return false;
     }
     return true;
@@ -868,6 +897,7 @@ function applyFilters(rows: OutRow[], f: Filters): OutRow[] {
   console.log("CANDIDATES AFTER FILTER:", candidates.length);
   return candidates;
 }
+
 
 function filterLog(f: Filters) {
   return {
@@ -1011,8 +1041,16 @@ Deno.serve(async (req) => {
       ? await searchByName(f, deadline)
       : await searchByFilters(f, deadline);
 
+    const tseRows = all.filter((r) => r.fonte.startsWith("tse"));
+    const webRows = all.filter((r) => r.fonte.includes("firecrawl") || r.fonte === "ai-lookup");
+    console.log("STEP TSE COUNT:", tseRows.length);
+    console.log("STEP TSE DATA:", JSON.stringify(tseRows.slice(0, 5).map((r) => ({ nome: r.nome, cargo: r.cargo, uf: r.estado, mun: r.municipio }))));
+    console.log("STEP MERGED COUNT (pre-dedupe):", all.length);
+
     const deduped = dedupe(all);
+    console.log("STEP MERGED COUNT (post-dedupe):", deduped.length);
     const filtered = applyFilters(deduped, f);
+
     console.log("FINAL COUNT:", filtered.length);
     console.log("FINAL TOP10:", JSON.stringify(filtered.slice(0, 10).map((r) => ({
       nome: r.nome, cargo: r.cargo, estado: r.estado, municipio: r.municipio, fonte: r.fonte,
