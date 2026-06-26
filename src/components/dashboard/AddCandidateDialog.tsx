@@ -423,22 +423,12 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                   </div>
                 );
               }
-              // Falha de API: nunca marcar como inválido. Se score estrutural >= 80, mostrar como plausível.
+              // Falha de chamada IA: nunca bloquear nem invalidar — apenas alertar.
               if (aiLookup?.error) {
-                const plausible = structuralScore >= 80;
                 return (
                   <div className="mt-2 rounded-xl border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2.5 text-amber-700 dark:text-amber-300 animate-in fade-in-0 slide-in-from-top-1 duration-200">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 text-sm font-semibold">
-                        {plausible ? "🟡 Candidato plausível" : "🟡 Validação indisponível"}
-                      </div>
-                      <span className="text-xs font-medium opacity-80">Score: {structuralScore}/100</span>
-                    </div>
-                    <div className="mt-0.5 text-xs opacity-80">
-                      {plausible
-                        ? "Dados consistentes, mas não foi possível validar nas bases externas agora."
-                        : "Não foi possível consultar as bases públicas agora."}
-                    </div>
+                    <div className="flex items-center gap-2 text-sm font-semibold">🟡 Validação indisponível</div>
+                    <div className="mt-0.5 text-xs opacity-80">Não foi possível consultar a IA agora. Você pode adicionar mesmo assim.</div>
                     <div className="mt-2">
                       <Button type="button" size="sm" variant="outline" className="h-7 rounded-lg" onClick={revalidate} disabled={aiLoading}>
                         {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
@@ -448,38 +438,17 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                   </div>
                 );
               }
-              // Não encontrado nas bases mas estruturalmente plausível: mostra amarelo, não vermelho.
-              if (validationLevel === "unverified" && structuralScore >= 80) {
-                return (
-                  <div className="mt-2 rounded-xl border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2.5 text-amber-700 dark:text-amber-300 animate-in fade-in-0 slide-in-from-top-1 duration-200">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 text-sm font-semibold">🟡 Candidato plausível</div>
-                      <span className="text-xs font-medium opacity-80">Score: {structuralScore}/100</span>
-                    </div>
-                    <div className="mt-0.5 text-xs opacity-80">
-                      Dados consistentes, mas não foi possível validar nas bases externas agora.
-                    </div>
-                    <div className="mt-2">
-                      <Button type="button" size="sm" variant="outline" className="h-7 rounded-lg" onClick={revalidate} disabled={aiLoading}>
-                        {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
-                        Tentar validar novamente
-                      </Button>
-                    </div>
-                  </div>
-                );
-              }
+              // Resultado IA pronto: 4 faixas.
+              const score = aiScore ?? 0;
               const tone =
-                validationLevel === "verified"
-                  ? { icon: "🟢", title: "Verificado", cls: "border-emerald-500/40 bg-emerald-500/[0.08] text-emerald-700 dark:text-emerald-300" }
-                  : validationLevel === "partial"
-                  ? { icon: "🟡", title: "Parcialmente verificado", cls: "border-amber-500/40 bg-amber-500/[0.08] text-amber-700 dark:text-amber-300" }
-                  : { icon: "🔴", title: "Não encontrado nas bases públicas", cls: "border-red-500/40 bg-red-500/[0.08] text-red-700 dark:text-red-300" };
+                score >= 90 ? { icon: "🟢", title: "Validado pela IA", cls: "border-emerald-500/40 bg-emerald-500/[0.08] text-emerald-700 dark:text-emerald-300" }
+                : score >= 70 ? { icon: "🟡", title: "Plausível", cls: "border-amber-500/40 bg-amber-500/[0.08] text-amber-700 dark:text-amber-300" }
+                : score >= 40 ? { icon: "🟠", title: "Pouco confiável", cls: "border-orange-500/40 bg-orange-500/[0.08] text-orange-700 dark:text-orange-300" }
+                : { icon: "🔴", title: "Suspeito", cls: "border-red-500/40 bg-red-500/[0.08] text-red-700 dark:text-red-300" };
               const subtitle =
-                validationLevel === "unverified"
-                  ? "Sem evidências políticas confiáveis"
-                  : validationLevel === "partial"
-                  ? "Encontrado em fontes limitadas"
-                  : "Encontrado em fontes oficiais";
+                score >= 70 ? "Candidato plausível para monitoramento político."
+                : score >= 40 ? "Dados parcialmente consistentes. Revise antes de adicionar."
+                : "Este candidato parece inconsistente ou improvável.";
               const scopeTxt = scopeLabel(scope, state, city);
               return (
                 <div className={cn("mt-2 rounded-xl border px-3 py-2.5 animate-in fade-in-0 slide-in-from-top-1 duration-200", tone.cls)}>
@@ -487,11 +456,14 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                     <div className="flex items-center gap-2 text-sm font-semibold">
                       <span>{tone.icon}</span> {tone.title}
                     </div>
-                    <span className="text-xs font-medium opacity-80">Score: {validationScore}/100</span>
+                    <span className="text-xs font-medium opacity-80">Score: {score}/100</span>
                   </div>
                   <div className="mt-0.5 text-xs opacity-80">{subtitle}</div>
+                  {aiLookup?.reason && (
+                    <div className="mt-1 text-[11px] opacity-75 italic">{aiLookup.reason}</div>
+                  )}
                   {scopeTxt && <div className="mt-1 text-xs font-medium opacity-90">{scopeTxt}</div>}
-                  {validationLevel !== "verified" && (
+                  {score < 90 && (
                     <div className="mt-2">
                       <Button type="button" size="sm" variant="outline" className="h-7 rounded-lg" onClick={revalidate} disabled={aiLoading}>
                         {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
