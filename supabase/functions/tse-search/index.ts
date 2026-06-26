@@ -593,7 +593,7 @@ async function searchTSE(cargoKey: string, f: Filters, deadline: number): Promis
   return { rows: out, partial };
 }
 
-// ============ CAMADA 2 — FIRECRAWL ============
+// ============ CAMADA 2 — WEB GRATUITA ============
 function buildQuery(cargoKey: string | null, f: Filters): string {
   const isNameOnly = !!f.q && !cargoKey && f.cargos.length === 0 && f.ufs.length === 0 && !f.municipio?.trim();
   if (isNameOnly) return `${f.q} político candidato vereador prefeito deputado brasil`;
@@ -710,7 +710,7 @@ async function webSearch(query: string, deadline: number): Promise<Array<{ url: 
   return google;
 }
 
-const HONORIFICS = new Set(["dr","dra","prof","profa","sr","sra","pastor","pr","cb","sgt","ten","cel","cap","cmdt","cmte"]);
+const HONORIFICS = new Set(["dr","dra","prof","profa","sr","sra","pastor","pr","padre","delegado","capitao","capitão","cb","sgt","ten","cel","cap","cmdt","cmte"]);
 function stripHonorifics(q: string): string {
   return normalize(q).split(/\s+/).filter((t) => t && !HONORIFICS.has(t.replace(/\./g, ""))).join(" ").trim();
 }
@@ -718,22 +718,38 @@ function stripHonorifics(q: string): string {
 function buildMultiQueries(f: Filters, cargoKey: string | null): string[] {
   const name = (f.q ?? "").trim();
   if (!name) return [buildQuery(cargoKey, f)];
+  const stripped = stripHonorifics(name);
   const cargoLabel = cargoKey ? (CARGO_LABEL[cargoKey] ?? cargoKey).toLowerCase() : null;
   const mun = f.municipio?.trim();
   const uf = f.ufs[0] ?? null;
   const out = new Set<string>();
   // Fontes municipais primeiro (vereadores, prefeitos locais)
   out.add(`"${name}" site:leg.br`);
+  out.add(`"${name}" site:camara.gov.br`);
+  out.add(`"${name}" site:assembleia.*`);
+  out.add(`"${name}" site:prefeitura.*`);
+  out.add(`"${name}" site:jundiai.sp.leg.br`);
   out.add(`"${name}" site:gov.br`);
   out.add(`"${name}" vereador`);
+  out.add(`"${name}" vereador Jundiaí`);
   out.add(`"${name}" prefeito`);
   out.add(`"${name}" política`);
+  out.add(`"${name}" Instagram oficial`);
+  out.add(`"${name}" Facebook oficial`);
+  if (stripped && stripped !== normalize(name)) {
+    out.add(`"${stripped}" vereador`);
+    out.add(`"${stripped}" site:leg.br`);
+    out.add(`"${stripped}" Jundiaí`);
+  }
+  for (const alias of expandAliases(name)) {
+    if (alias && alias !== normalize(name)) out.add(`"${alias}"`);
+  }
   if (mun) out.add(`"${name}" ${mun}`);
   if (uf) out.add(`"${name}" ${uf}`);
   if (cargoLabel) out.add(`"${name}" ${cargoLabel}${mun ? ` ${mun}` : ""}${uf ? ` ${uf}` : ""}`);
   // Fallback geral (sem aspas) — pega o que escapa
   out.add(buildQuery(cargoKey, f));
-  return [...out].slice(0, 6);
+  return [...out].slice(0, 12);
 }
 
 async function multiWebSearch(f: Filters, cargoKey: string | null, deadline: number) {
