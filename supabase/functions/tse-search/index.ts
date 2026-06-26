@@ -3,6 +3,7 @@
 // Camada 2: Firecrawl search (Wikipedia, G1, UOL, sites oficiais) p/ cargos não-TSE e nomes livres
 // Camada 3: Cerebras (somente normalização/dedupe semântica/correção ortográfica). NUNCA gera candidatos.
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { unzipSync } from "npm:fflate@0.8.2";
 
 // ============ CONSTANTES ============
@@ -183,6 +184,56 @@ interface OutRow {
   foto_url: string | null; redes_sociais: null; popularidade: number;
   similarity: number; total_count: number;
   fonte: string; confidence: number;
+}
+
+async function searchLocalCatalog(f: Filters): Promise<OutRow[]> {
+  if (!f.q?.trim()) return [];
+  const url = Deno.env.get("SUPABASE_URL");
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !key) { console.log("[local-catalog] env ausente"); return []; }
+  try {
+    const admin = createClient(url, key, { auth: { persistSession: false } });
+    const { data, error } = await admin.rpc("search_politicians", {
+      q: f.q.trim(),
+      p_cargo: f.cargos.length ? f.cargos : null,
+      p_partido: f.partidos.length ? f.partidos : null,
+      p_regiao: null,
+      p_estado: f.ufs.length ? f.ufs : null,
+      p_municipio: f.municipio?.trim() || null,
+      p_only_eleitos: !!f.onlyEleitos,
+      p_limit: 200,
+      p_offset: 0,
+    });
+    if (error) { console.log("[local-catalog] erro:", error.message); return []; }
+    const rows = Array.isArray(data) ? data : [];
+    console.log(`[local-catalog] ${rows.length} resultados`);
+    return rows.map((r: any) => ({
+      id: `local-${r.id}`,
+      tse_id: r.tse_id ?? null,
+      nome: r.nome,
+      nome_urna: r.nome_urna ?? null,
+      partido_sigla: r.partido_sigla ?? null,
+      partido_nome: r.partido_nome ?? null,
+      numero_partido: r.numero_partido ?? null,
+      cargo: r.cargo ?? null,
+      regiao: r.regiao ?? null,
+      estado: r.estado ?? null,
+      municipio: r.municipio ?? null,
+      eleito: !!r.eleito,
+      categoria: r.eleito ? "eleito" : "ex_candidato",
+      ano_eleicao: r.ano_eleicao ?? null,
+      foto_url: r.foto_url ?? null,
+      redes_sociais: r.redes_sociais ?? null,
+      popularidade: Number(r.popularidade ?? 0.5),
+      similarity: Number(r.similarity ?? 1),
+      total_count: Number(r.total_count ?? rows.length),
+      fonte: "catalogo-local",
+      confidence: 100,
+    }));
+  } catch (e) {
+    console.log("[local-catalog] falha:", (e as Error).message);
+    return [];
+  }
 }
 
 // ============ CAMADA 1 — TSE ============
@@ -765,6 +816,13 @@ Deno.serve(async (req) => {
     const all: OutRow[] = [];
     const sources = new Set<string>();
     let partial = false;
+
+    if (f.q) {
+      const localRows = await searchLocalCatalog(f);
+      console.log(`RAW RESULTS (local-catalog): ${localRows.length}`);
+      all.push(...localRows);
+      if (localRows.length > 0) sources.add("catalogo-local");
+    }
 
     // sem cargo + tem q → busca livre via Firecrawl
     const cargosTodo = f.cargos.length > 0 ? f.cargos : [null as unknown as string];
