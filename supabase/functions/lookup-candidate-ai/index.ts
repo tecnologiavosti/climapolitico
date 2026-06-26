@@ -1,9 +1,15 @@
 // deno-lint-ignore-file no-explicit-any
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
-const CEREBRAS_API_KEY = Deno.env.get("CEREBRAS_API_KEY");
-const CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
-const CEREBRAS_MODEL = "llama-3.3-70b";
+const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+
+// Fallback chain de modelos OpenRouter — tentamos um por um.
+const MODELS = [
+  "google/gemini-2.0-flash-exp:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "mistralai/mistral-small-3.1-24b-instruct:free",
+];
 
 const VALID_OFFICES = new Set([
   "Presidente", "Vice-presidente", "Ministro", "Governador", "Vice-governador",
@@ -12,55 +18,73 @@ const VALID_OFFICES = new Set([
   "Vereador", "Presidente de partido",
 ]);
 
-const KNOWN_ALIASES = new Set(["lula", "bolsonaro", "ciro", "haddad", "boulos", "tiririca", "tabata"]);
+const BLACKLIST = new Set([
+  "batman", "naruto", "goku", "homem aranha", "homem-aranha", "spiderman",
+  "messi", "cristiano ronaldo", "cr7", "elon musk", "elon",
+  "superman", "mickey", "mickey mouse", "donald trump", "joe biden", "putin",
+]);
 
-function normalizeName(value: string) {
-  return (value || "")
+const KNOWN_ALIASES = new Set([
+  "lula", "bolsonaro", "ciro", "haddad", "boulos", "tiririca", "tabata",
+]);
+
+function normalize(s: string) {
+  return (s || "")
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase().replace(/[^\w\s]/g, "").replace(/\s+/g, " ").trim();
+    .toLowerCase().replace(/[^\w\s-]/g, "").replace(/\s+/g, " ").trim();
 }
 
-function localNameSanity(name: string): { ok: boolean; reason?: string } {
-  const n = name.trim();
-  if (n.length < 3) return { ok: false, reason: "Nome muito curto." };
-  if (/\d/.test(n)) return { ok: false, reason: "Nome contém números." };
-  if (!/^[A-Za-zÀ-ÿ'´`~^çÇ\s.-]+$/.test(n)) return { ok: false, reason: "Nome contém caracteres inválidos." };
-  if (/(.)\1{4,}/.test(n.toLowerCase())) return { ok: false, reason: "Nome parece spam." };
-  const norm = normalizeName(n);
+// Validação local antes da IA.
+function isPlausibleBrazilianCandidate(name: string): { ok: boolean; reason?: string } {
+  const trimmed = (name || "").trim();
+  if (trimmed.length < 3) return { ok: false, reason: "Nome muito curto." };
+  if (/\d/.test(trimmed)) return { ok: false, reason: "Nome contém números." };
+  if (!/^[A-Za-zÀ-ÿ'´`~^çÇ\s.-]+$/.test(trimmed)) {
+    return { ok: false, reason: "Nome contém caracteres inválidos." };
+  }
+  if (/(.)\1{4,}/.test(trimmed.toLowerCase())) {
+    return { ok: false, reason: "Nome parece spam." };
+  }
+  const norm = normalize(trimmed);
+  if (BLACKLIST.has(norm)) {
+    return { ok: false, reason: "Esse nome não parece ser de um candidato político brasileiro." };
+  }
+  for (const bad of BLACKLIST) {
+    if (norm === bad) return { ok: false, reason: "Esse nome não parece ser de um candidato político brasileiro." };
+  }
   const words = norm.split(/\s+/).filter((w) => w.length >= 2);
   if (words.length < 2 && !KNOWN_ALIASES.has(norm)) {
-    return { ok: false, reason: "Informe nome e sobrenome (apelidos políticos famosos são exceção)." };
+    return { ok: false, reason: "Informe nome e sobrenome (apelidos famosos são exceção)." };
   }
   return { ok: true };
 }
 
-const SYSTEM = `Você é um analista político brasileiro. Avalie se um candidato cadastrado é plausível como político real do Brasil, com base APENAS no contexto fornecido (nome, partido, cargo, estado, município).
+const SYSTEM = `Você é um analista político brasileiro. Determine se o nome fornecido pertence plausivelmente a um político brasileiro (candidato, vereador, prefeito, deputado, senador, governador, ministro ou figura pública política).
 
-Você NÃO tem acesso à internet, ao TSE ou a bases públicas. Avalie pela plausibilidade semântica:
-- O nome soa como um nome de pessoa brasileira real?
-- O contexto é coerente (cargo válido, partido brasileiro, UF/município reais e compatíveis)?
-- Há sinais óbvios de spam, fantasia ou personagem estrangeiro (ex.: "Donald Trump vereador de Tarauacá")?
+Avalie pela plausibilidade semântica do nome + contexto (partido, cargo, estado, município):
 - Apelidos políticos curtos (Lula, Bolsonaro, Boulos, Dr Kachan, Tiririca) SÃO válidos.
-- Vereadores e prefeitos de cidades pequenas SÃO políticos legítimos — não penalize por desconhecimento.
+- Vereadores e prefeitos de cidades pequenas SÃO políticos legítimos.
+- Penalize nomes de personagens, estrangeiros famosos fora de contexto, ou spam.
 
-Faixas de score:
-- 90–100: altamente plausível (nome real + contexto coerente + nenhum sinal de problema)
-- 70–89: plausível (sem incoerências, mas sem evidências fortes)
-- 40–69: pouco confiável (dados parcialmente inconsistentes)
-- 0–39: suspeito (nome de fantasia, personagem famoso fora de contexto, spam)
+Faixas:
+- 0–30: inválido / improvável
+- 31–60: incerto
+- 61–100: plausível
 
-Responda APENAS com JSON válido:
-{"score": number 0-100, "plausibility": "high"|"medium"|"low"|"suspect", "reason": string curto em pt-BR}`;
+Responda APENAS com JSON:
+{"score": number 0-100, "valid": boolean, "reason": string curto em pt-BR}`;
 
-async function callCerebras(payload: any) {
-  const resp = await fetch(CEREBRAS_URL, {
+async function callOpenRouter(model: string, payload: any): Promise<Response> {
+  return await fetch(OPENROUTER_URL, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${CEREBRAS_API_KEY}`,
+      "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
       "Content-Type": "application/json",
+      "HTTP-Referer": "https://climapolitico.com.br",
+      "X-Title": "Clima Politico",
     },
     body: JSON.stringify({
-      model: CEREBRAS_MODEL,
+      model,
       messages: [
         { role: "system", content: SYSTEM },
         { role: "user", content: JSON.stringify(payload) },
@@ -71,18 +95,18 @@ async function callCerebras(payload: any) {
     }),
     signal: AbortSignal.timeout(15000),
   });
-  return resp;
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const json = (body: any, status = 200) =>
-    new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
 
   try {
-    if (!CEREBRAS_API_KEY) return json({ error: "CEREBRAS_API_KEY not configured" }, 500);
-
     const body = await req.json().catch(() => ({}));
     const name = String(body?.name ?? "").trim();
     const ctx = body?.context ?? {};
@@ -93,12 +117,26 @@ Deno.serve(async (req) => {
 
     if (name.length < 2) return json({ error: "name too short" }, 400);
 
-    const sanity = localNameSanity(name);
+    // 1) Validação local — bloqueia antes de chamar IA.
+    const sanity = isPlausibleBrazilianCandidate(name);
     if (!sanity.ok) {
       return json({
-        score: 10, plausibility: "suspect",
+        score: 10, valid: false, plausibility: "suspect",
         reason: sanity.reason ?? "Nome inválido.",
-        name, party: ctxParty || null, office: VALID_OFFICES.has(ctxOffice) ? ctxOffice : null,
+        name, party: ctxParty || null,
+        office: VALID_OFFICES.has(ctxOffice) ? ctxOffice : null,
+        state: ctxState || null, city: ctxCity || null,
+      });
+    }
+
+    if (!OPENROUTER_API_KEY) {
+      // Sem chave: nunca trava — devolve pendente neutro.
+      return json({
+        score: 50, valid: true, plausibility: "medium",
+        reason: "Validação pendente: provider indisponível.",
+        pending: true,
+        name, party: ctxParty || null,
+        office: VALID_OFFICES.has(ctxOffice) ? ctxOffice : null,
         state: ctxState || null, city: ctxCity || null,
       });
     }
@@ -111,44 +149,66 @@ Deno.serve(async (req) => {
       municipio: ctxCity || null,
     };
 
-    let resp = await callCerebras(payload);
-    for (let attempt = 1; attempt <= 2 && resp.status === 429; attempt++) {
-      await new Promise((r) => setTimeout(r, 600 * attempt));
-      resp = await callCerebras(payload);
+    // 2) Fallback automático por modelo.
+    let lastErr = "";
+    for (const model of MODELS) {
+      try {
+        const resp = await callOpenRouter(model, payload);
+        if (!resp.ok) {
+          lastErr = `${model} ${resp.status}`;
+          console.warn("[lookup-candidate-ai] model failed", lastErr);
+          continue;
+        }
+        const data = await resp.json();
+        const raw = data?.choices?.[0]?.message?.content ?? "{}";
+        let parsed: any = {};
+        try { parsed = JSON.parse(raw); } catch { parsed = {}; }
+
+        let score = Number(parsed?.score);
+        if (!Number.isFinite(score)) score = 50;
+        score = Math.max(0, Math.min(100, Math.round(score)));
+
+        const plausibility =
+          score >= 90 ? "high" :
+          score >= 70 ? "medium" :
+          score >= 40 ? "low" : "suspect";
+
+        return json({
+          score,
+          valid: typeof parsed?.valid === "boolean" ? parsed.valid : score >= 31,
+          plausibility,
+          reason: typeof parsed?.reason === "string" ? parsed.reason : "",
+          provider: model,
+          name,
+          party: ctxParty || null,
+          office: VALID_OFFICES.has(ctxOffice) ? ctxOffice : null,
+          state: ctxState || null,
+          city: ctxCity || null,
+        });
+      } catch (e) {
+        lastErr = `${model} threw ${(e as Error).message}`;
+        console.warn("[lookup-candidate-ai]", lastErr);
+        continue;
+      }
     }
 
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => "");
-      console.error("[lookup-candidate-ai] cerebras error", resp.status, text);
-      return json({ error: resp.status === 429 ? "rate_limited" : "ai_error", status: resp.status });
-    }
-
-    const data = await resp.json();
-    const raw = data?.choices?.[0]?.message?.content ?? "{}";
-    let parsed: any = {};
-    try { parsed = JSON.parse(raw); } catch { parsed = {}; }
-
-    let score = Number(parsed?.score);
-    if (!Number.isFinite(score)) score = 50;
-    score = Math.max(0, Math.min(100, Math.round(score)));
-
-    const plausibility =
-      score >= 90 ? "high" :
-      score >= 70 ? "medium" :
-      score >= 40 ? "low" : "suspect";
-
+    // 3) Todos os modelos falharam — NUNCA travar: retorna pendente.
+    console.error("[lookup-candidate-ai] all models failed", lastErr);
     return json({
-      score,
-      plausibility,
-      reason: typeof parsed?.reason === "string" ? parsed.reason : "",
-      name,
-      party: ctxParty || null,
+      score: 50, valid: true, plausibility: "medium",
+      reason: "Não foi possível validar agora, mas você pode continuar o cadastro.",
+      pending: true,
+      name, party: ctxParty || null,
       office: VALID_OFFICES.has(ctxOffice) ? ctxOffice : null,
-      state: ctxState || null,
-      city: ctxCity || null,
+      state: ctxState || null, city: ctxCity || null,
     });
   } catch (e) {
     console.error("[lookup-candidate-ai] error", e);
-    return json({ error: String(e) }, 500);
+    // Nunca propaga erro — mantém UI estável.
+    return json({
+      score: 50, valid: true, plausibility: "medium",
+      reason: "Não foi possível validar agora, mas você pode continuar o cadastro.",
+      pending: true,
+    });
   }
 });
