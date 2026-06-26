@@ -280,7 +280,15 @@ async function fetchOpenDataZip(year: number, deadline: number): Promise<Uint8Ar
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 20_000);
-    const res = await fetch(url, { signal: ctrl.signal, headers: { "User-Agent": "Mozilla/5.0 ClimaPolitico/2.0" } });
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+        "Accept": "application/zip,application/octet-stream,*/*",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+        "Referer": "https://www.tse.jus.br/",
+      },
+    });
     clearTimeout(t);
     if (!res.ok) { console.log(`[tse-open-data] HTTP ${res.status}`); return null; }
     const bytes = new Uint8Array(await res.arrayBuffer());
