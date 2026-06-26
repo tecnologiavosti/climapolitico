@@ -981,9 +981,13 @@ function fuzzyTokenMatch(hayTokens: string[], token: string): boolean {
 }
 
 function applyFilters(rows: OutRow[], f: Filters): OutRow[] {
-  const q = normalize(f.q);
+  const qRaw = normalize(f.q);
+  const q = stripHonorifics(qRaw);
+  const aliasTerms = qRaw ? expandAliases(qRaw).map(stripHonorifics).filter(Boolean) : [];
+  const allTerms = Array.from(new Set([q, ...aliasTerms].filter(Boolean)));
   const selectedCargo = f.cargos[0] ?? null;
   console.log("CANDIDATES BEFORE FILTER:", rows.length);
+  console.log("MATCH TERMS:", JSON.stringify(allTerms));
   const candidates = rows.filter((r) => {
     if (f.onlyEleitos && !r.eleito) {
       console.log("DISCARDED", { candidate: r.nome, reason: "not-eleito", cargo: r.cargo, selectedCargo });
@@ -996,9 +1000,15 @@ function applyFilters(rows: OutRow[], f: Filters): OutRow[] {
     if (q) {
       const hay = normalize(`${r.nome} ${r.nome_urna ?? ""}`);
       const hayTokens = hay.split(/\s+/).filter(Boolean);
-      const tokens = q.split(/\s+/).filter(Boolean);
-      if (hay.includes(q)) return true;
-      if (tokens.every((t) => fuzzyTokenMatch(hayTokens, t))) return true;
+      for (const term of allTerms) {
+        if (!term) continue;
+        if (hay.includes(term)) return true;
+        const tokens = term.split(/\s+/).filter(Boolean);
+        if (tokens.length && tokens.every((t) => fuzzyTokenMatch(hayTokens, t))) return true;
+        // Match parcial: pelo menos 1 token significativo (>=4) bate — cobre "Dr Kachan" -> "...Kachan Junior"
+        const strong = tokens.filter((t) => t.length >= 4);
+        if (strong.length && strong.some((t) => fuzzyTokenMatch(hayTokens, t))) return true;
+      }
       console.log("DISCARDED", { candidate: r.nome, reason: "name-mismatch", cargo: r.cargo, selectedCargo });
       return false;
     }
