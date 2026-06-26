@@ -241,19 +241,26 @@ async function searchLocalCatalog(f: Filters): Promise<OutRow[]> {
     for (const term of terms) {
       const { data, error } = await admin.rpc("search_politicians", {
         q: term,
-      p_cargo: f.cargos.length ? f.cargos : null,
-      p_partido: f.partidos.length ? f.partidos : null,
-      p_regiao: null,
-      p_estado: f.ufs.length ? f.ufs : null,
-      p_municipio: f.municipio?.trim() || null,
-      p_only_eleitos: !!f.onlyEleitos,
-      p_limit: 200,
-      p_offset: 0,
-    });
-    if (error) { console.log("[local-catalog] erro:", error.message); return []; }
-    const rows = Array.isArray(data) ? data : [];
-    console.log(`[local-catalog] ${rows.length} resultados`);
-    return rows.map((r: any) => ({
+        p_cargo: f.cargos.length ? f.cargos : null,
+        p_partido: f.partidos.length ? f.partidos : null,
+        p_regiao: null,
+        p_estado: f.ufs.length ? f.ufs : null,
+        p_municipio: f.municipio?.trim() || null,
+        p_only_eleitos: !!f.onlyEleitos,
+        p_limit: 200,
+        p_offset: 0,
+      });
+      if (error) { console.log("[local-catalog] erro:", error.message); continue; }
+      const rows = Array.isArray(data) ? data : [];
+      for (const r of rows) {
+        const key = String(r.id);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        collected.push(r);
+      }
+    }
+    console.log(`[local-catalog] ${collected.length} resultados (após aliases)`);
+    return collected.map((r: any) => ({
       id: `local-${r.id}`,
       tse_id: r.tse_id ?? null,
       nome: r.nome,
@@ -272,7 +279,7 @@ async function searchLocalCatalog(f: Filters): Promise<OutRow[]> {
       redes_sociais: r.redes_sociais ?? null,
       popularidade: Number(r.popularidade ?? 0.5),
       similarity: Number(r.similarity ?? 1),
-      total_count: Number(r.total_count ?? rows.length),
+      total_count: Number(r.total_count ?? collected.length),
       fonte: "catalogo-local",
       confidence: 100,
     }));
