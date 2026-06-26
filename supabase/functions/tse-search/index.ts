@@ -886,13 +886,12 @@ Formato JSON estrito:
 }
 
 async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: number): Promise<OutRow[]> {
-  const query = buildQuery(cargoKey, f);
   console.log("STEP WEB SEARCH START");
-  console.log("WEB QUERY:", query);
-  const results = await webSearch(query, deadline);
+  const results = await multiWebSearch(f, cargoKey, deadline);
   console.log("STEP WEB COUNT:", results.length);
   console.log("STEP WEB RAW:", JSON.stringify(results.slice(0, 10).map((r) => ({ url: r.url, title: r.title }))));
 
+  const queryForExtract = (f.q ?? "") + (cargoKey ? ` ${CARGO_LABEL[cargoKey] ?? cargoKey}` : "");
   let extracted: Awaited<ReturnType<typeof cerebrasExtract>> = [];
   let fonte = "firecrawl+web";
 
