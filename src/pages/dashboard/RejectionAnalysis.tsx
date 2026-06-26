@@ -12,7 +12,8 @@ import { DateRangePicker } from "@/components/DateRangePicker";
 import type { DateRange } from "react-day-picker";
 import {
   AlertTriangle, Brain, Lightbulb, Users, Flame,
-  MessageSquareQuote, Megaphone, Target, TrendingDown, RefreshCw, Sparkles
+  MessageSquareQuote, Megaphone, Target, TrendingDown, RefreshCw, Sparkles,
+  MessageCircle, Copy, Check
 } from "lucide-react";
 import { toast } from "sonner";
 import RejectionLoading from "@/components/dashboard/RejectionLoading";
