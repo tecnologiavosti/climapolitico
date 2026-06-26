@@ -126,9 +126,9 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   const [city, setCity] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Debounce 300ms para sugestões
+  // Debounce 600ms para validação IA
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedName(fullName), 300);
+    const t = setTimeout(() => setDebouncedName(fullName), 600);
     return () => clearTimeout(t);
   }, [fullName]);
 
@@ -172,15 +172,16 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     });
   }, [debouncedName, catalogMatch]);
 
-  // ===== Camada 2: Busca nacional via IA quando catálogo local não acha =====
+  // ===== Validação semântica via Cerebras (única fonte) =====
   type AiLookup = {
-    found: boolean;
+    score: number;
+    plausibility: "high" | "medium" | "low" | "suspect";
+    reason: string;
     name: string | null;
     party: string | null;
     office: string | null;
     state: string | null;
     city: string | null;
-    confidence: number;
     error?: string;
   };
   const [aiLookup, setAiLookup] = useState<AiLookup | null>(null);
@@ -189,20 +190,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   const [validationAttempt, setValidationAttempt] = useState(0);
   const revalidate = useCallback(() => setValidationAttempt((n) => n + 1), []);
 
-  const hydrateFromAiLookup = useCallback((lookup: AiLookup) => {
-    if (!lookup.found || (lookup.confidence ?? 0) <= 0.8) return;
-    if (lookup.name) setFullName(lookup.name);
-    if (lookup.party) setParty(lookup.party);
-    if (lookup.office && VALID_POSITIONS.has(lookup.office)) {
-      setPosition(lookup.office);
-      const next = scopeOf(lookup.office);
-      if (next === "national") { setState(""); setCity(""); }
-    }
-    if (lookup.state) setState(lookup.state);
-    if (lookup.city) setCity(lookup.city);
-  }, []);
-
-  // Contexto suficiente para validar de fato (depende do cargo).
+  // Contexto suficiente (depende do cargo) para acionar a IA.
   const ctxScope = scopeOf(position);
   const isMunicipal = ctxScope === "municipal";
   const hasEnoughContext =
@@ -214,9 +202,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   const validationQuery = useMemo(() => {
     const name = debouncedName.trim();
     if (!name || !hasEnoughContext) return "";
-    return [name, position, party, isMunicipal ? city.trim() : "", state]
-      .filter(Boolean)
-      .join(" ");
+    return [name, position, party, isMunicipal ? city.trim() : "", state].filter(Boolean).join(" ");
   }, [debouncedName, hasEnoughContext, position, party, isMunicipal, city, state]);
   const hasValidatedCurrentQuery =
     hasEnoughContext && !!validationQuery && lastValidatedQuery === validationQuery && !!aiLookup;
@@ -225,89 +211,43 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     const name = debouncedName.trim();
     setAiLookup(null);
     setLastValidatedQuery("");
-    if (!hasEnoughContext || !validationQuery) {
-      setAiLoading(false);
-      return;
-    }
+    if (!hasEnoughContext || !validationQuery) { setAiLoading(false); return; }
     if (name.length < 3) return;
-    if (catalogMatch) {
-      setAiLoading(false);
-      return;
-    }
-    // Só dispara busca quando o contexto está completo (nome + cargo + partido + UF/cidade).
 
     let cancelled = false;
     setAiLoading(true);
     (async () => {
       try {
         const { data, error } = await supabase.functions.invoke("lookup-candidate-ai", {
-          body: {
-            name,
-            query: validationQuery,
-            context: { party, office: position, state, city: city.trim() },
-          },
+          body: { name, context: { party, office: position, state, city: city.trim() } },
         });
         if (cancelled) return;
         const lookupErr = (data as { error?: string } | null)?.error;
         if (error || lookupErr) {
           console.warn("[lookup-candidate-ai] error", error || lookupErr);
-          setAiLookup({ found: false, name: null, party: null, office: null, state: null, city: null, confidence: 0, error: "lookup_failed" });
+          setAiLookup({ score: 0, plausibility: "low", reason: "", name: null, party: null, office: null, state: null, city: null, error: "lookup_failed" });
         } else {
           setAiLookup(data as AiLookup);
-          console.log("[Candidate AI lookup]", { query: validationQuery, context: { party, position, state, city }, result: data });
+          console.log("[Candidate AI validation]", { query: validationQuery, result: data });
         }
         setLastValidatedQuery(validationQuery);
       } catch (err) {
         if (cancelled) return;
         console.warn("[lookup-candidate-ai] threw", err);
-        setAiLookup({ found: false, name: null, party: null, office: null, state: null, city: null, confidence: 0, error: "lookup_failed" });
+        setAiLookup({ score: 0, plausibility: "low", reason: "", name: null, party: null, office: null, state: null, city: null, error: "lookup_failed" });
         setLastValidatedQuery(validationQuery);
       } finally {
         if (!cancelled) setAiLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [debouncedName, catalogMatch, hasEnoughContext, validationQuery, party, position, state, city, validationAttempt]);
+  }, [debouncedName, hasEnoughContext, validationQuery, party, position, state, city, validationAttempt]);
 
-
-  const applyAiLookup = () => {
-    if (!aiLookup || !aiLookup.found) return;
-    hydrateFromAiLookup(aiLookup);
-  };
-
-
-
-  // ===== Validação inteligente =====
+  // ===== Validação local de formato =====
   const formatOk = useMemo(() => isNameFormatValid(fullName), [fullName]);
   const blacklisted = useMemo(() => isBlacklisted(fullName), [fullName]);
-  const validationScore = useMemo(
-    () => computeExistenceScore(fullName, {
-      foundInTse: !!catalogMatch,
-      ...signalsFromAiLookup(hasValidatedCurrentQuery ? aiLookup : null),
-    }),
-    [fullName, catalogMatch, aiLookup, hasValidatedCurrentQuery],
-  );
-  const validationLevel = useMemo(
-    () => levelFromScore(validationScore, formatOk, blacklisted),
-    [validationScore, formatOk, blacklisted],
-  );
-  const [overrideConfirmed, setOverrideConfirmed] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const aiScore = hasValidatedCurrentQuery && aiLookup && !aiLookup.error ? aiLookup.score : null;
 
-  // Score estrutural local (0–100): garante que falhas de API não derrubem candidatos plausíveis.
-  const structuralScore = useMemo(() => {
-    let s = 0;
-    if (formatOk && !blacklisted) s += 20;
-    if (party && findPartyBySigla(party)) s += 20;
-    if (position && VALID_POSITIONS.has(position)) s += 20;
-    const sc = scopeOf(position);
-    if (sc === "national" || (state && ALL_STATES.includes(state))) s += 20;
-    if (sc === "national" || sc === "state" || (sc === "municipal" && city.trim().length >= 2)) s += 20;
-    return s;
-  }, [formatOk, blacklisted, party, position, state, city]);
-
-  // Reset override quando nome muda
-  useEffect(() => { setOverrideConfirmed(false); }, [fullName]);
 
   const nameError = useMemo(() => {
     if (!fullName.trim()) return null;
@@ -378,11 +318,8 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     setErrors(errs);
     if (Object.keys(errs).length) return;
 
-    // Score baixo + sem plausibilidade estrutural + nenhuma fonte encontrou: pedir confirmação.
-    if (validationScore < 30 && structuralScore < 80 && !overrideConfirmed) {
-      setConfirmOpen(true);
-      return;
-    }
+    // Não bloqueia por score de IA — apenas alerta na UI. Usuário sempre pode adicionar.
+
 
     submitPayload();
   };
@@ -486,22 +423,12 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                   </div>
                 );
               }
-              // Falha de API: nunca marcar como inválido. Se score estrutural >= 80, mostrar como plausível.
+              // Falha de chamada IA: nunca bloquear nem invalidar — apenas alertar.
               if (aiLookup?.error) {
-                const plausible = structuralScore >= 80;
                 return (
                   <div className="mt-2 rounded-xl border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2.5 text-amber-700 dark:text-amber-300 animate-in fade-in-0 slide-in-from-top-1 duration-200">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 text-sm font-semibold">
-                        {plausible ? "🟡 Candidato plausível" : "🟡 Validação indisponível"}
-                      </div>
-                      <span className="text-xs font-medium opacity-80">Score: {structuralScore}/100</span>
-                    </div>
-                    <div className="mt-0.5 text-xs opacity-80">
-                      {plausible
-                        ? "Dados consistentes, mas não foi possível validar nas bases externas agora."
-                        : "Não foi possível consultar as bases públicas agora."}
-                    </div>
+                    <div className="flex items-center gap-2 text-sm font-semibold">🟡 Validação indisponível</div>
+                    <div className="mt-0.5 text-xs opacity-80">Não foi possível consultar a IA agora. Você pode adicionar mesmo assim.</div>
                     <div className="mt-2">
                       <Button type="button" size="sm" variant="outline" className="h-7 rounded-lg" onClick={revalidate} disabled={aiLoading}>
                         {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
@@ -511,38 +438,17 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                   </div>
                 );
               }
-              // Não encontrado nas bases mas estruturalmente plausível: mostra amarelo, não vermelho.
-              if (validationLevel === "unverified" && structuralScore >= 80) {
-                return (
-                  <div className="mt-2 rounded-xl border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2.5 text-amber-700 dark:text-amber-300 animate-in fade-in-0 slide-in-from-top-1 duration-200">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 text-sm font-semibold">🟡 Candidato plausível</div>
-                      <span className="text-xs font-medium opacity-80">Score: {structuralScore}/100</span>
-                    </div>
-                    <div className="mt-0.5 text-xs opacity-80">
-                      Dados consistentes, mas não foi possível validar nas bases externas agora.
-                    </div>
-                    <div className="mt-2">
-                      <Button type="button" size="sm" variant="outline" className="h-7 rounded-lg" onClick={revalidate} disabled={aiLoading}>
-                        {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
-                        Tentar validar novamente
-                      </Button>
-                    </div>
-                  </div>
-                );
-              }
+              // Resultado IA pronto: 4 faixas.
+              const score = aiScore ?? 0;
               const tone =
-                validationLevel === "verified"
-                  ? { icon: "🟢", title: "Verificado", cls: "border-emerald-500/40 bg-emerald-500/[0.08] text-emerald-700 dark:text-emerald-300" }
-                  : validationLevel === "partial"
-                  ? { icon: "🟡", title: "Parcialmente verificado", cls: "border-amber-500/40 bg-amber-500/[0.08] text-amber-700 dark:text-amber-300" }
-                  : { icon: "🔴", title: "Não encontrado nas bases públicas", cls: "border-red-500/40 bg-red-500/[0.08] text-red-700 dark:text-red-300" };
+                score >= 90 ? { icon: "🟢", title: "Validado pela IA", cls: "border-emerald-500/40 bg-emerald-500/[0.08] text-emerald-700 dark:text-emerald-300" }
+                : score >= 70 ? { icon: "🟡", title: "Plausível", cls: "border-amber-500/40 bg-amber-500/[0.08] text-amber-700 dark:text-amber-300" }
+                : score >= 40 ? { icon: "🟠", title: "Pouco confiável", cls: "border-orange-500/40 bg-orange-500/[0.08] text-orange-700 dark:text-orange-300" }
+                : { icon: "🔴", title: "Suspeito", cls: "border-red-500/40 bg-red-500/[0.08] text-red-700 dark:text-red-300" };
               const subtitle =
-                validationLevel === "unverified"
-                  ? "Sem evidências políticas confiáveis"
-                  : validationLevel === "partial"
-                  ? "Encontrado em fontes limitadas"
-                  : "Encontrado em fontes oficiais";
+                score >= 70 ? "Candidato plausível para monitoramento político."
+                : score >= 40 ? "Dados parcialmente consistentes. Revise antes de adicionar."
+                : "Este candidato parece inconsistente ou improvável.";
               const scopeTxt = scopeLabel(scope, state, city);
               return (
                 <div className={cn("mt-2 rounded-xl border px-3 py-2.5 animate-in fade-in-0 slide-in-from-top-1 duration-200", tone.cls)}>
@@ -550,11 +456,14 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                     <div className="flex items-center gap-2 text-sm font-semibold">
                       <span>{tone.icon}</span> {tone.title}
                     </div>
-                    <span className="text-xs font-medium opacity-80">Score: {validationScore}/100</span>
+                    <span className="text-xs font-medium opacity-80">Score: {score}/100</span>
                   </div>
                   <div className="mt-0.5 text-xs opacity-80">{subtitle}</div>
+                  {aiLookup?.reason && (
+                    <div className="mt-1 text-[11px] opacity-75 italic">{aiLookup.reason}</div>
+                  )}
                   {scopeTxt && <div className="mt-1 text-xs font-medium opacity-90">{scopeTxt}</div>}
-                  {validationLevel !== "verified" && (
+                  {score < 90 && (
                     <div className="mt-2">
                       <Button type="button" size="sm" variant="outline" className="h-7 rounded-lg" onClick={revalidate} disabled={aiLoading}>
                         {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
@@ -630,42 +539,11 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
             {!catalogMatch && suggestions.length === 0 && debouncedName.trim().length >= 4 && aiLoading && (
               <div className="mt-2 flex items-center gap-2 rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Buscando nas bases públicas (TSE, Câmara, Senado, prefeituras)…
+                Validando candidato com IA…
               </div>
             )}
 
-            {!catalogMatch && suggestions.length === 0 && hasValidatedCurrentQuery && aiLookup?.found && (aiLookup.confidence ?? 0) > 0.8 && (
-              <div className="mt-2 rounded-xl border border-emerald-500/40 bg-emerald-500/[0.08] px-3 py-2 animate-in fade-in-0 slide-in-from-top-1 duration-200">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-sm min-w-0">
-                    <Sparkles className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                    <div className="min-w-0">
-                      <div className="font-semibold truncate">Candidato encontrado via IA: {aiLookup.name}</div>
-                      <div className="text-[11px] text-muted-foreground truncate">
-                        {[aiLookup.office, aiLookup.party, aiLookup.city && aiLookup.state ? `${aiLookup.city}/${aiLookup.state}` : aiLookup.state].filter(Boolean).join(" · ")}
-                      </div>
-                    </div>
-                    <Badge variant="outline" className="text-[10px] shrink-0">
-                      {Math.round((aiLookup.confidence ?? 0) * 100)}%
-                    </Badge>
-                  </div>
-                </div>
-                <div className="mt-2 flex gap-2">
-                  <Button type="button" size="sm" className="h-7 rounded-lg" onClick={applyAiLookup}>
-                    Confirmar
-                  </Button>
-                  <Button type="button" size="sm" variant="outline" className="h-7 rounded-lg" onClick={() => setAiLookup(null)}>
-                    Editar manualmente
-                  </Button>
-                </div>
-              </div>
-            )}
 
-            {!catalogMatch && suggestions.length === 0 && hasValidatedCurrentQuery && !aiLoading && aiLookup && !aiLookup.found && !aiLookup.error && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Não encontramos esse candidato nas bases públicas. Preencha partido, cargo e localização manualmente.
-              </p>
-            )}
 
             {scopeBadge && (
               <Badge variant="outline" className={cn("mt-2 font-medium", scopeBadge.cls)}>
@@ -832,30 +710,6 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
         </div>
       </DialogContent>
 
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Candidato não encontrado</AlertDialogTitle>
-            <AlertDialogDescription>
-              Não encontramos <strong>{fullName.trim()}</strong> no TSE, web ou base política nacional.
-              Deseja adicionar manualmente mesmo assim?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                setOverrideConfirmed(true);
-                setConfirmOpen(false);
-                // submete na próxima micro-task, após state propagar
-                setTimeout(() => submitPayload(), 0);
-              }}
-            >
-              Adicionar mesmo assim
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </Dialog>
   );
 }
