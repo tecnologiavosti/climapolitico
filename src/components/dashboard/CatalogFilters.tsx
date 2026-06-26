@@ -1,4 +1,5 @@
 import { Input } from "@/components/ui/input";
+import { BRAZILIAN_PARTIES } from "@/lib/brazilianParties";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
