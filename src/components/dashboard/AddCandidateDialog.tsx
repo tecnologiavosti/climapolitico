@@ -396,30 +396,40 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
               autoComplete="off"
             />
 
-            {fullName.trim().length >= 2 && (
-              <div className="mt-2 flex items-center gap-2 text-xs">
-                {validationStatus === "validated" ? (
-                  <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
-                    🟢 Validado pelo sistema
-                  </Badge>
-                ) : validationStatus === "partial" ? (
-                  <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">
-                    🟡 Parcialmente validado
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300">
-                    🔴 {nameError ?? "Não verificado"}
-                  </Badge>
-                )}
-                {formatOk && !blacklisted && (
-                  <span className="text-muted-foreground">Score: {validationScore}/100</span>
-                )}
-              </div>
-            )}
+            {fullName.trim().length >= 2 && (() => {
+              const tone =
+                validationLevel === "verified"
+                  ? { icon: "🟢", title: "Verificado", cls: "border-emerald-500/40 bg-emerald-500/[0.08] text-emerald-700 dark:text-emerald-300" }
+                  : validationLevel === "partial"
+                  ? { icon: "🟡", title: "Parcialmente verificado", cls: "border-amber-500/40 bg-amber-500/[0.08] text-amber-700 dark:text-amber-300" }
+                  : { icon: "🔴", title: "Não verificado", cls: "border-red-500/40 bg-red-500/[0.08] text-red-700 dark:text-red-300" };
+              const subtitle =
+                !formatOk || blacklisted
+                  ? (nameError ?? "Nome inválido")
+                  : validationLevel === "unverified"
+                  ? "Sem evidências políticas confiáveis"
+                  : validationLevel === "partial"
+                  ? "Encontrado em fontes limitadas"
+                  : "Encontrado em fontes oficiais";
+              const scopeTxt = position ? scopeLabel(scope, state, city) : null;
+              return (
+                <div className={cn("mt-2 rounded-xl border px-3 py-2.5 animate-in fade-in-0 slide-in-from-top-1 duration-200", tone.cls)}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                      <span>{tone.icon}</span> {tone.title}
+                    </div>
+                    {formatOk && !blacklisted && (
+                      <span className="text-xs font-medium opacity-80">Score: {validationScore}/100</span>
+                    )}
+                  </div>
+                  <div className="mt-0.5 text-xs opacity-80">{subtitle}</div>
+                  {scopeTxt && (
+                    <div className="mt-1 text-xs font-medium opacity-90">{scopeTxt}</div>
+                  )}
+                </div>
+              );
+            })()}
 
-            {nameError && (
-              <p className="mt-1 text-xs text-destructive">{nameError}</p>
-            )}
 
 
             {autoCorrect && normalizeCandidateName(fullName) !== normalizeCandidateName(autoCorrect.fullName) && (
