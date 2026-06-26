@@ -172,15 +172,16 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     });
   }, [debouncedName, catalogMatch]);
 
-  // ===== Camada 2: Busca nacional via IA quando catálogo local não acha =====
+  // ===== Validação semântica via Cerebras (única fonte) =====
   type AiLookup = {
-    found: boolean;
+    score: number;
+    plausibility: "high" | "medium" | "low" | "suspect";
+    reason: string;
     name: string | null;
     party: string | null;
     office: string | null;
     state: string | null;
     city: string | null;
-    confidence: number;
     error?: string;
   };
   const [aiLookup, setAiLookup] = useState<AiLookup | null>(null);
@@ -189,20 +190,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   const [validationAttempt, setValidationAttempt] = useState(0);
   const revalidate = useCallback(() => setValidationAttempt((n) => n + 1), []);
 
-  const hydrateFromAiLookup = useCallback((lookup: AiLookup) => {
-    if (!lookup.found || (lookup.confidence ?? 0) <= 0.8) return;
-    if (lookup.name) setFullName(lookup.name);
-    if (lookup.party) setParty(lookup.party);
-    if (lookup.office && VALID_POSITIONS.has(lookup.office)) {
-      setPosition(lookup.office);
-      const next = scopeOf(lookup.office);
-      if (next === "national") { setState(""); setCity(""); }
-    }
-    if (lookup.state) setState(lookup.state);
-    if (lookup.city) setCity(lookup.city);
-  }, []);
-
-  // Contexto suficiente para validar de fato (depende do cargo).
+  // Contexto suficiente (depende do cargo) para acionar a IA.
   const ctxScope = scopeOf(position);
   const isMunicipal = ctxScope === "municipal";
   const hasEnoughContext =
@@ -214,9 +202,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   const validationQuery = useMemo(() => {
     const name = debouncedName.trim();
     if (!name || !hasEnoughContext) return "";
-    return [name, position, party, isMunicipal ? city.trim() : "", state]
-      .filter(Boolean)
-      .join(" ");
+    return [name, position, party, isMunicipal ? city.trim() : "", state].filter(Boolean).join(" ");
   }, [debouncedName, hasEnoughContext, position, party, isMunicipal, city, state]);
   const hasValidatedCurrentQuery =
     hasEnoughContext && !!validationQuery && lastValidatedQuery === validationQuery && !!aiLookup;
@@ -225,86 +211,43 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     const name = debouncedName.trim();
     setAiLookup(null);
     setLastValidatedQuery("");
-    if (!hasEnoughContext || !validationQuery) {
-      setAiLoading(false);
-      return;
-    }
+    if (!hasEnoughContext || !validationQuery) { setAiLoading(false); return; }
     if (name.length < 3) return;
-    if (catalogMatch) {
-      setAiLoading(false);
-      return;
-    }
-    // Só dispara busca quando o contexto está completo (nome + cargo + partido + UF/cidade).
 
     let cancelled = false;
     setAiLoading(true);
     (async () => {
       try {
         const { data, error } = await supabase.functions.invoke("lookup-candidate-ai", {
-          body: {
-            name,
-            query: validationQuery,
-            context: { party, office: position, state, city: city.trim() },
-          },
+          body: { name, context: { party, office: position, state, city: city.trim() } },
         });
         if (cancelled) return;
         const lookupErr = (data as { error?: string } | null)?.error;
         if (error || lookupErr) {
           console.warn("[lookup-candidate-ai] error", error || lookupErr);
-          setAiLookup({ found: false, name: null, party: null, office: null, state: null, city: null, confidence: 0, error: "lookup_failed" });
+          setAiLookup({ score: 0, plausibility: "low", reason: "", name: null, party: null, office: null, state: null, city: null, error: "lookup_failed" });
         } else {
           setAiLookup(data as AiLookup);
-          console.log("[Candidate AI lookup]", { query: validationQuery, context: { party, position, state, city }, result: data });
+          console.log("[Candidate AI validation]", { query: validationQuery, result: data });
         }
         setLastValidatedQuery(validationQuery);
       } catch (err) {
         if (cancelled) return;
         console.warn("[lookup-candidate-ai] threw", err);
-        setAiLookup({ found: false, name: null, party: null, office: null, state: null, city: null, confidence: 0, error: "lookup_failed" });
+        setAiLookup({ score: 0, plausibility: "low", reason: "", name: null, party: null, office: null, state: null, city: null, error: "lookup_failed" });
         setLastValidatedQuery(validationQuery);
       } finally {
         if (!cancelled) setAiLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [debouncedName, catalogMatch, hasEnoughContext, validationQuery, party, position, state, city, validationAttempt]);
+  }, [debouncedName, hasEnoughContext, validationQuery, party, position, state, city, validationAttempt]);
 
-
-  const applyAiLookup = () => {
-    if (!aiLookup || !aiLookup.found) return;
-    hydrateFromAiLookup(aiLookup);
-  };
-
-
-
-  // ===== Validação inteligente =====
+  // ===== Validação local de formato =====
   const formatOk = useMemo(() => isNameFormatValid(fullName), [fullName]);
   const blacklisted = useMemo(() => isBlacklisted(fullName), [fullName]);
-  const validationScore = useMemo(
-    () => computeExistenceScore(fullName, {
-      foundInTse: !!catalogMatch,
-      ...signalsFromAiLookup(hasValidatedCurrentQuery ? aiLookup : null),
-    }),
-    [fullName, catalogMatch, aiLookup, hasValidatedCurrentQuery],
-  );
-  const validationLevel = useMemo(
-    () => levelFromScore(validationScore, formatOk, blacklisted),
-    [validationScore, formatOk, blacklisted],
-  );
-  const [overrideConfirmed, setOverrideConfirmed] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const aiScore = hasValidatedCurrentQuery && aiLookup && !aiLookup.error ? aiLookup.score : null;
 
-  // Score estrutural local (0–100): garante que falhas de API não derrubem candidatos plausíveis.
-  const structuralScore = useMemo(() => {
-    let s = 0;
-    if (formatOk && !blacklisted) s += 20;
-    if (party && findPartyBySigla(party)) s += 20;
-    if (position && VALID_POSITIONS.has(position)) s += 20;
-    const sc = scopeOf(position);
-    if (sc === "national" || (state && ALL_STATES.includes(state))) s += 20;
-    if (sc === "national" || sc === "state" || (sc === "municipal" && city.trim().length >= 2)) s += 20;
-    return s;
-  }, [formatOk, blacklisted, party, position, state, city]);
 
   // Reset override quando nome muda
   useEffect(() => { setOverrideConfirmed(false); }, [fullName]);
