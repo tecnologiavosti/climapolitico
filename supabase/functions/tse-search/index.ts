@@ -914,7 +914,7 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
 
   const queryForExtract = (f.q ?? "") + (cargoKey ? ` ${CARGO_LABEL[cargoKey] ?? cargoKey}` : "");
   let extracted: Awaited<ReturnType<typeof cerebrasExtract>> = [];
-  let fonte = "firecrawl+web";
+  let fonte = "web";
 
   if (results.length > 0 && Date.now() < deadline) {
     const combined = results.slice(0, 5).map((r) => `# ${r.title}\n${r.markdown}`).join("\n\n---\n\n");
@@ -923,9 +923,8 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
   }
 
   if (extracted.length === 0 && f.q && Date.now() < deadline) {
-    console.log(`[ai-lookup] firecrawl vazio — consultando IA direto por "${f.q}"`);
     extracted = await cerebrasDirectLookup(f.q, cargoKey);
-    console.log(`[ai-lookup] retornou ${extracted.length} candidatos`);
+    console.log("STEP AI COUNT", extracted.length);
     if (extracted.length > 0) fonte = "ai-lookup";
   }
 
@@ -949,6 +948,89 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
       fonte, confidence: fonte === "ai-lookup" ? 60 : 75,
     } as OutRow;
   });
+}
+
+async function searchAI(cargoKey: string | null, f: Filters, deadline: number): Promise<OutRow[]> {
+  console.log("STEP AI SEARCH START");
+  if (!f.q || Date.now() > deadline) {
+    console.log("STEP AI COUNT", 0);
+    return [];
+  }
+  const ai = await cerebrasDirectLookup(f.q, cargoKey);
+  console.log("STEP AI COUNT", ai.length);
+  return ai.map((c, i) => {
+    const uf = resolveUF(c.uf) ?? (f.ufs[0] ?? null);
+    const statusNorm = normalize(c.status);
+    const categoria = STATUS_TO_CATEGORIA[statusNorm] ?? "pre_candidato";
+    return {
+      id: `ai-${normalize(c.nome).replace(/\s+/g, "-")}-${i}`,
+      tse_id: null, nome: c.nome, nome_urna: c.nomeUrna,
+      partido_sigla: c.partido, partido_nome: null, numero_partido: null,
+      cargo: c.cargo || cargoKey || "pre_candidato", regiao: null,
+      estado: uf, municipio: c.cidade ?? f.municipio ?? null,
+      eleito: categoria === "eleito", categoria, ano_eleicao: 2026,
+      foto_url: null, redes_sociais: null,
+      popularidade: 0.5, similarity: 1, total_count: 0,
+      fonte: "ai-lookup", confidence: 60,
+    } as OutRow;
+  });
+}
+
+async function searchTSEFallback(f: Filters, deadline: number): Promise<{ rows: OutRow[]; sources: Set<string>; partial: boolean }> {
+  const all: OutRow[] = [];
+  const sources = new Set<string>();
+  let partial = false;
+  console.log("STEP TSE START", f.q ?? "");
+
+  const localRows = await searchLocalCatalog(f).catch((e) => {
+    console.log("[local-catalog] erro:", (e as Error).message);
+    return [] as OutRow[];
+  });
+  const openRows = f.q ? await searchOpenData(null, f, deadline).catch(() => [] as OutRow[]) : [];
+  const directRows: OutRow[] = [];
+  const cargos = f.cargos.filter((c) => !!CARGO_TO_TSE[c]);
+  for (const cargo of cargos) {
+    try {
+      const res = await searchTSE(cargo, f, deadline);
+      directRows.push(...res.rows);
+      if (res.partial) partial = true;
+    } catch (e) {
+      console.log(`[tse] skip ${cargo}: ${(e as Error).message}`);
+    }
+  }
+
+  let results = [...localRows, ...openRows, ...directRows];
+  console.log("STEP TSE COUNT", results.length);
+  if (results.length > 0) {
+    all.push(...results);
+    addSourceForRows(sources, localRows, "catalogo-local");
+    addSourceForRows(sources, openRows, "tse-open-data");
+    addSourceForRows(sources, directRows, "tse");
+    return { rows: all, sources, partial };
+  }
+
+  const webRows = await searchFirecrawl(f.cargos[0] ?? null, f, deadline).catch((e) => {
+    console.log(`[web] skip livre: ${(e as Error).message}`);
+    return [] as OutRow[];
+  });
+  results = webRows;
+  if (results.length > 0) {
+    all.push(...results);
+    addSourceForRows(sources, results, "web");
+    return { rows: all, sources, partial };
+  }
+
+  const aiRows = await searchAI(f.cargos[0] ?? null, f, deadline).catch((e) => {
+    console.log(`[ai] skip livre: ${(e as Error).message}`);
+    console.log("STEP AI COUNT", 0);
+    return [] as OutRow[];
+  });
+  results = aiRows;
+  if (results.length > 0) {
+    all.push(...results);
+    addSourceForRows(sources, results, "ai-lookup");
+  }
+  return { rows: all, sources, partial };
 }
 
 
