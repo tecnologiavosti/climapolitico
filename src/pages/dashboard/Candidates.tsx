@@ -58,6 +58,10 @@ export default function Candidates() {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [showToolsHint, setShowToolsHint] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("candidates_tools_hint_dismissed") !== "1";
+  });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [candidateToDelete, setCandidateToDelete] = useState<string | null>(null);
   const [expandedCandidate, setExpandedCandidate] = useState<string | null>(null);
