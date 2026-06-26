@@ -6,21 +6,27 @@ import { Label } from "@/components/ui/label";
 import { Search, X } from "lucide-react";
 import type { CatalogFilters as Filters } from "@/hooks/useCatalogSearch";
 
+// Whitelist final de cargos aceitos no catálogo
+export const ALLOWED_CARGOS = [
+  "presidente",
+  "governador",
+  "senador",
+  "deputado_federal",
+  "deputado_estadual",
+  "prefeito",
+  "vice_prefeito",
+  "vereador",
+] as const;
+
 const POSITIONS: [string, string][] = [
   ["presidente", "Presidente"],
-  ["vice_presidente", "Vice-presidente"],
   ["governador", "Governador"],
-  ["vice_governador", "Vice-governador"],
   ["senador", "Senador"],
   ["deputado_federal", "Deputado Federal"],
   ["deputado_estadual", "Deputado Estadual"],
-  ["deputado_distrital", "Deputado Distrital"],
   ["prefeito", "Prefeito"],
-  ["vice_prefeito", "Vice-prefeito"],
+  ["vice_prefeito", "Vice-Prefeito"],
   ["vereador", "Vereador"],
-  ["ministro", "Ministro de Estado"],
-  ["presidente_partido", "Presidente de Partido"],
-  ["pre_candidato", "Pré-candidato 2026"],
 ];
 
 const REGIONS: [string, string][] = [
