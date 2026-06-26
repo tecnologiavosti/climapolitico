@@ -5,10 +5,26 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Users, ChevronLeft, ChevronRight, Sparkles, Search, Loader2 } from "lucide-react";
+import { Users, ChevronLeft, ChevronRight, Sparkles, Search, Loader2, UserPlus, UserSearch } from "lucide-react";
 import { useCatalogSearch, PAGE_SIZE, type CatalogFilters as Filters, type PoliticianRow } from "@/hooks/useCatalogSearch";
 import { CatalogFilters } from "@/components/dashboard/CatalogFilters";
 import { CandidateCatalogCard } from "@/components/dashboard/CandidateCatalogCard";
+import { AddCandidateDialog, type AddCandidatePayload } from "@/components/dashboard/AddCandidateDialog";
+
+// Mapeia enum interno do catálogo -> label aceito pelo AddCandidateDialog
+const CARGO_TO_POSITION: Record<string, string> = {
+  presidente: "Presidente",
+  vice_presidente: "Vice-presidente",
+  governador: "Governador",
+  vice_governador: "Vice-governador",
+  senador: "Senador",
+  deputado_federal: "Deputado Federal",
+  deputado_estadual: "Deputado Estadual",
+  deputado_distrital: "Deputado Distrital",
+  prefeito: "Prefeito",
+  vice_prefeito: "Vice-prefeito",
+  vereador: "Vereador",
+};
 
 // Cargos que exigem estado + município
 const REQUIRES_MUNICIPIO = new Set(["prefeito", "vice_prefeito", "vereador"]);
@@ -52,6 +68,7 @@ export default function CandidatesCatalog() {
   const lastUpdated = data?.lastUpdated ?? null;
   const partial = data?.partial ?? false;
   const sources = data?.sources ?? [];
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
   const page = appliedFilters?.page ?? 0;
   const exactTotal = data?.exactTotal !== false;
   const hasNext = data?.hasMore ?? (page < Math.max(1, Math.ceil(total / PAGE_SIZE)) - 1);
@@ -140,6 +157,47 @@ export default function CandidatesCatalog() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const manualAddMutation = useMutation({
+    mutationFn: async (p: AddCandidatePayload) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Não autenticado");
+      const { data: existing } = await supabase.from("candidates").select("id").eq("user_id", user.id);
+      if (subscription && existing && existing.length >= subscription.max_candidates) {
+        throw new Error(`Limite de ${subscription.max_candidates} candidatos atingido. Faça upgrade do plano.`);
+      }
+      const region = [p.city, p.state].filter(Boolean).join(", ") || p.region || p.state || null;
+      const { error } = await supabase.from("candidates").insert({
+        user_id: user.id,
+        full_name: p.fullName,
+        party: p.party,
+        region,
+        social_media_link: null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["my-candidates-names"] });
+      queryClient.invalidateQueries({ queryKey: ["candidates"] });
+      queryClient.invalidateQueries({ queryKey: ["candidates-overview"] });
+      toast.success("Candidato cadastrado com sucesso!");
+      setAddDialogOpen(false);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const dialogInitial = useMemo(() => {
+    const cargo = appliedFilters?.cargo?.[0] ?? pendingFilters.cargo?.[0];
+    const estado = appliedFilters?.estado?.[0] ?? pendingFilters.estado?.[0];
+    const municipio = appliedFilters?.municipio ?? pendingFilters.municipio;
+    const q = (appliedFilters?.q ?? searchQuery ?? "").trim();
+    return {
+      fullName: q,
+      position: cargo ? CARGO_TO_POSITION[cargo] : undefined,
+      state: estado,
+      city: municipio,
+    };
+  }, [appliedFilters, pendingFilters, searchQuery]);
 
   const goPage = (p: number) => {
     if (!appliedFilters) return;
@@ -255,35 +313,64 @@ export default function CandidatesCatalog() {
           </CardContent>
         </Card>
       ) : isSuccess && rows.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center space-y-4">
-            <p className="text-muted-foreground">Nenhum candidato encontrado para os filtros selecionados.</p>
-            {suggestions.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-sm flex items-center justify-center gap-2">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                  Você quis dizer:
-                </p>
-                <div className="flex flex-wrap justify-center gap-2">
-                  {suggestions.map((s) => (
-                    <Button
-                      key={s.id}
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        const next = { ...pendingFilters, q: s.nome, page: 0 };
-                        setSearchQuery(s.nome);
-                        setPendingFilters(next);
-                        setAppliedFilters(next);
-                      }}
-                    >
-                      {s.nome}
-                      {s.partido_sigla && <span className="ml-1 text-xs text-muted-foreground">({s.partido_sigla})</span>}
-                    </Button>
-                  ))}
+        <Card className="border-border/60 bg-gradient-to-b from-background to-muted/20 animate-in fade-in-0 zoom-in-95 duration-300">
+          <CardContent className="py-16 px-6 text-center">
+            <div className="mx-auto max-w-md flex flex-col items-center space-y-5">
+              <div className="relative">
+                <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-primary/30 to-primary/5 blur-2xl opacity-70" aria-hidden />
+                <div className="relative h-20 w-20 rounded-3xl bg-gradient-to-br from-primary/20 to-primary/[0.04] ring-1 ring-primary/20 flex items-center justify-center shadow-sm">
+                  <UserSearch className="h-9 w-9 text-primary" />
                 </div>
               </div>
-            )}
+
+              <div className="space-y-1.5">
+                <h3 className="text-xl font-semibold tracking-tight">Nenhum candidato encontrado</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Não encontramos candidatos com esses filtros ou nome. Você pode cadastrar manualmente para começar o monitoramento.
+                </p>
+              </div>
+
+              <Button
+                size="lg"
+                onClick={() => setAddDialogOpen(true)}
+                className="rounded-xl px-6 shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
+              >
+                <UserPlus className="h-4 w-4 mr-2" />
+                Adicionar candidato
+              </Button>
+
+              <p className="text-xs text-muted-foreground/80 leading-relaxed max-w-sm">
+                Nosso catálogo é atualizado automaticamente via TSE e web, mas candidatos locais ou recém-lançados podem ainda não estar indexados.
+              </p>
+
+              {suggestions.length > 0 && (
+                <div className="w-full space-y-2 pt-2 border-t border-border/60">
+                  <p className="text-xs flex items-center justify-center gap-1.5 text-muted-foreground">
+                    <Sparkles className="h-3.5 w-3.5 text-primary" />
+                    Você quis dizer:
+                  </p>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {suggestions.map((s) => (
+                      <Button
+                        key={s.id}
+                        size="sm"
+                        variant="outline"
+                        className="rounded-lg"
+                        onClick={() => {
+                          const next = { ...pendingFilters, q: s.nome, page: 0 };
+                          setSearchQuery(s.nome);
+                          setPendingFilters(next);
+                          setAppliedFilters(next);
+                        }}
+                      >
+                        {s.nome}
+                        {s.partido_sigla && <span className="ml-1 text-xs text-muted-foreground">({s.partido_sigla})</span>}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -317,6 +404,15 @@ export default function CandidatesCatalog() {
           </div>
         </>
       )}
+
+      <AddCandidateDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        isPending={manualAddMutation.isPending}
+        onSubmit={(payload) => manualAddMutation.mutate(payload)}
+        knownNames={myCandidates}
+        initialValues={dialogInitial}
+      />
     </div>
   );
 }
