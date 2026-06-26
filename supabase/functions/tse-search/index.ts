@@ -580,7 +580,7 @@ async function firecrawlSearch(query: string, deadline: number): Promise<Array<{
 }
 
 // Extrai candidatos do markdown via Cerebras (parser estruturado, NÃO gerador)
-async function cerebrasExtract(markdown: string, cargoKey: string | null, query: string): Promise<Array<{ nome: string; partido: string | null; cargo: string; cidade: string | null; uf: string | null; status: string }>> {
+async function cerebrasExtract(markdown: string, cargoKey: string | null, query: string): Promise<Array<{ nome: string; nomeUrna: string | null; partido: string | null; cargo: string; cidade: string | null; uf: string | null; status: string }>> {
   const key = Deno.env.get("CEREBRAS_API_KEY");
   if (!key) return [];
   const cargoLabel = cargoKey ? (CARGO_LABEL[cargoKey] ?? cargoKey) : null;
@@ -592,7 +592,7 @@ NÃO invente nomes. NÃO complete listas. Se o texto não mencionar a pessoa exp
 NÃO inclua pessoas falecidas. NÃO inclua personagens históricos.
 
 Para cada pessoa encontrada, retorne JSON estritamente neste formato:
-{"candidatos":[{"nome":"Nome Completo","partido":"SIGLA ou null","cargo":"prefeito|vice_prefeito|vereador|deputado_federal|deputado_estadual|senador|governador|presidente|ministro|pre_candidato","cidade":"Cidade ou null","uf":"Nome do estado por extenso ou null","status":"Eleito|Candidato|Ex-candidato|Mandatário|Possível presidenciável"}]}
+{"candidatos":[{"nome":"Nome Completo","nomeUrna":"Nome de urna/apelido ou null","partido":"SIGLA ou null","cargo":"prefeito|vice_prefeito|vereador|deputado_federal|deputado_estadual|senador|governador|presidente|ministro|pre_candidato","cidade":"Cidade ou null","uf":"Nome do estado por extenso ou null","status":"Eleito|Candidato|Ex-candidato|Mandatário|Possível presidenciável"}]}
 
 Contexto da busca: "${query}"
 Texto:
@@ -619,6 +619,7 @@ ${markdown.slice(0, 6000)}`;
     const arr = parsed?.candidatos ?? [];
     return Array.isArray(arr) ? arr.map((c: any) => ({
       nome: String(c.nome ?? "").trim(),
+      nomeUrna: c.nomeUrna ? String(c.nomeUrna).trim() : null,
       partido: c.partido ? String(c.partido).toUpperCase() : null,
       cargo: (c.cargo && typeof c.cargo === "string" ? normalizeCargoKey(c.cargo) : null) ?? cargoKey ?? "pre_candidato",
       cidade: c.cidade ? String(c.cidade).trim() : null,
@@ -639,7 +640,7 @@ const STATUS_TO_CATEGORIA: Record<string, string> = {
   "possivel presidenciavel": "pre_candidato",
 };
 
-async function cerebrasDirectLookup(name: string, cargoKey: string | null): Promise<Array<{ nome: string; partido: string | null; cargo: string; cidade: string | null; uf: string | null; status: string }>> {
+async function cerebrasDirectLookup(name: string, cargoKey: string | null): Promise<Array<{ nome: string; nomeUrna: string | null; partido: string | null; cargo: string; cidade: string | null; uf: string | null; status: string }>> {
   const key = Deno.env.get("LOVABLE_API_KEY");
   if (!key) { console.log("[ai-lookup] LOVABLE_API_KEY ausente"); return []; }
   const prompt = `Você conhece a política brasileira atual (2024-2026). O usuário procura por: "${name}"${cargoKey ? ` (cargo: ${CARGO_LABEL[cargoKey] ?? cargoKey})` : ""}.
@@ -648,8 +649,8 @@ Retorne APENAS políticos REAIS cujo nome corresponda (exato ou parcial) à busc
 NÃO invente. Se não conhecer ninguém com esse nome, retorne {"candidatos":[]}.
 
 Formato JSON estrito:
-{"candidatos":[{"nome":"Nome Completo","partido":"SIGLA ou null","cargo":"prefeito|vice_prefeito|vereador|deputado_federal|deputado_estadual|senador|governador|presidente|ministro|pre_candidato","cidade":"Cidade ou null","uf":"Nome do estado por extenso ou null","status":"Eleito|Candidato|Ex-candidato|Mandatário"}]}`;
-  const models = ["google/gemini-2.5-flash", "google/gemini-2.5-flash-lite", "google/gemini-2.5-pro"];
+{"candidatos":[{"nome":"Nome Completo","nomeUrna":"Nome de urna/apelido ou null","partido":"SIGLA ou null","cargo":"prefeito|vice_prefeito|vereador|deputado_federal|deputado_estadual|senador|governador|presidente|ministro|pre_candidato","cidade":"Cidade ou null","uf":"Nome do estado por extenso ou null","status":"Eleito|Candidato|Ex-candidato|Mandatário"}]}`;
+  const models = ["google/gemini-3-flash-preview"];
   for (const model of models) {
     try {
       const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -682,6 +683,7 @@ Formato JSON estrito:
       console.log(`[ai-lookup] ${model} OK — ${Array.isArray(arr) ? arr.length : 0} resultados`);
       return Array.isArray(arr) ? arr.map((c: any) => ({
         nome: String(c.nome ?? "").trim(),
+        nomeUrna: c.nomeUrna ? String(c.nomeUrna).trim() : null,
         partido: c.partido ? String(c.partido).toUpperCase() : null,
         cargo: (c.cargo && typeof c.cargo === "string" ? normalizeCargoKey(c.cargo) : null) ?? cargoKey ?? "pre_candidato",
         cidade: c.cidade ? String(c.cidade).trim() : null,
@@ -725,7 +727,7 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
     const categoria = STATUS_TO_CATEGORIA[statusNorm] ?? "pre_candidato";
     return {
       id: `web-${normalize(c.nome).replace(/\s+/g, "-")}-${i}`,
-      tse_id: null, nome: c.nome, nome_urna: null,
+      tse_id: null, nome: c.nome, nome_urna: c.nomeUrna,
       partido_sigla: c.partido, partido_nome: null, numero_partido: null,
       cargo: c.cargo ?? cargoKey ?? "pre_candidato", regiao: null,
       estado: uf, municipio: c.cidade,
