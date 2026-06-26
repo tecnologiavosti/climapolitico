@@ -318,6 +318,17 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   };
 
   const onOpen = (v: boolean) => {
+    if (v && initialValues) {
+      if (initialValues.fullName !== undefined) { setFullName(initialValues.fullName); setDebouncedName(initialValues.fullName); }
+      if (initialValues.party !== undefined) setParty(initialValues.party);
+      if (initialValues.position !== undefined && VALID_POSITIONS.has(initialValues.position)) {
+        setPosition(initialValues.position);
+        const next = scopeOf(initialValues.position);
+        if (next === "national") { setState(""); setCity(""); }
+      }
+      if (initialValues.state !== undefined) setState(initialValues.state);
+      if (initialValues.city !== undefined) setCity(initialValues.city);
+    }
     if (!v && !isPending) reset();
     onOpenChange(v);
   };
