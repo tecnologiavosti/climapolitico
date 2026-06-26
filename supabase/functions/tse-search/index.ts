@@ -591,7 +591,8 @@ async function searchTSE(cargoKey: string, f: Filters, deadline: number): Promis
 // ============ CAMADA 2 — FIRECRAWL ============
 function buildQuery(cargoKey: string | null, f: Filters): string {
   const isNameOnly = !!f.q && !cargoKey && f.cargos.length === 0 && f.ufs.length === 0 && !f.municipio?.trim();
-  if (isNameOnly) return `${f.q} político candidato brasil site:divulgacandcontas.tse.jus.br OR site:google.com`;
+  if (isNameOnly) return `${f.q} político candidato vereador prefeito deputado brasil`;
+
 
   const parts: string[] = [];
   if (f.q) parts.push(f.q); // sem aspas para busca mais ampla
