@@ -801,18 +801,24 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
 // ============ DEDUPE + FILTROS ============
 function dedupe(rows: OutRow[]): OutRow[] {
   const seen = new Map<string, OutRow>();
+  const mergeFonte = (a: string, b: string) => {
+    const parts = new Set([...(a || "").split("+"), ...(b || "").split("+")].map((s) => s.trim()).filter(Boolean));
+    return [...parts].join("+");
+  };
   for (const r of rows) {
     const key = r.tse_id
       ? `tse|${r.tse_id}`
       : `${nameKey(r.nome)}|${r.cargo}|${r.estado ?? ""}|${normalize(r.municipio ?? "")}`;
     const prev = seen.get(key);
     if (!prev) { seen.set(key, r); continue; }
-    // prefere TSE > Firecrawl, eleito > não eleito, maior confidence
     const score = (x: OutRow) => (x.fonte.startsWith("tse") ? 100 : 0) + (x.eleito ? 10 : 0) + x.confidence / 10;
-    if (score(r) > score(prev)) seen.set(key, r);
+    const winner = score(r) > score(prev) ? { ...r } : { ...prev };
+    winner.fonte = mergeFonte(prev.fonte, r.fonte);
+    seen.set(key, winner);
   }
   return [...seen.values()];
 }
+
 
 function levenshtein(a: string, b: string): number {
   if (a === b) return 0;
@@ -887,25 +893,25 @@ async function searchByName(f: Filters, deadline: number): Promise<{ rows: OutRo
   const sources = new Set<string>();
   let partial = false;
 
-  // Nome puro: não usar endpoint direto do TSE. Primeiro tenta crawler web no domínio oficial.
-  const webRows = await searchFirecrawl(null, f, deadline);
-  console.log("RAW RESULTS (name-web):", webRows.length);
-  all.push(...webRows);
+  // Roda TSE-open-data + Web + Catálogo local SEMPRE em paralelo.
+  const [webRes, localRes, openRes] = await Promise.allSettled([
+    searchFirecrawl(null, f, deadline),
+    searchLocalCatalog(f),
+    searchOpenData(null, f, deadline),
+  ]);
+
+  const webRows = webRes.status === "fulfilled" ? webRes.value : [];
+  const localRows = localRes.status === "fulfilled" ? localRes.value : [];
+  const openRows = openRes.status === "fulfilled" ? openRes.value : [];
+
+  console.log("WEB RESULTS:", webRows.length);
+  console.log("LOCAL RESULTS:", localRows.length);
+  console.log("TSE RESULTS:", openRows.length);
+
+  all.push(...webRows, ...localRows, ...openRows);
   addSourceForRows(sources, webRows, "firecrawl");
-
-  // Catálogo interno como complemento, sem bloquear o crawler web.
-  const localRows = await searchLocalCatalog(f);
-  console.log("RAW RESULTS (name-local-catalog):", localRows.length);
-  all.push(...localRows);
   addSourceForRows(sources, localRows, "catalogo-local");
-
-  // Fallback oficial por arquivo público TSE (não é endpoint direto por nome).
-  if (all.length === 0 && Date.now() < deadline) {
-    const openRows = await searchOpenData(null, f, deadline);
-    console.log("RAW RESULTS (name-tse-open-data):", openRows.length);
-    all.push(...openRows);
-    addSourceForRows(sources, openRows, "tse-open-data");
-  }
+  addSourceForRows(sources, openRows, "tse-open-data");
 
   if (Date.now() > deadline) partial = true;
   console.log("RESULTS:", all.length);
@@ -921,52 +927,66 @@ async function searchByFilters(f: Filters, deadline: number): Promise<{ rows: Ou
   const sources = new Set<string>();
   let partial = false;
 
-  if (f.q) {
-    const localRows = await searchLocalCatalog(f);
-    console.log(`RAW RESULTS (local-catalog): ${localRows.length}`);
-    all.push(...localRows);
-    addSourceForRows(sources, localRows, "catalogo-local");
-  }
+  // Catálogo local: sempre tenta (rápido, in-DB).
+  const localPromise = searchLocalCatalog(f).catch((e) => {
+    console.log("[local-catalog] erro:", (e as Error).message); return [] as OutRow[];
+  });
 
   const cargosTodo = f.cargos.length > 0 ? f.cargos : [null as unknown as string];
 
+  // Dispara TSE + Web SEMPRE em paralelo para cada cargo.
+  const tasks: Promise<{ kind: "tse" | "web" | "open"; cargo: string | null; rows: OutRow[]; partial?: boolean }>[] = [];
+
   for (const cargo of cargosTodo) {
-    if (Date.now() > deadline) { partial = true; break; }
-    console.log(`=== CARGO: ${cargo ?? "(livre)"} ===`);
-
     if (cargo && CARGO_TO_TSE[cargo]) {
-      try {
-        const { rows, partial: tsePartial } = await searchTSE(cargo, f, deadline);
-        console.log(`RAW RESULTS (tse/${cargo}): ${rows.length}${tsePartial ? " [parcial]" : ""}`);
-        all.push(...rows);
-        if (rows.length > 0) sources.add(`tse-${MUNICIPAL_CARGOS.has(cargo) ? 2024 : 2022}`);
-        if (tsePartial) partial = true;
-      } catch (e) {
-        console.log(`[tse] skip ${cargo}: ${(e as Error).message}`);
+      tasks.push(
+        searchTSE(cargo, f, deadline)
+          .then(({ rows, partial: p }) => ({ kind: "tse" as const, cargo, rows, partial: p }))
+          .catch((e) => { console.log(`[tse] skip ${cargo}: ${(e as Error).message}`); return { kind: "tse" as const, cargo, rows: [] }; })
+      );
+      if (f.q) {
+        tasks.push(
+          searchOpenData(cargo, f, deadline)
+            .then((rows) => ({ kind: "open" as const, cargo, rows }))
+            .catch(() => ({ kind: "open" as const, cargo, rows: [] }))
+        );
       }
+    } else if (f.q) {
+      tasks.push(
+        searchOpenData(cargo ?? null, f, deadline)
+          .then((rows) => ({ kind: "open" as const, cargo, rows }))
+          .catch(() => ({ kind: "open" as const, cargo, rows: [] }))
+      );
     }
-
-    const hasRowsBeforeOpenData = all.length;
-    if (f.q && (!cargo || CARGO_TO_TSE[cargo])) {
-      const openRows = await searchOpenData(cargo ?? null, f, deadline);
-      console.log(`RAW RESULTS (tse-open-data/${cargo ?? "livre"}): ${openRows.length}`);
-      all.push(...openRows);
-      addSourceForRows(sources, openRows, "tse-open-data");
-    }
-
-    const hasOfficialRowsForThisCargo = all.length > hasRowsBeforeOpenData;
-    const needsWeb = !hasOfficialRowsForThisCargo && (!cargo || NON_TSE_CARGOS.has(cargo) || !CARGO_TO_TSE[cargo]);
-    if (needsWeb && Date.now() < deadline) {
-      const webRows = await searchFirecrawl(cargo, f, deadline);
-      console.log(`RAW RESULTS (web/${cargo ?? "livre"}): ${webRows.length}`);
-      all.push(...webRows);
-      addSourceForRows(sources, webRows, "firecrawl");
-    }
+    // Web SEMPRE roda em paralelo (regra nova: nunca depender só do TSE).
+    tasks.push(
+      searchFirecrawl(cargo, f, deadline)
+        .then((rows) => ({ kind: "web" as const, cargo, rows }))
+        .catch((e) => { console.log(`[web] skip ${cargo ?? "livre"}: ${(e as Error).message}`); return { kind: "web" as const, cargo, rows: [] }; })
+    );
   }
 
+  const results = await Promise.all(tasks);
+  const localRows = await localPromise;
+  console.log(`LOCAL RESULTS: ${localRows.length}`);
+  all.push(...localRows);
+  addSourceForRows(sources, localRows, "catalogo-local");
+
+  for (const r of results) {
+    console.log(`${r.kind.toUpperCase()} RESULTS (${r.cargo ?? "livre"}): ${r.rows.length}${r.partial ? " [parcial]" : ""}`);
+    all.push(...r.rows);
+    if (r.partial) partial = true;
+    if (r.rows.length === 0) continue;
+    if (r.kind === "tse") sources.add(`tse-${r.cargo && MUNICIPAL_CARGOS.has(r.cargo) ? 2024 : 2022}`);
+    else if (r.kind === "open") addSourceForRows(sources, r.rows, "tse-open-data");
+    else addSourceForRows(sources, r.rows, "firecrawl");
+  }
+
+  if (Date.now() > deadline) partial = true;
   console.log("RESULTS:", all.length);
   return { rows: all, sources, partial };
 }
+
 
 // ============ HANDLER ============
 Deno.serve(async (req) => {
@@ -993,13 +1013,12 @@ Deno.serve(async (req) => {
 
     const deduped = dedupe(all);
     const filtered = applyFilters(deduped, f);
-    console.log("RESULTS:", filtered.length);
-    console.log(`NORMALIZED: ${deduped.length} | RESULT COUNT: ${filtered.length}`);
-    console.log("CRAWLER RETURNED", filtered.length);
-    console.log("BACKEND FINAL COUNT:", filtered.length);
-    console.log("FIRST 5 BACKEND:", JSON.stringify(filtered.slice(0, 5).map((r) => ({
-      nome: r.nome, cargo: r.cargo, estado: r.estado, municipio: r.municipio, eleito: r.eleito, fonte: r.fonte,
+    console.log("FINAL COUNT:", filtered.length);
+    console.log("FINAL TOP10:", JSON.stringify(filtered.slice(0, 10).map((r) => ({
+      nome: r.nome, cargo: r.cargo, estado: r.estado, municipio: r.municipio, fonte: r.fonte,
     }))));
+    console.log(`NORMALIZED: ${deduped.length} | RESULT COUNT: ${filtered.length}`);
+
 
     const total = filtered.length;
     const start = f.page * PAGE_SIZE;
