@@ -897,7 +897,7 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
 
   if (results.length > 0 && Date.now() < deadline) {
     const combined = results.slice(0, 5).map((r) => `# ${r.title}\n${r.markdown}`).join("\n\n---\n\n");
-    extracted = await cerebrasExtract(combined, cargoKey, query);
+    extracted = await cerebrasExtract(combined, cargoKey, queryForExtract);
     console.log(`[cerebras] extraiu ${extracted.length} nomes`);
   }
 
@@ -909,7 +909,7 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
   }
 
   // Inferir cargo pela query quando vier sem cargo estruturado.
-  const inferredCargo = cargoKey ?? inferCargoFromQuery(query);
+  const inferredCargo = cargoKey ?? inferCargoFromQuery(queryForExtract);
 
   return extracted.map((c, i) => {
     const uf = resolveUF(c.uf) ?? (f.ufs[0] ?? null);
