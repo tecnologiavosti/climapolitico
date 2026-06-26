@@ -882,16 +882,47 @@ const STATUS_TO_CATEGORIA: Record<string, string> = {
 async function cerebrasDirectLookup(name: string, cargoKey: string | null): Promise<Array<{ nome: string; nomeUrna: string | null; partido: string | null; cargo: string; cidade: string | null; uf: string | null; status: string }>> {
   const normalizedName = normalize(name);
   const strippedName = stripHonorifics(name);
+  const KACHAN = { nome: "José Antônio Kachan Júnior", nomeUrna: "Dr Kachan", partido: "REPUBLICANOS", cargo: "vereador", cidade: "Jundiaí", uf: "SP", status: "Mandatário" };
   const knownLookup: Record<string, Array<{ nome: string; nomeUrna: string | null; partido: string | null; cargo: string; cidade: string | null; uf: string | null; status: string }>> = {
-    "dr kachan": [{ nome: "José Antônio Kachan Júnior", nomeUrna: "Dr Kachan", partido: "REPUBLICANOS", cargo: "vereador", cidade: "Jundiaí", uf: "SP", status: "Mandatário" }],
-    "kachan": [{ nome: "José Antônio Kachan Júnior", nomeUrna: "Dr Kachan", partido: "REPUBLICANOS", cargo: "vereador", cidade: "Jundiaí", uf: "SP", status: "Mandatário" }],
-    "jose antonio kachan junior": [{ nome: "José Antônio Kachan Júnior", nomeUrna: "Dr Kachan", partido: "REPUBLICANOS", cargo: "vereador", cidade: "Jundiaí", uf: "SP", status: "Mandatário" }],
+    "dr kachan": [KACHAN], "kachan": [KACHAN], "jose antonio kachan junior": [KACHAN],
+    "lula": [{ nome: "Luiz Inácio Lula da Silva", nomeUrna: "Lula", partido: "PT", cargo: "presidente", cidade: null, uf: "BR", status: "Eleito" }],
+    "luiz inacio lula da silva": [{ nome: "Luiz Inácio Lula da Silva", nomeUrna: "Lula", partido: "PT", cargo: "presidente", cidade: null, uf: "BR", status: "Eleito" }],
+    "bolsonaro": [{ nome: "Jair Messias Bolsonaro", nomeUrna: "Jair Bolsonaro", partido: "PL", cargo: "ex_presidente", cidade: null, uf: "BR", status: "Ex-candidato" }],
+    "jair bolsonaro": [{ nome: "Jair Messias Bolsonaro", nomeUrna: "Jair Bolsonaro", partido: "PL", cargo: "ex_presidente", cidade: null, uf: "BR", status: "Ex-candidato" }],
+    "flavio bolsonaro": [{ nome: "Flávio Nantes Bolsonaro", nomeUrna: "Flávio Bolsonaro", partido: "PL", cargo: "senador", cidade: null, uf: "RJ", status: "Mandatário" }],
+    "eduardo bolsonaro": [{ nome: "Eduardo Nantes Bolsonaro", nomeUrna: "Eduardo Bolsonaro", partido: "PL", cargo: "deputado_federal", cidade: null, uf: "SP", status: "Mandatário" }],
+    "tarcisio": [{ nome: "Tarcísio Gomes de Freitas", nomeUrna: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "governador", cidade: null, uf: "SP", status: "Eleito" }],
+    "tarcisio de freitas": [{ nome: "Tarcísio Gomes de Freitas", nomeUrna: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "governador", cidade: null, uf: "SP", status: "Eleito" }],
+    "tarcisio gomes de freitas": [{ nome: "Tarcísio Gomes de Freitas", nomeUrna: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "governador", cidade: null, uf: "SP", status: "Eleito" }],
+    "lira": [{ nome: "Arthur César Pereira de Lira", nomeUrna: "Arthur Lira", partido: "PP", cargo: "deputado_federal", cidade: null, uf: "AL", status: "Mandatário" }],
+    "arthur lira": [{ nome: "Arthur César Pereira de Lira", nomeUrna: "Arthur Lira", partido: "PP", cargo: "deputado_federal", cidade: null, uf: "AL", status: "Mandatário" }],
+    "ratinho": [{ nome: "Carlos Roberto Massa Júnior", nomeUrna: "Ratinho Júnior", partido: "PSD", cargo: "governador", cidade: null, uf: "PR", status: "Eleito" }],
+    "ratinho jr": [{ nome: "Carlos Roberto Massa Júnior", nomeUrna: "Ratinho Júnior", partido: "PSD", cargo: "governador", cidade: null, uf: "PR", status: "Eleito" }],
+    "ratinho junior": [{ nome: "Carlos Roberto Massa Júnior", nomeUrna: "Ratinho Júnior", partido: "PSD", cargo: "governador", cidade: null, uf: "PR", status: "Eleito" }],
+    "eduardo leite": [{ nome: "Eduardo Figueiredo Cavalheiro Leite", nomeUrna: "Eduardo Leite", partido: "PSD", cargo: "governador", cidade: null, uf: "RS", status: "Eleito" }],
+    "leite": [{ nome: "Eduardo Figueiredo Cavalheiro Leite", nomeUrna: "Eduardo Leite", partido: "PSD", cargo: "governador", cidade: null, uf: "RS", status: "Eleito" }],
+    "zema": [{ nome: "Romeu Zema Neto", nomeUrna: "Romeu Zema", partido: "NOVO", cargo: "governador", cidade: null, uf: "MG", status: "Eleito" }],
+    "romeu zema": [{ nome: "Romeu Zema Neto", nomeUrna: "Romeu Zema", partido: "NOVO", cargo: "governador", cidade: null, uf: "MG", status: "Eleito" }],
+    "caiado": [{ nome: "Ronaldo Ramos Caiado", nomeUrna: "Ronaldo Caiado", partido: "UNIÃO", cargo: "governador", cidade: null, uf: "GO", status: "Eleito" }],
+    "haddad": [{ nome: "Fernando Haddad", nomeUrna: "Haddad", partido: "PT", cargo: "ministro", cidade: null, uf: "BR", status: "Mandatário" }],
+    "alckmin": [{ nome: "Geraldo José Rodrigues Alckmin Filho", nomeUrna: "Geraldo Alckmin", partido: "PSB", cargo: "vice_presidente", cidade: null, uf: "BR", status: "Eleito" }],
+    "pacheco": [{ nome: "Rodrigo Pacheco", nomeUrna: "Rodrigo Pacheco", partido: "PSD", cargo: "senador", cidade: null, uf: "MG", status: "Mandatário" }],
+    "boulos": [{ nome: "Guilherme Castro Boulos", nomeUrna: "Guilherme Boulos", partido: "PSOL", cargo: "deputado_federal", cidade: null, uf: "SP", status: "Mandatário" }],
+    "nikolas": [{ nome: "Nikolas Ferreira", nomeUrna: "Nikolas Ferreira", partido: "PL", cargo: "deputado_federal", cidade: null, uf: "MG", status: "Mandatário" }],
+    "nunes": [{ nome: "Ricardo Nunes", nomeUrna: "Ricardo Nunes", partido: "MDB", cargo: "prefeito", cidade: "São Paulo", uf: "SP", status: "Eleito" }],
+    "paes": [{ nome: "Eduardo Paes", nomeUrna: "Eduardo Paes", partido: "PSD", cargo: "prefeito", cidade: "Rio de Janeiro", uf: "RJ", status: "Eleito" }],
+    "moro": [{ nome: "Sergio Moro", nomeUrna: "Sergio Moro", partido: "UNIÃO", cargo: "senador", cidade: null, uf: "PR", status: "Mandatário" }],
+    "marina": [{ nome: "Marina Silva", nomeUrna: "Marina Silva", partido: "REDE", cargo: "ministro", cidade: null, uf: "BR", status: "Mandatário" }],
+    "tebet": [{ nome: "Simone Tebet", nomeUrna: "Simone Tebet", partido: "MDB", cargo: "ministro", cidade: null, uf: "BR", status: "Mandatário" }],
   };
-  const known = knownLookup[normalizedName] ?? knownLookup[strippedName];
+  const tryKeys = [normalizedName, strippedName, ...generateAliases(name)];
+  let known: typeof knownLookup[string] | undefined;
+  for (const k of tryKeys) { if (knownLookup[k]) { known = knownLookup[k]; break; } }
   if (known) {
     console.log(`[ai-lookup] alias conhecido: ${name} -> ${known[0].nome}`);
     return known;
   }
+
   const key = Deno.env.get("LOVABLE_API_KEY");
   if (!key) { console.log("[ai-lookup] LOVABLE_API_KEY ausente"); return []; }
   const prompt = `Você conhece a política brasileira atual (2024-2026). O usuário procura por: "${name}"${strippedName && strippedName !== normalizedName ? `; sem honorífico: "${strippedName}"` : ""}${cargoKey ? ` (cargo: ${CARGO_LABEL[cargoKey] ?? cargoKey})` : ""}.
