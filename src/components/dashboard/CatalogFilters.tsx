@@ -85,7 +85,7 @@ export function CatalogFilters({ filters, searchQuery, onSearchQueryChange, onCh
           <Select value={filters.cargo?.[0] ?? ALL} onValueChange={(v) => setSingle("cargo", v)}>
             <SelectTrigger><SelectValue placeholder="Cargo" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value={ALL}>Todos os cargos</SelectItem>
+              <SelectItem value={ALL}>Selecionar cargo</SelectItem>
               {POSITIONS.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
             </SelectContent>
           </Select>
