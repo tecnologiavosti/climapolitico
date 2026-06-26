@@ -710,7 +710,8 @@ async function webSearch(query: string, deadline: number): Promise<Array<{ url: 
 // Extrai candidatos do markdown via Cerebras (parser estruturado, NÃO gerador)
 async function cerebrasExtract(markdown: string, cargoKey: string | null, query: string): Promise<Array<{ nome: string; nomeUrna: string | null; partido: string | null; cargo: string; cidade: string | null; uf: string | null; status: string }>> {
   const key = Deno.env.get("CEREBRAS_API_KEY");
-  if (!key) return [];
+  if (!key && !Deno.env.get("LOVABLE_API_KEY")) return [];
+
   const cargoLabel = cargoKey ? (CARGO_LABEL[cargoKey] ?? cargoKey) : null;
   const cargoLine = cargoLabel
     ? `para o cargo "${cargoLabel}"`
