@@ -59,6 +59,7 @@ export default function CandidatesCatalog() {
 
   const handleSearch = () => {
     console.log("SEARCH BUTTON CLICKED");
+    console.log("Search query (q):", pendingFilters.q);
     const v = validate(pendingFilters);
     console.log("Validation", v);
     if (!v.ok) {
