@@ -15,6 +15,13 @@ import {
 import { cn } from "@/lib/utils";
 import { normalizeCandidateName, suggestCandidateNames, type NameSuggestion } from "@/lib/candidateNameNormalizer";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  isNameFormatValid, isBlacklisted, computeScore, statusFromScore,
+} from "@/lib/candidateValidation";
 
 import { BRAZILIAN_PARTIES as PARTIES, POPULAR_PARTY_SIGLAS, findPartyBySigla, type BrazilianParty as Party } from "@/lib/brazilianParties";
 
@@ -230,9 +237,35 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
 
 
 
+  // ===== Validação inteligente =====
+  const formatOk = useMemo(() => isNameFormatValid(fullName), [fullName]);
+  const blacklisted = useMemo(() => isBlacklisted(fullName), [fullName]);
+  const validationScore = useMemo(() => computeScore(fullName, {
+    foundInTse: !!catalogMatch,
+    foundOnWeb: !!(aiLookup?.found),
+    webConfidence: aiLookup?.confidence ?? 0,
+  }), [fullName, catalogMatch, aiLookup]);
+  const validationStatus = useMemo(
+    () => statusFromScore(validationScore, formatOk, blacklisted),
+    [validationScore, formatOk, blacklisted],
+  );
+  const [overrideConfirmed, setOverrideConfirmed] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // Reset override quando nome muda
+  useEffect(() => { setOverrideConfirmed(false); }, [fullName]);
+
+  const nameError = useMemo(() => {
+    if (!fullName.trim()) return null;
+    if (blacklisted) return "Esse nome não parece ser um político brasileiro válido.";
+    if (!formatOk) return "Digite nome e sobrenome válidos.";
+    return null;
+  }, [fullName, formatOk, blacklisted]);
+
   const scope = scopeOf(position);
+  // Bloqueio hard: formato inválido ou blacklist. Score baixo abre modal de confirmação.
   const canSubmit =
-    !!fullName.trim() && !!party && !!position && !isPending &&
+    formatOk && !blacklisted && !!party && !!position && !isPending &&
     (scope === "national" || (scope === "state" && !!state) || (scope === "municipal" && !!state && !!city.trim()));
 
   const scopeBadge = useMemo(() => {
@@ -265,17 +298,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     setParty(""); setPosition(""); setState(""); setCity(""); setErrors({});
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const errs: Record<string, string> = {};
-    if (fullName.trim().length < 3) errs.fullName = "Nome deve ter no mínimo 3 caracteres";
-    if (!party) errs.party = "Selecione um partido";
-    if (!position) errs.position = "Selecione um cargo político";
-    if (scope !== "national" && !state) errs.state = "Selecione um estado";
-    if (scope === "municipal" && !city.trim()) errs.city = "Informe a cidade";
-    setErrors(errs);
-    if (Object.keys(errs).length) return;
-
+  const submitPayload = () => {
     const region = scope === "national" ? "Brasil" : (STATE_TO_REGION[state] ?? "");
     onSubmit({
       profileType: "politician",
@@ -288,6 +311,28 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
       socials: {}, photoFile: null,
     });
   };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const errs: Record<string, string> = {};
+    if (!formatOk) errs.fullName = "Digite nome e sobrenome válidos.";
+    else if (blacklisted) errs.fullName = "Esse nome não parece ser um político brasileiro válido.";
+    if (!party) errs.party = "Selecione um partido";
+    if (!position) errs.position = "Selecione um cargo político";
+    if (scope !== "national" && !state) errs.state = "Selecione um estado";
+    if (scope === "municipal" && !city.trim()) errs.city = "Informe a cidade";
+    setErrors(errs);
+    if (Object.keys(errs).length) return;
+
+    // Score baixo + nenhuma fonte encontrou: pedir confirmação explícita
+    if (validationScore < 30 && !overrideConfirmed) {
+      setConfirmOpen(true);
+      return;
+    }
+
+    submitPayload();
+  };
+
 
   const onOpen = (v: boolean) => {
     if (v && initialValues) {
@@ -347,6 +392,32 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
               className="h-12 text-base rounded-xl"
               autoComplete="off"
             />
+
+            {fullName.trim().length >= 2 && (
+              <div className="mt-2 flex items-center gap-2 text-xs">
+                {validationStatus === "validated" ? (
+                  <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+                    🟢 Validado pelo sistema
+                  </Badge>
+                ) : validationStatus === "partial" ? (
+                  <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                    🟡 Parcialmente validado
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300">
+                    🔴 {nameError ?? "Não verificado"}
+                  </Badge>
+                )}
+                {formatOk && !blacklisted && (
+                  <span className="text-muted-foreground">Score: {validationScore}/100</span>
+                )}
+              </div>
+            )}
+
+            {nameError && (
+              <p className="mt-1 text-xs text-destructive">{nameError}</p>
+            )}
+
 
             {autoCorrect && normalizeCandidateName(fullName) !== normalizeCandidateName(autoCorrect.fullName) && (
               <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-primary/30 bg-primary/[0.06] px-3 py-2 animate-in fade-in-0 slide-in-from-top-1 duration-200">
@@ -610,6 +681,31 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
           </Button>
         </div>
       </DialogContent>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Candidato não encontrado</AlertDialogTitle>
+            <AlertDialogDescription>
+              Não encontramos <strong>{fullName.trim()}</strong> no TSE, web ou base política nacional.
+              Deseja adicionar manualmente mesmo assim?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setOverrideConfirmed(true);
+                setConfirmOpen(false);
+                // submete na próxima micro-task, após state propagar
+                setTimeout(() => submitPayload(), 0);
+              }}
+            >
+              Adicionar mesmo assim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }
