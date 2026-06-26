@@ -37,6 +37,8 @@ export interface ExistenceSignals {
   foundInSocial?: boolean;
   /** Encontrado em matérias jornalísticas. */
   foundInNews?: boolean;
+  /** Score contextual retornado pela validação com nome + cargo + partido + UF/cidade. */
+  contextualScore?: number;
 }
 
 /**
@@ -49,6 +51,7 @@ export function signalsFromAiLookup(
   if (!ai?.found) return {};
   const c = ai.confidence ?? 0;
   return {
+    contextualScore: Math.round(Math.max(0, Math.min(1, c)) * 100),
     foundInOfficial: c >= 0.85,
     foundInNews: c >= 0.6,
     foundInSocial: c >= 0.75,
@@ -68,6 +71,7 @@ export function computeExistenceScore(name: string, sig: ExistenceSignals): numb
   if (sig.foundInOfficial) s += 30;
   if (sig.foundInSocial) s += 20;
   if (sig.foundInNews) s += 10;
+  if (typeof sig.contextualScore === "number") s = Math.max(s, sig.contextualScore);
   return Math.min(100, s);
 }
 

@@ -47,6 +47,46 @@ function similarity(a: string, b: string) {
   return Math.max(contains, lev);
 }
 
+function stripHtml(value: string) {
+  return value
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function containsTerm(haystack: string, term: string) {
+  const normalizedTerm = normalizeName(term);
+  if (!normalizedTerm) return false;
+  if (normalizedTerm.length <= 2) {
+    return new RegExp(`(^|\\s)${normalizedTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|\\s)`).test(haystack);
+  }
+  return haystack.includes(normalizedTerm);
+}
+
+const OFFICE_ALIASES: Record<string, string[]> = {
+  "Presidente": ["presidente"],
+  "Vice-presidente": ["vice presidente", "vicepresidente"],
+  "Ministro": ["ministro", "ministra"],
+  "Governador": ["governador", "governadora"],
+  "Vice-governador": ["vice governador", "vice governadora"],
+  "Secretário Estadual": ["secretario estadual", "secretaria estadual"],
+  "Prefeito": ["prefeito", "prefeita"],
+  "Vice-prefeito": ["vice prefeito", "vice prefeita"],
+  "Secretário Municipal": ["secretario municipal", "secretaria municipal"],
+  "Senador": ["senador", "senadora"],
+  "Deputado Federal": ["deputado federal", "deputada federal"],
+  "Deputado Estadual": ["deputado estadual", "deputada estadual"],
+  "Deputado Distrital": ["deputado distrital", "deputada distrital"],
+  "Vereador": ["vereador", "vereadora"],
+  "Presidente de partido": ["presidente de partido", "presidente partidario"],
+};
+
 function asArray<T>(value: T | T[] | undefined | null): T[] {
   if (!value) return [];
   return Array.isArray(value) ? value : [value];
@@ -115,6 +155,58 @@ async function lookupOfficialSources(name: string) {
   return null;
 }
 
+async function lookupWebEvidence(query: string, originalName: string, ctx: { party: string; office: string; state: string; city: string }) {
+  if (!query.trim()) return null;
+  try {
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const resp = await fetch(url, {
+      headers: { Accept: "text/html", "User-Agent": "ClimaPolitico/1.0" },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!resp.ok) return null;
+
+    const html = await resp.text();
+    const resultBlocks = html.split(/class=["']result/i).slice(1, 8).join(" ");
+    const evidence = normalizeName(stripHtml(resultBlocks || html.slice(0, 20000)));
+    if (!evidence) return null;
+
+    let score = 0;
+    let max = 0;
+    const add = (matches: boolean, weight: number) => {
+      max += weight;
+      if (matches) score += weight;
+    };
+
+    const aliases = generateAliases(originalName).map(normalizeName).filter((alias) => alias.length >= 3);
+    add(aliases.some((alias) => containsTerm(evidence, alias) || evidence.includes(alias)), 35);
+
+    if (ctx.office) {
+      const officeAliases = OFFICE_ALIASES[ctx.office] ?? [ctx.office];
+      add(officeAliases.some((office) => containsTerm(evidence, office)), 15);
+    }
+    if (ctx.party) add(containsTerm(evidence, ctx.party), 15);
+    if (ctx.state) add(containsTerm(evidence, ctx.state), 10);
+    if (ctx.city) add(containsTerm(evidence, ctx.city), 25);
+
+    const ratio = max ? score / max : 0;
+    if (ratio < 0.6) return null;
+
+    return {
+      found: true,
+      name: originalName,
+      party: ctx.party || null,
+      office: VALID_OFFICES.has(ctx.office) ? ctx.office : null,
+      state: ctx.state || null,
+      city: ctx.city || null,
+      confidence: Math.min(0.98, Math.max(0.7, 0.68 + ratio * 0.3)),
+      rationale: "Encontrado em fontes públicas brasileiras com correspondência contextual.",
+    };
+  } catch (e) {
+    console.warn("[lookup-candidate-ai] web evidence lookup failed", e);
+    return null;
+  }
+}
+
 const SYSTEM = `Você é um especialista em política brasileira. Identifique políticos
 brasileiros (federal, estadual ou municipal) pelo nome, mesmo com apelidos, abreviações,
 títulos ("Dr", "Prof", "Sgt"), nomes parciais ou erros de grafia.
@@ -161,11 +253,13 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const name = String(body?.name ?? "").trim();
+    const query = String(body?.query ?? "").trim();
     const ctx = body?.context ?? {};
     const ctxParty = String(ctx?.party ?? "").trim();
     const ctxOffice = String(ctx?.office ?? "").trim();
     const ctxState = String(ctx?.state ?? "").trim();
     const ctxCity = String(ctx?.city ?? "").trim();
+    const contextualQuery = query || [name, ctxOffice, ctxParty, ctxCity, ctxState].filter(Boolean).join(" ");
 
     if (name.length < 3) {
       return new Response(JSON.stringify({ found: false, error: "name too short" }), {
@@ -190,10 +284,24 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 2) AI com contexto completo + aliases para apelidos políticos.
+    // 2) Evidência pública contextual. Importante para vereadores/prefeitos locais.
+    const webEvidence = await lookupWebEvidence(contextualQuery, name, {
+      party: ctxParty,
+      office: ctxOffice,
+      state: ctxState,
+      city: ctxCity,
+    });
+    if (webEvidence) {
+      return new Response(JSON.stringify(webEvidence), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // 3) AI com contexto completo + aliases para apelidos políticos.
     const aliases = generateAliases(name);
     const userPrompt = [
       `Identifique este político brasileiro: "${name}"`,
+      contextualQuery ? `Consulta contextual montada: "${contextualQuery}"` : "",
       aliases.length > 1 ? `Possíveis variações/aliases: ${aliases.map((a) => `"${a}"`).join(", ")}` : "",
       "Contexto declarado pelo usuário:",
       ctxOffice ? `- Cargo: ${ctxOffice}` : "",
@@ -249,7 +357,7 @@ Deno.serve(async (req) => {
       const eq = (a: string, b: string) => normalizeName(a) === normalizeName(b);
       let ctxScore = 0; let ctxMax = 0;
       const addSig = (matches: boolean, weight: number) => { ctxMax += weight; if (matches) ctxScore += weight; };
-      addSig(similarity(name, parsed.name) >= 0.6, 35);
+      addSig(similarity(name, parsed.name) >= 0.6 || normalizeName(contextualQuery).includes(normalizeName(parsed.name)), 35);
       if (ctxOffice) addSig(!!office && eq(ctxOffice, office), 15);
       if (ctxParty) addSig(!!parsed.party && eq(ctxParty, parsed.party), 15);
       if (ctxState) addSig(!!parsed.state && ctxState.toUpperCase() === String(parsed.state).toUpperCase(), 10);
