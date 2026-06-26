@@ -1531,12 +1531,13 @@ Deno.serve(async (req) => {
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    const status = (e as { status?: number })?.status ?? 200;
     console.error("[catalog-search] FAIL:", msg);
     return new Response(JSON.stringify({
       fallback: true, error: msg, message: msg, notice: msg,
       rows: [], total: 0, hasMore: false, exactTotal: true,
       suggestions: [], normalized: {}, page: 0, pageSize: PAGE_SIZE,
       partial: false, sources: [],
-    }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
