@@ -403,37 +403,46 @@ NÃO invente. Se não conhecer ninguém com esse nome, retorne {"candidatos":[]}
 
 Formato JSON estrito:
 {"candidatos":[{"nome":"Nome Completo","partido":"SIGLA ou null","cargo":"prefeito|vice_prefeito|vereador|deputado_federal|deputado_estadual|senador|governador|presidente|ministro|pre_candidato","cidade":"Cidade ou null","uf":"Nome do estado por extenso ou null","status":"Eleito|Candidato|Ex-candidato|Mandatário"}]}`;
-  try {
-    const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: "Você é uma base de conhecimento sobre políticos brasileiros. Retorna APENAS JSON válido. Nunca inventa pessoas." },
-          { role: "user", content: prompt },
-        ],
-        temperature: 0,
-        response_format: { type: "json_object" },
-      }),
-    });
-    if (!r.ok) { console.log(`[ai-lookup] HTTP ${r.status}: ${await r.text()}`); return []; }
-    const data = await r.json();
-    const content = data?.choices?.[0]?.message?.content ?? "{}";
-    const parsed = JSON.parse(content);
-    const arr = parsed?.candidatos ?? [];
-    return Array.isArray(arr) ? arr.map((c: any) => ({
-      nome: String(c.nome ?? "").trim(),
-      partido: c.partido ? String(c.partido).toUpperCase() : null,
-      cargo: (c.cargo && typeof c.cargo === "string" ? normalizeCargoKey(c.cargo) : null) ?? cargoKey ?? "pre_candidato",
-      cidade: c.cidade ? String(c.cidade).trim() : null,
-      uf: c.uf ? String(c.uf).trim() : null,
-      status: String(c.status ?? "Candidato"),
-    })).filter((c) => c.nome.length > 2) : [];
-  } catch (e) {
-    console.log("[ai-lookup] erro:", (e as Error).message);
-    return [];
+  const models = ["google/gemini-2.5-flash", "google/gemini-2.5-flash-lite", "google/gemini-2.5-pro"];
+  for (const model of models) {
+    try {
+      const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: "Você é uma base de conhecimento sobre políticos brasileiros. Retorna APENAS JSON válido. Nunca inventa pessoas." },
+            { role: "user", content: prompt },
+          ],
+          temperature: 0,
+          response_format: { type: "json_object" },
+        }),
+      });
+      if (!r.ok) {
+        const txt = await r.text();
+        console.log(`[ai-lookup] ${model} HTTP ${r.status}: ${txt.slice(0, 200)}`);
+        if (r.status === 429 || r.status === 503) continue;
+        return [];
+      }
+      const data = await r.json();
+      const content = data?.choices?.[0]?.message?.content ?? "{}";
+      const parsed = JSON.parse(content);
+      const arr = parsed?.candidatos ?? [];
+      console.log(`[ai-lookup] ${model} OK — ${Array.isArray(arr) ? arr.length : 0} resultados`);
+      return Array.isArray(arr) ? arr.map((c: any) => ({
+        nome: String(c.nome ?? "").trim(),
+        partido: c.partido ? String(c.partido).toUpperCase() : null,
+        cargo: (c.cargo && typeof c.cargo === "string" ? normalizeCargoKey(c.cargo) : null) ?? cargoKey ?? "pre_candidato",
+        cidade: c.cidade ? String(c.cidade).trim() : null,
+        uf: c.uf ? String(c.uf).trim() : null,
+        status: String(c.status ?? "Candidato"),
+      })).filter((c) => c.nome.length > 2) : [];
+    } catch (e) {
+      console.log(`[ai-lookup] ${model} erro:`, (e as Error).message);
+    }
   }
+  return [];
 }
 
 async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: number): Promise<OutRow[]> {
