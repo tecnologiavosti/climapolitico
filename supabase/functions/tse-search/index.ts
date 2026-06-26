@@ -289,7 +289,7 @@ async function searchTSE(cargoKey: string, f: Filters, deadline: number): Promis
 // ============ CAMADA 2 — FIRECRAWL ============
 function buildQuery(cargoKey: string | null, f: Filters): string {
   const parts: string[] = [];
-  if (f.q) parts.push(f.q);
+  if (f.q) parts.push(`"${f.q}"`);
   if (cargoKey) {
     const label = CARGO_LABEL[cargoKey] ?? cargoKey;
     parts.push(cargoKey === "vereador" || cargoKey === "prefeito" ? `${label.toLowerCase()}es` : label.toLowerCase());
@@ -300,6 +300,8 @@ function buildQuery(cargoKey: string | null, f: Filters): string {
   if (cargoKey === "ministro" && !f.q) parts.push("governo lula 2026");
   if (cargoKey === "presidente_partido" && !f.q) parts.push("brasil 2026");
   if (cargoKey === "pre_candidato" && !f.q) parts.push("brasil 2026");
+  // Quando é busca apenas por nome, adicionar contexto político BR
+  if (f.q && !cargoKey) parts.push("político candidato brasil");
   return parts.filter(Boolean).join(" ").trim() || "candidatos brasil 2026";
 }
 
