@@ -68,6 +68,7 @@ export default function CandidatesCatalog() {
   const lastUpdated = data?.lastUpdated ?? null;
   const partial = data?.partial ?? false;
   const sources = data?.sources ?? [];
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
   const page = appliedFilters?.page ?? 0;
   const exactTotal = data?.exactTotal !== false;
   const hasNext = data?.hasMore ?? (page < Math.max(1, Math.ceil(total / PAGE_SIZE)) - 1);
