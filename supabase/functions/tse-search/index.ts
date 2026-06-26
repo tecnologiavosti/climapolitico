@@ -591,13 +591,13 @@ async function searchTSE(cargoKey: string, f: Filters, deadline: number): Promis
 // ============ CAMADA 2 — FIRECRAWL ============
 function buildQuery(cargoKey: string | null, f: Filters): string {
   const isNameOnly = !!f.q && !cargoKey && f.cargos.length === 0 && f.ufs.length === 0 && !f.municipio?.trim();
-  if (isNameOnly) return `site:divulgacandcontas.tse.jus.br "${f.q}"`;
+  if (isNameOnly) return `${f.q} político candidato brasil site:divulgacandcontas.tse.jus.br OR site:google.com`;
 
   const parts: string[] = [];
-  if (f.q) parts.push(`"${f.q}"`);
+  if (f.q) parts.push(f.q); // sem aspas para busca mais ampla
   if (cargoKey) {
     const label = CARGO_LABEL[cargoKey] ?? cargoKey;
-    parts.push(cargoKey === "vereador" || cargoKey === "prefeito" ? `${label.toLowerCase()}es` : label.toLowerCase());
+    parts.push(label.toLowerCase());
   }
   if (f.municipio) parts.push(f.municipio);
   if (f.ufs[0]) parts.push(f.ufs[0]);
@@ -605,10 +605,28 @@ function buildQuery(cargoKey: string | null, f: Filters): string {
   if (cargoKey === "ministro" && !f.q) parts.push("governo lula 2026");
   if (cargoKey === "presidente_partido" && !f.q) parts.push("brasil 2026");
   if (cargoKey === "pre_candidato" && !f.q) parts.push("brasil 2026");
-  // Quando é busca por nome + filtros, adicionar contexto político BR
   if (f.q && !cargoKey) parts.push("político candidato brasil");
   return parts.filter(Boolean).join(" ").trim() || "candidatos brasil 2026";
 }
+
+// Inferir cargo a partir da query quando o extractor não devolve cargo.
+const CARGO_INFER_MAP: Array<[RegExp, string]> = [
+  [/\bvereador(es)?\b/i, "vereador"],
+  [/\bvice[\s-]?prefeito\b/i, "vice_prefeito"],
+  [/\bprefeito(s)?\b/i, "prefeito"],
+  [/\bdeputado federal\b/i, "deputado_federal"],
+  [/\bdeputado estadual\b/i, "deputado_estadual"],
+  [/\bdeputado distrital\b/i, "deputado_distrital"],
+  [/\bsenador(es)?\b/i, "senador"],
+  [/\bvice[\s-]?governador\b/i, "vice_governador"],
+  [/\bgovernador(es)?\b/i, "governador"],
+  [/\bpresidente\b/i, "presidente"],
+];
+function inferCargoFromQuery(query: string): string | null {
+  for (const [re, cargo] of CARGO_INFER_MAP) if (re.test(query)) return cargo;
+  return null;
+}
+
 
 async function firecrawlSearch(query: string, deadline: number): Promise<Array<{ url: string; title: string; markdown: string }>> {
   const key = Deno.env.get("FIRECRAWL_API_KEY");
