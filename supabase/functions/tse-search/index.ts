@@ -776,10 +776,11 @@ Formato JSON estrito:
 
 async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: number): Promise<OutRow[]> {
   const query = buildQuery(cargoKey, f);
-  console.log("QUERY:", query);
-  console.log("SOURCE: firecrawl");
+  console.log("STEP WEB SEARCH START");
+  console.log("WEB QUERY:", query);
   const results = await firecrawlSearch(query, deadline);
-  console.log(`[firecrawl] ${results.length} páginas`);
+  console.log("STEP WEB COUNT:", results.length);
+  console.log("STEP WEB RAW:", JSON.stringify(results.slice(0, 10).map((r) => ({ url: r.url, title: r.title }))));
 
   let extracted: Awaited<ReturnType<typeof cerebrasExtract>> = [];
   let fonte = "firecrawl+web";
@@ -790,24 +791,27 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
     console.log(`[cerebras] extraiu ${extracted.length} nomes`);
   }
 
-  // Fallback: se não veio nada do Firecrawl e temos nome → consulta direta na base de conhecimento Cerebras
   if (extracted.length === 0 && f.q && Date.now() < deadline) {
-    console.log(`[ai-lookup] firecrawl vazio — consultando Cerebras direto por "${f.q}"`);
+    console.log(`[ai-lookup] firecrawl vazio — consultando IA direto por "${f.q}"`);
     extracted = await cerebrasDirectLookup(f.q, cargoKey);
     console.log(`[ai-lookup] retornou ${extracted.length} candidatos`);
     if (extracted.length > 0) fonte = "ai-lookup";
   }
 
+  // Inferir cargo pela query quando vier sem cargo estruturado.
+  const inferredCargo = cargoKey ?? inferCargoFromQuery(query);
+
   return extracted.map((c, i) => {
     const uf = resolveUF(c.uf) ?? (f.ufs[0] ?? null);
     const statusNorm = normalize(c.status);
     const categoria = STATUS_TO_CATEGORIA[statusNorm] ?? "pre_candidato";
+    const cargoFinal = c.cargo || inferredCargo || "pre_candidato";
     return {
       id: `web-${normalize(c.nome).replace(/\s+/g, "-")}-${i}`,
       tse_id: null, nome: c.nome, nome_urna: c.nomeUrna,
       partido_sigla: c.partido, partido_nome: null, numero_partido: null,
-      cargo: c.cargo ?? cargoKey ?? "pre_candidato", regiao: null,
-      estado: uf, municipio: c.cidade,
+      cargo: cargoFinal, regiao: null,
+      estado: uf, municipio: c.cidade ?? f.municipio ?? null,
       eleito: categoria === "eleito", categoria, ano_eleicao: 2026,
       foto_url: null, redes_sociais: null,
       popularidade: 0.5, similarity: 1, total_count: 0,
@@ -815,6 +819,7 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
     } as OutRow;
   });
 }
+
 
 // ============ DEDUPE + FILTROS ============
 function dedupe(rows: OutRow[]): OutRow[] {
