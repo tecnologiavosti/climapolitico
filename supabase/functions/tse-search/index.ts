@@ -628,33 +628,83 @@ function inferCargoFromQuery(query: string): string | null {
 }
 
 
-async function firecrawlSearch(query: string, deadline: number): Promise<Array<{ url: string; title: string; markdown: string }>> {
-  const key = Deno.env.get("FIRECRAWL_API_KEY");
-  if (!key) { console.log("[firecrawl] FIRECRAWL_API_KEY ausente"); return []; }
+async function scrapeDuckDuckGo(query: string, deadline: number): Promise<Array<{ url: string; title: string; markdown: string }>> {
   if (Date.now() > deadline) return [];
   try {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 25_000);
-    const r = await fetch(`${FIRECRAWL_BASE}/search`, {
+    const t = setTimeout(() => ctrl.abort(), 15_000);
+    const r = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=br-pt`, {
       method: "POST", signal: ctrl.signal,
-      headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query, limit: 8, lang: "pt", country: "br",
-        scrapeOptions: { formats: ["markdown"], onlyMainContent: true },
-      }),
+      headers: {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "pt-BR,pt;q=0.9",
+      },
     });
     clearTimeout(t);
-    if (!r.ok) { console.log(`[firecrawl] HTTP ${r.status}`); return []; }
-    const data = await r.json();
-    const items = data?.data ?? data?.web ?? [];
-    return Array.isArray(items) ? items.map((x: any) => ({
-      url: x.url ?? "", title: x.title ?? "", markdown: x.markdown ?? x.description ?? "",
-    })).filter((x) => x.markdown) : [];
+    if (!r.ok) { console.log(`[ddg] HTTP ${r.status}`); return []; }
+    const html = await r.text();
+    const out: Array<{ url: string; title: string; markdown: string }> = [];
+    const re = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null && out.length < 10) {
+      const stripTags = (s: string) => s.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+      let url = m[1];
+      const uddg = url.match(/uddg=([^&]+)/);
+      if (uddg) url = decodeURIComponent(uddg[1]);
+      out.push({ url, title: stripTags(m[2]), markdown: stripTags(m[3]) });
+    }
+    return out;
   } catch (e) {
-    console.log("[firecrawl] erro:", (e as Error).message);
+    console.log("[ddg] erro:", (e as Error).message);
     return [];
   }
 }
+
+async function scrapeGoogle(query: string, deadline: number): Promise<Array<{ url: string; title: string; markdown: string }>> {
+  if (Date.now() > deadline) return [];
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 15_000);
+    const r = await fetch(`https://www.google.com/search?q=${encodeURIComponent(query)}&hl=pt-BR&gl=br`, {
+      signal: ctrl.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "pt-BR,pt;q=0.9",
+      },
+    });
+    clearTimeout(t);
+    if (!r.ok) { console.log(`[google] HTTP ${r.status}`); return []; }
+    const html = await r.text();
+    const out: Array<{ url: string; title: string; markdown: string }> = [];
+    const stripTags = (s: string) => s.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+    // h3 inside anchor + nearby snippet div
+    const re = /<a[^>]+href="\/url\?q=([^&"]+)[^"]*"[^>]*>[\s\S]*?<h3[^>]*>([\s\S]*?)<\/h3>[\s\S]*?<\/a>([\s\S]{0,800})/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null && out.length < 10) {
+      const url = decodeURIComponent(m[1]);
+      const title = stripTags(m[2]);
+      const snippetMatch = m[3].match(/<(?:span|div)[^>]*>([^<]{40,400})<\/(?:span|div)>/);
+      out.push({ url, title, markdown: snippetMatch ? stripTags(snippetMatch[1]) : title });
+    }
+    return out;
+  } catch (e) {
+    console.log("[google] erro:", (e as Error).message);
+    return [];
+  }
+}
+
+async function webSearch(query: string, deadline: number): Promise<Array<{ url: string; title: string; markdown: string }>> {
+  const ddg = await scrapeDuckDuckGo(query, deadline);
+  console.log("DDG COUNT:", ddg.length);
+  if (ddg.length > 0) return ddg;
+  const google = await scrapeGoogle(query, deadline);
+  console.log("GOOGLE COUNT:", google.length);
+  return google;
+}
+
+
 
 // Extrai candidatos do markdown via Cerebras (parser estruturado, NÃO gerador)
 async function cerebrasExtract(markdown: string, cargoKey: string | null, query: string): Promise<Array<{ nome: string; nomeUrna: string | null; partido: string | null; cargo: string; cidade: string | null; uf: string | null; status: string }>> {
