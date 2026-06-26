@@ -214,15 +214,12 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     // Só dispara busca quando o contexto está completo (nome + cargo + partido + UF/cidade).
     if (!hasEnoughContext) return;
 
-    // Query enriquecida ajuda a desambiguar apelidos (Dr Kachan → Kachan Júnior, vereador, Jundiaí, SP, Republicanos).
-    const enriched = [name, position, city, state, party].filter(Boolean).join(" ");
-
     let cancelled = false;
     setAiLoading(true);
     (async () => {
       try {
         const { data, error } = await supabase.functions.invoke("lookup-candidate-ai", {
-          body: { name: enriched, context: { party, office: position, state, city } },
+          body: { name, context: { party, office: position, state, city } },
         });
         if (cancelled) return;
         if (error) {
@@ -230,7 +227,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
           setAiLookup(null);
         } else {
           setAiLookup(data as AiLookup);
-          console.log("[Candidate AI lookup]", { query: enriched, result: data });
+          console.log("[Candidate AI lookup]", { name, context: { party, position, state, city }, result: data });
         }
       } finally {
         if (!cancelled) setAiLoading(false);

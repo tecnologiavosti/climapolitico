@@ -115,36 +115,39 @@ async function lookupOfficialSources(name: string) {
   return null;
 }
 
-const SYSTEM = `Você é um especialista em política brasileira. Sua tarefa é identificar
-políticos brasileiros (em qualquer esfera: federal, estadual, municipal) pelo nome,
-mesmo com erros ortográficos, falta de acentos, apelidos ou nomes parciais.
+const SYSTEM = `Você é um especialista em política brasileira. Identifique políticos
+brasileiros (federal, estadual ou municipal) pelo nome, mesmo com apelidos, abreviações,
+títulos ("Dr", "Prof", "Sgt"), nomes parciais ou erros de grafia.
 
-Fontes consideradas: TSE, Senado Federal, Câmara dos Deputados, Assembleias
-Legislativas, Câmaras Municipais, Prefeituras, governos estaduais e partidos políticos.
+Use TODO o contexto fornecido (cargo, partido, estado, município) para desambiguar.
+Vereadores e prefeitos locais SÃO políticos válidos — não recuse por falta de fama nacional.
 
 Regras:
-- Se identificar a pessoa com alta confiança, retorne os dados estruturados.
-- Se houver dúvida razoável, retorne a melhor hipótese com confidence menor.
-- Se realmente não identificar, retorne found=false.
-- NUNCA invente partido, cargo, estado ou cidade — só retorne se tiver convicção.
-- Responda found=true apenas para políticos brasileiros reais ou dirigentes partidários.
+- Confidence alta (>0.85) se o contexto bate (cargo + UF + município/partido).
+- Confidence média (0.6–0.85) se houver match plausível por sobrenome + UF.
+- found=false só se realmente não houver indício de existência política no Brasil.
+- NUNCA invente partido, cargo ou local — só preencha se tiver convicção.
 - Cargo deve ser um destes: Presidente, Vice-presidente, Ministro, Governador,
   Vice-governador, Secretário Estadual, Prefeito, Vice-prefeito, Secretário Municipal,
   Senador, Deputado Federal, Deputado Estadual, Deputado Distrital, Vereador,
   Presidente de partido.
-- Estado deve ser a sigla (UF) de 2 letras, ou null para cargos nacionais.
+- Estado: sigla UF de 2 letras, ou null para cargos nacionais.
 
-Responda APENAS com JSON válido no formato:
-{
-  "found": boolean,
-  "name": string | null,
-  "party": string | null,
-  "office": string | null,
-  "state": string | null,
-  "city": string | null,
-  "confidence": number,
-  "rationale": string
-}`;
+Responda APENAS com JSON válido:
+{"found":boolean,"name":string|null,"party":string|null,"office":string|null,"state":string|null,"city":string|null,"confidence":number,"rationale":string}`;
+
+/** Gera aliases simples a partir de um nome: remove títulos, separa primeiro+sobrenome. */
+function generateAliases(name: string): string[] {
+  const aliases = new Set<string>([name]);
+  const stripped = name.replace(/\b(dr|dra|prof|profa|sgt|cel|cap|ten|pr|pastor|padre|sr|sra)\.?\s+/gi, "").trim();
+  if (stripped && stripped !== name) aliases.add(stripped);
+  const tokens = stripped.split(/\s+/).filter(Boolean);
+  if (tokens.length >= 2) {
+    aliases.add(tokens[tokens.length - 1]); // último sobrenome
+    aliases.add(`${tokens[0]} ${tokens[tokens.length - 1]}`); // primeiro+último
+  }
+  return [...aliases];
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -158,37 +161,63 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const name = String(body?.name ?? "").trim();
+    const ctx = body?.context ?? {};
+    const ctxParty = String(ctx?.party ?? "").trim();
+    const ctxOffice = String(ctx?.office ?? "").trim();
+    const ctxState = String(ctx?.state ?? "").trim();
+    const ctxCity = String(ctx?.city ?? "").trim();
+
     if (name.length < 3) {
       return new Response(JSON.stringify({ found: false, error: "name too short" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const official = await lookupOfficialSources(name);
-    if (official) {
-      return new Response(JSON.stringify(official), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // 1) Fontes oficiais (Senado, Câmara) — só úteis para esses cargos.
+    if (!ctxOffice || ctxOffice === "Senador" || ctxOffice === "Deputado Federal") {
+      const aliases = generateAliases(name);
+      for (const alias of aliases) {
+        const official = await lookupOfficialSources(alias);
+        if (official) {
+          // Se contexto exige UF e bate, sobe confidence; se contradiz, baixa.
+          if (ctxState && official.state && ctxState.toUpperCase() !== String(official.state).toUpperCase()) {
+            official.confidence = Math.max(0.5, official.confidence - 0.3);
+          }
+          return new Response(JSON.stringify(official), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
     }
+
+    // 2) AI com contexto completo + aliases para apelidos políticos.
+    const aliases = generateAliases(name);
+    const userPrompt = [
+      `Identifique este político brasileiro: "${name}"`,
+      aliases.length > 1 ? `Possíveis variações/aliases: ${aliases.map((a) => `"${a}"`).join(", ")}` : "",
+      "Contexto declarado pelo usuário:",
+      ctxOffice ? `- Cargo: ${ctxOffice}` : "",
+      ctxParty ? `- Partido: ${ctxParty}` : "",
+      ctxState ? `- Estado (UF): ${ctxState}` : "",
+      ctxCity ? `- Município: ${ctxCity}` : "",
+      "",
+      "Use o contexto para encontrar a pessoa correta (vereadores e prefeitos locais contam).",
+    ].filter(Boolean).join("\n");
 
     const callGateway = async () => fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
-      headers: {
-        "Lovable-API-Key": LOVABLE_API_KEY,
-        "Content-Type": "application/json",
-      },
+      headers: { "Lovable-API-Key": LOVABLE_API_KEY, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: SYSTEM },
-          { role: "user", content: `Identifique este político brasileiro: "${name}"` },
+          { role: "user", content: userPrompt },
         ],
         response_format: { type: "json_object" },
       }),
     });
 
     let resp = await callGateway();
-    // Retry on 429 with exponential backoff + jitter
     for (let attempt = 1; attempt <= 3 && resp.status === 429; attempt++) {
       const wait = Math.min(8000, 600 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 400);
       console.warn(`[lookup-candidate-ai] 429 — retry ${attempt}/3 in ${wait}ms`);
@@ -199,13 +228,11 @@ Deno.serve(async (req) => {
     if (!resp.ok) {
       const text = await resp.text().catch(() => "");
       console.error("[lookup-candidate-ai] gateway error", resp.status, text);
-      // Always return 200 with found=false so the client UI degrades gracefully
       const friendly =
         resp.status === 429 ? "rate_limited" :
         resp.status === 402 ? "credits_exhausted" : "ai_gateway_error";
       return new Response(JSON.stringify({ found: false, error: friendly, status: resp.status }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -214,17 +241,35 @@ Deno.serve(async (req) => {
     let parsed: any = {};
     try { parsed = JSON.parse(raw); } catch { parsed = { found: false }; }
 
-    const confidence = typeof parsed.confidence === "number" ? parsed.confidence : 0;
+    let confidence = typeof parsed.confidence === "number" ? parsed.confidence : 0;
     const office = typeof parsed.office === "string" && VALID_OFFICES.has(parsed.office) ? parsed.office : null;
-    const highConfidence = !!parsed.found && confidence > 0.8 && !!parsed.name && !!parsed.party && !!office;
+
+    // Score weighting baseado em quanto do contexto bate (nome 35 / cargo 15 / partido 15 / UF 10 / município 25).
+    if (parsed.found && parsed.name) {
+      const eq = (a: string, b: string) => normalizeName(a) === normalizeName(b);
+      let ctxScore = 0; let ctxMax = 0;
+      const addSig = (matches: boolean, weight: number) => { ctxMax += weight; if (matches) ctxScore += weight; };
+      addSig(similarity(name, parsed.name) >= 0.6, 35);
+      if (ctxOffice) addSig(!!office && eq(ctxOffice, office), 15);
+      if (ctxParty) addSig(!!parsed.party && eq(ctxParty, parsed.party), 15);
+      if (ctxState) addSig(!!parsed.state && ctxState.toUpperCase() === String(parsed.state).toUpperCase(), 10);
+      if (ctxCity) addSig(!!parsed.city && eq(ctxCity, parsed.city), 25);
+      const ratio = ctxMax ? ctxScore / ctxMax : 0;
+      // Combina AI confidence com contexto: média ponderada
+      confidence = Math.min(0.99, Math.max(confidence, 0.5 * confidence + 0.5 * ratio));
+    }
+
+    // Aceita found=true com limiar mais baixo quando há contexto.
+    const minConf = (ctxOffice && ctxParty && ctxState) ? 0.6 : 0.8;
+    const accepted = !!parsed.found && confidence >= minConf && !!parsed.name;
 
     const result = {
-      found: highConfidence,
+      found: accepted,
       name: parsed.name ?? null,
-      party: parsed.party ?? null,
-      office,
-      state: parsed.state ?? null,
-      city: parsed.city ?? null,
+      party: parsed.party ?? ctxParty ?? null,
+      office: office ?? (ctxOffice && VALID_OFFICES.has(ctxOffice) ? ctxOffice : null),
+      state: parsed.state ?? (ctxState || null),
+      city: parsed.city ?? (ctxCity || null),
       confidence,
       rationale: parsed.rationale ?? null,
     };
