@@ -1,4 +1,5 @@
 import { Input } from "@/components/ui/input";
+import { BRAZILIAN_PARTIES } from "@/lib/brazilianParties";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -90,14 +91,21 @@ export function CatalogFilters({ filters, searchQuery, onSearchQueryChange, onCh
             </SelectContent>
           </Select>
 
-          <Input
-            placeholder="Partido (sigla)"
-            value={filters.partido?.[0] ?? ""}
-            onChange={(e) => onChange({
-              ...filters, page: 0,
-              partido: e.target.value ? [e.target.value.toUpperCase()] : undefined
-            })}
-          />
+          <Select
+            value={filters.partido?.[0] ?? ALL}
+            onValueChange={(v) => setSingle("partido", v)}
+          >
+            <SelectTrigger><SelectValue placeholder="Partido" /></SelectTrigger>
+            <SelectContent className="max-h-72">
+              <SelectItem value={ALL}>Todos os partidos</SelectItem>
+              {BRAZILIAN_PARTIES.map((p) => (
+                <SelectItem key={p.sigla} value={p.sigla}>
+                  <span className="font-semibold">{p.sigla}</span>
+                  <span className="text-muted-foreground ml-1">· {p.nome} ({p.numero})</span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           <Select value={filters.regiao?.[0] ?? ALL} onValueChange={(v) => setSingle("regiao", v)}>
             <SelectTrigger><SelectValue placeholder="Região" /></SelectTrigger>

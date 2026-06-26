@@ -1,0 +1,3 @@
+ALTER TABLE public.candidates
+  ADD COLUMN IF NOT EXISTS party_name TEXT,
+  ADD COLUMN IF NOT EXISTS party_number SMALLINT;

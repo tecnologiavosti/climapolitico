@@ -16,40 +16,7 @@ import { cn } from "@/lib/utils";
 import { normalizeCandidateName, suggestCandidateNames, type NameSuggestion } from "@/lib/candidateNameNormalizer";
 import { supabase } from "@/integrations/supabase/client";
 
-type Party = { sigla: string; nome: string; numero: number };
-
-const PARTIES: Party[] = [
-  { sigla: "MDB", nome: "Movimento Democrático Brasileiro", numero: 15 },
-  { sigla: "PDT", nome: "Partido Democrático Trabalhista", numero: 12 },
-  { sigla: "PT", nome: "Partido dos Trabalhadores", numero: 13 },
-  { sigla: "PCdoB", nome: "Partido Comunista do Brasil", numero: 65 },
-  { sigla: "PSB", nome: "Partido Socialista Brasileiro", numero: 40 },
-  { sigla: "PSDB", nome: "Partido da Social Democracia Brasileira", numero: 45 },
-  { sigla: "AGIR", nome: "AGIR", numero: 36 },
-  { sigla: "MOBILIZA", nome: "Mobilização Nacional", numero: 33 },
-  { sigla: "CIDADANIA", nome: "Cidadania", numero: 23 },
-  { sigla: "PV", nome: "Partido Verde", numero: 43 },
-  { sigla: "AVANTE", nome: "Avante", numero: 70 },
-  { sigla: "PP", nome: "Progressistas", numero: 11 },
-  { sigla: "PSTU", nome: "Partido Socialista dos Trabalhadores Unificado", numero: 16 },
-  { sigla: "PCB", nome: "Partido Comunista Brasileiro", numero: 21 },
-  { sigla: "PRTB", nome: "Partido Renovador Trabalhista Brasileiro", numero: 28 },
-  { sigla: "DC", nome: "Democracia Cristã", numero: 27 },
-  { sigla: "PCO", nome: "Partido da Causa Operária", numero: 29 },
-  { sigla: "PODE", nome: "Podemos", numero: 20 },
-  { sigla: "REPUBLICANOS", nome: "Republicanos", numero: 10 },
-  { sigla: "PSOL", nome: "Partido Socialismo e Liberdade", numero: 50 },
-  { sigla: "PL", nome: "Partido Liberal", numero: 22 },
-  { sigla: "PSD", nome: "Partido Social Democrático", numero: 55 },
-  { sigla: "SOLIDARIEDADE", nome: "Solidariedade", numero: 77 },
-  { sigla: "NOVO", nome: "Partido Novo", numero: 30 },
-  { sigla: "REDE", nome: "Rede Sustentabilidade", numero: 18 },
-  { sigla: "DEMOCRATA", nome: "Democrata", numero: 35 },
-  { sigla: "UP", nome: "Unidade Popular", numero: 80 },
-  { sigla: "UNIÃO", nome: "União Brasil", numero: 44 },
-  { sigla: "PRD", nome: "Partido Renovação Democrática", numero: 25 },
-  { sigla: "MISSÃO", nome: "Partido Missão", numero: 14 },
-];
+import { BRAZILIAN_PARTIES as PARTIES, POPULAR_PARTY_SIGLAS, findPartyBySigla, type BrazilianParty as Party } from "@/lib/brazilianParties";
 
 const POSITIONS: { name: string; Icon: React.ComponentType<{ className?: string }> }[] = [
   // Executivo
@@ -111,6 +78,8 @@ export type AddCandidatePayload = {
   profileType: "politician";
   fullName: string;
   party: string;
+  partyName?: string;
+  partyNumber?: number;
   position: string;
   region: string;
   state: string;
@@ -310,7 +279,10 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     const region = scope === "national" ? "Brasil" : (STATE_TO_REGION[state] ?? "");
     onSubmit({
       profileType: "politician",
-      fullName, party, position, region,
+      fullName, party,
+      partyName: findPartyBySigla(party)?.nome,
+      partyNumber: findPartyBySigla(party)?.numero,
+      position, region,
       state,
       city: city.trim() || undefined,
       socials: {}, photoFile: null,
@@ -483,7 +455,31 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
 
           {/* Partido */}
           <Field label="Partido" error={errors.party} required>
-            <PartyCombobox value={party} onChange={setParty} disabled={isPending} />
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-1.5">
+                {POPULAR_PARTY_SIGLAS.map((sigla) => {
+                  const isSel = party === sigla;
+                  return (
+                    <button
+                      type="button"
+                      key={sigla}
+                      disabled={isPending}
+                      onClick={() => setParty(isSel ? "" : sigla)}
+                      className={cn(
+                        "px-3 h-8 rounded-full text-xs font-semibold border transition-all",
+                        "hover:scale-[1.03] active:scale-[0.97]",
+                        isSel
+                          ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                          : "bg-muted/40 border-border/60 text-foreground hover:bg-muted",
+                      )}
+                    >
+                      {sigla}
+                    </button>
+                  );
+                })}
+              </div>
+              <PartyCombobox value={party} onChange={setParty} disabled={isPending} />
+            </div>
           </Field>
 
           {/* Cargo político */}

@@ -171,6 +171,8 @@ export default function CandidatesCatalog() {
         user_id: user.id,
         full_name: p.fullName,
         party: p.party,
+        party_name: p.partyName ?? null,
+        party_number: p.partyNumber ?? null,
         region,
         social_media_link: null,
       });
