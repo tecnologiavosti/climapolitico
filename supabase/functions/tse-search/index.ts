@@ -1041,8 +1041,16 @@ Deno.serve(async (req) => {
       ? await searchByName(f, deadline)
       : await searchByFilters(f, deadline);
 
+    const tseRows = all.filter((r) => r.fonte.startsWith("tse"));
+    const webRows = all.filter((r) => r.fonte.includes("firecrawl") || r.fonte === "ai-lookup");
+    console.log("STEP TSE COUNT:", tseRows.length);
+    console.log("STEP TSE DATA:", JSON.stringify(tseRows.slice(0, 5).map((r) => ({ nome: r.nome, cargo: r.cargo, uf: r.estado, mun: r.municipio }))));
+    console.log("STEP MERGED COUNT (pre-dedupe):", all.length);
+
     const deduped = dedupe(all);
+    console.log("STEP MERGED COUNT (post-dedupe):", deduped.length);
     const filtered = applyFilters(deduped, f);
+
     console.log("FINAL COUNT:", filtered.length);
     console.log("FINAL TOP10:", JSON.stringify(filtered.slice(0, 10).map((r) => ({
       nome: r.nome, cargo: r.cargo, estado: r.estado, municipio: r.municipio, fonte: r.fonte,
