@@ -41,6 +41,7 @@ export default function CandidatesCatalog() {
   const queryClient = useQueryClient();
   // Filtros editáveis (UI). NÃO disparam busca.
   const [pendingFilters, setPendingFilters] = useState<Filters>({});
+  const [searchQuery, setSearchQuery] = useState("");
   // Filtros aplicados — só estes disparam a query.
   const [appliedFilters, setAppliedFilters] = useState<Filters | null>(null);
 
@@ -58,23 +59,33 @@ export default function CandidatesCatalog() {
   const busy = !!appliedFilters && (isLoading || isFetching);
 
   const handleSearch = () => {
-    console.log("SEARCH BUTTON CLICKED");
-    console.log("Search query (q):", pendingFilters.q);
-    const v = validate(pendingFilters);
+    console.log("SEARCH CLICK");
+    console.log("SEARCH QUERY:", searchQuery);
+    const nextFilters = { ...pendingFilters, q: searchQuery.trim(), page: 0 };
+    const v = validate(nextFilters);
     console.log("Validation", v);
     if (!v.ok) {
       toast.error(v.message ?? "Filtros inválidos.");
       return;
     }
-    const next = { ...pendingFilters, page: 0 };
+    const next = { ...nextFilters };
+    console.log("QUERY BEFORE REQUEST:", next.q);
     console.log("TSE Query", next);
     setAppliedFilters(next);
+  };
+
+  const handleSearchQueryChange = (value: string) => {
+    setSearchQuery(value);
+    setPendingFilters((current) => ({ ...current, page: 0, q: value }));
   };
 
   // Quando o usuário muda o cargo, esconder resultados antigos.
   const handleFiltersChange = (next: Filters) => {
     const prevCargo = pendingFilters.cargo?.[0];
     const newCargo = next.cargo?.[0];
+    if ((next.q ?? "") !== searchQuery) {
+      setSearchQuery(next.q ?? "");
+    }
     setPendingFilters(next);
     if (prevCargo !== newCargo && appliedFilters) {
       setAppliedFilters(null);
@@ -159,6 +170,8 @@ export default function CandidatesCatalog() {
 
       <CatalogFilters
         filters={pendingFilters}
+        searchQuery={searchQuery}
+        onSearchQueryChange={handleSearchQueryChange}
         onChange={handleFiltersChange}
         onSubmit={handleSearch}
         disabled={busy}
@@ -255,6 +268,7 @@ export default function CandidatesCatalog() {
                       variant="outline"
                       onClick={() => {
                         const next = { ...pendingFilters, q: s.nome, page: 0 };
+                        setSearchQuery(s.nome);
                         setPendingFilters(next);
                         setAppliedFilters(next);
                       }}

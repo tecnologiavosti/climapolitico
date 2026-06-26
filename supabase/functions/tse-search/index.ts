@@ -3,6 +3,8 @@
 // Camada 2: Firecrawl search (Wikipedia, G1, UOL, sites oficiais) p/ cargos não-TSE e nomes livres
 // Camada 3: Cerebras (somente normalização/dedupe semântica/correção ortográfica). NUNCA gera candidatos.
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { createClient } from "npm:@supabase/supabase-js@2";
+import { unzipSync } from "npm:fflate@0.8.2";
 
 // ============ CONSTANTES ============
 const PAGE_SIZE = 50;
@@ -32,6 +34,7 @@ const CARGO_LABEL: Record<string, string> = {
 const NON_TSE_CARGOS = new Set(["ministro", "presidente_partido", "pre_candidato"]);
 const MUNICIPAL_CARGOS = new Set(["prefeito", "vice_prefeito", "vereador"]);
 const FEDERAL_BR_CARGOS = new Set(["presidente", "vice_presidente"]);
+const TSE_OPEN_DATA_BASE = "https://cdn.tse.jus.br/estatistica/sead/odsele/consulta_cand";
 
 // IDs reais do endpoint /eleicao/ordinarias do TSE
 const ELEICAO_MUN_2024 = 2045202024;
@@ -48,6 +51,30 @@ const UF_DICT: Record<string, string> = {
 };
 for (const uf of UFS) UF_DICT[uf.toLowerCase()] = uf;
 
+const REGION_BY_UF: Record<string, string> = {
+  AC:"norte", AM:"norte", AP:"norte", PA:"norte", RO:"norte", RR:"norte", TO:"norte",
+  AL:"nordeste", BA:"nordeste", CE:"nordeste", MA:"nordeste", PB:"nordeste", PE:"nordeste", PI:"nordeste", RN:"nordeste", SE:"nordeste",
+  DF:"centro-oeste", GO:"centro-oeste", MT:"centro-oeste", MS:"centro-oeste",
+  ES:"sudeste", MG:"sudeste", RJ:"sudeste", SP:"sudeste",
+  PR:"sul", RS:"sul", SC:"sul",
+};
+
+const TSE_LABEL_TO_CARGO: Record<string, string> = {
+  "presidente": "presidente",
+  "vice-presidente": "vice_presidente",
+  "governador": "governador",
+  "vice-governador": "vice_governador",
+  "senador": "senador",
+  "deputado federal": "deputado_federal",
+  "deputado estadual": "deputado_estadual",
+  "deputado distrital": "deputado_distrital",
+  "prefeito": "prefeito",
+  "vice-prefeito": "vice_prefeito",
+  "vereador": "vereador",
+};
+
+const openDataZipCache = new Map<number, Uint8Array>();
+
 const DECEASED_BLACKLIST = new Set([
   "getulio vargas","eneas carneiro","ulysses guimaraes","tancredo neves","leonel brizola",
   "mario covas","itamar franco","jose alencar","eduardo campos","luiz carlos prestes",
@@ -57,6 +84,34 @@ const DECEASED_BLACKLIST = new Set([
 // ============ HELPERS ============
 function normalize(s: unknown): string {
   return String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
+function parseCsvLine(line: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; }
+        else inQuotes = false;
+      } else cur += ch;
+    } else if (ch === '"') inQuotes = true;
+    else if (ch === ";") { out.push(cur.trim()); cur = ""; }
+    else cur += ch;
+  }
+  out.push(cur.trim());
+  return out.map((s) => s.replace(/^"|"$/g, "").trim());
+}
+
+function cargoFromTseLabel(raw: unknown): string | null {
+  return TSE_LABEL_TO_CARGO[normalize(raw).replace(/\s+/g, " ")] ?? null;
+}
+
+function isEleitoTse(raw: unknown): boolean {
+  const s = normalize(raw);
+  return s === "eleito" || s === "eleito por qp" || s === "eleito por media" || s.startsWith("eleito");
 }
 
 function resolveUF(raw: unknown): string | null {
@@ -102,6 +157,8 @@ async function readFilters(req: Request): Promise<Filters> {
   const url = new URL(req.url);
   let body: any = {};
   if (req.method === "POST") { try { body = await req.json(); } catch { /* noop */ } }
+  console.log("REQUEST BODY:", JSON.stringify(body));
+  console.log("QUERY RECEIVED:", body.q ?? url.searchParams.get("q"));
   const get = (k: string) => body[k] ?? url.searchParams.get(k);
   const csv = (v: string | null | undefined) => v ? String(v).split(",").map((x) => x.trim()).filter(Boolean) : [];
   const arr = (k: string) => Array.isArray(body[k]) ? body[k] as string[] : csv(url.searchParams.get(k));
@@ -127,6 +184,56 @@ interface OutRow {
   foto_url: string | null; redes_sociais: null; popularidade: number;
   similarity: number; total_count: number;
   fonte: string; confidence: number;
+}
+
+async function searchLocalCatalog(f: Filters): Promise<OutRow[]> {
+  if (!f.q?.trim()) return [];
+  const url = Deno.env.get("SUPABASE_URL");
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !key) { console.log("[local-catalog] env ausente"); return []; }
+  try {
+    const admin = createClient(url, key, { auth: { persistSession: false } });
+    const { data, error } = await admin.rpc("search_politicians", {
+      q: f.q.trim(),
+      p_cargo: f.cargos.length ? f.cargos : null,
+      p_partido: f.partidos.length ? f.partidos : null,
+      p_regiao: null,
+      p_estado: f.ufs.length ? f.ufs : null,
+      p_municipio: f.municipio?.trim() || null,
+      p_only_eleitos: !!f.onlyEleitos,
+      p_limit: 200,
+      p_offset: 0,
+    });
+    if (error) { console.log("[local-catalog] erro:", error.message); return []; }
+    const rows = Array.isArray(data) ? data : [];
+    console.log(`[local-catalog] ${rows.length} resultados`);
+    return rows.map((r: any) => ({
+      id: `local-${r.id}`,
+      tse_id: r.tse_id ?? null,
+      nome: r.nome,
+      nome_urna: r.nome_urna ?? null,
+      partido_sigla: r.partido_sigla ?? null,
+      partido_nome: r.partido_nome ?? null,
+      numero_partido: r.numero_partido ?? null,
+      cargo: r.cargo ?? null,
+      regiao: r.regiao ?? null,
+      estado: r.estado ?? null,
+      municipio: r.municipio ?? null,
+      eleito: !!r.eleito,
+      categoria: r.eleito ? "eleito" : "ex_candidato",
+      ano_eleicao: r.ano_eleicao ?? null,
+      foto_url: r.foto_url ?? null,
+      redes_sociais: r.redes_sociais ?? null,
+      popularidade: Number(r.popularidade ?? 0.5),
+      similarity: Number(r.similarity ?? 1),
+      total_count: Number(r.total_count ?? rows.length),
+      fonte: "catalogo-local",
+      confidence: 100,
+    }));
+  } catch (e) {
+    console.log("[local-catalog] falha:", (e as Error).message);
+    return [];
+  }
 }
 
 // ============ CAMADA 1 — TSE ============
@@ -198,7 +305,7 @@ function mapTse(c: any, cargoKey: string, uf: string | null, municipio: string |
   const partidoSigla = c.partido?.sigla ?? c.sgPartido ?? null;
   const partidoNumero = c.partido?.numero ?? c.nrPartido ?? null;
   const partidoNome = c.partido?.nome ?? c.nmPartido ?? null;
-  const desc = c.descricaoSituacao ?? c.descricaoSituacaoCandidato ?? c.dsSit ?? c.st ?? "";
+  const desc = c.descricaoTotalizacao ?? c.descricaoSituacao ?? c.descricaoSituacaoCandidato ?? c.dsSit ?? c.st ?? "";
   const st = statusFromTse(desc);
   return {
     id: `tse-${ano}-${sq ?? `${normalize(nome)}-${uf ?? ""}-${municipio ?? ""}`}`,
@@ -213,6 +320,142 @@ function mapTse(c: any, cargoKey: string, uf: string | null, municipio: string |
     popularidade: st.eleito ? 1 : 0.5, similarity: 1, total_count: 0,
     fonte: `tse-${ano}`, confidence: 100,
   };
+}
+
+async function fetchOpenDataZip(year: number, deadline: number): Promise<Uint8Array | null> {
+  const cached = openDataZipCache.get(year);
+  if (cached) return cached;
+  if (Date.now() > deadline) return null;
+  const url = `${TSE_OPEN_DATA_BASE}/consulta_cand_${year}.zip`;
+  console.log("TSE OPEN DATA REQUEST:", url);
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 20_000);
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+        "Accept": "application/zip,application/octet-stream,*/*",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+        "Referer": "https://www.tse.jus.br/",
+      },
+    });
+    clearTimeout(t);
+    if (!res.ok) { console.log(`[tse-open-data] HTTP ${res.status}`); return null; }
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    openDataZipCache.set(year, bytes);
+    return bytes;
+  } catch (e) {
+    console.log("[tse-open-data] erro download:", (e as Error).message);
+    return null;
+  }
+}
+
+function mapOpenDataRow(row: Record<string, string>, year: number): OutRow | null {
+  const nome = row.NM_CANDIDATO || row.NM_URNA_CANDIDATO;
+  const cargo = cargoFromTseLabel(row.DS_CARGO);
+  if (!nome || !cargo) return null;
+  const uf = row.SG_UF === "BR" ? null : (row.SG_UF || null);
+  const municipio = MUNICIPAL_CARGOS.has(cargo) ? (row.NM_UE || null) : null;
+  const eleito = isEleitoTse(row.DS_SIT_TOT_TURNO);
+  const tseId = row.SQ_CANDIDATO || `${year}-${normalize(nome)}-${uf ?? "BR"}-${municipio ?? ""}`;
+  return {
+    id: `tse-open-${year}-${tseId}`,
+    tse_id: tseId,
+    nome,
+    nome_urna: row.NM_URNA_CANDIDATO || null,
+    partido_sigla: row.SG_PARTIDO || null,
+    partido_nome: row.NM_PARTIDO || null,
+    numero_partido: row.NR_PARTIDO || null,
+    cargo,
+    regiao: null,
+    estado: uf,
+    municipio,
+    eleito,
+    categoria: eleito ? "eleito" : "ex_candidato",
+    ano_eleicao: year,
+    foto_url: null,
+    redes_sociais: null,
+    popularidade: eleito ? 1 : 0.5,
+    similarity: 1,
+    total_count: 0,
+    fonte: `tse-open-data-${year}`,
+    confidence: 100,
+  };
+}
+
+function nameMatchesQuery(row: Record<string, string>, q: string): boolean {
+  const hay = normalize(`${row.NM_CANDIDATO ?? ""} ${row.NM_URNA_CANDIDATO ?? ""} ${row.NM_SOCIAL_CANDIDATO ?? ""}`);
+  const tokens = q.split(/\s+/).filter(Boolean);
+  return hay.includes(q) || tokens.every((t) => hay.split(/\s+/).some((h) => h.includes(t) || t.includes(h)));
+}
+
+async function searchOpenDataYear(year: number, cargoKey: string | null, f: Filters, deadline: number): Promise<OutRow[]> {
+  if (!f.q || Date.now() > deadline) return [];
+  const zip = await fetchOpenDataZip(year, deadline);
+  if (!zip) return [];
+
+  const targetUfs = new Set(f.ufs);
+  const q = normalize(f.q);
+  const files = unzipSync(zip, {
+    filter: (file) => {
+      if (!new RegExp(`consulta_cand_${year}_(BRASIL|[A-Z]{2})\\.csv$`, "i").test(file.name)) return false;
+      if (targetUfs.size === 0) return true;
+      return [...targetUfs].some((uf) => file.name.toUpperCase().endsWith(`_${uf}.CSV`));
+    },
+  });
+
+  const best = new Map<string, OutRow>();
+  for (const [fileName, bytes] of Object.entries(files)) {
+    if (Date.now() > deadline) break;
+    const text = new TextDecoder("iso-8859-1").decode(bytes);
+    const lines = text.split(/\r?\n/);
+    if (lines.length < 2) continue;
+    const header = parseCsvLine(lines[0]).map((h) => h.toUpperCase());
+    const idx = (name: string) => header.indexOf(name);
+    const needed = ["SQ_CANDIDATO", "NM_CANDIDATO", "NM_URNA_CANDIDATO", "DS_CARGO", "SG_UF", "NM_UE", "DS_SIT_TOT_TURNO"];
+    if (needed.some((n) => idx(n) < 0)) { console.log(`[tse-open-data] schema inesperado ${fileName}`); continue; }
+
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line) continue;
+      const cols = parseCsvLine(line);
+      const row: Record<string, string> = {};
+      for (let c = 0; c < header.length; c++) row[header[c]] = cols[c] ?? "";
+      if (!nameMatchesQuery(row, q)) continue;
+      const cargo = cargoFromTseLabel(row.DS_CARGO);
+      if (!cargo || (cargoKey && cargo !== cargoKey)) continue;
+      if (f.ufs.length && !f.ufs.includes(row.SG_UF)) continue;
+      if (f.municipio && !normalize(row.NM_UE).includes(normalize(f.municipio))) continue;
+      if (f.partidos.length && !f.partidos.includes((row.SG_PARTIDO ?? "").toUpperCase())) continue;
+      if (f.onlyEleitos && !isEleitoTse(row.DS_SIT_TOT_TURNO)) continue;
+      const mapped = mapOpenDataRow(row, year);
+      if (!mapped) continue;
+      const prev = best.get(mapped.tse_id ?? mapped.id);
+      const prevScore = prev ? (prev.eleito ? 10 : 0) + Number(prev.ano_eleicao ?? 0) / 10_000 : -1;
+      const score = (mapped.eleito ? 10 : 0) + Number(mapped.ano_eleicao ?? 0) / 10_000;
+      if (!prev || score >= prevScore) best.set(mapped.tse_id ?? mapped.id, mapped);
+    }
+  }
+  const rows = [...best.values()];
+  console.log(`[tse-open-data] ${year} ${cargoKey ?? "livre"} → ${rows.length}`);
+  return rows;
+}
+
+async function searchOpenData(cargoKey: string | null, f: Filters, deadline: number): Promise<OutRow[]> {
+  const years = cargoKey && MUNICIPAL_CARGOS.has(cargoKey)
+    ? [2024]
+    : cargoKey && CARGO_TO_TSE[cargoKey]
+    ? [2022, 2024]
+    : [2024, 2022];
+  const out: OutRow[] = [];
+  for (const year of years) {
+    if (Date.now() > deadline) break;
+    const rows = await searchOpenDataYear(year, cargoKey, f, deadline);
+    out.push(...rows);
+    if (rows.length > 0 && !cargoKey) break;
+  }
+  return out;
 }
 
 async function mapWithLimit<T, R>(items: T[], limit: number, fn: (item: T, idx: number) => Promise<R>): Promise<R[]> {
@@ -532,7 +775,8 @@ function fuzzyTokenMatch(hayTokens: string[], token: string): boolean {
 
 function applyFilters(rows: OutRow[], f: Filters): OutRow[] {
   const q = normalize(f.q);
-  return rows.filter((r) => {
+  console.log("CANDIDATES BEFORE FILTER:", rows.length);
+  const candidates = rows.filter((r) => {
     if (f.onlyEleitos && !r.eleito) return false;
     if (f.partidos.length && !f.partidos.includes((r.partido_sigla ?? "").toUpperCase())) return false;
     if (q) {
@@ -547,6 +791,8 @@ function applyFilters(rows: OutRow[], f: Filters): OutRow[] {
     }
     return true;
   });
+  console.log("CANDIDATES AFTER FILTER:", candidates.length);
+  return candidates;
 }
 
 // ============ HANDLER ============
@@ -571,6 +817,13 @@ Deno.serve(async (req) => {
     const sources = new Set<string>();
     let partial = false;
 
+    if (f.q) {
+      const localRows = await searchLocalCatalog(f);
+      console.log(`RAW RESULTS (local-catalog): ${localRows.length}`);
+      all.push(...localRows);
+      if (localRows.length > 0) sources.add("catalogo-local");
+    }
+
     // sem cargo + tem q → busca livre via Firecrawl
     const cargosTodo = f.cargos.length > 0 ? f.cargos : [null as unknown as string];
 
@@ -591,9 +844,17 @@ Deno.serve(async (req) => {
         }
       }
 
+      const hasTseRowsBeforeOpenData = all.length;
+      if (f.q && (!cargo || CARGO_TO_TSE[cargo])) {
+        const openRows = await searchOpenData(cargo ?? null, f, deadline);
+        console.log(`RAW RESULTS (tse-open-data/${cargo ?? "livre"}): ${openRows.length}`);
+        all.push(...openRows);
+        if (openRows.length > 0) sources.add("tse-open-data");
+      }
+
       // Camada 2: Firecrawl
-      const tseEmpty = !cargo || !CARGO_TO_TSE[cargo] || all.length === 0;
-      const needsWeb = !cargo || NON_TSE_CARGOS.has(cargo) || tseEmpty || !!f.q;
+      const hasTseRows = all.length > hasTseRowsBeforeOpenData;
+      const needsWeb = !hasTseRows && (!cargo || NON_TSE_CARGOS.has(cargo) || !CARGO_TO_TSE[cargo]);
       if (needsWeb && Date.now() < deadline) {
         const webRows = await searchFirecrawl(cargo, f, deadline);
         console.log(`RAW RESULTS (web/${cargo ?? "livre"}): ${webRows.length}`);

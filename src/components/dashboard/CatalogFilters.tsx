@@ -35,6 +35,8 @@ const UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","P
 
 interface Props {
   filters: Filters;
+  searchQuery: string;
+  onSearchQueryChange: (value: string) => void;
   onChange: (f: Filters) => void;
   totalResults?: number;
   disabled?: boolean;
@@ -43,7 +45,7 @@ interface Props {
 
 const ALL = "__all__";
 
-export function CatalogFilters({ filters, onChange, totalResults, disabled, onSubmit }: Props) {
+export function CatalogFilters({ filters, searchQuery, onSearchQueryChange, onChange, totalResults, disabled, onSubmit }: Props) {
   // Single-select wrappers (RPC accepts arrays — pass [v] or undefined)
   const setSingle = (k: "cargo" | "partido" | "regiao" | "estado", v: string) => {
     const next = { ...filters, page: 0, [k]: v === ALL ? undefined : [v] };
@@ -63,8 +65,11 @@ export function CatalogFilters({ filters, onChange, totalResults, disabled, onSu
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Buscar por nome (Enter para buscar)…"
-            value={filters.q ?? ""}
-            onChange={(e) => onChange({ ...filters, page: 0, q: e.target.value })}
+            value={searchQuery}
+            onChange={(e) => {
+              console.log("INPUT:", e.target.value);
+              onSearchQueryChange(e.target.value);
+            }}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onSubmit?.(); } }}
             className="pl-10"
           />
