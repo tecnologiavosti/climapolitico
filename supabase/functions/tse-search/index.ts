@@ -726,21 +726,32 @@ Contexto da busca: "${query}"
 Texto:
 ${markdown.slice(0, 6000)}`;
   try {
-    const r = await fetch("https://api.cerebras.ai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+    const lovableKey = Deno.env.get("LOVABLE_API_KEY");
+    const useGateway = !!lovableKey;
+    const url = useGateway
+      ? "https://ai.gateway.lovable.dev/v1/chat/completions"
+      : "https://api.cerebras.ai/v1/chat/completions";
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (useGateway) {
+      headers["Lovable-API-Key"] = lovableKey!;
+      headers["X-Lovable-AIG-SDK"] = "vercel-ai-sdk";
+    } else {
+      headers["Authorization"] = `Bearer ${key}`;
+    }
+    const r = await fetch(url, {
+      method: "POST", headers,
       body: JSON.stringify({
-        model: "llama-3.3-70b",
+        model: useGateway ? "google/gemini-3-flash-preview" : "llama-3.3-70b",
         messages: [
           { role: "system", content: "Você é um parser. Extrai dados estruturados de texto. NUNCA inventa informação. Retorna apenas JSON válido." },
           { role: "user", content: prompt },
         ],
         temperature: 0,
         response_format: { type: "json_object" },
-        max_tokens: 2000,
       }),
     });
-    if (!r.ok) { console.log(`[cerebras] HTTP ${r.status}`); return []; }
+    if (!r.ok) { console.log(`[extract] HTTP ${r.status} (${useGateway ? "gateway" : "cerebras"})`); return []; }
+
     const data = await r.json();
     const content = data?.choices?.[0]?.message?.content ?? "{}";
     const parsed = JSON.parse(content);
