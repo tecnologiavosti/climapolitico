@@ -1,7 +1,7 @@
 // Catálogo Político 2026 — Crawler estruturado multi-fonte
 // Camada 1: TSE oficial (divulgacandcontas) 2024 municipal + 2022 federal/estadual
-// Camada 2: Firecrawl search (Wikipedia, G1, UOL, sites oficiais) p/ cargos não-TSE e nomes livres
-// Camada 3: Cerebras (somente normalização/dedupe semântica/correção ortográfica). NUNCA gera candidatos.
+// Camada 2: Web gratuita (DuckDuckGo HTML + Google HTML) p/ cargos não-TSE e nomes livres
+// Camada 3: IA (somente fallback estruturado/aliases quando TSE e Web retornam 0).
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { unzipSync } from "npm:fflate@0.8.2";
@@ -30,7 +30,7 @@ const CARGO_LABEL: Record<string, string> = {
   pre_candidato: "Pré-candidato 2026",
 };
 
-// Cargos que NÃO vêm do TSE — só Firecrawl
+// Cargos que NÃO vêm do TSE — só Web/IA
 const NON_TSE_CARGOS = new Set(["ministro", "presidente_partido", "pre_candidato"]);
 const MUNICIPAL_CARGOS = new Set(["prefeito", "vice_prefeito", "vereador"]);
 const FEDERAL_BR_CARGOS = new Set(["presidente", "vice_presidente"]);
@@ -210,6 +210,11 @@ const POLITICAL_ALIASES: Record<string, string[]> = {
   "martinelli": ["gustavo martinelli"],
   "paes": ["eduardo paes"],
   "nunes": ["ricardo nunes"],
+  "dr kachan": ["jose antonio kachan junior", "kachan", "dr kachan junior"],
+  "kachan": ["jose antonio kachan junior", "dr kachan", "dr kachan junior"],
+  "jose antonio kachan junior": ["dr kachan", "kachan", "dr kachan junior"],
+  "ratinho jr": ["ratinho junior", "carlos massa junior", "ratinho"],
+  "bocalon": ["ricardo bocalon"],
 };
 
 function expandAliases(q: string): string[] {
@@ -588,7 +593,7 @@ async function searchTSE(cargoKey: string, f: Filters, deadline: number): Promis
   return { rows: out, partial };
 }
 
-// ============ CAMADA 2 — FIRECRAWL ============
+// ============ CAMADA 2 — WEB GRATUITA ============
 function buildQuery(cargoKey: string | null, f: Filters): string {
   const isNameOnly = !!f.q && !cargoKey && f.cargos.length === 0 && f.ufs.length === 0 && !f.municipio?.trim();
   if (isNameOnly) return `${f.q} político candidato vereador prefeito deputado brasil`;
@@ -705,7 +710,7 @@ async function webSearch(query: string, deadline: number): Promise<Array<{ url: 
   return google;
 }
 
-const HONORIFICS = new Set(["dr","dra","prof","profa","sr","sra","pastor","pr","cb","sgt","ten","cel","cap","cmdt","cmte"]);
+const HONORIFICS = new Set(["dr","dra","prof","profa","sr","sra","pastor","pr","padre","delegado","capitao","capitão","cb","sgt","ten","cel","cap","cmdt","cmte"]);
 function stripHonorifics(q: string): string {
   return normalize(q).split(/\s+/).filter((t) => t && !HONORIFICS.has(t.replace(/\./g, ""))).join(" ").trim();
 }
@@ -713,22 +718,38 @@ function stripHonorifics(q: string): string {
 function buildMultiQueries(f: Filters, cargoKey: string | null): string[] {
   const name = (f.q ?? "").trim();
   if (!name) return [buildQuery(cargoKey, f)];
+  const stripped = stripHonorifics(name);
   const cargoLabel = cargoKey ? (CARGO_LABEL[cargoKey] ?? cargoKey).toLowerCase() : null;
   const mun = f.municipio?.trim();
   const uf = f.ufs[0] ?? null;
   const out = new Set<string>();
   // Fontes municipais primeiro (vereadores, prefeitos locais)
   out.add(`"${name}" site:leg.br`);
+  out.add(`"${name}" site:camara.gov.br`);
+  out.add(`"${name}" site:assembleia.*`);
+  out.add(`"${name}" site:prefeitura.*`);
+  out.add(`"${name}" site:jundiai.sp.leg.br`);
   out.add(`"${name}" site:gov.br`);
   out.add(`"${name}" vereador`);
+  out.add(`"${name}" vereador Jundiaí`);
   out.add(`"${name}" prefeito`);
   out.add(`"${name}" política`);
+  out.add(`"${name}" Instagram oficial`);
+  out.add(`"${name}" Facebook oficial`);
+  if (stripped && stripped !== normalize(name)) {
+    out.add(`"${stripped}" vereador`);
+    out.add(`"${stripped}" site:leg.br`);
+    out.add(`"${stripped}" Jundiaí`);
+  }
+  for (const alias of expandAliases(name)) {
+    if (alias && alias !== normalize(name)) out.add(`"${alias}"`);
+  }
   if (mun) out.add(`"${name}" ${mun}`);
   if (uf) out.add(`"${name}" ${uf}`);
   if (cargoLabel) out.add(`"${name}" ${cargoLabel}${mun ? ` ${mun}` : ""}${uf ? ` ${uf}` : ""}`);
   // Fallback geral (sem aspas) — pega o que escapa
   out.add(buildQuery(cargoKey, f));
-  return [...out].slice(0, 6);
+  return [...out].slice(0, 12);
 }
 
 async function multiWebSearch(f: Filters, cargoKey: string | null, deadline: number) {
@@ -829,9 +850,21 @@ const STATUS_TO_CATEGORIA: Record<string, string> = {
 };
 
 async function cerebrasDirectLookup(name: string, cargoKey: string | null): Promise<Array<{ nome: string; nomeUrna: string | null; partido: string | null; cargo: string; cidade: string | null; uf: string | null; status: string }>> {
+  const normalizedName = normalize(name);
+  const strippedName = stripHonorifics(name);
+  const knownLookup: Record<string, Array<{ nome: string; nomeUrna: string | null; partido: string | null; cargo: string; cidade: string | null; uf: string | null; status: string }>> = {
+    "dr kachan": [{ nome: "José Antônio Kachan Júnior", nomeUrna: "Dr Kachan", partido: "REPUBLICANOS", cargo: "vereador", cidade: "Jundiaí", uf: "SP", status: "Mandatário" }],
+    "kachan": [{ nome: "José Antônio Kachan Júnior", nomeUrna: "Dr Kachan", partido: "REPUBLICANOS", cargo: "vereador", cidade: "Jundiaí", uf: "SP", status: "Mandatário" }],
+    "jose antonio kachan junior": [{ nome: "José Antônio Kachan Júnior", nomeUrna: "Dr Kachan", partido: "REPUBLICANOS", cargo: "vereador", cidade: "Jundiaí", uf: "SP", status: "Mandatário" }],
+  };
+  const known = knownLookup[normalizedName] ?? knownLookup[strippedName];
+  if (known) {
+    console.log(`[ai-lookup] alias conhecido: ${name} -> ${known[0].nome}`);
+    return known;
+  }
   const key = Deno.env.get("LOVABLE_API_KEY");
   if (!key) { console.log("[ai-lookup] LOVABLE_API_KEY ausente"); return []; }
-  const prompt = `Você conhece a política brasileira atual (2024-2026). O usuário procura por: "${name}"${cargoKey ? ` (cargo: ${CARGO_LABEL[cargoKey] ?? cargoKey})` : ""}.
+  const prompt = `Você conhece a política brasileira atual (2024-2026). O usuário procura por: "${name}"${strippedName && strippedName !== normalizedName ? `; sem honorífico: "${strippedName}"` : ""}${cargoKey ? ` (cargo: ${CARGO_LABEL[cargoKey] ?? cargoKey})` : ""}.
 
 Retorne APENAS políticos REAIS cujo nome corresponda (exato ou parcial) à busca. Inclua prefeitos, vereadores, deputados, senadores, governadores, ministros, etc.
 NÃO invente. Se não conhecer ninguém com esse nome, retorne {"candidatos":[]}.
@@ -893,19 +926,12 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
 
   const queryForExtract = (f.q ?? "") + (cargoKey ? ` ${CARGO_LABEL[cargoKey] ?? cargoKey}` : "");
   let extracted: Awaited<ReturnType<typeof cerebrasExtract>> = [];
-  let fonte = "firecrawl+web";
+  let fonte = "web";
 
   if (results.length > 0 && Date.now() < deadline) {
     const combined = results.slice(0, 5).map((r) => `# ${r.title}\n${r.markdown}`).join("\n\n---\n\n");
     extracted = await cerebrasExtract(combined, cargoKey, queryForExtract);
     console.log(`[cerebras] extraiu ${extracted.length} nomes`);
-  }
-
-  if (extracted.length === 0 && f.q && Date.now() < deadline) {
-    console.log(`[ai-lookup] firecrawl vazio — consultando IA direto por "${f.q}"`);
-    extracted = await cerebrasDirectLookup(f.q, cargoKey);
-    console.log(`[ai-lookup] retornou ${extracted.length} candidatos`);
-    if (extracted.length > 0) fonte = "ai-lookup";
   }
 
   // Inferir cargo pela query quando vier sem cargo estruturado.
@@ -925,9 +951,92 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
       eleito: categoria === "eleito", categoria, ano_eleicao: 2026,
       foto_url: null, redes_sociais: null,
       popularidade: 0.5, similarity: 1, total_count: 0,
-      fonte, confidence: fonte === "ai-lookup" ? 60 : 75,
+      fonte, confidence: 75,
     } as OutRow;
   });
+}
+
+async function searchAI(cargoKey: string | null, f: Filters, deadline: number): Promise<OutRow[]> {
+  console.log("STEP AI SEARCH START");
+  if (!f.q || Date.now() > deadline) {
+    console.log("STEP AI COUNT", 0);
+    return [];
+  }
+  const ai = await cerebrasDirectLookup(f.q, cargoKey);
+  console.log("STEP AI COUNT", ai.length);
+  return ai.map((c, i) => {
+    const uf = resolveUF(c.uf) ?? (f.ufs[0] ?? null);
+    const statusNorm = normalize(c.status);
+    const categoria = STATUS_TO_CATEGORIA[statusNorm] ?? "pre_candidato";
+    return {
+      id: `ai-${normalize(c.nome).replace(/\s+/g, "-")}-${i}`,
+      tse_id: null, nome: c.nome, nome_urna: c.nomeUrna,
+      partido_sigla: c.partido, partido_nome: null, numero_partido: null,
+      cargo: c.cargo || cargoKey || "pre_candidato", regiao: null,
+      estado: uf, municipio: c.cidade ?? f.municipio ?? null,
+      eleito: categoria === "eleito", categoria, ano_eleicao: 2026,
+      foto_url: null, redes_sociais: null,
+      popularidade: 0.5, similarity: 1, total_count: 0,
+      fonte: "ai-lookup", confidence: 60,
+    } as OutRow;
+  });
+}
+
+async function searchTSEFallback(f: Filters, deadline: number): Promise<{ rows: OutRow[]; sources: Set<string>; partial: boolean }> {
+  const all: OutRow[] = [];
+  const sources = new Set<string>();
+  let partial = false;
+  console.log("STEP TSE START", f.q ?? "");
+
+  const localRows = await searchLocalCatalog(f).catch((e) => {
+    console.log("[local-catalog] erro:", (e as Error).message);
+    return [] as OutRow[];
+  });
+  const openRows = f.q ? await searchOpenData(null, f, deadline).catch(() => [] as OutRow[]) : [];
+  const directRows: OutRow[] = [];
+  const cargos = f.cargos.filter((c) => !!CARGO_TO_TSE[c]);
+  for (const cargo of cargos) {
+    try {
+      const res = await searchTSE(cargo, f, deadline);
+      directRows.push(...res.rows);
+      if (res.partial) partial = true;
+    } catch (e) {
+      console.log(`[tse] skip ${cargo}: ${(e as Error).message}`);
+    }
+  }
+
+  let results = [...localRows, ...openRows, ...directRows];
+  console.log("STEP TSE COUNT", results.length);
+  if (results.length > 0) {
+    all.push(...results);
+    addSourceForRows(sources, localRows, "catalogo-local");
+    addSourceForRows(sources, openRows, "tse-open-data");
+    addSourceForRows(sources, directRows, "tse");
+    return { rows: all, sources, partial };
+  }
+
+  const webRows = await searchFirecrawl(f.cargos[0] ?? null, f, deadline).catch((e) => {
+    console.log(`[web] skip livre: ${(e as Error).message}`);
+    return [] as OutRow[];
+  });
+  results = webRows;
+  if (results.length > 0) {
+    all.push(...results);
+    addSourceForRows(sources, results, "web");
+    return { rows: all, sources, partial };
+  }
+
+  const aiRows = await searchAI(f.cargos[0] ?? null, f, deadline).catch((e) => {
+    console.log(`[ai] skip livre: ${(e as Error).message}`);
+    console.log("STEP AI COUNT", 0);
+    return [] as OutRow[];
+  });
+  results = aiRows;
+  if (results.length > 0) {
+    all.push(...results);
+    addSourceForRows(sources, results, "ai-lookup");
+  }
+  return { rows: all, sources, partial };
 }
 
 
@@ -1148,7 +1257,6 @@ Deno.serve(async (req) => {
     if (f.cargos.length === 0 && !f.q) {
       throw new Error("Selecione ao menos um cargo ou informe um nome para busca.");
     }
-    const isNameOnly = !!f.q && f.cargos.length === 0 && f.ufs.length === 0 && !f.municipio?.trim();
     const eletivos = f.cargos.filter((c) => !!CARGO_TO_TSE[c]);
     const naoEletivos = f.cargos.filter((c) => NON_TSE_CARGOS.has(c));
     const sourcePlan = eletivos.length > 0 && naoEletivos.length === 0 ? "TSE"
@@ -1157,12 +1265,10 @@ Deno.serve(async (req) => {
     console.log("SOURCE:", sourcePlan);
 
     const deadline = Date.now() + SOFT_TIMEOUT_MS;
-    const { rows: all, sources, partial } = isNameOnly
-      ? await searchByName(f, deadline)
-      : await searchByFilters(f, deadline);
+    const { rows: all, sources, partial } = await searchTSEFallback(f, deadline);
 
     const tseRows = all.filter((r) => r.fonte.startsWith("tse"));
-    const webRows = all.filter((r) => r.fonte.includes("firecrawl") || r.fonte === "ai-lookup");
+    const webRows = all.filter((r) => r.fonte === "web" || r.fonte === "ai-lookup");
     console.log("STEP TSE COUNT:", tseRows.length);
     console.log("STEP TSE DATA:", JSON.stringify(tseRows.slice(0, 5).map((r) => ({ nome: r.nome, cargo: r.cargo, uf: r.estado, mun: r.municipio }))));
     console.log("STEP MERGED COUNT (pre-dedupe):", all.length);
