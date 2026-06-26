@@ -1385,7 +1385,9 @@ Deno.serve(async (req) => {
     // SISTEMA 2 — BUSCA POR NOME (pipeline híbrido)
     // Banco → TSE → Web → IA. Mantido para nomes livres tipo "Dr Kachan".
     // ============================================================
+    console.log("ROUTING: search mode");
     console.log("MODE: NAME SEARCH (hybrid pipeline)");
+
     const eletivos = f.cargos.filter((c) => !!CARGO_TO_TSE[c]);
     const naoEletivos = f.cargos.filter((c) => NON_TSE_CARGOS.has(c));
     const sourcePlan = eletivos.length > 0 && naoEletivos.length === 0 ? "TSE"
