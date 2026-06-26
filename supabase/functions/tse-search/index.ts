@@ -1325,7 +1325,11 @@ Deno.serve(async (req) => {
     // estruturado `politicians` (populado pelo ETL TSE) com paginação real.
     // ============================================================
     if (!f.q) {
-      console.log("MODE: CATALOG (structured DB) — no name query");
+      console.log("ROUTING: catalog mode");
+      console.log("CATALOG MODE ACTIVE");
+      console.log("SQL FILTERS:", JSON.stringify({
+        cargo: f.cargos, estado: f.ufs, municipio: f.municipio, onlyEleitos: f.onlyEleitos,
+      }));
       const sb = createClient(
         Deno.env.get("SUPABASE_URL")!,
         Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -1344,6 +1348,11 @@ Deno.serve(async (req) => {
       const { data, count, error } = await qb;
       if (error) throw new Error(`Catálogo DB: ${error.message}`);
       const total = count ?? 0;
+      console.log("DB COUNT BEFORE PAGINATION:", total);
+      console.log("FIRST 10 DB ROWS:", JSON.stringify((data ?? []).slice(0, 10).map((r: any) => ({
+        nome: r.nome, cargo: r.cargo, estado: r.estado, municipio: r.municipio, eleito: r.eleito,
+      }))));
+
       const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
       const rows = (data ?? []).map((r: any) => ({
         id: r.id, tse_id: r.tse_id, nome: r.nome, nome_urna: r.nome_urna,
@@ -1376,7 +1385,9 @@ Deno.serve(async (req) => {
     // SISTEMA 2 — BUSCA POR NOME (pipeline híbrido)
     // Banco → TSE → Web → IA. Mantido para nomes livres tipo "Dr Kachan".
     // ============================================================
+    console.log("ROUTING: search mode");
     console.log("MODE: NAME SEARCH (hybrid pipeline)");
+
     const eletivos = f.cargos.filter((c) => !!CARGO_TO_TSE[c]);
     const naoEletivos = f.cargos.filter((c) => NON_TSE_CARGOS.has(c));
     const sourcePlan = eletivos.length > 0 && naoEletivos.length === 0 ? "TSE"
