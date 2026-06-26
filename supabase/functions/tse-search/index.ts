@@ -1,7 +1,7 @@
 // Catálogo Político 2026 — Crawler estruturado multi-fonte
 // Camada 1: TSE oficial (divulgacandcontas) 2024 municipal + 2022 federal/estadual
-// Camada 2: Firecrawl search (Wikipedia, G1, UOL, sites oficiais) p/ cargos não-TSE e nomes livres
-// Camada 3: Cerebras (somente normalização/dedupe semântica/correção ortográfica). NUNCA gera candidatos.
+// Camada 2: Web gratuita (DuckDuckGo HTML + Google HTML) p/ cargos não-TSE e nomes livres
+// Camada 3: IA (somente fallback estruturado/aliases quando TSE e Web retornam 0).
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { unzipSync } from "npm:fflate@0.8.2";
@@ -30,7 +30,7 @@ const CARGO_LABEL: Record<string, string> = {
   pre_candidato: "Pré-candidato 2026",
 };
 
-// Cargos que NÃO vêm do TSE — só Firecrawl
+// Cargos que NÃO vêm do TSE — só Web/IA
 const NON_TSE_CARGOS = new Set(["ministro", "presidente_partido", "pre_candidato"]);
 const MUNICIPAL_CARGOS = new Set(["prefeito", "vice_prefeito", "vereador"]);
 const FEDERAL_BR_CARGOS = new Set(["presidente", "vice_presidente"]);
@@ -210,6 +210,11 @@ const POLITICAL_ALIASES: Record<string, string[]> = {
   "martinelli": ["gustavo martinelli"],
   "paes": ["eduardo paes"],
   "nunes": ["ricardo nunes"],
+  "dr kachan": ["jose antonio kachan junior", "kachan", "dr kachan junior"],
+  "kachan": ["jose antonio kachan junior", "dr kachan", "dr kachan junior"],
+  "jose antonio kachan junior": ["dr kachan", "kachan", "dr kachan junior"],
+  "ratinho jr": ["ratinho junior", "carlos massa junior", "ratinho"],
+  "bocalon": ["ricardo bocalon"],
 };
 
 function expandAliases(q: string): string[] {
