@@ -186,15 +186,61 @@ interface OutRow {
   fonte: string; confidence: number;
 }
 
+// Aliases políticos: chave normalizada -> nomes alternativos (também normalizados)
+const POLITICAL_ALIASES: Record<string, string[]> = {
+  "lula": ["luiz inacio lula da silva", "presidente lula", "luiz lula", "lula da silva"],
+  "bolsonaro": ["jair messias bolsonaro", "jair bolsonaro"],
+  "jair bolsonaro": ["jair messias bolsonaro", "bolsonaro"],
+  "tarcisio": ["tarcisio gomes de freitas", "tarcisio de freitas"],
+  "alckmin": ["geraldo alckmin"],
+  "ratinho": ["ratinho junior", "carlos massa junior", "ratinho jr"],
+  "zema": ["romeu zema"],
+  "temer": ["michel temer"],
+  "haddad": ["fernando haddad"],
+  "marina": ["marina silva"],
+  "tebet": ["simone tebet"],
+  "moro": ["sergio moro"],
+  "boulos": ["guilherme boulos"],
+  "nikolas": ["nikolas ferreira"],
+  "janones": ["andre janones"],
+  "caiado": ["ronaldo caiado"],
+  "mourao": ["hamilton mourao"],
+  "kassab": ["gilberto kassab"],
+  "lira": ["arthur lira"],
+  "martinelli": ["gustavo martinelli"],
+  "paes": ["eduardo paes"],
+  "nunes": ["ricardo nunes"],
+};
+
+function expandAliases(q: string): string[] {
+  const n = normalize(q);
+  if (!n) return [];
+  const set = new Set<string>([n]);
+  if (POLITICAL_ALIASES[n]) POLITICAL_ALIASES[n].forEach((a) => set.add(normalize(a)));
+  // reverse lookup: query é um nome completo cuja chave curta existe
+  for (const [key, vals] of Object.entries(POLITICAL_ALIASES)) {
+    if (vals.some((v) => normalize(v) === n)) {
+      set.add(key);
+      vals.forEach((v) => set.add(normalize(v)));
+    }
+  }
+  return Array.from(set);
+}
+
 async function searchLocalCatalog(f: Filters): Promise<OutRow[]> {
   if (!f.q?.trim()) return [];
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!url || !key) { console.log("[local-catalog] env ausente"); return []; }
+  const terms = expandAliases(f.q);
+  console.log("[local-catalog] termos expandidos:", terms);
   try {
     const admin = createClient(url, key, { auth: { persistSession: false } });
-    const { data, error } = await admin.rpc("search_politicians", {
-      q: f.q.trim(),
+    const collected: any[] = [];
+    const seen = new Set<string>();
+    for (const term of terms) {
+      const { data, error } = await admin.rpc("search_politicians", {
+        q: term,
       p_cargo: f.cargos.length ? f.cargos : null,
       p_partido: f.partidos.length ? f.partidos : null,
       p_regiao: null,
