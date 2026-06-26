@@ -439,8 +439,14 @@ function mapOpenDataRow(row: Record<string, string>, year: number): OutRow | nul
 
 function nameMatchesQuery(row: Record<string, string>, q: string): boolean {
   const hay = normalize(`${row.NM_CANDIDATO ?? ""} ${row.NM_URNA_CANDIDATO ?? ""} ${row.NM_SOCIAL_CANDIDATO ?? ""}`);
-  const tokens = q.split(/\s+/).filter(Boolean);
-  return hay.includes(q) || tokens.every((t) => hay.split(/\s+/).some((h) => h.includes(t) || t.includes(h)));
+  const candidates = expandAliases(q);
+  for (const cand of candidates) {
+    if (!cand) continue;
+    if (hay.includes(cand)) return true;
+    const tokens = cand.split(/\s+/).filter(Boolean);
+    if (tokens.length && tokens.every((t) => hay.split(/\s+/).some((h) => h.includes(t) || t.includes(h)))) return true;
+  }
+  return false;
 }
 
 async function searchOpenDataYear(year: number, cargoKey: string | null, f: Filters, deadline: number): Promise<OutRow[]> {
