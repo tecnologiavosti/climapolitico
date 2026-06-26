@@ -217,17 +217,38 @@ Deno.serve(async (req) => {
   const year = parseInt(url.searchParams.get("year") ?? "2024", 10);
   const ufParam = url.searchParams.get("uf")?.toUpperCase() ?? null;
 
-  // Auth: internal token OR valid service_role/admin caller
+  // Auth: internal token, service_role, OR authenticated admin user
   const token = req.headers.get("x-etl-token");
   const expected = Deno.env.get("ETL_INTERNAL_TOKEN");
   const authHeader = req.headers.get("Authorization") ?? "";
-  const isServiceRole = authHeader.includes(Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "___none___");
+  const bearer = authHeader.replace(/^Bearer\s+/i, "");
+  const isServiceRole = bearer && bearer === (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "___none___");
+  const hasInternalToken = expected && token === expected;
 
-  if (!isServiceRole && (!expected || token !== expected)) {
+  let isAdmin = false;
+  if (!isServiceRole && !hasInternalToken && bearer) {
+    try {
+      const sbAuth = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_ANON_KEY")!,
+        { global: { headers: { Authorization: `Bearer ${bearer}` } } },
+      );
+      const { data: claims } = await sbAuth.auth.getClaims(bearer);
+      const uid = claims?.claims?.sub;
+      if (uid) {
+        const { data: roleRow } = await sbAuth
+          .from("user_roles").select("role").eq("user_id", uid).eq("role", "admin").maybeSingle();
+        isAdmin = !!roleRow;
+      }
+    } catch (_) { /* fallthrough */ }
+  }
+
+  if (!isServiceRole && !hasInternalToken && !isAdmin) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+
 
   const sb = createClient(
     Deno.env.get("SUPABASE_URL")!,
