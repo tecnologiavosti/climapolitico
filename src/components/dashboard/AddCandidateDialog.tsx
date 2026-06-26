@@ -248,20 +248,26 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
           },
         });
         if (cancelled) return;
-        if (error) {
-          console.warn("[lookup-candidate-ai] error", error);
+        const lookupErr = (data as { error?: string } | null)?.error;
+        if (error || lookupErr) {
+          console.warn("[lookup-candidate-ai] error", error || lookupErr);
           setAiLookup({ found: false, name: null, party: null, office: null, state: null, city: null, confidence: 0, error: "lookup_failed" });
         } else {
           setAiLookup(data as AiLookup);
           console.log("[Candidate AI lookup]", { query: validationQuery, context: { party, position, state, city }, result: data });
         }
         setLastValidatedQuery(validationQuery);
+      } catch (err) {
+        if (cancelled) return;
+        console.warn("[lookup-candidate-ai] threw", err);
+        setAiLookup({ found: false, name: null, party: null, office: null, state: null, city: null, confidence: 0, error: "lookup_failed" });
+        setLastValidatedQuery(validationQuery);
       } finally {
         if (!cancelled) setAiLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [debouncedName, catalogMatch, hasEnoughContext, validationQuery, party, position, state, city]);
+  }, [debouncedName, catalogMatch, hasEnoughContext, validationQuery, party, position, state, city, validationAttempt]);
 
 
   const applyAiLookup = () => {
