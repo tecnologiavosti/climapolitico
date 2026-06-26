@@ -450,7 +450,31 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
 
           {/* Partido */}
           <Field label="Partido" error={errors.party} required>
-            <PartyCombobox value={party} onChange={setParty} disabled={isPending} />
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-1.5">
+                {POPULAR_PARTY_SIGLAS.map((sigla) => {
+                  const isSel = party === sigla;
+                  return (
+                    <button
+                      type="button"
+                      key={sigla}
+                      disabled={isPending}
+                      onClick={() => setParty(isSel ? "" : sigla)}
+                      className={cn(
+                        "px-3 h-8 rounded-full text-xs font-semibold border transition-all",
+                        "hover:scale-[1.03] active:scale-[0.97]",
+                        isSel
+                          ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                          : "bg-muted/40 border-border/60 text-foreground hover:bg-muted",
+                      )}
+                    >
+                      {sigla}
+                    </button>
+                  );
+                })}
+              </div>
+              <PartyCombobox value={party} onChange={setParty} disabled={isPending} />
+            </div>
           </Field>
 
           {/* Cargo político */}
