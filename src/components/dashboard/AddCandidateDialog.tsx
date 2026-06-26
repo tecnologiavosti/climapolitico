@@ -119,6 +119,14 @@ export type AddCandidatePayload = {
   photoFile: File | null;
 };
 
+export type AddCandidateInitialValues = {
+  fullName?: string;
+  party?: string;
+  position?: string;
+  state?: string;
+  city?: string;
+};
+
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -127,10 +135,12 @@ interface Props {
   onSubmit: (data: AddCandidatePayload) => void;
   /** Nomes já cadastrados (conta do usuário + catálogo público) para sugestão e dedup. */
   knownNames?: string[];
+  /** Pré-preenche os campos ao abrir o modal. */
+  initialValues?: AddCandidateInitialValues;
 }
 
 
-export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onSubmit, knownNames = [] }: Props) {
+export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onSubmit, knownNames = [], initialValues }: Props) {
   const [fullName, setFullName] = useState("");
   const [debouncedName, setDebouncedName] = useState("");
   const [party, setParty] = useState("");
