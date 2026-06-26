@@ -263,9 +263,9 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   }, [fullName, formatOk, blacklisted]);
 
   const scope = scopeOf(position);
+  // Bloqueio hard: formato inválido ou blacklist. Score baixo abre modal de confirmação.
   const canSubmit =
     formatOk && !blacklisted && !!party && !!position && !isPending &&
-    (validationScore >= 30 || overrideConfirmed) &&
     (scope === "national" || (scope === "state" && !!state) || (scope === "municipal" && !!state && !!city.trim()));
 
   const scopeBadge = useMemo(() => {
