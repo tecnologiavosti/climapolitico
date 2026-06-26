@@ -186,28 +186,81 @@ interface OutRow {
   fonte: string; confidence: number;
 }
 
+// Aliases políticos: chave normalizada -> nomes alternativos (também normalizados)
+const POLITICAL_ALIASES: Record<string, string[]> = {
+  "lula": ["luiz inacio lula da silva", "presidente lula", "luiz lula", "lula da silva"],
+  "bolsonaro": ["jair messias bolsonaro", "jair bolsonaro"],
+  "jair bolsonaro": ["jair messias bolsonaro", "bolsonaro"],
+  "tarcisio": ["tarcisio gomes de freitas", "tarcisio de freitas"],
+  "alckmin": ["geraldo alckmin"],
+  "ratinho": ["ratinho junior", "carlos massa junior", "ratinho jr"],
+  "zema": ["romeu zema"],
+  "temer": ["michel temer"],
+  "haddad": ["fernando haddad"],
+  "marina": ["marina silva"],
+  "tebet": ["simone tebet"],
+  "moro": ["sergio moro"],
+  "boulos": ["guilherme boulos"],
+  "nikolas": ["nikolas ferreira"],
+  "janones": ["andre janones"],
+  "caiado": ["ronaldo caiado"],
+  "mourao": ["hamilton mourao"],
+  "kassab": ["gilberto kassab"],
+  "lira": ["arthur lira"],
+  "martinelli": ["gustavo martinelli"],
+  "paes": ["eduardo paes"],
+  "nunes": ["ricardo nunes"],
+};
+
+function expandAliases(q: string): string[] {
+  const n = normalize(q);
+  if (!n) return [];
+  const set = new Set<string>([n]);
+  if (POLITICAL_ALIASES[n]) POLITICAL_ALIASES[n].forEach((a) => set.add(normalize(a)));
+  // reverse lookup: query é um nome completo cuja chave curta existe
+  for (const [key, vals] of Object.entries(POLITICAL_ALIASES)) {
+    if (vals.some((v) => normalize(v) === n)) {
+      set.add(key);
+      vals.forEach((v) => set.add(normalize(v)));
+    }
+  }
+  return Array.from(set);
+}
+
 async function searchLocalCatalog(f: Filters): Promise<OutRow[]> {
   if (!f.q?.trim()) return [];
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!url || !key) { console.log("[local-catalog] env ausente"); return []; }
+  const terms = expandAliases(f.q);
+  console.log("[local-catalog] termos expandidos:", terms);
   try {
     const admin = createClient(url, key, { auth: { persistSession: false } });
-    const { data, error } = await admin.rpc("search_politicians", {
-      q: f.q.trim(),
-      p_cargo: f.cargos.length ? f.cargos : null,
-      p_partido: f.partidos.length ? f.partidos : null,
-      p_regiao: null,
-      p_estado: f.ufs.length ? f.ufs : null,
-      p_municipio: f.municipio?.trim() || null,
-      p_only_eleitos: !!f.onlyEleitos,
-      p_limit: 200,
-      p_offset: 0,
-    });
-    if (error) { console.log("[local-catalog] erro:", error.message); return []; }
-    const rows = Array.isArray(data) ? data : [];
-    console.log(`[local-catalog] ${rows.length} resultados`);
-    return rows.map((r: any) => ({
+    const collected: any[] = [];
+    const seen = new Set<string>();
+    for (const term of terms) {
+      const { data, error } = await admin.rpc("search_politicians", {
+        q: term,
+        p_cargo: f.cargos.length ? f.cargos : null,
+        p_partido: f.partidos.length ? f.partidos : null,
+        p_regiao: null,
+        p_estado: f.ufs.length ? f.ufs : null,
+        p_municipio: f.municipio?.trim() || null,
+        p_only_eleitos: !!f.onlyEleitos,
+        p_limit: 200,
+        p_offset: 0,
+      });
+      if (error) { console.log("[local-catalog] erro:", error.message); continue; }
+      const rows = Array.isArray(data) ? data : [];
+      for (const r of rows) {
+        const key = String(r.id);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        collected.push(r);
+      }
+    }
+    console.log(`[local-catalog] ${collected.length} resultados (após aliases)`);
+    return collected.map((r: any) => ({
       id: `local-${r.id}`,
       tse_id: r.tse_id ?? null,
       nome: r.nome,
@@ -226,7 +279,7 @@ async function searchLocalCatalog(f: Filters): Promise<OutRow[]> {
       redes_sociais: r.redes_sociais ?? null,
       popularidade: Number(r.popularidade ?? 0.5),
       similarity: Number(r.similarity ?? 1),
-      total_count: Number(r.total_count ?? rows.length),
+      total_count: Number(r.total_count ?? collected.length),
       fonte: "catalogo-local",
       confidence: 100,
     }));
@@ -386,8 +439,14 @@ function mapOpenDataRow(row: Record<string, string>, year: number): OutRow | nul
 
 function nameMatchesQuery(row: Record<string, string>, q: string): boolean {
   const hay = normalize(`${row.NM_CANDIDATO ?? ""} ${row.NM_URNA_CANDIDATO ?? ""} ${row.NM_SOCIAL_CANDIDATO ?? ""}`);
-  const tokens = q.split(/\s+/).filter(Boolean);
-  return hay.includes(q) || tokens.every((t) => hay.split(/\s+/).some((h) => h.includes(t) || t.includes(h)));
+  const candidates = expandAliases(q);
+  for (const cand of candidates) {
+    if (!cand) continue;
+    if (hay.includes(cand)) return true;
+    const tokens = cand.split(/\s+/).filter(Boolean);
+    if (tokens.length && tokens.every((t) => hay.split(/\s+/).some((h) => h.includes(t) || t.includes(h)))) return true;
+  }
+  return false;
 }
 
 async function searchOpenDataYear(year: number, cargoKey: string | null, f: Filters, deadline: number): Promise<OutRow[]> {
