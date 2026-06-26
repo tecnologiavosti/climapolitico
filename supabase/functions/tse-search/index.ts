@@ -9,7 +9,7 @@ import { unzipSync } from "npm:fflate@0.8.2";
 // ============ CONSTANTES ============
 const PAGE_SIZE = 50;
 const TSE_BASE = "https://divulgacandcontas.tse.jus.br/divulga/rest/v1";
-const FIRECRAWL_BASE = "https://api.firecrawl.dev/v2";
+
 const SOFT_TIMEOUT_MS = 55_000; // antes do limite de 60s do edge
 const TSE_CONCURRENCY = 10;
 
