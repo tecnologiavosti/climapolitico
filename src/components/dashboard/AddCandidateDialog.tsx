@@ -378,8 +378,8 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     setErrors(errs);
     if (Object.keys(errs).length) return;
 
-    // Score baixo + nenhuma fonte encontrou: pedir confirmação explícita
-    if (validationScore < 30 && !overrideConfirmed) {
+    // Score baixo + sem plausibilidade estrutural + nenhuma fonte encontrou: pedir confirmação.
+    if (validationScore < 30 && structuralScore < 80 && !overrideConfirmed) {
       setConfirmOpen(true);
       return;
     }
