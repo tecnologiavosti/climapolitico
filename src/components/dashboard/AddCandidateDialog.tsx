@@ -20,7 +20,8 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  isNameFormatValid, isBlacklisted, computeScore, statusFromScore,
+  isNameFormatValid, isBlacklisted, computeExistenceScore, levelFromScore,
+  signalsFromAiLookup, scopeLabel,
 } from "@/lib/candidateValidation";
 
 import { BRAZILIAN_PARTIES as PARTIES, POPULAR_PARTY_SIGLAS, findPartyBySigla, type BrazilianParty as Party } from "@/lib/brazilianParties";
