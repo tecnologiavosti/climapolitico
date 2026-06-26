@@ -705,6 +705,54 @@ async function webSearch(query: string, deadline: number): Promise<Array<{ url: 
   return google;
 }
 
+const HONORIFICS = new Set(["dr","dra","prof","profa","sr","sra","pastor","pr","cb","sgt","ten","cel","cap","cmdt","cmte"]);
+function stripHonorifics(q: string): string {
+  return normalize(q).split(/\s+/).filter((t) => t && !HONORIFICS.has(t.replace(/\./g, ""))).join(" ").trim();
+}
+
+function buildMultiQueries(f: Filters, cargoKey: string | null): string[] {
+  const name = (f.q ?? "").trim();
+  if (!name) return [buildQuery(cargoKey, f)];
+  const cargoLabel = cargoKey ? (CARGO_LABEL[cargoKey] ?? cargoKey).toLowerCase() : null;
+  const mun = f.municipio?.trim();
+  const uf = f.ufs[0] ?? null;
+  const out = new Set<string>();
+  // Fontes municipais primeiro (vereadores, prefeitos locais)
+  out.add(`"${name}" site:leg.br`);
+  out.add(`"${name}" site:gov.br`);
+  out.add(`"${name}" vereador`);
+  out.add(`"${name}" prefeito`);
+  out.add(`"${name}" política`);
+  if (mun) out.add(`"${name}" ${mun}`);
+  if (uf) out.add(`"${name}" ${uf}`);
+  if (cargoLabel) out.add(`"${name}" ${cargoLabel}${mun ? ` ${mun}` : ""}${uf ? ` ${uf}` : ""}`);
+  // Fallback geral (sem aspas) — pega o que escapa
+  out.add(buildQuery(cargoKey, f));
+  return [...out].slice(0, 6);
+}
+
+async function multiWebSearch(f: Filters, cargoKey: string | null, deadline: number) {
+  const queries = buildMultiQueries(f, cargoKey);
+  console.log("MULTI QUERIES:", JSON.stringify(queries));
+  const seen = new Set<string>();
+  const all: Array<{ url: string; title: string; markdown: string }> = [];
+  let municipalCount = 0;
+  for (const q of queries) {
+    if (Date.now() > deadline) break;
+    const r = await webSearch(q, deadline);
+    for (const it of r) {
+      if (seen.has(it.url)) continue;
+      seen.add(it.url);
+      if (/(leg\.br|sapl|gov\.br)/i.test(it.url)) municipalCount++;
+      all.push(it);
+    }
+    if (all.length >= 12) break;
+  }
+  console.log("MUNICIPAL COUNT:", municipalCount);
+  console.log("WEB COUNT:", all.length);
+  return all;
+}
+
 
 
 // Extrai candidatos do markdown via Cerebras (parser estruturado, NÃO gerador)
@@ -838,19 +886,18 @@ Formato JSON estrito:
 }
 
 async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: number): Promise<OutRow[]> {
-  const query = buildQuery(cargoKey, f);
   console.log("STEP WEB SEARCH START");
-  console.log("WEB QUERY:", query);
-  const results = await webSearch(query, deadline);
+  const results = await multiWebSearch(f, cargoKey, deadline);
   console.log("STEP WEB COUNT:", results.length);
   console.log("STEP WEB RAW:", JSON.stringify(results.slice(0, 10).map((r) => ({ url: r.url, title: r.title }))));
 
+  const queryForExtract = (f.q ?? "") + (cargoKey ? ` ${CARGO_LABEL[cargoKey] ?? cargoKey}` : "");
   let extracted: Awaited<ReturnType<typeof cerebrasExtract>> = [];
   let fonte = "firecrawl+web";
 
   if (results.length > 0 && Date.now() < deadline) {
     const combined = results.slice(0, 5).map((r) => `# ${r.title}\n${r.markdown}`).join("\n\n---\n\n");
-    extracted = await cerebrasExtract(combined, cargoKey, query);
+    extracted = await cerebrasExtract(combined, cargoKey, queryForExtract);
     console.log(`[cerebras] extraiu ${extracted.length} nomes`);
   }
 
@@ -862,7 +909,7 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
   }
 
   // Inferir cargo pela query quando vier sem cargo estruturado.
-  const inferredCargo = cargoKey ?? inferCargoFromQuery(query);
+  const inferredCargo = cargoKey ?? inferCargoFromQuery(queryForExtract);
 
   return extracted.map((c, i) => {
     const uf = resolveUF(c.uf) ?? (f.ufs[0] ?? null);
@@ -934,9 +981,13 @@ function fuzzyTokenMatch(hayTokens: string[], token: string): boolean {
 }
 
 function applyFilters(rows: OutRow[], f: Filters): OutRow[] {
-  const q = normalize(f.q);
+  const qRaw = normalize(f.q);
+  const q = stripHonorifics(qRaw);
+  const aliasTerms = qRaw ? expandAliases(qRaw).map(stripHonorifics).filter(Boolean) : [];
+  const allTerms = Array.from(new Set([q, ...aliasTerms].filter(Boolean)));
   const selectedCargo = f.cargos[0] ?? null;
   console.log("CANDIDATES BEFORE FILTER:", rows.length);
+  console.log("MATCH TERMS:", JSON.stringify(allTerms));
   const candidates = rows.filter((r) => {
     if (f.onlyEleitos && !r.eleito) {
       console.log("DISCARDED", { candidate: r.nome, reason: "not-eleito", cargo: r.cargo, selectedCargo });
@@ -949,9 +1000,15 @@ function applyFilters(rows: OutRow[], f: Filters): OutRow[] {
     if (q) {
       const hay = normalize(`${r.nome} ${r.nome_urna ?? ""}`);
       const hayTokens = hay.split(/\s+/).filter(Boolean);
-      const tokens = q.split(/\s+/).filter(Boolean);
-      if (hay.includes(q)) return true;
-      if (tokens.every((t) => fuzzyTokenMatch(hayTokens, t))) return true;
+      for (const term of allTerms) {
+        if (!term) continue;
+        if (hay.includes(term)) return true;
+        const tokens = term.split(/\s+/).filter(Boolean);
+        if (tokens.length && tokens.every((t) => fuzzyTokenMatch(hayTokens, t))) return true;
+        // Match parcial: pelo menos 1 token significativo (>=4) bate — cobre "Dr Kachan" -> "...Kachan Junior"
+        const strong = tokens.filter((t) => t.length >= 4);
+        if (strong.length && strong.some((t) => fuzzyTokenMatch(hayTokens, t))) return true;
+      }
       console.log("DISCARDED", { candidate: r.nome, reason: "name-mismatch", cargo: r.cargo, selectedCargo });
       return false;
     }
