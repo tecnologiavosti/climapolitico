@@ -394,8 +394,8 @@ const STATUS_TO_CATEGORIA: Record<string, string> = {
 };
 
 async function cerebrasDirectLookup(name: string, cargoKey: string | null): Promise<Array<{ nome: string; partido: string | null; cargo: string; cidade: string | null; uf: string | null; status: string }>> {
-  const key = Deno.env.get("CEREBRAS_API_KEY");
-  if (!key) { console.log("[ai-lookup] CEREBRAS_API_KEY ausente"); return []; }
+  const key = Deno.env.get("LOVABLE_API_KEY");
+  if (!key) { console.log("[ai-lookup] LOVABLE_API_KEY ausente"); return []; }
   const prompt = `Você conhece a política brasileira atual (2024-2026). O usuário procura por: "${name}"${cargoKey ? ` (cargo: ${CARGO_LABEL[cargoKey] ?? cargoKey})` : ""}.
 
 Retorne APENAS políticos REAIS cujo nome corresponda (exato ou parcial) à busca. Inclua prefeitos, vereadores, deputados, senadores, governadores, ministros, etc.
@@ -404,21 +404,20 @@ NÃO invente. Se não conhecer ninguém com esse nome, retorne {"candidatos":[]}
 Formato JSON estrito:
 {"candidatos":[{"nome":"Nome Completo","partido":"SIGLA ou null","cargo":"prefeito|vice_prefeito|vereador|deputado_federal|deputado_estadual|senador|governador|presidente|ministro|pre_candidato","cidade":"Cidade ou null","uf":"Nome do estado por extenso ou null","status":"Eleito|Candidato|Ex-candidato|Mandatário"}]}`;
   try {
-    const r = await fetch("https://api.cerebras.ai/v1/chat/completions", {
+    const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "llama-3.3-70b",
+        model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: "Você é uma base de conhecimento sobre políticos brasileiros. Retorna APENAS JSON válido. Nunca inventa pessoas." },
           { role: "user", content: prompt },
         ],
         temperature: 0,
         response_format: { type: "json_object" },
-        max_tokens: 1500,
       }),
     });
-    if (!r.ok) { console.log(`[ai-lookup] HTTP ${r.status}`); return []; }
+    if (!r.ok) { console.log(`[ai-lookup] HTTP ${r.status}: ${await r.text()}`); return []; }
     const data = await r.json();
     const content = data?.choices?.[0]?.message?.content ?? "{}";
     const parsed = JSON.parse(content);
