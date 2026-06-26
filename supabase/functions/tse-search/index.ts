@@ -1257,7 +1257,6 @@ Deno.serve(async (req) => {
     if (f.cargos.length === 0 && !f.q) {
       throw new Error("Selecione ao menos um cargo ou informe um nome para busca.");
     }
-    const isNameOnly = !!f.q && f.cargos.length === 0 && f.ufs.length === 0 && !f.municipio?.trim();
     const eletivos = f.cargos.filter((c) => !!CARGO_TO_TSE[c]);
     const naoEletivos = f.cargos.filter((c) => NON_TSE_CARGOS.has(c));
     const sourcePlan = eletivos.length > 0 && naoEletivos.length === 0 ? "TSE"
@@ -1266,12 +1265,10 @@ Deno.serve(async (req) => {
     console.log("SOURCE:", sourcePlan);
 
     const deadline = Date.now() + SOFT_TIMEOUT_MS;
-    const { rows: all, sources, partial } = isNameOnly
-      ? await searchByName(f, deadline)
-      : await searchByFilters(f, deadline);
+    const { rows: all, sources, partial } = await searchTSEFallback(f, deadline);
 
     const tseRows = all.filter((r) => r.fonte.startsWith("tse"));
-    const webRows = all.filter((r) => r.fonte.includes("firecrawl") || r.fonte === "ai-lookup");
+    const webRows = all.filter((r) => r.fonte === "web" || r.fonte === "ai-lookup");
     console.log("STEP TSE COUNT:", tseRows.length);
     console.log("STEP TSE DATA:", JSON.stringify(tseRows.slice(0, 5).map((r) => ({ nome: r.nome, cargo: r.cargo, uf: r.estado, mun: r.municipio }))));
     console.log("STEP MERGED COUNT (pre-dedupe):", all.length);
