@@ -539,42 +539,11 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
             {!catalogMatch && suggestions.length === 0 && debouncedName.trim().length >= 4 && aiLoading && (
               <div className="mt-2 flex items-center gap-2 rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Buscando nas bases públicas (TSE, Câmara, Senado, prefeituras)…
+                Validando candidato com IA…
               </div>
             )}
 
-            {!catalogMatch && suggestions.length === 0 && hasValidatedCurrentQuery && aiLookup?.found && (aiLookup.confidence ?? 0) > 0.8 && (
-              <div className="mt-2 rounded-xl border border-emerald-500/40 bg-emerald-500/[0.08] px-3 py-2 animate-in fade-in-0 slide-in-from-top-1 duration-200">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-sm min-w-0">
-                    <Sparkles className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                    <div className="min-w-0">
-                      <div className="font-semibold truncate">Candidato encontrado via IA: {aiLookup.name}</div>
-                      <div className="text-[11px] text-muted-foreground truncate">
-                        {[aiLookup.office, aiLookup.party, aiLookup.city && aiLookup.state ? `${aiLookup.city}/${aiLookup.state}` : aiLookup.state].filter(Boolean).join(" · ")}
-                      </div>
-                    </div>
-                    <Badge variant="outline" className="text-[10px] shrink-0">
-                      {Math.round((aiLookup.confidence ?? 0) * 100)}%
-                    </Badge>
-                  </div>
-                </div>
-                <div className="mt-2 flex gap-2">
-                  <Button type="button" size="sm" className="h-7 rounded-lg" onClick={applyAiLookup}>
-                    Confirmar
-                  </Button>
-                  <Button type="button" size="sm" variant="outline" className="h-7 rounded-lg" onClick={() => setAiLookup(null)}>
-                    Editar manualmente
-                  </Button>
-                </div>
-              </div>
-            )}
 
-            {!catalogMatch && suggestions.length === 0 && hasValidatedCurrentQuery && !aiLoading && aiLookup && !aiLookup.found && !aiLookup.error && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Não encontramos esse candidato nas bases públicas. Preencha partido, cargo e localização manualmente.
-              </p>
-            )}
 
             {scopeBadge && (
               <Badge variant="outline" className={cn("mt-2 font-medium", scopeBadge.cls)}>
