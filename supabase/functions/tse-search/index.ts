@@ -9,7 +9,7 @@ import { unzipSync } from "npm:fflate@0.8.2";
 // ============ CONSTANTES ============
 const PAGE_SIZE = 50;
 const TSE_BASE = "https://divulgacandcontas.tse.jus.br/divulga/rest/v1";
-const FIRECRAWL_BASE = "https://api.firecrawl.dev/v2";
+
 const SOFT_TIMEOUT_MS = 55_000; // antes do limite de 60s do edge
 const TSE_CONCURRENCY = 10;
 
@@ -591,7 +591,8 @@ async function searchTSE(cargoKey: string, f: Filters, deadline: number): Promis
 // ============ CAMADA 2 — FIRECRAWL ============
 function buildQuery(cargoKey: string | null, f: Filters): string {
   const isNameOnly = !!f.q && !cargoKey && f.cargos.length === 0 && f.ufs.length === 0 && !f.municipio?.trim();
-  if (isNameOnly) return `${f.q} político candidato brasil site:divulgacandcontas.tse.jus.br OR site:google.com`;
+  if (isNameOnly) return `${f.q} político candidato vereador prefeito deputado brasil`;
+
 
   const parts: string[] = [];
   if (f.q) parts.push(f.q); // sem aspas para busca mais ampla
@@ -628,38 +629,89 @@ function inferCargoFromQuery(query: string): string | null {
 }
 
 
-async function firecrawlSearch(query: string, deadline: number): Promise<Array<{ url: string; title: string; markdown: string }>> {
-  const key = Deno.env.get("FIRECRAWL_API_KEY");
-  if (!key) { console.log("[firecrawl] FIRECRAWL_API_KEY ausente"); return []; }
+async function scrapeDuckDuckGo(query: string, deadline: number): Promise<Array<{ url: string; title: string; markdown: string }>> {
   if (Date.now() > deadline) return [];
   try {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 25_000);
-    const r = await fetch(`${FIRECRAWL_BASE}/search`, {
+    const t = setTimeout(() => ctrl.abort(), 15_000);
+    const r = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=br-pt`, {
       method: "POST", signal: ctrl.signal,
-      headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query, limit: 8, lang: "pt", country: "br",
-        scrapeOptions: { formats: ["markdown"], onlyMainContent: true },
-      }),
+      headers: {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "pt-BR,pt;q=0.9",
+      },
     });
     clearTimeout(t);
-    if (!r.ok) { console.log(`[firecrawl] HTTP ${r.status}`); return []; }
-    const data = await r.json();
-    const items = data?.data ?? data?.web ?? [];
-    return Array.isArray(items) ? items.map((x: any) => ({
-      url: x.url ?? "", title: x.title ?? "", markdown: x.markdown ?? x.description ?? "",
-    })).filter((x) => x.markdown) : [];
+    if (!r.ok) { console.log(`[ddg] HTTP ${r.status}`); return []; }
+    const html = await r.text();
+    const out: Array<{ url: string; title: string; markdown: string }> = [];
+    const re = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null && out.length < 10) {
+      const stripTags = (s: string) => s.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+      let url = m[1];
+      const uddg = url.match(/uddg=([^&]+)/);
+      if (uddg) url = decodeURIComponent(uddg[1]);
+      out.push({ url, title: stripTags(m[2]), markdown: stripTags(m[3]) });
+    }
+    return out;
   } catch (e) {
-    console.log("[firecrawl] erro:", (e as Error).message);
+    console.log("[ddg] erro:", (e as Error).message);
     return [];
   }
 }
 
+async function scrapeGoogle(query: string, deadline: number): Promise<Array<{ url: string; title: string; markdown: string }>> {
+  if (Date.now() > deadline) return [];
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 15_000);
+    const r = await fetch(`https://www.google.com/search?q=${encodeURIComponent(query)}&hl=pt-BR&gl=br`, {
+      signal: ctrl.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "pt-BR,pt;q=0.9",
+      },
+    });
+    clearTimeout(t);
+    if (!r.ok) { console.log(`[google] HTTP ${r.status}`); return []; }
+    const html = await r.text();
+    const out: Array<{ url: string; title: string; markdown: string }> = [];
+    const stripTags = (s: string) => s.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+    // h3 inside anchor + nearby snippet div
+    const re = /<a[^>]+href="\/url\?q=([^&"]+)[^"]*"[^>]*>[\s\S]*?<h3[^>]*>([\s\S]*?)<\/h3>[\s\S]*?<\/a>([\s\S]{0,800})/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null && out.length < 10) {
+      const url = decodeURIComponent(m[1]);
+      const title = stripTags(m[2]);
+      const snippetMatch = m[3].match(/<(?:span|div)[^>]*>([^<]{40,400})<\/(?:span|div)>/);
+      out.push({ url, title, markdown: snippetMatch ? stripTags(snippetMatch[1]) : title });
+    }
+    return out;
+  } catch (e) {
+    console.log("[google] erro:", (e as Error).message);
+    return [];
+  }
+}
+
+async function webSearch(query: string, deadline: number): Promise<Array<{ url: string; title: string; markdown: string }>> {
+  const ddg = await scrapeDuckDuckGo(query, deadline);
+  console.log("DDG COUNT:", ddg.length);
+  if (ddg.length > 0) return ddg;
+  const google = await scrapeGoogle(query, deadline);
+  console.log("GOOGLE COUNT:", google.length);
+  return google;
+}
+
+
+
 // Extrai candidatos do markdown via Cerebras (parser estruturado, NÃO gerador)
 async function cerebrasExtract(markdown: string, cargoKey: string | null, query: string): Promise<Array<{ nome: string; nomeUrna: string | null; partido: string | null; cargo: string; cidade: string | null; uf: string | null; status: string }>> {
   const key = Deno.env.get("CEREBRAS_API_KEY");
-  if (!key) return [];
+  if (!key && !Deno.env.get("LOVABLE_API_KEY")) return [];
+
   const cargoLabel = cargoKey ? (CARGO_LABEL[cargoKey] ?? cargoKey) : null;
   const cargoLine = cargoLabel
     ? `para o cargo "${cargoLabel}"`
@@ -675,21 +727,32 @@ Contexto da busca: "${query}"
 Texto:
 ${markdown.slice(0, 6000)}`;
   try {
-    const r = await fetch("https://api.cerebras.ai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+    const lovableKey = Deno.env.get("LOVABLE_API_KEY");
+    const useGateway = !!lovableKey;
+    const url = useGateway
+      ? "https://ai.gateway.lovable.dev/v1/chat/completions"
+      : "https://api.cerebras.ai/v1/chat/completions";
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (useGateway) {
+      headers["Lovable-API-Key"] = lovableKey!;
+      headers["X-Lovable-AIG-SDK"] = "vercel-ai-sdk";
+    } else {
+      headers["Authorization"] = `Bearer ${key}`;
+    }
+    const r = await fetch(url, {
+      method: "POST", headers,
       body: JSON.stringify({
-        model: "llama-3.3-70b",
+        model: useGateway ? "google/gemini-3-flash-preview" : "llama-3.3-70b",
         messages: [
           { role: "system", content: "Você é um parser. Extrai dados estruturados de texto. NUNCA inventa informação. Retorna apenas JSON válido." },
           { role: "user", content: prompt },
         ],
         temperature: 0,
         response_format: { type: "json_object" },
-        max_tokens: 2000,
       }),
     });
-    if (!r.ok) { console.log(`[cerebras] HTTP ${r.status}`); return []; }
+    if (!r.ok) { console.log(`[extract] HTTP ${r.status} (${useGateway ? "gateway" : "cerebras"})`); return []; }
+
     const data = await r.json();
     const content = data?.choices?.[0]?.message?.content ?? "{}";
     const parsed = JSON.parse(content);
@@ -778,7 +841,7 @@ async function searchFirecrawl(cargoKey: string | null, f: Filters, deadline: nu
   const query = buildQuery(cargoKey, f);
   console.log("STEP WEB SEARCH START");
   console.log("WEB QUERY:", query);
-  const results = await firecrawlSearch(query, deadline);
+  const results = await webSearch(query, deadline);
   console.log("STEP WEB COUNT:", results.length);
   console.log("STEP WEB RAW:", JSON.stringify(results.slice(0, 10).map((r) => ({ url: r.url, title: r.title }))));
 
