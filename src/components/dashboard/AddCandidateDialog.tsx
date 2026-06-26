@@ -186,6 +186,8 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   const [aiLookup, setAiLookup] = useState<AiLookup | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [lastValidatedQuery, setLastValidatedQuery] = useState("");
+  const [validationAttempt, setValidationAttempt] = useState(0);
+  const revalidate = useCallback(() => setValidationAttempt((n) => n + 1), []);
 
   const hydrateFromAiLookup = useCallback((lookup: AiLookup) => {
     if (!lookup.found || (lookup.confidence ?? 0) <= 0.8) return;
@@ -246,20 +248,26 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
           },
         });
         if (cancelled) return;
-        if (error) {
-          console.warn("[lookup-candidate-ai] error", error);
+        const lookupErr = (data as { error?: string } | null)?.error;
+        if (error || lookupErr) {
+          console.warn("[lookup-candidate-ai] error", error || lookupErr);
           setAiLookup({ found: false, name: null, party: null, office: null, state: null, city: null, confidence: 0, error: "lookup_failed" });
         } else {
           setAiLookup(data as AiLookup);
           console.log("[Candidate AI lookup]", { query: validationQuery, context: { party, position, state, city }, result: data });
         }
         setLastValidatedQuery(validationQuery);
+      } catch (err) {
+        if (cancelled) return;
+        console.warn("[lookup-candidate-ai] threw", err);
+        setAiLookup({ found: false, name: null, party: null, office: null, state: null, city: null, confidence: 0, error: "lookup_failed" });
+        setLastValidatedQuery(validationQuery);
       } finally {
         if (!cancelled) setAiLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [debouncedName, catalogMatch, hasEnoughContext, validationQuery, party, position, state, city]);
+  }, [debouncedName, catalogMatch, hasEnoughContext, validationQuery, party, position, state, city, validationAttempt]);
 
 
   const applyAiLookup = () => {
@@ -285,6 +293,18 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   );
   const [overrideConfirmed, setOverrideConfirmed] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // Score estrutural local (0–100): garante que falhas de API não derrubem candidatos plausíveis.
+  const structuralScore = useMemo(() => {
+    let s = 0;
+    if (formatOk && !blacklisted) s += 20;
+    if (party && findPartyBySigla(party)) s += 20;
+    if (position && VALID_POSITIONS.has(position)) s += 20;
+    const sc = scopeOf(position);
+    if (sc === "national" || (state && ALL_STATES.includes(state))) s += 20;
+    if (sc === "national" || sc === "state" || (sc === "municipal" && city.trim().length >= 2)) s += 20;
+    return s;
+  }, [formatOk, blacklisted, party, position, state, city]);
 
   // Reset override quando nome muda
   useEffect(() => { setOverrideConfirmed(false); }, [fullName]);
@@ -358,8 +378,8 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     setErrors(errs);
     if (Object.keys(errs).length) return;
 
-    // Score baixo + nenhuma fonte encontrou: pedir confirmação explícita
-    if (validationScore < 30 && !overrideConfirmed) {
+    // Score baixo + sem plausibilidade estrutural + nenhuma fonte encontrou: pedir confirmação.
+    if (validationScore < 30 && structuralScore < 80 && !overrideConfirmed) {
       setConfirmOpen(true);
       return;
     }
@@ -466,11 +486,48 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                   </div>
                 );
               }
+              // Falha de API: nunca marcar como inválido. Se score estrutural >= 80, mostrar como plausível.
               if (aiLookup?.error) {
+                const plausible = structuralScore >= 80;
                 return (
                   <div className="mt-2 rounded-xl border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2.5 text-amber-700 dark:text-amber-300 animate-in fade-in-0 slide-in-from-top-1 duration-200">
-                    <div className="flex items-center gap-2 text-sm font-semibold">🟡 Validação indisponível</div>
-                    <div className="mt-0.5 text-xs opacity-80">Não foi possível consultar as bases públicas agora.</div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-sm font-semibold">
+                        {plausible ? "🟡 Candidato plausível" : "🟡 Validação indisponível"}
+                      </div>
+                      <span className="text-xs font-medium opacity-80">Score: {structuralScore}/100</span>
+                    </div>
+                    <div className="mt-0.5 text-xs opacity-80">
+                      {plausible
+                        ? "Dados consistentes, mas não foi possível validar nas bases externas agora."
+                        : "Não foi possível consultar as bases públicas agora."}
+                    </div>
+                    <div className="mt-2">
+                      <Button type="button" size="sm" variant="outline" className="h-7 rounded-lg" onClick={revalidate} disabled={aiLoading}>
+                        {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                        Tentar validar novamente
+                      </Button>
+                    </div>
+                  </div>
+                );
+              }
+              // Não encontrado nas bases mas estruturalmente plausível: mostra amarelo, não vermelho.
+              if (validationLevel === "unverified" && structuralScore >= 80) {
+                return (
+                  <div className="mt-2 rounded-xl border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2.5 text-amber-700 dark:text-amber-300 animate-in fade-in-0 slide-in-from-top-1 duration-200">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-sm font-semibold">🟡 Candidato plausível</div>
+                      <span className="text-xs font-medium opacity-80">Score: {structuralScore}/100</span>
+                    </div>
+                    <div className="mt-0.5 text-xs opacity-80">
+                      Dados consistentes, mas não foi possível validar nas bases externas agora.
+                    </div>
+                    <div className="mt-2">
+                      <Button type="button" size="sm" variant="outline" className="h-7 rounded-lg" onClick={revalidate} disabled={aiLoading}>
+                        {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                        Tentar validar novamente
+                      </Button>
+                    </div>
                   </div>
                 );
               }
@@ -497,6 +554,14 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                   </div>
                   <div className="mt-0.5 text-xs opacity-80">{subtitle}</div>
                   {scopeTxt && <div className="mt-1 text-xs font-medium opacity-90">{scopeTxt}</div>}
+                  {validationLevel !== "verified" && (
+                    <div className="mt-2">
+                      <Button type="button" size="sm" variant="outline" className="h-7 rounded-lg" onClick={revalidate} disabled={aiLoading}>
+                        {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                        Tentar validar novamente
+                      </Button>
+                    </div>
+                  )}
                 </div>
               );
             })()}
