@@ -418,18 +418,18 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                 return (
                   <div className="mt-2 rounded-xl border border-border/60 bg-muted/40 px-3 py-2.5 text-muted-foreground animate-in fade-in-0 slide-in-from-top-1 duration-200">
                     <div className="flex items-center gap-2 text-sm font-semibold">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Verificando candidato…
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Validando candidato…
                     </div>
-                    <div className="mt-0.5 text-xs opacity-90">Consultando TSE, sites oficiais e fontes públicas.</div>
+                    <div className="mt-0.5 text-xs opacity-90">Consultando IA com fallback automático entre provedores.</div>
                   </div>
                 );
               }
-              // Falha de chamada IA: nunca bloquear nem invalidar — apenas alertar.
-              if (aiLookup?.error) {
+              // Falha de IA ou pending: nunca dizemos "Validação indisponível" — sempre permite cadastro.
+              if (aiLookup?.error || aiLookup?.pending) {
                 return (
                   <div className="mt-2 rounded-xl border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2.5 text-amber-700 dark:text-amber-300 animate-in fade-in-0 slide-in-from-top-1 duration-200">
-                    <div className="flex items-center gap-2 text-sm font-semibold">🟡 Validação indisponível</div>
-                    <div className="mt-0.5 text-xs opacity-80">Não foi possível consultar a IA agora. Você pode adicionar mesmo assim.</div>
+                    <div className="flex items-center gap-2 text-sm font-semibold">🟡 Validação pendente</div>
+                    <div className="mt-0.5 text-xs opacity-80">Não foi possível validar agora, mas você pode continuar o cadastro.</div>
                     <div className="mt-2">
                       <Button type="button" size="sm" variant="outline" className="h-7 rounded-lg" onClick={revalidate} disabled={aiLoading}>
                         {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
