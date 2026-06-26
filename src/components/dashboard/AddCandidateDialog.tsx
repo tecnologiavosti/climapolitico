@@ -126,9 +126,9 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   const [city, setCity] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Debounce 300ms para sugestões
+  // Debounce 600ms para validação IA
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedName(fullName), 300);
+    const t = setTimeout(() => setDebouncedName(fullName), 600);
     return () => clearTimeout(t);
   }, [fullName]);
 
