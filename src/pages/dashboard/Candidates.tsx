@@ -701,7 +701,8 @@ export default function Candidates() {
           >
             Entendi
           </button>
-      </div>
+        </div>
+      )}
 
       <AlertDialog
         open={!!duplicateMatch}
