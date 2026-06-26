@@ -249,9 +249,6 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   const aiScore = hasValidatedCurrentQuery && aiLookup && !aiLookup.error ? aiLookup.score : null;
 
 
-  // Reset override quando nome muda
-  useEffect(() => { setOverrideConfirmed(false); }, [fullName]);
-
   const nameError = useMemo(() => {
     if (!fullName.trim()) return null;
     if (blacklisted) return "Esse nome não parece ser um político brasileiro válido.";
