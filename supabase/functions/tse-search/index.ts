@@ -872,18 +872,24 @@ function fuzzyTokenMatch(hayTokens: string[], token: string): boolean {
 
 function applyFilters(rows: OutRow[], f: Filters): OutRow[] {
   const q = normalize(f.q);
+  const selectedCargo = f.cargos[0] ?? null;
   console.log("CANDIDATES BEFORE FILTER:", rows.length);
   const candidates = rows.filter((r) => {
-    if (f.onlyEleitos && !r.eleito) return false;
-    if (f.partidos.length && !f.partidos.includes((r.partido_sigla ?? "").toUpperCase())) return false;
+    if (f.onlyEleitos && !r.eleito) {
+      console.log("DISCARDED", { candidate: r.nome, reason: "not-eleito", cargo: r.cargo, selectedCargo });
+      return false;
+    }
+    if (f.partidos.length && !f.partidos.includes((r.partido_sigla ?? "").toUpperCase())) {
+      console.log("DISCARDED", { candidate: r.nome, reason: "partido", partido: r.partido_sigla });
+      return false;
+    }
     if (q) {
       const hay = normalize(`${r.nome} ${r.nome_urna ?? ""}`);
       const hayTokens = hay.split(/\s+/).filter(Boolean);
       const tokens = q.split(/\s+/).filter(Boolean);
-      // 1) substring direta
       if (hay.includes(q)) return true;
-      // 2) todos os tokens com fuzzy match
       if (tokens.every((t) => fuzzyTokenMatch(hayTokens, t))) return true;
+      console.log("DISCARDED", { candidate: r.nome, reason: "name-mismatch", cargo: r.cargo, selectedCargo });
       return false;
     }
     return true;
@@ -891,6 +897,7 @@ function applyFilters(rows: OutRow[], f: Filters): OutRow[] {
   console.log("CANDIDATES AFTER FILTER:", candidates.length);
   return candidates;
 }
+
 
 function filterLog(f: Filters) {
   return {
