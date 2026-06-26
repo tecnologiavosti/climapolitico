@@ -186,6 +186,8 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   const [aiLookup, setAiLookup] = useState<AiLookup | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [lastValidatedQuery, setLastValidatedQuery] = useState("");
+  const [validationAttempt, setValidationAttempt] = useState(0);
+  const revalidate = useCallback(() => setValidationAttempt((n) => n + 1), []);
 
   const hydrateFromAiLookup = useCallback((lookup: AiLookup) => {
     if (!lookup.found || (lookup.confidence ?? 0) <= 0.8) return;
