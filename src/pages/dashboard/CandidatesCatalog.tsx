@@ -313,35 +313,64 @@ export default function CandidatesCatalog() {
           </CardContent>
         </Card>
       ) : isSuccess && rows.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center space-y-4">
-            <p className="text-muted-foreground">Nenhum candidato encontrado para os filtros selecionados.</p>
-            {suggestions.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-sm flex items-center justify-center gap-2">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                  Você quis dizer:
-                </p>
-                <div className="flex flex-wrap justify-center gap-2">
-                  {suggestions.map((s) => (
-                    <Button
-                      key={s.id}
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        const next = { ...pendingFilters, q: s.nome, page: 0 };
-                        setSearchQuery(s.nome);
-                        setPendingFilters(next);
-                        setAppliedFilters(next);
-                      }}
-                    >
-                      {s.nome}
-                      {s.partido_sigla && <span className="ml-1 text-xs text-muted-foreground">({s.partido_sigla})</span>}
-                    </Button>
-                  ))}
+        <Card className="border-border/60 bg-gradient-to-b from-background to-muted/20 animate-in fade-in-0 zoom-in-95 duration-300">
+          <CardContent className="py-16 px-6 text-center">
+            <div className="mx-auto max-w-md flex flex-col items-center space-y-5">
+              <div className="relative">
+                <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-primary/30 to-primary/5 blur-2xl opacity-70" aria-hidden />
+                <div className="relative h-20 w-20 rounded-3xl bg-gradient-to-br from-primary/20 to-primary/[0.04] ring-1 ring-primary/20 flex items-center justify-center shadow-sm">
+                  <UserSearch className="h-9 w-9 text-primary" />
                 </div>
               </div>
-            )}
+
+              <div className="space-y-1.5">
+                <h3 className="text-xl font-semibold tracking-tight">Nenhum candidato encontrado</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Não encontramos candidatos com esses filtros ou nome. Você pode cadastrar manualmente para começar o monitoramento.
+                </p>
+              </div>
+
+              <Button
+                size="lg"
+                onClick={() => setAddDialogOpen(true)}
+                className="rounded-xl px-6 shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
+              >
+                <UserPlus className="h-4 w-4 mr-2" />
+                Adicionar candidato
+              </Button>
+
+              <p className="text-xs text-muted-foreground/80 leading-relaxed max-w-sm">
+                Nosso catálogo é atualizado automaticamente via TSE e web, mas candidatos locais ou recém-lançados podem ainda não estar indexados.
+              </p>
+
+              {suggestions.length > 0 && (
+                <div className="w-full space-y-2 pt-2 border-t border-border/60">
+                  <p className="text-xs flex items-center justify-center gap-1.5 text-muted-foreground">
+                    <Sparkles className="h-3.5 w-3.5 text-primary" />
+                    Você quis dizer:
+                  </p>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {suggestions.map((s) => (
+                      <Button
+                        key={s.id}
+                        size="sm"
+                        variant="outline"
+                        className="rounded-lg"
+                        onClick={() => {
+                          const next = { ...pendingFilters, q: s.nome, page: 0 };
+                          setSearchQuery(s.nome);
+                          setPendingFilters(next);
+                          setAppliedFilters(next);
+                        }}
+                      >
+                        {s.nome}
+                        {s.partido_sigla && <span className="ml-1 text-xs text-muted-foreground">({s.partido_sigla})</span>}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       ) : (
