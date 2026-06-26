@@ -181,9 +181,11 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     state: string | null;
     city: string | null;
     confidence: number;
+    error?: string;
   };
   const [aiLookup, setAiLookup] = useState<AiLookup | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [lastValidatedQuery, setLastValidatedQuery] = useState("");
 
   const hydrateFromAiLookup = useCallback((lookup: AiLookup) => {
     if (!lookup.found || (lookup.confidence ?? 0) <= 0.8) return;
@@ -200,41 +202,64 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
 
   // Contexto suficiente para validar de fato (depende do cargo).
   const ctxScope = scopeOf(position);
+  const isMunicipal = ctxScope === "municipal";
   const hasEnoughContext =
     !!fullName.trim() && !!party && !!position &&
     (ctxScope === "national"
       || (ctxScope === "state" && !!state)
       || (ctxScope === "municipal" && !!state && !!city.trim()));
+  const hasOnlyName = !!fullName.trim() && !party && !position && !state && !city.trim();
+  const validationQuery = useMemo(() => {
+    const name = debouncedName.trim();
+    if (!name || !hasEnoughContext) return "";
+    return [name, position, party, isMunicipal ? city.trim() : "", state]
+      .filter(Boolean)
+      .join(" ");
+  }, [debouncedName, hasEnoughContext, position, party, isMunicipal, city, state]);
+  const hasValidatedCurrentQuery =
+    hasEnoughContext && !!validationQuery && lastValidatedQuery === validationQuery && !!aiLookup;
 
   useEffect(() => {
     const name = debouncedName.trim();
     setAiLookup(null);
+    setLastValidatedQuery("");
+    if (!hasEnoughContext || !validationQuery) {
+      setAiLoading(false);
+      return;
+    }
     if (name.length < 3) return;
-    if (catalogMatch) return;
+    if (catalogMatch) {
+      setAiLoading(false);
+      return;
+    }
     // Só dispara busca quando o contexto está completo (nome + cargo + partido + UF/cidade).
-    if (!hasEnoughContext) return;
 
     let cancelled = false;
     setAiLoading(true);
     (async () => {
       try {
         const { data, error } = await supabase.functions.invoke("lookup-candidate-ai", {
-          body: { name, context: { party, office: position, state, city } },
+          body: {
+            name,
+            query: validationQuery,
+            context: { party, office: position, state, city: city.trim() },
+          },
         });
         if (cancelled) return;
         if (error) {
           console.warn("[lookup-candidate-ai] error", error);
-          setAiLookup(null);
+          setAiLookup({ found: false, name: null, party: null, office: null, state: null, city: null, confidence: 0, error: "lookup_failed" });
         } else {
           setAiLookup(data as AiLookup);
-          console.log("[Candidate AI lookup]", { name, context: { party, position, state, city }, result: data });
+          console.log("[Candidate AI lookup]", { query: validationQuery, context: { party, position, state, city }, result: data });
         }
+        setLastValidatedQuery(validationQuery);
       } finally {
         if (!cancelled) setAiLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [debouncedName, catalogMatch, hasEnoughContext, party, position, state, city]);
+  }, [debouncedName, catalogMatch, hasEnoughContext, validationQuery, party, position, state, city]);
 
 
   const applyAiLookup = () => {
@@ -250,9 +275,9 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   const validationScore = useMemo(
     () => computeExistenceScore(fullName, {
       foundInTse: !!catalogMatch,
-      ...signalsFromAiLookup(aiLookup),
+      ...signalsFromAiLookup(hasValidatedCurrentQuery ? aiLookup : null),
     }),
-    [fullName, catalogMatch, aiLookup],
+    [fullName, catalogMatch, aiLookup, hasValidatedCurrentQuery],
   );
   const validationLevel = useMemo(
     () => levelFromScore(validationScore, formatOk, blacklisted),
@@ -412,23 +437,40 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                   </div>
                 );
               }
-              // Sem contexto suficiente: estado neutro, nunca mostra Score 0.
+              // Sem contexto suficiente: nunca mostra Score 0.
               if (!hasEnoughContext) {
+                const pendingTitle = hasOnlyName ? "⚪ Validação pendente" : "🟡 Aguardando contexto";
+                const pendingText = hasOnlyName
+                  ? "Complete os campos para validar"
+                  : "Informe partido, cargo e localização para validar.";
                 return (
-                  <div className="mt-2 rounded-xl border border-border/60 bg-muted/40 px-3 py-2.5 text-muted-foreground animate-in fade-in-0 slide-in-from-top-1 duration-200">
-                    <div className="flex items-center gap-2 text-sm font-semibold">⚪ Validação pendente</div>
-                    <div className="mt-0.5 text-xs opacity-90">Preencha cargo, partido e localização para validar.</div>
+                  <div className={cn(
+                    "mt-2 rounded-xl border px-3 py-2.5 animate-in fade-in-0 slide-in-from-top-1 duration-200",
+                    hasOnlyName
+                      ? "border-border/60 bg-muted/40 text-muted-foreground"
+                      : "border-amber-500/40 bg-amber-500/[0.08] text-amber-700 dark:text-amber-300",
+                  )}>
+                    <div className="flex items-center gap-2 text-sm font-semibold">{pendingTitle}</div>
+                    <div className="mt-0.5 text-xs opacity-90">{pendingText}</div>
                   </div>
                 );
               }
               // Validando…
-              if (aiLoading) {
+              if (aiLoading || (!catalogMatch && !hasValidatedCurrentQuery)) {
                 return (
                   <div className="mt-2 rounded-xl border border-border/60 bg-muted/40 px-3 py-2.5 text-muted-foreground animate-in fade-in-0 slide-in-from-top-1 duration-200">
                     <div className="flex items-center gap-2 text-sm font-semibold">
                       <Loader2 className="h-3.5 w-3.5 animate-spin" /> Verificando candidato…
                     </div>
                     <div className="mt-0.5 text-xs opacity-90">Consultando TSE, sites oficiais e fontes públicas.</div>
+                  </div>
+                );
+              }
+              if (aiLookup?.error) {
+                return (
+                  <div className="mt-2 rounded-xl border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2.5 text-amber-700 dark:text-amber-300 animate-in fade-in-0 slide-in-from-top-1 duration-200">
+                    <div className="flex items-center gap-2 text-sm font-semibold">🟡 Validação indisponível</div>
+                    <div className="mt-0.5 text-xs opacity-80">Não foi possível consultar as bases públicas agora.</div>
                   </div>
                 );
               }
@@ -527,7 +569,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
               </div>
             )}
 
-            {!catalogMatch && suggestions.length === 0 && aiLookup?.found && (aiLookup.confidence ?? 0) > 0.8 && (
+            {!catalogMatch && suggestions.length === 0 && hasValidatedCurrentQuery && aiLookup?.found && (aiLookup.confidence ?? 0) > 0.8 && (
               <div className="mt-2 rounded-xl border border-emerald-500/40 bg-emerald-500/[0.08] px-3 py-2 animate-in fade-in-0 slide-in-from-top-1 duration-200">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-sm min-w-0">
@@ -554,7 +596,7 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
               </div>
             )}
 
-            {!catalogMatch && suggestions.length === 0 && !aiLoading && aiLookup && !aiLookup.found && (
+            {!catalogMatch && suggestions.length === 0 && hasValidatedCurrentQuery && !aiLoading && aiLookup && !aiLookup.found && !aiLookup.error && (
               <p className="mt-2 text-xs text-muted-foreground">
                 Não encontramos esse candidato nas bases públicas. Preencha partido, cargo e localização manualmente.
               </p>
