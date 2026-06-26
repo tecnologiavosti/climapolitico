@@ -1320,9 +1320,9 @@ Deno.serve(async (req) => {
     }
 
     // ============================================================
-    // SISTEMA 1 — CATÁLOGO MASSIVO (filtros estruturados, sem IA)
-    // Acionado quando NÃO há busca por nome. Lê direto do banco
-    // estruturado `politicians` (populado pelo ETL TSE) com paginação real.
+    // SISTEMA 1 — CATÁLOGO MASSIVO HÍBRIDO (filtros estruturados)
+    // Banco = cache. Se cache vazio, crawler TSE on-demand, upsert,
+    // e re-consulta o banco com paginação real.
     // ============================================================
     if (!f.q) {
       console.log("ROUTING: catalog mode");
@@ -1334,25 +1334,90 @@ Deno.serve(async (req) => {
         Deno.env.get("SUPABASE_URL")!,
         Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
       );
-      let qb = sb.from("politicians").select("*", { count: "exact" }).eq("ativo", true);
-      if (f.cargos.length) qb = qb.in("cargo", f.cargos);
-      if (f.ufs.length) qb = qb.in("estado", f.ufs);
-      if (f.partidos.length) qb = qb.in("partido_sigla", f.partidos);
-      if (f.municipio) qb = qb.ilike("municipio", `%${f.municipio}%`);
-      if (f.onlyEleitos) qb = qb.eq("eleito", true);
-      const start = f.page * PAGE_SIZE;
-      qb = qb.order("eleito", { ascending: false })
-             .order("popularidade", { ascending: false })
-             .order("nome", { ascending: true })
-             .range(start, start + PAGE_SIZE - 1);
-      const { data, count, error } = await qb;
-      if (error) throw new Error(`Catálogo DB: ${error.message}`);
-      const total = count ?? 0;
-      console.log("DB COUNT BEFORE PAGINATION:", total);
-      console.log("FIRST 10 DB ROWS:", JSON.stringify((data ?? []).slice(0, 10).map((r: any) => ({
-        nome: r.nome, cargo: r.cargo, estado: r.estado, municipio: r.municipio, eleito: r.eleito,
-      }))));
 
+      const runDbQuery = async () => {
+        let qb = sb.from("politicians").select("*", { count: "exact" }).eq("ativo", true);
+        if (f.cargos.length) qb = qb.in("cargo", f.cargos);
+        if (f.ufs.length) qb = qb.in("estado", f.ufs);
+        if (f.partidos.length) qb = qb.in("partido_sigla", f.partidos);
+        if (f.municipio) qb = qb.ilike("municipio", `%${f.municipio}%`);
+        if (f.onlyEleitos) qb = qb.eq("eleito", true);
+        const start = f.page * PAGE_SIZE;
+        qb = qb.order("eleito", { ascending: false })
+               .order("popularidade", { ascending: false })
+               .order("nome", { ascending: true })
+               .range(start, start + PAGE_SIZE - 1);
+        return await qb;
+      };
+
+      let { data, count, error } = await runDbQuery();
+      if (error) throw new Error(`Catálogo DB: ${error.message}`);
+      let total = count ?? 0;
+      console.log("CACHE HIT?", total > 0 ? "HIT" : "MISS");
+      console.log("DB COUNT BEFORE PAGINATION:", total);
+
+      let crawlError: string | null = null;
+      let crawled = false;
+      if (total === 0 && f.cargos.length > 0 && f.page === 0) {
+        console.log("CACHE MISS — iniciando crawler TSE on-demand");
+        const deadline = Date.now() + SOFT_TIMEOUT_MS;
+        const crawlable = f.cargos.filter((c) => !!CARGO_TO_TSE[c]);
+        const fetched: OutRow[] = [];
+        for (const cargo of crawlable) {
+          try {
+            console.log(`TSE REQUEST cargo=${cargo} ufs=${f.ufs.join(",")} mun=${f.municipio ?? "-"}`);
+            const { rows } = await searchTSE(cargo, f, deadline);
+            console.log(`TSE RESULT COUNT cargo=${cargo}: ${rows.length}`);
+            fetched.push(...rows);
+          } catch (e) {
+            const msg = (e as Error).message;
+            console.log(`TSE CRAWL ERROR cargo=${cargo}: ${msg}`);
+            crawlError = crawlError ? `${crawlError} | ${msg}` : msg;
+          }
+        }
+        if (fetched.length > 0) {
+          crawled = true;
+          const upserts = fetched
+            .filter((r) => r.tse_id)
+            .map((r) => ({
+              tse_id: r.tse_id,
+              nome: r.nome,
+              nome_urna: r.nome_urna,
+              nome_normalizado: normalize(r.nome),
+              partido_sigla: r.partido_sigla,
+              partido_nome: r.partido_nome,
+              numero_partido: r.numero_partido,
+              cargo: r.cargo,
+              regiao: r.estado ? REGION_BY_UF[r.estado] ?? null : null,
+              estado: r.estado,
+              municipio: r.municipio,
+              eleito: r.eleito,
+              ativo: true,
+              ano_eleicao: r.ano_eleicao,
+              foto_url: r.foto_url,
+              popularidade: r.popularidade,
+            }));
+          if (upserts.length > 0) {
+            const { error: upErr } = await sb.from("politicians").upsert(upserts, { onConflict: "tse_id" });
+            if (upErr) console.log("UPSERT ERROR:", upErr.message);
+            else console.log(`UPSERT OK: ${upserts.length} candidatos cacheados`);
+          }
+          const re = await runDbQuery();
+          if (!re.error) { data = re.data; count = re.count; total = count ?? 0; }
+        }
+        if (!crawled && crawlError) {
+          return new Response(JSON.stringify({
+            rows: [], total: 0, hasMore: false, exactTotal: true,
+            suggestions: [], normalized: {}, page: 0, pageSize: PAGE_SIZE, totalPages: 1,
+            fallback: false, partial: true, sources: ["catalog-db"],
+            error: `Falha ao consultar TSE ao vivo: ${crawlError}`,
+            notice: `Falha ao consultar TSE ao vivo: ${crawlError}`,
+            last_updated: new Date().toISOString(), source: "catalog-db",
+          }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
+      console.log("FINAL RESULT COUNT:", total);
       const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
       const rows = (data ?? []).map((r: any) => ({
         id: r.id, tse_id: r.tse_id, nome: r.nome, nome_urna: r.nome_urna,
@@ -1364,7 +1429,7 @@ Deno.serve(async (req) => {
         redes_sociais: r.redes_sociais ?? null,
         popularidade: Number(r.popularidade ?? 0),
         similarity: 1, total_count: total,
-        fonte: "catalog-db", confidence: 1,
+        fonte: crawled ? "catalog-db+tse-live" : "catalog-db", confidence: 1,
       }));
       console.log("CATALOG DB COUNT:", rows.length, "TOTAL:", total, "PAGE:", f.page + 1, "/", totalPages);
       return new Response(JSON.stringify({
@@ -1372,12 +1437,13 @@ Deno.serve(async (req) => {
         hasMore: total > (f.page + 1) * PAGE_SIZE,
         exactTotal: true, suggestions: [], normalized: {},
         page: f.page, pageSize: PAGE_SIZE, totalPages,
-        fallback: false, partial: false, sources: ["catalog-db"],
+        fallback: false, partial: false,
+        sources: crawled ? ["catalog-db", "tse-live"] : ["catalog-db"],
         notice: total === 0
-          ? "Nenhum candidato no banco com esses filtros. Rode o ETL TSE para popular."
-          : `${total.toLocaleString("pt-BR")} candidato(s) — página ${f.page + 1} de ${totalPages}.`,
+          ? "Nenhum candidato encontrado no TSE para esses filtros."
+          : `${total.toLocaleString("pt-BR")} candidato(s) — página ${f.page + 1} de ${totalPages}${crawled ? " (sincronizado do TSE agora)" : ""}.`,
         last_updated: new Date().toISOString(),
-        source: "catalog-db",
+        source: crawled ? "tse-live" : "catalog-db",
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
