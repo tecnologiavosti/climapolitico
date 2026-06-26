@@ -1324,7 +1324,9 @@ Deno.serve(async (req) => {
     // ============================================================
     if (!f.q) {
       console.log("ROUTING: catalog mode");
+      console.log("CATALOG MODE START");
       console.log("CATALOG MODE ACTIVE");
+      console.log("FILTERS RECEIVED", JSON.stringify(filterLog(f)));
       console.log("SQL FILTERS:", JSON.stringify({
         cargo: f.cargos, estado: f.ufs, municipio: f.municipio, onlyEleitos: f.onlyEleitos,
       }));
@@ -1351,7 +1353,7 @@ Deno.serve(async (req) => {
       let { data, count, error } = await runDbQuery();
       if (error) throw new Error(`Catálogo DB: ${error.message}`);
       let total = count ?? 0;
-      console.log("CACHE HIT?", total > 0 ? "HIT" : "MISS");
+      console.log(total > 0 ? "CACHE HIT" : "CACHE MISS");
       console.log("DB COUNT BEFORE PAGINATION:", total);
 
       let crawlError: string | null = null;
@@ -1365,6 +1367,7 @@ Deno.serve(async (req) => {
           try {
             console.log(`TSE REQUEST cargo=${cargo} ufs=${f.ufs.join(",")} mun=${f.municipio ?? "-"}`);
             const { rows } = await searchTSE(cargo, f, deadline);
+            console.log("TSE RAW COUNT", rows.length);
             console.log(`TSE RESULT COUNT cargo=${cargo}: ${rows.length}`);
             fetched.push(...rows);
           } catch (e) {
@@ -1399,6 +1402,7 @@ Deno.serve(async (req) => {
             const { error: upErr } = await sb.from("politicians").upsert(upserts, { onConflict: "tse_id" });
             if (upErr) console.log("UPSERT ERROR:", upErr.message);
             else console.log(`UPSERT OK: ${upserts.length} candidatos cacheados`);
+            console.log("CACHE SAVE COUNT", upErr ? 0 : upserts.length);
           }
           const re = await runDbQuery();
           if (!re.error) { data = re.data; count = re.count; total = count ?? 0; }
@@ -1415,6 +1419,7 @@ Deno.serve(async (req) => {
         }
       }
 
+      console.log("FINAL COUNT", total);
       console.log("FINAL RESULT COUNT:", total);
       const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
       const rows = (data ?? []).map((r: any) => ({
