@@ -198,38 +198,47 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     if (lookup.city) setCity(lookup.city);
   }, []);
 
+  // Contexto suficiente para validar de fato (depende do cargo).
+  const ctxScope = scopeOf(position);
+  const hasEnoughContext =
+    !!fullName.trim() && !!party && !!position &&
+    (ctxScope === "national"
+      || (ctxScope === "state" && !!state)
+      || (ctxScope === "municipal" && !!state && !!city.trim()));
+
   useEffect(() => {
-    const q = debouncedName.trim();
+    const name = debouncedName.trim();
     setAiLookup(null);
-    // Só consulta IA se: nome >= 4 chars, sem match local, e ainda não preencheu metadata
-    if (q.length < 4) return;
+    if (name.length < 3) return;
     if (catalogMatch) return;
-    if (suggestions.length > 0) return;
-    if (party || position || state) return;
+    // Só dispara busca quando o contexto está completo (nome + cargo + partido + UF/cidade).
+    if (!hasEnoughContext) return;
+
+    // Query enriquecida ajuda a desambiguar apelidos (Dr Kachan → Kachan Júnior, vereador, Jundiaí, SP, Republicanos).
+    const enriched = [name, position, city, state, party].filter(Boolean).join(" ");
 
     let cancelled = false;
     setAiLoading(true);
     (async () => {
       try {
         const { data, error } = await supabase.functions.invoke("lookup-candidate-ai", {
-          body: { name: q },
+          body: { name: enriched, context: { party, office: position, state, city } },
         });
         if (cancelled) return;
         if (error) {
           console.warn("[lookup-candidate-ai] error", error);
           setAiLookup(null);
         } else {
-          const lookup = data as AiLookup;
-          setAiLookup(lookup);
-          hydrateFromAiLookup(lookup);
-          console.log("[Candidate AI lookup]", { name: q, result: data });
+          setAiLookup(data as AiLookup);
+          console.log("[Candidate AI lookup]", { query: enriched, result: data });
         }
       } finally {
         if (!cancelled) setAiLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [debouncedName, catalogMatch, suggestions.length, party, position, state, hydrateFromAiLookup]);
+  }, [debouncedName, catalogMatch, hasEnoughContext, party, position, state, city]);
+
 
   const applyAiLookup = () => {
     if (!aiLookup || !aiLookup.found) return;
@@ -397,38 +406,62 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
             />
 
             {fullName.trim().length >= 2 && (() => {
+              // Hard block: nome quebrado ou blacklist mostram erro imediatamente.
+              if (!formatOk || blacklisted) {
+                return (
+                  <div className="mt-2 rounded-xl border px-3 py-2.5 border-red-500/40 bg-red-500/[0.08] text-red-700 dark:text-red-300 animate-in fade-in-0 slide-in-from-top-1 duration-200">
+                    <div className="flex items-center gap-2 text-sm font-semibold">🔴 Nome inválido</div>
+                    <div className="mt-0.5 text-xs opacity-80">{nameError}</div>
+                  </div>
+                );
+              }
+              // Sem contexto suficiente: estado neutro, nunca mostra Score 0.
+              if (!hasEnoughContext) {
+                return (
+                  <div className="mt-2 rounded-xl border border-border/60 bg-muted/40 px-3 py-2.5 text-muted-foreground animate-in fade-in-0 slide-in-from-top-1 duration-200">
+                    <div className="flex items-center gap-2 text-sm font-semibold">⚪ Validação pendente</div>
+                    <div className="mt-0.5 text-xs opacity-90">Preencha cargo, partido e localização para validar.</div>
+                  </div>
+                );
+              }
+              // Validando…
+              if (aiLoading) {
+                return (
+                  <div className="mt-2 rounded-xl border border-border/60 bg-muted/40 px-3 py-2.5 text-muted-foreground animate-in fade-in-0 slide-in-from-top-1 duration-200">
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Verificando candidato…
+                    </div>
+                    <div className="mt-0.5 text-xs opacity-90">Consultando TSE, sites oficiais e fontes públicas.</div>
+                  </div>
+                );
+              }
               const tone =
                 validationLevel === "verified"
                   ? { icon: "🟢", title: "Verificado", cls: "border-emerald-500/40 bg-emerald-500/[0.08] text-emerald-700 dark:text-emerald-300" }
                   : validationLevel === "partial"
                   ? { icon: "🟡", title: "Parcialmente verificado", cls: "border-amber-500/40 bg-amber-500/[0.08] text-amber-700 dark:text-amber-300" }
-                  : { icon: "🔴", title: "Não verificado", cls: "border-red-500/40 bg-red-500/[0.08] text-red-700 dark:text-red-300" };
+                  : { icon: "🔴", title: "Não encontrado nas bases públicas", cls: "border-red-500/40 bg-red-500/[0.08] text-red-700 dark:text-red-300" };
               const subtitle =
-                !formatOk || blacklisted
-                  ? (nameError ?? "Nome inválido")
-                  : validationLevel === "unverified"
+                validationLevel === "unverified"
                   ? "Sem evidências políticas confiáveis"
                   : validationLevel === "partial"
                   ? "Encontrado em fontes limitadas"
                   : "Encontrado em fontes oficiais";
-              const scopeTxt = position ? scopeLabel(scope, state, city) : null;
+              const scopeTxt = scopeLabel(scope, state, city);
               return (
                 <div className={cn("mt-2 rounded-xl border px-3 py-2.5 animate-in fade-in-0 slide-in-from-top-1 duration-200", tone.cls)}>
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 text-sm font-semibold">
                       <span>{tone.icon}</span> {tone.title}
                     </div>
-                    {formatOk && !blacklisted && (
-                      <span className="text-xs font-medium opacity-80">Score: {validationScore}/100</span>
-                    )}
+                    <span className="text-xs font-medium opacity-80">Score: {validationScore}/100</span>
                   </div>
                   <div className="mt-0.5 text-xs opacity-80">{subtitle}</div>
-                  {scopeTxt && (
-                    <div className="mt-1 text-xs font-medium opacity-90">{scopeTxt}</div>
-                  )}
+                  {scopeTxt && <div className="mt-1 text-xs font-medium opacity-90">{scopeTxt}</div>}
                 </div>
               );
             })()}
+
 
 
 
