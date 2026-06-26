@@ -102,6 +102,8 @@ async function readFilters(req: Request): Promise<Filters> {
   const url = new URL(req.url);
   let body: any = {};
   if (req.method === "POST") { try { body = await req.json(); } catch { /* noop */ } }
+  console.log("REQUEST BODY:", JSON.stringify(body));
+  console.log("QUERY RECEIVED:", body.q ?? url.searchParams.get("q"));
   const get = (k: string) => body[k] ?? url.searchParams.get(k);
   const csv = (v: string | null | undefined) => v ? String(v).split(",").map((x) => x.trim()).filter(Boolean) : [];
   const arr = (k: string) => Array.isArray(body[k]) ? body[k] as string[] : csv(url.searchParams.get(k));
@@ -532,7 +534,8 @@ function fuzzyTokenMatch(hayTokens: string[], token: string): boolean {
 
 function applyFilters(rows: OutRow[], f: Filters): OutRow[] {
   const q = normalize(f.q);
-  return rows.filter((r) => {
+  console.log("CANDIDATES BEFORE FILTER:", rows.length);
+  const candidates = rows.filter((r) => {
     if (f.onlyEleitos && !r.eleito) return false;
     if (f.partidos.length && !f.partidos.includes((r.partido_sigla ?? "").toUpperCase())) return false;
     if (q) {
@@ -547,6 +550,8 @@ function applyFilters(rows: OutRow[], f: Filters): OutRow[] {
     }
     return true;
   });
+  console.log("CANDIDATES AFTER FILTER:", candidates.length);
+  return candidates;
 }
 
 // ============ HANDLER ============

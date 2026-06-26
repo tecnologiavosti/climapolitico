@@ -67,19 +67,14 @@ export async function searchTSECandidates(filters: CatalogFilters) {
     onlyEleitos: !!filters.onlyEleitos,
     page: filters.page ?? 0,
   };
-  console.log("SENDING QUERY", payload);
+  console.log("QUERY BEFORE REQUEST:", payload.q);
+  console.log("REQUEST BODY:", payload);
   console.log("TSE Query", payload);
-  const params = new URLSearchParams();
-  if (payload.q) params.set("q", payload.q);
-  if (payload.cargo?.length) params.set("cargo", payload.cargo.join(","));
-  if (payload.partido?.length) params.set("partido", payload.partido.join(","));
-  if (payload.regiao?.length) params.set("regiao", payload.regiao.join(","));
-  if (payload.estado?.length) params.set("estado", payload.estado.join(","));
-  if (payload.municipio) params.set("municipio", payload.municipio);
-  if (payload.onlyEleitos) params.set("somenteEleitos", "true");
-  params.set("page", String(payload.page));
 
-  const { data, error } = await supabase.functions.invoke(`tse-search?${params.toString()}`, { method: "GET" });
+  const { data, error } = await supabase.functions.invoke("tse-search", {
+    method: "POST",
+    body: payload,
+  });
   if (error) throw error;
 
   const rows = (data?.rows ?? []) as PoliticianRow[];
