@@ -868,6 +868,8 @@ export type Database = {
           last_analysis_at: string | null
           mentions: number | null
           party: string | null
+          party_name: string | null
+          party_number: number | null
           region: string | null
           sentiment: number | null
           social_media_link: string | null
@@ -885,6 +887,8 @@ export type Database = {
           last_analysis_at?: string | null
           mentions?: number | null
           party?: string | null
+          party_name?: string | null
+          party_number?: number | null
           region?: string | null
           sentiment?: number | null
           social_media_link?: string | null
@@ -902,6 +906,8 @@ export type Database = {
           last_analysis_at?: string | null
           mentions?: number | null
           party?: string | null
+          party_name?: string | null
+          party_number?: number | null
           region?: string | null
           sentiment?: number | null
           social_media_link?: string | null
