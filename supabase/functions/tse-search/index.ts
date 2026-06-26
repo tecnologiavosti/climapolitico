@@ -531,6 +531,9 @@ async function searchTSE(cargoKey: string, f: Filters, deadline: number): Promis
 
 // ============ CAMADA 2 — FIRECRAWL ============
 function buildQuery(cargoKey: string | null, f: Filters): string {
+  const isNameOnly = !!f.q && !cargoKey && f.cargos.length === 0 && f.ufs.length === 0 && !f.municipio?.trim();
+  if (isNameOnly) return `site:divulgacandcontas.tse.jus.br "${f.q}"`;
+
   const parts: string[] = [];
   if (f.q) parts.push(`"${f.q}"`);
   if (cargoKey) {
@@ -543,7 +546,7 @@ function buildQuery(cargoKey: string | null, f: Filters): string {
   if (cargoKey === "ministro" && !f.q) parts.push("governo lula 2026");
   if (cargoKey === "presidente_partido" && !f.q) parts.push("brasil 2026");
   if (cargoKey === "pre_candidato" && !f.q) parts.push("brasil 2026");
-  // Quando é busca apenas por nome, adicionar contexto político BR
+  // Quando é busca por nome + filtros, adicionar contexto político BR
   if (f.q && !cargoKey) parts.push("político candidato brasil");
   return parts.filter(Boolean).join(" ").trim() || "candidatos brasil 2026";
 }
@@ -651,7 +654,11 @@ Formato JSON estrito:
     try {
       const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
-        headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+        headers: {
+          "Lovable-API-Key": key,
+          "X-Lovable-AIG-SDK": "vercel-ai-sdk",
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           model,
           messages: [
@@ -795,6 +802,111 @@ function applyFilters(rows: OutRow[], f: Filters): OutRow[] {
   return candidates;
 }
 
+function filterLog(f: Filters) {
+  return {
+    cargo: f.cargos.length ? f.cargos : null,
+    estado: f.ufs.length ? f.ufs : null,
+    municipio: f.municipio?.trim() || null,
+  };
+}
+
+function addSourceForRows(sources: Set<string>, rows: OutRow[], fallback: string) {
+  if (rows.length === 0) return;
+  if (rows.some((r) => r.fonte === "ai-lookup")) sources.add("ai-lookup");
+  else if (rows.some((r) => r.fonte.startsWith("firecrawl"))) sources.add("firecrawl");
+  else sources.add(fallback);
+}
+
+async function searchByName(f: Filters, deadline: number): Promise<{ rows: OutRow[]; sources: Set<string>; partial: boolean }> {
+  console.log("SEARCH MODE:", "name-only");
+  console.log("QUERY:", f.q);
+  console.log("FILTERS:", filterLog(f));
+
+  const all: OutRow[] = [];
+  const sources = new Set<string>();
+  let partial = false;
+
+  // Nome puro: não usar endpoint direto do TSE. Primeiro tenta crawler web no domínio oficial.
+  const webRows = await searchFirecrawl(null, f, deadline);
+  console.log("RAW RESULTS (name-web):", webRows.length);
+  all.push(...webRows);
+  addSourceForRows(sources, webRows, "firecrawl");
+
+  // Catálogo interno como complemento, sem bloquear o crawler web.
+  const localRows = await searchLocalCatalog(f);
+  console.log("RAW RESULTS (name-local-catalog):", localRows.length);
+  all.push(...localRows);
+  addSourceForRows(sources, localRows, "catalogo-local");
+
+  // Fallback oficial por arquivo público TSE (não é endpoint direto por nome).
+  if (all.length === 0 && Date.now() < deadline) {
+    const openRows = await searchOpenData(null, f, deadline);
+    console.log("RAW RESULTS (name-tse-open-data):", openRows.length);
+    all.push(...openRows);
+    addSourceForRows(sources, openRows, "tse-open-data");
+  }
+
+  if (Date.now() > deadline) partial = true;
+  console.log("RESULTS:", all.length);
+  return { rows: all, sources, partial };
+}
+
+async function searchByFilters(f: Filters, deadline: number): Promise<{ rows: OutRow[]; sources: Set<string>; partial: boolean }> {
+  console.log("SEARCH MODE:", "filters");
+  console.log("QUERY:", f.q);
+  console.log("FILTERS:", filterLog(f));
+
+  const all: OutRow[] = [];
+  const sources = new Set<string>();
+  let partial = false;
+
+  if (f.q) {
+    const localRows = await searchLocalCatalog(f);
+    console.log(`RAW RESULTS (local-catalog): ${localRows.length}`);
+    all.push(...localRows);
+    addSourceForRows(sources, localRows, "catalogo-local");
+  }
+
+  const cargosTodo = f.cargos.length > 0 ? f.cargos : [null as unknown as string];
+
+  for (const cargo of cargosTodo) {
+    if (Date.now() > deadline) { partial = true; break; }
+    console.log(`=== CARGO: ${cargo ?? "(livre)"} ===`);
+
+    if (cargo && CARGO_TO_TSE[cargo]) {
+      try {
+        const { rows, partial: tsePartial } = await searchTSE(cargo, f, deadline);
+        console.log(`RAW RESULTS (tse/${cargo}): ${rows.length}${tsePartial ? " [parcial]" : ""}`);
+        all.push(...rows);
+        if (rows.length > 0) sources.add(`tse-${MUNICIPAL_CARGOS.has(cargo) ? 2024 : 2022}`);
+        if (tsePartial) partial = true;
+      } catch (e) {
+        console.log(`[tse] skip ${cargo}: ${(e as Error).message}`);
+      }
+    }
+
+    const hasRowsBeforeOpenData = all.length;
+    if (f.q && (!cargo || CARGO_TO_TSE[cargo])) {
+      const openRows = await searchOpenData(cargo ?? null, f, deadline);
+      console.log(`RAW RESULTS (tse-open-data/${cargo ?? "livre"}): ${openRows.length}`);
+      all.push(...openRows);
+      addSourceForRows(sources, openRows, "tse-open-data");
+    }
+
+    const hasOfficialRowsForThisCargo = all.length > hasRowsBeforeOpenData;
+    const needsWeb = !hasOfficialRowsForThisCargo && (!cargo || NON_TSE_CARGOS.has(cargo) || !CARGO_TO_TSE[cargo]);
+    if (needsWeb && Date.now() < deadline) {
+      const webRows = await searchFirecrawl(cargo, f, deadline);
+      console.log(`RAW RESULTS (web/${cargo ?? "livre"}): ${webRows.length}`);
+      all.push(...webRows);
+      addSourceForRows(sources, webRows, "firecrawl");
+    }
+  }
+
+  console.log("RESULTS:", all.length);
+  return { rows: all, sources, partial };
+}
+
 // ============ HANDLER ============
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -805,6 +917,7 @@ Deno.serve(async (req) => {
     if (f.cargos.length === 0 && !f.q) {
       throw new Error("Selecione ao menos um cargo ou informe um nome para busca.");
     }
+    const isNameOnly = !!f.q && f.cargos.length === 0 && f.ufs.length === 0 && !f.municipio?.trim();
     const eletivos = f.cargos.filter((c) => !!CARGO_TO_TSE[c]);
     const naoEletivos = f.cargos.filter((c) => NON_TSE_CARGOS.has(c));
     const sourcePlan = eletivos.length > 0 && naoEletivos.length === 0 ? "TSE"
@@ -813,58 +926,13 @@ Deno.serve(async (req) => {
     console.log("SOURCE:", sourcePlan);
 
     const deadline = Date.now() + SOFT_TIMEOUT_MS;
-    const all: OutRow[] = [];
-    const sources = new Set<string>();
-    let partial = false;
-
-    if (f.q) {
-      const localRows = await searchLocalCatalog(f);
-      console.log(`RAW RESULTS (local-catalog): ${localRows.length}`);
-      all.push(...localRows);
-      if (localRows.length > 0) sources.add("catalogo-local");
-    }
-
-    // sem cargo + tem q → busca livre via Firecrawl
-    const cargosTodo = f.cargos.length > 0 ? f.cargos : [null as unknown as string];
-
-    for (const cargo of cargosTodo) {
-      if (Date.now() > deadline) { partial = true; break; }
-      console.log(`=== CARGO: ${cargo ?? "(livre)"} ===`);
-
-      // Camada 1: TSE
-      if (cargo && CARGO_TO_TSE[cargo]) {
-        try {
-          const { rows, partial: tsePartial } = await searchTSE(cargo, f, deadline);
-          console.log(`RAW RESULTS (tse/${cargo}): ${rows.length}${tsePartial ? " [parcial]" : ""}`);
-          all.push(...rows);
-          if (rows.length > 0) sources.add(`tse-${MUNICIPAL_CARGOS.has(cargo) ? 2024 : 2022}`);
-          if (tsePartial) partial = true;
-        } catch (e) {
-          console.log(`[tse] skip ${cargo}: ${(e as Error).message}`);
-        }
-      }
-
-      const hasTseRowsBeforeOpenData = all.length;
-      if (f.q && (!cargo || CARGO_TO_TSE[cargo])) {
-        const openRows = await searchOpenData(cargo ?? null, f, deadline);
-        console.log(`RAW RESULTS (tse-open-data/${cargo ?? "livre"}): ${openRows.length}`);
-        all.push(...openRows);
-        if (openRows.length > 0) sources.add("tse-open-data");
-      }
-
-      // Camada 2: Firecrawl
-      const hasTseRows = all.length > hasTseRowsBeforeOpenData;
-      const needsWeb = !hasTseRows && (!cargo || NON_TSE_CARGOS.has(cargo) || !CARGO_TO_TSE[cargo]);
-      if (needsWeb && Date.now() < deadline) {
-        const webRows = await searchFirecrawl(cargo, f, deadline);
-        console.log(`RAW RESULTS (web/${cargo ?? "livre"}): ${webRows.length}`);
-        all.push(...webRows);
-        if (webRows.length > 0) sources.add("firecrawl");
-      }
-    }
+    const { rows: all, sources, partial } = isNameOnly
+      ? await searchByName(f, deadline)
+      : await searchByFilters(f, deadline);
 
     const deduped = dedupe(all);
     const filtered = applyFilters(deduped, f);
+    console.log("RESULTS:", filtered.length);
     console.log(`NORMALIZED: ${deduped.length} | RESULT COUNT: ${filtered.length}`);
     console.log("CRAWLER RETURNED", filtered.length);
     console.log("BACKEND FINAL COUNT:", filtered.length);
