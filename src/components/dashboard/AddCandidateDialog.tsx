@@ -15,6 +15,13 @@ import {
 import { cn } from "@/lib/utils";
 import { normalizeCandidateName, suggestCandidateNames, type NameSuggestion } from "@/lib/candidateNameNormalizer";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  isNameFormatValid, isBlacklisted, computeScore, statusFromScore,
+} from "@/lib/candidateValidation";
 
 import { BRAZILIAN_PARTIES as PARTIES, POPULAR_PARTY_SIGLAS, findPartyBySigla, type BrazilianParty as Party } from "@/lib/brazilianParties";
 
