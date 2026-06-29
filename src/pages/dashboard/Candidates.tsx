@@ -184,6 +184,7 @@ export default function Candidates() {
     },
     onSuccess: async (data) => {
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['subscription'] });
       toast.success('Candidato adicionado e métricas iniciais processadas!');
       setDialogOpen(false);
       setValidationErrors({});
