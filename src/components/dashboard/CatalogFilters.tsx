@@ -40,6 +40,14 @@ const REGIONS: [string, string][] = [
 
 const UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
 
+const REGION_STATES: Record<string, string[]> = {
+  "norte": ["AC","AP","AM","PA","RO","RR","TO"],
+  "nordeste": ["AL","BA","CE","MA","PB","PE","PI","RN","SE"],
+  "centro-oeste": ["DF","GO","MT","MS"],
+  "sudeste": ["SP","RJ","MG","ES"],
+  "sul": ["PR","SC","RS"],
+};
+
 interface Props {
   filters: Filters;
   searchQuery: string;
