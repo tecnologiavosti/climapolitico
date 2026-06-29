@@ -1,10 +1,16 @@
+import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { BRAZILIAN_PARTIES } from "@/lib/brazilianParties";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Search, X } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Search, X, Check, ChevronsUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { STATES, STATES_BY_REGION } from "@/data/states";
+import { MUNICIPIOS_BY_STATE } from "@/data/municipios";
 import type { CatalogFilters as Filters } from "@/hooks/useCatalogSearch";
 
 // Whitelist final de cargos aceitos no catálogo
@@ -38,15 +44,8 @@ const REGIONS: [string, string][] = [
   ["sul", "Sul"],
 ];
 
-const UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
-
-const REGION_STATES: Record<string, string[]> = {
-  "norte": ["AC","AP","AM","PA","RO","RR","TO"],
-  "nordeste": ["AL","BA","CE","MA","PB","PE","PI","RN","SE"],
-  "centro-oeste": ["DF","GO","MT","MS"],
-  "sudeste": ["SP","RJ","MG","ES"],
-  "sul": ["PR","SC","RS"],
-};
+const UFS = STATES.map((s) => s.sigla).sort();
+const REGION_STATES = STATES_BY_REGION;
 
 interface Props {
   filters: Filters;
