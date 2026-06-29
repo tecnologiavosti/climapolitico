@@ -184,6 +184,7 @@ export default function Candidates() {
     },
     onSuccess: async (data) => {
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
+      queryClient.invalidateQueries({ queryKey: ['subscription'] });
       toast.success('Candidato adicionado e métricas iniciais processadas!');
       setDialogOpen(false);
       setValidationErrors({});
@@ -601,7 +602,9 @@ export default function Candidates() {
   );
 
   const candidateLimit = subscription?.max_candidates ?? 3;
-  const candidateCount = candidates.length;
+  // Quota vitalícia: usamos o total de candidatos já criados (nunca decrementa ao excluir).
+  const candidatesCreatedTotal = (subscription as any)?.candidates_created_total ?? candidates.length;
+  const candidateCount = candidatesCreatedTotal;
   const isLimitReached = candidateCount >= candidateLimit;
   const remaining = Math.max(0, candidateLimit - candidateCount);
   const usagePct = Math.min(100, Math.round((candidateCount / Math.max(1, candidateLimit)) * 100));
@@ -626,14 +629,22 @@ export default function Candidates() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="text-sm">
             <span className="font-semibold">{planLabel}</span>
-            <span className="text-muted-foreground"> · {candidateCount} / {candidateLimit === 9999 ? "∞" : candidateLimit} candidatos usados</span>
+            <span className="text-muted-foreground"> · {candidateCount} / {candidateLimit === 9999 ? "∞" : candidateLimit} créditos usados</span>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="inline-block ml-1 h-3.5 w-3.5 text-muted-foreground cursor-help align-text-bottom" />
+                </TooltipTrigger>
+                <TooltipContent>Excluir candidatos não restaura créditos.</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
           {isLimitReached && (
             <a
               href="/dashboard/settings"
               className="text-xs font-medium text-primary hover:underline"
             >
-              Ver planos →
+              Faça upgrade para ganhar mais créditos →
             </a>
           )}
         </div>

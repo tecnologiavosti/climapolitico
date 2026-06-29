@@ -4265,6 +4265,7 @@ export type Database = {
       subscriptions: {
         Row: {
           cancelled_at: string | null
+          candidates_created_total: number
           created_at: string
           current_period_end: string
           current_period_start: string
@@ -4280,6 +4281,7 @@ export type Database = {
         }
         Insert: {
           cancelled_at?: string | null
+          candidates_created_total?: number
           created_at?: string
           current_period_end?: string
           current_period_start?: string
@@ -4295,6 +4297,7 @@ export type Database = {
         }
         Update: {
           cancelled_at?: string | null
+          candidates_created_total?: number
           created_at?: string
           current_period_end?: string
           current_period_start?: string
