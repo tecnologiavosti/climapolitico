@@ -135,8 +135,9 @@ export default function CandidatesCatalog() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Não autenticado");
       const { data: existing } = await supabase.from("candidates").select("id").eq("user_id", user.id);
-      if (subscription && existing && existing.length >= subscription.max_candidates) {
-        throw new Error(`Limite de ${subscription.max_candidates} candidatos atingido. Faça upgrade do plano.`);
+      const used = (subscription as any)?.candidates_created_total ?? (existing?.length ?? 0);
+      if (subscription && used >= subscription.max_candidates) {
+        throw new Error(`Limite vitalício de ${subscription.max_candidates} candidatos atingido. Excluir candidatos não restaura créditos — faça upgrade do plano.`);
       }
       const region = [p.municipio, p.estado].filter(Boolean).join(", ") || p.regiao || p.estado || null;
       const social = p.redes_sociais ? (Object.values(p.redes_sociais)[0] as string | undefined) : undefined;
