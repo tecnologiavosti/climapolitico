@@ -22,6 +22,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 import { AddCandidateDialog, type AddCandidatePayload } from "@/components/dashboard/AddCandidateDialog";
 import { findDuplicateCandidate, type DuplicateMatch } from "@/lib/candidateNameNormalizer";
+import { cn } from "@/lib/utils";
 
 // Zod validation schema
 const urlOpt = z.string().trim().refine((val) => !val || val.startsWith("http://") || val.startsWith("https://"), {
@@ -210,7 +211,12 @@ export default function Candidates() {
       }
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Erro ao adicionar candidato');
+      const msg = error.message || '';
+      if (msg.includes('candidate_limit_reached')) {
+        toast.error('Limite de candidatos do plano atingido. Faça upgrade para adicionar mais.');
+      } else {
+        toast.error(msg || 'Erro ao adicionar candidato');
+      }
     }
   });
 
@@ -594,10 +600,50 @@ export default function Candidates() {
     (candidate.region && candidate.region.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const isLimitReached = false;
+  const candidateLimit = subscription?.max_candidates ?? 3;
+  const candidateCount = candidates.length;
+  const isLimitReached = candidateCount >= candidateLimit;
+  const remaining = Math.max(0, candidateLimit - candidateCount);
+  const usagePct = Math.min(100, Math.round((candidateCount / Math.max(1, candidateLimit)) * 100));
+  const planLabel = subscription?.tier
+    ? `Plano ${subscription.tier.charAt(0).toUpperCase() + subscription.tier.slice(1)}`
+    : "Plano";
+  const usageColor = isLimitReached
+    ? "bg-destructive"
+    : usagePct >= 80
+    ? "bg-amber-500"
+    : "bg-primary";
 
   return (
     <div className="space-y-6">
+      {/* Plan usage banner */}
+      <div className={cn(
+        "rounded-xl border px-4 py-3 transition-colors",
+        isLimitReached ? "border-destructive/40 bg-destructive/5"
+          : usagePct >= 80 ? "border-amber-500/40 bg-amber-500/5"
+          : "border-border bg-muted/30"
+      )}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm">
+            <span className="font-semibold">{planLabel}</span>
+            <span className="text-muted-foreground"> · {candidateCount} / {candidateLimit === 9999 ? "∞" : candidateLimit} candidatos usados</span>
+          </div>
+          {isLimitReached && (
+            <a
+              href="/dashboard/settings"
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              Ver planos →
+            </a>
+          )}
+        </div>
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className={cn("h-full rounded-full transition-all duration-500", usageColor)}
+            style={{ width: `${usagePct}%` }}
+          />
+        </div>
+      </div>
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="w-full sm:w-auto">
@@ -675,14 +721,31 @@ export default function Candidates() {
           <div>
             <AddCandidateDialog
               open={dialogOpen}
-              onOpenChange={setDialogOpen}
+              onOpenChange={(v) => {
+                if (v && isLimitReached) {
+                  toast.error("Limite de candidatos atingido — faça upgrade para continuar.");
+                  return;
+                }
+                setDialogOpen(v);
+              }}
               isPending={addCandidateMutation.isPending}
               onSubmit={handleAddCandidate}
               knownNames={(candidates ?? []).map((c: any) => c.full_name).filter(Boolean)}
+              limitInfo={{ count: candidateCount, limit: candidateLimit, planLabel }}
               trigger={
-                <Button className="w-full sm:w-auto" title="Cadastra um novo candidato pra você começar a acompanhar.">
+                <Button
+                  className="w-full sm:w-auto"
+                  title={isLimitReached ? "Limite atingido — faça upgrade" : "Cadastra um novo candidato."}
+                  onClick={(e) => {
+                    if (isLimitReached) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      toast.error("Limite atingido — faça upgrade para continuar.");
+                    }
+                  }}
+                >
                   <UserPlus className="mr-2 h-4 w-4" />
-                  Adicionar Candidato
+                  {isLimitReached ? "Limite atingido" : "Adicionar Candidato"}
                 </Button>
               }
             />

@@ -114,10 +114,12 @@ interface Props {
   knownNames?: string[];
   /** Pré-preenche os campos ao abrir o modal. */
   initialValues?: AddCandidateInitialValues;
+  /** Info de limite do plano para mostrar banner no topo e bloquear submit. */
+  limitInfo?: { count: number; limit: number; planLabel?: string };
 }
 
 
-export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onSubmit, knownNames = [], initialValues }: Props) {
+export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onSubmit, knownNames = [], initialValues, limitInfo }: Props) {
   const [fullName, setFullName] = useState("");
   const [debouncedName, setDebouncedName] = useState("");
   const [party, setParty] = useState("");
@@ -258,9 +260,11 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   }, [fullName, formatOk, blacklisted]);
 
   const scope = scopeOf(position);
-  // Bloqueio hard: formato inválido ou blacklist. Score baixo abre modal de confirmação.
+  const limitReached = !!limitInfo && limitInfo.count >= limitInfo.limit;
+  const remainingSlots = limitInfo ? Math.max(0, limitInfo.limit - limitInfo.count) : null;
+  // Bloqueio hard: formato inválido, blacklist ou limite atingido. Score baixo abre modal de confirmação.
   const canSubmit =
-    formatOk && !blacklisted && !!party && !!position && !isPending &&
+    formatOk && !blacklisted && !!party && !!position && !isPending && !limitReached &&
     (scope === "national" || (scope === "state" && !!state) || (scope === "municipal" && !!state && !!city.trim()));
 
   const scopeBadge = useMemo(() => {
@@ -373,6 +377,37 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
         </div>
 
         <form onSubmit={handleSubmit} className="px-8 py-7 space-y-7">
+          {limitInfo && (
+            <div
+              className={cn(
+                "rounded-xl border px-4 py-3 text-sm flex items-center justify-between gap-3",
+                limitReached
+                  ? "border-destructive/40 bg-destructive/5 text-destructive"
+                  : remainingSlots !== null && remainingSlots <= 1
+                  ? "border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-300"
+                  : "border-border bg-muted/30 text-muted-foreground"
+              )}
+            >
+              <div>
+                {limitReached ? (
+                  <>
+                    <strong>Limite atingido</strong> — faça upgrade para continuar.
+                  </>
+                ) : (
+                  <>
+                    Você ainda pode adicionar <strong>{remainingSlots}</strong>{" "}
+                    candidato{remainingSlots === 1 ? "" : "s"}
+                    {limitInfo.planLabel ? ` no ${limitInfo.planLabel}` : ""}.
+                  </>
+                )}
+              </div>
+              {limitReached && (
+                <a href="/dashboard/settings" className="text-xs font-semibold underline whitespace-nowrap">
+                  Ver planos
+                </a>
+              )}
+            </div>
+          )}
           {/* Nome */}
           <Field label="Nome completo" error={errors.fullName} required>
             <Input

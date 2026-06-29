@@ -155,7 +155,7 @@ export default function CandidatesCatalog() {
       queryClient.invalidateQueries({ queryKey: ["candidates-overview"] });
       toast.success("Candidato adicionado à sua conta!");
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(e.message.includes('candidate_limit_reached') ? 'Limite de candidatos do plano atingido. Faça upgrade para adicionar mais.' : e.message),
   });
 
   const manualAddMutation = useMutation({
