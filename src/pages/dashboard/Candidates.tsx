@@ -601,7 +601,9 @@ export default function Candidates() {
   );
 
   const candidateLimit = subscription?.max_candidates ?? 3;
-  const candidateCount = candidates.length;
+  // Quota vitalícia: usamos o total de candidatos já criados (nunca decrementa ao excluir).
+  const candidatesCreatedTotal = (subscription as any)?.candidates_created_total ?? candidates.length;
+  const candidateCount = candidatesCreatedTotal;
   const isLimitReached = candidateCount >= candidateLimit;
   const remaining = Math.max(0, candidateLimit - candidateCount);
   const usagePct = Math.min(100, Math.round((candidateCount / Math.max(1, candidateLimit)) * 100));
