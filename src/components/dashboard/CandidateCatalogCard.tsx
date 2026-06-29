@@ -42,9 +42,21 @@ function CandidateCatalogCardBase({ candidate: c, alreadyAdded, isAdding, onAdd 
   const location = [c.municipio, c.estado].filter(Boolean).join(" • ");
   const networks = c.redes_sociais ? Object.keys(c.redes_sociais) : [];
 
+  const type = c.candidate_type ?? "official";
+  const typeBadge = type === "official"
+    ? { label: "🟢 Oficial TSE", className: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" }
+    : type === "pre_candidate"
+    ? { label: `🟡 Pré-candidato IA${c.confidence_score ? ` · ${Math.round(c.confidence_score)}%` : ""}`, className: "bg-amber-500/10 text-amber-700 border-amber-500/30" }
+    : { label: "🔵 Figura monitorada", className: "bg-blue-500/10 text-blue-700 border-blue-500/30" };
+
   return (
     <Card className="hover-lift transition-all flex flex-col">
       <CardContent className="pt-5 pb-4 flex-1 flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-2">
+          <Badge variant="outline" className={`text-[10px] ${typeBadge.className}`} title={c.reason ?? undefined}>
+            {typeBadge.label}
+          </Badge>
+        </div>
         <div className="flex items-start gap-3">
           <Avatar className="h-14 w-14 border">
             {c.foto_url && <AvatarImage src={c.foto_url} alt={c.nome} />}

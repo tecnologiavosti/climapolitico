@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
+export type CandidateTypeFilter = "official" | "pre_candidate" | "both";
+
 export interface CatalogFilters {
   q?: string;
   cargo?: string[];
@@ -10,6 +12,7 @@ export interface CatalogFilters {
   municipio?: string;
   onlyEleitos?: boolean;
   page?: number;
+  candidateType?: CandidateTypeFilter;
 }
 
 function normalize(str: string | null | undefined) {
@@ -42,6 +45,9 @@ export interface PoliticianRow {
   popularidade: number;
   similarity: number;
   total_count: number;
+  candidate_type?: "official" | "pre_candidate" | "monitored";
+  confidence_score?: number;
+  reason?: string | null;
 }
 
 export interface Suggestion {
@@ -66,12 +72,11 @@ export async function searchTSECandidates(filters: CatalogFilters) {
     municipio: filters.municipio?.trim() || null,
     onlyEleitos: !!filters.onlyEleitos,
     page: filters.page ?? 0,
+    candidateType: filters.candidateType ?? "both",
   };
-  console.log("QUERY BEFORE REQUEST:", payload.q);
-  console.log("REQUEST BODY:", payload);
-  console.log("TSE Query", payload);
+  console.log("CATALOG HYBRID REQUEST:", payload);
 
-  const { data, error } = await supabase.functions.invoke("tse-search", {
+  const { data, error } = await supabase.functions.invoke("catalog-search-hybrid", {
     method: "POST",
     body: payload,
   });
