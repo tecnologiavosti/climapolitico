@@ -154,6 +154,7 @@ export default function CandidatesCatalog() {
       queryClient.invalidateQueries({ queryKey: ["my-candidates-names"] });
       queryClient.invalidateQueries({ queryKey: ["candidates"] });
       queryClient.invalidateQueries({ queryKey: ["candidates-overview"] });
+      queryClient.invalidateQueries({ queryKey: ["subscription"] });
       toast.success("Candidato adicionado à sua conta!");
     },
     onError: (e: Error) => toast.error(e.message.includes('candidate_limit_reached') ? 'Limite de candidatos do plano atingido. Faça upgrade para adicionar mais.' : e.message),
