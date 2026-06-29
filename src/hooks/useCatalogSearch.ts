@@ -45,6 +45,9 @@ export interface PoliticianRow {
   popularidade: number;
   similarity: number;
   total_count: number;
+  candidate_type?: "official" | "pre_candidate" | "monitored";
+  confidence_score?: number;
+  reason?: string | null;
 }
 
 export interface Suggestion {
