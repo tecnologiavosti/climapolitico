@@ -594,7 +594,19 @@ export default function Candidates() {
     (candidate.region && candidate.region.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const isLimitReached = false;
+  const candidateLimit = subscription?.max_candidates ?? 3;
+  const candidateCount = candidates.length;
+  const isLimitReached = candidateCount >= candidateLimit;
+  const remaining = Math.max(0, candidateLimit - candidateCount);
+  const usagePct = Math.min(100, Math.round((candidateCount / Math.max(1, candidateLimit)) * 100));
+  const planLabel = subscription?.tier
+    ? `Plano ${subscription.tier.charAt(0).toUpperCase() + subscription.tier.slice(1)}`
+    : "Plano";
+  const usageColor = isLimitReached
+    ? "bg-destructive"
+    : usagePct >= 80
+    ? "bg-amber-500"
+    : "bg-primary";
 
   return (
     <div className="space-y-6">
