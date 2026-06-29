@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
+export type CandidateTypeFilter = "official" | "pre_candidate" | "both";
+
 export interface CatalogFilters {
   q?: string;
   cargo?: string[];
@@ -10,6 +12,7 @@ export interface CatalogFilters {
   municipio?: string;
   onlyEleitos?: boolean;
   page?: number;
+  candidateType?: CandidateTypeFilter;
 }
 
 function normalize(str: string | null | undefined) {
