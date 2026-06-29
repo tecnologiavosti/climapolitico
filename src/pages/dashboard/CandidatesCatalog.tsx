@@ -185,6 +185,7 @@ export default function CandidatesCatalog() {
       queryClient.invalidateQueries({ queryKey: ["my-candidates-names"] });
       queryClient.invalidateQueries({ queryKey: ["candidates"] });
       queryClient.invalidateQueries({ queryKey: ["candidates-overview"] });
+      queryClient.invalidateQueries({ queryKey: ["subscription"] });
       toast.success("Candidato cadastrado com sucesso!");
       setAddDialogOpen(false);
     },
