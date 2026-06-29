@@ -40,6 +40,14 @@ const REGIONS: [string, string][] = [
 
 const UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
 
+const REGION_STATES: Record<string, string[]> = {
+  "norte": ["AC","AP","AM","PA","RO","RR","TO"],
+  "nordeste": ["AL","BA","CE","MA","PB","PE","PI","RN","SE"],
+  "centro-oeste": ["DF","GO","MT","MS"],
+  "sudeste": ["SP","RJ","MG","ES"],
+  "sul": ["PR","SC","RS"],
+};
+
 interface Props {
   filters: Filters;
   searchQuery: string;
@@ -55,10 +63,25 @@ const ALL = "__all__";
 export function CatalogFilters({ filters, searchQuery, onSearchQueryChange, onChange, totalResults, disabled, onSubmit }: Props) {
   // Single-select wrappers (RPC accepts arrays — pass [v] or undefined)
   const setSingle = (k: "cargo" | "partido" | "regiao" | "estado", v: string) => {
-    const next = { ...filters, page: 0, [k]: v === ALL ? undefined : [v] };
+    const next: Filters = { ...filters, page: 0, [k]: v === ALL ? undefined : [v] };
+    if (k === "regiao") {
+      // Reset estado e municipio quando trocar de região
+      next.estado = undefined;
+      next.municipio = undefined;
+    }
+    if (k === "estado") {
+      // Reset municipio quando trocar de estado
+      next.municipio = undefined;
+    }
     console.log(`[CatalogFilters] setSingle ${k} =`, v, "→ next:", next);
     onChange(next);
   };
+
+  const selectedRegion = filters.regiao?.[0];
+  const availableUFs = selectedRegion && REGION_STATES[selectedRegion]
+    ? REGION_STATES[selectedRegion]
+    : UFS;
+  const estadoSelected = !!filters.estado?.[0];
 
   const hasFilters = !!(
     filters.q || filters.cargo?.length || filters.partido?.length ||
@@ -116,16 +139,20 @@ export function CatalogFilters({ filters, searchQuery, onSearchQueryChange, onCh
           </Select>
 
           <Select value={filters.estado?.[0] ?? ALL} onValueChange={(v) => setSingle("estado", v)}>
-            <SelectTrigger><SelectValue placeholder="Estado" /></SelectTrigger>
-            <SelectContent className="max-h-72">
-              <SelectItem value={ALL}>Todos os estados</SelectItem>
-              {UFS.map((uf) => <SelectItem key={uf} value={uf}>{uf}</SelectItem>)}
+            <SelectTrigger>
+              <SelectValue placeholder={selectedRegion ? `Estado (${availableUFs.length})` : "Estado"} />
+            </SelectTrigger>
+            <SelectContent className="max-h-72 animate-in fade-in-0 zoom-in-95">
+              <SelectItem value={ALL}>{selectedRegion ? `Todos os estados do ${selectedRegion}` : "Todos os estados"}</SelectItem>
+              {availableUFs.map((uf) => <SelectItem key={uf} value={uf}>{uf}</SelectItem>)}
             </SelectContent>
           </Select>
 
           <Input
-            placeholder="Município"
+            placeholder={estadoSelected ? "Município" : "Selecione um estado primeiro"}
             value={filters.municipio ?? ""}
+            disabled={!estadoSelected}
+            className="transition-opacity disabled:opacity-60"
             onChange={(e) => {
               const next = { ...filters, page: 0, municipio: e.target.value };
               console.log("[CatalogFilters] municipio =", e.target.value, "→ next:", next);
