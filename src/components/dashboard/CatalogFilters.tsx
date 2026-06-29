@@ -1,10 +1,16 @@
+import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { BRAZILIAN_PARTIES } from "@/lib/brazilianParties";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Search, X } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Search, X, Check, ChevronsUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { STATES, STATES_BY_REGION } from "@/data/states";
+import { MUNICIPIOS_BY_STATE } from "@/data/municipios";
 import type { CatalogFilters as Filters } from "@/hooks/useCatalogSearch";
 
 // Whitelist final de cargos aceitos no catálogo
@@ -38,15 +44,8 @@ const REGIONS: [string, string][] = [
   ["sul", "Sul"],
 ];
 
-const UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
-
-const REGION_STATES: Record<string, string[]> = {
-  "norte": ["AC","AP","AM","PA","RO","RR","TO"],
-  "nordeste": ["AL","BA","CE","MA","PB","PE","PI","RN","SE"],
-  "centro-oeste": ["DF","GO","MT","MS"],
-  "sudeste": ["SP","RJ","MG","ES"],
-  "sul": ["PR","SC","RS"],
-};
+const UFS = STATES.map((s) => s.sigla).sort();
+const REGION_STATES = STATES_BY_REGION;
 
 interface Props {
   filters: Filters;
@@ -61,6 +60,7 @@ interface Props {
 const ALL = "__all__";
 
 export function CatalogFilters({ filters, searchQuery, onSearchQueryChange, onChange, totalResults, disabled, onSubmit }: Props) {
+  const [muniOpen, setMuniOpen] = useState(false);
   // Single-select wrappers (RPC accepts arrays — pass [v] or undefined)
   const setSingle = (k: "cargo" | "partido" | "regiao" | "estado", v: string) => {
     const next: Filters = { ...filters, page: 0, [k]: v === ALL ? undefined : [v] };
@@ -81,7 +81,12 @@ export function CatalogFilters({ filters, searchQuery, onSearchQueryChange, onCh
   const availableUFs = selectedRegion && REGION_STATES[selectedRegion]
     ? REGION_STATES[selectedRegion]
     : UFS;
-  const estadoSelected = !!filters.estado?.[0];
+  const selectedEstado = filters.estado?.[0];
+  const estadoSelected = !!selectedEstado;
+  const availableMunis = useMemo(
+    () => (selectedEstado ? MUNICIPIOS_BY_STATE[selectedEstado] ?? [] : []),
+    [selectedEstado],
+  );
 
   const hasFilters = !!(
     filters.q || filters.cargo?.length || filters.partido?.length ||
@@ -148,17 +153,57 @@ export function CatalogFilters({ filters, searchQuery, onSearchQueryChange, onCh
             </SelectContent>
           </Select>
 
-          <Input
-            placeholder={estadoSelected ? "Município" : "Selecione um estado primeiro"}
-            value={filters.municipio ?? ""}
-            disabled={!estadoSelected}
-            className="transition-opacity disabled:opacity-60"
-            onChange={(e) => {
-              const next = { ...filters, page: 0, municipio: e.target.value };
-              console.log("[CatalogFilters] municipio =", e.target.value, "→ next:", next);
-              onChange(next);
-            }}
-          />
+          <Popover open={muniOpen} onOpenChange={(o) => estadoSelected && setMuniOpen(o)}>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                role="combobox"
+                aria-expanded={muniOpen}
+                disabled={!estadoSelected}
+                className="justify-between font-normal disabled:opacity-60"
+              >
+                <span className={cn("truncate", !filters.municipio && "text-muted-foreground")}>
+                  {filters.municipio || (estadoSelected ? "Digite ou selecione município" : "Selecione um estado primeiro")}
+                </span>
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="p-0 w-[--radix-popover-trigger-width] min-w-[260px] animate-in fade-in-0 zoom-in-95" align="start">
+              <Command>
+                <CommandInput placeholder="Buscar município..." />
+                <CommandList>
+                  <CommandEmpty>Nenhum município encontrado.</CommandEmpty>
+                  <CommandGroup>
+                    {filters.municipio && (
+                      <CommandItem
+                        value="__clear__"
+                        onSelect={() => {
+                          onChange({ ...filters, page: 0, municipio: undefined });
+                          setMuniOpen(false);
+                        }}
+                      >
+                        <X className="mr-2 h-4 w-4" /> Limpar seleção
+                      </CommandItem>
+                    )}
+                    {availableMunis.map((nome) => (
+                      <CommandItem
+                        key={nome}
+                        value={nome}
+                        onSelect={() => {
+                          onChange({ ...filters, page: 0, municipio: nome });
+                          setMuniOpen(false);
+                        }}
+                      >
+                        <Check className={cn("mr-2 h-4 w-4", filters.municipio === nome ? "opacity-100" : "opacity-0")} />
+                        {nome}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
 
           <div className="flex items-center gap-2 px-2 border rounded-md">
             <Switch
