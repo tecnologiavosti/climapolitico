@@ -211,7 +211,12 @@ export default function Candidates() {
       }
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Erro ao adicionar candidato');
+      const msg = error.message || '';
+      if (msg.includes('candidate_limit_reached')) {
+        toast.error('Limite de candidatos do plano atingido. Faça upgrade para adicionar mais.');
+      } else {
+        toast.error(msg || 'Erro ao adicionar candidato');
+      }
     }
   });
 
