@@ -105,7 +105,9 @@ Deno.serve(async (req) => {
     const expires = new Date(Date.now() + CACHE_TTL_HOURS * 3600_000).toISOString();
     await db.from("analysis_cache").upsert({
       cache_key: cacheKey,
+      analysis_type: "precand_classify",
       result,
+      provider: ai.provider,
       expires_at: expires,
     }, { onConflict: "cache_key" });
 
