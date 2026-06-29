@@ -63,10 +63,25 @@ const ALL = "__all__";
 export function CatalogFilters({ filters, searchQuery, onSearchQueryChange, onChange, totalResults, disabled, onSubmit }: Props) {
   // Single-select wrappers (RPC accepts arrays — pass [v] or undefined)
   const setSingle = (k: "cargo" | "partido" | "regiao" | "estado", v: string) => {
-    const next = { ...filters, page: 0, [k]: v === ALL ? undefined : [v] };
+    const next: Filters = { ...filters, page: 0, [k]: v === ALL ? undefined : [v] };
+    if (k === "regiao") {
+      // Reset estado e municipio quando trocar de região
+      next.estado = undefined;
+      next.municipio = undefined;
+    }
+    if (k === "estado") {
+      // Reset municipio quando trocar de estado
+      next.municipio = undefined;
+    }
     console.log(`[CatalogFilters] setSingle ${k} =`, v, "→ next:", next);
     onChange(next);
   };
+
+  const selectedRegion = filters.regiao?.[0];
+  const availableUFs = selectedRegion && REGION_STATES[selectedRegion]
+    ? REGION_STATES[selectedRegion]
+    : UFS;
+  const estadoSelected = !!filters.estado?.[0];
 
   const hasFilters = !!(
     filters.q || filters.cargo?.length || filters.partido?.length ||
