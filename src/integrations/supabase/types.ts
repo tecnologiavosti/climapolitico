@@ -2776,6 +2776,119 @@ export type Database = {
         }
         Relationships: []
       }
+      pre_candidate_signals: {
+        Row: {
+          collected_at: string
+          id: string
+          matched_keywords: string[] | null
+          nome_normalizado: string
+          pre_candidate_id: string | null
+          snippet: string | null
+          source: string
+          url: string | null
+        }
+        Insert: {
+          collected_at?: string
+          id?: string
+          matched_keywords?: string[] | null
+          nome_normalizado: string
+          pre_candidate_id?: string | null
+          snippet?: string | null
+          source: string
+          url?: string | null
+        }
+        Update: {
+          collected_at?: string
+          id?: string
+          matched_keywords?: string[] | null
+          nome_normalizado?: string
+          pre_candidate_id?: string | null
+          snippet?: string | null
+          source?: string
+          url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pre_candidate_signals_pre_candidate_id_fkey"
+            columns: ["pre_candidate_id"]
+            isOneToOne: false
+            referencedRelation: "pre_candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pre_candidates: {
+        Row: {
+          cargo_sugerido: string | null
+          confidence_score: number
+          created_at: string
+          engagement_score: number | null
+          estado: string | null
+          facebook: string | null
+          growth_score: number | null
+          id: string
+          instagram: string | null
+          mentions_30d: number | null
+          municipio: string | null
+          nome: string
+          nome_normalizado: string
+          partido_sugerido: string | null
+          reason: string | null
+          sentiment_score: number | null
+          source: string
+          status: string
+          tiktok: string | null
+          updated_at: string
+          youtube: string | null
+        }
+        Insert: {
+          cargo_sugerido?: string | null
+          confidence_score?: number
+          created_at?: string
+          engagement_score?: number | null
+          estado?: string | null
+          facebook?: string | null
+          growth_score?: number | null
+          id?: string
+          instagram?: string | null
+          mentions_30d?: number | null
+          municipio?: string | null
+          nome: string
+          nome_normalizado: string
+          partido_sugerido?: string | null
+          reason?: string | null
+          sentiment_score?: number | null
+          source?: string
+          status?: string
+          tiktok?: string | null
+          updated_at?: string
+          youtube?: string | null
+        }
+        Update: {
+          cargo_sugerido?: string | null
+          confidence_score?: number
+          created_at?: string
+          engagement_score?: number | null
+          estado?: string | null
+          facebook?: string | null
+          growth_score?: number | null
+          id?: string
+          instagram?: string | null
+          mentions_30d?: number | null
+          municipio?: string | null
+          nome?: string
+          nome_normalizado?: string
+          partido_sugerido?: string | null
+          reason?: string | null
+          sentiment_score?: number | null
+          source?: string
+          status?: string
+          tiktok?: string | null
+          updated_at?: string
+          youtube?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           active_session_id: string | null
