@@ -610,6 +610,34 @@ export default function Candidates() {
 
   return (
     <div className="space-y-6">
+      {/* Plan usage banner */}
+      <div className={cn(
+        "rounded-xl border px-4 py-3 transition-colors",
+        isLimitReached ? "border-destructive/40 bg-destructive/5"
+          : usagePct >= 80 ? "border-amber-500/40 bg-amber-500/5"
+          : "border-border bg-muted/30"
+      )}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm">
+            <span className="font-semibold">{planLabel}</span>
+            <span className="text-muted-foreground"> · {candidateCount} / {candidateLimit === 9999 ? "∞" : candidateLimit} candidatos usados</span>
+          </div>
+          {isLimitReached && (
+            <a
+              href="/dashboard/settings"
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              Ver planos →
+            </a>
+          )}
+        </div>
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className={cn("h-full rounded-full transition-all duration-500", usageColor)}
+            style={{ width: `${usagePct}%` }}
+          />
+        </div>
+      </div>
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="w-full sm:w-auto">
