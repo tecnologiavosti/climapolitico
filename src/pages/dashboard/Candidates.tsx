@@ -687,14 +687,31 @@ export default function Candidates() {
           <div>
             <AddCandidateDialog
               open={dialogOpen}
-              onOpenChange={setDialogOpen}
+              onOpenChange={(v) => {
+                if (v && isLimitReached) {
+                  toast.error("Limite de candidatos atingido — faça upgrade para continuar.");
+                  return;
+                }
+                setDialogOpen(v);
+              }}
               isPending={addCandidateMutation.isPending}
               onSubmit={handleAddCandidate}
               knownNames={(candidates ?? []).map((c: any) => c.full_name).filter(Boolean)}
+              limitInfo={{ count: candidateCount, limit: candidateLimit, planLabel }}
               trigger={
-                <Button className="w-full sm:w-auto" title="Cadastra um novo candidato pra você começar a acompanhar.">
+                <Button
+                  className="w-full sm:w-auto"
+                  title={isLimitReached ? "Limite atingido — faça upgrade" : "Cadastra um novo candidato."}
+                  onClick={(e) => {
+                    if (isLimitReached) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      toast.error("Limite atingido — faça upgrade para continuar.");
+                    }
+                  }}
+                >
                   <UserPlus className="mr-2 h-4 w-4" />
-                  Adicionar Candidato
+                  {isLimitReached ? "Limite atingido" : "Adicionar Candidato"}
                 </Button>
               }
             />
