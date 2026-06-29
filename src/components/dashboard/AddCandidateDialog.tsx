@@ -260,9 +260,11 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   }, [fullName, formatOk, blacklisted]);
 
   const scope = scopeOf(position);
-  // Bloqueio hard: formato inválido ou blacklist. Score baixo abre modal de confirmação.
+  const limitReached = !!limitInfo && limitInfo.count >= limitInfo.limit;
+  const remainingSlots = limitInfo ? Math.max(0, limitInfo.limit - limitInfo.count) : null;
+  // Bloqueio hard: formato inválido, blacklist ou limite atingido. Score baixo abre modal de confirmação.
   const canSubmit =
-    formatOk && !blacklisted && !!party && !!position && !isPending &&
+    formatOk && !blacklisted && !!party && !!position && !isPending && !limitReached &&
     (scope === "national" || (scope === "state" && !!state) || (scope === "municipal" && !!state && !!city.trim()));
 
   const scopeBadge = useMemo(() => {
