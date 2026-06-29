@@ -1,93 +1,119 @@
 
-# Crawler Estruturado — Catálogo Político 2026
+# Refatoração: Catálogo Político Híbrido (TSE + Pré-candidatos IA)
 
-## Realidade técnica (leia antes de aprovar)
+Entrega completa em um único ciclo. Nome da página mantido. Inclui crawler social via cron.
 
-Não existe nenhuma fonte única que entregue "500 vereadores de Lavras 2026" hoje:
+---
 
-- **TSE 2026**: registro de candidaturas só abre em **agosto/2026**. Antes disso, a API oficial não tem 2026.
-- **TSE 2024 (municipal) e 2022 (federal/estadual)**: já implementado, é a base sólida e paginada.
-- **TREs, Câmaras Municipais, Assembleias**: ~5.570 municípios + 27 estados, cada um com site/HTML próprio. Não há API padronizada. Escrever 5.570 scrapers é inviável e quebra a cada redesign.
-- **Scraping Google/Bing**: bloqueia bots, viola ToS, resultado instável.
-- **DuckDuckGo + Firecrawl**: viável como fallback, mas devolve links, não uma lista estruturada de 500 candidatos.
+## 1. Banco de Dados (migração)
 
-Portanto, a regra "se existem 500, retornar 500" só é cumprível **dentro da base TSE oficial** (2024 municipal + 2022 federal). Para 2026, o catálogo será necessariamente parcial até o TSE publicar — qualquer outra abordagem inventa dados.
+### Tabela `pre_candidates`
+Campos conforme spec: `id, nome, nome_normalizado, estado, municipio, cargo_sugerido, partido_sugerido, instagram, facebook, tiktok, youtube, mentions_30d, engagement_score, sentiment_score, growth_score, confidence_score, source, reason, status, created_at, updated_at`.
 
-## O que vou construir
+- Índices: `nome_normalizado`, `(estado, municipio)`, `confidence_score DESC`.
+- `UNIQUE (nome_normalizado, estado, municipio, cargo_sugerido)` para deduplicar.
+- GRANTs: `SELECT` para `anon` e `authenticated`; `ALL` para `service_role`.
+- RLS: leitura pública; escrita só `service_role`.
+- Trigger `updated_at`.
 
-Crawler em cascata com 3 camadas reais, sem LLM gerando candidatos:
+### Tabela `pre_candidate_signals` (sinais brutos coletados)
+`id, pre_candidate_id, source (instagram|tiktok|facebook|youtube|news|web), url, snippet, matched_keywords text[], collected_at`. RLS service-role-only.
 
-### Camada 1 — TSE oficial (já existe, vou reforçar)
-- `divulgacandcontas.tse.jus.br` 2024 + 2022.
-- Paginação completa por município (sem truncar): remover o limite atual de 120 municípios, substituir por **streaming com cache em memória + timeout suave**. Se passar de 60s, retorna o que coletou e marca `partial: true`.
-- Concorrência: 8 requests paralelos com retry exponencial (3 tentativas).
+### Cache de IA
+Reaproveita `analysis_cache` existente com namespace `precand-classify:<nome_normalizado>` (TTL 24h).
 
-### Camada 2 — Firecrawl search (fallback estruturado)
-- Quando TSE não tem o cargo (Ministro, Presidente de partido, pré-candidato 2026) **ou** quando usuário busca por nome livre.
-- Usa connector Firecrawl: `search(query, { limit: 50, scrapeOptions: { formats: ['markdown'] } })`.
-- Query builder determinístico:
-  - cargo + cidade + UF + "2026" / "candidatos" / "eleitos"
-  - nome puro quando informado
-- Parse: extrai nome/partido/cargo de listas estruturadas (Wikipedia, G1, UOL, sites oficiais). **Não pede pro LLM inventar** — só usa LLM (Cerebras) para normalizar nomes parseados.
+### Adicionar `candidate_type` no resultado do catálogo
+Não altera tabela `politicians`; o tipo é derivado no merge (`official` para TSE, `pre_candidate` para tabela nova, `monitored` para resultados web).
 
-### Camada 3 — Cerebras (apenas normalização)
-- Correção ortográfica de nome digitado ("gustav martinel" → "Gustavo Martinelli").
-- Deduplicação semântica ("Carlos Eduardo Leite" == "Eduardo Leite").
-- **Nunca** gera lista de candidatos.
+---
 
-## Pipeline
+## 2. Edge Functions (novas)
 
-```text
-filtros → queryBuilder → [TSE cascade] → [Firecrawl fallback]
-       → normalize(UF dict) → dedupe(nameKey) → paginate(50)
-       → { rows, total, partial, sources[] }
+### `classify-political-figure`
+Input: `{ nome, contexto?, estado?, municipio? }`. Chama `callAICerebrasFirst` com o prompt da spec. Cacheia em `analysis_cache`. Se `confidence >= 70` faz upsert em `pre_candidates`. Retorna o JSON da IA.
+
+### `social-political-crawler` (rodada via cron)
+- Lista keywords: `pré-candidato, candidatura, eleições 2026, meu nome está à disposição, rumo a Brasília, rumo à prefeitura, vamos reconstruir, conto com vocês em 2026`.
+- Usa Firecrawl Search (`tbs: qdr:w`) para varrer cada keyword + site filters (`site:instagram.com`, `site:tiktok.com`, `site:facebook.com`, `site:youtube.com`).
+- Extrai nome candidato dos resultados (regex + IA leve).
+- Para cada nome novo: insere sinal em `pre_candidate_signals` e dispara `classify-political-figure`.
+- Limites: máx. 30 resultados por keyword por execução para controlar custo.
+
+### `catalog-search-hybrid`
+Wrapper único chamado pelo frontend. Faz em paralelo:
+1. `tse-search` (existente).
+2. Query em `pre_candidates` (filtros equivalentes).
+3. Web search (Firecrawl) — só se `tse + pre` retornarem < 5 resultados, com cache 15min.
+
+Merge:
+- Deduplica por `nome_normalizado + estado + (municipio||cargo)`.
+- Anota `candidate_type` em cada linha.
+- Ordena por: `eleito desc, confidence_score desc, popularidade desc`.
+
+### Cron
+Via `supabase--insert` no `cron.schedule`: `social-political-crawler` a cada 6h.
+
+---
+
+## 3. Frontend
+
+### `CatalogFilters.tsx`
+Novo grupo de chips "Tipo": `Oficiais`, `Pré-candidatos`, `Ambos` (default `Ambos`). Estado em `CatalogFilters.candidateType`.
+
+### `useCatalogSearch.ts`
+- Adiciona campo `candidateType` ao filtro.
+- Troca `tse-search` por `catalog-search-hybrid`.
+- Tipo `PoliticianRow` ganha `candidate_type: 'official' | 'pre_candidate' | 'monitored'` e `confidence_score?`.
+
+### `CandidateCatalogCard.tsx`
+Badge no canto superior:
+- 🟢 `Oficial TSE` (official)
+- 🟡 `Pré-candidato IA` + tooltip mostrando `confidence_score`
+- 🔵 `Figura monitorada` (monitored)
+
+### `CandidatesCatalog.tsx`
+Quando resultado total = 0 após hybrid:
 ```
-
-## Schema de resposta
-
-```ts
-{
-  rows: Candidate[],   // página atual
-  total: number,        // total real coletado
-  page, pageSize: 50,
-  hasMore: boolean,
-  partial: boolean,     // true se crawler abortou por timeout
-  sources: ['tse-2024', 'firecrawl'],
-  last_updated: ISO,
-}
+Não encontramos esse nome nas bases oficiais.
+Deseja monitorar essa pessoa como pré-candidato?
+[ Adicionar como pré-candidato ]
 ```
+Botão abre o `AddCandidateDialog` existente já preenchido com o `q` digitado, marcando `type=pre_candidate`.
 
-`Candidate`: id, nome, nomeCompleto, cargo, partido, numeroPartido, cidade, estado(UF), status, fonte, confidence.
+Nome da página: mantido conforme escolha do usuário.
 
-## Normalização (backend, não IA)
+---
 
-- `UF_DICT` fixo (já existe) — IA nunca define UF.
-- Status whitelist: Eleito, Candidato, Ex-candidato, Mandatário, Possível presidenciável.
-- Dedupe por `firstToken|lastToken|cargo|UF`.
+## 4. Performance / Cache
 
-## Frontend
+- `pre_candidates` query: `staleTime: 5 * 60_000` no React Query.
+- Web search dentro do hybrid: cache em `analysis_cache` chave `web:<hash(filters)>` TTL 15min.
+- IA classify: cache 24h (já descrito).
 
-- Loading com mensagens rotativas: "Consultando bases eleitorais…", "Coletando resultados…", contador parcial via SSE **opcional** (v2, não nessa entrega).
-- Banner amarelo se `partial: true`: "Resultado parcial — refine os filtros para coleta completa".
-- Paginação 50/página (já existe).
-- Logs `console.log` em FILTROS/QUERY/SOURCE/RAW/NORMALIZED/FINAL COUNT (já existem no edge — vou estender pro frontend).
+---
 
-## Detalhes técnicos
+## 5. Detalhes Técnicos
 
-- Arquivo único: `supabase/functions/tse-search/index.ts` continua sendo o orquestrador (renomear conceitualmente para "catalog-search", mas mantenho o nome do endpoint para não quebrar frontend).
-- Adiciona `firecrawlSearch()` quando: cargo ∈ {ministro, presidente_partido, pre_candidato} OU `q` preenchido sem cargo OU TSE devolve 0.
-- Cerebras: chamada única no final só pra dedupe semântica + correção de `q`.
-- Requer connector **Firecrawl** linkado (vou pedir confirmação antes de chamar `standard_connectors--connect`).
+- Normalização de nome: reusar `src/lib/candidateNameNormalizer.ts`.
+- Helper compartilhado `_shared/normalize.ts` na função para manter consistência server-side.
+- Firecrawl via secret `FIRECRAWL_API_KEY` (já presente no projeto; se faltar, solicitar).
+- IA via `_shared/cerebras-ai.ts` (chain Cerebras→Groq→Gemini→OpenRouter→Mistral→Lovable).
+- `verify_jwt = false` apenas se necessário; default mantém autenticação.
 
-## O que NÃO vou fazer (e por quê)
+---
 
-- ❌ Scrapers individuais por TRE/Câmara/Assembleia → 5.000+ alvos sem padrão, manutenção impossível.
-- ❌ Scraping direto Google/Bing → bloqueio + ToS.
-- ❌ LLM gerando lista de candidatos → alucinação garantida (foi o problema anterior).
-- ❌ Garantir "500 de 500" para 2026 antes do TSE publicar → impossível, qualquer um que prometa isso está inventando.
+## 6. Riscos Conhecidos
 
-## Confirmações que preciso
+- Crawler social: Instagram/TikTok bloqueiam scraping; cobertura real virá majoritariamente de Google indexado via Firecrawl Search. Documentado nos logs.
+- Custo de IA: cap de 30 nomes/keyword/execução + cache 24h.
+- Falsos positivos em `pre_candidates`: threshold `confidence >= 70` + campo `status='auto_detected'` para revisão futura.
 
-1. **Aprova essa arquitetura realista** (TSE + Firecrawl + Cerebras-só-normaliza), ciente de que 2026 será parcial até agosto?
-2. **Posso linkar o connector Firecrawl** agora? (necessário para camada 2)
-3. **Cargos não-TSE** (Ministro, Presidente de partido): aceita que venham só de Firecrawl + Wikipedia, com `confidence < 100` e badge "fonte: web"?
+---
+
+## 7. Ordem de Implementação
+
+1. Migração `pre_candidates` + `pre_candidate_signals` (aprovação do usuário).
+2. Edge functions `classify-political-figure`, `social-political-crawler`, `catalog-search-hybrid`.
+3. Cron job (insert SQL).
+4. Frontend: filtros, badges, hybrid hook, CTA vazio.
+5. Smoke test rápido via browser/Playwright no `/dashboard/catalog`.
