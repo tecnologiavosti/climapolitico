@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink } from "@/components/NavLink";
 import { Link, useLocation } from "react-router-dom";
-import logoAsset from "@/assets/clima-politico-logo.jpg.asset.json";
+import logoAsset from "@/assets/clima-politico-logo.png.asset.json";
 import {
   Home,
   UserPlus,
