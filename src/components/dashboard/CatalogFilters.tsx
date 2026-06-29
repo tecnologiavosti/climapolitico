@@ -60,6 +60,7 @@ interface Props {
 const ALL = "__all__";
 
 export function CatalogFilters({ filters, searchQuery, onSearchQueryChange, onChange, totalResults, disabled, onSubmit }: Props) {
+  const [muniOpen, setMuniOpen] = useState(false);
   // Single-select wrappers (RPC accepts arrays — pass [v] or undefined)
   const setSingle = (k: "cargo" | "partido" | "regiao" | "estado", v: string) => {
     const next: Filters = { ...filters, page: 0, [k]: v === ALL ? undefined : [v] };
