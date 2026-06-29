@@ -139,10 +139,12 @@ export function CatalogFilters({ filters, searchQuery, onSearchQueryChange, onCh
           </Select>
 
           <Select value={filters.estado?.[0] ?? ALL} onValueChange={(v) => setSingle("estado", v)}>
-            <SelectTrigger><SelectValue placeholder="Estado" /></SelectTrigger>
-            <SelectContent className="max-h-72">
-              <SelectItem value={ALL}>Todos os estados</SelectItem>
-              {UFS.map((uf) => <SelectItem key={uf} value={uf}>{uf}</SelectItem>)}
+            <SelectTrigger>
+              <SelectValue placeholder={selectedRegion ? `Estado (${availableUFs.length})` : "Estado"} />
+            </SelectTrigger>
+            <SelectContent className="max-h-72 animate-in fade-in-0 zoom-in-95">
+              <SelectItem value={ALL}>{selectedRegion ? `Todos os estados do ${selectedRegion}` : "Todos os estados"}</SelectItem>
+              {availableUFs.map((uf) => <SelectItem key={uf} value={uf}>{uf}</SelectItem>)}
             </SelectContent>
           </Select>
 
