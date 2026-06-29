@@ -377,6 +377,37 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
         </div>
 
         <form onSubmit={handleSubmit} className="px-8 py-7 space-y-7">
+          {limitInfo && (
+            <div
+              className={cn(
+                "rounded-xl border px-4 py-3 text-sm flex items-center justify-between gap-3",
+                limitReached
+                  ? "border-destructive/40 bg-destructive/5 text-destructive"
+                  : remainingSlots !== null && remainingSlots <= 1
+                  ? "border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-300"
+                  : "border-border bg-muted/30 text-muted-foreground"
+              )}
+            >
+              <div>
+                {limitReached ? (
+                  <>
+                    <strong>Limite atingido</strong> — faça upgrade para continuar.
+                  </>
+                ) : (
+                  <>
+                    Você ainda pode adicionar <strong>{remainingSlots}</strong>{" "}
+                    candidato{remainingSlots === 1 ? "" : "s"}
+                    {limitInfo.planLabel ? ` no ${limitInfo.planLabel}` : ""}.
+                  </>
+                )}
+              </div>
+              {limitReached && (
+                <a href="/dashboard/settings" className="text-xs font-semibold underline whitespace-nowrap">
+                  Ver planos
+                </a>
+              )}
+            </div>
+          )}
           {/* Nome */}
           <Field label="Nome completo" error={errors.fullName} required>
             <Input
