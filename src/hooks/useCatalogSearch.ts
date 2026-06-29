@@ -72,12 +72,11 @@ export async function searchTSECandidates(filters: CatalogFilters) {
     municipio: filters.municipio?.trim() || null,
     onlyEleitos: !!filters.onlyEleitos,
     page: filters.page ?? 0,
+    candidateType: filters.candidateType ?? "both",
   };
-  console.log("QUERY BEFORE REQUEST:", payload.q);
-  console.log("REQUEST BODY:", payload);
-  console.log("TSE Query", payload);
+  console.log("CATALOG HYBRID REQUEST:", payload);
 
-  const { data, error } = await supabase.functions.invoke("tse-search", {
+  const { data, error } = await supabase.functions.invoke("catalog-search-hybrid", {
     method: "POST",
     body: payload,
   });
