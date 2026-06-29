@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, BarChart3, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import logoAsset from "@/assets/clima-politico-logo.png.asset.json";
+import logoAsset from "@/assets/clima-politico-logo.jpg.asset.json";
 
 export const HeroSection = () => {
   const navigate = useNavigate();

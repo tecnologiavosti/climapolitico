@@ -1,4 +1,4 @@
-import logoAsset from "@/assets/clima-politico-logo.png.asset.json";
+import logoAsset from "@/assets/clima-politico-logo.jpg.asset.json";
 
 export const PageLoader = () => {
   return (

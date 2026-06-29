@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { Mail, MessageCircle, Globe } from "lucide-react";
-import logoAsset from "@/assets/clima-politico-logo.png.asset.json";
+import logoAsset from "@/assets/clima-politico-logo.jpg.asset.json";
 
 export const Footer = () => {
   return (

@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import logoAsset from "@/assets/clima-politico-logo.png.asset.json";
+import logoAsset from "@/assets/clima-politico-logo.jpg.asset.json";
 import { z } from "zod";
 import { consumeTrialAfterLogin, getTrialStart, queueTrialCelebration, startTrial } from "@/lib/trial";
 

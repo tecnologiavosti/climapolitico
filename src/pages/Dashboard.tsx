@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSessionHealthCheck } from "@/hooks/useSessionHealthCheck";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
-import logoAsset from "@/assets/clima-politico-logo.png.asset.json";
+import logoAsset from "@/assets/clima-politico-logo.jpg.asset.json";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
