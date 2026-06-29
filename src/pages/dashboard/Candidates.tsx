@@ -22,6 +22,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 import { AddCandidateDialog, type AddCandidatePayload } from "@/components/dashboard/AddCandidateDialog";
 import { findDuplicateCandidate, type DuplicateMatch } from "@/lib/candidateNameNormalizer";
+import { cn } from "@/lib/utils";
 
 // Zod validation schema
 const urlOpt = z.string().trim().refine((val) => !val || val.startsWith("http://") || val.startsWith("https://"), {
