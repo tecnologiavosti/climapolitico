@@ -149,8 +149,10 @@ export function CatalogFilters({ filters, searchQuery, onSearchQueryChange, onCh
           </Select>
 
           <Input
-            placeholder="Município"
+            placeholder={estadoSelected ? "Município" : "Selecione um estado primeiro"}
             value={filters.municipio ?? ""}
+            disabled={!estadoSelected}
+            className="transition-opacity disabled:opacity-60"
             onChange={(e) => {
               const next = { ...filters, page: 0, municipio: e.target.value };
               console.log("[CatalogFilters] municipio =", e.target.value, "→ next:", next);
