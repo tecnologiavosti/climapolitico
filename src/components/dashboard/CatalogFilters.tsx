@@ -81,7 +81,12 @@ export function CatalogFilters({ filters, searchQuery, onSearchQueryChange, onCh
   const availableUFs = selectedRegion && REGION_STATES[selectedRegion]
     ? REGION_STATES[selectedRegion]
     : UFS;
-  const estadoSelected = !!filters.estado?.[0];
+  const selectedEstado = filters.estado?.[0];
+  const estadoSelected = !!selectedEstado;
+  const availableMunis = useMemo(
+    () => (selectedEstado ? MUNICIPIOS_BY_STATE[selectedEstado] ?? [] : []),
+    [selectedEstado],
+  );
 
   const hasFilters = !!(
     filters.q || filters.cargo?.length || filters.partido?.length ||
