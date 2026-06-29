@@ -114,10 +114,12 @@ interface Props {
   knownNames?: string[];
   /** Pré-preenche os campos ao abrir o modal. */
   initialValues?: AddCandidateInitialValues;
+  /** Info de limite do plano para mostrar banner no topo e bloquear submit. */
+  limitInfo?: { count: number; limit: number; planLabel?: string };
 }
 
 
-export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onSubmit, knownNames = [], initialValues }: Props) {
+export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onSubmit, knownNames = [], initialValues, limitInfo }: Props) {
   const [fullName, setFullName] = useState("");
   const [debouncedName, setDebouncedName] = useState("");
   const [party, setParty] = useState("");
