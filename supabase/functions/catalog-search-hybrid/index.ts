@@ -158,16 +158,17 @@ async function extractCandidatesFromWeb(
 Evidências (resultados de busca recente):
 ${evidence}
 
-Para cada PESSOA REAL, BRASILEIRA, com sinais de pré-candidatura compatível com o cargo/região filtrados, retorne um item.
-Se as evidências web estiverem indisponíveis, retorne somente figuras públicas brasileiras amplamente conhecidas no cenário político recente e compatíveis com o cargo/região, reduzindo a confiança para no máximo 60.
-Score de confiança (0-100):
-- 30% presença política
-- 30% notícias recentes
-- 20% menções sociais
-- 20% compatibilidade geográfica/cargo
-
-NÃO invente nomes desconhecidos. Se não houver evidência web, ainda retorne nomes notórios quando o cargo/região permitir inferência política pública segura.
-Máximo 12 itens, ordenados por confiança desc.
+Para cada PESSOA REAL, BRASILEIRA, com sinais EXPLÍCITOS de pré-candidatura ao CARGO filtrado, retorne um item.
+REGRAS DE CARGO (estritas):
+- Se o cargo filtrado for "governador", inclua APENAS pré-candidatos ao governo do estado filtrado. NÃO inclua presidentes, senadores, deputados, prefeitos ou vereadores — a menos que haja evidência textual clara de troca para a disputa de governador (ex.: "pré-candidato ao governo de ${uf || "[UF]"}").
+- Se o cargo for "presidente", apenas pré-candidatos à presidência da República.
+- Se o cargo for "senador", "deputado federal" ou "deputado estadual", apenas para o estado filtrado.
+- Se o cargo for "prefeito" ou "vereador", apenas para o município filtrado.
+- O campo "cargo" do item DEVE bater com o cargo filtrado quando houver filtro.
+- Inclua no "reason" a evidência textual curta (ex.: "anunciou pré-candidatura ao governo de SP em 2025").
+Se as evidências web estiverem indisponíveis, retorne somente figuras públicas brasileiras notórias e COMPATÍVEIS com o cargo/região; reduza a confiança para no máximo 60.
+Score de confiança (0-100): 30% presença política, 30% notícias recentes, 20% menções sociais, 20% compatibilidade geográfica/cargo.
+NÃO invente nomes desconhecidos. Máximo 12 itens, ordenados por confiança desc.
 
 JSON estrito:
 { "candidatos": [
