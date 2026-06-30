@@ -9,6 +9,52 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const FIRECRAWL_API_KEY = Deno.env.get("FIRECRAWL_API_KEY");
 
+// Seed list para buscas topic-only (sem nome) por cargo.
+// Garante resultados quando usuário seleciona "Pré-candidatos IA" + cargo sem digitar nome.
+const SEED_BY_CARGO: Record<string, Array<{ nome: string; partido?: string; estado?: string }>> = {
+  presidente: [
+    { nome: "Luiz Inácio Lula da Silva", partido: "PT" },
+    { nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", estado: "SP" },
+    { nome: "Romeu Zema", partido: "NOVO", estado: "MG" },
+    { nome: "Ronaldo Caiado", partido: "UNIÃO", estado: "GO" },
+    { nome: "Eduardo Leite", partido: "PSDB", estado: "RS" },
+    { nome: "Fernando Haddad", partido: "PT", estado: "SP" },
+    { nome: "Michelle Bolsonaro", partido: "PL" },
+    { nome: "Flávio Bolsonaro", partido: "PL", estado: "RJ" },
+    { nome: "Ratinho Júnior", partido: "PSD", estado: "PR" },
+    { nome: "Pablo Marçal", partido: "PRTB", estado: "SP" },
+    { nome: "Ciro Gomes", partido: "PSDB", estado: "CE" },
+    { nome: "Simone Tebet", partido: "MDB", estado: "MS" },
+  ],
+};
+
+function seedRow(s: { nome: string; partido?: string; estado?: string }, cargo: string) {
+  return {
+    id: `ai:${normalizeName(s.nome)}`,
+    tse_id: null,
+    nome: s.nome,
+    nome_urna: null,
+    partido_sigla: s.partido ?? null,
+    partido_nome: null,
+    numero_partido: null,
+    cargo,
+    regiao: null,
+    estado: s.estado ?? null,
+    municipio: null,
+    eleito: false,
+    categoria: "pre_candidato" as const,
+    ano_eleicao: 2026,
+    foto_url: null,
+    redes_sociais: {},
+    popularidade: 0,
+    similarity: 0.7,
+    total_count: 0,
+    candidate_type: "pre_candidate" as const,
+    confidence_score: 75,
+    reason: "Pré-candidato amplamente citado na imprensa nacional",
+  };
+}
+
 async function aiWebFallback(payload: Body, authHeader: string | null): Promise<any[]> {
   const q = (payload.q || "").trim();
   const cargo = payload.cargo?.[0] || "";
