@@ -351,6 +351,8 @@ function scoreRelevance(
   // Componentes 0-100.
   const recent = c.recent_evidence ? 1 : 0;
   const poll = c.poll_evidence ? 1 : 0;
+  const major = c.held_major_office ? 1 : 0;
+  const partySig = c.party_signaling ? 1 : 0;
   const monthsAgo = typeof c.last_mention_months === "number" ? c.last_mention_months : 12;
 
   const media = Math.max(0, Math.min(100, (recent ? 70 : 25) + (poll ? 25 : 0) + (cargoMatch ? 5 : 0)));
@@ -368,16 +370,18 @@ function scoreRelevance(
   const eligible = !inel;
   const ineligibleReason = inel ? inel.reason : null;
 
+  // Critérios obrigatórios: ao menos 2 de 4 (major office / pesquisas / notícias recentes / sinalização partidária).
+  const criteriaMet = major + poll + recent + partySig;
+
   let tier: Tier;
   if (!eligible) tier = "inelegivel";
-  else if (score >= 85) tier = "forte";
-  else if (score >= 60) tier = "possivel";
-  else if (score >= 40) tier = "fraco";
+  else if (score >= 85 && criteriaMet >= 2) tier = "forte";
+  else if (score >= 60 && criteriaMet >= 2) tier = "possivel";
   else tier = "fraco";
 
-  // Inelegíveis sempre aparecem (com badge vermelho). Demais: keep se >= 40.
-  const keep = !eligible || score >= 40;
-  return { score, keep, tier, eligible, ineligibleReason, why: `score=${score} tier=${tier} elig=${eligible} cargo=${cCargo} uf=${cUf} recent=${recent} poll=${poll} hist=${c.only_historical}` };
+  // Só exibir Tier 1 e Tier 2. Inelegíveis aparecem com badge.
+  const keep = !eligible || (score >= 60 && criteriaMet >= 2);
+  return { score, keep, tier, eligible, ineligibleReason, why: `score=${score} tier=${tier} crit=${criteriaMet}/4 (maj=${major} poll=${poll} rec=${recent} party=${partySig}) elig=${eligible}` };
 }
 
 const NATIONAL_CARGOS = ["presidente", "vice-presidente", "vice presidente", "ministro", "presidente de partido"];
