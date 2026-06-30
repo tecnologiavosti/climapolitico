@@ -163,21 +163,20 @@ Data atual: ${new Date().toISOString().slice(0, 10)}
 Evidências (resultados de busca recente):
 ${evidence}
 
-Para cada PESSOA REAL, BRASILEIRA, com sinais EXPLÍCITOS de pré-candidatura ao CARGO filtrado, retorne um item.
-REGRAS DE CARGO (estritas):
-- Se o cargo filtrado for "governador", inclua APENAS pré-candidatos ao governo do estado filtrado. NÃO inclua presidentes, senadores, deputados, prefeitos ou vereadores — a menos que haja evidência textual clara de troca para a disputa de governador (ex.: "pré-candidato ao governo de ${uf || "[UF]"}").
-- Se o cargo for "presidente", apenas pré-candidatos à presidência da República.
-- Se o cargo for "senador", "deputado federal" ou "deputado estadual", apenas para o estado filtrado.
+Para cada PESSOA REAL, BRASILEIRA, retorne nomes COTADOS/VENTILADOS como pré-candidatos ao CARGO filtrado em 2026 — INCLUINDO bastidores, articulação partidária e cotações na imprensa. NÃO exija anúncio oficial: nomes "cotados", "ventilados", "em articulação", "que podem disputar" SÃO válidos.
+REGRAS DE CARGO:
+- Se o cargo filtrado for "governador" e UF="${uf || "[UF]"}", inclua APENAS nomes cotados ao governo de ${uf || "[UF]"} (mesmo sem anúncio). Use "estado": "${uf || "[UF]"}" (sigla UF, 2 letras).
+- Se o cargo for "presidente", apenas cotados à presidência da República.
+- Se o cargo for "senador", "deputado federal" ou "deputado estadual", apenas para o estado filtrado (campo "estado" em sigla UF).
 - Se o cargo for "prefeito" ou "vereador", apenas para o município filtrado.
-- O campo "cargo" do item DEVE bater com o cargo filtrado quando houver filtro.
-- Inclua no "reason" a evidência textual curta com data/ano (ex.: "anunciou pré-candidatura ao governo de SP em out/2025").
-- Marque "recent_evidence": true SOMENTE se houver notícia EXPLÍCITA dos últimos 180 dias mencionando candidatura ao cargo filtrado (frases como "pré-candidato a", "vai disputar", "lançou pré-candidatura", "campanha ao").
-- Marque "poll_evidence": true se a pessoa aparece em pesquisa eleitoral recente (Datafolha, Quaest, Genial/Quaest, AtlasIntel, Paraná Pesquisas) para o cargo filtrado.
-- Marque "only_historical": true se a pessoa só tem relevância histórica/passada e não há sinal recente de candidatura.
-- "last_mention_months": número aproximado de meses desde a menção mais recente relevante (ou null).
-NÃO inclua nomes apenas "politicamente relevantes" sem evidência de candidatura ao cargo filtrado.
-Se as evidências web estiverem indisponíveis, retorne somente figuras com pré-candidatura PÚBLICA NOTÓRIA e confirmada ao cargo/região; não invente.
-NÃO invente nomes desconhecidos. Máximo 12 itens, ordenados por confiança desc.
+- O campo "cargo" do item DEVE bater com o cargo filtrado.
+- O campo "estado" SEMPRE em sigla de 2 letras (SP, RJ, MG…), nunca o nome por extenso.
+- Inclua no "reason" evidência curta (ex.: "cotado pelo PT para governo de SP em 2026", "Datafolha dez/2025 mostra X em 2º lugar").
+- Marque "recent_evidence": true se houver menção (mesmo de bastidor) nos últimos 180 dias ao cargo filtrado.
+- Marque "poll_evidence": true se aparece em pesquisa eleitoral recente (Datafolha, Quaest, AtlasIntel, Paraná Pesquisas) para o cargo.
+- Marque "only_historical": true se a pessoa só tem relevância passada e nenhum sinal recente de candidatura ao cargo.
+- "last_mention_months": meses desde a menção mais recente relevante (ou null).
+NÃO invente nomes desconhecidos. Sem evidência web, use APENAS figuras notórias da política brasileira atual cotadas para o cargo/região. Máximo 12 itens, ordenados por confiança desc.
 
 JSON estrito:
 { "candidatos": [
