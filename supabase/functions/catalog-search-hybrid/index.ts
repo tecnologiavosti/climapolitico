@@ -319,7 +319,7 @@ function toRow(
   fallbackCargo: string,
   scored: { score: number; tier: Tier; eligible: boolean; ineligibleReason: string | null },
 ) {
-  const cargo = (c.cargo || fallbackCargo || "").toLowerCase().replace(/\s+/g, "_") || null;
+  const cargo = canonicalCargoKey(c.cargo) ?? canonicalCargoKey(fallbackCargo) ?? (c.cargo || fallbackCargo || "").toLowerCase().replace(/\s+/g, "_") || null;
   return {
     id: `ai:${normalizeName(c.nome)}:${(c.estado || "").toUpperCase()}:${(c.municipio || "").toLowerCase()}`,
     tse_id: null,
@@ -351,11 +351,11 @@ function toRow(
 
 // Cargos mutuamente exclusivos.
 const CARGO_INCOMPATIBLE: Record<string, string[]> = {
-  governador: ["presidente", "senador", "deputado federal", "deputado estadual", "prefeito", "vereador", "ministro"],
-  presidente: ["governador", "senador", "deputado federal", "deputado estadual", "prefeito", "vereador"],
+  governador: ["presidente", "senador", "deputado_federal", "deputado_estadual", "prefeito", "vereador", "ministro"],
+  presidente: ["governador", "senador", "deputado_federal", "deputado_estadual", "prefeito", "vereador"],
   senador: ["presidente", "vereador", "prefeito"],
   prefeito: ["presidente", "governador", "senador", "vereador"],
-  vereador: ["presidente", "governador", "senador", "deputado federal"],
+  vereador: ["presidente", "governador", "senador", "deputado_federal"],
 };
 
 function evidenceOfCandidacy(reason: string, filterCargo: string, uf: string, mun: string): boolean {
@@ -365,8 +365,9 @@ function evidenceOfCandidacy(reason: string, filterCargo: string, uf: string, mu
     governador: ["governo", "governador"],
     presidente: ["presidencia", "presidente da republica"],
     senador: ["senado", "senador"],
-    "deputado federal": ["deputado federal", "camara"],
-    "deputado estadual": ["deputado estadual", "assembleia"],
+    deputado_federal: ["deputado federal", "camara"],
+    deputado_estadual: ["deputado estadual", "assembleia"],
+    deputado_distrital: ["deputado distrital", "camara legislativa"],
     prefeito: ["prefeito", "prefeitura"],
     vereador: ["vereador", "camara municipal"],
   };
@@ -383,7 +384,7 @@ function scoreRelevance(
   uf: string,
   mun: string,
 ): { score: number; keep: boolean; tier: Tier; eligible: boolean; ineligibleReason: string | null; why: string } {
-  const cCargo = (c.cargo || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  const cCargo = canonicalCargoKey(c.cargo) ?? normalizeText(c.cargo);
   const cUf = (c.estado || "").toUpperCase();
 
   // Desambiguação: exige nome completo (≥ 2 partes ≥ 2 chars). Single-token ⇒ descarta.
