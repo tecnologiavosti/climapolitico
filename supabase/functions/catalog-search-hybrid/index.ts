@@ -422,6 +422,9 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
   const requiresUF = REGIONAL_CARGOS_REQUIRE_UF.includes(filterCargo);
   const requiresMun = LOCAL_CARGOS_REQUIRE_MUN.includes(filterCargo);
 
+  console.log("estado raw:", body.estado);
+  console.log("estado normalized:", uf);
+  console.log("cargo raw:", body.cargo, "→ normalized:", filterCargo);
   console.log("IS NATIONAL:", isNational);
   console.log("STATE REQUIRED:", requiresUF || requiresMun);
   console.log("MUN REQUIRED:", requiresMun);
