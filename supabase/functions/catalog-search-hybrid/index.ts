@@ -170,22 +170,28 @@ REGRAS DE CARGO (estritas):
 - Se o cargo for "senador", "deputado federal" ou "deputado estadual", apenas para o estado filtrado.
 - Se o cargo for "prefeito" ou "vereador", apenas para o município filtrado.
 - O campo "cargo" do item DEVE bater com o cargo filtrado quando houver filtro.
-- Inclua no "reason" a evidência textual curta (ex.: "anunciou pré-candidatura ao governo de SP em 2025").
-Se as evidências web estiverem indisponíveis, retorne somente figuras públicas brasileiras notórias e COMPATÍVEIS com o cargo/região; reduza a confiança para no máximo 60.
-Score de confiança (0-100): 30% presença política, 30% notícias recentes, 20% menções sociais, 20% compatibilidade geográfica/cargo.
+- Inclua no "reason" a evidência textual curta com data/ano (ex.: "anunciou pré-candidatura ao governo de SP em out/2025").
+- Marque "recent_evidence": true SOMENTE se houver notícia EXPLÍCITA dos últimos 180 dias mencionando candidatura ao cargo filtrado (frases como "pré-candidato a", "vai disputar", "lançou pré-candidatura", "campanha ao").
+- Marque "poll_evidence": true se a pessoa aparece em pesquisa eleitoral recente (Datafolha, Quaest, Genial/Quaest, AtlasIntel, Paraná Pesquisas) para o cargo filtrado.
+- Marque "only_historical": true se a pessoa só tem relevância histórica/passada e não há sinal recente de candidatura.
+- "last_mention_months": número aproximado de meses desde a menção mais recente relevante (ou null).
+NÃO inclua nomes apenas "politicamente relevantes" sem evidência de candidatura ao cargo filtrado.
+Se as evidências web estiverem indisponíveis, retorne somente figuras com pré-candidatura PÚBLICA NOTÓRIA e confirmada ao cargo/região; não invente.
 NÃO invente nomes desconhecidos. Máximo 12 itens, ordenados por confiança desc.
 
 JSON estrito:
 { "candidatos": [
   { "nome": string, "partido": string|null, "cargo": string|null,
     "estado": string|null, "municipio": string|null,
-    "confidence": number, "reason": string }
+    "confidence": number, "reason": string,
+    "recent_evidence": boolean, "poll_evidence": boolean,
+    "only_historical": boolean, "last_mention_months": number|null }
 ] }`;
 
   try {
     const ai = await callAICerebrasFirst({
       systemMsg: system, userPrompt: user, jsonMode: true,
-      maxTokens: 1200, temperature: 0.2, tag: hits.length ? "catalog-discover" : "catalog-discover-ai-fallback",
+      maxTokens: 1400, temperature: 0.2, tag: hits.length ? "catalog-discover" : "catalog-discover-ai-fallback",
     });
     const parsed = JSON.parse(ai.content);
     const arr = Array.isArray(parsed?.candidatos) ? parsed.candidatos : [];
@@ -199,10 +205,14 @@ JSON estrito:
         municipio: c.municipio || null,
         confidence: Math.max(0, Math.min(100, Number(c.confidence) || 0)),
         reason: c.reason ? String(c.reason).slice(0, 280) : "",
-      }))
-      .filter((c: ExtractedCandidate) => c.confidence >= 40);
+        recent_evidence: !!c.recent_evidence,
+        poll_evidence: !!c.poll_evidence,
+        only_historical: !!c.only_historical,
+        last_mention_months: typeof c.last_mention_months === "number" ? c.last_mention_months : null,
+      }));
   } catch (e) { console.warn("[hybrid] extract err", e); return []; }
 }
+
 
 function toRow(c: ExtractedCandidate, fallbackCargo?: string) {
   const cargo = (c.cargo || fallbackCargo || "").toLowerCase().replace(/\s+/g, "_") || null;
