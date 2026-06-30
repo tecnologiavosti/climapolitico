@@ -193,7 +193,7 @@ interface ExtractedCandidate {
 async function extractCandidatesFromWeb(
   body: Body, hits: WebHit[], queries: string[],
 ): Promise<ExtractedCandidate[]> {
-  const cargo = normalizeText(body.cargo);
+  const cargo = normalizeCargo(body.cargo);
   const uf = firstValue(body.estado).toUpperCase();
   const estadoNome = ufFullName(uf);
   const mun = body.municipio || "";
