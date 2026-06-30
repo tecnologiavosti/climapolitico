@@ -163,21 +163,20 @@ Data atual: ${new Date().toISOString().slice(0, 10)}
 Evidências (resultados de busca recente):
 ${evidence}
 
-Para cada PESSOA REAL, BRASILEIRA, com sinais EXPLÍCITOS de pré-candidatura ao CARGO filtrado, retorne um item.
-REGRAS DE CARGO (estritas):
-- Se o cargo filtrado for "governador", inclua APENAS pré-candidatos ao governo do estado filtrado. NÃO inclua presidentes, senadores, deputados, prefeitos ou vereadores — a menos que haja evidência textual clara de troca para a disputa de governador (ex.: "pré-candidato ao governo de ${uf || "[UF]"}").
-- Se o cargo for "presidente", apenas pré-candidatos à presidência da República.
-- Se o cargo for "senador", "deputado federal" ou "deputado estadual", apenas para o estado filtrado.
+Para cada PESSOA REAL, BRASILEIRA, retorne nomes COTADOS/VENTILADOS como pré-candidatos ao CARGO filtrado em 2026 — INCLUINDO bastidores, articulação partidária e cotações na imprensa. NÃO exija anúncio oficial: nomes "cotados", "ventilados", "em articulação", "que podem disputar" SÃO válidos.
+REGRAS DE CARGO:
+- Se o cargo filtrado for "governador" e UF="${uf || "[UF]"}", inclua APENAS nomes cotados ao governo de ${uf || "[UF]"} (mesmo sem anúncio). Use "estado": "${uf || "[UF]"}" (sigla UF, 2 letras).
+- Se o cargo for "presidente", apenas cotados à presidência da República.
+- Se o cargo for "senador", "deputado federal" ou "deputado estadual", apenas para o estado filtrado (campo "estado" em sigla UF).
 - Se o cargo for "prefeito" ou "vereador", apenas para o município filtrado.
-- O campo "cargo" do item DEVE bater com o cargo filtrado quando houver filtro.
-- Inclua no "reason" a evidência textual curta com data/ano (ex.: "anunciou pré-candidatura ao governo de SP em out/2025").
-- Marque "recent_evidence": true SOMENTE se houver notícia EXPLÍCITA dos últimos 180 dias mencionando candidatura ao cargo filtrado (frases como "pré-candidato a", "vai disputar", "lançou pré-candidatura", "campanha ao").
-- Marque "poll_evidence": true se a pessoa aparece em pesquisa eleitoral recente (Datafolha, Quaest, Genial/Quaest, AtlasIntel, Paraná Pesquisas) para o cargo filtrado.
-- Marque "only_historical": true se a pessoa só tem relevância histórica/passada e não há sinal recente de candidatura.
-- "last_mention_months": número aproximado de meses desde a menção mais recente relevante (ou null).
-NÃO inclua nomes apenas "politicamente relevantes" sem evidência de candidatura ao cargo filtrado.
-Se as evidências web estiverem indisponíveis, retorne somente figuras com pré-candidatura PÚBLICA NOTÓRIA e confirmada ao cargo/região; não invente.
-NÃO invente nomes desconhecidos. Máximo 12 itens, ordenados por confiança desc.
+- O campo "cargo" do item DEVE bater com o cargo filtrado.
+- O campo "estado" SEMPRE em sigla de 2 letras (SP, RJ, MG…), nunca o nome por extenso.
+- Inclua no "reason" evidência curta (ex.: "cotado pelo PT para governo de SP em 2026", "Datafolha dez/2025 mostra X em 2º lugar").
+- Marque "recent_evidence": true se houver menção (mesmo de bastidor) nos últimos 180 dias ao cargo filtrado.
+- Marque "poll_evidence": true se aparece em pesquisa eleitoral recente (Datafolha, Quaest, AtlasIntel, Paraná Pesquisas) para o cargo.
+- Marque "only_historical": true se a pessoa só tem relevância passada e nenhum sinal recente de candidatura ao cargo.
+- "last_mention_months": meses desde a menção mais recente relevante (ou null).
+NÃO invente nomes desconhecidos. Sem evidência web, use APENAS figuras notórias da política brasileira atual cotadas para o cargo/região. Máximo 12 itens, ordenados por confiança desc.
 
 JSON estrito:
 { "candidatos": [
@@ -201,7 +200,7 @@ JSON estrito:
         nome: String(c.nome).trim(),
         partido: c.partido || null,
         cargo: c.cargo || null,
-        estado: c.estado || null,
+        estado: normalizeUf(c.estado),
         municipio: c.municipio || null,
         confidence: Math.max(0, Math.min(100, Number(c.confidence) || 0)),
         reason: c.reason ? String(c.reason).slice(0, 280) : "",
@@ -211,6 +210,24 @@ JSON estrito:
         last_mention_months: typeof c.last_mention_months === "number" ? c.last_mention_months : null,
       }));
   } catch (e) { console.warn("[hybrid] extract err", e); return []; }
+}
+
+// Mapa nome-de-estado → sigla UF (a IA às vezes devolve "São Paulo" em vez de "SP").
+const UF_BY_NAME: Record<string, string> = {
+  "acre": "AC", "alagoas": "AL", "amapa": "AP", "amazonas": "AM", "bahia": "BA",
+  "ceara": "CE", "distrito federal": "DF", "espirito santo": "ES", "goias": "GO",
+  "maranhao": "MA", "mato grosso": "MT", "mato grosso do sul": "MS", "minas gerais": "MG",
+  "para": "PA", "paraiba": "PB", "parana": "PR", "pernambuco": "PE", "piaui": "PI",
+  "rio de janeiro": "RJ", "rio grande do norte": "RN", "rio grande do sul": "RS",
+  "rondonia": "RO", "roraima": "RR", "santa catarina": "SC", "sao paulo": "SP",
+  "sergipe": "SE", "tocantins": "TO",
+};
+function normalizeUf(value: any): string | null {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (raw.length === 2) return raw.toUpperCase();
+  const key = raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return UF_BY_NAME[key] || raw.toUpperCase().slice(0, 2);
 }
 
 
@@ -367,6 +384,35 @@ const NATIONAL_SEED: ExtractedCandidate[] = [
   { nome: "Fernando Haddad", partido: "PT", cargo: "presidente", estado: null, municipio: null, confidence: 35, reason: "ministro da Fazenda; nome ventilado para presidência caso Lula não dispute", recent_evidence: true, poll_evidence: false, only_historical: false, last_mention_months: 2 },
 ];
 
+// Seed regional para governador — usado quando IA retorna 0 para "governador" + UF.
+const GOVERNADOR_SEED: Record<string, ExtractedCandidate[]> = {
+  SP: [
+    { nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "governador", estado: "SP", municipio: null, confidence: 90, reason: "governador em exercício, cotado para reeleição ou presidência em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 0 },
+    { nome: "Fernando Haddad", partido: "PT", cargo: "governador", estado: "SP", municipio: null, confidence: 65, reason: "nome ventilado pelo PT para disputar governo de SP em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 2 },
+    { nome: "Márcio França", partido: "PSB", cargo: "governador", estado: "SP", municipio: null, confidence: 55, reason: "ex-governador, cotado pelo PSB para governo de SP em 2026", recent_evidence: true, poll_evidence: false, only_historical: false, last_mention_months: 3 },
+    { nome: "Guilherme Boulos", partido: "PSOL", cargo: "governador", estado: "SP", municipio: null, confidence: 50, reason: "deputado federal, cotado pela esquerda para governo de SP em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 2 },
+    { nome: "Paulo Serra", partido: "PSDB", cargo: "governador", estado: "SP", municipio: null, confidence: 45, reason: "prefeito de Santo André, cotado pelo PSDB para governo de SP", recent_evidence: true, poll_evidence: false, only_historical: false, last_mention_months: 4 },
+  ],
+  MG: [
+    { nome: "Romeu Zema", partido: "NOVO", cargo: "governador", estado: "MG", municipio: null, confidence: 70, reason: "governador em fim de mandato, articula sucessão e disputa presidencial", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 1 },
+    { nome: "Cleitinho Azevedo", partido: "REPUBLICANOS", cargo: "governador", estado: "MG", municipio: null, confidence: 60, reason: "senador, cotado para governo de MG em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 2 },
+    { nome: "Rodrigo Pacheco", partido: "PSD", cargo: "governador", estado: "MG", municipio: null, confidence: 58, reason: "presidente do Senado, cotado para governo de MG em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 1 },
+  ],
+  RJ: [
+    { nome: "Cláudio Castro", partido: "PL", cargo: "governador", estado: "RJ", municipio: null, confidence: 70, reason: "governador em exercício, articula reeleição em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 1 },
+    { nome: "Eduardo Paes", partido: "PSD", cargo: "governador", estado: "RJ", municipio: null, confidence: 65, reason: "prefeito do Rio, cotado pelo PSD para governo do RJ em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 2 },
+  ],
+  RS: [
+    { nome: "Eduardo Leite", partido: "PSDB", cargo: "governador", estado: "RS", municipio: null, confidence: 75, reason: "governador em exercício do RS, cotado para reeleição ou presidência", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 1 },
+  ],
+  GO: [
+    { nome: "Ronaldo Caiado", partido: "UNIÃO", cargo: "governador", estado: "GO", municipio: null, confidence: 70, reason: "governador em fim de mandato, articula sucessão e disputa presidencial", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 1 },
+  ],
+  PR: [
+    { nome: "Ratinho Junior", partido: "PSD", cargo: "governador", estado: "PR", municipio: null, confidence: 80, reason: "governador em exercício, articula candidatura presidencial em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 0 },
+  ],
+};
+
 async function discoverPreCandidates(body: Body): Promise<any[]> {
   const filterCargo = normalizeText(body.cargo);
   const uf = firstValue(body.estado).toUpperCase();
@@ -376,6 +422,9 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
   const requiresUF = REGIONAL_CARGOS_REQUIRE_UF.includes(filterCargo);
   const requiresMun = LOCAL_CARGOS_REQUIRE_MUN.includes(filterCargo);
 
+  console.log("estado raw:", body.estado);
+  console.log("estado normalized:", uf);
+  console.log("cargo raw:", body.cargo, "→ normalized:", filterCargo);
   console.log("IS NATIONAL:", isNational);
   console.log("STATE REQUIRED:", requiresUF || requiresMun);
   console.log("MUN REQUIRED:", requiresMun);
@@ -411,10 +460,15 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
   let extracted = await extractCandidatesFromWeb(queryBody, hits, queries);
   console.log("AI RESULTS (raw):", extracted.length);
 
-  // Garantia: para cargos nacionais (presidente), se IA retornar 0, usa seed conhecido.
-  if (isNational && extracted.length === 0) {
-    console.warn("[hybrid] IA retornou 0 para cargo nacional — aplicando seed");
-    extracted = NATIONAL_SEED.filter((c) => !filterCargo || c.cargo === filterCargo);
+  // Fallback seeds quando IA retorna 0.
+  if (extracted.length === 0) {
+    if (isNational) {
+      console.warn("[hybrid] IA retornou 0 para cargo nacional — aplicando NATIONAL_SEED");
+      extracted = NATIONAL_SEED.filter((c) => !filterCargo || c.cargo === filterCargo);
+    } else if (filterCargo === "governador" && uf && GOVERNADOR_SEED[uf]) {
+      console.warn(`[hybrid] IA retornou 0 para governador ${uf} — aplicando GOVERNADOR_SEED`);
+      extracted = GOVERNADOR_SEED[uf];
+    }
   }
 
   // Pós-processamento estrito por cargo/estado/município (UF/mun ignorados para nacional).
