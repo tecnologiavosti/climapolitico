@@ -571,13 +571,23 @@ function dedupeKey(row: any) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
-    const body = (await req.json()) as Body;
-    const candidateType = body.candidateType || "both";
+    const rawBody = (await req.json()) as Body;
+    const body = sanitizeBody(rawBody);
+    const candidateType = normalizeCandidateType(body.candidateType);
     const authHeader = req.headers.get("Authorization");
     const page = body.page ?? 0;
 
-    console.log("RAW FILTERS:", body);
-    console.log("RAW CARGO:", body.cargo);
+    const cargo = normalizeCargo(body.cargo);
+    const electionYear = cargo ? electionYearForCargo(cargo) : null;
+    const municipio = body.municipio ?? null;
+    const querySql = `delegated catalog SQL: cargo=${cargo ?? "null"}; year=${electionYear ?? "null"}; municipio=${municipio ?? "null"}`;
+
+    console.log("RAW FILTERS", rawBody);
+    console.log("RAW CARGO:", rawBody.cargo);
+    console.log("NORMALIZED CARGO", cargo);
+    console.log("YEAR", electionYear);
+    console.log("MUNICIPIO", municipio);
+    console.log("QUERY SQL", querySql);
 
     const wantsTSE = candidateType === "official" || candidateType === "both";
     const wantsAI = candidateType === "pre_candidate" || candidateType === "ai" || candidateType === "both";
@@ -587,12 +597,11 @@ Deno.serve(async (req) => {
     if (candidateType === "pre_candidate" || candidateType === "ai") {
       // Para cargos municipais (vereador/prefeito/vice_prefeito) priorizar TSE oficial 2024.
       // Só cair para IA se TSE retornar 0.
-      const cargoNorm = normalizeText(body.cargo);
-      const MUNI = new Set(["vereador", "prefeito", "vice-prefeito", "vice prefeito"]);
-      const isMunicipal = MUNI.has(cargoNorm);
+      const cargoNorm = normalizeCargo(body.cargo);
+      const isMunicipal = MUNICIPAL_CARGO_KEYS.has(cargoNorm as any);
       const munRaw = body.municipio || "";
       const munNorm = munRaw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
-      const electionYear = isMunicipal ? 2024 : 2022;
+      const electionYear = cargoNorm ? electionYearForCargo(cargoNorm) : 2022;
       console.log("cargo raw:", body.cargo, "→ normalized:", cargoNorm);
       console.log("municipio raw:", munRaw, "→ normalized:", munNorm);
       console.log("year:", electionYear);
@@ -618,6 +627,7 @@ Deno.serve(async (req) => {
       console.log("[hybrid] TSE COUNT:", tseRows.length);
       console.log("[hybrid] AI COUNT:", aiRows.length);
       console.log("[hybrid] FINAL COUNT:", total);
+      console.log("ROWS FOUND", paged.length);
 
       return new Response(JSON.stringify({
         rows: paged,
@@ -683,6 +693,7 @@ Deno.serve(async (req) => {
     ];
 
     console.log("[hybrid] FINAL COUNT:", merged.length);
+    console.log("ROWS FOUND", paged.length);
 
     return new Response(JSON.stringify({
       rows: paged,
