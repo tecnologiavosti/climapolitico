@@ -82,6 +82,7 @@ function ufFullName(uf?: string | null): string {
 
 function buildCargoQueries(cargo: string, estado?: string, municipio?: string): string[] {
   const estadoNome = ufFullName(estado);
+  const cargoLabel = cargo.replace(/_/g, " ");
   switch (cargo) {
     case "presidente":
       return [
@@ -110,19 +111,21 @@ function buildCargoQueries(cargo: string, estado?: string, municipio?: string): 
         `pré-candidato senador ${estadoNome || "brasil"} 2026`,
         `senado ${estadoNome || ""} 2026 candidatos`,
       ];
-    case "deputado federal":
+    case "deputado_federal":
       return [`pré-candidatos deputado federal ${estadoNome || "brasil"} 2026`];
-    case "deputado estadual":
+    case "deputado_estadual":
       return [`pré-candidatos deputado estadual ${estadoNome || "brasil"} 2026`];
+    case "deputado_distrital":
+      return [`pré-candidatos deputado distrital ${estadoNome || "Distrito Federal"} 2026`];
     default:
-      return cargo ? [`pré-candidato ${cargo} ${municipio || ""} ${estadoNome || ""} 2026`] : [];
+      return cargo ? [`pré-candidato ${cargoLabel} ${municipio || ""} ${estadoNome || ""} 2026`] : [];
   }
 }
 
 function buildQueries(body: Body): string[] {
   const qs: string[] = [];
   const q = (body.q || "").trim();
-  const cargo = normalizeText(body.cargo);
+  const cargo = normalizeCargo(body.cargo);
   const uf = firstValue(body.estado).toUpperCase() || undefined;
   const mun = body.municipio?.trim() || undefined;
 
