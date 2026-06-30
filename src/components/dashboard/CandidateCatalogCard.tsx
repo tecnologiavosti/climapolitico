@@ -48,8 +48,14 @@ function CandidateCatalogCardBase({ candidate: c, alreadyAdded, isAdding, onAdd 
   const typeBadge = type === "official"
     ? { label: "🟢 Oficial TSE", className: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" }
     : type === "pre_candidate"
-    ? (tier === "confirmed"
-        ? { label: `🟢 Confirmado${score}`, className: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" }
+    ? (c.is_eligible === false
+        ? { label: "🔴 Inelegível", className: "bg-red-500/10 text-red-700 border-red-500/30" }
+        : tier === "forte"
+        ? { label: `🟢 Forte${score}`, className: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" }
+        : tier === "possivel"
+        ? { label: `🟡 Possível${score}`, className: "bg-amber-500/10 text-amber-700 border-amber-500/30" }
+        : tier === "fraco"
+        ? { label: `🟠 Fraco${score}`, className: "bg-orange-500/10 text-orange-700 border-orange-500/30" }
         : { label: `🟡 Cotado${score}`, className: "bg-amber-500/10 text-amber-700 border-amber-500/30" })
     : { label: "🔵 Figura monitorada", className: "bg-blue-500/10 text-blue-700 border-blue-500/30" };
 
