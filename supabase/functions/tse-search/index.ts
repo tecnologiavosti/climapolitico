@@ -1217,6 +1217,20 @@ function filterLog(f: Filters) {
   };
 }
 
+function sqlArray(values: string[]): string {
+  return `(${values.map((v) => `'${String(v).replace(/'/g, "''")}'`).join(", ")})`;
+}
+
+function buildCatalogSqlLog(f: Filters): string {
+  const clauses = ["ativo = true"];
+  if (f.cargos.length) clauses.push(`cargo IN ${sqlArray(f.cargos)}`);
+  if (f.ufs.length) clauses.push(`estado IN ${sqlArray(f.ufs)}`);
+  if (f.partidos.length) clauses.push(`partido_sigla IN ${sqlArray(f.partidos)}`);
+  if (f.municipio) clauses.push(`municipio ILIKE '%${f.municipio.replace(/'/g, "''")}%'`);
+  if (f.onlyEleitos) clauses.push("eleito = true");
+  return `SELECT * FROM public.politicians WHERE ${clauses.join(" AND ")} ORDER BY eleito DESC, popularidade DESC, nome ASC LIMIT ${PAGE_SIZE} OFFSET ${f.page * PAGE_SIZE}`;
+}
+
 function addSourceForRows(sources: Set<string>, rows: OutRow[], fallback: string) {
   if (rows.length === 0) return;
   if (rows.some((r) => r.fonte === "ai-lookup")) sources.add("ai-lookup");
@@ -1352,6 +1366,12 @@ Deno.serve(async (req) => {
       console.log("SQL FILTERS:", JSON.stringify({
         cargo: f.cargos, estado: f.ufs, municipio: f.municipio, onlyEleitos: f.onlyEleitos,
       }));
+      const normalizedCargo = f.cargos[0] ?? null;
+      const electionYear = normalizedCargo ? electionYearForCargo(normalizedCargo) : null;
+      console.log("NORMALIZED CARGO", normalizedCargo);
+      console.log("YEAR", electionYear);
+      console.log("MUNICIPIO", f.municipio);
+      console.log("QUERY SQL", buildCatalogSqlLog(f));
       const sb = createClient(
         Deno.env.get("SUPABASE_URL")!,
         Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -1375,6 +1395,7 @@ Deno.serve(async (req) => {
       let { data, count, error } = await runDbQuery();
       if (error) throw new Error(`Catálogo DB: ${error.message}`);
       let total = count ?? 0;
+      console.log("ROWS FOUND", data?.length ?? 0);
       console.log(total > 0 ? "CACHE HIT" : "CACHE MISS");
       console.log("DB COUNT BEFORE PAGINATION:", total);
 
@@ -1435,7 +1456,7 @@ Deno.serve(async (req) => {
             console.log("CACHE SAVE COUNT", upErr ? 0 : upserts.length);
           }
           const re = await runDbQuery();
-          if (!re.error) { data = re.data; count = re.count; total = count ?? 0; }
+          if (!re.error) { data = re.data; count = re.count; total = count ?? 0; console.log("ROWS FOUND", data?.length ?? 0); }
           if (total === 0 && liveFetched.length > 0) {
             total = liveFetched.length;
           }
