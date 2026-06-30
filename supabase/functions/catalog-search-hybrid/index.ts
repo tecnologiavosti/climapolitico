@@ -246,7 +246,10 @@ Deno.serve(async (req) => {
     const sources = [
       ...(tse.sources ?? []),
       ...(preRows.length ? ["pre_candidates"] : []),
+      ...(aiRows.length ? ["ai_web"] : []),
     ];
+
+    console.log("[hybrid] FINAL COUNT:", merged.length);
 
     return new Response(JSON.stringify({
       rows: paged,
@@ -256,7 +259,7 @@ Deno.serve(async (req) => {
       suggestions: tse.suggestions ?? [],
       normalized: tse.normalized ?? {},
       message: tse.message ?? tse.notice ?? null,
-      fallback: !!tse.fallback,
+      fallback: !!tse.fallback || aiRows.length > 0,
       page,
       last_updated: tse.last_updated ?? new Date().toISOString(),
       nationalOnly: !!tse.nationalOnly,
@@ -265,6 +268,7 @@ Deno.serve(async (req) => {
       counts: {
         official: tseRows.length,
         pre_candidate: preRows.length,
+        ai: aiRows.length,
       },
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
