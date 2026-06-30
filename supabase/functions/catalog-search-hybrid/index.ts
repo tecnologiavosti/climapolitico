@@ -134,6 +134,10 @@ interface ExtractedCandidate {
   municipio?: string | null;
   confidence: number;
   reason?: string;
+  recent_evidence?: boolean;
+  poll_evidence?: boolean;
+  only_historical?: boolean;
+  last_mention_months?: number | null;
 }
 
 async function extractCandidatesFromWeb(
@@ -154,6 +158,7 @@ async function extractCandidatesFromWeb(
 - Estado (UF): ${uf || "qualquer"}
 - Município: ${mun || "qualquer"}
 - Nome buscado: ${body.q || "—"}
+Data atual: ${new Date().toISOString().slice(0, 10)}
 
 Evidências (resultados de busca recente):
 ${evidence}
