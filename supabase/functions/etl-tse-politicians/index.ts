@@ -13,6 +13,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { unzipSync, strFromU8 } from "npm:fflate@0.8.2";
+import { cargoKeyFromTseLabel } from "../_shared/cargo-map.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -35,25 +36,12 @@ const REGION_BY_UF: Record<string, string> = {
   BR:"nacional",
 };
 
-const CARGO_MAP: Record<string, string> = {
-  "PRESIDENTE": "presidente",
-  "VICE-PRESIDENTE": "vice_presidente",
-  "GOVERNADOR": "governador",
-  "VICE-GOVERNADOR": "vice_governador",
-  "SENADOR": "senador",
-  "1O SUPLENTE": "senador",
-  "2O SUPLENTE": "senador",
-  "DEPUTADO FEDERAL": "deputado_federal",
-  "DEPUTADO ESTADUAL": "deputado_estadual",
-  "DEPUTADO DISTRITAL": "deputado_distrital",
-  "PREFEITO": "prefeito",
-  "VICE-PREFEITO": "vice_prefeito",
-  "VEREADOR": "vereador",
-};
-
 function normalizeCargo(ds: string): string | null {
+  const cargo = cargoKeyFromTseLabel(ds);
+  if (cargo) return cargo;
   const k = ds?.toUpperCase().trim();
-  return CARGO_MAP[k] ?? null;
+  if (k === "1O SUPLENTE" || k === "2O SUPLENTE") return "senador";
+  return null;
 }
 
 function popularityFor(cargo: string | null, eleito: boolean): number {
