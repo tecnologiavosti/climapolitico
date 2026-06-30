@@ -165,7 +165,9 @@ async function extractCandidatesFromWeb(
 ): Promise<ExtractedCandidate[]> {
   const cargo = normalizeText(body.cargo);
   const uf = firstValue(body.estado).toUpperCase();
+  const estadoNome = ufFullName(uf);
   const mun = body.municipio || "";
+  console.log("UF raw:", body.estado, "→ sigla:", uf, "→ nome:", estadoNome);
   const evidence = hits.length
     ? hits.slice(0, 12).map((h, i) =>
       `[${i + 1}] ${h.title ?? ""}\n${h.description ?? ""}\n${h.url ?? ""}`
@@ -175,13 +177,19 @@ async function extractCandidatesFromWeb(
   const system = `Você é um analista político brasileiro. Extraia pré-candidatos a cargos eletivos no Brasil para 2026 a partir de evidências da web. Responda SEMPRE em JSON estrito.`;
   const user = `Filtros do usuário:
 - Cargo: ${cargo || "qualquer"}
-- Estado (UF): ${uf || "qualquer"}
+- Estado: ${estadoNome || "qualquer"}${uf ? ` (sigla ${uf})` : ""}
 - Município: ${mun || "qualquer"}
 - Nome buscado: ${body.q || "—"}
 Data atual: ${new Date().toISOString().slice(0, 10)}
 
 Evidências (resultados de busca recente):
 ${evidence}
+
+${cargo === "governador" && estadoNome ? `Liste nomes realisticamente cotados para disputar o governo de ${estadoNome} em 2026.
+Considere: pesquisas eleitorais, bastidores partidários, notícias dos últimos 12 meses e nomes fortes regionais.
+NÃO limite a capitais ou estados grandes. Inclua nomes regionais relevantes mesmo em estados menores (AC, AP, RR, TO, SE, PI etc.).
+
+` : ""}
 
 Para cada PESSOA REAL, BRASILEIRA, retorne APENAS nomes REALISTICAMENTE COTADOS a disputar o CARGO filtrado em 2026.
 NÃO basta ser "político relevante" no estado. Exige-se viabilidade real de candidatura ao cargo específico.
