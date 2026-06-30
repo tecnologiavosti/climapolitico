@@ -214,12 +214,12 @@ export default function CandidatesCatalog() {
     if (!sources.length) return null;
     const hasDb = sources.includes("catalog-db");
     const hasTse = sources.some((s) => s.startsWith("tse"));
-    const hasWeb = sources.includes("firecrawl") || sources.includes("web") || sources.includes("ai-lookup");
+    const hasWeb = sources.includes("firecrawl") || sources.includes("web") || sources.includes("ai-lookup") || sources.includes("ai_web");
     if (hasDb && !hasTse && !hasWeb) return "Banco TSE";
-    if (hasTse && hasWeb) return "TSE + Web";
+    if (hasTse && hasWeb) return "TSE + IA + Web";
     if (hasTse) return "TSE";
     if (hasDb) return "Banco TSE";
-    return "Web";
+    return "IA + Web";
   }, [sources]);
 
 
