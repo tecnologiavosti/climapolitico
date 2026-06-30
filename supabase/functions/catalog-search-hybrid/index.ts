@@ -319,7 +319,8 @@ function toRow(
   fallbackCargo: string,
   scored: { score: number; tier: Tier; eligible: boolean; ineligibleReason: string | null },
 ) {
-  const cargo = canonicalCargoKey(c.cargo) ?? canonicalCargoKey(fallbackCargo) ?? (c.cargo || fallbackCargo || "").toLowerCase().replace(/\s+/g, "_") || null;
+  const fallback = (c.cargo || fallbackCargo || "").toLowerCase().replace(/\s+/g, "_") || null;
+  const cargo = canonicalCargoKey(c.cargo) ?? canonicalCargoKey(fallbackCargo) ?? fallback;
   return {
     id: `ai:${normalizeName(c.nome)}:${(c.estado || "").toUpperCase()}:${(c.municipio || "").toLowerCase()}`,
     tse_id: null,
