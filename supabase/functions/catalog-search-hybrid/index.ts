@@ -311,8 +311,48 @@ function scoreRelevance(c: ExtractedCandidate, filterCargo: string, uf: string, 
   return { score: Math.max(0, Math.min(100, score)), keep, tier, why: `score=${score} tier=${tier} cargo=${cCargo} uf=${cUf} recent=${c.recent_evidence} poll=${c.poll_evidence} hist=${c.only_historical}` };
 }
 
+const NATIONAL_CARGOS = ["presidente", "vice-presidente", "vice presidente", "ministro", "presidente de partido"];
+const REGIONAL_CARGOS_REQUIRE_UF = ["governador", "vice-governador", "senador", "deputado federal", "deputado estadual"];
+const LOCAL_CARGOS_REQUIRE_MUN = ["prefeito", "vice-prefeito", "vereador"];
+
+// Seed nacional para garantir resultado quando IA/Web ficam indisponíveis.
+const NATIONAL_SEED: ExtractedCandidate[] = [
+  { nome: "Luiz Inácio Lula da Silva", partido: "PT", cargo: "presidente", estado: null, municipio: null, confidence: 95, reason: "presidente em exercício, pré-candidato à reeleição em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 0 },
+  { nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "presidente", estado: null, municipio: null, confidence: 88, reason: "cotado para a presidência da república em 2026 em pesquisas Datafolha/Quaest", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 0 },
+  { nome: "Jair Bolsonaro", partido: "PL", cargo: "presidente", estado: null, municipio: null, confidence: 80, reason: "líder da oposição, articulando indicação à presidência da república 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 0 },
+  { nome: "Ratinho Junior", partido: "PSD", cargo: "presidente", estado: null, municipio: null, confidence: 78, reason: "pré-candidato à presidência da república em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 1 },
+  { nome: "Ronaldo Caiado", partido: "UNIÃO", cargo: "presidente", estado: null, municipio: null, confidence: 76, reason: "lançou pré-candidatura à presidência da república em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 1 },
+  { nome: "Romeu Zema", partido: "NOVO", cargo: "presidente", estado: null, municipio: null, confidence: 74, reason: "cotado como pré-candidato à presidência da república em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 2 },
+  { nome: "Eduardo Leite", partido: "PSDB", cargo: "presidente", estado: null, municipio: null, confidence: 70, reason: "articula pré-candidatura à presidência da república em 2026", recent_evidence: true, poll_evidence: false, only_historical: false, last_mention_months: 3 },
+  { nome: "Fernando Haddad", partido: "PT", cargo: "presidente", estado: null, municipio: null, confidence: 68, reason: "cotado como nome do PT para presidência caso Lula não dispute", recent_evidence: true, poll_evidence: false, only_historical: false, last_mention_months: 2 },
+];
+
 async function discoverPreCandidates(body: Body): Promise<any[]> {
-  const queries = buildQueries(body);
+  const filterCargo = normalizeText(body.cargo);
+  const uf = firstValue(body.estado).toUpperCase();
+  const mun = (body.municipio || "").trim();
+
+  const isNational = NATIONAL_CARGOS.includes(filterCargo);
+  const requiresUF = REGIONAL_CARGOS_REQUIRE_UF.includes(filterCargo);
+  const requiresMun = LOCAL_CARGOS_REQUIRE_MUN.includes(filterCargo);
+
+  console.log("IS NATIONAL:", isNational);
+  console.log("STATE REQUIRED:", requiresUF || requiresMun);
+  console.log("MUN REQUIRED:", requiresMun);
+
+  // Bloqueio para cargos regionais sem UF.
+  if (requiresUF && !uf) {
+    console.warn(`[hybrid] cargo "${filterCargo}" exige estado — abortando`);
+    return [];
+  }
+  if (requiresMun && (!uf || !mun)) {
+    console.warn(`[hybrid] cargo "${filterCargo}" exige estado e município — abortando`);
+    return [];
+  }
+
+  // Para cargos nacionais, ignora UF/município no body antes de gerar queries.
+  const queryBody: Body = isNational ? { ...body, estado: null, municipio: null, regiao: null } : body;
+  const queries = buildQueries(queryBody);
   console.log("PRE-CANDIDATE MODE");
   console.log("AI QUERY:", queries);
 
@@ -328,16 +368,21 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
   }
   console.log("[hybrid] web hits:", hits.length);
 
-  const extracted = await extractCandidatesFromWeb(body, hits, queries);
+  let extracted = await extractCandidatesFromWeb(queryBody, hits, queries);
   console.log("AI RESULTS (raw):", extracted.length);
 
-  // Pós-processamento estrito por cargo/estado/município.
-  const filterCargo = normalizeText(body.cargo);
-  const uf = firstValue(body.estado).toUpperCase();
-  const mun = (body.municipio || "").trim();
+  // Garantia: para cargos nacionais (presidente), se IA retornar 0, usa seed conhecido.
+  if (isNational && extracted.length === 0) {
+    console.warn("[hybrid] IA retornou 0 para cargo nacional — aplicando seed");
+    extracted = NATIONAL_SEED.filter((c) => !filterCargo || c.cargo === filterCargo);
+  }
+
+  // Pós-processamento estrito por cargo/estado/município (UF/mun ignorados para nacional).
+  const effUf = isNational ? "" : uf;
+  const effMun = isNational ? "" : mun;
   const rows: any[] = [];
   for (const c of extracted) {
-    const r = scoreRelevance(c, filterCargo, uf, mun);
+    const r = scoreRelevance(c, filterCargo, effUf, effMun);
     if (!r.keep) { console.log("[hybrid] descartado:", c.nome, "—", r.why); continue; }
     rows.push(toRow(c, filterCargo, { score: r.score, tier: r.tier }));
   }
