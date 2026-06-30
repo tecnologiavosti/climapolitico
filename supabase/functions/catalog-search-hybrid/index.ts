@@ -218,6 +218,8 @@ JSON estrito:
         reason: c.reason ? String(c.reason).slice(0, 280) : "",
         recent_evidence: !!c.recent_evidence,
         poll_evidence: !!c.poll_evidence,
+        held_major_office: !!c.held_major_office,
+        party_signaling: !!c.party_signaling,
         only_historical: !!c.only_historical,
         last_mention_months: typeof c.last_mention_months === "number" ? c.last_mention_months : null,
       }));
