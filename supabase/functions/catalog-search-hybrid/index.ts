@@ -37,7 +37,24 @@ function normalizeText(value?: string | string[] | null): string {
     .trim();
 }
 
+// Mapa UF (sigla) → nome completo do estado. Obrigatório para enviar nomes legíveis à IA/busca web.
+const UF_TO_NAME: Record<string, string> = {
+  AC: "Acre", AL: "Alagoas", AP: "Amapá", AM: "Amazonas", BA: "Bahia",
+  CE: "Ceará", DF: "Distrito Federal", ES: "Espírito Santo", GO: "Goiás",
+  MA: "Maranhão", MT: "Mato Grosso", MS: "Mato Grosso do Sul", MG: "Minas Gerais",
+  PA: "Pará", PB: "Paraíba", PR: "Paraná", PE: "Pernambuco", PI: "Piauí",
+  RJ: "Rio de Janeiro", RN: "Rio Grande do Norte", RS: "Rio Grande do Sul",
+  RO: "Rondônia", RR: "Roraima", SC: "Santa Catarina", SP: "São Paulo",
+  SE: "Sergipe", TO: "Tocantins",
+};
+function ufFullName(uf?: string | null): string {
+  if (!uf) return "";
+  const code = String(uf).toUpperCase().slice(0, 2);
+  return UF_TO_NAME[code] || String(uf);
+}
+
 function buildCargoQueries(cargo: string, estado?: string, municipio?: string): string[] {
+  const estadoNome = ufFullName(estado);
   switch (cargo) {
     case "presidente":
       return [
@@ -46,31 +63,32 @@ function buildCargoQueries(cargo: string, estado?: string, municipio?: string): 
       ];
     case "governador":
       return [
-        `pré-candidato governador ${estado || "brasil"} 2026`,
-        `candidatos governo ${estado || ""} 2026`,
+        `pré-candidato governador ${estadoNome || "brasil"} 2026`,
+        `candidatos governo ${estadoNome || ""} 2026 pesquisa eleitoral`,
+        `quem vai disputar governo ${estadoNome || ""} 2026`,
       ];
     case "prefeito":
       return [
-        `pré-candidatos prefeito ${municipio || ""} ${estado || ""}`,
-        `eleições prefeitura ${municipio || ""} ${estado || ""} 2026`,
+        `pré-candidatos prefeito ${municipio || ""} ${estadoNome || ""}`,
+        `eleições prefeitura ${municipio || ""} ${estadoNome || ""} 2026`,
       ];
     case "vereador":
       return [
-        `vereadores em ascensão ${municipio || ""} ${estado || ""}`,
-        `pré-candidatos vereador ${municipio || ""} ${estado || ""}`,
-        `câmara municipal ${municipio || ""} ${estado || ""}`,
+        `vereadores em ascensão ${municipio || ""} ${estadoNome || ""}`,
+        `pré-candidatos vereador ${municipio || ""} ${estadoNome || ""}`,
+        `câmara municipal ${municipio || ""} ${estadoNome || ""}`,
       ];
     case "senador":
       return [
-        `pré-candidato senador ${estado || "brasil"} 2026`,
-        `senado ${estado || ""} 2026 candidatos`,
+        `pré-candidato senador ${estadoNome || "brasil"} 2026`,
+        `senado ${estadoNome || ""} 2026 candidatos`,
       ];
     case "deputado federal":
-      return [`pré-candidatos deputado federal ${estado || "brasil"} 2026`];
+      return [`pré-candidatos deputado federal ${estadoNome || "brasil"} 2026`];
     case "deputado estadual":
-      return [`pré-candidatos deputado estadual ${estado || "brasil"} 2026`];
+      return [`pré-candidatos deputado estadual ${estadoNome || "brasil"} 2026`];
     default:
-      return cargo ? [`pré-candidato ${cargo} ${municipio || ""} ${estado || ""} 2026`] : [];
+      return cargo ? [`pré-candidato ${cargo} ${municipio || ""} ${estadoNome || ""} 2026`] : [];
   }
 }
 
@@ -147,7 +165,9 @@ async function extractCandidatesFromWeb(
 ): Promise<ExtractedCandidate[]> {
   const cargo = normalizeText(body.cargo);
   const uf = firstValue(body.estado).toUpperCase();
+  const estadoNome = ufFullName(uf);
   const mun = body.municipio || "";
+  console.log("UF raw:", body.estado, "→ sigla:", uf, "→ nome:", estadoNome);
   const evidence = hits.length
     ? hits.slice(0, 12).map((h, i) =>
       `[${i + 1}] ${h.title ?? ""}\n${h.description ?? ""}\n${h.url ?? ""}`
@@ -157,13 +177,19 @@ async function extractCandidatesFromWeb(
   const system = `Você é um analista político brasileiro. Extraia pré-candidatos a cargos eletivos no Brasil para 2026 a partir de evidências da web. Responda SEMPRE em JSON estrito.`;
   const user = `Filtros do usuário:
 - Cargo: ${cargo || "qualquer"}
-- Estado (UF): ${uf || "qualquer"}
+- Estado: ${estadoNome || "qualquer"}${uf ? ` (sigla ${uf})` : ""}
 - Município: ${mun || "qualquer"}
 - Nome buscado: ${body.q || "—"}
 Data atual: ${new Date().toISOString().slice(0, 10)}
 
 Evidências (resultados de busca recente):
 ${evidence}
+
+${cargo === "governador" && estadoNome ? `Liste nomes realisticamente cotados para disputar o governo de ${estadoNome} em 2026.
+Considere: pesquisas eleitorais, bastidores partidários, notícias dos últimos 12 meses e nomes fortes regionais.
+NÃO limite a capitais ou estados grandes. Inclua nomes regionais relevantes mesmo em estados menores (AC, AP, RR, TO, SE, PI etc.).
+
+` : ""}
 
 Para cada PESSOA REAL, BRASILEIRA, retorne APENAS nomes REALISTICAMENTE COTADOS a disputar o CARGO filtrado em 2026.
 NÃO basta ser "político relevante" no estado. Exige-se viabilidade real de candidatura ao cargo específico.
@@ -177,7 +203,7 @@ CRITÉRIOS OBRIGATÓRIOS — incluir o nome SOMENTE se atender pelo menos 2 dos 
 NÃO incluir político só por: morar no estado, ser deputado estadual/local, ser ex-prefeito de cidade pequena/média, ter notoriedade municipal, ou ser do mesmo partido de alguém forte.
 
 REGRAS DE CARGO:
-- Cargo "governador" + UF="${uf || "[UF]"}": apenas cotados ao GOVERNO de ${uf || "[UF]"}. Use "estado": "${uf || "[UF]"}" (sigla 2 letras).
+- Cargo "governador" + Estado="${estadoNome || "[ESTADO]"}" (sigla ${uf || "[UF]"}): apenas cotados ao GOVERNO de ${estadoNome || "[ESTADO]"}. Use "estado": "${uf || "[UF]"}" (sigla 2 letras).
 - Cargo "presidente": apenas cotados à presidência da República.
 - Cargo "senador"/"deputado federal"/"deputado estadual": apenas para o estado filtrado.
 - Cargo "prefeito"/"vereador": apenas para o município filtrado.
@@ -464,7 +490,7 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
   console.log("[hybrid] web hits:", hits.length);
 
   let extracted = await extractCandidatesFromWeb(queryBody, hits, queries);
-  console.log("AI RESULTS (raw):", extracted.length);
+  console.log("AI RESULTS (raw):", extracted.length, extracted.map((c) => `${c.nome} (${c.confidence})`).join(" | "));
 
   // Fallback seeds quando IA retorna 0.
   if (extracted.length === 0) {
