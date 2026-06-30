@@ -191,8 +191,10 @@ function toRow(c: ExtractedCandidate, fallbackCargo?: string) {
 
 async function discoverPreCandidates(body: Body): Promise<any[]> {
   const queries = buildQueries(body);
-  console.log("[hybrid] discover queries:", queries);
-  if (!queries.length) return [];
+  console.log("[hybrid] PRE-CANDIDATE MODE");
+  console.log("[hybrid] AI QUERY:", queries);
+  if (!queries.length) { console.log("[hybrid] AI RESULTS: 0 (no queries)"); return []; }
+  if (!FIRECRAWL_API_KEY) { console.warn("[hybrid] FIRECRAWL_API_KEY missing — AI cannot run"); return []; }
 
   const hitLists = await Promise.all(queries.map(firecrawlSearch));
   const seen = new Set<string>();
