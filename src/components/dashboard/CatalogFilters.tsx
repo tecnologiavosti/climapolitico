@@ -144,67 +144,71 @@ export function CatalogFilters({ filters, searchQuery, onSearchQueryChange, onCh
             </SelectContent>
           </Select>
 
-          <Select value={filters.estado?.[0] ?? ALL} onValueChange={(v) => setSingle("estado", v)}>
-            <SelectTrigger>
-              <SelectValue placeholder={selectedRegion ? `Estado (${availableUFs.length})` : "Estado"} />
-            </SelectTrigger>
-            <SelectContent className="max-h-72 animate-in fade-in-0 zoom-in-95">
-              <SelectItem value={ALL}>{selectedRegion ? `Todos os estados do ${selectedRegion}` : "Todos os estados"}</SelectItem>
-              {availableUFs.map((uf) => <SelectItem key={uf} value={uf}>{uf}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          {!isPresidente && (
+            <Select value={filters.estado?.[0] ?? ALL} onValueChange={(v) => setSingle("estado", v)}>
+              <SelectTrigger>
+                <SelectValue placeholder={selectedRegion ? `Estado (${availableUFs.length})` : "Estado"} />
+              </SelectTrigger>
+              <SelectContent className="max-h-72 animate-in fade-in-0 zoom-in-95">
+                <SelectItem value={ALL}>{selectedRegion ? `Todos os estados do ${selectedRegion}` : "Todos os estados"}</SelectItem>
+                {availableUFs.map((uf) => <SelectItem key={uf} value={uf}>{uf}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
 
-          <Popover open={muniOpen} onOpenChange={(o) => estadoSelected && setMuniOpen(o)}>
-            <PopoverTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                role="combobox"
-                aria-expanded={muniOpen}
-                disabled={!estadoSelected}
-                className="justify-between font-normal disabled:opacity-60"
-              >
-                <span className={cn("truncate", !filters.municipio && "text-muted-foreground")}>
-                  {filters.municipio || (estadoSelected ? "Digite ou selecione município" : "Selecione um estado primeiro")}
-                </span>
-                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="p-0 w-[--radix-popover-trigger-width] min-w-[260px] animate-in fade-in-0 zoom-in-95" align="start">
-              <Command>
-                <CommandInput placeholder="Buscar município..." />
-                <CommandList>
-                  <CommandEmpty>Nenhum município encontrado.</CommandEmpty>
-                  <CommandGroup>
-                    {filters.municipio && (
-                      <CommandItem
-                        value="__clear__"
-                        onSelect={() => {
-                          onChange({ ...filters, page: 0, municipio: undefined });
-                          setMuniOpen(false);
-                        }}
-                      >
-                        <X className="mr-2 h-4 w-4" /> Limpar seleção
-                      </CommandItem>
-                    )}
-                    {availableMunis.map((nome) => (
-                      <CommandItem
-                        key={nome}
-                        value={nome}
-                        onSelect={() => {
-                          onChange({ ...filters, page: 0, municipio: nome });
-                          setMuniOpen(false);
-                        }}
-                      >
-                        <Check className={cn("mr-2 h-4 w-4", filters.municipio === nome ? "opacity-100" : "opacity-0")} />
-                        {nome}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
+          {!isPresidente && (
+            <Popover open={muniOpen} onOpenChange={(o) => estadoSelected && setMuniOpen(o)}>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={muniOpen}
+                  disabled={!estadoSelected}
+                  className="justify-between font-normal disabled:opacity-60"
+                >
+                  <span className={cn("truncate", !filters.municipio && "text-muted-foreground")}>
+                    {filters.municipio || (estadoSelected ? "Digite ou selecione município" : "Selecione um estado primeiro")}
+                  </span>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="p-0 w-[--radix-popover-trigger-width] min-w-[260px] animate-in fade-in-0 zoom-in-95" align="start">
+                <Command>
+                  <CommandInput placeholder="Buscar município..." />
+                  <CommandList>
+                    <CommandEmpty>Nenhum município encontrado.</CommandEmpty>
+                    <CommandGroup>
+                      {filters.municipio && (
+                        <CommandItem
+                          value="__clear__"
+                          onSelect={() => {
+                            onChange({ ...filters, page: 0, municipio: undefined });
+                            setMuniOpen(false);
+                          }}
+                        >
+                          <X className="mr-2 h-4 w-4" /> Limpar seleção
+                        </CommandItem>
+                      )}
+                      {availableMunis.map((nome) => (
+                        <CommandItem
+                          key={nome}
+                          value={nome}
+                          onSelect={() => {
+                            onChange({ ...filters, page: 0, municipio: nome });
+                            setMuniOpen(false);
+                          }}
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", filters.municipio === nome ? "opacity-100" : "opacity-0")} />
+                          {nome}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          )}
 
           <div className="flex items-center gap-2 px-2 border rounded-md">
             <Switch
