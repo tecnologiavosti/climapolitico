@@ -424,7 +424,7 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
   for (const c of extracted) {
     const r = scoreRelevance(c, filterCargo, effUf, effMun);
     if (!r.keep) { console.log("[hybrid] descartado:", c.nome, "—", r.why); continue; }
-    rows.push(toRow(c, filterCargo, { score: r.score, tier: r.tier }));
+    rows.push(toRow(c, filterCargo, { score: r.score, tier: r.tier, eligible: r.eligible, ineligibleReason: r.ineligibleReason }));
   }
   rows.sort((a, b) => (b.confidence_score || 0) - (a.confidence_score || 0));
   console.log("AI RESULTS (filtrados):", rows.length);
