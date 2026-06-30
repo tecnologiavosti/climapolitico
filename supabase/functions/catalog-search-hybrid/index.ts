@@ -264,10 +264,15 @@ Deno.serve(async (req) => {
     console.log("[hybrid] TSE COUNT:", tseRows.length);
     console.log("[hybrid] PRE COUNT:", preRows.length);
 
-    // AI/Web fallback when nothing found and user wants AI/both
+    // AI/Web fallback: roda sempre que usuário pediu IA e ainda não temos pré-candidatos
     let aiRows: any[] = [];
-    const wantsAI = candidateType !== "official";
-    if (wantsAI && tseRows.length === 0 && preRows.length === 0 && (body.q?.trim() || body.cargo?.length)) {
+    const wantsAI = candidateType === "ai" || candidateType === "pre_candidate" || candidateType === "both";
+    console.log("[hybrid] wantsAI:", wantsAI, "q:", body.q, "cargo:", body.cargo);
+    if (wantsAI && preRows.length === 0 && (body.q?.trim() || body.cargo?.length)) {
+      console.log("[hybrid] AI SEARCH START");
+      aiRows = await aiWebFallback(body, authHeader);
+      console.log("[hybrid] AI COUNT:", aiRows.length);
+    }
       aiRows = await aiWebFallback(body, authHeader);
       console.log("[hybrid] AI COUNT:", aiRows.length);
     }
