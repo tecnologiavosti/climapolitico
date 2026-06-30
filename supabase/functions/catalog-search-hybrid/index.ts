@@ -86,7 +86,15 @@ async function aiWebFallback(payload: Body, authHeader: string | null): Promise<
     } catch (e) { console.warn("[hybrid] firecrawl err", e); }
   }
 
-  if (!q) return []; // Topic-only search without a name → cannot classify a single person
+  if (!q) {
+    // Topic-only: retorna seed por cargo (ex: presidente 2026)
+    const seeds = SEED_BY_CARGO[cargo] || [];
+    const filtered = payload.estado?.length
+      ? seeds.filter((s) => !s.estado || payload.estado!.includes(s.estado))
+      : seeds;
+    console.log("[hybrid] AI seed rows:", filtered.length, "for cargo:", cargo);
+    return filtered.map((s) => seedRow(s, cargo));
+  }
 
   // Classify name via existing AI function
   try {
