@@ -214,7 +214,24 @@ JSON estrito:
 }
 
 
-function toRow(c: ExtractedCandidate, fallbackCargo: string, scored: { score: number; tier: "confirmed" | "speculative" }) {
+// Inelegíveis conhecidos (TSE / decisões judiciais públicas).
+const INELIGIBLE: Record<string, { until: string; reason: string }> = {
+  "jair bolsonaro": { until: "2030", reason: "Inelegível pelo TSE até 2030" },
+  "jair messias bolsonaro": { until: "2030", reason: "Inelegível pelo TSE até 2030" },
+};
+
+function lookupIneligible(nome: string) {
+  const k = normalizeName(nome);
+  return INELIGIBLE[k] || null;
+}
+
+type Tier = "forte" | "possivel" | "fraco" | "inelegivel";
+
+function toRow(
+  c: ExtractedCandidate,
+  fallbackCargo: string,
+  scored: { score: number; tier: Tier; eligible: boolean; ineligibleReason: string | null },
+) {
   const cargo = (c.cargo || fallbackCargo || "").toLowerCase().replace(/\s+/g, "_") || null;
   return {
     id: `ai:${normalizeName(c.nome)}:${(c.estado || "").toUpperCase()}:${(c.municipio || "").toLowerCase()}`,
@@ -239,12 +256,13 @@ function toRow(c: ExtractedCandidate, fallbackCargo: string, scored: { score: nu
     candidate_type: "pre_candidate",
     confidence_score: scored.score,
     confidence_tier: scored.tier,
+    is_eligible: scored.eligible,
+    ineligible_reason: scored.ineligibleReason,
     reason: c.reason || null,
   };
 }
 
-
-// Cargos mutuamente exclusivos: se o cargo atual da pessoa é X, NÃO serve para Y (a menos que haja evidência explícita).
+// Cargos mutuamente exclusivos.
 const CARGO_INCOMPATIBLE: Record<string, string[]> = {
   governador: ["presidente", "senador", "deputado federal", "deputado estadual", "prefeito", "vereador", "ministro"],
   presidente: ["governador", "senador", "deputado federal", "deputado estadual", "prefeito", "vereador"],
@@ -272,43 +290,63 @@ function evidenceOfCandidacy(reason: string, filterCargo: string, uf: string, mu
   return hasCargo && hasRegion && (mun ? hasMun : true);
 }
 
-function scoreRelevance(c: ExtractedCandidate, filterCargo: string, uf: string, mun: string): { score: number; keep: boolean; tier: "confirmed" | "speculative"; why: string } {
+function scoreRelevance(
+  c: ExtractedCandidate,
+  filterCargo: string,
+  uf: string,
+  mun: string,
+): { score: number; keep: boolean; tier: Tier; eligible: boolean; ineligibleReason: string | null; why: string } {
   const cCargo = (c.cargo || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
   const cUf = (c.estado || "").toUpperCase();
-  const cMun = (c.municipio || "").toLowerCase();
+
+  // Desambiguação: exige nome completo (≥ 2 partes ≥ 2 chars). Single-token ⇒ descarta.
+  const parts = (c.nome || "").trim().split(/\s+/).filter((p) => p.length >= 2);
+  if (parts.length < 2) {
+    return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: "nome incompleto (single token)" };
+  }
+
   const hasEvidence = filterCargo ? evidenceOfCandidacy(c.reason || "", filterCargo, uf, mun) : false;
   const cargoMatch = filterCargo ? (cCargo === filterCargo || cCargo.includes(filterCargo)) : true;
   const incompatList = filterCargo ? (CARGO_INCOMPATIBLE[filterCargo] || []) : [];
   const isIncompat = incompatList.some((x) => cCargo === x || cCargo.startsWith(x));
 
   if (filterCargo && isIncompat && !hasEvidence && !c.recent_evidence) {
-    return { score: 0, keep: false, tier: "speculative", why: `cargo incompatível: ${cCargo} vs ${filterCargo}` };
+    return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `cargo incompatível: ${cCargo} vs ${filterCargo}` };
+  }
+  if (filterCargo && filterCargo !== "presidente" && uf && cUf && cUf !== uf && !hasEvidence) {
+    return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `UF incompatível: ${cUf} vs ${uf}` };
   }
 
-  let score = 0;
-  // +50 cargo bate
-  if (cargoMatch || hasEvidence || c.recent_evidence) score += 50;
-  // +30 estado bate (presidente não exige)
-  if (!filterCargo || filterCargo === "presidente") score += 30;
-  else if (uf && (cUf === uf || hasEvidence)) score += 30;
-  else if (!uf) score += 30;
-  // +40 notícia recente explícita
-  if (c.recent_evidence) score += 40;
-  // +20 aparece em pesquisa eleitoral
-  if (c.poll_evidence) score += 20;
-  // -50 só histórico
-  if (c.only_historical) score -= 50;
-  // -40 última menção > 12 meses
-  if (typeof c.last_mention_months === "number" && c.last_mention_months > 12) score -= 40;
-  // município
-  if (mun) {
-    if (cMun && cMun === mun.toLowerCase()) score += 10;
-    else if (hasEvidence) score += 5;
-  }
+  // Componentes 0-100.
+  const recent = c.recent_evidence ? 1 : 0;
+  const poll = c.poll_evidence ? 1 : 0;
+  const monthsAgo = typeof c.last_mention_months === "number" ? c.last_mention_months : 12;
 
-  const tier: "confirmed" | "speculative" = score >= 90 && (c.recent_evidence || hasEvidence) ? "confirmed" : "speculative";
-  const keep = score >= 70;
-  return { score: Math.max(0, Math.min(100, score)), keep, tier, why: `score=${score} tier=${tier} cargo=${cCargo} uf=${cUf} recent=${c.recent_evidence} poll=${c.poll_evidence} hist=${c.only_historical}` };
+  const media = Math.max(0, Math.min(100, (recent ? 70 : 25) + (poll ? 25 : 0) + (cargoMatch ? 5 : 0)));
+  const relevance = Math.max(0, Math.min(100, (poll ? 70 : 35) + (recent ? 25 : 0) + (hasEvidence ? 5 : 0)));
+  const viability = Math.max(0, Math.min(100, Number(c.confidence) || 0));
+  const recency = Math.max(0, 100 - Math.min(monthsAgo * 10, 100));
+
+  let score = 0.15 * media + 0.15 * relevance + 0.55 * viability + 0.15 * recency;
+  if (c.only_historical) score -= 25;
+  if (typeof c.last_mention_months === "number" && c.last_mention_months > 12) score -= 20;
+  score = Math.max(0, Math.min(100, Math.round(score)));
+
+  // Elegibilidade — independe do score.
+  const inel = lookupIneligible(c.nome);
+  const eligible = !inel;
+  const ineligibleReason = inel ? inel.reason : null;
+
+  let tier: Tier;
+  if (!eligible) tier = "inelegivel";
+  else if (score >= 85) tier = "forte";
+  else if (score >= 60) tier = "possivel";
+  else if (score >= 40) tier = "fraco";
+  else tier = "fraco";
+
+  // Inelegíveis sempre aparecem (com badge vermelho). Demais: keep se >= 40.
+  const keep = !eligible || score >= 40;
+  return { score, keep, tier, eligible, ineligibleReason, why: `score=${score} tier=${tier} elig=${eligible} cargo=${cCargo} uf=${cUf} recent=${recent} poll=${poll} hist=${c.only_historical}` };
 }
 
 const NATIONAL_CARGOS = ["presidente", "vice-presidente", "vice presidente", "ministro", "presidente de partido"];
