@@ -490,7 +490,7 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
   console.log("[hybrid] web hits:", hits.length);
 
   let extracted = await extractCandidatesFromWeb(queryBody, hits, queries);
-  console.log("AI RESULTS (raw):", extracted.length);
+  console.log("AI RESULTS (raw):", extracted.length, extracted.map((c) => `${c.nome} (${c.confidence})`).join(" | "));
 
   // Fallback seeds quando IA retorna 0.
   if (extracted.length === 0) {
