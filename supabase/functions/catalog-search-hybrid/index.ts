@@ -37,7 +37,24 @@ function normalizeText(value?: string | string[] | null): string {
     .trim();
 }
 
+// Mapa UF (sigla) → nome completo do estado. Obrigatório para enviar nomes legíveis à IA/busca web.
+const UF_TO_NAME: Record<string, string> = {
+  AC: "Acre", AL: "Alagoas", AP: "Amapá", AM: "Amazonas", BA: "Bahia",
+  CE: "Ceará", DF: "Distrito Federal", ES: "Espírito Santo", GO: "Goiás",
+  MA: "Maranhão", MT: "Mato Grosso", MS: "Mato Grosso do Sul", MG: "Minas Gerais",
+  PA: "Pará", PB: "Paraíba", PR: "Paraná", PE: "Pernambuco", PI: "Piauí",
+  RJ: "Rio de Janeiro", RN: "Rio Grande do Norte", RS: "Rio Grande do Sul",
+  RO: "Rondônia", RR: "Roraima", SC: "Santa Catarina", SP: "São Paulo",
+  SE: "Sergipe", TO: "Tocantins",
+};
+function ufFullName(uf?: string | null): string {
+  if (!uf) return "";
+  const code = String(uf).toUpperCase().slice(0, 2);
+  return UF_TO_NAME[code] || String(uf);
+}
+
 function buildCargoQueries(cargo: string, estado?: string, municipio?: string): string[] {
+  const estadoNome = ufFullName(estado);
   switch (cargo) {
     case "presidente":
       return [
@@ -46,31 +63,32 @@ function buildCargoQueries(cargo: string, estado?: string, municipio?: string): 
       ];
     case "governador":
       return [
-        `pré-candidato governador ${estado || "brasil"} 2026`,
-        `candidatos governo ${estado || ""} 2026`,
+        `pré-candidato governador ${estadoNome || "brasil"} 2026`,
+        `candidatos governo ${estadoNome || ""} 2026 pesquisa eleitoral`,
+        `quem vai disputar governo ${estadoNome || ""} 2026`,
       ];
     case "prefeito":
       return [
-        `pré-candidatos prefeito ${municipio || ""} ${estado || ""}`,
-        `eleições prefeitura ${municipio || ""} ${estado || ""} 2026`,
+        `pré-candidatos prefeito ${municipio || ""} ${estadoNome || ""}`,
+        `eleições prefeitura ${municipio || ""} ${estadoNome || ""} 2026`,
       ];
     case "vereador":
       return [
-        `vereadores em ascensão ${municipio || ""} ${estado || ""}`,
-        `pré-candidatos vereador ${municipio || ""} ${estado || ""}`,
-        `câmara municipal ${municipio || ""} ${estado || ""}`,
+        `vereadores em ascensão ${municipio || ""} ${estadoNome || ""}`,
+        `pré-candidatos vereador ${municipio || ""} ${estadoNome || ""}`,
+        `câmara municipal ${municipio || ""} ${estadoNome || ""}`,
       ];
     case "senador":
       return [
-        `pré-candidato senador ${estado || "brasil"} 2026`,
-        `senado ${estado || ""} 2026 candidatos`,
+        `pré-candidato senador ${estadoNome || "brasil"} 2026`,
+        `senado ${estadoNome || ""} 2026 candidatos`,
       ];
     case "deputado federal":
-      return [`pré-candidatos deputado federal ${estado || "brasil"} 2026`];
+      return [`pré-candidatos deputado federal ${estadoNome || "brasil"} 2026`];
     case "deputado estadual":
-      return [`pré-candidatos deputado estadual ${estado || "brasil"} 2026`];
+      return [`pré-candidatos deputado estadual ${estadoNome || "brasil"} 2026`];
     default:
-      return cargo ? [`pré-candidato ${cargo} ${municipio || ""} ${estado || ""} 2026`] : [];
+      return cargo ? [`pré-candidato ${cargo} ${municipio || ""} ${estadoNome || ""} 2026`] : [];
   }
 }
 
