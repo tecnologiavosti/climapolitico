@@ -441,9 +441,9 @@ function scoreRelevance(
   return { score, keep, tier, eligible, ineligibleReason, why: `score=${score} tier=${tier} crit=${criteriaMet}/4 (maj=${major} poll=${poll} rec=${recent} party=${partySig}) elig=${eligible}` };
 }
 
-const NATIONAL_CARGOS = ["presidente", "vice-presidente", "vice presidente", "ministro", "presidente de partido"];
-const REGIONAL_CARGOS_REQUIRE_UF = ["governador", "vice-governador", "senador", "deputado federal", "deputado estadual"];
-const LOCAL_CARGOS_REQUIRE_MUN = ["prefeito", "vice-prefeito", "vereador"];
+const NATIONAL_CARGOS = ["presidente", "vice_presidente", "ministro"];
+const REGIONAL_CARGOS_REQUIRE_UF = ["governador", "vice_governador", "senador", "deputado_federal", "deputado_estadual", "deputado_distrital"];
+const LOCAL_CARGOS_REQUIRE_MUN = ["prefeito", "vice_prefeito", "vereador"];
 
 // Seed nacional para garantir resultado quando IA/Web ficam indisponíveis.
 const NATIONAL_SEED: ExtractedCandidate[] = [
@@ -477,7 +477,7 @@ const GOVERNADOR_SEED: Record<string, ExtractedCandidate[]> = {
 };
 
 async function discoverPreCandidates(body: Body): Promise<any[]> {
-  const filterCargo = normalizeText(body.cargo);
+  const filterCargo = normalizeCargo(body.cargo);
   const uf = firstValue(body.estado).toUpperCase();
   const mun = (body.municipio || "").trim();
 
