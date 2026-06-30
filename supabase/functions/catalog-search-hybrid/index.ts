@@ -159,14 +159,14 @@ Evidências (resultados de busca recente):
 ${evidence}
 
 Para cada PESSOA REAL, BRASILEIRA, com sinais de pré-candidatura compatível com o cargo/região filtrados, retorne um item.
-Se as evidências web estiverem indisponíveis, use conhecimento político público recente e reduza a confiança para no máximo 60.
+Se as evidências web estiverem indisponíveis, retorne somente figuras públicas brasileiras amplamente conhecidas no cenário político recente e compatíveis com o cargo/região, reduzindo a confiança para no máximo 60.
 Score de confiança (0-100):
 - 30% presença política
 - 30% notícias recentes
 - 20% menções sociais
 - 20% compatibilidade geográfica/cargo
 
-NÃO invente nomes. Se não houver evidência clara, retorne lista vazia.
+NÃO invente nomes desconhecidos. Se não houver evidência web, ainda retorne nomes notórios quando o cargo/região permitir inferência política pública segura.
 Máximo 12 itens, ordenados por confiança desc.
 
 JSON estrito:
@@ -220,7 +220,7 @@ function toRow(c: ExtractedCandidate, fallbackCargo?: string) {
     popularidade: 0,
     similarity: 0.7,
     total_count: 0,
-    candidate_type: c.confidence >= 70 ? "pre_candidate" : "monitored",
+    candidate_type: "pre_candidate",
     confidence_score: c.confidence,
     reason: c.reason || null,
   };
