@@ -3,6 +3,12 @@
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { normalizeName } from "../_shared/normalize-name.ts";
 import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
+import {
+  canonicalCargoKey,
+  electionYearForCargo,
+  MUNICIPAL_CARGO_KEYS,
+  shouldUseMunicipio,
+} from "../_shared/cargo-map.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -37,6 +43,27 @@ function normalizeText(value?: string | string[] | null): string {
     .trim();
 }
 
+function normalizeCargo(value?: string | string[] | null): string {
+  return canonicalCargoKey(value) ?? normalizeText(value);
+}
+
+function normalizeCandidateType(value: Body["candidateType"]): "official" | "pre_candidate" | "both" | "ai" {
+  return value === "official" || value === "pre_candidate" || value === "ai" || value === "both"
+    ? value
+    : "both";
+}
+
+function sanitizeBody(body: Body): Body {
+  const cargo = normalizeCargo(body.cargo);
+  const municipio = cargo && !shouldUseMunicipio([cargo]) ? null : (body.municipio?.trim() || null);
+  return {
+    ...body,
+    cargo: cargo ? [cargo] : null,
+    municipio,
+    candidateType: normalizeCandidateType(body.candidateType),
+  };
+}
+
 // Mapa UF (sigla) → nome completo do estado. Obrigatório para enviar nomes legíveis à IA/busca web.
 const UF_TO_NAME: Record<string, string> = {
   AC: "Acre", AL: "Alagoas", AP: "Amapá", AM: "Amazonas", BA: "Bahia",
@@ -55,6 +82,7 @@ function ufFullName(uf?: string | null): string {
 
 function buildCargoQueries(cargo: string, estado?: string, municipio?: string): string[] {
   const estadoNome = ufFullName(estado);
+  const cargoLabel = cargo.replace(/_/g, " ");
   switch (cargo) {
     case "presidente":
       return [
@@ -83,19 +111,21 @@ function buildCargoQueries(cargo: string, estado?: string, municipio?: string): 
         `pré-candidato senador ${estadoNome || "brasil"} 2026`,
         `senado ${estadoNome || ""} 2026 candidatos`,
       ];
-    case "deputado federal":
+    case "deputado_federal":
       return [`pré-candidatos deputado federal ${estadoNome || "brasil"} 2026`];
-    case "deputado estadual":
+    case "deputado_estadual":
       return [`pré-candidatos deputado estadual ${estadoNome || "brasil"} 2026`];
+    case "deputado_distrital":
+      return [`pré-candidatos deputado distrital ${estadoNome || "Distrito Federal"} 2026`];
     default:
-      return cargo ? [`pré-candidato ${cargo} ${municipio || ""} ${estadoNome || ""} 2026`] : [];
+      return cargo ? [`pré-candidato ${cargoLabel} ${municipio || ""} ${estadoNome || ""} 2026`] : [];
   }
 }
 
 function buildQueries(body: Body): string[] {
   const qs: string[] = [];
   const q = (body.q || "").trim();
-  const cargo = normalizeText(body.cargo);
+  const cargo = normalizeCargo(body.cargo);
   const uf = firstValue(body.estado).toUpperCase() || undefined;
   const mun = body.municipio?.trim() || undefined;
 
@@ -163,7 +193,7 @@ interface ExtractedCandidate {
 async function extractCandidatesFromWeb(
   body: Body, hits: WebHit[], queries: string[],
 ): Promise<ExtractedCandidate[]> {
-  const cargo = normalizeText(body.cargo);
+  const cargo = normalizeCargo(body.cargo);
   const uf = firstValue(body.estado).toUpperCase();
   const estadoNome = ufFullName(uf);
   const mun = body.municipio || "";
@@ -289,7 +319,8 @@ function toRow(
   fallbackCargo: string,
   scored: { score: number; tier: Tier; eligible: boolean; ineligibleReason: string | null },
 ) {
-  const cargo = (c.cargo || fallbackCargo || "").toLowerCase().replace(/\s+/g, "_") || null;
+  const fallback = (c.cargo || fallbackCargo || "").toLowerCase().replace(/\s+/g, "_") || null;
+  const cargo = canonicalCargoKey(c.cargo) ?? canonicalCargoKey(fallbackCargo) ?? fallback;
   return {
     id: `ai:${normalizeName(c.nome)}:${(c.estado || "").toUpperCase()}:${(c.municipio || "").toLowerCase()}`,
     tse_id: null,
@@ -321,11 +352,11 @@ function toRow(
 
 // Cargos mutuamente exclusivos.
 const CARGO_INCOMPATIBLE: Record<string, string[]> = {
-  governador: ["presidente", "senador", "deputado federal", "deputado estadual", "prefeito", "vereador", "ministro"],
-  presidente: ["governador", "senador", "deputado federal", "deputado estadual", "prefeito", "vereador"],
+  governador: ["presidente", "senador", "deputado_federal", "deputado_estadual", "prefeito", "vereador", "ministro"],
+  presidente: ["governador", "senador", "deputado_federal", "deputado_estadual", "prefeito", "vereador"],
   senador: ["presidente", "vereador", "prefeito"],
   prefeito: ["presidente", "governador", "senador", "vereador"],
-  vereador: ["presidente", "governador", "senador", "deputado federal"],
+  vereador: ["presidente", "governador", "senador", "deputado_federal"],
 };
 
 function evidenceOfCandidacy(reason: string, filterCargo: string, uf: string, mun: string): boolean {
@@ -335,8 +366,9 @@ function evidenceOfCandidacy(reason: string, filterCargo: string, uf: string, mu
     governador: ["governo", "governador"],
     presidente: ["presidencia", "presidente da republica"],
     senador: ["senado", "senador"],
-    "deputado federal": ["deputado federal", "camara"],
-    "deputado estadual": ["deputado estadual", "assembleia"],
+    deputado_federal: ["deputado federal", "camara"],
+    deputado_estadual: ["deputado estadual", "assembleia"],
+    deputado_distrital: ["deputado distrital", "camara legislativa"],
     prefeito: ["prefeito", "prefeitura"],
     vereador: ["vereador", "camara municipal"],
   };
@@ -353,7 +385,7 @@ function scoreRelevance(
   uf: string,
   mun: string,
 ): { score: number; keep: boolean; tier: Tier; eligible: boolean; ineligibleReason: string | null; why: string } {
-  const cCargo = (c.cargo || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  const cCargo = canonicalCargoKey(c.cargo) ?? normalizeText(c.cargo);
   const cUf = (c.estado || "").toUpperCase();
 
   // Desambiguação: exige nome completo (≥ 2 partes ≥ 2 chars). Single-token ⇒ descarta.
@@ -410,9 +442,9 @@ function scoreRelevance(
   return { score, keep, tier, eligible, ineligibleReason, why: `score=${score} tier=${tier} crit=${criteriaMet}/4 (maj=${major} poll=${poll} rec=${recent} party=${partySig}) elig=${eligible}` };
 }
 
-const NATIONAL_CARGOS = ["presidente", "vice-presidente", "vice presidente", "ministro", "presidente de partido"];
-const REGIONAL_CARGOS_REQUIRE_UF = ["governador", "vice-governador", "senador", "deputado federal", "deputado estadual"];
-const LOCAL_CARGOS_REQUIRE_MUN = ["prefeito", "vice-prefeito", "vereador"];
+const NATIONAL_CARGOS = ["presidente", "vice_presidente", "ministro"];
+const REGIONAL_CARGOS_REQUIRE_UF = ["governador", "vice_governador", "senador", "deputado_federal", "deputado_estadual", "deputado_distrital"];
+const LOCAL_CARGOS_REQUIRE_MUN = ["prefeito", "vice_prefeito", "vereador"];
 
 // Seed nacional para garantir resultado quando IA/Web ficam indisponíveis.
 const NATIONAL_SEED: ExtractedCandidate[] = [
@@ -446,7 +478,7 @@ const GOVERNADOR_SEED: Record<string, ExtractedCandidate[]> = {
 };
 
 async function discoverPreCandidates(body: Body): Promise<any[]> {
-  const filterCargo = normalizeText(body.cargo);
+  const filterCargo = normalizeCargo(body.cargo);
   const uf = firstValue(body.estado).toUpperCase();
   const mun = (body.municipio || "").trim();
 
@@ -540,13 +572,23 @@ function dedupeKey(row: any) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
-    const body = (await req.json()) as Body;
-    const candidateType = body.candidateType || "both";
+    const rawBody = (await req.json()) as Body;
+    const body = sanitizeBody(rawBody);
+    const candidateType = normalizeCandidateType(body.candidateType);
     const authHeader = req.headers.get("Authorization");
     const page = body.page ?? 0;
 
-    console.log("RAW FILTERS:", body);
-    console.log("RAW CARGO:", body.cargo);
+    const cargo = normalizeCargo(body.cargo);
+    const electionYear = cargo ? electionYearForCargo(cargo) : null;
+    const municipio = body.municipio ?? null;
+    const querySql = `delegated catalog SQL: cargo=${cargo ?? "null"}; year=${electionYear ?? "null"}; municipio=${municipio ?? "null"}`;
+
+    console.log("RAW FILTERS", rawBody);
+    console.log("RAW CARGO:", rawBody.cargo);
+    console.log("NORMALIZED CARGO", cargo);
+    console.log("YEAR", electionYear);
+    console.log("MUNICIPIO", municipio);
+    console.log("QUERY SQL", querySql);
 
     const wantsTSE = candidateType === "official" || candidateType === "both";
     const wantsAI = candidateType === "pre_candidate" || candidateType === "ai" || candidateType === "both";
@@ -556,12 +598,11 @@ Deno.serve(async (req) => {
     if (candidateType === "pre_candidate" || candidateType === "ai") {
       // Para cargos municipais (vereador/prefeito/vice_prefeito) priorizar TSE oficial 2024.
       // Só cair para IA se TSE retornar 0.
-      const cargoNorm = normalizeText(body.cargo);
-      const MUNI = new Set(["vereador", "prefeito", "vice-prefeito", "vice prefeito"]);
-      const isMunicipal = MUNI.has(cargoNorm);
+      const cargoNorm = normalizeCargo(body.cargo);
+      const isMunicipal = MUNICIPAL_CARGO_KEYS.has(cargoNorm as any);
       const munRaw = body.municipio || "";
       const munNorm = munRaw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
-      const electionYear = isMunicipal ? 2024 : 2022;
+      const electionYear = cargoNorm ? electionYearForCargo(cargoNorm) : 2022;
       console.log("cargo raw:", body.cargo, "→ normalized:", cargoNorm);
       console.log("municipio raw:", munRaw, "→ normalized:", munNorm);
       console.log("year:", electionYear);
@@ -587,6 +628,7 @@ Deno.serve(async (req) => {
       console.log("[hybrid] TSE COUNT:", tseRows.length);
       console.log("[hybrid] AI COUNT:", aiRows.length);
       console.log("[hybrid] FINAL COUNT:", total);
+      console.log("ROWS FOUND", paged.length);
 
       return new Response(JSON.stringify({
         rows: paged,
@@ -652,6 +694,7 @@ Deno.serve(async (req) => {
     ];
 
     console.log("[hybrid] FINAL COUNT:", merged.length);
+    console.log("ROWS FOUND", paged.length);
 
     return new Response(JSON.stringify({
       rows: paged,

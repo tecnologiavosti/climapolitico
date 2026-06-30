@@ -5,6 +5,12 @@
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { unzipSync } from "npm:fflate@0.8.2";
+import {
+  cargoKeyFromTseLabel,
+  canonicalCargoKey,
+  electionYearForCargo,
+  shouldUseMunicipio,
+} from "../_shared/cargo-map.ts";
 
 // ============ CONSTANTES ============
 const PAGE_SIZE = 50;
@@ -106,7 +112,7 @@ function parseCsvLine(line: string): string[] {
 }
 
 function cargoFromTseLabel(raw: unknown): string | null {
-  return TSE_LABEL_TO_CARGO[normalize(raw).replace(/\s+/g, " ")] ?? null;
+  return cargoKeyFromTseLabel(raw);
 }
 
 function isEleitoTse(raw: unknown): boolean {
@@ -124,7 +130,9 @@ function resolveUF(raw: unknown): string | null {
 
 function normalizeCargoKey(raw: string): string | null {
   const n = normalize(raw).replace(/[^a-z ]/g, "").replace(/\s+/g, "_");
-  if (CARGO_TO_TSE[n] || NON_TSE_CARGOS.has(n)) return n;
+  const canonical = canonicalCargoKey(raw);
+  if (canonical) return canonical;
+  if (NON_TSE_CARGOS.has(n)) return n;
   const aliases: Record<string, string> = {
     "vice": "vice_presidente",
     "presidente_da_republica": "presidente",
@@ -166,21 +174,24 @@ async function readFilters(req: Request): Promise<Filters> {
   const cargos = cargosRaw.map((c) => normalizeCargoKey(c)).filter((c): c is string => !!c);
   // Whitelist final de cargos aceitos no catálogo
   const ALLOWED_CARGOS = new Set([
-    "presidente", "governador", "senador",
-    "deputado_federal", "deputado_estadual",
-    "prefeito", "vice_prefeito", "vereador",
+    "presidente", "vice_presidente", "governador", "vice_governador", "senador",
+    "deputado_federal", "deputado_estadual", "deputado_distrital",
+    "prefeito", "vice_prefeito", "vereador", "ministro",
   ]);
   for (const c of cargos) {
     if (!ALLOWED_CARGOS.has(c)) {
       throw Object.assign(new Error(`Invalid cargo: ${c}`), { status: 400 });
     }
   }
+  const rawMunicipio = (get("municipio") as string | null)?.trim() || null;
+  const municipio = shouldUseMunicipio(cargos) ? rawMunicipio : null;
+
   return {
     q: (get("q") as string | null)?.trim() || null,
     cargos,
     partidos: arr("partido").map((p) => p.toUpperCase()),
     ufs: arr("estado").map((u) => resolveUF(u) ?? "").filter(Boolean),
-    municipio: (get("municipio") as string | null)?.trim() || null,
+    municipio,
     onlyEleitos: String(get("somenteEleitos") ?? get("onlyEleitos") ?? "") === "true" || body.onlyEleitos === true,
     page: Math.max(0, Number(get("page") ?? 0)),
   };
@@ -579,7 +590,7 @@ async function searchTSE(cargoKey: string, f: Filters, deadline: number): Promis
   if (!cargoCodigo) return { rows: [], partial: false };
   const isMun = MUNICIPAL_CARGOS.has(cargoKey);
   const isBR = FEDERAL_BR_CARGOS.has(cargoKey);
-  const ano = isMun ? 2024 : 2022;
+  const ano = electionYearForCargo(cargoKey);
   const cdEleicao = isMun ? ELEICAO_MUN_2024 : ELEICAO_FED_2022;
   const out: OutRow[] = [];
   let partial = false;
@@ -1206,6 +1217,20 @@ function filterLog(f: Filters) {
   };
 }
 
+function sqlArray(values: string[]): string {
+  return `(${values.map((v) => `'${String(v).replace(/'/g, "''")}'`).join(", ")})`;
+}
+
+function buildCatalogSqlLog(f: Filters): string {
+  const clauses = ["ativo = true"];
+  if (f.cargos.length) clauses.push(`cargo IN ${sqlArray(f.cargos)}`);
+  if (f.ufs.length) clauses.push(`estado IN ${sqlArray(f.ufs)}`);
+  if (f.partidos.length) clauses.push(`partido_sigla IN ${sqlArray(f.partidos)}`);
+  if (f.municipio) clauses.push(`municipio ILIKE '%${f.municipio.replace(/'/g, "''")}%'`);
+  if (f.onlyEleitos) clauses.push("eleito = true");
+  return `SELECT * FROM public.politicians WHERE ${clauses.join(" AND ")} ORDER BY eleito DESC, popularidade DESC, nome ASC LIMIT ${PAGE_SIZE} OFFSET ${f.page * PAGE_SIZE}`;
+}
+
 function addSourceForRows(sources: Set<string>, rows: OutRow[], fallback: string) {
   if (rows.length === 0) return;
   if (rows.some((r) => r.fonte === "ai-lookup")) sources.add("ai-lookup");
@@ -1341,6 +1366,12 @@ Deno.serve(async (req) => {
       console.log("SQL FILTERS:", JSON.stringify({
         cargo: f.cargos, estado: f.ufs, municipio: f.municipio, onlyEleitos: f.onlyEleitos,
       }));
+      const normalizedCargo = f.cargos[0] ?? null;
+      const electionYear = normalizedCargo ? electionYearForCargo(normalizedCargo) : null;
+      console.log("NORMALIZED CARGO", normalizedCargo);
+      console.log("YEAR", electionYear);
+      console.log("MUNICIPIO", f.municipio);
+      console.log("QUERY SQL", buildCatalogSqlLog(f));
       const sb = createClient(
         Deno.env.get("SUPABASE_URL")!,
         Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -1364,6 +1395,7 @@ Deno.serve(async (req) => {
       let { data, count, error } = await runDbQuery();
       if (error) throw new Error(`Catálogo DB: ${error.message}`);
       let total = count ?? 0;
+      console.log("ROWS FOUND", data?.length ?? 0);
       console.log(total > 0 ? "CACHE HIT" : "CACHE MISS");
       console.log("DB COUNT BEFORE PAGINATION:", total);
 
@@ -1424,7 +1456,7 @@ Deno.serve(async (req) => {
             console.log("CACHE SAVE COUNT", upErr ? 0 : upserts.length);
           }
           const re = await runDbQuery();
-          if (!re.error) { data = re.data; count = re.count; total = count ?? 0; }
+          if (!re.error) { data = re.data; count = re.count; total = count ?? 0; console.log("ROWS FOUND", data?.length ?? 0); }
           if (total === 0 && liveFetched.length > 0) {
             total = liveFetched.length;
           }
