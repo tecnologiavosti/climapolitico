@@ -206,7 +206,7 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
   console.log("[hybrid] web hits:", hits.length);
 
   const extracted = await extractCandidatesFromWeb(body, hits);
-  console.log("[hybrid] extracted candidates:", extracted.length);
+  console.log("[hybrid] AI RESULTS:", extracted.length);
   return extracted.map((c) => toRow(c, body.cargo?.[0]));
 }
 
