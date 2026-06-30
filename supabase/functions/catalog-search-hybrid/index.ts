@@ -460,10 +460,15 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
   let extracted = await extractCandidatesFromWeb(queryBody, hits, queries);
   console.log("AI RESULTS (raw):", extracted.length);
 
-  // Garantia: para cargos nacionais (presidente), se IA retornar 0, usa seed conhecido.
-  if (isNational && extracted.length === 0) {
-    console.warn("[hybrid] IA retornou 0 para cargo nacional — aplicando seed");
-    extracted = NATIONAL_SEED.filter((c) => !filterCargo || c.cargo === filterCargo);
+  // Fallback seeds quando IA retorna 0.
+  if (extracted.length === 0) {
+    if (isNational) {
+      console.warn("[hybrid] IA retornou 0 para cargo nacional — aplicando NATIONAL_SEED");
+      extracted = NATIONAL_SEED.filter((c) => !filterCargo || c.cargo === filterCargo);
+    } else if (filterCargo === "governador" && uf && GOVERNADOR_SEED[uf]) {
+      console.warn(`[hybrid] IA retornou 0 para governador ${uf} — aplicando GOVERNADOR_SEED`);
+      extracted = GOVERNADOR_SEED[uf];
+    }
   }
 
   // Pós-processamento estrito por cargo/estado/município (UF/mun ignorados para nacional).
