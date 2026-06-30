@@ -1,143 +1,12 @@
-// Busca híbrida: TSE oficial + pre_candidates (IA) + opcional web fallback.
-// Mantém o payload de tse-search e adiciona candidate_type + confidence_score por linha.
+// Busca híbrida: TSE oficial + descoberta dinâmica de pré-candidatos via IA + Web.
+// SEM banco pré-populado. Pré-candidatos descobertos em tempo real via Firecrawl + LLM.
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
-import { createClient } from "npm:@supabase/supabase-js@2";
 import { normalizeName } from "../_shared/normalize-name.ts";
+import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const FIRECRAWL_API_KEY = Deno.env.get("FIRECRAWL_API_KEY");
-
-// Seed list para buscas topic-only (sem nome) por cargo.
-// Garante resultados quando usuário seleciona "Pré-candidatos IA" + cargo sem digitar nome.
-const SEED_BY_CARGO: Record<string, Array<{ nome: string; partido?: string; estado?: string }>> = {
-  presidente: [
-    { nome: "Luiz Inácio Lula da Silva", partido: "PT" },
-    { nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", estado: "SP" },
-    { nome: "Romeu Zema", partido: "NOVO", estado: "MG" },
-    { nome: "Ronaldo Caiado", partido: "UNIÃO", estado: "GO" },
-    { nome: "Eduardo Leite", partido: "PSDB", estado: "RS" },
-    { nome: "Fernando Haddad", partido: "PT", estado: "SP" },
-    { nome: "Michelle Bolsonaro", partido: "PL" },
-    { nome: "Flávio Bolsonaro", partido: "PL", estado: "RJ" },
-    { nome: "Ratinho Júnior", partido: "PSD", estado: "PR" },
-    { nome: "Pablo Marçal", partido: "PRTB", estado: "SP" },
-    { nome: "Ciro Gomes", partido: "PSDB", estado: "CE" },
-    { nome: "Simone Tebet", partido: "MDB", estado: "MS" },
-  ],
-};
-
-function seedRow(s: { nome: string; partido?: string; estado?: string }, cargo: string) {
-  return {
-    id: `ai:${normalizeName(s.nome)}`,
-    tse_id: null,
-    nome: s.nome,
-    nome_urna: null,
-    partido_sigla: s.partido ?? null,
-    partido_nome: null,
-    numero_partido: null,
-    cargo,
-    regiao: null,
-    estado: s.estado ?? null,
-    municipio: null,
-    eleito: false,
-    categoria: "pre_candidato" as const,
-    ano_eleicao: 2026,
-    foto_url: null,
-    redes_sociais: {},
-    popularidade: 0,
-    similarity: 0.7,
-    total_count: 0,
-    candidate_type: "pre_candidate" as const,
-    confidence_score: 75,
-    reason: "Pré-candidato amplamente citado na imprensa nacional",
-  };
-}
-
-async function aiWebFallback(payload: Body, authHeader: string | null): Promise<any[]> {
-  const q = (payload.q || "").trim();
-  const cargo = payload.cargo?.[0] || "";
-  if (!q && !cargo) return [];
-
-  const query = q
-    ? `${q} política eleições Brasil pré-candidato 2026`
-    : `pré-candidatos ${cargo} 2026 brasil${payload.estado?.[0] ? " " + payload.estado[0] : ""}`;
-
-  console.log("[hybrid] AI SEARCH START:", query);
-
-  // Web evidence via Firecrawl
-  let snippets: string[] = [];
-  let urls: string[] = [];
-  if (FIRECRAWL_API_KEY) {
-    try {
-      const r = await fetch("https://api.firecrawl.dev/v2/search", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ query, limit: 6, lang: "pt", country: "br", tbs: "qdr:m" }),
-      });
-      const j = await r.json();
-      const items = j?.data ?? j?.web ?? [];
-      for (const it of items.slice(0, 6)) {
-        if (it?.description) snippets.push(String(it.description));
-        if (it?.title) snippets.push(String(it.title));
-        if (it?.url) urls.push(String(it.url));
-      }
-    } catch (e) { console.warn("[hybrid] firecrawl err", e); }
-  }
-
-  if (!q) {
-    // Topic-only: retorna seed por cargo (ex: presidente 2026)
-    const seeds = SEED_BY_CARGO[cargo] || [];
-    const filtered = payload.estado?.length
-      ? seeds.filter((s) => !s.estado || payload.estado!.includes(s.estado))
-      : seeds;
-    console.log("[hybrid] AI seed rows:", filtered.length, "for cargo:", cargo);
-    return filtered.map((s) => seedRow(s, cargo));
-  }
-
-  // Classify name via existing AI function
-  try {
-    const r = await fetch(`${SUPABASE_URL}/functions/v1/classify-political-figure`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: authHeader || `Bearer ${ANON_KEY}` },
-      body: JSON.stringify({
-        nome: q,
-        estado: payload.estado?.[0] || undefined,
-        municipio: payload.municipio || undefined,
-        contexto: snippets.join("\n").slice(0, 1800),
-        signals: urls.slice(0, 5).map((u) => ({ source: "web", url: u })),
-      }),
-    });
-    if (!r.ok) { console.warn("[hybrid] classify failed", r.status); return []; }
-    const cls = await r.json();
-    if (!cls?.is_political || (cls.confidence ?? 0) < 40) return [];
-    return [{
-      id: `ai:${normalizeName(q)}`,
-      tse_id: null,
-      nome: q,
-      nome_urna: null,
-      partido_sigla: cls.partido_sugerido || null,
-      partido_nome: null,
-      numero_partido: null,
-      cargo: (cls.cargo_sugerido || "").toLowerCase().replace(/\s+/g, "_") || null,
-      regiao: null,
-      estado: payload.estado?.[0] || null,
-      municipio: payload.municipio || null,
-      eleito: false,
-      categoria: "pre_candidato" as const,
-      ano_eleicao: null,
-      foto_url: null,
-      redes_sociais: {},
-      popularidade: 0,
-      similarity: 0.6,
-      total_count: 0,
-      candidate_type: cls.confidence >= 70 ? "pre_candidate" : "monitored",
-      confidence_score: Number(cls.confidence || 0),
-      reason: cls.reason || null,
-    }];
-  } catch (e) { console.warn("[hybrid] classify err", e); return []; }
-}
 
 interface Body {
   q?: string | null;
@@ -148,81 +17,206 @@ interface Body {
   municipio?: string | null;
   onlyEleitos?: boolean;
   page?: number;
-  candidateType?: "official" | "pre_candidate" | "both";
+  candidateType?: "official" | "pre_candidate" | "both" | "ai";
 }
 
 const PAGE_SIZE = 50;
+
+const CARGO_QUERY_TEMPLATES: Record<string, (estado?: string, municipio?: string) => string[]> = {
+  presidente: () => [
+    "pré-candidatos presidente brasil 2026",
+    "candidatos presidência da república 2026",
+  ],
+  governador: (uf) => [
+    `pré-candidato governador ${uf ?? "brasil"} 2026`,
+    `candidatos governo ${uf ?? ""} 2026`,
+  ],
+  senador: (uf) => [
+    `pré-candidato senador ${uf ?? "brasil"} 2026`,
+    `senado ${uf ?? ""} 2026 candidatos`,
+  ],
+  deputado_federal: (uf) => [
+    `pré-candidatos deputado federal ${uf ?? "brasil"} 2026`,
+  ],
+  deputado_estadual: (uf) => [
+    `pré-candidatos deputado estadual ${uf ?? "brasil"} 2026`,
+  ],
+  prefeito: (_uf, mun) => [
+    `pré-candidato prefeito ${mun ?? ""}`.trim(),
+    `eleições prefeitura ${mun ?? ""}`.trim(),
+  ],
+  vereador: (_uf, mun) => [
+    `vereador ${mun ?? ""}`.trim(),
+    `câmara municipal ${mun ?? ""}`.trim(),
+    `pré-candidato vereador ${mun ?? ""}`.trim(),
+  ],
+};
+
+function buildQueries(body: Body): string[] {
+  const qs: string[] = [];
+  const q = (body.q || "").trim();
+  const cargo = (body.cargo?.[0] || "").toLowerCase();
+  const uf = body.estado?.[0];
+  const mun = body.municipio || undefined;
+
+  if (q) {
+    qs.push(`${q} política eleições 2026 brasil${uf ? " " + uf : ""}${mun ? " " + mun : ""}`);
+  }
+  if (cargo) {
+    const tmpl = CARGO_QUERY_TEMPLATES[cargo];
+    if (tmpl) qs.push(...tmpl(uf, mun));
+    else qs.push(`pré-candidato ${cargo} ${uf ?? ""} ${mun ?? ""} 2026`.replace(/\s+/g, " ").trim());
+  }
+  if (!qs.length && (uf || mun)) {
+    qs.push(`pré-candidatos ${mun ?? uf} 2026`);
+  }
+  return Array.from(new Set(qs.filter(Boolean))).slice(0, 3);
+}
+
+interface WebHit { title?: string; description?: string; url?: string }
+
+async function firecrawlSearch(query: string): Promise<WebHit[]> {
+  if (!FIRECRAWL_API_KEY) return [];
+  try {
+    const r = await fetch("https://api.firecrawl.dev/v2/search", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query, limit: 8, lang: "pt", country: "br", tbs: "qdr:m" }),
+    });
+    const j = await r.json();
+    const items = j?.data ?? j?.web ?? [];
+    return items.slice(0, 8).map((it: any) => ({
+      title: it?.title, description: it?.description, url: it?.url,
+    }));
+  } catch (e) { console.warn("[hybrid] firecrawl err", e); return []; }
+}
+
+interface ExtractedCandidate {
+  nome: string;
+  partido?: string | null;
+  cargo?: string | null;
+  estado?: string | null;
+  municipio?: string | null;
+  confidence: number;
+  reason?: string;
+}
+
+async function extractCandidatesFromWeb(
+  body: Body, hits: WebHit[],
+): Promise<ExtractedCandidate[]> {
+  if (!hits.length) return [];
+  const cargo = body.cargo?.[0] || "";
+  const uf = body.estado?.[0] || "";
+  const mun = body.municipio || "";
+  const evidence = hits.slice(0, 12).map((h, i) =>
+    `[${i + 1}] ${h.title ?? ""}\n${h.description ?? ""}\n${h.url ?? ""}`
+  ).join("\n---\n").slice(0, 6000);
+
+  const system = `Você é um analista político brasileiro. Extraia pré-candidatos a cargos eletivos no Brasil para 2026 a partir de evidências da web. Responda SEMPRE em JSON estrito.`;
+  const user = `Filtros do usuário:
+- Cargo: ${cargo || "qualquer"}
+- Estado (UF): ${uf || "qualquer"}
+- Município: ${mun || "qualquer"}
+- Nome buscado: ${body.q || "—"}
+
+Evidências (resultados de busca recente):
+${evidence}
+
+Para cada PESSOA REAL, BRASILEIRA, com sinais de pré-candidatura compatível com o cargo/região filtrados, retorne um item.
+Score de confiança (0-100):
+- 30% presença política
+- 30% notícias recentes
+- 20% menções sociais
+- 20% compatibilidade geográfica/cargo
+
+NÃO invente nomes. Se não houver evidência clara, retorne lista vazia.
+Máximo 12 itens, ordenados por confiança desc.
+
+JSON estrito:
+{ "candidatos": [
+  { "nome": string, "partido": string|null, "cargo": string|null,
+    "estado": string|null, "municipio": string|null,
+    "confidence": number, "reason": string }
+] }`;
+
+  try {
+    const ai = await callAICerebrasFirst({
+      systemMsg: system, userPrompt: user, jsonMode: true,
+      maxTokens: 1200, temperature: 0.2, tag: "catalog-discover",
+    });
+    const parsed = JSON.parse(ai.content);
+    const arr = Array.isArray(parsed?.candidatos) ? parsed.candidatos : [];
+    return arr
+      .filter((c: any) => c?.nome && typeof c.confidence === "number")
+      .map((c: any) => ({
+        nome: String(c.nome).trim(),
+        partido: c.partido || null,
+        cargo: c.cargo || null,
+        estado: c.estado || null,
+        municipio: c.municipio || null,
+        confidence: Math.max(0, Math.min(100, Number(c.confidence) || 0)),
+        reason: c.reason ? String(c.reason).slice(0, 280) : "",
+      }))
+      .filter((c: ExtractedCandidate) => c.confidence >= 40);
+  } catch (e) { console.warn("[hybrid] extract err", e); return []; }
+}
+
+function toRow(c: ExtractedCandidate, fallbackCargo?: string) {
+  const cargo = (c.cargo || fallbackCargo || "").toLowerCase().replace(/\s+/g, "_") || null;
+  return {
+    id: `ai:${normalizeName(c.nome)}:${(c.estado || "").toUpperCase()}:${(c.municipio || "").toLowerCase()}`,
+    tse_id: null,
+    nome: c.nome,
+    nome_urna: null,
+    partido_sigla: c.partido,
+    partido_nome: null,
+    numero_partido: null,
+    cargo,
+    regiao: null,
+    estado: c.estado,
+    municipio: c.municipio,
+    eleito: false,
+    categoria: "pre_candidato" as const,
+    ano_eleicao: 2026,
+    foto_url: null,
+    redes_sociais: {},
+    popularidade: 0,
+    similarity: 0.7,
+    total_count: 0,
+    candidate_type: c.confidence >= 70 ? "pre_candidate" : "monitored",
+    confidence_score: c.confidence,
+    reason: c.reason || null,
+  };
+}
+
+async function discoverPreCandidates(body: Body): Promise<any[]> {
+  const queries = buildQueries(body);
+  console.log("[hybrid] discover queries:", queries);
+  if (!queries.length) return [];
+
+  const hitLists = await Promise.all(queries.map(firecrawlSearch));
+  const seen = new Set<string>();
+  const hits: WebHit[] = [];
+  for (const list of hitLists) for (const h of list) {
+    const k = h.url || `${h.title}|${h.description}`;
+    if (k && !seen.has(k)) { seen.add(k); hits.push(h); }
+  }
+  console.log("[hybrid] web hits:", hits.length);
+
+  const extracted = await extractCandidatesFromWeb(body, hits);
+  console.log("[hybrid] extracted candidates:", extracted.length);
+  return extracted.map((c) => toRow(c, body.cargo?.[0]));
+}
 
 async function callTSE(payload: Body, authHeader: string | null) {
   const url = `${SUPABASE_URL}/functions/v1/tse-search`;
   const r = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: authHeader || `Bearer ${ANON_KEY}`,
-    },
+    headers: { "Content-Type": "application/json", Authorization: authHeader || `Bearer ${ANON_KEY}` },
     body: JSON.stringify(payload),
   });
-  if (!r.ok) {
-    console.warn("[hybrid] tse-search failed", r.status);
-    return { rows: [], total: 0, hasMore: false, sources: [] as string[] };
-  }
+  if (!r.ok) { console.warn("[hybrid] tse-search failed", r.status); return { rows: [], total: 0, hasMore: false, sources: [] as string[] }; }
   return await r.json();
-}
-
-async function fetchPreCandidates(payload: Body) {
-  const db = createClient(SUPABASE_URL, SERVICE_KEY);
-  let q = db.from("pre_candidates").select("*", { count: "exact" });
-
-  if (payload.q) {
-    const norm = normalizeName(payload.q);
-    q = q.ilike("nome_normalizado", `%${norm}%`);
-  }
-  if (payload.estado?.length) q = q.in("estado", payload.estado);
-  if (payload.municipio) q = q.ilike("municipio", `%${payload.municipio}%`);
-  if (payload.cargo?.length) {
-    // cargo_sugerido é texto livre; faz match parcial
-    const ors = payload.cargo.map((c) => `cargo_sugerido.ilike.%${c}%`).join(",");
-    q = q.or(ors);
-  }
-
-  q = q.order("confidence_score", { ascending: false }).limit(200);
-  const { data, error, count } = await q;
-  if (error) {
-    console.warn("[hybrid] pre_candidates err", error.message);
-    return { rows: [] as any[], total: 0 };
-  }
-  return { rows: data ?? [], total: count ?? 0 };
-}
-
-function mapPreCandidate(r: any) {
-  return {
-    id: `pre:${r.id}`,
-    tse_id: null,
-    nome: r.nome,
-    nome_urna: null,
-    partido_sigla: r.partido_sugerido,
-    partido_nome: null,
-    numero_partido: null,
-    cargo: (r.cargo_sugerido || "").toLowerCase().replace(/\s+/g, "_") || null,
-    regiao: null,
-    estado: r.estado,
-    municipio: r.municipio,
-    eleito: false,
-    categoria: "pre_candidato" as const,
-    ano_eleicao: null,
-    foto_url: null,
-    redes_sociais: [
-      ["instagram", r.instagram], ["facebook", r.facebook],
-      ["tiktok", r.tiktok], ["youtube", r.youtube],
-    ].reduce<Record<string, string>>((acc, [k, v]) => { if (v) acc[k as string] = v as string; return acc; }, {}),
-    popularidade: Number(r.engagement_score || 0),
-    similarity: 0.8,
-    total_count: 0,
-    candidate_type: "pre_candidate" as const,
-    confidence_score: Number(r.confidence_score || 0),
-    reason: r.reason || null,
-  };
 }
 
 function dedupeKey(row: any) {
@@ -242,50 +236,31 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     const page = body.page ?? 0;
 
-    const tasks: Promise<any>[] = [];
-    tasks.push(candidateType === "pre_candidate"
-      ? Promise.resolve({ rows: [], total: 0, hasMore: false, sources: [] })
-      : callTSE(body, authHeader));
-    tasks.push(candidateType === "official"
-      ? Promise.resolve({ rows: [], total: 0 })
-      : fetchPreCandidates(body));
+    const wantsTSE = candidateType === "official" || candidateType === "both";
+    const wantsAI = candidateType === "pre_candidate" || candidateType === "ai" || candidateType === "both";
 
-    const [tse, pre] = await Promise.all(tasks);
+    console.log("[hybrid] CATALOG MODE:", candidateType, "wantsTSE:", wantsTSE, "wantsAI:", wantsAI);
 
-    // Annotate TSE rows
+    const [tse, aiRows] = await Promise.all([
+      wantsTSE ? callTSE(body, authHeader) : Promise.resolve({ rows: [], total: 0, hasMore: false, sources: [] }),
+      wantsAI ? discoverPreCandidates(body) : Promise.resolve([] as any[]),
+    ]);
+
     const tseRows = (tse.rows ?? []).map((r: any) => ({
       ...r,
       candidate_type: "official" as const,
       confidence_score: r.eleito ? 100 : 85,
     }));
-    const preRows = pre.rows.map(mapPreCandidate);
 
-    console.log("[hybrid] SEARCH TYPE:", candidateType);
     console.log("[hybrid] TSE COUNT:", tseRows.length);
-    console.log("[hybrid] PRE COUNT:", preRows.length);
+    console.log("[hybrid] AI COUNT:", aiRows.length);
 
-    // AI/Web fallback: roda sempre que usuário pediu IA e ainda não temos pré-candidatos
-    let aiRows: any[] = [];
-    const wantsAI = candidateType === "ai" || candidateType === "pre_candidate" || candidateType === "both";
-    console.log("[hybrid] wantsAI:", wantsAI, "q:", body.q, "cargo:", body.cargo);
-    if (wantsAI && preRows.length === 0 && (body.q?.trim() || body.cargo?.length)) {
-      console.log("[hybrid] AI SEARCH START");
-      aiRows = await aiWebFallback(body, authHeader);
-      console.log("[hybrid] AI COUNT:", aiRows.length);
-    }
-
-    // Merge + dedupe (prefer official over pre_candidate over AI)
     const map = new Map<string, any>();
     for (const r of tseRows) map.set(dedupeKey(r), r);
-    for (const r of preRows) {
-      const k = dedupeKey(r);
-      if (!map.has(k)) map.set(k, r);
-    }
     for (const r of aiRows) {
       const k = dedupeKey(r);
       if (!map.has(k)) map.set(k, r);
     }
-
 
     const merged = Array.from(map.values()).sort((a, b) => {
       const ae = a.eleito ? 1 : 0, be = b.eleito ? 1 : 0;
@@ -301,7 +276,6 @@ Deno.serve(async (req) => {
     const paged = merged.slice(start, start + PAGE_SIZE);
     const sources = [
       ...(tse.sources ?? []),
-      ...(preRows.length ? ["pre_candidates"] : []),
       ...(aiRows.length ? ["ai_web"] : []),
     ];
 
@@ -323,7 +297,7 @@ Deno.serve(async (req) => {
       sources,
       counts: {
         official: tseRows.length,
-        pre_candidate: preRows.length,
+        pre_candidate: 0,
         ai: aiRows.length,
       },
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
