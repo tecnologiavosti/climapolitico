@@ -83,6 +83,7 @@ export function CatalogFilters({ filters, searchQuery, onSearchQueryChange, onCh
     : UFS;
   const selectedEstado = filters.estado?.[0];
   const estadoSelected = !!selectedEstado;
+  const isPresidente = filters.cargo?.[0] === "presidente";
   const availableMunis = useMemo(
     () => (selectedEstado ? MUNICIPIOS_BY_STATE[selectedEstado] ?? [] : []),
     [selectedEstado],
