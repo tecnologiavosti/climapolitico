@@ -137,15 +137,16 @@ interface ExtractedCandidate {
 }
 
 async function extractCandidatesFromWeb(
-  body: Body, hits: WebHit[],
+  body: Body, hits: WebHit[], queries: string[],
 ): Promise<ExtractedCandidate[]> {
-  if (!hits.length) return [];
   const cargo = normalizeText(body.cargo);
   const uf = firstValue(body.estado).toUpperCase();
   const mun = body.municipio || "";
-  const evidence = hits.slice(0, 12).map((h, i) =>
-    `[${i + 1}] ${h.title ?? ""}\n${h.description ?? ""}\n${h.url ?? ""}`
-  ).join("\n---\n").slice(0, 6000);
+  const evidence = hits.length
+    ? hits.slice(0, 12).map((h, i) =>
+      `[${i + 1}] ${h.title ?? ""}\n${h.description ?? ""}\n${h.url ?? ""}`
+    ).join("\n---\n").slice(0, 6000)
+    : `Sem resultados web disponíveis neste momento. Consultas geradas: ${queries.join(" | ")}`;
 
   const system = `Você é um analista político brasileiro. Extraia pré-candidatos a cargos eletivos no Brasil para 2026 a partir de evidências da web. Responda SEMPRE em JSON estrito.`;
   const user = `Filtros do usuário:
@@ -158,6 +159,7 @@ Evidências (resultados de busca recente):
 ${evidence}
 
 Para cada PESSOA REAL, BRASILEIRA, com sinais de pré-candidatura compatível com o cargo/região filtrados, retorne um item.
+Se as evidências web estiverem indisponíveis, use conhecimento político público recente e reduza a confiança para no máximo 60.
 Score de confiança (0-100):
 - 30% presença política
 - 30% notícias recentes
@@ -177,7 +179,7 @@ JSON estrito:
   try {
     const ai = await callAICerebrasFirst({
       systemMsg: system, userPrompt: user, jsonMode: true,
-      maxTokens: 1200, temperature: 0.2, tag: "catalog-discover",
+      maxTokens: 1200, temperature: 0.2, tag: hits.length ? "catalog-discover" : "catalog-discover-ai-fallback",
     });
     const parsed = JSON.parse(ai.content);
     const arr = Array.isArray(parsed?.candidatos) ? parsed.candidatos : [];
@@ -240,7 +242,7 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
   }
   console.log("[hybrid] web hits:", hits.length);
 
-  const extracted = await extractCandidatesFromWeb(body, hits);
+  const extracted = await extractCandidatesFromWeb(body, hits, queries);
   console.log("AI RESULTS:", extracted.length);
   return extracted.map((c) => toRow(c, normalizeText(body.cargo)));
 }
