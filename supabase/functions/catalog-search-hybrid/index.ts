@@ -273,9 +273,6 @@ Deno.serve(async (req) => {
       aiRows = await aiWebFallback(body, authHeader);
       console.log("[hybrid] AI COUNT:", aiRows.length);
     }
-      aiRows = await aiWebFallback(body, authHeader);
-      console.log("[hybrid] AI COUNT:", aiRows.length);
-    }
 
     // Merge + dedupe (prefer official over pre_candidate over AI)
     const map = new Map<string, any>();
