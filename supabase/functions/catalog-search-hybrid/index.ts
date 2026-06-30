@@ -272,44 +272,50 @@ function evidenceOfCandidacy(reason: string, filterCargo: string, uf: string, mu
   return hasCargo && hasRegion && (mun ? hasMun : true);
 }
 
-function scoreRelevance(c: ExtractedCandidate, filterCargo: string, uf: string, mun: string): { score: number; keep: boolean; why: string } {
-  // Sem filtro de cargo: não aplica regras estritas.
-  if (!filterCargo) return { score: 100, keep: true, why: "sem filtro de cargo" };
+function scoreRelevance(c: ExtractedCandidate, filterCargo: string, uf: string, mun: string): { score: number; keep: boolean; tier: "confirmed" | "speculative"; why: string } {
   const cCargo = (c.cargo || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
   const cUf = (c.estado || "").toUpperCase();
   const cMun = (c.municipio || "").toLowerCase();
-  const hasEvidence = evidenceOfCandidacy(c.reason || "", filterCargo, uf, mun);
-
-  const cargoMatch = cCargo === filterCargo || cCargo.includes(filterCargo);
-  const incompatList = CARGO_INCOMPATIBLE[filterCargo] || [];
+  const hasEvidence = filterCargo ? evidenceOfCandidacy(c.reason || "", filterCargo, uf, mun) : false;
+  const cargoMatch = filterCargo ? (cCargo === filterCargo || cCargo.includes(filterCargo)) : true;
+  const incompatList = filterCargo ? (CARGO_INCOMPATIBLE[filterCargo] || []) : [];
   const isIncompat = incompatList.some((x) => cCargo === x || cCargo.startsWith(x));
 
-  // Cargo incompatível sem evidência explícita de troca → descartar.
-  if (isIncompat && !hasEvidence) {
-    return { score: 0, keep: false, why: `cargo incompatível: ${cCargo} vs ${filterCargo}` };
+  if (filterCargo && isIncompat && !hasEvidence && !c.recent_evidence) {
+    return { score: 0, keep: false, tier: "speculative", why: `cargo incompatível: ${cCargo} vs ${filterCargo}` };
   }
 
   let score = 0;
-  if (cargoMatch || hasEvidence) score += 50;
-  // Estado: presidente não exige UF.
-  if (filterCargo === "presidente") score += 30;
+  // +50 cargo bate
+  if (cargoMatch || hasEvidence || c.recent_evidence) score += 50;
+  // +30 estado bate (presidente não exige)
+  if (!filterCargo || filterCargo === "presidente") score += 30;
   else if (uf && (cUf === uf || hasEvidence)) score += 30;
   else if (!uf) score += 30;
-  // Município (quando aplicável)
+  // +40 notícia recente explícita
+  if (c.recent_evidence) score += 40;
+  // +20 aparece em pesquisa eleitoral
+  if (c.poll_evidence) score += 20;
+  // -50 só histórico
+  if (c.only_historical) score -= 50;
+  // -40 última menção > 12 meses
+  if (typeof c.last_mention_months === "number" && c.last_mention_months > 12) score -= 40;
+  // município
   if (mun) {
-    if (cMun && cMun === mun.toLowerCase()) score += 20;
-    else if (hasEvidence) score += 10;
-  } else {
-    score += 20; // evidência genérica de candidatura recente
+    if (cMun && cMun === mun.toLowerCase()) score += 10;
+    else if (hasEvidence) score += 5;
   }
 
-  return { score, keep: score >= 70, why: `score=${score} cargo=${cCargo} uf=${cUf}` };
+  const tier: "confirmed" | "speculative" = score >= 90 && (c.recent_evidence || hasEvidence) ? "confirmed" : "speculative";
+  const keep = score >= 70;
+  return { score: Math.max(0, Math.min(100, score)), keep, tier, why: `score=${score} tier=${tier} cargo=${cCargo} uf=${cUf} recent=${c.recent_evidence} poll=${c.poll_evidence} hist=${c.only_historical}` };
 }
 
 async function discoverPreCandidates(body: Body): Promise<any[]> {
   const queries = buildQueries(body);
   console.log("PRE-CANDIDATE MODE");
   console.log("AI QUERY:", queries);
+
   if (!queries.length) { console.log("AI RESULTS:", 0); return []; }
   if (!FIRECRAWL_API_KEY) console.warn("[hybrid] FIRECRAWL_API_KEY missing — using AI-only fallback");
 
