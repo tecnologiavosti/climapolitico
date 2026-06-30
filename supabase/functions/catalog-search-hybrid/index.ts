@@ -214,7 +214,7 @@ JSON estrito:
 }
 
 
-function toRow(c: ExtractedCandidate, fallbackCargo?: string) {
+function toRow(c: ExtractedCandidate, fallbackCargo: string, scored: { score: number; tier: "confirmed" | "speculative" }) {
   const cargo = (c.cargo || fallbackCargo || "").toLowerCase().replace(/\s+/g, "_") || null;
   return {
     id: `ai:${normalizeName(c.nome)}:${(c.estado || "").toUpperCase()}:${(c.municipio || "").toLowerCase()}`,
@@ -237,10 +237,12 @@ function toRow(c: ExtractedCandidate, fallbackCargo?: string) {
     similarity: 0.7,
     total_count: 0,
     candidate_type: "pre_candidate",
-    confidence_score: c.confidence,
+    confidence_score: scored.score,
+    confidence_tier: scored.tier,
     reason: c.reason || null,
   };
 }
+
 
 // Cargos mutuamente exclusivos: se o cargo atual da pessoa é X, NÃO serve para Y (a menos que haja evidência explícita).
 const CARGO_INCOMPATIBLE: Record<string, string[]> = {
