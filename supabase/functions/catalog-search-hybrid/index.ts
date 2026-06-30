@@ -138,6 +138,8 @@ interface ExtractedCandidate {
   poll_evidence?: boolean;
   only_historical?: boolean;
   last_mention_months?: number | null;
+  held_major_office?: boolean; // já foi governador/senador/ministro/prefeito de capital
+  party_signaling?: boolean;   // partido sinaliza candidatura competitiva
 }
 
 async function extractCandidatesFromWeb(
@@ -163,20 +165,29 @@ Data atual: ${new Date().toISOString().slice(0, 10)}
 Evidências (resultados de busca recente):
 ${evidence}
 
-Para cada PESSOA REAL, BRASILEIRA, retorne nomes COTADOS/VENTILADOS como pré-candidatos ao CARGO filtrado em 2026 — INCLUINDO bastidores, articulação partidária e cotações na imprensa. NÃO exija anúncio oficial: nomes "cotados", "ventilados", "em articulação", "que podem disputar" SÃO válidos.
+Para cada PESSOA REAL, BRASILEIRA, retorne APENAS nomes REALISTICAMENTE COTADOS a disputar o CARGO filtrado em 2026.
+NÃO basta ser "político relevante" no estado. Exige-se viabilidade real de candidatura ao cargo específico.
+
+CRITÉRIOS OBRIGATÓRIOS — incluir o nome SOMENTE se atender pelo menos 2 dos 4:
+  (a) "held_major_office": já foi governador, senador, ministro de Estado OU prefeito de capital;
+  (b) "poll_evidence": aparece em pesquisa eleitoral recente (Datafolha, Quaest, AtlasIntel, Paraná Pesquisas, Genial/Quaest) para o cargo filtrado;
+  (c) "recent_evidence": citado em notícias eleitorais dos últimos 180 dias como cotado/articulado para o cargo;
+  (d) "party_signaling": o partido dele sinalizou candidatura competitiva ao cargo (não apenas filiação).
+
+NÃO incluir político só por: morar no estado, ser deputado estadual/local, ser ex-prefeito de cidade pequena/média, ter notoriedade municipal, ou ser do mesmo partido de alguém forte.
+
 REGRAS DE CARGO:
-- Se o cargo filtrado for "governador" e UF="${uf || "[UF]"}", inclua APENAS nomes cotados ao governo de ${uf || "[UF]"} (mesmo sem anúncio). Use "estado": "${uf || "[UF]"}" (sigla UF, 2 letras).
-- Se o cargo for "presidente", apenas cotados à presidência da República.
-- Se o cargo for "senador", "deputado federal" ou "deputado estadual", apenas para o estado filtrado (campo "estado" em sigla UF).
-- Se o cargo for "prefeito" ou "vereador", apenas para o município filtrado.
-- O campo "cargo" do item DEVE bater com o cargo filtrado.
-- O campo "estado" SEMPRE em sigla de 2 letras (SP, RJ, MG…), nunca o nome por extenso.
-- Inclua no "reason" evidência curta (ex.: "cotado pelo PT para governo de SP em 2026", "Datafolha dez/2025 mostra X em 2º lugar").
-- Marque "recent_evidence": true se houver menção (mesmo de bastidor) nos últimos 180 dias ao cargo filtrado.
-- Marque "poll_evidence": true se aparece em pesquisa eleitoral recente (Datafolha, Quaest, AtlasIntel, Paraná Pesquisas) para o cargo.
-- Marque "only_historical": true se a pessoa só tem relevância passada e nenhum sinal recente de candidatura ao cargo.
-- "last_mention_months": meses desde a menção mais recente relevante (ou null).
-NÃO invente nomes desconhecidos. Sem evidência web, use APENAS figuras notórias da política brasileira atual cotadas para o cargo/região. Máximo 12 itens, ordenados por confiança desc.
+- Cargo "governador" + UF="${uf || "[UF]"}": apenas cotados ao GOVERNO de ${uf || "[UF]"}. Use "estado": "${uf || "[UF]"}" (sigla 2 letras).
+- Cargo "presidente": apenas cotados à presidência da República.
+- Cargo "senador"/"deputado federal"/"deputado estadual": apenas para o estado filtrado.
+- Cargo "prefeito"/"vereador": apenas para o município filtrado.
+- "cargo" do item DEVE bater com o cargo filtrado.
+- "estado" SEMPRE em sigla 2 letras (SP, RJ, MG…).
+- "reason": evidência curta (ex.: "ex-prefeito de SP, 22% no Datafolha out/2025 para governo de SP").
+- "confidence" (0-100): viabilidade política real. Tier 1 (85-100) fortemente cotado; Tier 2 (60-84) possível; <60 fraco — NÃO RETORNE <60.
+- "only_historical": true se a relevância é só passada.
+- "last_mention_months": meses desde menção relevante (ou null).
+NÃO invente nomes. Máximo 10 itens, ordenados por confidence desc. NÃO retorne itens com confidence < 60.
 
 JSON estrito:
 { "candidatos": [
@@ -184,6 +195,7 @@ JSON estrito:
     "estado": string|null, "municipio": string|null,
     "confidence": number, "reason": string,
     "recent_evidence": boolean, "poll_evidence": boolean,
+    "held_major_office": boolean, "party_signaling": boolean,
     "only_historical": boolean, "last_mention_months": number|null }
 ] }`;
 
@@ -206,6 +218,8 @@ JSON estrito:
         reason: c.reason ? String(c.reason).slice(0, 280) : "",
         recent_evidence: !!c.recent_evidence,
         poll_evidence: !!c.poll_evidence,
+        held_major_office: !!c.held_major_office,
+        party_signaling: !!c.party_signaling,
         only_historical: !!c.only_historical,
         last_mention_months: typeof c.last_mention_months === "number" ? c.last_mention_months : null,
       }));
@@ -337,6 +351,8 @@ function scoreRelevance(
   // Componentes 0-100.
   const recent = c.recent_evidence ? 1 : 0;
   const poll = c.poll_evidence ? 1 : 0;
+  const major = c.held_major_office ? 1 : 0;
+  const partySig = c.party_signaling ? 1 : 0;
   const monthsAgo = typeof c.last_mention_months === "number" ? c.last_mention_months : 12;
 
   const media = Math.max(0, Math.min(100, (recent ? 70 : 25) + (poll ? 25 : 0) + (cargoMatch ? 5 : 0)));
@@ -354,16 +370,18 @@ function scoreRelevance(
   const eligible = !inel;
   const ineligibleReason = inel ? inel.reason : null;
 
+  // Critérios obrigatórios: ao menos 2 de 4 (major office / pesquisas / notícias recentes / sinalização partidária).
+  const criteriaMet = major + poll + recent + partySig;
+
   let tier: Tier;
   if (!eligible) tier = "inelegivel";
-  else if (score >= 85) tier = "forte";
-  else if (score >= 60) tier = "possivel";
-  else if (score >= 40) tier = "fraco";
+  else if (score >= 85 && criteriaMet >= 2) tier = "forte";
+  else if (score >= 60 && criteriaMet >= 2) tier = "possivel";
   else tier = "fraco";
 
-  // Inelegíveis sempre aparecem (com badge vermelho). Demais: keep se >= 40.
-  const keep = !eligible || score >= 40;
-  return { score, keep, tier, eligible, ineligibleReason, why: `score=${score} tier=${tier} elig=${eligible} cargo=${cCargo} uf=${cUf} recent=${recent} poll=${poll} hist=${c.only_historical}` };
+  // Só exibir Tier 1 e Tier 2. Inelegíveis aparecem com badge.
+  const keep = !eligible || (score >= 60 && criteriaMet >= 2);
+  return { score, keep, tier, eligible, ineligibleReason, why: `score=${score} tier=${tier} crit=${criteriaMet}/4 (maj=${major} poll=${poll} rec=${recent} party=${partySig}) elig=${eligible}` };
 }
 
 const NATIONAL_CARGOS = ["presidente", "vice-presidente", "vice presidente", "ministro", "presidente de partido"];
@@ -372,44 +390,32 @@ const LOCAL_CARGOS_REQUIRE_MUN = ["prefeito", "vice-prefeito", "vereador"];
 
 // Seed nacional para garantir resultado quando IA/Web ficam indisponíveis.
 const NATIONAL_SEED: ExtractedCandidate[] = [
-  { nome: "Luiz Inácio Lula da Silva", partido: "PT", cargo: "presidente", estado: null, municipio: null, confidence: 95, reason: "presidente em exercício, pré-candidato à reeleição em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 0 },
-  { nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "presidente", estado: null, municipio: null, confidence: 90, reason: "cotado para a presidência da república em 2026 (Datafolha/Quaest)", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 0 },
-  { nome: "Romeu Zema", partido: "NOVO", cargo: "presidente", estado: null, municipio: null, confidence: 84, reason: "cotado como pré-candidato à presidência da república em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 2 },
-  { nome: "Ronaldo Caiado", partido: "UNIÃO", cargo: "presidente", estado: null, municipio: null, confidence: 82, reason: "lançou pré-candidatura à presidência da república em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 1 },
-  { nome: "Ratinho Junior", partido: "PSD", cargo: "presidente", estado: null, municipio: null, confidence: 80, reason: "pré-candidato à presidência da república em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 1 },
-  { nome: "Eduardo Leite", partido: "PSDB", cargo: "presidente", estado: null, municipio: null, confidence: 72, reason: "articula pré-candidatura à presidência da república em 2026", recent_evidence: true, poll_evidence: false, only_historical: false, last_mention_months: 3 },
-  // Inelegível — mantido para que UI mostre badge 🔴, viability baixa.
-  { nome: "Jair Bolsonaro", partido: "PL", cargo: "presidente", estado: null, municipio: null, confidence: 40, reason: "inelegível pelo TSE até 2030; articula indicação de candidato apoiado", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 0 },
-  // Cotação mais baixa: nome ventilado mas sem liderança em pesquisas presidenciais.
-  { nome: "Fernando Haddad", partido: "PT", cargo: "presidente", estado: null, municipio: null, confidence: 35, reason: "ministro da Fazenda; nome ventilado para presidência caso Lula não dispute", recent_evidence: true, poll_evidence: false, only_historical: false, last_mention_months: 2 },
+  { nome: "Luiz Inácio Lula da Silva", partido: "PT", cargo: "presidente", estado: null, municipio: null, confidence: 95, reason: "presidente em exercício, pré-candidato à reeleição em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 0 },
+  { nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "presidente", estado: null, municipio: null, confidence: 90, reason: "governador de SP, cotado para presidência em 2026 (Datafolha/Quaest)", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 0 },
+  { nome: "Romeu Zema", partido: "NOVO", cargo: "presidente", estado: null, municipio: null, confidence: 84, reason: "governador de MG, pré-candidato à presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 2 },
+  { nome: "Ronaldo Caiado", partido: "UNIÃO", cargo: "presidente", estado: null, municipio: null, confidence: 82, reason: "governador de GO, lançou pré-candidatura à presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 1 },
+  { nome: "Ratinho Junior", partido: "PSD", cargo: "presidente", estado: null, municipio: null, confidence: 80, reason: "governador do PR, pré-candidato à presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 1 },
+  { nome: "Eduardo Leite", partido: "PSDB", cargo: "presidente", estado: null, municipio: null, confidence: 72, reason: "governador do RS, articula pré-candidatura presidencial em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: false, only_historical: false, last_mention_months: 3 },
+  // Inelegível — mantido para que UI mostre badge 🔴.
+  { nome: "Jair Bolsonaro", partido: "PL", cargo: "presidente", estado: null, municipio: null, confidence: 40, reason: "inelegível pelo TSE até 2030; articula indicação de candidato apoiado", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 0 },
 ];
 
 // Seed regional para governador — usado quando IA retorna 0 para "governador" + UF.
+// Apenas nomes que atendem ≥2 critérios (major office / pesquisas / notícias recentes / sinalização partidária).
 const GOVERNADOR_SEED: Record<string, ExtractedCandidate[]> = {
   SP: [
-    { nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "governador", estado: "SP", municipio: null, confidence: 90, reason: "governador em exercício, cotado para reeleição ou presidência em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 0 },
-    { nome: "Fernando Haddad", partido: "PT", cargo: "governador", estado: "SP", municipio: null, confidence: 65, reason: "nome ventilado pelo PT para disputar governo de SP em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 2 },
-    { nome: "Márcio França", partido: "PSB", cargo: "governador", estado: "SP", municipio: null, confidence: 55, reason: "ex-governador, cotado pelo PSB para governo de SP em 2026", recent_evidence: true, poll_evidence: false, only_historical: false, last_mention_months: 3 },
-    { nome: "Guilherme Boulos", partido: "PSOL", cargo: "governador", estado: "SP", municipio: null, confidence: 50, reason: "deputado federal, cotado pela esquerda para governo de SP em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 2 },
-    { nome: "Paulo Serra", partido: "PSDB", cargo: "governador", estado: "SP", municipio: null, confidence: 45, reason: "prefeito de Santo André, cotado pelo PSDB para governo de SP", recent_evidence: true, poll_evidence: false, only_historical: false, last_mention_months: 4 },
+    { nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "governador", estado: "SP", municipio: null, confidence: 90, reason: "governador em exercício de SP, cotado para reeleição em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 0 },
+    { nome: "Fernando Haddad", partido: "PT", cargo: "governador", estado: "SP", municipio: null, confidence: 75, reason: "ex-prefeito de SP e ministro da Fazenda, ventilado pelo PT para governo de SP em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 2 },
+    { nome: "Márcio França", partido: "PSB", cargo: "governador", estado: "SP", municipio: null, confidence: 65, reason: "ex-governador de SP, cotado pelo PSB para governo de SP em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 3 },
+    { nome: "Guilherme Boulos", partido: "PSOL", cargo: "governador", estado: "SP", municipio: null, confidence: 62, reason: "deputado federal, cotado pela esquerda para governo de SP em 2026", recent_evidence: true, poll_evidence: true, held_major_office: false, party_signaling: true, only_historical: false, last_mention_months: 2 },
   ],
   MG: [
-    { nome: "Romeu Zema", partido: "NOVO", cargo: "governador", estado: "MG", municipio: null, confidence: 70, reason: "governador em fim de mandato, articula sucessão e disputa presidencial", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 1 },
-    { nome: "Cleitinho Azevedo", partido: "REPUBLICANOS", cargo: "governador", estado: "MG", municipio: null, confidence: 60, reason: "senador, cotado para governo de MG em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 2 },
-    { nome: "Rodrigo Pacheco", partido: "PSD", cargo: "governador", estado: "MG", municipio: null, confidence: 58, reason: "presidente do Senado, cotado para governo de MG em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 1 },
+    { nome: "Cleitinho Azevedo", partido: "REPUBLICANOS", cargo: "governador", estado: "MG", municipio: null, confidence: 65, reason: "senador por MG, cotado para governo de MG em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 2 },
+    { nome: "Rodrigo Pacheco", partido: "PSD", cargo: "governador", estado: "MG", municipio: null, confidence: 70, reason: "ex-presidente do Senado, cotado pelo PSD para governo de MG em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 1 },
   ],
   RJ: [
-    { nome: "Cláudio Castro", partido: "PL", cargo: "governador", estado: "RJ", municipio: null, confidence: 70, reason: "governador em exercício, articula reeleição em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 1 },
-    { nome: "Eduardo Paes", partido: "PSD", cargo: "governador", estado: "RJ", municipio: null, confidence: 65, reason: "prefeito do Rio, cotado pelo PSD para governo do RJ em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 2 },
-  ],
-  RS: [
-    { nome: "Eduardo Leite", partido: "PSDB", cargo: "governador", estado: "RS", municipio: null, confidence: 75, reason: "governador em exercício do RS, cotado para reeleição ou presidência", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 1 },
-  ],
-  GO: [
-    { nome: "Ronaldo Caiado", partido: "UNIÃO", cargo: "governador", estado: "GO", municipio: null, confidence: 70, reason: "governador em fim de mandato, articula sucessão e disputa presidencial", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 1 },
-  ],
-  PR: [
-    { nome: "Ratinho Junior", partido: "PSD", cargo: "governador", estado: "PR", municipio: null, confidence: 80, reason: "governador em exercício, articula candidatura presidencial em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 0 },
+    { nome: "Cláudio Castro", partido: "PL", cargo: "governador", estado: "RJ", municipio: null, confidence: 72, reason: "governador em exercício do RJ, articula reeleição em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 1 },
+    { nome: "Eduardo Paes", partido: "PSD", cargo: "governador", estado: "RJ", municipio: null, confidence: 70, reason: "prefeito do Rio (capital), cotado pelo PSD para governo do RJ em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 2 },
   ],
 };
 
