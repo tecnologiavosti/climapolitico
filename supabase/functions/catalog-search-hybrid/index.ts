@@ -203,7 +203,7 @@ CRITÉRIOS OBRIGATÓRIOS — incluir o nome SOMENTE se atender pelo menos 2 dos 
 NÃO incluir político só por: morar no estado, ser deputado estadual/local, ser ex-prefeito de cidade pequena/média, ter notoriedade municipal, ou ser do mesmo partido de alguém forte.
 
 REGRAS DE CARGO:
-- Cargo "governador" + UF="${uf || "[UF]"}": apenas cotados ao GOVERNO de ${uf || "[UF]"}. Use "estado": "${uf || "[UF]"}" (sigla 2 letras).
+- Cargo "governador" + Estado="${estadoNome || "[ESTADO]"}" (sigla ${uf || "[UF]"}): apenas cotados ao GOVERNO de ${estadoNome || "[ESTADO]"}. Use "estado": "${uf || "[UF]"}" (sigla 2 letras).
 - Cargo "presidente": apenas cotados à presidência da República.
 - Cargo "senador"/"deputado federal"/"deputado estadual": apenas para o estado filtrado.
 - Cargo "prefeito"/"vereador": apenas para o município filtrado.
