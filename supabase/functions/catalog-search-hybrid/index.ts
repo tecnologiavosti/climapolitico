@@ -134,6 +134,10 @@ interface ExtractedCandidate {
   municipio?: string | null;
   confidence: number;
   reason?: string;
+  recent_evidence?: boolean;
+  poll_evidence?: boolean;
+  only_historical?: boolean;
+  last_mention_months?: number | null;
 }
 
 async function extractCandidatesFromWeb(
@@ -154,6 +158,7 @@ async function extractCandidatesFromWeb(
 - Estado (UF): ${uf || "qualquer"}
 - Município: ${mun || "qualquer"}
 - Nome buscado: ${body.q || "—"}
+Data atual: ${new Date().toISOString().slice(0, 10)}
 
 Evidências (resultados de busca recente):
 ${evidence}
@@ -165,22 +170,28 @@ REGRAS DE CARGO (estritas):
 - Se o cargo for "senador", "deputado federal" ou "deputado estadual", apenas para o estado filtrado.
 - Se o cargo for "prefeito" ou "vereador", apenas para o município filtrado.
 - O campo "cargo" do item DEVE bater com o cargo filtrado quando houver filtro.
-- Inclua no "reason" a evidência textual curta (ex.: "anunciou pré-candidatura ao governo de SP em 2025").
-Se as evidências web estiverem indisponíveis, retorne somente figuras públicas brasileiras notórias e COMPATÍVEIS com o cargo/região; reduza a confiança para no máximo 60.
-Score de confiança (0-100): 30% presença política, 30% notícias recentes, 20% menções sociais, 20% compatibilidade geográfica/cargo.
+- Inclua no "reason" a evidência textual curta com data/ano (ex.: "anunciou pré-candidatura ao governo de SP em out/2025").
+- Marque "recent_evidence": true SOMENTE se houver notícia EXPLÍCITA dos últimos 180 dias mencionando candidatura ao cargo filtrado (frases como "pré-candidato a", "vai disputar", "lançou pré-candidatura", "campanha ao").
+- Marque "poll_evidence": true se a pessoa aparece em pesquisa eleitoral recente (Datafolha, Quaest, Genial/Quaest, AtlasIntel, Paraná Pesquisas) para o cargo filtrado.
+- Marque "only_historical": true se a pessoa só tem relevância histórica/passada e não há sinal recente de candidatura.
+- "last_mention_months": número aproximado de meses desde a menção mais recente relevante (ou null).
+NÃO inclua nomes apenas "politicamente relevantes" sem evidência de candidatura ao cargo filtrado.
+Se as evidências web estiverem indisponíveis, retorne somente figuras com pré-candidatura PÚBLICA NOTÓRIA e confirmada ao cargo/região; não invente.
 NÃO invente nomes desconhecidos. Máximo 12 itens, ordenados por confiança desc.
 
 JSON estrito:
 { "candidatos": [
   { "nome": string, "partido": string|null, "cargo": string|null,
     "estado": string|null, "municipio": string|null,
-    "confidence": number, "reason": string }
+    "confidence": number, "reason": string,
+    "recent_evidence": boolean, "poll_evidence": boolean,
+    "only_historical": boolean, "last_mention_months": number|null }
 ] }`;
 
   try {
     const ai = await callAICerebrasFirst({
       systemMsg: system, userPrompt: user, jsonMode: true,
-      maxTokens: 1200, temperature: 0.2, tag: hits.length ? "catalog-discover" : "catalog-discover-ai-fallback",
+      maxTokens: 1400, temperature: 0.2, tag: hits.length ? "catalog-discover" : "catalog-discover-ai-fallback",
     });
     const parsed = JSON.parse(ai.content);
     const arr = Array.isArray(parsed?.candidatos) ? parsed.candidatos : [];
@@ -194,12 +205,16 @@ JSON estrito:
         municipio: c.municipio || null,
         confidence: Math.max(0, Math.min(100, Number(c.confidence) || 0)),
         reason: c.reason ? String(c.reason).slice(0, 280) : "",
-      }))
-      .filter((c: ExtractedCandidate) => c.confidence >= 40);
+        recent_evidence: !!c.recent_evidence,
+        poll_evidence: !!c.poll_evidence,
+        only_historical: !!c.only_historical,
+        last_mention_months: typeof c.last_mention_months === "number" ? c.last_mention_months : null,
+      }));
   } catch (e) { console.warn("[hybrid] extract err", e); return []; }
 }
 
-function toRow(c: ExtractedCandidate, fallbackCargo?: string) {
+
+function toRow(c: ExtractedCandidate, fallbackCargo: string, scored: { score: number; tier: "confirmed" | "speculative" }) {
   const cargo = (c.cargo || fallbackCargo || "").toLowerCase().replace(/\s+/g, "_") || null;
   return {
     id: `ai:${normalizeName(c.nome)}:${(c.estado || "").toUpperCase()}:${(c.municipio || "").toLowerCase()}`,
@@ -222,10 +237,12 @@ function toRow(c: ExtractedCandidate, fallbackCargo?: string) {
     similarity: 0.7,
     total_count: 0,
     candidate_type: "pre_candidate",
-    confidence_score: c.confidence,
+    confidence_score: scored.score,
+    confidence_tier: scored.tier,
     reason: c.reason || null,
   };
 }
+
 
 // Cargos mutuamente exclusivos: se o cargo atual da pessoa é X, NÃO serve para Y (a menos que haja evidência explícita).
 const CARGO_INCOMPATIBLE: Record<string, string[]> = {
@@ -255,44 +272,50 @@ function evidenceOfCandidacy(reason: string, filterCargo: string, uf: string, mu
   return hasCargo && hasRegion && (mun ? hasMun : true);
 }
 
-function scoreRelevance(c: ExtractedCandidate, filterCargo: string, uf: string, mun: string): { score: number; keep: boolean; why: string } {
-  // Sem filtro de cargo: não aplica regras estritas.
-  if (!filterCargo) return { score: 100, keep: true, why: "sem filtro de cargo" };
+function scoreRelevance(c: ExtractedCandidate, filterCargo: string, uf: string, mun: string): { score: number; keep: boolean; tier: "confirmed" | "speculative"; why: string } {
   const cCargo = (c.cargo || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
   const cUf = (c.estado || "").toUpperCase();
   const cMun = (c.municipio || "").toLowerCase();
-  const hasEvidence = evidenceOfCandidacy(c.reason || "", filterCargo, uf, mun);
-
-  const cargoMatch = cCargo === filterCargo || cCargo.includes(filterCargo);
-  const incompatList = CARGO_INCOMPATIBLE[filterCargo] || [];
+  const hasEvidence = filterCargo ? evidenceOfCandidacy(c.reason || "", filterCargo, uf, mun) : false;
+  const cargoMatch = filterCargo ? (cCargo === filterCargo || cCargo.includes(filterCargo)) : true;
+  const incompatList = filterCargo ? (CARGO_INCOMPATIBLE[filterCargo] || []) : [];
   const isIncompat = incompatList.some((x) => cCargo === x || cCargo.startsWith(x));
 
-  // Cargo incompatível sem evidência explícita de troca → descartar.
-  if (isIncompat && !hasEvidence) {
-    return { score: 0, keep: false, why: `cargo incompatível: ${cCargo} vs ${filterCargo}` };
+  if (filterCargo && isIncompat && !hasEvidence && !c.recent_evidence) {
+    return { score: 0, keep: false, tier: "speculative", why: `cargo incompatível: ${cCargo} vs ${filterCargo}` };
   }
 
   let score = 0;
-  if (cargoMatch || hasEvidence) score += 50;
-  // Estado: presidente não exige UF.
-  if (filterCargo === "presidente") score += 30;
+  // +50 cargo bate
+  if (cargoMatch || hasEvidence || c.recent_evidence) score += 50;
+  // +30 estado bate (presidente não exige)
+  if (!filterCargo || filterCargo === "presidente") score += 30;
   else if (uf && (cUf === uf || hasEvidence)) score += 30;
   else if (!uf) score += 30;
-  // Município (quando aplicável)
+  // +40 notícia recente explícita
+  if (c.recent_evidence) score += 40;
+  // +20 aparece em pesquisa eleitoral
+  if (c.poll_evidence) score += 20;
+  // -50 só histórico
+  if (c.only_historical) score -= 50;
+  // -40 última menção > 12 meses
+  if (typeof c.last_mention_months === "number" && c.last_mention_months > 12) score -= 40;
+  // município
   if (mun) {
-    if (cMun && cMun === mun.toLowerCase()) score += 20;
-    else if (hasEvidence) score += 10;
-  } else {
-    score += 20; // evidência genérica de candidatura recente
+    if (cMun && cMun === mun.toLowerCase()) score += 10;
+    else if (hasEvidence) score += 5;
   }
 
-  return { score, keep: score >= 70, why: `score=${score} cargo=${cCargo} uf=${cUf}` };
+  const tier: "confirmed" | "speculative" = score >= 90 && (c.recent_evidence || hasEvidence) ? "confirmed" : "speculative";
+  const keep = score >= 70;
+  return { score: Math.max(0, Math.min(100, score)), keep, tier, why: `score=${score} tier=${tier} cargo=${cCargo} uf=${cUf} recent=${c.recent_evidence} poll=${c.poll_evidence} hist=${c.only_historical}` };
 }
 
 async function discoverPreCandidates(body: Body): Promise<any[]> {
   const queries = buildQueries(body);
   console.log("PRE-CANDIDATE MODE");
   console.log("AI QUERY:", queries);
+
   if (!queries.length) { console.log("AI RESULTS:", 0); return []; }
   if (!FIRECRAWL_API_KEY) console.warn("[hybrid] FIRECRAWL_API_KEY missing — using AI-only fallback");
 
@@ -312,13 +335,15 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
   const filterCargo = normalizeText(body.cargo);
   const uf = firstValue(body.estado).toUpperCase();
   const mun = (body.municipio || "").trim();
-  const filtered = extracted.filter((c) => {
+  const rows: any[] = [];
+  for (const c of extracted) {
     const r = scoreRelevance(c, filterCargo, uf, mun);
-    if (!r.keep) console.log("[hybrid] descartado:", c.nome, "—", r.why);
-    return r.keep;
-  });
-  console.log("AI RESULTS (filtrados):", filtered.length);
-  return filtered.map((c) => toRow(c, filterCargo));
+    if (!r.keep) { console.log("[hybrid] descartado:", c.nome, "—", r.why); continue; }
+    rows.push(toRow(c, filterCargo, { score: r.score, tier: r.tier }));
+  }
+  rows.sort((a, b) => (b.confidence_score || 0) - (a.confidence_score || 0));
+  console.log("AI RESULTS (filtrados):", rows.length);
+  return rows;
 }
 
 async function callTSE(payload: Body, authHeader: string | null) {

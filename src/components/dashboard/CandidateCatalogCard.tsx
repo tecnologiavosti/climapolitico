@@ -43,10 +43,14 @@ function CandidateCatalogCardBase({ candidate: c, alreadyAdded, isAdding, onAdd 
   const networks = c.redes_sociais ? Object.keys(c.redes_sociais) : [];
 
   const type = c.candidate_type ?? "official";
+  const tier = c.confidence_tier;
+  const score = c.confidence_score ? ` · ${Math.round(c.confidence_score)}` : "";
   const typeBadge = type === "official"
     ? { label: "🟢 Oficial TSE", className: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" }
     : type === "pre_candidate"
-    ? { label: `🟡 Pré-candidato IA${c.confidence_score ? ` · ${Math.round(c.confidence_score)}%` : ""}`, className: "bg-amber-500/10 text-amber-700 border-amber-500/30" }
+    ? (tier === "confirmed"
+        ? { label: `🟢 Confirmado${score}`, className: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" }
+        : { label: `🟡 Cotado${score}`, className: "bg-amber-500/10 text-amber-700 border-amber-500/30" })
     : { label: "🔵 Figura monitorada", className: "bg-blue-500/10 text-blue-700 border-blue-500/30" };
 
   return (
