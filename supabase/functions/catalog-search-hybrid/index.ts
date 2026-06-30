@@ -384,6 +384,35 @@ const NATIONAL_SEED: ExtractedCandidate[] = [
   { nome: "Fernando Haddad", partido: "PT", cargo: "presidente", estado: null, municipio: null, confidence: 35, reason: "ministro da Fazenda; nome ventilado para presidência caso Lula não dispute", recent_evidence: true, poll_evidence: false, only_historical: false, last_mention_months: 2 },
 ];
 
+// Seed regional para governador — usado quando IA retorna 0 para "governador" + UF.
+const GOVERNADOR_SEED: Record<string, ExtractedCandidate[]> = {
+  SP: [
+    { nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "governador", estado: "SP", municipio: null, confidence: 90, reason: "governador em exercício, cotado para reeleição ou presidência em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 0 },
+    { nome: "Fernando Haddad", partido: "PT", cargo: "governador", estado: "SP", municipio: null, confidence: 65, reason: "nome ventilado pelo PT para disputar governo de SP em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 2 },
+    { nome: "Márcio França", partido: "PSB", cargo: "governador", estado: "SP", municipio: null, confidence: 55, reason: "ex-governador, cotado pelo PSB para governo de SP em 2026", recent_evidence: true, poll_evidence: false, only_historical: false, last_mention_months: 3 },
+    { nome: "Guilherme Boulos", partido: "PSOL", cargo: "governador", estado: "SP", municipio: null, confidence: 50, reason: "deputado federal, cotado pela esquerda para governo de SP em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 2 },
+    { nome: "Paulo Serra", partido: "PSDB", cargo: "governador", estado: "SP", municipio: null, confidence: 45, reason: "prefeito de Santo André, cotado pelo PSDB para governo de SP", recent_evidence: true, poll_evidence: false, only_historical: false, last_mention_months: 4 },
+  ],
+  MG: [
+    { nome: "Romeu Zema", partido: "NOVO", cargo: "governador", estado: "MG", municipio: null, confidence: 70, reason: "governador em fim de mandato, articula sucessão e disputa presidencial", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 1 },
+    { nome: "Cleitinho Azevedo", partido: "REPUBLICANOS", cargo: "governador", estado: "MG", municipio: null, confidence: 60, reason: "senador, cotado para governo de MG em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 2 },
+    { nome: "Rodrigo Pacheco", partido: "PSD", cargo: "governador", estado: "MG", municipio: null, confidence: 58, reason: "presidente do Senado, cotado para governo de MG em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 1 },
+  ],
+  RJ: [
+    { nome: "Cláudio Castro", partido: "PL", cargo: "governador", estado: "RJ", municipio: null, confidence: 70, reason: "governador em exercício, articula reeleição em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 1 },
+    { nome: "Eduardo Paes", partido: "PSD", cargo: "governador", estado: "RJ", municipio: null, confidence: 65, reason: "prefeito do Rio, cotado pelo PSD para governo do RJ em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 2 },
+  ],
+  RS: [
+    { nome: "Eduardo Leite", partido: "PSDB", cargo: "governador", estado: "RS", municipio: null, confidence: 75, reason: "governador em exercício do RS, cotado para reeleição ou presidência", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 1 },
+  ],
+  GO: [
+    { nome: "Ronaldo Caiado", partido: "UNIÃO", cargo: "governador", estado: "GO", municipio: null, confidence: 70, reason: "governador em fim de mandato, articula sucessão e disputa presidencial", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 1 },
+  ],
+  PR: [
+    { nome: "Ratinho Junior", partido: "PSD", cargo: "governador", estado: "PR", municipio: null, confidence: 80, reason: "governador em exercício, articula candidatura presidencial em 2026", recent_evidence: true, poll_evidence: true, only_historical: false, last_mention_months: 0 },
+  ],
+};
+
 async function discoverPreCandidates(body: Body): Promise<any[]> {
   const filterCargo = normalizeText(body.cargo);
   const uf = firstValue(body.estado).toUpperCase();
