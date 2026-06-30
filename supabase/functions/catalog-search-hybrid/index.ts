@@ -231,9 +231,9 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
   console.log("PRE-CANDIDATE MODE");
   console.log("AI QUERY:", queries);
   if (!queries.length) { console.log("AI RESULTS:", 0); return []; }
-  if (!FIRECRAWL_API_KEY) { console.warn("[hybrid] FIRECRAWL_API_KEY missing — AI cannot run"); return []; }
+  if (!FIRECRAWL_API_KEY) console.warn("[hybrid] FIRECRAWL_API_KEY missing — using AI-only fallback");
 
-  const hitLists = await Promise.all(queries.map(firecrawlSearch));
+  const hitLists = FIRECRAWL_API_KEY ? await Promise.all(queries.map(firecrawlSearch)) : [];
   const seen = new Set<string>();
   const hits: WebHit[] = [];
   for (const list of hitLists) for (const h of list) {
