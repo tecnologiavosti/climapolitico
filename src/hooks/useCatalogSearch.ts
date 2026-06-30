@@ -83,12 +83,7 @@ export async function searchTSECandidates(filters: CatalogFilters) {
   if (error) throw error;
 
   const rows = (data?.rows ?? []) as PoliticianRow[];
-  console.log("FRONT RECEIVED", rows.length);
-  console.log("FRONTEND RAW:", rows.length);
-  console.log("FIRST 5 FRONTEND:", rows.slice(0, 5).map((r) => ({
-    nome: r.nome, cargo: r.cargo, estado: r.estado, municipio: r.municipio, eleito: r.eleito,
-  })));
-  console.log("TSE Results", rows.length);
+  console.log("CATALOG RESPONSE:", { mode: payload.candidateType, total: data?.total, rows: rows.length, sources: data?.sources, counts: data?.counts });
   return {
     rows,
     total: Number(data?.total ?? 0),

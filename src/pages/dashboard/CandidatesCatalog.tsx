@@ -86,8 +86,7 @@ export default function CandidatesCatalog() {
       return;
     }
     const next = { ...nextFilters };
-    console.log("QUERY BEFORE REQUEST:", next.q);
-    console.log("TSE Query", next);
+    console.log("CATALOG REQUEST:", { candidateType: next.candidateType, cargo: next.cargo, estado: next.estado, municipio: next.municipio, q: next.q });
     setAppliedFilters(next);
   };
 
