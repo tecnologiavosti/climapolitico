@@ -104,9 +104,24 @@ async function firecrawlSearch(query: string): Promise<WebHit[]> {
       body: JSON.stringify({ query, limit: 8, lang: "pt", country: "br", tbs: "qdr:m" }),
     });
     const j = await r.json();
-    const items = j?.data ?? j?.web ?? [];
+    if (!r.ok) {
+      console.warn("[hybrid] firecrawl status", r.status, String(j?.error ?? j?.message ?? "").slice(0, 180));
+      return [];
+    }
+    const items = Array.isArray(j?.data)
+      ? j.data
+      : Array.isArray(j?.data?.web)
+        ? j.data.web
+        : Array.isArray(j?.web)
+          ? j.web
+          : Array.isArray(j?.results)
+            ? j.results
+            : [];
+    console.log("[hybrid] firecrawl query hits:", query, items.length);
     return items.slice(0, 8).map((it: any) => ({
-      title: it?.title, description: it?.description, url: it?.url,
+      title: it?.title,
+      description: it?.description ?? it?.snippet ?? it?.markdown?.slice?.(0, 700),
+      url: it?.url,
     }));
   } catch (e) { console.warn("[hybrid] firecrawl err", e); return []; }
 }
