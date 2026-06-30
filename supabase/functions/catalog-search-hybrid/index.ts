@@ -200,7 +200,7 @@ JSON estrito:
         nome: String(c.nome).trim(),
         partido: c.partido || null,
         cargo: c.cargo || null,
-        estado: c.estado || null,
+        estado: normalizeUf(c.estado),
         municipio: c.municipio || null,
         confidence: Math.max(0, Math.min(100, Number(c.confidence) || 0)),
         reason: c.reason ? String(c.reason).slice(0, 280) : "",
@@ -210,6 +210,24 @@ JSON estrito:
         last_mention_months: typeof c.last_mention_months === "number" ? c.last_mention_months : null,
       }));
   } catch (e) { console.warn("[hybrid] extract err", e); return []; }
+}
+
+// Mapa nome-de-estado → sigla UF (a IA às vezes devolve "São Paulo" em vez de "SP").
+const UF_BY_NAME: Record<string, string> = {
+  "acre": "AC", "alagoas": "AL", "amapa": "AP", "amazonas": "AM", "bahia": "BA",
+  "ceara": "CE", "distrito federal": "DF", "espirito santo": "ES", "goias": "GO",
+  "maranhao": "MA", "mato grosso": "MT", "mato grosso do sul": "MS", "minas gerais": "MG",
+  "para": "PA", "paraiba": "PB", "parana": "PR", "pernambuco": "PE", "piaui": "PI",
+  "rio de janeiro": "RJ", "rio grande do norte": "RN", "rio grande do sul": "RS",
+  "rondonia": "RO", "roraima": "RR", "santa catarina": "SC", "sao paulo": "SP",
+  "sergipe": "SE", "tocantins": "TO",
+};
+function normalizeUf(value: any): string | null {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (raw.length === 2) return raw.toUpperCase();
+  const key = raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return UF_BY_NAME[key] || raw.toUpperCase().slice(0, 2);
 }
 
 
