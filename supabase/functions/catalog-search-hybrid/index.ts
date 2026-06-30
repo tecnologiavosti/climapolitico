@@ -138,6 +138,8 @@ interface ExtractedCandidate {
   poll_evidence?: boolean;
   only_historical?: boolean;
   last_mention_months?: number | null;
+  held_major_office?: boolean; // já foi governador/senador/ministro/prefeito de capital
+  party_signaling?: boolean;   // partido sinaliza candidatura competitiva
 }
 
 async function extractCandidatesFromWeb(
