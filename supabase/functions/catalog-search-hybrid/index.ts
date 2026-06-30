@@ -3,6 +3,12 @@
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { normalizeName } from "../_shared/normalize-name.ts";
 import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
+import {
+  canonicalCargoKey,
+  electionYearForCargo,
+  MUNICIPAL_CARGO_KEYS,
+  shouldUseMunicipio,
+} from "../_shared/cargo-map.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -35,6 +41,27 @@ function normalizeText(value?: string | string[] | null): string {
     .replace(/\s+/g, " ")
     .toLowerCase()
     .trim();
+}
+
+function normalizeCargo(value?: string | string[] | null): string {
+  return canonicalCargoKey(value) ?? normalizeText(value);
+}
+
+function normalizeCandidateType(value: Body["candidateType"]): "official" | "pre_candidate" | "both" | "ai" {
+  return value === "official" || value === "pre_candidate" || value === "ai" || value === "both"
+    ? value
+    : "both";
+}
+
+function sanitizeBody(body: Body): Body {
+  const cargo = normalizeCargo(body.cargo);
+  const municipio = cargo && !shouldUseMunicipio([cargo]) ? null : (body.municipio?.trim() || null);
+  return {
+    ...body,
+    cargo: cargo ? [cargo] : null,
+    municipio,
+    candidateType: normalizeCandidateType(body.candidateType),
+  };
 }
 
 // Mapa UF (sigla) → nome completo do estado. Obrigatório para enviar nomes legíveis à IA/busca web.
