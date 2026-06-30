@@ -554,11 +554,37 @@ Deno.serve(async (req) => {
     console.log("[hybrid] CATALOG MODE:", candidateType, "wantsTSE:", wantsTSE, "wantsAI:", wantsAI);
 
     if (candidateType === "pre_candidate" || candidateType === "ai") {
-      const aiRows = await discoverPreCandidates(body);
-      const total = aiRows.length;
+      // Para cargos municipais (vereador/prefeito/vice_prefeito) priorizar TSE oficial 2024.
+      // Só cair para IA se TSE retornar 0.
+      const cargoNorm = normalizeText(body.cargo);
+      const MUNI = new Set(["vereador", "prefeito", "vice-prefeito", "vice prefeito"]);
+      const isMunicipal = MUNI.has(cargoNorm);
+      const munRaw = body.municipio || "";
+      const munNorm = munRaw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
+      const electionYear = isMunicipal ? 2024 : 2022;
+      console.log("cargo raw:", body.cargo, "→ normalized:", cargoNorm);
+      console.log("municipio raw:", munRaw, "→ normalized:", munNorm);
+      console.log("year:", electionYear);
+
+      let tseRows: any[] = [];
+      if (isMunicipal && munRaw && firstValue(body.estado)) {
+        const tse = await callTSE(body, authHeader);
+        tseRows = (tse.rows ?? []).map((r: any) => ({
+          ...r,
+          candidate_type: "official" as const,
+          confidence_score: r.eleito ? 100 : 85,
+          confidence_tier: r.eleito ? "forte" : "possivel",
+          is_eligible: true,
+        }));
+        console.log("[hybrid] TSE rows (municipal priority):", tseRows.length);
+      }
+
+      const aiRows = tseRows.length === 0 ? await discoverPreCandidates(body) : [];
+      const merged = tseRows.length > 0 ? tseRows : aiRows;
+      const total = merged.length;
       const start = page * PAGE_SIZE;
-      const paged = aiRows.slice(start, start + PAGE_SIZE);
-      console.log("[hybrid] TSE COUNT:", 0);
+      const paged = merged.slice(start, start + PAGE_SIZE);
+      console.log("[hybrid] TSE COUNT:", tseRows.length);
       console.log("[hybrid] AI COUNT:", aiRows.length);
       console.log("[hybrid] FINAL COUNT:", total);
 
@@ -575,9 +601,12 @@ Deno.serve(async (req) => {
         last_updated: new Date().toISOString(),
         nationalOnly: false,
         partial: false,
-        sources: aiRows.length ? ["ai_web"] : [],
+        sources: [
+          ...(tseRows.length ? ["tse"] : []),
+          ...(aiRows.length ? ["ai_web"] : []),
+        ],
         counts: {
-          official: 0,
+          official: tseRows.length,
           pre_candidate: aiRows.filter((row) => row.candidate_type === "pre_candidate").length,
           ai: aiRows.length,
         },
