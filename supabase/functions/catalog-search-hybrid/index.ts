@@ -227,6 +227,68 @@ function toRow(c: ExtractedCandidate, fallbackCargo?: string) {
   };
 }
 
+// Cargos mutuamente exclusivos: se o cargo atual da pessoa é X, NÃO serve para Y (a menos que haja evidência explícita).
+const CARGO_INCOMPATIBLE: Record<string, string[]> = {
+  governador: ["presidente", "senador", "deputado federal", "deputado estadual", "prefeito", "vereador", "ministro"],
+  presidente: ["governador", "senador", "deputado federal", "deputado estadual", "prefeito", "vereador"],
+  senador: ["presidente", "vereador", "prefeito"],
+  prefeito: ["presidente", "governador", "senador", "vereador"],
+  vereador: ["presidente", "governador", "senador", "deputado federal"],
+};
+
+function evidenceOfCandidacy(reason: string, filterCargo: string, uf: string, mun: string): boolean {
+  const r = (reason || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (!filterCargo) return false;
+  const cargoTokens: Record<string, string[]> = {
+    governador: ["governo", "governador"],
+    presidente: ["presidencia", "presidente da republica"],
+    senador: ["senado", "senador"],
+    "deputado federal": ["deputado federal", "camara"],
+    "deputado estadual": ["deputado estadual", "assembleia"],
+    prefeito: ["prefeito", "prefeitura"],
+    vereador: ["vereador", "camara municipal"],
+  };
+  const tokens = cargoTokens[filterCargo] || [filterCargo];
+  const hasCargo = tokens.some((t) => r.includes(t));
+  const hasRegion = uf ? r.includes(uf.toLowerCase()) : true;
+  const hasMun = mun ? r.includes(mun.toLowerCase()) : true;
+  return hasCargo && hasRegion && (mun ? hasMun : true);
+}
+
+function scoreRelevance(c: ExtractedCandidate, filterCargo: string, uf: string, mun: string): { score: number; keep: boolean; why: string } {
+  // Sem filtro de cargo: não aplica regras estritas.
+  if (!filterCargo) return { score: 100, keep: true, why: "sem filtro de cargo" };
+  const cCargo = (c.cargo || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  const cUf = (c.estado || "").toUpperCase();
+  const cMun = (c.municipio || "").toLowerCase();
+  const hasEvidence = evidenceOfCandidacy(c.reason || "", filterCargo, uf, mun);
+
+  const cargoMatch = cCargo === filterCargo || cCargo.includes(filterCargo);
+  const incompatList = CARGO_INCOMPATIBLE[filterCargo] || [];
+  const isIncompat = incompatList.some((x) => cCargo === x || cCargo.startsWith(x));
+
+  // Cargo incompatível sem evidência explícita de troca → descartar.
+  if (isIncompat && !hasEvidence) {
+    return { score: 0, keep: false, why: `cargo incompatível: ${cCargo} vs ${filterCargo}` };
+  }
+
+  let score = 0;
+  if (cargoMatch || hasEvidence) score += 50;
+  // Estado: presidente não exige UF.
+  if (filterCargo === "presidente") score += 30;
+  else if (uf && (cUf === uf || hasEvidence)) score += 30;
+  else if (!uf) score += 30;
+  // Município (quando aplicável)
+  if (mun) {
+    if (cMun && cMun === mun.toLowerCase()) score += 20;
+    else if (hasEvidence) score += 10;
+  } else {
+    score += 20; // evidência genérica de candidatura recente
+  }
+
+  return { score, keep: score >= 70, why: `score=${score} cargo=${cCargo} uf=${cUf}` };
+}
+
 async function discoverPreCandidates(body: Body): Promise<any[]> {
   const queries = buildQueries(body);
   console.log("PRE-CANDIDATE MODE");
@@ -244,8 +306,19 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
   console.log("[hybrid] web hits:", hits.length);
 
   const extracted = await extractCandidatesFromWeb(body, hits, queries);
-  console.log("AI RESULTS:", extracted.length);
-  return extracted.map((c) => toRow(c, normalizeText(body.cargo)));
+  console.log("AI RESULTS (raw):", extracted.length);
+
+  // Pós-processamento estrito por cargo/estado/município.
+  const filterCargo = normalizeText(body.cargo);
+  const uf = firstValue(body.estado).toUpperCase();
+  const mun = (body.municipio || "").trim();
+  const filtered = extracted.filter((c) => {
+    const r = scoreRelevance(c, filterCargo, uf, mun);
+    if (!r.keep) console.log("[hybrid] descartado:", c.nome, "—", r.why);
+    return r.keep;
+  });
+  console.log("AI RESULTS (filtrados):", filtered.length);
+  return filtered.map((c) => toRow(c, filterCargo));
 }
 
 async function callTSE(payload: Body, authHeader: string | null) {
