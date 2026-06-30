@@ -335,13 +335,15 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
   const filterCargo = normalizeText(body.cargo);
   const uf = firstValue(body.estado).toUpperCase();
   const mun = (body.municipio || "").trim();
-  const filtered = extracted.filter((c) => {
+  const rows: any[] = [];
+  for (const c of extracted) {
     const r = scoreRelevance(c, filterCargo, uf, mun);
-    if (!r.keep) console.log("[hybrid] descartado:", c.nome, "—", r.why);
-    return r.keep;
-  });
-  console.log("AI RESULTS (filtrados):", filtered.length);
-  return filtered.map((c) => toRow(c, filterCargo));
+    if (!r.keep) { console.log("[hybrid] descartado:", c.nome, "—", r.why); continue; }
+    rows.push(toRow(c, filterCargo, { score: r.score, tier: r.tier }));
+  }
+  rows.sort((a, b) => (b.confidence_score || 0) - (a.confidence_score || 0));
+  console.log("AI RESULTS (filtrados):", rows.length);
+  return rows;
 }
 
 async function callTSE(payload: Body, authHeader: string | null) {
