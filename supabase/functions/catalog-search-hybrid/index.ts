@@ -206,13 +206,30 @@ Deno.serve(async (req) => {
     }));
     const preRows = pre.rows.map(mapPreCandidate);
 
-    // Merge + dedupe (prefer official over pre_candidate)
+    console.log("[hybrid] SEARCH TYPE:", candidateType);
+    console.log("[hybrid] TSE COUNT:", tseRows.length);
+    console.log("[hybrid] PRE COUNT:", preRows.length);
+
+    // AI/Web fallback when nothing found and user wants AI/both
+    let aiRows: any[] = [];
+    const wantsAI = candidateType !== "official";
+    if (wantsAI && tseRows.length === 0 && preRows.length === 0 && (body.q?.trim() || body.cargo?.length)) {
+      aiRows = await aiWebFallback(body, authHeader);
+      console.log("[hybrid] AI COUNT:", aiRows.length);
+    }
+
+    // Merge + dedupe (prefer official over pre_candidate over AI)
     const map = new Map<string, any>();
     for (const r of tseRows) map.set(dedupeKey(r), r);
     for (const r of preRows) {
       const k = dedupeKey(r);
       if (!map.has(k)) map.set(k, r);
     }
+    for (const r of aiRows) {
+      const k = dedupeKey(r);
+      if (!map.has(k)) map.set(k, r);
+    }
+
 
     const merged = Array.from(map.values()).sort((a, b) => {
       const ae = a.eleito ? 1 : 0, be = b.eleito ? 1 : 0;
