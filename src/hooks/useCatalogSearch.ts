@@ -82,6 +82,7 @@ export async function searchTSECandidates(filters: CatalogFilters) {
   });
   if (error) throw error;
 
+  const rows = (data?.rows ?? []) as PoliticianRow[];
   console.log("CATALOG RESPONSE:", { mode: payload.candidateType, total: data?.total, rows: rows.length, sources: data?.sources, counts: data?.counts });
   return {
     rows,
