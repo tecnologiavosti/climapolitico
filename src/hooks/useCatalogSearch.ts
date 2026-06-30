@@ -47,7 +47,9 @@ export interface PoliticianRow {
   total_count: number;
   candidate_type?: "official" | "pre_candidate" | "monitored";
   confidence_score?: number;
-  confidence_tier?: "confirmed" | "speculative";
+  confidence_tier?: "forte" | "possivel" | "fraco" | "inelegivel";
+  is_eligible?: boolean;
+  ineligible_reason?: string | null;
   reason?: string | null;
 }
 
