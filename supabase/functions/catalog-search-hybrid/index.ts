@@ -9,6 +9,52 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const FIRECRAWL_API_KEY = Deno.env.get("FIRECRAWL_API_KEY");
 
+// Seed list para buscas topic-only (sem nome) por cargo.
+// Garante resultados quando usuário seleciona "Pré-candidatos IA" + cargo sem digitar nome.
+const SEED_BY_CARGO: Record<string, Array<{ nome: string; partido?: string; estado?: string }>> = {
+  presidente: [
+    { nome: "Luiz Inácio Lula da Silva", partido: "PT" },
+    { nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", estado: "SP" },
+    { nome: "Romeu Zema", partido: "NOVO", estado: "MG" },
+    { nome: "Ronaldo Caiado", partido: "UNIÃO", estado: "GO" },
+    { nome: "Eduardo Leite", partido: "PSDB", estado: "RS" },
+    { nome: "Fernando Haddad", partido: "PT", estado: "SP" },
+    { nome: "Michelle Bolsonaro", partido: "PL" },
+    { nome: "Flávio Bolsonaro", partido: "PL", estado: "RJ" },
+    { nome: "Ratinho Júnior", partido: "PSD", estado: "PR" },
+    { nome: "Pablo Marçal", partido: "PRTB", estado: "SP" },
+    { nome: "Ciro Gomes", partido: "PSDB", estado: "CE" },
+    { nome: "Simone Tebet", partido: "MDB", estado: "MS" },
+  ],
+};
+
+function seedRow(s: { nome: string; partido?: string; estado?: string }, cargo: string) {
+  return {
+    id: `ai:${normalizeName(s.nome)}`,
+    tse_id: null,
+    nome: s.nome,
+    nome_urna: null,
+    partido_sigla: s.partido ?? null,
+    partido_nome: null,
+    numero_partido: null,
+    cargo,
+    regiao: null,
+    estado: s.estado ?? null,
+    municipio: null,
+    eleito: false,
+    categoria: "pre_candidato" as const,
+    ano_eleicao: 2026,
+    foto_url: null,
+    redes_sociais: {},
+    popularidade: 0,
+    similarity: 0.7,
+    total_count: 0,
+    candidate_type: "pre_candidate" as const,
+    confidence_score: 75,
+    reason: "Pré-candidato amplamente citado na imprensa nacional",
+  };
+}
+
 async function aiWebFallback(payload: Body, authHeader: string | null): Promise<any[]> {
   const q = (payload.q || "").trim();
   const cargo = payload.cargo?.[0] || "";
@@ -40,7 +86,15 @@ async function aiWebFallback(payload: Body, authHeader: string | null): Promise<
     } catch (e) { console.warn("[hybrid] firecrawl err", e); }
   }
 
-  if (!q) return []; // Topic-only search without a name → cannot classify a single person
+  if (!q) {
+    // Topic-only: retorna seed por cargo (ex: presidente 2026)
+    const seeds = SEED_BY_CARGO[cargo] || [];
+    const filtered = payload.estado?.length
+      ? seeds.filter((s) => !s.estado || payload.estado!.includes(s.estado))
+      : seeds;
+    console.log("[hybrid] AI seed rows:", filtered.length, "for cargo:", cargo);
+    return filtered.map((s) => seedRow(s, cargo));
+  }
 
   // Classify name via existing AI function
   try {
@@ -210,10 +264,15 @@ Deno.serve(async (req) => {
     console.log("[hybrid] TSE COUNT:", tseRows.length);
     console.log("[hybrid] PRE COUNT:", preRows.length);
 
-    // AI/Web fallback when nothing found and user wants AI/both
+    // AI/Web fallback: roda sempre que usuário pediu IA e ainda não temos pré-candidatos
     let aiRows: any[] = [];
-    const wantsAI = candidateType !== "official";
-    if (wantsAI && tseRows.length === 0 && preRows.length === 0 && (body.q?.trim() || body.cargo?.length)) {
+    const wantsAI = candidateType === "ai" || candidateType === "pre_candidate" || candidateType === "both";
+    console.log("[hybrid] wantsAI:", wantsAI, "q:", body.q, "cargo:", body.cargo);
+    if (wantsAI && preRows.length === 0 && (body.q?.trim() || body.cargo?.length)) {
+      console.log("[hybrid] AI SEARCH START");
+      aiRows = await aiWebFallback(body, authHeader);
+      console.log("[hybrid] AI COUNT:", aiRows.length);
+    }
       aiRows = await aiWebFallback(body, authHeader);
       console.log("[hybrid] AI COUNT:", aiRows.length);
     }
