@@ -165,20 +165,29 @@ Data atual: ${new Date().toISOString().slice(0, 10)}
 Evidências (resultados de busca recente):
 ${evidence}
 
-Para cada PESSOA REAL, BRASILEIRA, retorne nomes COTADOS/VENTILADOS como pré-candidatos ao CARGO filtrado em 2026 — INCLUINDO bastidores, articulação partidária e cotações na imprensa. NÃO exija anúncio oficial: nomes "cotados", "ventilados", "em articulação", "que podem disputar" SÃO válidos.
+Para cada PESSOA REAL, BRASILEIRA, retorne APENAS nomes REALISTICAMENTE COTADOS a disputar o CARGO filtrado em 2026.
+NÃO basta ser "político relevante" no estado. Exige-se viabilidade real de candidatura ao cargo específico.
+
+CRITÉRIOS OBRIGATÓRIOS — incluir o nome SOMENTE se atender pelo menos 2 dos 4:
+  (a) "held_major_office": já foi governador, senador, ministro de Estado OU prefeito de capital;
+  (b) "poll_evidence": aparece em pesquisa eleitoral recente (Datafolha, Quaest, AtlasIntel, Paraná Pesquisas, Genial/Quaest) para o cargo filtrado;
+  (c) "recent_evidence": citado em notícias eleitorais dos últimos 180 dias como cotado/articulado para o cargo;
+  (d) "party_signaling": o partido dele sinalizou candidatura competitiva ao cargo (não apenas filiação).
+
+NÃO incluir político só por: morar no estado, ser deputado estadual/local, ser ex-prefeito de cidade pequena/média, ter notoriedade municipal, ou ser do mesmo partido de alguém forte.
+
 REGRAS DE CARGO:
-- Se o cargo filtrado for "governador" e UF="${uf || "[UF]"}", inclua APENAS nomes cotados ao governo de ${uf || "[UF]"} (mesmo sem anúncio). Use "estado": "${uf || "[UF]"}" (sigla UF, 2 letras).
-- Se o cargo for "presidente", apenas cotados à presidência da República.
-- Se o cargo for "senador", "deputado federal" ou "deputado estadual", apenas para o estado filtrado (campo "estado" em sigla UF).
-- Se o cargo for "prefeito" ou "vereador", apenas para o município filtrado.
-- O campo "cargo" do item DEVE bater com o cargo filtrado.
-- O campo "estado" SEMPRE em sigla de 2 letras (SP, RJ, MG…), nunca o nome por extenso.
-- Inclua no "reason" evidência curta (ex.: "cotado pelo PT para governo de SP em 2026", "Datafolha dez/2025 mostra X em 2º lugar").
-- Marque "recent_evidence": true se houver menção (mesmo de bastidor) nos últimos 180 dias ao cargo filtrado.
-- Marque "poll_evidence": true se aparece em pesquisa eleitoral recente (Datafolha, Quaest, AtlasIntel, Paraná Pesquisas) para o cargo.
-- Marque "only_historical": true se a pessoa só tem relevância passada e nenhum sinal recente de candidatura ao cargo.
-- "last_mention_months": meses desde a menção mais recente relevante (ou null).
-NÃO invente nomes desconhecidos. Sem evidência web, use APENAS figuras notórias da política brasileira atual cotadas para o cargo/região. Máximo 12 itens, ordenados por confiança desc.
+- Cargo "governador" + UF="${uf || "[UF]"}": apenas cotados ao GOVERNO de ${uf || "[UF]"}. Use "estado": "${uf || "[UF]"}" (sigla 2 letras).
+- Cargo "presidente": apenas cotados à presidência da República.
+- Cargo "senador"/"deputado federal"/"deputado estadual": apenas para o estado filtrado.
+- Cargo "prefeito"/"vereador": apenas para o município filtrado.
+- "cargo" do item DEVE bater com o cargo filtrado.
+- "estado" SEMPRE em sigla 2 letras (SP, RJ, MG…).
+- "reason": evidência curta (ex.: "ex-prefeito de SP, 22% no Datafolha out/2025 para governo de SP").
+- "confidence" (0-100): viabilidade política real. Tier 1 (85-100) fortemente cotado; Tier 2 (60-84) possível; <60 fraco — NÃO RETORNE <60.
+- "only_historical": true se a relevância é só passada.
+- "last_mention_months": meses desde menção relevante (ou null).
+NÃO invente nomes. Máximo 10 itens, ordenados por confidence desc. NÃO retorne itens com confidence < 60.
 
 JSON estrito:
 { "candidatos": [
@@ -186,6 +195,7 @@ JSON estrito:
     "estado": string|null, "municipio": string|null,
     "confidence": number, "reason": string,
     "recent_evidence": boolean, "poll_evidence": boolean,
+    "held_major_office": boolean, "party_signaling": boolean,
     "only_historical": boolean, "last_mention_months": number|null }
 ] }`;
 
