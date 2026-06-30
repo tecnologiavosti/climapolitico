@@ -7,6 +7,83 @@ import { normalizeName } from "../_shared/normalize-name.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const FIRECRAWL_API_KEY = Deno.env.get("FIRECRAWL_API_KEY");
+
+async function aiWebFallback(payload: Body, authHeader: string | null): Promise<any[]> {
+  const q = (payload.q || "").trim();
+  const cargo = payload.cargo?.[0] || "";
+  if (!q && !cargo) return [];
+
+  const query = q
+    ? `${q} política eleições Brasil pré-candidato 2026`
+    : `pré-candidatos ${cargo} 2026 brasil${payload.estado?.[0] ? " " + payload.estado[0] : ""}`;
+
+  console.log("[hybrid] AI SEARCH START:", query);
+
+  // Web evidence via Firecrawl
+  let snippets: string[] = [];
+  let urls: string[] = [];
+  if (FIRECRAWL_API_KEY) {
+    try {
+      const r = await fetch("https://api.firecrawl.dev/v2/search", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ query, limit: 6, lang: "pt", country: "br", tbs: "qdr:m" }),
+      });
+      const j = await r.json();
+      const items = j?.data ?? j?.web ?? [];
+      for (const it of items.slice(0, 6)) {
+        if (it?.description) snippets.push(String(it.description));
+        if (it?.title) snippets.push(String(it.title));
+        if (it?.url) urls.push(String(it.url));
+      }
+    } catch (e) { console.warn("[hybrid] firecrawl err", e); }
+  }
+
+  if (!q) return []; // Topic-only search without a name → cannot classify a single person
+
+  // Classify name via existing AI function
+  try {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/classify-political-figure`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: authHeader || `Bearer ${ANON_KEY}` },
+      body: JSON.stringify({
+        nome: q,
+        estado: payload.estado?.[0] || undefined,
+        municipio: payload.municipio || undefined,
+        contexto: snippets.join("\n").slice(0, 1800),
+        signals: urls.slice(0, 5).map((u) => ({ source: "web", url: u })),
+      }),
+    });
+    if (!r.ok) { console.warn("[hybrid] classify failed", r.status); return []; }
+    const cls = await r.json();
+    if (!cls?.is_political || (cls.confidence ?? 0) < 40) return [];
+    return [{
+      id: `ai:${normalizeName(q)}`,
+      tse_id: null,
+      nome: q,
+      nome_urna: null,
+      partido_sigla: cls.partido_sugerido || null,
+      partido_nome: null,
+      numero_partido: null,
+      cargo: (cls.cargo_sugerido || "").toLowerCase().replace(/\s+/g, "_") || null,
+      regiao: null,
+      estado: payload.estado?.[0] || null,
+      municipio: payload.municipio || null,
+      eleito: false,
+      categoria: "pre_candidato" as const,
+      ano_eleicao: null,
+      foto_url: null,
+      redes_sociais: {},
+      popularidade: 0,
+      similarity: 0.6,
+      total_count: 0,
+      candidate_type: cls.confidence >= 70 ? "pre_candidate" : "monitored",
+      confidence_score: Number(cls.confidence || 0),
+      reason: cls.reason || null,
+    }];
+  } catch (e) { console.warn("[hybrid] classify err", e); return []; }
+}
 
 interface Body {
   q?: string | null;
@@ -129,13 +206,30 @@ Deno.serve(async (req) => {
     }));
     const preRows = pre.rows.map(mapPreCandidate);
 
-    // Merge + dedupe (prefer official over pre_candidate)
+    console.log("[hybrid] SEARCH TYPE:", candidateType);
+    console.log("[hybrid] TSE COUNT:", tseRows.length);
+    console.log("[hybrid] PRE COUNT:", preRows.length);
+
+    // AI/Web fallback when nothing found and user wants AI/both
+    let aiRows: any[] = [];
+    const wantsAI = candidateType !== "official";
+    if (wantsAI && tseRows.length === 0 && preRows.length === 0 && (body.q?.trim() || body.cargo?.length)) {
+      aiRows = await aiWebFallback(body, authHeader);
+      console.log("[hybrid] AI COUNT:", aiRows.length);
+    }
+
+    // Merge + dedupe (prefer official over pre_candidate over AI)
     const map = new Map<string, any>();
     for (const r of tseRows) map.set(dedupeKey(r), r);
     for (const r of preRows) {
       const k = dedupeKey(r);
       if (!map.has(k)) map.set(k, r);
     }
+    for (const r of aiRows) {
+      const k = dedupeKey(r);
+      if (!map.has(k)) map.set(k, r);
+    }
+
 
     const merged = Array.from(map.values()).sort((a, b) => {
       const ae = a.eleito ? 1 : 0, be = b.eleito ? 1 : 0;
@@ -152,7 +246,10 @@ Deno.serve(async (req) => {
     const sources = [
       ...(tse.sources ?? []),
       ...(preRows.length ? ["pre_candidates"] : []),
+      ...(aiRows.length ? ["ai_web"] : []),
     ];
+
+    console.log("[hybrid] FINAL COUNT:", merged.length);
 
     return new Response(JSON.stringify({
       rows: paged,
@@ -162,7 +259,7 @@ Deno.serve(async (req) => {
       suggestions: tse.suggestions ?? [],
       normalized: tse.normalized ?? {},
       message: tse.message ?? tse.notice ?? null,
-      fallback: !!tse.fallback,
+      fallback: !!tse.fallback || aiRows.length > 0,
       page,
       last_updated: tse.last_updated ?? new Date().toISOString(),
       nationalOnly: !!tse.nationalOnly,
@@ -171,6 +268,7 @@ Deno.serve(async (req) => {
       counts: {
         official: tseRows.length,
         pre_candidate: preRows.length,
+        ai: aiRows.length,
       },
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
