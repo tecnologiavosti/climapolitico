@@ -83,42 +83,35 @@ function ufFullName(uf?: string | null): string {
 function buildCargoQueries(cargo: string, estado?: string, municipio?: string): string[] {
   const estadoNome = ufFullName(estado);
   const cargoLabel = cargo.replace(/_/g, " ");
+  // Regra simplificada: sinais recentes em notícias, redes, entrevistas, portais locais.
+  const local = municipio || estadoNome || "brasil";
+  const region = estadoNome || estado || "";
+  const base = [
+    `${cargoLabel} ${local}`,
+    `${cargoLabel} ${region}`,
+    `política ${local}`,
+    `eleições ${local} 2026`,
+    `${cargoLabel} campanha ${local}`,
+    `pré-candidato ${cargoLabel} ${local} 2026`,
+  ];
   switch (cargo) {
     case "presidente":
       return [
         "pré-candidatos presidente brasil 2026",
         "candidatos presidência da república 2026",
+        "presidente campanha brasil 2026",
+        "política brasil eleições 2026",
       ];
     case "governador":
-      return [
-        `pré-candidato governador ${estadoNome || "brasil"} 2026`,
-        `candidatos governo ${estadoNome || ""} 2026 pesquisa eleitoral`,
-        `quem vai disputar governo ${estadoNome || ""} 2026`,
-      ];
-    case "prefeito":
-      return [
-        `pré-candidatos prefeito ${municipio || ""} ${estadoNome || ""}`,
-        `eleições prefeitura ${municipio || ""} ${estadoNome || ""} 2026`,
-      ];
-    case "vereador":
-      return [
-        `vereadores em ascensão ${municipio || ""} ${estadoNome || ""}`,
-        `pré-candidatos vereador ${municipio || ""} ${estadoNome || ""}`,
-        `câmara municipal ${municipio || ""} ${estadoNome || ""}`,
-      ];
     case "senador":
-      return [
-        `pré-candidato senador ${estadoNome || "brasil"} 2026`,
-        `senado ${estadoNome || ""} 2026 candidatos`,
-      ];
     case "deputado_federal":
-      return [`pré-candidatos deputado federal ${estadoNome || "brasil"} 2026`];
     case "deputado_estadual":
-      return [`pré-candidatos deputado estadual ${estadoNome || "brasil"} 2026`];
     case "deputado_distrital":
-      return [`pré-candidatos deputado distrital ${estadoNome || "Distrito Federal"} 2026`];
+    case "prefeito":
+    case "vereador":
+      return base;
     default:
-      return cargo ? [`pré-candidato ${cargoLabel} ${municipio || ""} ${estadoNome || ""} 2026`] : [];
+      return cargo ? base : [];
   }
 }
 
