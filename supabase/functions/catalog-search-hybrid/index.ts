@@ -284,13 +284,44 @@ ${isStateOrNational && !isPresidente
     ? `Combine evidências web + seu conhecimento sobre presidenciáveis reais. Score DEVE seguir a fórmula acima.`
     : `Baseie-se prioritariamente nas evidências. Use apenas nomes REAIS presentes nelas.`}
 
-Classificação:
-- forte     (score 90-100)
-- cotado    (score 75-89)
-- possivel  (score 60-74)
-- emergente (score 40-59, apenas cargos locais)
+MOTOR DE CONFIANÇA v2 — 4 CRITÉRIOS (obrigatório para TODOS os cargos):
+Para cada nome, atribua pontuação nos 4 critérios abaixo com base APENAS nas evidências fornecidas
+(ou, para presidente/governador, também no seu conhecimento sobre política brasileira ATUAL).
+Não inclua alguém apenas porque o nome apareceu em PDF antigo ou lista genérica.
 
-${isPresidente ? "Para PRESIDENTE: só retorne quem tiver nationalRelevance >= 60 E score final >= 60. Máximo 12 nomes." : "Retorne 5 a 30 nomes."} Infira partido e ESTADO real de cada pessoa. "reason" curto citando a fonte/evidência.
+C1 — Intenção eleitoral explícita (0 a 40):
+  +40 se há trecho contendo termos como "pré-candidato", "pré-candidatura", "deve concorrer",
+  "pretende disputar", "candidato a ${cargo || "cargo"}", "eleição 2026/2028", "disputa eleitoral".
+  0 se não houver menção explícita.
+
+C2 — Atividade política em redes/agenda pública (0 a 25):
+  Sinais nos últimos 90 dias: agenda pública, visitas a bairros, reuniões partidárias, discurso,
+  posts sobre mandato, críticas à gestão, inaugurações, eventos eleitorais.
+  0 se conta inativa ou sem sinais.
+
+C3 — Cobertura em mídia local/regional (0 a 20):
+  Jornais locais, portais regionais, blogs políticos, rádio. Exemplos: "cotado para prefeitura",
+  "pode disputar", entrevistas. 0 se ausente.
+
+C4 — Histórico político real (0 a 15):
+  Já foi candidato TSE, suplente, vereador, assessor parlamentar, secretário, dirigente partidário.
+  0 se histórico desconhecido/nulo.
+
+finalScore = C1 + C2 + C3 + C4  (0-100).
+
+REGRA DE APROVAÇÃO:
+- Se finalScore < 60 → NÃO retorne o nome.
+- Para PREFEITO/VEREADOR: exigir pelo menos 2 dos 4 critérios com pontuação > 0.
+- Rejeite nomes muito genéricos (ex.: "José Silva", "Maria Souza") sem evidência forte (C1>=30 ou C3>=15).
+- Nunca invente nomes. Prefira retornar lista vazia a produzir falsos positivos.
+
+${presidenteRules}
+
+${isStateOrNational && !isPresidente
+  ? `Cargo estadual/nacional: complemente evidências com seu conhecimento sobre política brasileira recente.`
+  : isPresidente
+    ? `Combine evidências web + conhecimento sobre presidenciáveis reais. Score DEVE seguir a fórmula presidencial (não a v2).`
+    : `Cargo municipal: use APENAS as evidências. Não invente. Se as evidências forem fracas, retorne lista vazia.`}
 
 Cargo filtrado: ${cargo || "qualquer"}
 Estado filtro: ${estadoNome} (${uf || "-"})
@@ -304,6 +335,7 @@ JSON estrito:
   { "name": string, "score": number, "status": "forte"|"cotado"|"possivel"|"emergente",
     "party": string|null, "role": string|null, "state": string|null,
     "category": "politico"|"jornalista"|"influenciador"|"empresario"|"celebridade"|"outro",
+    "intentionScore": number, "socialScore": number, "mediaScore": number, "historyScore": number,
     ${isPresidente ? `"mentions": number, "engagement": number, "sentiment": number, "nationalRelevance": number, "electoralViability": number,` : ""}
     "reason": string }
 ] }`;
@@ -327,18 +359,29 @@ JSON estrito:
         return true;
       })
       .map((c: any): DiscoveredCandidate => {
-        const clamp = (n: any) => Math.max(0, Math.min(100, Number(n) || 0));
+        const clamp = (n: any, max = 100) => Math.max(0, Math.min(max, Number(n) || 0));
         const mentions = clamp(c.mentions);
         const engagement = clamp(c.engagement);
         const sentiment = clamp(c.sentiment);
         const nationalRelevance = clamp(c.nationalRelevance);
         const electoralViability = clamp(c.electoralViability);
+        const intentionScore = clamp(c.intentionScore, 40);
+        const socialScore = clamp(c.socialScore, 25);
+        const mediaScore = clamp(c.mediaScore, 20);
+        const historyScore = clamp(c.historyScore, 15);
+        const criteriaMet =
+          (intentionScore > 0 ? 1 : 0) + (socialScore > 0 ? 1 : 0) +
+          (mediaScore > 0 ? 1 : 0) + (historyScore > 0 ? 1 : 0);
         let finalScore = clamp(c.score);
         if (isPresidente && (c.mentions != null || c.nationalRelevance != null)) {
           finalScore = clamp(
             mentions * 0.25 + engagement * 0.20 + sentiment * 0.15 +
             nationalRelevance * 0.20 + electoralViability * 0.20
           );
+        } else if (c.intentionScore != null || c.socialScore != null ||
+                   c.mediaScore != null || c.historyScore != null) {
+          // Recomputa finalScore pela soma v2 quando disponível
+          finalScore = clamp(intentionScore + socialScore + mediaScore + historyScore);
         }
         return {
           nome: String(c.name).trim(),
@@ -354,6 +397,7 @@ JSON estrito:
           mentions: isPresidente ? mentions : undefined,
           engagement: isPresidente ? engagement : undefined,
           sentiment: isPresidente ? sentiment : undefined,
+          intentionScore, socialScore, mediaScore, historyScore, criteriaMet,
         };
       });
   } catch (e) { console.warn("[discovery] ai err", e); return []; }
