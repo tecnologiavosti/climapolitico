@@ -476,16 +476,27 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
     return c;
   });
 
-  // PRESIDENTE: hard filter nationalRelevance >= 60
+  // PRESIDENTE: blocklist + âncoras de score + hard filter nationalRelevance >= 60
   const relevanceFiltered = isPresidente
-    ? withPenalty.filter((c) => {
-        const nr = c.nationalRelevance ?? 0;
-        if (nr < 60) {
-          console.log("[presidente] EXCLUÍDO por baixa relevância nacional:", c.nome, "NR=", nr);
-          return false;
-        }
-        return true;
-      })
+    ? withPenalty
+        .filter((c) => {
+          if (PRESIDENTE_BLOCKLIST.has(normalizeName(c.nome))) {
+            console.log("[presidente] BLOCKLIST:", c.nome);
+            return false;
+          }
+          return true;
+        })
+        .map((c) => ({ ...c, confidence: applyPresidenteAnchor(c.nome, c.confidence) }))
+        .filter((c) => {
+          const nr = c.nationalRelevance ?? 0;
+          const passesScore = c.confidence >= 50;
+          const passesRelevance = nr >= 60;
+          if (!passesRelevance && !passesScore) {
+            console.log("[presidente] EXCLUÍDO:", c.nome, "NR=", nr, "score=", c.confidence);
+            return false;
+          }
+          return true;
+        })
     : withPenalty;
 
   if (isPresidente) {
