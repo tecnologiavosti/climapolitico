@@ -1004,21 +1004,6 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
       ignored_reason: approvedFlag ? null : rejectReason,
     });
 
-    console.log("PRE_CANDIDATE_AI", {
-      name: c.nome,
-      city: c.municipio,
-      state: c.estado,
-      cargo: c.cargo || cargo,
-      WEB_MATCHES: hits.length,
-      SOCIAL_MATCHES: c.socialScore,
-      MEDIA_MATCHES: c.mediaScore,
-      TSE_HISTORY: c.historyScore,
-      INTENTION: c.intentionScore,
-      criteriaMet: cm,
-      FINAL_SCORE: c.confidence,
-      status: approvedFlag ? "APPROVED" : `REJECTED (${rejectReason})`,
-    });
-
     if (approvedFlag) approved.push(c);
   }
 
