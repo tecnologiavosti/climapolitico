@@ -977,6 +977,101 @@ function applyPresidenteAnchor(nome: string, score: number): number {
   return score;
 }
 
+const PRESIDENTE_FALLBACKS: DiscoveredCandidate[] = [
+  { nome: "Lula", partido: "PT", cargo: "presidente", estado: null, municipio: null, confidence: 96, status: "declarado", nationalRelevance: 100, electoralViability: 100, mentions: 96, engagement: 94, sentiment: 85, historicalStrength: 100, politicalActivity: 95, socialSignal: 90, mediaSignal: 100, candidacyIntent: 95, presidentialChecks: 5, reason: "Fallback presidencial confiável: presidente em exercício e principal nome nacional.", source: "fallback" },
+  { nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "presidente", estado: null, municipio: null, confidence: 92, status: "muito_forte", nationalRelevance: 95, electoralViability: 94, mentions: 90, engagement: 88, sentiment: 82, historicalStrength: 90, politicalActivity: 92, socialSignal: 86, mediaSignal: 94, candidacyIntent: 88, presidentialChecks: 5, reason: "Fallback presidencial confiável: governador de SP frequentemente citado como presidenciável.", source: "fallback" },
+  { nome: "Ronaldo Caiado", partido: "UNIÃO", cargo: "presidente", estado: null, municipio: null, confidence: 84, status: "muito_forte", nationalRelevance: 84, electoralViability: 82, mentions: 78, engagement: 76, sentiment: 80, historicalStrength: 86, politicalActivity: 84, socialSignal: 74, mediaSignal: 82, candidacyIntent: 78, presidentialChecks: 4, reason: "Fallback presidencial confiável: governador de GO com movimentação nacional.", source: "fallback" },
+  { nome: "Romeu Zema", partido: "NOVO", cargo: "presidente", estado: null, municipio: null, confidence: 79, status: "forte", nationalRelevance: 80, electoralViability: 78, mentions: 75, engagement: 72, sentiment: 76, historicalStrength: 82, politicalActivity: 78, socialSignal: 72, mediaSignal: 78, candidacyIntent: 72, presidentialChecks: 4, reason: "Fallback presidencial confiável: governador de MG citado em articulações nacionais.", source: "fallback" },
+  { nome: "Eduardo Leite", partido: "PSDB", cargo: "presidente", estado: null, municipio: null, confidence: 74, status: "forte", nationalRelevance: 76, electoralViability: 72, mentions: 70, engagement: 68, sentiment: 72, historicalStrength: 76, politicalActivity: 72, socialSignal: 66, mediaSignal: 74, candidacyIntent: 66, presidentialChecks: 3, reason: "Fallback presidencial confiável: governador do RS e nome nacional do PSDB.", source: "fallback" },
+  { nome: "Simone Tebet", partido: "MDB", cargo: "presidente", estado: null, municipio: null, confidence: 73, status: "forte", nationalRelevance: 78, electoralViability: 72, mentions: 70, engagement: 66, sentiment: 74, historicalStrength: 78, politicalActivity: 70, socialSignal: 62, mediaSignal: 74, candidacyIntent: 64, presidentialChecks: 3, reason: "Fallback presidencial confiável: ex-presidenciável e liderança nacional do MDB.", source: "fallback" },
+  { nome: "Ciro Gomes", partido: "PDT", cargo: "presidente", estado: null, municipio: null, confidence: 72, status: "forte", nationalRelevance: 88, electoralViability: 72, mentions: 72, engagement: 70, sentiment: 62, historicalStrength: 88, politicalActivity: 64, socialSignal: 68, mediaSignal: 76, candidacyIntent: 58, presidentialChecks: 3, reason: "Fallback presidencial confiável: presidenciável histórico com presença nacional.", source: "fallback" },
+  { nome: "Marina Silva", partido: "REDE", cargo: "presidente", estado: null, municipio: null, confidence: 70, status: "forte", nationalRelevance: 84, electoralViability: 68, mentions: 68, engagement: 62, sentiment: 76, historicalStrength: 86, politicalActivity: 64, socialSignal: 58, mediaSignal: 72, candidacyIntent: 56, presidentialChecks: 3, reason: "Fallback presidencial confiável: presidenciável histórica e liderança nacional.", source: "fallback" },
+];
+
+const GOVERNADOR_FALLBACKS: Record<string, Array<{ nome: string; partido?: string; score: number }>> = {
+  AC: [{ nome: "Gladson Cameli", partido: "PP", score: 78 }, { nome: "Sérgio Petecão", partido: "PSD", score: 68 }],
+  AL: [{ nome: "Paulo Dantas", partido: "MDB", score: 78 }, { nome: "Renan Filho", partido: "MDB", score: 74 }],
+  AP: [{ nome: "Clécio Luís", partido: "SOLIDARIEDADE", score: 78 }, { nome: "Davi Alcolumbre", partido: "UNIÃO", score: 72 }],
+  AM: [{ nome: "Wilson Lima", partido: "UNIÃO", score: 78 }, { nome: "Omar Aziz", partido: "PSD", score: 72 }],
+  BA: [{ nome: "Jerônimo Rodrigues", partido: "PT", score: 78 }, { nome: "ACM Neto", partido: "UNIÃO", score: 76 }],
+  CE: [{ nome: "Elmano de Freitas", partido: "PT", score: 78 }, { nome: "Cid Gomes", partido: "PSB", score: 74 }],
+  DF: [{ nome: "Ibaneis Rocha", partido: "MDB", score: 76 }, { nome: "Leandro Grass", partido: "PV", score: 66 }],
+  ES: [{ nome: "Renato Casagrande", partido: "PSB", score: 78 }, { nome: "Ricardo Ferraço", partido: "MDB", score: 68 }],
+  GO: [{ nome: "Ronaldo Caiado", partido: "UNIÃO", score: 84 }, { nome: "Daniel Vilela", partido: "MDB", score: 76 }],
+  MA: [{ nome: "Carlos Brandão", partido: "PSB", score: 78 }, { nome: "Weverton Rocha", partido: "PDT", score: 70 }],
+  MT: [{ nome: "Mauro Mendes", partido: "UNIÃO", score: 80 }, { nome: "Jayme Campos", partido: "UNIÃO", score: 68 }],
+  MS: [{ nome: "Eduardo Riedel", partido: "PSDB", score: 78 }, { nome: "André Puccinelli", partido: "MDB", score: 68 }],
+  MG: [{ nome: "Romeu Zema", partido: "NOVO", score: 80 }, { nome: "Rodrigo Pacheco", partido: "PSD", score: 76 }, { nome: "Alexandre Kalil", partido: "PSD", score: 68 }],
+  PA: [{ nome: "Helder Barbalho", partido: "MDB", score: 80 }, { nome: "Éder Mauro", partido: "PL", score: 66 }],
+  PB: [{ nome: "João Azevêdo", partido: "PSB", score: 78 }, { nome: "Efraim Filho", partido: "UNIÃO", score: 70 }],
+  PR: [{ nome: "Ratinho Junior", partido: "PSD", score: 82 }, { nome: "Sergio Moro", partido: "UNIÃO", score: 74 }],
+  PE: [{ nome: "Raquel Lyra", partido: "PSD", score: 78 }, { nome: "João Campos", partido: "PSB", score: 76 }],
+  PI: [{ nome: "Rafael Fonteles", partido: "PT", score: 78 }, { nome: "Ciro Nogueira", partido: "PP", score: 72 }],
+  RJ: [{ nome: "Cláudio Castro", partido: "PL", score: 76 }, { nome: "Eduardo Paes", partido: "PSD", score: 78 }],
+  RN: [{ nome: "Fátima Bezerra", partido: "PT", score: 76 }, { nome: "Rogério Marinho", partido: "PL", score: 72 }],
+  RS: [{ nome: "Eduardo Leite", partido: "PSDB", score: 80 }, { nome: "Onyx Lorenzoni", partido: "PL", score: 68 }],
+  RO: [{ nome: "Marcos Rocha", partido: "UNIÃO", score: 76 }, { nome: "Confúcio Moura", partido: "MDB", score: 70 }],
+  RR: [{ nome: "Antonio Denarium", partido: "PP", score: 76 }, { nome: "Teresa Surita", partido: "MDB", score: 70 }],
+  SC: [{ nome: "Jorginho Mello", partido: "PL", score: 78 }, { nome: "Décio Lima", partido: "PT", score: 68 }],
+  SP: [{ nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", score: 86 }, { nome: "Fernando Haddad", partido: "PT", score: 55 }, { nome: "Márcio França", partido: "PSB", score: 72 }],
+  SE: [{ nome: "Fábio Mitidieri", partido: "PSD", score: 78 }, { nome: "Rogério Carvalho", partido: "PT", score: 70 }],
+  TO: [{ nome: "Wanderlei Barbosa", partido: "REPUBLICANOS", score: 78 }, { nome: "Eduardo Gomes", partido: "PL", score: 68 }],
+};
+
+function fallbackCandidate(nome: string, cargo: string, uf: string | null, score: number, partido?: string): DiscoveredCandidate {
+  return {
+    nome,
+    partido: partido || null,
+    cargo,
+    estado: cargo === "presidente" ? null : uf,
+    municipio: null,
+    confidence: score,
+    status: score >= 80 ? "muito_forte" : score >= 70 ? "forte" : "possivel",
+    historicalStrength: Math.min(100, score + 8),
+    politicalActivity: score,
+    socialSignal: Math.max(45, score - 8),
+    mediaSignal: score,
+    candidacyIntent: Math.max(45, score - 12),
+    reason: `Fallback obrigatório para ${cargo}${uf ? ` em ${uf}` : ""}: figura política com relevância pública e movimentação eleitoral plausível.`,
+    source: "fallback",
+  };
+}
+
+function buildMacroFallbackCandidates(cargo: string, uf: string): DiscoveredCandidate[] {
+  if (cargo === "presidente") return PRESIDENTE_FALLBACKS;
+  if (cargo === "governador") {
+    const state = normalizeUf(uf) || "SP";
+    const list = GOVERNADOR_FALLBACKS[state] ?? GOVERNADOR_FALLBACKS.SP;
+    return list.map((c) => fallbackCandidate(c.nome, "governador", state, c.score, c.partido));
+  }
+  return [];
+}
+
+async function buildMandatoryFallbackRows(body: Body, currentRows: any[] = []): Promise<any[]> {
+  if (currentRows.length) return currentRows;
+  const cargo = normalizeCargo(body.cargo);
+  const uf = normalizeUf(firstValue(body.estado));
+  const mun = (body.municipio || "").trim();
+  const isMunicipal = cargo === "prefeito" || cargo === "vereador";
+
+  if (cargo === "presidente" || cargo === "governador") {
+    const fallback = buildMacroFallbackCandidates(cargo, uf || "").map((c) => toRow(c, cargo));
+    if (fallback.length) console.warn("AI RETURNED ZERO");
+    return fallback;
+  }
+
+  if (isMunicipal && mun && uf) {
+    console.log("[AI FALLBACK] municipal TSE recent candidates", { cargo, uf, mun });
+    const history = await fetchMunicipalHistoryLoose(cargo, uf, mun, cargo === "prefeito");
+    const fallback = buildMunicipalFallbackRows({ ...body, cargo: [cargo], estado: [uf], municipio: mun }, history, 50).map((c) => toRow(c, cargo));
+    if (fallback.length) console.warn("AI RETURNED ZERO");
+    return fallback;
+  }
+
+  if (!currentRows.length) console.warn("AI RETURNED ZERO");
+  return currentRows;
+}
+
 // ---------- DISCOVERY ENGINE ----------
 async function discoverPoliticalActors(body: Body): Promise<any[]> {
   const cargo = normalizeCargo(body.cargo);
