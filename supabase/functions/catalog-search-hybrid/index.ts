@@ -226,6 +226,12 @@ interface DiscoveredCandidate {
   mentions?: number;
   engagement?: number;
   sentiment?: number;
+  // Novos critérios (motor v2)
+  intentionScore?: number;   // 0-40
+  socialScore?: number;      // 0-25
+  mediaScore?: number;       // 0-20
+  historyScore?: number;     // 0-15
+  criteriaMet?: number;      // quantos dos 4 critérios (>0)
 }
 
 async function scorePoliticalActors(
