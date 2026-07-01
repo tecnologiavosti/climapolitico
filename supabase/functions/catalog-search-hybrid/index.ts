@@ -1089,7 +1089,7 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
   if (isMunicipal) {
     console.log("DISCOVERY MODE: MUNICIPAL_ENGINE_4_LAYERS");
     const includeAllMunicipalHistory = cargo === "prefeito";
-    const history = await fetchMunicipalHistory(cargo, uf, mun, includeAllMunicipalHistory);
+    const history = await fetchMunicipalHistoryLoose(cargo, uf, mun, includeAllMunicipalHistory);
     const cityUniverse = await countMunicipalUniverse(uf, mun);
     console.log("TSE_HISTORY_ROWS:", history.length);
     console.log("MUNICIPAL_UNIVERSE:", cityUniverse);
