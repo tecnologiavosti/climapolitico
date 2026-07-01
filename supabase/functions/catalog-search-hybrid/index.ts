@@ -929,7 +929,7 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
     if (!prev || c.confidence > prev.confidence) dedup.set(key, c);
   }
 
-  const minScore = 60; // regra global v2
+  const minScore = 45; // v3: abaixo de 45 nunca exibir
 
   // Penalidade de inelegibilidade
   const withPenalty = Array.from(dedup.values()).map((c) => {
@@ -938,7 +938,7 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
     return c;
   });
 
-  // Filtro presidencial (mantém regras existentes)
+  // Filtro presidencial
   const relevanceFiltered = isPresidente
     ? withPenalty
         .filter((c) => {
@@ -950,32 +950,59 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
         })
         .map((c) => ({ ...c, confidence: applyPresidenteAnchor(c.nome, c.confidence) }))
         .filter((c) => {
+          // Regra v3 Presidente: exigir >=2 checkboxes presidenciais
+          const checks = c.presidentialChecks ?? 0;
           const nr = c.nationalRelevance ?? 0;
-          const passesScore = c.confidence >= 50;
+          const passesChecks = checks >= 2;
           const passesRelevance = nr >= 60;
-          if (!passesRelevance && !passesScore) {
-            console.log("[presidente] EXCLUÍDO:", c.nome, "NR=", nr, "score=", c.confidence);
+          if (!passesChecks && !passesRelevance) {
+            console.log("[presidente] EXCLUÍDO:", c.nome, "checks=", checks, "NR=", nr);
             return false;
           }
           return true;
         })
     : withPenalty;
 
-  // Debug por candidato + regras v2
+  // Debug por candidato + regras v3
   const approved: DiscoveredCandidate[] = [];
   for (const c of relevanceFiltered) {
     const cm = c.criteriaMet ?? 0;
     const nameToks = (c.nome || "").trim().split(/\s+/).length;
     const generic = isGenericName(c.nome);
-    const strongEvidence = (c.intentionScore ?? 0) >= 30 || (c.mediaScore ?? 0) >= 15;
+    const intent = c.candidacyIntent ?? 0;
+    const mediaSig = c.mediaSignal ?? 0;
+    const strongEvidence = intent >= 30 || (c.mediaScore ?? 0) >= 15;
 
     let approvedFlag = true;
     let rejectReason = "";
 
-    if (nameToks < 2) { approvedFlag = false; rejectReason = "nome incompleto"; }
+    // Regra anti-falso-positivo v3: candidacy_intent<20 AND media<20 → IGNORAR
+    if (intent < 20 && mediaSig < 20) {
+      approvedFlag = false; rejectReason = "low_intent (intent<20 && media<20)";
+    }
+    else if (nameToks < 2) { approvedFlag = false; rejectReason = "nome incompleto"; }
     else if (c.confidence < minScore) { approvedFlag = false; rejectReason = `score<${minScore}`; }
     else if (isMunicipal && cm < 2) { approvedFlag = false; rejectReason = "municipal exige >=2 critérios"; }
     else if (generic && !strongEvidence) { approvedFlag = false; rejectReason = "nome genérico sem evidência forte"; }
+
+    if (!approvedFlag) {
+      console.log("IGNORED_PRE_CANDIDATE", { name: c.nome, reason: rejectReason });
+    }
+
+    console.log("AI CANDIDATE ANALYSIS", {
+      name: c.nome,
+      cargo: c.cargo || cargo,
+      city: c.municipio,
+      state: c.estado,
+      historical_strength: c.historicalStrength,
+      political_activity: c.politicalActivity,
+      social_signal: c.socialSignal,
+      media_signal: c.mediaSignal,
+      candidacy_intent: c.candidacyIntent,
+      presidential_checks: c.presidentialChecks ?? 0,
+      final_score: c.confidence,
+      ignored_reason: approvedFlag ? null : rejectReason,
+    });
 
     console.log("PRE_CANDIDATE_AI", {
       name: c.nome,
