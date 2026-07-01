@@ -122,11 +122,13 @@ function buildDiscoveryQueries(cargo: string, uf: string, mun: string): string[]
   }
   if (cargo === "governador" && estadoNome) {
     return [
-      `${estadoNome} política`,
-      `${estadoNome} oposição governo`,
-      `${estadoNome} liderança partidária`,
-      `pré-candidato governador ${estadoNome} 2026`,
-      `${estadoNome} pesquisa eleitoral governo`,
+      `política ${estadoNome}`,
+      `eleição governador ${estadoNome} 2026`,
+      `sucessão governo ${estadoNome}`,
+      `pré-candidato governador ${estadoNome}`,
+      `oposição ${estadoNome}`,
+      `governador ${estadoNome} pesquisa eleitoral`,
+      `senadores ${estadoNome} governo 2026`,
       `${estadoNome} articulação política 2026`,
     ];
   }
