@@ -607,7 +607,10 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
     rows.push(toRow(c, filterCargo, { score: r.score, tier: r.tier, eligible: r.eligible, ineligibleReason: r.ineligibleReason }));
   }
   rows.sort((a, b) => (b.confidence_score || 0) - (a.confidence_score || 0));
-  console.log("AI RESULTS (filtrados):", rows.length);
+  console.log("MUNICIPAL SEARCH", { cargo: filterCargo, uf, mun });
+  console.log("SEED MATCHES", extracted.length);
+  console.log("DISCOVERED NAMES", hits.length);
+  console.log("FINAL AI RESULTS", rows.length);
   return rows;
 }
 
