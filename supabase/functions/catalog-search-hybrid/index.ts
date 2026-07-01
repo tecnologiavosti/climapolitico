@@ -387,7 +387,8 @@ function scoreRelevance(
 ): { score: number; keep: boolean; tier: Tier; eligible: boolean; ineligibleReason: string | null; why: string } {
   const cCargo = canonicalCargoKey(c.cargo) ?? normalizeText(c.cargo);
   const cUf = (c.estado || "").toUpperCase();
-  const cMun = (c.municipio || "").trim().toLowerCase();
+  const cMun = normalizeText(c.municipio || "");
+  const munNorm = normalizeText(mun || "");
 
   // Nome completo (≥ 2 partes).
   const parts = (c.nome || "").trim().split(/\s+/).filter((p) => p.length >= 2);
@@ -406,7 +407,7 @@ function scoreRelevance(
     return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `UF ≠ filtro: ${cUf} vs ${uf}` };
   }
 
-  // REGRA 5 — cargos municipais: exige mesmo UF + município.
+  // REGRA 5 — cargos municipais: exige mesmo UF + município (normalizado, sem acento).
   const requiresMun = LOCAL_CARGOS_REQUIRE_MUN.includes(filterCargo);
   if (requiresMun) {
     if (!uf || !mun) {
@@ -415,7 +416,6 @@ function scoreRelevance(
     if (cUf && cUf !== uf) {
       return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `UF ≠ filtro (municipal): ${cUf} vs ${uf}` };
     }
-    const munNorm = mun.toLowerCase();
     if (cMun && cMun !== munNorm) {
       return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `município ≠ filtro: ${cMun} vs ${munNorm}` };
     }
