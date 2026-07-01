@@ -491,6 +491,21 @@ const GOVERNADOR_SEED: Record<string, ExtractedCandidate[]> = {
   ],
 };
 
+// Seed municipal para prefeito (key = `${UF}:${municipio-normalizado}`).
+const PREFEITO_SEED: Record<string, ExtractedCandidate[]> = {
+  "SP:jundiai": [
+    { nome: "Gustavo Martinelli", partido: "UNIÃO", cargo: "prefeito", estado: "SP", municipio: "Jundiaí", confidence: 82, reason: "cotado para prefeitura de Jundiaí em 2028", recent_evidence: true, poll_evidence: false, held_major_office: false, party_signaling: true, only_historical: false, last_mention_months: 2 },
+    { nome: "Luiz Fernando Machado", partido: "PSDB", cargo: "prefeito", estado: "SP", municipio: "Jundiaí", confidence: 78, reason: "ex-prefeito de Jundiaí, articula retorno", recent_evidence: true, poll_evidence: false, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 3 },
+  ],
+};
+
+// Seed municipal para vereador.
+const VEREADOR_SEED: Record<string, ExtractedCandidate[]> = {
+  "SP:jundiai": [
+    { nome: "Faouaz Taha", partido: "PSD", cargo: "vereador", estado: "SP", municipio: "Jundiaí", confidence: 72, reason: "vereador em exercício em Jundiaí", recent_evidence: true, poll_evidence: false, held_major_office: false, party_signaling: true, only_historical: false, last_mention_months: 1 },
+  ],
+};
+
 
 async function discoverPreCandidates(body: Body): Promise<any[]> {
   const filterCargo = normalizeCargo(body.cargo);
