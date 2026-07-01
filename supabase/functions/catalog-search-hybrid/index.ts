@@ -1115,10 +1115,12 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
     const layer1Hits = await runMunicipalWebLayer(layer1Queries, "qdr:m6", 8);
     console.log("[AI LAYER 1] hits:", layer1Hits.length);
     if (layer1Hits.length) {
+      console.log("WEB SOURCES FOUND:", layer1Hits.length);
       // Se houver histórico TSE, usa scoring restrito (mais preciso). Sempre também
       // tenta extração aberta para não perder novos nomes.
       if (history.length) addAll(await scoreMunicipalHistoricalActors(body, history, layer1Hits));
       addAll(await extractOpenCandidatesFromHits(layer1Hits, cargo, uf, mun, "layer1-web"));
+      console.log("AI RESULTS:", dedup.size);
     }
 
     // ---------- LAYER 2: PARTY / SOCIAL SITE SEARCH ----------
@@ -1134,8 +1136,10 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
       const layer2Hits = await runMunicipalWebLayer(layer2Queries, "qdr:y", 6);
       console.log("[AI LAYER 2] hits:", layer2Hits.length);
       if (layer2Hits.length) {
+        console.log("WEB SOURCES FOUND:", layer2Hits.length);
         if (history.length) addAll(await scoreMunicipalHistoricalActors(body, history, layer2Hits));
         addAll(await extractOpenCandidatesFromHits(layer2Hits, cargo, uf, mun, "layer2-party"));
+        console.log("AI RESULTS:", dedup.size);
       }
     }
 
@@ -1159,7 +1163,9 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
       const layer4Hits = await runMunicipalWebLayer(layer4Queries, "qdr:y", 6);
       console.log("[AI LAYER 4] hits:", layer4Hits.length);
       if (layer4Hits.length) {
+        console.log("WEB SOURCES FOUND:", layer4Hits.length);
         addAll(await extractOpenCandidatesFromHits(layer4Hits, cargo, uf, mun, "layer4-social"));
+        console.log("AI RESULTS:", dedup.size);
       }
     }
 
@@ -1178,6 +1184,7 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
       .slice(0, 50)
       .map((c) => toRow(c, cargo));
     console.log("[AI FINAL COUNT]", rows.length);
+    console.log("AI RESULTS:", rows.length);
     return rows;
   }
 
@@ -1185,8 +1192,6 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
   const queries = buildDiscoveryQueries(cargo, uf, mun);
   console.log("DISCOVERY MODE: MACRO_ENGINE");
   console.log("SEARCH QUERIES:", queries);
-
-  if (!queries.length) { console.log("FINAL IA RESULTS: 0 (no queries)"); return []; }
 
   // Recência: municipais 90d, demais 180d
   const tbs = isMunicipal ? "qdr:m3" : "qdr:m6";
@@ -1200,9 +1205,11 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
     if (k && !seen.has(k)) { seen.add(k); hits.push(h); }
   }
   console.log("WEB_MATCHES:", hits.length);
+  console.log("WEB SOURCES FOUND:", hits.length);
 
   const discovered = await scorePoliticalActors(body, hits, queries);
   console.log("STEP 4 EXTRACTED NAMES", discovered.length);
+  console.log("AI RESULTS:", discovered.length);
 
   // Dedup
   const dedupKeyOf = (nome: string) => {
@@ -1311,6 +1318,7 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
     .map((c) => toRow(c, cargo));
 
   console.log("FINAL IA RESULTS:", rows.length);
+  if (!rows.length) console.warn("AI RETURNED ZERO");
   return rows;
 }
 
