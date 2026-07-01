@@ -597,13 +597,23 @@ Município: ${mun || "-"}
 Evidências:
 ${evidence}
 
+MOTOR v3 — MÉTRICAS OBRIGATÓRIAS (0-100 cada):
+Para CADA nome retorne também:
+- historicalStrength: força eleitoral histórica (votos, mandatos, filiação antiga).
+- politicalActivity: atividade política concreta nos últimos 180 dias (agenda, eventos, articulações partidárias).
+- socialSignal: intensidade e engajamento em redes sociais recentes.
+- mediaSignal: cobertura em mídia local/regional/nacional recente.
+- candidacyIntent: EVIDÊNCIA REAL de intenção de disputar (frases como "sou pré-candidato", "pretendo disputar", "vou concorrer", "candidatura", "eleição 2026/2028", "articulação partidária", "convenção", "cotado para", "nome forte", "sucessão", entrevistas confirmando disputa). Se NÃO houver nenhuma evidência dessas nos últimos 180 dias, retorne 0. NÃO invente intenção.
+${isPresidente ? `- presidentialChecks (0-5): quantos destes se aplicam: (a) aparece em pesquisas eleitorais nacionais; (b) mídia nacional cita como presidenciável; (c) partido articula candidatura presidencial; (d) capital político nacional consolidado; (e) cargo atual relevante (presidente, governador de estado grande, senador de destaque, ministro).` : ""}
+
 JSON estrito:
 { "candidatos": [
   { "name": string, "score": number, "status": "forte"|"cotado"|"possivel"|"emergente",
     "party": string|null, "role": string|null, "state": string|null,
     "category": "politico"|"jornalista"|"influenciador"|"empresario"|"celebridade"|"outro",
     "intentionScore": number, "socialScore": number, "mediaScore": number, "historyScore": number,
-    ${isPresidente ? `"mentions": number, "engagement": number, "sentiment": number, "nationalRelevance": number, "electoralViability": number,` : ""}
+    "historicalStrength": number, "politicalActivity": number, "socialSignal": number, "mediaSignal": number, "candidacyIntent": number,
+    ${isPresidente ? `"presidentialChecks": number, "mentions": number, "engagement": number, "sentiment": number, "nationalRelevance": number, "electoralViability": number,` : ""}
     "reason": string }
 ] }`;
 
