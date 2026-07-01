@@ -501,6 +501,85 @@ function buildMunicipalFallbackRows(
   });
 }
 
+// Extrai nomes de pré-candidatos a partir de hits web/sociais abertos (sem exigir TSE).
+// Usado nas camadas 1, 2 e 4 do pipeline municipal.
+async function extractOpenCandidatesFromHits(
+  hits: WebHit[],
+  cargo: string,
+  uf: string,
+  mun: string,
+  layerTag: string,
+): Promise<DiscoveredCandidate[]> {
+  if (!hits.length) return [];
+  const evidence = hits.slice(0, 40).map((h, i) =>
+    `[${i + 1}] ${h.title ?? ""}\n${h.description ?? ""}\n${h.url ?? ""}`
+  ).join("\n---\n").slice(0, 9000);
+
+  const system = `Você é um analista político municipal brasileiro. Extraia SOMENTE nomes reais de pessoas físicas mencionadas nas evidências como possíveis pré-candidatos, lideranças ou figuras políticas locais em ${mun}/${uf}. Nunca invente nomes. Responda em JSON estrito.`;
+  const user = `Camada de descoberta: ${layerTag}. Cargo alvo: ${cargo} em ${mun}/${uf}.
+
+EVIDÊNCIAS (título/descrição/url):
+${evidence}
+
+Regras:
+- Só inclua se houver menção clara ao município ${mun} ou ao cargo ${cargo}.
+- Ignore jornalistas, apresentadores, celebridades, empresários sem sinal político.
+- Score 45-85: quanto mais evidências de atividade política real, maior.
+
+JSON estrito:
+{ "candidatos": [
+  { "name": string, "party": string|null, "score": number,
+    "socialScore": number, "mediaScore": number, "reason": string }
+] }`;
+
+  try {
+    const ai = await callAICerebrasFirst({
+      systemMsg: system, userPrompt: user, jsonMode: true,
+      maxTokens: 2000, temperature: 0.2, tag: `municipal-${layerTag}`,
+    });
+    const parsed = JSON.parse(ai.content);
+    const arr = Array.isArray(parsed?.candidatos) ? parsed.candidatos : [];
+    const out: DiscoveredCandidate[] = [];
+    for (const c of arr) {
+      const name = String(c?.name || "").trim();
+      if (!name || name.split(/\s+/).length < 2) continue;
+      if (isGenericName(name)) continue;
+      const score = Math.max(45, Math.min(85, Number(c?.score) || 55));
+      const socialScore = Math.max(0, Math.min(30, Number(c?.socialScore) || 0));
+      const mediaScore = Math.max(0, Math.min(20, Number(c?.mediaScore) || 0));
+      out.push({
+        nome: titleCaseName(name),
+        partido: c?.party || null,
+        cargo, estado: uf, municipio: mun,
+        confidence: score,
+        status: municipalStatus(score),
+        reason: c?.reason ? String(c.reason).slice(0, 300) : `Detectado via ${layerTag} em ${mun}/${uf}.`,
+        socialScore,
+        localMediaScore: mediaScore,
+        continuityScore: 0,
+        politicalEngagementScore: Math.round(score * 0.2),
+        criteriaMet: [socialScore, mediaScore].filter((v) => v > 0).length + 1,
+      });
+    }
+    return out;
+  } catch (e) {
+    console.warn(`[municipal-${layerTag}] extract err`, e);
+    return [];
+  }
+}
+
+async function runMunicipalWebLayer(queries: string[], tbs: string, limit: number): Promise<WebHit[]> {
+  if (!FIRECRAWL_API_KEY) return [];
+  const lists = await Promise.all(queries.map((q) => firecrawlSearch(q, tbs, limit)));
+  const seen = new Set<string>();
+  const out: WebHit[] = [];
+  for (const list of lists) for (const h of list) {
+    const k = h.url || `${h.title}|${h.description}`;
+    if (k && !seen.has(k)) { seen.add(k); out.push(h); }
+  }
+  return out;
+}
+
 async function scorePoliticalActors(
   body: Body, hits: WebHit[], queries: string[],
 ): Promise<DiscoveredCandidate[]> {
@@ -826,63 +905,89 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
   console.log("CARGO:", cargo || "-");
 
   if (isMunicipal) {
-    console.log("DISCOVERY MODE: MUNICIPAL_ENGINE");
+    console.log("DISCOVERY MODE: MUNICIPAL_ENGINE_4_LAYERS");
     const includeAllMunicipalHistory = cargo === "prefeito";
     const history = await fetchMunicipalHistory(cargo, uf, mun, includeAllMunicipalHistory);
     const cityUniverse = await countMunicipalUniverse(uf, mun);
-    const largeCity = cityUniverse >= 100;
     console.log("TSE_HISTORY_ROWS:", history.length);
-    console.log("MUNICIPAL_UNIVERSE:", cityUniverse, "LARGE_CITY:", largeCity);
-
-    if (!history.length) {
-      console.log("FINAL IA RESULTS: 0 (sem histórico TSE municipal)");
-      return [];
-    }
-
-    const queries = buildMunicipalEnrichmentQueries(cargo, uf, mun, history);
-    console.log("SEARCH QUERIES:", queries);
-
-    const hitLists = FIRECRAWL_API_KEY
-      ? await Promise.all(queries.map((q) => firecrawlSearch(q, "qdr:m3", 6)))
-      : [];
-    const seenHits = new Set<string>();
-    const hits: WebHit[] = [];
-    for (const list of hitLists) for (const h of list) {
-      const k = h.url || `${h.title}|${h.description}`;
-      if (k && !seenHits.has(k)) { seenHits.add(k); hits.push(h); }
-    }
-    console.log("WEB_MATCHES:", hits.length);
-
-    let discovered = await scoreMunicipalHistoricalActors(body, history, hits);
-    console.log("EXTRACTED NAMES:", discovered.length);
+    console.log("MUNICIPAL_UNIVERSE:", cityUniverse);
 
     const dedup = new Map<string, DiscoveredCandidate>();
-    for (const c of discovered) {
-      const key = normalizeName(c.nome);
-      if (!key) continue;
-      const prev = dedup.get(key);
-      if (!prev || c.confidence > prev.confidence) dedup.set(key, c);
-    }
-    discovered = Array.from(dedup.values()).filter((c) => c.confidence >= 50);
+    const addAll = (arr: DiscoveredCandidate[]) => {
+      for (const c of arr) {
+        const key = normalizeName(c.nome);
+        if (!key) continue;
+        const prev = dedup.get(key);
+        if (!prev || c.confidence > prev.confidence) dedup.set(key, c);
+      }
+    };
 
-    if (discovered.length === 0 && largeCity) {
-      console.log("MUNICIPAL_FALLBACK_START");
-      discovered = buildMunicipalFallbackRows(body, history, 50);
+    // ---------- LAYER 1: WEB SEARCH PADRÃO ----------
+    const layer1Queries = [
+      `"pré-candidato" ${cargo} ${mun} ${uf}`,
+      `"pré-candidata" ${cargo} ${mun} ${uf}`,
+      `eleições 2028 ${mun} ${uf} ${cargo}`,
+      `${mun} ${uf} ${cargo} candidato 2028`,
+    ];
+    console.log("[AI LAYER 1] web search", layer1Queries);
+    const layer1Hits = await runMunicipalWebLayer(layer1Queries, "qdr:m6", 8);
+    console.log("[AI LAYER 1] hits:", layer1Hits.length);
+    if (layer1Hits.length) {
+      // Se houver histórico TSE, usa scoring restrito (mais preciso). Sempre também
+      // tenta extração aberta para não perder novos nomes.
+      if (history.length) addAll(await scoreMunicipalHistoricalActors(body, history, layer1Hits));
+      addAll(await extractOpenCandidatesFromHits(layer1Hits, cargo, uf, mun, "layer1-web"));
     }
+
+    // ---------- LAYER 2: PARTY / SOCIAL SITE SEARCH ----------
+    if (dedup.size === 0) {
+      const parties = ["PT", "PL", "MDB", "PSD", "UNIÃO", "PP", "PSDB", "REPUBLICANOS", "PODEMOS", "PSB"];
+      const layer2Queries = [
+        `site:instagram.com "${mun}" ${cargo}`,
+        `site:facebook.com "${mun}" ${cargo}`,
+        `site:instagram.com "${mun}" pré-candidato`,
+        ...parties.slice(0, 6).map((p) => `${p} ${mun} ${uf} ${cargo}`),
+      ];
+      console.log("[AI LAYER 2] party search", layer2Queries);
+      const layer2Hits = await runMunicipalWebLayer(layer2Queries, "qdr:y", 6);
+      console.log("[AI LAYER 2] hits:", layer2Hits.length);
+      if (layer2Hits.length) {
+        if (history.length) addAll(await scoreMunicipalHistoricalActors(body, history, layer2Hits));
+        addAll(await extractOpenCandidatesFromHits(layer2Hits, cargo, uf, mun, "layer2-party"));
+      }
+    }
+
+    // ---------- LAYER 3: FALLBACK TSE INTELIGENTE ----------
+    if (dedup.size === 0 && history.length) {
+      console.log("[AI LAYER 3] TSE inference");
+      addAll(buildMunicipalFallbackRows(body, history, 40));
+    } else if (dedup.size === 0) {
+      console.log("[AI LAYER 3] TSE inference SKIPPED (sem histórico)");
+    }
+
+    // ---------- LAYER 4: SOCIAL DISCOVERY (bios locais) ----------
+    if (dedup.size === 0) {
+      const layer4Queries = [
+        `site:instagram.com "${mun}" (vereador OR "pré-candidato" OR "liderança comunitária")`,
+        `site:instagram.com "${mun}" ("presidente de bairro" OR político OR política)`,
+        `site:facebook.com "${mun}" (vereador OR "pré-candidato" OR político)`,
+        `"${mun}" ${uf} liderança política bairro`,
+      ];
+      console.log("[AI LAYER 4] social discovery", layer4Queries);
+      const layer4Hits = await runMunicipalWebLayer(layer4Queries, "qdr:y", 6);
+      console.log("[AI LAYER 4] hits:", layer4Hits.length);
+      if (layer4Hits.length) {
+        addAll(await extractOpenCandidatesFromHits(layer4Hits, cargo, uf, mun, "layer4-social"));
+      }
+    }
+
+    let discovered = Array.from(dedup.values()).filter((c) => c.confidence >= 45);
 
     for (const c of discovered) {
       console.log("PRE_CANDIDATE_AI", {
-        name: c.nome,
-        city: c.municipio,
-        state: c.estado,
-        cargo: c.cargo || cargo,
-        WEB_MATCHES: hits.length,
-        SOCIAL_MATCHES: c.socialScore ?? 0,
-        MEDIA_MATCHES: c.localMediaScore ?? c.mediaScore ?? 0,
-        TSE_HISTORY: c.continuityScore ?? c.historyScore ?? 0,
-        POLITICAL_ENGAGEMENT: c.politicalEngagementScore ?? 0,
-        FINAL_SCORE: c.confidence,
-        status: c.confidence >= 50 ? "APPROVED" : "REJECTED (score<50)",
+        name: c.nome, city: c.municipio, state: c.estado, cargo: c.cargo || cargo,
+        SOCIAL: c.socialScore ?? 0, MEDIA: c.localMediaScore ?? c.mediaScore ?? 0,
+        TSE: c.continuityScore ?? 0, SCORE: c.confidence, status: "APPROVED",
       });
     }
 
@@ -890,9 +995,10 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
       .sort((a, b) => b.confidence - a.confidence)
       .slice(0, 50)
       .map((c) => toRow(c, cargo));
-    console.log("FINAL IA RESULTS:", rows.length);
+    console.log("[AI FINAL COUNT]", rows.length);
     return rows;
   }
+
 
   const queries = buildDiscoveryQueries(cargo, uf, mun);
   console.log("DISCOVERY MODE: MACRO_ENGINE");
