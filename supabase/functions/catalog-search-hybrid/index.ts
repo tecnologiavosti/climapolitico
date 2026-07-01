@@ -83,42 +83,35 @@ function ufFullName(uf?: string | null): string {
 function buildCargoQueries(cargo: string, estado?: string, municipio?: string): string[] {
   const estadoNome = ufFullName(estado);
   const cargoLabel = cargo.replace(/_/g, " ");
+  // Regra simplificada: sinais recentes em notícias, redes, entrevistas, portais locais.
+  const local = municipio || estadoNome || "brasil";
+  const region = estadoNome || estado || "";
+  const base = [
+    `${cargoLabel} ${local}`,
+    `${cargoLabel} ${region}`,
+    `política ${local}`,
+    `eleições ${local} 2026`,
+    `${cargoLabel} campanha ${local}`,
+    `pré-candidato ${cargoLabel} ${local} 2026`,
+  ];
   switch (cargo) {
     case "presidente":
       return [
         "pré-candidatos presidente brasil 2026",
         "candidatos presidência da república 2026",
+        "presidente campanha brasil 2026",
+        "política brasil eleições 2026",
       ];
     case "governador":
-      return [
-        `pré-candidato governador ${estadoNome || "brasil"} 2026`,
-        `candidatos governo ${estadoNome || ""} 2026 pesquisa eleitoral`,
-        `quem vai disputar governo ${estadoNome || ""} 2026`,
-      ];
-    case "prefeito":
-      return [
-        `pré-candidatos prefeito ${municipio || ""} ${estadoNome || ""}`,
-        `eleições prefeitura ${municipio || ""} ${estadoNome || ""} 2026`,
-      ];
-    case "vereador":
-      return [
-        `vereadores em ascensão ${municipio || ""} ${estadoNome || ""}`,
-        `pré-candidatos vereador ${municipio || ""} ${estadoNome || ""}`,
-        `câmara municipal ${municipio || ""} ${estadoNome || ""}`,
-      ];
     case "senador":
-      return [
-        `pré-candidato senador ${estadoNome || "brasil"} 2026`,
-        `senado ${estadoNome || ""} 2026 candidatos`,
-      ];
     case "deputado_federal":
-      return [`pré-candidatos deputado federal ${estadoNome || "brasil"} 2026`];
     case "deputado_estadual":
-      return [`pré-candidatos deputado estadual ${estadoNome || "brasil"} 2026`];
     case "deputado_distrital":
-      return [`pré-candidatos deputado distrital ${estadoNome || "Distrito Federal"} 2026`];
+    case "prefeito":
+    case "vereador":
+      return base;
     default:
-      return cargo ? [`pré-candidato ${cargoLabel} ${municipio || ""} ${estadoNome || ""} 2026`] : [];
+      return cargo ? base : [];
   }
 }
 
@@ -138,7 +131,7 @@ function buildQueries(body: Body): string[] {
   if (!qs.length && (uf || mun)) {
     qs.push(`pré-candidatos ${mun ?? uf} 2026`);
   }
-  return Array.from(new Set(qs.map((query) => query.replace(/\s+/g, " ").trim()).filter(Boolean))).slice(0, 3);
+  return Array.from(new Set(qs.map((query) => query.replace(/\s+/g, " ").trim()).filter(Boolean))).slice(0, 5);
 }
 
 interface WebHit { title?: string; description?: string; url?: string }
@@ -619,8 +612,8 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
     console.error("FAKE AI SCORING DETECTED", { score: scored[0].confidence_score, count: scored.length });
   }
 
-  // Threshold real: só exibir IA com score >= 70
-  let filtered = scored.filter((r) => (r.confidence_score || 0) >= 70);
+  // Threshold IA: score >= 60 (sinais recentes em notícias/redes/menções políticas)
+  let filtered = scored.filter((r) => (r.confidence_score || 0) >= 60);
   // Limite municipal: máximo 15 pré-candidatos IA por cidade
   if (filterCargo === "prefeito" || filterCargo === "vereador") {
     filtered = filtered.slice(0, 15);
