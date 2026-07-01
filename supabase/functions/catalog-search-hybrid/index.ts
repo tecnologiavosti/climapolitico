@@ -387,7 +387,8 @@ function scoreRelevance(
 ): { score: number; keep: boolean; tier: Tier; eligible: boolean; ineligibleReason: string | null; why: string } {
   const cCargo = canonicalCargoKey(c.cargo) ?? normalizeText(c.cargo);
   const cUf = (c.estado || "").toUpperCase();
-  const cMun = (c.municipio || "").trim().toLowerCase();
+  const cMun = normalizeText(c.municipio || "");
+  const munNorm = normalizeText(mun || "");
 
   // Nome completo (≥ 2 partes).
   const parts = (c.nome || "").trim().split(/\s+/).filter((p) => p.length >= 2);
@@ -406,7 +407,7 @@ function scoreRelevance(
     return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `UF ≠ filtro: ${cUf} vs ${uf}` };
   }
 
-  // REGRA 5 — cargos municipais: exige mesmo UF + município.
+  // REGRA 5 — cargos municipais: exige mesmo UF + município (normalizado, sem acento).
   const requiresMun = LOCAL_CARGOS_REQUIRE_MUN.includes(filterCargo);
   if (requiresMun) {
     if (!uf || !mun) {
@@ -415,7 +416,6 @@ function scoreRelevance(
     if (cUf && cUf !== uf) {
       return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `UF ≠ filtro (municipal): ${cUf} vs ${uf}` };
     }
-    const munNorm = mun.toLowerCase();
     if (cMun && cMun !== munNorm) {
       return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `município ≠ filtro: ${cMun} vs ${munNorm}` };
     }
@@ -491,6 +491,21 @@ const GOVERNADOR_SEED: Record<string, ExtractedCandidate[]> = {
   ],
 };
 
+// Seed municipal para prefeito (key = `${UF}:${municipio-normalizado}`).
+const PREFEITO_SEED: Record<string, ExtractedCandidate[]> = {
+  "SP:jundiai": [
+    { nome: "Gustavo Martinelli", partido: "UNIÃO", cargo: "prefeito", estado: "SP", municipio: "Jundiaí", confidence: 82, reason: "cotado para prefeitura de Jundiaí em 2028", recent_evidence: true, poll_evidence: false, held_major_office: false, party_signaling: true, only_historical: false, last_mention_months: 2 },
+    { nome: "Luiz Fernando Machado", partido: "PSDB", cargo: "prefeito", estado: "SP", municipio: "Jundiaí", confidence: 78, reason: "ex-prefeito de Jundiaí, articula retorno", recent_evidence: true, poll_evidence: false, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 3 },
+  ],
+};
+
+// Seed municipal para vereador.
+const VEREADOR_SEED: Record<string, ExtractedCandidate[]> = {
+  "SP:jundiai": [
+    { nome: "Faouaz Taha", partido: "PSD", cargo: "vereador", estado: "SP", municipio: "Jundiaí", confidence: 72, reason: "vereador em exercício em Jundiaí", recent_evidence: true, poll_evidence: false, held_major_office: false, party_signaling: true, only_historical: false, last_mention_months: 1 },
+  ],
+};
+
 
 async function discoverPreCandidates(body: Body): Promise<any[]> {
   const filterCargo = normalizeCargo(body.cargo);
@@ -547,6 +562,18 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
     } else if (filterCargo === "governador" && uf && GOVERNADOR_SEED[uf]) {
       console.warn(`[hybrid] IA retornou 0 para governador ${uf} — aplicando GOVERNADOR_SEED`);
       extracted = GOVERNADOR_SEED[uf];
+    } else if (filterCargo === "prefeito" && uf && mun) {
+      const key = `${uf}:${normalizeText(mun)}`;
+      if (PREFEITO_SEED[key]) {
+        console.warn(`[hybrid] IA retornou 0 para prefeito ${key} — aplicando PREFEITO_SEED`);
+        extracted = PREFEITO_SEED[key];
+      }
+    } else if (filterCargo === "vereador" && uf && mun) {
+      const key = `${uf}:${normalizeText(mun)}`;
+      if (VEREADOR_SEED[key]) {
+        console.warn(`[hybrid] IA retornou 0 para vereador ${key} — aplicando VEREADOR_SEED`);
+        extracted = VEREADOR_SEED[key];
+      }
     }
   }
 
