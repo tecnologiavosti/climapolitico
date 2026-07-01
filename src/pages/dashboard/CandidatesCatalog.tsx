@@ -90,6 +90,7 @@ export default function CandidatesCatalog() {
     }
     const next: Filters = { ...nextFilters, candidateType: nextFilters.candidateType ?? "both" };
     console.log("CATALOG REQUEST:", { candidateType: next.candidateType, cargo: next.cargo, estado: next.estado, municipio: next.municipio, q: next.q });
+    setClientPage(0);
     setAppliedFilters(next);
   };
 
