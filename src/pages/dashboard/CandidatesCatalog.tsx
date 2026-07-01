@@ -380,10 +380,11 @@ export default function CandidatesCatalog() {
         </Card>
       ) : (
         <>
+          {(() => { console.log("TOTAL RECEBIDO", rows.length); return null; })()}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {rows.map((c) => (
+            {rows.map((c, idx) => (
               <CandidateCatalogCard
-                key={c.id}
+                key={`${c.id ?? "row"}-${idx}`}
                 candidate={c}
                 alreadyAdded={myCandidates.includes(c.nome.toLowerCase())}
                 isAdding={adoptMutation.isPending && adoptMutation.variables?.id === c.id}
