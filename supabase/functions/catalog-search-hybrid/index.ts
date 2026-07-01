@@ -167,13 +167,13 @@ function buildDiscoveryQueries(cargo: string, uf: string, mun: string): string[]
 // ---------- WEB SEARCH ----------
 interface WebHit { title?: string; description?: string; url?: string }
 
-async function firecrawlSearch(query: string): Promise<WebHit[]> {
+async function firecrawlSearch(query: string, tbs = "qdr:y"): Promise<WebHit[]> {
   if (!FIRECRAWL_API_KEY) return [];
   try {
     const r = await fetch("https://api.firecrawl.dev/v2/search", {
       method: "POST",
       headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ query, limit: 10, lang: "pt", country: "br", tbs: "qdr:y" }),
+      body: JSON.stringify({ query, limit: 10, lang: "pt", country: "br", tbs }),
     });
     const j = await r.json();
     if (!r.ok) {
@@ -190,6 +190,25 @@ async function firecrawlSearch(query: string): Promise<WebHit[]> {
       url: it?.url,
     }));
   } catch (e) { console.warn("[discovery] firecrawl err", e); return []; }
+}
+
+// Nomes muito genéricos: exigem evidência política forte para não virar falso positivo.
+const GENERIC_NAME_TOKENS = new Set([
+  "silva", "souza", "sousa", "santos", "oliveira", "pereira", "lima",
+  "ferreira", "almeida", "ribeiro", "rodrigues", "gomes", "martins",
+  "carvalho", "araujo", "barbosa", "rocha", "dias", "nascimento", "moreira",
+  "costa", "cardoso", "teixeira", "correia", "correa", "melo", "mello",
+]);
+const GENERIC_FIRST_NAMES = new Set([
+  "jose", "joao", "maria", "antonio", "luis", "luiz", "carlos", "paulo",
+  "pedro", "francisco", "manoel", "manuel", "ana", "marcos",
+]);
+function isGenericName(nome: string): boolean {
+  const toks = normalizeName(nome).split(/\s+/).filter(Boolean);
+  if (toks.length < 2) return true;
+  const first = toks[0];
+  const last = toks[toks.length - 1];
+  return GENERIC_FIRST_NAMES.has(first) && GENERIC_NAME_TOKENS.has(last);
 }
 
 // ---------- AI SCORING ----------
