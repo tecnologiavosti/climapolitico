@@ -758,7 +758,77 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
   console.log("STATE:", uf || "-");
   console.log("CARGO:", cargo || "-");
 
+  if (isMunicipal) {
+    console.log("DISCOVERY MODE: MUNICIPAL_ENGINE");
+    const includeAllMunicipalHistory = cargo === "prefeito";
+    const history = await fetchMunicipalHistory(cargo, uf, mun, includeAllMunicipalHistory);
+    const cityUniverse = await countMunicipalUniverse(uf, mun);
+    const largeCity = cityUniverse >= 100;
+    console.log("TSE_HISTORY_ROWS:", history.length);
+    console.log("MUNICIPAL_UNIVERSE:", cityUniverse, "LARGE_CITY:", largeCity);
+
+    if (!history.length) {
+      console.log("FINAL IA RESULTS: 0 (sem histórico TSE municipal)");
+      return [];
+    }
+
+    const queries = buildMunicipalEnrichmentQueries(cargo, uf, mun, history);
+    console.log("SEARCH QUERIES:", queries);
+
+    const hitLists = FIRECRAWL_API_KEY
+      ? await Promise.all(queries.map((q) => firecrawlSearch(q, "qdr:m3", 6)))
+      : [];
+    const seenHits = new Set<string>();
+    const hits: WebHit[] = [];
+    for (const list of hitLists) for (const h of list) {
+      const k = h.url || `${h.title}|${h.description}`;
+      if (k && !seenHits.has(k)) { seenHits.add(k); hits.push(h); }
+    }
+    console.log("WEB_MATCHES:", hits.length);
+
+    let discovered = await scoreMunicipalHistoricalActors(body, history, hits);
+    console.log("EXTRACTED NAMES:", discovered.length);
+
+    const dedup = new Map<string, DiscoveredCandidate>();
+    for (const c of discovered) {
+      const key = normalizeName(c.nome);
+      if (!key) continue;
+      const prev = dedup.get(key);
+      if (!prev || c.confidence > prev.confidence) dedup.set(key, c);
+    }
+    discovered = Array.from(dedup.values()).filter((c) => c.confidence >= 50);
+
+    if (discovered.length === 0 && largeCity) {
+      console.log("MUNICIPAL_FALLBACK_START");
+      discovered = buildMunicipalFallbackRows(body, history, 50);
+    }
+
+    for (const c of discovered) {
+      console.log("PRE_CANDIDATE_AI", {
+        name: c.nome,
+        city: c.municipio,
+        state: c.estado,
+        cargo: c.cargo || cargo,
+        WEB_MATCHES: hits.length,
+        SOCIAL_MATCHES: c.socialScore ?? 0,
+        MEDIA_MATCHES: c.localMediaScore ?? c.mediaScore ?? 0,
+        TSE_HISTORY: c.continuityScore ?? c.historyScore ?? 0,
+        POLITICAL_ENGAGEMENT: c.politicalEngagementScore ?? 0,
+        FINAL_SCORE: c.confidence,
+        status: c.confidence >= 50 ? "APPROVED" : "REJECTED (score<50)",
+      });
+    }
+
+    const rows = discovered
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, 50)
+      .map((c) => toRow(c, cargo));
+    console.log("FINAL IA RESULTS:", rows.length);
+    return rows;
+  }
+
   const queries = buildDiscoveryQueries(cargo, uf, mun);
+  console.log("DISCOVERY MODE: MACRO_ENGINE");
   console.log("SEARCH QUERIES:", queries);
 
   if (!queries.length) { console.log("FINAL IA RESULTS: 0 (no queries)"); return []; }
