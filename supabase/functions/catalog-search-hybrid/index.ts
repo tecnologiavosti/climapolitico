@@ -619,8 +619,8 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
     console.error("FAKE AI SCORING DETECTED", { score: scored[0].confidence_score, count: scored.length });
   }
 
-  // Threshold real: só exibir IA com score >= 70
-  let filtered = scored.filter((r) => (r.confidence_score || 0) >= 70);
+  // Threshold IA: score >= 60 (sinais recentes em notícias/redes/menções políticas)
+  let filtered = scored.filter((r) => (r.confidence_score || 0) >= 60);
   // Limite municipal: máximo 15 pré-candidatos IA por cidade
   if (filterCargo === "prefeito" || filterCargo === "vereador") {
     filtered = filtered.slice(0, 15);
