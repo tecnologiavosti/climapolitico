@@ -491,20 +491,23 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
   const cargo = normalizeCargo(body.cargo);
   const uf = firstValue(body.estado).toUpperCase();
   const mun = (body.municipio || "").trim();
+  const isMunicipal = cargo === "prefeito" || cargo === "vereador";
+  const isPresidente = cargo === "presidente";
 
-  console.log("DISCOVERY MODE");
-  console.log("FILTER:", { cargo, uf, mun });
+  console.log("PRE_CANDIDATE_AI_START");
+  console.log("CITY:", mun || "-");
+  console.log("STATE:", uf || "-");
+  console.log("CARGO:", cargo || "-");
 
   const queries = buildDiscoveryQueries(cargo, uf, mun);
   console.log("SEARCH QUERIES:", queries);
 
-  console.log("STEP 1 FILTERS", { cargo, uf, mun });
-  console.log("STEP 2 QUERIES", queries);
-
   if (!queries.length) { console.log("FINAL IA RESULTS: 0 (no queries)"); return []; }
 
+  // Recência: municipais 90d, demais 180d
+  const tbs = isMunicipal ? "qdr:m3" : "qdr:m6";
   const hitLists = FIRECRAWL_API_KEY
-    ? await Promise.all(queries.map(firecrawlSearch))
+    ? await Promise.all(queries.map((q) => firecrawlSearch(q, tbs)))
     : [];
   const seen = new Set<string>();
   const hits: WebHit[] = [];
@@ -512,14 +515,12 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
     const k = h.url || `${h.title}|${h.description}`;
     if (k && !seen.has(k)) { seen.add(k); hits.push(h); }
   }
-  console.log("STEP 3 RAW SEARCH", hits.length);
+  console.log("WEB_MATCHES:", hits.length);
 
-  // NÃO abortar aqui: para cargos estaduais/nacionais, a IA usa conhecimento próprio como fallback.
   const discovered = await scorePoliticalActors(body, hits, queries);
   console.log("STEP 4 EXTRACTED NAMES", discovered.length);
-  console.log("STEP 5 LLM OUTPUT", discovered.map((c) => `${c.nome} (${c.confidence})`).join(" | "));
 
-  // Dedup: chave = últimos 2 tokens do nome normalizado (une "Felipe D'Avila" e "Luiz Felipe D'Avila")
+  // Dedup
   const dedupKeyOf = (nome: string) => {
     const toks = normalizeName(nome).split(/\s+/).filter(Boolean);
     return toks.length >= 2 ? toks.slice(-2).join(" ") : toks.join(" ");
@@ -532,20 +533,16 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
     if (!prev || c.confidence > prev.confidence) dedup.set(key, c);
   }
 
-  const isPresidente = cargo === "presidente";
-  const minScore = isPresidente ? 60 : 40;
+  const minScore = 60; // regra global v2
 
-  // Apply eligibility penalty (inelegíveis mantidos, mas score * 0.75)
+  // Penalidade de inelegibilidade
   const withPenalty = Array.from(dedup.values()).map((c) => {
     const inel = INELIGIBLE[normalizeName(c.nome)];
-    if (inel) {
-      const penalized = Math.round(c.confidence * 0.75);
-      return { ...c, confidence: penalized };
-    }
+    if (inel) return { ...c, confidence: Math.round(c.confidence * 0.75) };
     return c;
   });
 
-  // PRESIDENTE: blocklist + âncoras de score + hard filter nationalRelevance >= 60
+  // Filtro presidencial (mantém regras existentes)
   const relevanceFiltered = isPresidente
     ? withPenalty
         .filter((c) => {
@@ -568,27 +565,56 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
         })
     : withPenalty;
 
+  // Debug por candidato + regras v2
+  const approved: DiscoveredCandidate[] = [];
+  for (const c of relevanceFiltered) {
+    const cm = c.criteriaMet ?? 0;
+    const nameToks = (c.nome || "").trim().split(/\s+/).length;
+    const generic = isGenericName(c.nome);
+    const strongEvidence = (c.intentionScore ?? 0) >= 30 || (c.mediaScore ?? 0) >= 15;
+
+    let approvedFlag = true;
+    let rejectReason = "";
+
+    if (nameToks < 2) { approvedFlag = false; rejectReason = "nome incompleto"; }
+    else if (c.confidence < minScore) { approvedFlag = false; rejectReason = `score<${minScore}`; }
+    else if (isMunicipal && cm < 2) { approvedFlag = false; rejectReason = "municipal exige >=2 critérios"; }
+    else if (generic && !strongEvidence) { approvedFlag = false; rejectReason = "nome genérico sem evidência forte"; }
+
+    console.log("PRE_CANDIDATE_AI", {
+      name: c.nome,
+      city: c.municipio,
+      state: c.estado,
+      cargo: c.cargo || cargo,
+      WEB_MATCHES: hits.length,
+      SOCIAL_MATCHES: c.socialScore,
+      MEDIA_MATCHES: c.mediaScore,
+      TSE_HISTORY: c.historyScore,
+      INTENTION: c.intentionScore,
+      criteriaMet: cm,
+      FINAL_SCORE: c.confidence,
+      status: approvedFlag ? "APPROVED" : `REJECTED (${rejectReason})`,
+    });
+
+    if (approvedFlag) approved.push(c);
+  }
+
   if (isPresidente) {
-    for (const c of relevanceFiltered) {
+    for (const c of approved) {
       console.log("PRESIDENTIAL SCORE", {
-        name: c.nome,
-        mentions: c.mentions,
-        engagement: c.engagement,
-        sentiment: c.sentiment,
-        nationalRelevance: c.nationalRelevance,
-        electoralViability: c.electoralViability,
-        finalScore: c.confidence,
+        name: c.nome, mentions: c.mentions, engagement: c.engagement,
+        sentiment: c.sentiment, nationalRelevance: c.nationalRelevance,
+        electoralViability: c.electoralViability, finalScore: c.confidence,
       });
     }
   }
 
-  const rows = relevanceFiltered
-    .filter((c) => c.confidence >= minScore && (c.nome || "").trim().split(/\s+/).length >= 2)
+  const rows = approved
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, isPresidente ? 12 : 50)
     .map((c) => toRow(c, cargo));
 
-  console.log("STEP 6 FINAL FILTER", rows.length);
+  console.log("FINAL IA RESULTS:", rows.length);
   return rows;
 }
 
