@@ -60,6 +60,9 @@ export default function CandidatesCatalog() {
   const [searchQuery, setSearchQuery] = useState("");
   // Filtros aplicados — só estes disparam a query.
   const [appliedFilters, setAppliedFilters] = useState<Filters | null>(null);
+  // Paginação client-side (20 por página) sobre as linhas retornadas pelo backend.
+  const [clientPage, setClientPage] = useState(0);
+  const CLIENT_PAGE_SIZE = 20;
 
   const { data, isLoading, isFetching, isSuccess, isError, error } = useCatalogSearch(appliedFilters);
   const rows = data?.rows ?? [];
