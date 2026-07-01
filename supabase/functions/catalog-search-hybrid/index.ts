@@ -450,24 +450,34 @@ const NATIONAL_CARGOS = ["presidente", "vice_presidente", "ministro"];
 const REGIONAL_CARGOS_REQUIRE_UF = ["governador", "vice_governador", "senador", "deputado_federal", "deputado_estadual", "deputado_distrital"];
 const LOCAL_CARGOS_REQUIRE_MUN = ["prefeito", "vice_prefeito", "vereador"];
 
-// Seed nacional para garantir resultado quando IA/Web ficam indisponíveis.
+// REGRA 2 — seeds por cargo. Cada cargo tem sua base própria.
+// Presidente 2026 (REGRA 7): lista realista, sem Haddad/Ciro.
 const NATIONAL_SEED: ExtractedCandidate[] = [
   { nome: "Luiz Inácio Lula da Silva", partido: "PT", cargo: "presidente", estado: null, municipio: null, confidence: 95, reason: "presidente em exercício, pré-candidato à reeleição em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 0 },
-  { nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "presidente", estado: null, municipio: null, confidence: 90, reason: "governador de SP, cotado para presidência em 2026 (Datafolha/Quaest)", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 0 },
-  { nome: "Romeu Zema", partido: "NOVO", cargo: "presidente", estado: null, municipio: null, confidence: 84, reason: "governador de MG, pré-candidato à presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 2 },
-  { nome: "Ronaldo Caiado", partido: "UNIÃO", cargo: "presidente", estado: null, municipio: null, confidence: 82, reason: "governador de GO, lançou pré-candidatura à presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 1 },
-  { nome: "Ratinho Junior", partido: "PSD", cargo: "presidente", estado: null, municipio: null, confidence: 80, reason: "governador do PR, pré-candidato à presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 1 },
-  { nome: "Eduardo Leite", partido: "PSDB", cargo: "presidente", estado: null, municipio: null, confidence: 72, reason: "governador do RS, articula pré-candidatura presidencial em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: false, only_historical: false, last_mention_months: 3 },
-  // Inelegível — mantido para que UI mostre badge 🔴.
-  { nome: "Jair Bolsonaro", partido: "PL", cargo: "presidente", estado: null, municipio: null, confidence: 40, reason: "inelegível pelo TSE até 2030; articula indicação de candidato apoiado", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 0 },
+  { nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "presidente", estado: null, municipio: null, confidence: 92, reason: "governador de SP, forte cotado para presidência em 2026 (Datafolha/Quaest)", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 0 },
+  { nome: "Ratinho Junior", partido: "PSD", cargo: "presidente", estado: null, municipio: null, confidence: 82, reason: "governador do PR, pré-candidato à presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 1 },
+  { nome: "Ronaldo Caiado", partido: "UNIÃO", cargo: "presidente", estado: null, municipio: null, confidence: 80, reason: "governador de GO, pré-candidato à presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 1 },
+  { nome: "Romeu Zema", partido: "NOVO", cargo: "presidente", estado: null, municipio: null, confidence: 82, reason: "governador de MG, pré-candidato à presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 2 },
+  { nome: "Eduardo Leite", partido: "PSDB", cargo: "presidente", estado: null, municipio: null, confidence: 72, reason: "governador do RS, articula pré-candidatura presidencial em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 3 },
+  { nome: "Flávio Bolsonaro", partido: "PL", cargo: "presidente", estado: null, municipio: null, confidence: 70, reason: "senador RJ, cotado como nome do PL para presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: false, party_signaling: true, only_historical: false, last_mention_months: 1 },
+  { nome: "Michelle Bolsonaro", partido: "PL", cargo: "presidente", estado: null, municipio: null, confidence: 68, reason: "presidente do PL Mulher, ventilada pelo PL para presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: false, party_signaling: true, only_historical: false, last_mention_months: 1 },
 ];
 
-// Seed regional para governador — usado quando IA retorna 0 para "governador" + UF.
-// Apenas nomes que atendem ≥2 critérios (major office / pesquisas / notícias recentes / sinalização partidária).
+// REGRA 2 — Seeds por cargo. Expandir conforme cobertura.
+const PRE_CANDIDATE_SEEDS: Record<string, ExtractedCandidate[]> = {
+  presidente: NATIONAL_SEED,
+  governador: [],
+  prefeito: [],
+  senador: [],
+  deputado_federal: [],
+  deputado_estadual: [],
+  vereador: [],
+};
+
+// Seed regional para governador (fallback quando IA/Web = 0).
 const GOVERNADOR_SEED: Record<string, ExtractedCandidate[]> = {
   SP: [
     { nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "governador", estado: "SP", municipio: null, confidence: 90, reason: "governador em exercício de SP, cotado para reeleição em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 0 },
-    { nome: "Fernando Haddad", partido: "PT", cargo: "governador", estado: "SP", municipio: null, confidence: 75, reason: "ex-prefeito de SP e ministro da Fazenda, ventilado pelo PT para governo de SP em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 2 },
     { nome: "Márcio França", partido: "PSB", cargo: "governador", estado: "SP", municipio: null, confidence: 65, reason: "ex-governador de SP, cotado pelo PSB para governo de SP em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 3 },
     { nome: "Guilherme Boulos", partido: "PSOL", cargo: "governador", estado: "SP", municipio: null, confidence: 62, reason: "deputado federal, cotado pela esquerda para governo de SP em 2026", recent_evidence: true, poll_evidence: true, held_major_office: false, party_signaling: true, only_historical: false, last_mention_months: 2 },
   ],
@@ -477,9 +487,10 @@ const GOVERNADOR_SEED: Record<string, ExtractedCandidate[]> = {
   ],
   RJ: [
     { nome: "Cláudio Castro", partido: "PL", cargo: "governador", estado: "RJ", municipio: null, confidence: 72, reason: "governador em exercício do RJ, articula reeleição em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 1 },
-    { nome: "Eduardo Paes", partido: "PSD", cargo: "governador", estado: "RJ", municipio: null, confidence: 70, reason: "prefeito do Rio (capital), cotado pelo PSD para governo do RJ em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 2 },
+    { nome: "Eduardo Paes", partido: "PSD", cargo: "governador", estado: "RJ", municipio: null, confidence: 70, reason: "prefeito do Rio, cotado pelo PSD para governo do RJ em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 2 },
   ],
 };
+
 
 async function discoverPreCandidates(body: Body): Promise<any[]> {
   const filterCargo = normalizeCargo(body.cargo);
