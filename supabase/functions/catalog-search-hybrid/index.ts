@@ -649,17 +649,34 @@ JSON estrito:
         const criteriaMet =
           (intentionScore > 0 ? 1 : 0) + (socialScore > 0 ? 1 : 0) +
           (mediaScore > 0 ? 1 : 0) + (historyScore > 0 ? 1 : 0);
-        let finalScore = clamp(c.score);
-        if (isPresidente && (c.mentions != null || c.nationalRelevance != null)) {
-          finalScore = clamp(
-            mentions * 0.25 + engagement * 0.20 + sentiment * 0.15 +
-            nationalRelevance * 0.20 + electoralViability * 0.20
-          );
-        } else if (c.intentionScore != null || c.socialScore != null ||
-                   c.mediaScore != null || c.historyScore != null) {
-          // Recomputa finalScore pela soma v2 quando disponível
-          finalScore = clamp(intentionScore + socialScore + mediaScore + historyScore);
-        }
+
+        // Motor v3 — se IA não retornou métricas 0-100, deriva das métricas v2
+        const historicalStrength = c.historicalStrength != null
+          ? clamp(c.historicalStrength)
+          : clamp((historyScore / 15) * 100);
+        const politicalActivity = c.politicalActivity != null
+          ? clamp(c.politicalActivity)
+          : clamp((socialScore / 25) * 100);
+        const socialSignal = c.socialSignal != null
+          ? clamp(c.socialSignal)
+          : clamp((socialScore / 25) * 100);
+        const mediaSignal = c.mediaSignal != null
+          ? clamp(c.mediaSignal)
+          : clamp((mediaScore / 20) * 100);
+        const candidacyIntent = c.candidacyIntent != null
+          ? clamp(c.candidacyIntent)
+          : clamp((intentionScore / 40) * 100);
+        const presidentialChecks = c.presidentialChecks != null ? Math.max(0, Math.min(5, Number(c.presidentialChecks) || 0)) : 0;
+
+        // Score ponderado v3 (0-100): 15/20/20/20/25
+        const finalScore = clamp(
+          historicalStrength * 0.15 +
+          politicalActivity  * 0.20 +
+          socialSignal       * 0.20 +
+          mediaSignal        * 0.20 +
+          candidacyIntent    * 0.25
+        );
+
         return {
           nome: String(c.name).trim(),
           partido: c.party || null,
@@ -675,6 +692,8 @@ JSON estrito:
           engagement: isPresidente ? engagement : undefined,
           sentiment: isPresidente ? sentiment : undefined,
           intentionScore, socialScore, mediaScore, historyScore, criteriaMet,
+          historicalStrength, politicalActivity, socialSignal, mediaSignal, candidacyIntent,
+          presidentialChecks,
         };
       });
   } catch (e) { console.warn("[discovery] ai err", e); return []; }
