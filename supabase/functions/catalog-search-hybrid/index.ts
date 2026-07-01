@@ -223,40 +223,41 @@ async function scorePoliticalActors(
     cargo === "deputado_federal" || cargo === "deputado_estadual" || cargo === "deputado_distrital" ||
     cargo === "presidente");
 
-  const system = `Você é um analista político brasileiro especialista em descobrir atores políticos com potencial eleitoral. Responda SEMPRE em JSON estrito. Use SEMPRE nomes reais de pessoas brasileiras verificáveis.`;
+  const system = `Você é um analista político brasileiro sênior. Responda SEMPRE em JSON estrito. Use SEMPRE nomes reais e verificáveis de POLÍTICOS brasileiros (nunca jornalistas, comentaristas, influenciadores, apresentadores, celebridades ou empresários sem campanha ativa).`;
 
-  const user = `Identifique pessoas com potencial de disputar o cargo de "${cargo || "político"}" em ${local} nas eleições de 2026.
+  const isPresidente = cargo === "presidente";
 
-${isStateOrNational
-  ? `Como cargo estadual/nacional, use livremente seu conhecimento sobre a política brasileira: governador atual, ex-governadores, senadores, deputados federais/estaduais, prefeitos de capitais, líderes partidários e figuras historicamente competitivas do estado. As evidências são complemento, não obrigatoriedade.`
-  : `Baseie-se prioritariamente nas evidências. Use apenas nomes REAIS presentes nelas.`}
+  const presidenteRules = isPresidente ? `
+REGRAS ESTRITAS PARA PRESIDENTE (aplicar TODAS):
+1. A pessoa PRECISA ocupar/ter ocupado cargo político relevante: presidente, ex-presidente, governador, ex-governador, senador, ministro, deputado federal de destaque nacional, ou prefeito de capital.
+2. PRECISA haver evidência textual eleitoral explícita nas fontes (ex.: "pré-candidato à presidência", "cotado para 2026", "disputa o Planalto", "sucessão presidencial", "nome para 2026").
+3. Fontes confiáveis obrigatórias (Folha, O Globo, Estadão, CNN Brasil, Poder360, UOL Política, G1). Redes sociais sozinhas NÃO bastam.
+4. HARD-BLOCK: jornalistas (Andréia Sadi, William Waack, etc.), comentaristas, apresentadores, influenciadores, celebridades e empresários sem campanha eleitoral ativa. NÃO incluir.
+5. NÃO forçar estado. Infira o estado REAL de origem/atuação política de cada nome (ex.: Lula-SP, Tarcísio-SP, Ratinho Jr-PR, Caiado-GO, Eduardo Leite-RS, Ronaldo Nogueira-RS, Ciro-CE, Marina-AC, Zema-MG, Haddad-SP, Pacheco-MG, Simone Tebet-MS).
+6. Score = 40% relevância política + 40% evidência eleitoral (menções explícitas de 2026/Planalto) + 20% força de mídia (fontes confiáveis).
+7. Só retorne quem cumprir ao menos 3 dos 4 critérios (cargo, evidência textual, fonte confiável, menção 2026).
+` : "";
 
-Considere qualquer perfil politicamente ativo:
-- vereadores, ex-vereadores em exercício
-- secretários municipais/estaduais
-- prefeitos, ex-prefeitos
-- deputados, ex-deputados
-- senadores, ex-senadores
-- governadores, ex-governadores
-- líderes comunitários, presidentes de associações
-- sindicalistas, empresários com atuação política
-- opositores ativos
-- presidentes de partidos locais
+  const user = `Identifique pré-candidatos ao cargo de "${cargo || "político"}" em ${local} nas eleições de 2026.
 
-Aceite como potencial candidato ao cargo qualquer figura semanticamente compatível (ex.: ex-governador, senador cotado ao governo, prefeito de capital articulando candidatura estadual, etc.).
+${presidenteRules}
 
-Avalie usando: influência local (30%), notícias recentes (20%), engajamento social (15%), discurso político (15%), viabilidade eleitoral (10%), crescimento de visibilidade (10%).
+${isStateOrNational && !isPresidente
+  ? `Cargo estadual/nacional: use seu conhecimento sobre a política brasileira (governadores, ex-governadores, senadores, deputados, prefeitos de capitais, líderes partidários). Evidências são complemento.`
+  : isPresidente
+    ? `Baseie-se nas evidências web fornecidas. Só inclua nomes que apareçam nas evidências com contexto eleitoral 2026 EXPLÍCITO.`
+    : `Baseie-se prioritariamente nas evidências. Use apenas nomes REAIS presentes nelas.`}
 
-Classifique:
+Classificação:
 - forte     (score 90-100)
 - cotado    (score 75-89)
 - possivel  (score 60-74)
-- emergente (score 40-59)
+- emergente (score 40-59, apenas cargos locais)
 
-Retorne 5 a 30 nomes. Infira partido e cargo provável quando possível. Escreva um "reason" curto.
+${isPresidente ? "Para PRESIDENTE, só retorne com score >= 60. Máximo 15 nomes." : "Retorne 5 a 30 nomes."} Infira partido e ESTADO real de cada pessoa. "reason" curto citando a fonte/evidência.
 
 Cargo filtrado: ${cargo || "qualquer"}
-Estado: ${estadoNome} (${uf || "-"})
+Estado filtro: ${estadoNome} (${uf || "-"})
 Município: ${mun || "-"}
 
 Evidências:
@@ -265,23 +266,32 @@ ${evidence}
 JSON estrito:
 { "candidatos": [
   { "name": string, "score": number, "status": "forte"|"cotado"|"possivel"|"emergente",
-    "party": string|null, "role": string|null, "reason": string }
+    "party": string|null, "role": string|null, "state": string|null, "category": "politico"|"jornalista"|"influenciador"|"empresario"|"celebridade"|"outro", "reason": string }
 ] }`;
 
   try {
     const ai = await callAICerebrasFirst({
       systemMsg: system, userPrompt: user, jsonMode: true,
-      maxTokens: 2200, temperature: 0.3, tag: "discovery-engine",
+      maxTokens: 2200, temperature: 0.2, tag: "discovery-engine",
     });
     const parsed = JSON.parse(ai.content);
     const arr = Array.isArray(parsed?.candidatos) ? parsed.candidatos : [];
+    const BLOCKED_CATEGORIES = new Set(["jornalista", "comentarista", "influenciador", "apresentador", "celebridade", "empresario"]);
     return arr
       .filter((c: any) => c?.name && typeof c.score === "number")
+      .filter((c: any) => {
+        const cat = String(c.category || "").toLowerCase();
+        if (BLOCKED_CATEGORIES.has(cat)) {
+          console.log("[discovery] BLOCKED category:", c.name, cat);
+          return false;
+        }
+        return true;
+      })
       .map((c: any): DiscoveredCandidate => ({
         nome: String(c.name).trim(),
         partido: c.party || null,
         cargo: c.role || cargo || null,
-        estado: uf || null,
+        estado: (c.state ? normalizeUf(c.state) : null) || (isPresidente ? null : (uf || null)),
         municipio: mun || null,
         confidence: Math.max(0, Math.min(100, Number(c.score) || 0)),
         status: c.status || "emergente",
