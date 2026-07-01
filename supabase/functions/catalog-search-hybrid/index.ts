@@ -945,6 +945,7 @@ function toRow(c: DiscoveredCandidate, fallbackCargo: string) {
     is_eligible: !inel,
     ineligible_reason: inel?.reason ?? null,
     reason: c.reason || null,
+    source: c.source || "ai_web",
   };
 }
 
