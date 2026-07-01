@@ -386,33 +386,62 @@ export default function CandidatesCatalog() {
       ) : (
         <>
           {(() => { console.log("TOTAL RECEBIDO", rows.length); return null; })()}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {rows.map((c, idx) => (
-              <CandidateCatalogCard
-                key={`${c.id ?? "row"}-${idx}`}
-                candidate={c}
-                alreadyAdded={myCandidates.includes(c.nome.toLowerCase())}
-                isAdding={adoptMutation.isPending && adoptMutation.variables?.id === c.id}
-                onAdd={(cand) => adoptMutation.mutate(cand)}
-              />
-            ))}
-          </div>
+          {(() => {
+            const totalPagesClient = Math.max(1, Math.ceil(rows.length / CLIENT_PAGE_SIZE));
+            const safePage = Math.min(clientPage, totalPagesClient - 1);
+            const visibleCandidates = rows.slice(safePage * CLIENT_PAGE_SIZE, (safePage + 1) * CLIENT_PAGE_SIZE);
+            console.log("TOTAL RENDERIZADO", visibleCandidates.length, "página", safePage + 1, "de", totalPagesClient);
+            return (
+              <>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {visibleCandidates.map((c, idx) => (
+                    <CandidateCatalogCard
+                      key={`${c.id ?? "row"}-${safePage}-${idx}`}
+                      candidate={c}
+                      alreadyAdded={myCandidates.includes(c.nome.toLowerCase())}
+                      isAdding={adoptMutation.isPending && adoptMutation.variables?.id === c.id}
+                      onAdd={(cand) => adoptMutation.mutate(cand)}
+                    />
+                  ))}
+                </div>
 
-          <div className="flex items-center justify-between pt-2">
-            <span className="text-xs text-muted-foreground">
-              {exactTotal
-                ? `Página ${page + 1} de ${totalPages.toLocaleString("pt-BR")}`
-                : `Página ${page + 1} · 50 por página${hasNext ? " · há mais resultados" : ""}`}
-            </span>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" disabled={page === 0 || busy} onClick={() => goPage(page - 1)}>
-                <ChevronLeft className="h-4 w-4 mr-1" /> Anterior
-              </Button>
-              <Button size="sm" variant="outline" disabled={!hasNext || busy} onClick={() => goPage(page + 1)}>
-                Próxima <ChevronRight className="h-4 w-4 ml-1" />
-              </Button>
-            </div>
-          </div>
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-xs text-muted-foreground">
+                    Página {safePage + 1} de {totalPagesClient} · {rows.length} candidato(s){hasNext ? " · há mais resultados no servidor" : ""}
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={safePage === 0 || busy}
+                      onClick={() => setClientPage((p) => Math.max(0, p - 1))}
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" /> Anterior
+                    </Button>
+                    {safePage >= totalPagesClient - 1 && hasNext ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() => { setClientPage(0); goPage(page + 1); }}
+                      >
+                        Próxima página do servidor <ChevronRight className="h-4 w-4 ml-1" />
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={safePage >= totalPagesClient - 1 || busy}
+                        onClick={() => setClientPage((p) => p + 1)}
+                      >
+                        Próxima <ChevronRight className="h-4 w-4 ml-1" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </>
+            );
+          })()}
         </>
       )}
 
