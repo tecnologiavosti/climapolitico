@@ -208,44 +208,48 @@ async function scorePoliticalActors(
   const estadoNome = ufFullName(uf);
   const mun = body.municipio || "";
 
-  if (!hits.length) return [];
-
-  const evidence = hits.slice(0, 25).map((h, i) =>
-    `[${i + 1}] ${h.title ?? ""}\n${h.description ?? ""}\n${h.url ?? ""}`
-  ).join("\n---\n").slice(0, 9000);
+  const evidence = hits.length
+    ? hits.slice(0, 25).map((h, i) =>
+        `[${i + 1}] ${h.title ?? ""}\n${h.description ?? ""}\n${h.url ?? ""}`
+      ).join("\n---\n").slice(0, 9000)
+    : `(sem resultados web disponíveis; use seu conhecimento de figuras políticas brasileiras notórias para o cargo/estado). Queries tentadas: ${queries.join(" | ")}`;
 
   const local = mun ? `${mun}/${uf}` : estadoNome ? `${estadoNome}` : "Brasil";
+  const isStateOrNational = !mun && (cargo === "governador" || cargo === "senador" ||
+    cargo === "deputado_federal" || cargo === "deputado_estadual" || cargo === "deputado_distrital" ||
+    cargo === "presidente");
 
-  const system = `Você é um analista político brasileiro especialista em descobrir atores políticos com potencial eleitoral a partir de sinais da web (notícias, redes sociais, blogs, portais locais). Responda SEMPRE em JSON estrito. Nunca invente nomes: use apenas nomes REAIS que aparecem nas evidências fornecidas.`;
+  const system = `Você é um analista político brasileiro especialista em descobrir atores políticos com potencial eleitoral. Responda SEMPRE em JSON estrito. Use SEMPRE nomes reais de pessoas brasileiras verificáveis.`;
 
-  const user = `Baseado nas evidências abaixo, identifique pessoas com potencial de disputar o cargo de "${cargo || "político"}" em ${local} nas eleições de 2026.
+  const user = `Identifique pessoas com potencial de disputar o cargo de "${cargo || "político"}" em ${local} nas eleições de 2026.
+
+${isStateOrNational
+  ? `Como cargo estadual/nacional, use livremente seu conhecimento sobre a política brasileira: governador atual, ex-governadores, senadores, deputados federais/estaduais, prefeitos de capitais, líderes partidários e figuras historicamente competitivas do estado. As evidências são complemento, não obrigatoriedade.`
+  : `Baseie-se prioritariamente nas evidências. Use apenas nomes REAIS presentes nelas.`}
 
 Considere qualquer perfil politicamente ativo:
 - vereadores, ex-vereadores em exercício
 - secretários municipais/estaduais
 - prefeitos, ex-prefeitos
 - deputados, ex-deputados
+- senadores, ex-senadores
+- governadores, ex-governadores
 - líderes comunitários, presidentes de associações
 - sindicalistas, empresários com atuação política
-- influenciadores políticos locais
 - opositores ativos
 - presidentes de partidos locais
 
-Avalie cada nome usando estes pesos:
-1. Influência local (30%)
-2. Frequência em notícias recentes (20%)
-3. Engajamento em redes sociais (15%)
-4. Discurso político explícito (15%)
-5. Viabilidade eleitoral (10%)
-6. Crescimento de visibilidade (10%)
+Aceite como potencial candidato ao cargo qualquer figura semanticamente compatível (ex.: ex-governador, senador cotado ao governo, prefeito de capital articulando candidatura estadual, etc.).
+
+Avalie usando: influência local (30%), notícias recentes (20%), engajamento social (15%), discurso político (15%), viabilidade eleitoral (10%), crescimento de visibilidade (10%).
 
 Classifique:
-- forte     (score 90-100): candidatura praticamente certa
-- cotado    (score 75-89):  fortemente ventilado
-- possivel  (score 60-74):  possibilidade real
-- emergente (score 40-59):  nome em ascensão
+- forte     (score 90-100)
+- cotado    (score 75-89)
+- possivel  (score 60-74)
+- emergente (score 40-59)
 
-Retorne 5 a 30 nomes (o máximo que as evidências permitirem). NÃO invente nomes ausentes das evidências. Se possível, infira o partido e o cargo provável. Escreva um "reason" curto citando a evidência.
+Retorne 5 a 30 nomes. Infira partido e cargo provável quando possível. Escreva um "reason" curto.
 
 Cargo filtrado: ${cargo || "qualquer"}
 Estado: ${estadoNome} (${uf || "-"})
