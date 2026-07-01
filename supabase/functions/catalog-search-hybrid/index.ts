@@ -202,6 +202,11 @@ interface DiscoveredCandidate {
   confidence: number;
   status?: string;
   reason?: string;
+  nationalRelevance?: number;
+  electoralViability?: number;
+  mentions?: number;
+  engagement?: number;
+  sentiment?: number;
 }
 
 async function scorePoliticalActors(
@@ -229,13 +234,19 @@ async function scorePoliticalActors(
 
   const presidenteRules = isPresidente ? `
 REGRAS ESTRITAS PARA PRESIDENTE (aplicar TODAS):
-1. A pessoa PRECISA ocupar/ter ocupado cargo político relevante: presidente, ex-presidente, governador, ex-governador, senador, ministro, deputado federal de destaque nacional, ou prefeito de capital.
-2. PRECISA haver evidência textual eleitoral explícita nas fontes (ex.: "pré-candidato à presidência", "cotado para 2026", "disputa o Planalto", "sucessão presidencial", "nome para 2026").
-3. Fontes confiáveis obrigatórias (Folha, O Globo, Estadão, CNN Brasil, Poder360, UOL Política, G1). Redes sociais sozinhas NÃO bastam.
-4. HARD-BLOCK: jornalistas (Andréia Sadi, William Waack, etc.), comentaristas, apresentadores, influenciadores, celebridades e empresários sem campanha eleitoral ativa. NÃO incluir.
-5. NÃO forçar estado. Infira o estado REAL de origem/atuação política de cada nome (ex.: Lula-SP, Tarcísio-SP, Ratinho Jr-PR, Caiado-GO, Eduardo Leite-RS, Ronaldo Nogueira-RS, Ciro-CE, Marina-AC, Zema-MG, Haddad-SP, Pacheco-MG, Simone Tebet-MS).
-6. Score = 40% relevância política + 40% evidência eleitoral (menções explícitas de 2026/Planalto) + 20% força de mídia (fontes confiáveis).
-7. Só retorne quem cumprir ao menos 3 dos 4 critérios (cargo, evidência textual, fonte confiável, menção 2026).
+1. Só inclua figuras de RELEVÂNCIA NACIONAL COMPROVADA: presidente/ex-presidente, governador/ex-governador de estado grande, senador/ministro de destaque nacional, prefeito de capital com projeção nacional, ou pré-candidato historicamente presidenciável.
+2. GROUND TRUTH de candidatos plausíveis (nível de relevância esperado): Lula, Tarcísio, Bolsonaro, Ciro Gomes, Simone Tebet, Sergio Moro, Marina Silva, Romeu Zema, Ronaldo Caiado, Eduardo Leite, Ratinho Junior, Haddad, Pacheco, Michelle Bolsonaro. Nomes fora desse patamar (ex.: Renan Calheiros, Ronaldo Nogueira, deputados sem tração nacional) devem receber scores baixíssimos ou ser omitidos.
+3. HARD-BLOCK: jornalistas, comentaristas, apresentadores, influenciadores, celebridades e empresários sem campanha eleitoral ativa.
+4. NÃO forçar estado. Infira o estado REAL de cada nome (Lula-SP, Tarcísio-SP, Caiado-GO, Eduardo Leite-RS, Ciro-CE, Marina-AC, Zema-MG, Haddad-SP, Pacheco-MG, Tebet-MS, Ratinho Jr-PR).
+
+Para cada candidato retorne também estas métricas 0-100:
+- nationalRelevance: cobertura em mídia nacional + entrevistas + presença em debates + menções em pesquisas eleitorais (Quaest/Datafolha/Paraná Pesquisas). Ex.: Lula=100, Tarcísio=95, Ciro=90, Tebet=75, Renan=25, Ronaldo Nogueira=5.
+- electoralViability: já disputou presidência, governa estado grande, partido nacional forte, aparece em pesquisas. Ex.: Lula=100, Tarcísio=95, Ciro=85, Tebet=75, Renan=20, Ronaldo Nogueira=2.
+- mentions, engagement, sentiment: 0-100 estimados a partir das evidências e do seu conhecimento.
+
+Fórmula obrigatória do score final:
+finalScore = mentions*0.25 + engagement*0.20 + sentiment*0.15 + nationalRelevance*0.20 + electoralViability*0.20
+Retorne o campo "score" JÁ CALCULADO por essa fórmula (0-100).
 ` : "";
 
   const user = `Identifique pré-candidatos ao cargo de "${cargo || "político"}" em ${local} nas eleições de 2026.
@@ -245,7 +256,7 @@ ${presidenteRules}
 ${isStateOrNational && !isPresidente
   ? `Cargo estadual/nacional: use seu conhecimento sobre a política brasileira (governadores, ex-governadores, senadores, deputados, prefeitos de capitais, líderes partidários). Evidências são complemento.`
   : isPresidente
-    ? `Baseie-se nas evidências web fornecidas. Só inclua nomes que apareçam nas evidências com contexto eleitoral 2026 EXPLÍCITO.`
+    ? `Combine evidências web + seu conhecimento sobre presidenciáveis reais. Score DEVE seguir a fórmula acima.`
     : `Baseie-se prioritariamente nas evidências. Use apenas nomes REAIS presentes nelas.`}
 
 Classificação:
@@ -254,7 +265,7 @@ Classificação:
 - possivel  (score 60-74)
 - emergente (score 40-59, apenas cargos locais)
 
-${isPresidente ? "Para PRESIDENTE, só retorne com score >= 60. Máximo 15 nomes." : "Retorne 5 a 30 nomes."} Infira partido e ESTADO real de cada pessoa. "reason" curto citando a fonte/evidência.
+${isPresidente ? "Para PRESIDENTE: só retorne quem tiver nationalRelevance >= 60 E score final >= 60. Máximo 12 nomes." : "Retorne 5 a 30 nomes."} Infira partido e ESTADO real de cada pessoa. "reason" curto citando a fonte/evidência.
 
 Cargo filtrado: ${cargo || "qualquer"}
 Estado filtro: ${estadoNome} (${uf || "-"})
@@ -266,13 +277,16 @@ ${evidence}
 JSON estrito:
 { "candidatos": [
   { "name": string, "score": number, "status": "forte"|"cotado"|"possivel"|"emergente",
-    "party": string|null, "role": string|null, "state": string|null, "category": "politico"|"jornalista"|"influenciador"|"empresario"|"celebridade"|"outro", "reason": string }
+    "party": string|null, "role": string|null, "state": string|null,
+    "category": "politico"|"jornalista"|"influenciador"|"empresario"|"celebridade"|"outro",
+    ${isPresidente ? `"mentions": number, "engagement": number, "sentiment": number, "nationalRelevance": number, "electoralViability": number,` : ""}
+    "reason": string }
 ] }`;
 
   try {
     const ai = await callAICerebrasFirst({
       systemMsg: system, userPrompt: user, jsonMode: true,
-      maxTokens: 2200, temperature: 0.2, tag: "discovery-engine",
+      maxTokens: 2600, temperature: 0.2, tag: "discovery-engine",
     });
     const parsed = JSON.parse(ai.content);
     const arr = Array.isArray(parsed?.candidatos) ? parsed.candidatos : [];
@@ -287,16 +301,36 @@ JSON estrito:
         }
         return true;
       })
-      .map((c: any): DiscoveredCandidate => ({
-        nome: String(c.name).trim(),
-        partido: c.party || null,
-        cargo: c.role || cargo || null,
-        estado: (c.state ? normalizeUf(c.state) : null) || (isPresidente ? null : (uf || null)),
-        municipio: mun || null,
-        confidence: Math.max(0, Math.min(100, Number(c.score) || 0)),
-        status: c.status || "emergente",
-        reason: c.reason ? String(c.reason).slice(0, 300) : "",
-      }));
+      .map((c: any): DiscoveredCandidate => {
+        const clamp = (n: any) => Math.max(0, Math.min(100, Number(n) || 0));
+        const mentions = clamp(c.mentions);
+        const engagement = clamp(c.engagement);
+        const sentiment = clamp(c.sentiment);
+        const nationalRelevance = clamp(c.nationalRelevance);
+        const electoralViability = clamp(c.electoralViability);
+        let finalScore = clamp(c.score);
+        if (isPresidente && (c.mentions != null || c.nationalRelevance != null)) {
+          finalScore = clamp(
+            mentions * 0.25 + engagement * 0.20 + sentiment * 0.15 +
+            nationalRelevance * 0.20 + electoralViability * 0.20
+          );
+        }
+        return {
+          nome: String(c.name).trim(),
+          partido: c.party || null,
+          cargo: c.role || cargo || null,
+          estado: (c.state ? normalizeUf(c.state) : null) || (isPresidente ? null : (uf || null)),
+          municipio: mun || null,
+          confidence: finalScore,
+          status: c.status || "emergente",
+          reason: c.reason ? String(c.reason).slice(0, 300) : "",
+          nationalRelevance: isPresidente ? nationalRelevance : undefined,
+          electoralViability: isPresidente ? electoralViability : undefined,
+          mentions: isPresidente ? mentions : undefined,
+          engagement: isPresidente ? engagement : undefined,
+          sentiment: isPresidente ? sentiment : undefined,
+        };
+      });
   } catch (e) { console.warn("[discovery] ai err", e); return []; }
 }
 
@@ -395,10 +429,47 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
 
   const isPresidente = cargo === "presidente";
   const minScore = isPresidente ? 60 : 40;
-  const rows = Array.from(dedup.values())
+
+  // Apply eligibility penalty (inelegíveis mantidos, mas score * 0.75)
+  const withPenalty = Array.from(dedup.values()).map((c) => {
+    const inel = INELIGIBLE[normalizeName(c.nome)];
+    if (inel) {
+      const penalized = Math.round(c.confidence * 0.75);
+      return { ...c, confidence: penalized };
+    }
+    return c;
+  });
+
+  // PRESIDENTE: hard filter nationalRelevance >= 60
+  const relevanceFiltered = isPresidente
+    ? withPenalty.filter((c) => {
+        const nr = c.nationalRelevance ?? 0;
+        if (nr < 60) {
+          console.log("[presidente] EXCLUÍDO por baixa relevância nacional:", c.nome, "NR=", nr);
+          return false;
+        }
+        return true;
+      })
+    : withPenalty;
+
+  if (isPresidente) {
+    for (const c of relevanceFiltered) {
+      console.log("PRESIDENTIAL SCORE", {
+        name: c.nome,
+        mentions: c.mentions,
+        engagement: c.engagement,
+        sentiment: c.sentiment,
+        nationalRelevance: c.nationalRelevance,
+        electoralViability: c.electoralViability,
+        finalScore: c.confidence,
+      });
+    }
+  }
+
+  const rows = relevanceFiltered
     .filter((c) => c.confidence >= minScore && (c.nome || "").trim().split(/\s+/).length >= 2)
     .sort((a, b) => b.confidence - a.confidence)
-    .slice(0, isPresidente ? 15 : 50)
+    .slice(0, isPresidente ? 12 : 50)
     .map((c) => toRow(c, cargo));
 
   console.log("STEP 6 FINAL FILTER", rows.length);
