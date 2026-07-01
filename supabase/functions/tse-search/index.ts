@@ -1403,7 +1403,15 @@ Deno.serve(async (req) => {
       let crawled = false;
       let crawlerAttempted = false;
       let liveFetched: OutRow[] = [];
-      if (total === 0 && f.cargos.length > 0 && f.page === 0) {
+      // Detect incomplete ETL: municipal query returned only elected candidates
+      // (a real race always has multiple non-elected candidates).
+      const isMunicipalQuery = !!f.municipio && f.cargos.some((c) => ["prefeito", "vice_prefeito", "vereador"].includes(c));
+      const onlyElectedInDb = !f.onlyEleitos && (data ?? []).length > 0 && (data ?? []).every((r: any) => !!r.eleito);
+      const incompleteMunicipalCache = isMunicipalQuery && onlyElectedInDb && total < PAGE_SIZE;
+      if (incompleteMunicipalCache) {
+        console.log("INCOMPLETE MUNICIPAL CACHE — only elected rows found, forcing crawler", { total });
+      }
+      if ((total === 0 || incompleteMunicipalCache) && f.cargos.length > 0 && f.page === 0) {
         crawlerAttempted = true;
         console.log("CACHE MISS — iniciando crawler TSE on-demand");
         const deadline = Date.now() + SOFT_TIMEOUT_MS;
