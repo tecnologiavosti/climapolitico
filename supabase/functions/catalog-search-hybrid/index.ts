@@ -597,30 +597,41 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
     }
   }
 
-  // FALLBACK MUNICIPAL FINAL: para prefeito/vereador em qualquer município,
-  // se seed/web/IA vieram vazios, buscar no TSE 2024 e transformar em pré-candidatos.
-  if (extracted.length === 0 && (filterCargo === "prefeito" || filterCargo === "vereador") && uf && mun) {
-    console.warn(`[hybrid] fallback TSE 2024 para ${filterCargo} ${uf}/${mun}`);
-    extracted = await fetchMunicipalTSEFallback(filterCargo, uf, mun);
-  }
+  // REGRA: TSE ≠ Pré-candidato IA. NÃO promover TSE em massa para pré-candidato.
+  // Se seed/web/IA vieram vazios, retornar vazio — o frontend orienta o usuário.
+  const tseDiscoveredCount = 0; // fallback TSE→IA removido intencionalmente
+  console.log("TSE COUNT", tseDiscoveredCount);
+  console.log("AI DISCOVERED", extracted.length);
 
-  // Pós-processamento estrito por cargo/estado/município (UF/mun ignorados para nacional).
+  // Pós-processamento estrito por cargo/estado/município.
   const effUf = isNational ? "" : uf;
   const effMun = isNational ? "" : mun;
-  const rows: any[] = [];
+  const scored: any[] = [];
   for (const c of extracted) {
     const r = scoreRelevance(c, filterCargo, effUf, effMun);
     if (!r.keep) { console.log("[hybrid] descartado:", c.nome, "—", r.why); continue; }
-    rows.push(toRow(c, filterCargo, { score: r.score, tier: r.tier, eligible: r.eligible, ineligibleReason: r.ineligibleReason }));
+    scored.push(toRow(c, filterCargo, { score: r.score, tier: r.tier, eligible: r.eligible, ineligibleReason: r.ineligibleReason }));
   }
-  rows.sort((a, b) => (b.confidence_score || 0) - (a.confidence_score || 0));
-  const citySize = rows.length >= 30 ? "large" : rows.length >= 10 ? "medium" : "small";
+  scored.sort((a, b) => (b.confidence_score || 0) - (a.confidence_score || 0));
+
+  // Detectar scoring fake (todos com o mesmo score)
+  if (scored.length >= 3 && scored.every((r) => r.confidence_score === scored[0].confidence_score)) {
+    console.error("FAKE AI SCORING DETECTED", { score: scored[0].confidence_score, count: scored.length });
+  }
+
+  // Threshold real: só exibir IA com score >= 70
+  let filtered = scored.filter((r) => (r.confidence_score || 0) >= 70);
+  // Limite municipal: máximo 15 pré-candidatos IA por cidade
+  if (filterCargo === "prefeito" || filterCargo === "vereador") {
+    filtered = filtered.slice(0, 15);
+  }
+  const citySize = filtered.length >= 30 ? "large" : filtered.length >= 10 ? "medium" : "small";
   console.log("MUNICIPAL SEARCH", { cargo: filterCargo, uf, mun });
   console.log("CITY SIZE", citySize);
   console.log("WEB RESULTS", hits.length);
-  console.log("FALLBACK RESULTS", extracted.length);
-  console.log("FINAL RESULTS", rows.length);
-  return rows;
+  console.log("AFTER FILTER", filtered.length);
+  console.log("FINAL RESULTS", filtered.length);
+  return filtered;
 }
 
 // Busca no TSE 2024 (última eleição municipal) e converte em pré-candidatos.
