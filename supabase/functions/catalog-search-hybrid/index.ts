@@ -227,15 +227,23 @@ interface DiscoveredCandidate {
   mentions?: number;
   engagement?: number;
   sentiment?: number;
-  // Novos critérios (motor v2)
-  intentionScore?: number;   // 0-40
-  socialScore?: number;      // 0-25
-  mediaScore?: number;       // 0-20
-  historyScore?: number;     // 0-15
-  criteriaMet?: number;      // quantos dos 4 critérios (>0)
-  continuityScore?: number;  // motor municipal: 0-35
-  politicalEngagementScore?: number; // motor municipal: 0-20
-  localMediaScore?: number;  // motor municipal: 0-15
+  // Motor v2 (mantido para compat)
+  intentionScore?: number;
+  socialScore?: number;
+  mediaScore?: number;
+  historyScore?: number;
+  criteriaMet?: number;
+  continuityScore?: number;
+  politicalEngagementScore?: number;
+  localMediaScore?: number;
+  // Motor v3 (0-100 cada, ponderado no confidence)
+  historicalStrength?: number;   // 15%
+  politicalActivity?: number;    // 20%
+  socialSignal?: number;         // 20%
+  mediaSignal?: number;          // 20%
+  candidacyIntent?: number;      // 25% — evidência REAL de intenção
+  presidentialChecks?: number;   // 0-5 checkboxes presidenciais
+  ignoredReason?: string | null;
 }
 
 interface HistoricalMunicipalCandidate {
