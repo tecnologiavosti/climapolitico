@@ -324,24 +324,12 @@ export default function CandidatesCatalog() {
               </div>
 
               <div className="space-y-1.5">
-                <h3 className="text-xl font-semibold tracking-tight">Não encontramos esse nome nas bases oficiais</h3>
+                <h3 className="text-xl font-semibold tracking-tight">Nenhum candidato encontrado</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  Deseja monitorar essa pessoa como pré-candidato? Nosso sistema vai acompanhar menções e sinais políticos automaticamente.
+                  Não encontramos candidatos com esses filtros na base oficial do TSE.
                 </p>
               </div>
 
-              <Button
-                size="lg"
-                onClick={() => setAddDialogOpen(true)}
-                className="rounded-xl px-6 shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
-              >
-                <UserPlus className="h-4 w-4 mr-2" />
-                Adicionar como pré-candidato
-              </Button>
-
-              <p className="text-xs text-muted-foreground/80 leading-relaxed max-w-sm">
-                Buscamos em TSE, pré-candidatos detectados por IA e web. Figuras locais ou recém-lançadas podem ainda não estar indexadas.
-              </p>
 
               {suggestions.length > 0 && (
                 <div className="w-full space-y-2 pt-2 border-t border-border/60">
