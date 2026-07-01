@@ -349,11 +349,18 @@ function tierFromScore(score: number): Tier {
 }
 
 function toRow(c: DiscoveredCandidate, fallbackCargo: string) {
-  const cargo = canonicalCargoKey(c.cargo) ?? canonicalCargoKey(fallbackCargo) ?? null;
+  const isPresidente = canonicalCargoKey(fallbackCargo) === "presidente";
+  // Regra 1: para filtro Presidente, forçar cargo = presidente
+  const cargo = isPresidente
+    ? "presidente"
+    : (canonicalCargoKey(c.cargo) ?? canonicalCargoKey(fallbackCargo) ?? null);
   const inel = INELIGIBLE[normalizeName(c.nome)];
   const tier: Tier = inel ? "inelegivel" : tierFromScore(c.confidence);
+  // Regra 2: presidenciáveis não exibem município e ocultam UF
+  const estado = isPresidente ? null : c.estado;
+  const municipio = isPresidente ? null : c.municipio;
   return {
-    id: `ai:${normalizeName(c.nome)}:${(c.estado || "").toUpperCase()}:${(c.municipio || "").toLowerCase()}`,
+    id: `ai:${normalizeName(c.nome)}:${(estado || "").toUpperCase()}:${(municipio || "").toLowerCase()}`,
     tse_id: null,
     nome: c.nome,
     nome_urna: null,
@@ -362,8 +369,8 @@ function toRow(c: DiscoveredCandidate, fallbackCargo: string) {
     numero_partido: null,
     cargo,
     regiao: null,
-    estado: c.estado,
-    municipio: c.municipio,
+    estado,
+    municipio,
     eleito: false,
     categoria: "pre_candidato" as const,
     ano_eleicao: 2026,
@@ -379,6 +386,35 @@ function toRow(c: DiscoveredCandidate, fallbackCargo: string) {
     ineligible_reason: inel?.reason ?? null,
     reason: c.reason || null,
   };
+}
+
+// Regras 3 e 5: âncoras de score presidencial e blocklist
+const PRESIDENTE_BLOCKLIST = new Set<string>([
+  "andre janones", "joao doria",
+]);
+const PRESIDENTE_SCORE_ANCHORS: Array<{ match: RegExp; min?: number; max?: number }> = [
+  { match: /\blula\b/, min: 95 },
+  { match: /\btarcisio\b/, min: 90 },
+  { match: /\bbolsonaro\b/, min: 90 },
+  { match: /\bcaiado\b/, min: 80 },
+  { match: /\bzema\b/, min: 75 },
+  { match: /\bratinho\b/, min: 75 },
+  { match: /\bmichelle\b/, min: 75 },
+  { match: /\beduardo leite\b/, min: 70 },
+  { match: /\bhaddad\b/, max: 55 },
+  { match: /\bdoria\b/, max: 30 },
+];
+function applyPresidenteAnchor(nome: string, score: number): number {
+  const n = normalizeName(nome);
+  for (const a of PRESIDENTE_SCORE_ANCHORS) {
+    if (a.match.test(n)) {
+      let s = score;
+      if (a.min != null) s = Math.max(s, a.min);
+      if (a.max != null) s = Math.min(s, a.max);
+      return s;
+    }
+  }
+  return score;
 }
 
 // ---------- DISCOVERY ENGINE ----------
@@ -440,16 +476,27 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
     return c;
   });
 
-  // PRESIDENTE: hard filter nationalRelevance >= 60
+  // PRESIDENTE: blocklist + âncoras de score + hard filter nationalRelevance >= 60
   const relevanceFiltered = isPresidente
-    ? withPenalty.filter((c) => {
-        const nr = c.nationalRelevance ?? 0;
-        if (nr < 60) {
-          console.log("[presidente] EXCLUÍDO por baixa relevância nacional:", c.nome, "NR=", nr);
-          return false;
-        }
-        return true;
-      })
+    ? withPenalty
+        .filter((c) => {
+          if (PRESIDENTE_BLOCKLIST.has(normalizeName(c.nome))) {
+            console.log("[presidente] BLOCKLIST:", c.nome);
+            return false;
+          }
+          return true;
+        })
+        .map((c) => ({ ...c, confidence: applyPresidenteAnchor(c.nome, c.confidence) }))
+        .filter((c) => {
+          const nr = c.nationalRelevance ?? 0;
+          const passesScore = c.confidence >= 50;
+          const passesRelevance = nr >= 60;
+          if (!passesRelevance && !passesScore) {
+            console.log("[presidente] EXCLUÍDO:", c.nome, "NR=", nr, "score=", c.confidence);
+            return false;
+          }
+          return true;
+        })
     : withPenalty;
 
   if (isPresidente) {
