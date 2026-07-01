@@ -222,27 +222,6 @@ export function CatalogFilters({ filters, searchQuery, onSearchQueryChange, onCh
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-muted-foreground mr-1">Tipo:</span>
-          {(["both", "official", "pre_candidate"] as const).map((t) => {
-            const active = (filters.candidateType ?? "both") === t;
-            const label = t === "both" ? "Ambos" : t === "official" ? "Oficiais TSE" : "Pré-candidatos IA";
-            return (
-              <button
-                key={t}
-                type="button"
-                onClick={() => onChange({ ...filters, page: 0, candidateType: t })}
-                className={`text-xs px-3 py-1 rounded-full border transition-colors ${
-                  active
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-background text-muted-foreground border-border hover:bg-muted"
-                }`}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
 
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>{totalResults !== undefined ? `${totalResults.toLocaleString("pt-BR")} resultados` : ""}</span>

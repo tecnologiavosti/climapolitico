@@ -42,22 +42,7 @@ function CandidateCatalogCardBase({ candidate: c, alreadyAdded, isAdding, onAdd 
   const location = [c.municipio, c.estado].filter(Boolean).join(" • ");
   const networks = c.redes_sociais ? Object.keys(c.redes_sociais) : [];
 
-  const type = c.candidate_type ?? "official";
-  const tier = c.confidence_tier;
-  const score = c.confidence_score ? ` · ${Math.round(c.confidence_score)}` : "";
-  const typeBadge = type === "official"
-    ? { label: "🟢 Oficial TSE", className: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" }
-    : type === "pre_candidate"
-    ? (c.is_eligible === false
-        ? { label: "🔴 Inelegível", className: "bg-red-500/10 text-red-700 border-red-500/30" }
-        : tier === "forte"
-        ? { label: `🟢 Forte${score}`, className: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" }
-        : tier === "possivel"
-        ? { label: `🟡 Possível${score}`, className: "bg-amber-500/10 text-amber-700 border-amber-500/30" }
-        : tier === "fraco"
-        ? { label: `🟠 Fraco${score}`, className: "bg-orange-500/10 text-orange-700 border-orange-500/30" }
-        : { label: `🟡 Cotado${score}`, className: "bg-amber-500/10 text-amber-700 border-amber-500/30" })
-    : { label: "🔵 Figura monitorada", className: "bg-blue-500/10 text-blue-700 border-blue-500/30" };
+  const typeBadge = { label: "🟢 Oficial TSE", className: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" };
 
   return (
     <Card className="hover-lift transition-all flex flex-col">
