@@ -639,7 +639,7 @@ Deno.serve(async (req) => {
         exactTotal: true,
         suggestions: [],
         normalized: {},
-        message: null,
+        message,
         fallback: aiRows.length > 0,
         page,
         last_updated: new Date().toISOString(),
