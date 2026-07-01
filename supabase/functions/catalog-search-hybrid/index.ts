@@ -683,7 +683,7 @@ async function scorePoliticalActors(
     cargo === "deputado_federal" || cargo === "deputado_estadual" || cargo === "deputado_distrital" ||
     cargo === "presidente");
 
-  const system = `Você é um analista político brasileiro sênior. Responda SEMPRE em JSON estrito. Use SEMPRE nomes reais e verificáveis de POLÍTICOS brasileiros (nunca jornalistas, comentaristas, influenciadores, apresentadores, celebridades ou empresários sem campanha ativa).`;
+  const system = `Você é um analista político brasileiro sênior. Responda SEMPRE em JSON estrito. Considere pré-candidato qualquer figura política REAL e verificável com sinais públicos de movimentação eleitoral, inclusive especulação pública, entrevistas, atividade política em redes, menções eleitorais, blogs políticos, podcasts e cobertura local/nacional. Nunca inclua jornalistas, comentaristas, influenciadores, apresentadores, celebridades ou empresários sem sinal político concreto.`;
 
   const isPresidente = cargo === "presidente";
 
@@ -719,10 +719,11 @@ Para cada nome, atribua pontuação nos 4 critérios abaixo com base APENAS nas 
 (ou, para presidente/governador, também no seu conhecimento sobre política brasileira ATUAL).
 Não inclua alguém apenas porque o nome apareceu em PDF antigo ou lista genérica.
 
-C1 — Intenção eleitoral explícita (0 a 40):
+C1 — Intenção/movimentação eleitoral (0 a 40):
   +40 se há trecho contendo termos como "pré-candidato", "pré-candidatura", "deve concorrer",
   "pretende disputar", "candidato a ${cargo || "cargo"}", "eleição 2026/2028", "disputa eleitoral".
-  0 se não houver menção explícita.
+  Também pontue especulação pública, entrevistas, "cotado", "nome forte", articulação partidária,
+  presença recorrente em agenda política ou rumores eleitorais; não exija anúncio oficial.
 
 C2 — Atividade política em redes/agenda pública (0 a 25):
   Sinais nos últimos 90 dias: agenda pública, visitas a bairros, reuniões partidárias, discurso,
@@ -740,10 +741,10 @@ C4 — Histórico político real (0 a 15):
 finalScore = C1 + C2 + C3 + C4  (0-100).
 
 REGRA DE APROVAÇÃO:
-- Se finalScore < 60 → NÃO retorne o nome.
+- Se finalScore < 45 → NÃO retorne o nome.
 - Para PREFEITO/VEREADOR: exigir pelo menos 2 dos 4 critérios com pontuação > 0.
 - Rejeite nomes muito genéricos (ex.: "José Silva", "Maria Souza") sem evidência forte (C1>=30 ou C3>=15).
-- Nunca invente nomes. Prefira retornar lista vazia a produzir falsos positivos.
+- Nunca invente nomes na etapa IA; se a IA falhar, o sistema aplicará fallback determinístico por cargo.
 
 ${presidenteRules}
 
@@ -766,7 +767,7 @@ Para CADA nome retorne também:
 - politicalActivity: atividade política concreta nos últimos 180 dias (agenda, eventos, articulações partidárias).
 - socialSignal: intensidade e engajamento em redes sociais recentes.
 - mediaSignal: cobertura em mídia local/regional/nacional recente.
-- candidacyIntent: EVIDÊNCIA REAL de intenção de disputar (frases como "sou pré-candidato", "pretendo disputar", "vou concorrer", "candidatura", "eleição 2026/2028", "articulação partidária", "convenção", "cotado para", "nome forte", "sucessão", entrevistas confirmando disputa). Se NÃO houver nenhuma evidência dessas nos últimos 180 dias, retorne 0. NÃO invente intenção.
+- candidacyIntent: EVIDÊNCIA REAL OU SINAL PÚBLICO de intenção/movimentação ("sou pré-candidato", "pretendo disputar", "vou concorrer", "candidatura", "eleição 2026/2028", "articulação partidária", "convenção", "cotado para", "nome forte", "sucessão", entrevistas, especulação pública, atividade recorrente em contexto eleitoral). Não exija anúncio oficial.
 ${isPresidente ? `- presidentialChecks (0-5): quantos destes se aplicam: (a) aparece em pesquisas eleitorais nacionais; (b) mídia nacional cita como presidenciável; (c) partido articula candidatura presidencial; (d) capital político nacional consolidado; (e) cargo atual relevante (presidente, governador de estado grande, senador de destaque, ministro).` : ""}
 
 JSON estrito:
