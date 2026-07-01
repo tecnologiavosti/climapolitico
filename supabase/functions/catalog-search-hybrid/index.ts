@@ -131,7 +131,7 @@ function buildQueries(body: Body): string[] {
   if (!qs.length && (uf || mun)) {
     qs.push(`pré-candidatos ${mun ?? uf} 2026`);
   }
-  return Array.from(new Set(qs.map((query) => query.replace(/\s+/g, " ").trim()).filter(Boolean))).slice(0, 3);
+  return Array.from(new Set(qs.map((query) => query.replace(/\s+/g, " ").trim()).filter(Boolean))).slice(0, 5);
 }
 
 interface WebHit { title?: string; description?: string; url?: string }
