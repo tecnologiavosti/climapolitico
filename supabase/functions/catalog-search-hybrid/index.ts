@@ -387,87 +387,97 @@ function scoreRelevance(
 ): { score: number; keep: boolean; tier: Tier; eligible: boolean; ineligibleReason: string | null; why: string } {
   const cCargo = canonicalCargoKey(c.cargo) ?? normalizeText(c.cargo);
   const cUf = (c.estado || "").toUpperCase();
+  const cMun = (c.municipio || "").trim().toLowerCase();
 
-  // Desambiguação: exige nome completo (≥ 2 partes ≥ 2 chars). Single-token ⇒ descarta.
+  // Nome completo (≥ 2 partes).
   const parts = (c.nome || "").trim().split(/\s+/).filter((p) => p.length >= 2);
   if (parts.length < 2) {
-    return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: "nome incompleto (single token)" };
+    return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: "nome incompleto" };
   }
 
-  const hasEvidence = filterCargo ? evidenceOfCandidacy(c.reason || "", filterCargo, uf, mun) : false;
-  const cargoMatch = filterCargo ? (cCargo === filterCargo || cCargo.includes(filterCargo)) : true;
-  const incompatList = filterCargo ? (CARGO_INCOMPATIBLE[filterCargo] || []) : [];
-  const isIncompat = incompatList.some((x) => cCargo === x || cCargo.startsWith(x));
-
-  if (filterCargo && isIncompat && !hasEvidence && !c.recent_evidence) {
-    return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `cargo incompatível: ${cCargo} vs ${filterCargo}` };
-  }
-  if (filterCargo && filterCargo !== "presidente" && uf && cUf && cUf !== uf && !hasEvidence) {
-    return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `UF incompatível: ${cUf} vs ${uf}` };
+  // REGRA 3 — filtro rígido de cargo (sem "include", sem incompatíveis).
+  if (filterCargo && cCargo && cCargo !== filterCargo) {
+    return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `cargo ≠ filtro: ${cCargo} vs ${filterCargo}` };
   }
 
-  // Componentes 0-100.
-  const recent = c.recent_evidence ? 1 : 0;
-  const poll = c.poll_evidence ? 1 : 0;
-  const major = c.held_major_office ? 1 : 0;
-  const partySig = c.party_signaling ? 1 : 0;
-  const monthsAgo = typeof c.last_mention_months === "number" ? c.last_mention_months : 12;
+  // REGRA 4 — cargos estaduais/federais: exige mesmo UF.
+  const requiresUF = REGIONAL_CARGOS_REQUIRE_UF.includes(filterCargo);
+  if (requiresUF && uf && cUf !== uf) {
+    return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `UF ≠ filtro: ${cUf} vs ${uf}` };
+  }
 
-  const media = Math.max(0, Math.min(100, (recent ? 70 : 25) + (poll ? 25 : 0) + (cargoMatch ? 5 : 0)));
-  const relevance = Math.max(0, Math.min(100, (poll ? 70 : 35) + (recent ? 25 : 0) + (hasEvidence ? 5 : 0)));
-  const viability = Math.max(0, Math.min(100, Number(c.confidence) || 0));
-  const recency = Math.max(0, 100 - Math.min(monthsAgo * 10, 100));
+  // REGRA 5 — cargos municipais: exige mesmo UF + município.
+  const requiresMun = LOCAL_CARGOS_REQUIRE_MUN.includes(filterCargo);
+  if (requiresMun) {
+    if (!uf || !mun) {
+      return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: "cargo municipal exige UF+município" };
+    }
+    if (cUf && cUf !== uf) {
+      return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `UF ≠ filtro (municipal): ${cUf} vs ${uf}` };
+    }
+    const munNorm = mun.toLowerCase();
+    if (cMun && cMun !== munNorm) {
+      return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `município ≠ filtro: ${cMun} vs ${munNorm}` };
+    }
+  }
 
-  let score = 0.15 * media + 0.15 * relevance + 0.55 * viability + 0.15 * recency;
+  // REGRA 6 — score IA: mentions*0.35 + engagement*0.25 + polls*0.25 + news*0.15
+  const mentions = c.recent_evidence ? 100 : (c.last_mention_months != null && c.last_mention_months <= 6 ? 60 : 20);
+  const engagement = Math.max(0, Math.min(100, Number(c.confidence) || 0)); // proxy
+  const polls = c.poll_evidence ? 100 : 0;
+  const news = c.recent_evidence ? 100 : (c.held_major_office || c.party_signaling ? 50 : 0);
+  let score = mentions * 0.35 + engagement * 0.25 + polls * 0.25 + news * 0.15;
   if (c.only_historical) score -= 25;
-  if (typeof c.last_mention_months === "number" && c.last_mention_months > 12) score -= 20;
   score = Math.max(0, Math.min(100, Math.round(score)));
 
-  // Elegibilidade — independe do score.
   const inel = lookupIneligible(c.nome);
   const eligible = !inel;
   const ineligibleReason = inel ? inel.reason : null;
 
-  // Critérios obrigatórios: ao menos 2 de 4 (major office / pesquisas / notícias recentes / sinalização partidária).
-  const criteriaMet = major + poll + recent + partySig;
-
   let tier: Tier;
   if (!eligible) tier = "inelegivel";
-  else if (score >= 85 && criteriaMet >= 2) tier = "forte";
-  else if (score >= 60 && criteriaMet >= 2) tier = "possivel";
+  else if (score >= 90) tier = "forte";
+  else if (score >= 75) tier = "possivel"; // "Cotado"
+  else if (score >= 60) tier = "possivel"; // "Possível"
   else tier = "fraco";
 
-  // Só exibir Tier 1 e Tier 2. Inelegíveis aparecem com badge.
-  // Para cargos "grandes" (presidente/governador) exigimos ≥2 critérios objetivos.
-  // Para cargos locais/estaduais (senador, deputados, prefeito, vereador) a cobertura
-  // jornalística/pesquisa é escassa — mantemos apenas o piso de score.
-  const strictCargo = filterCargo === "presidente" || filterCargo === "governador" || !filterCargo;
-  const keep = !eligible || (strictCargo ? (score >= 60 && criteriaMet >= 2) : score >= 55);
-  return { score, keep, tier, eligible, ineligibleReason, why: `score=${score} tier=${tier} crit=${criteriaMet}/4 (maj=${major} poll=${poll} rec=${recent} party=${partySig}) elig=${eligible} strict=${strictCargo}` };
+  const keep = !eligible || score >= 60;
+  return { score, keep, tier, eligible, ineligibleReason, why: `score=${score} tier=${tier} elig=${eligible}` };
 }
+
 
 const NATIONAL_CARGOS = ["presidente", "vice_presidente", "ministro"];
 const REGIONAL_CARGOS_REQUIRE_UF = ["governador", "vice_governador", "senador", "deputado_federal", "deputado_estadual", "deputado_distrital"];
 const LOCAL_CARGOS_REQUIRE_MUN = ["prefeito", "vice_prefeito", "vereador"];
 
-// Seed nacional para garantir resultado quando IA/Web ficam indisponíveis.
+// REGRA 2 — seeds por cargo. Cada cargo tem sua base própria.
+// Presidente 2026 (REGRA 7): lista realista, sem Haddad/Ciro.
 const NATIONAL_SEED: ExtractedCandidate[] = [
   { nome: "Luiz Inácio Lula da Silva", partido: "PT", cargo: "presidente", estado: null, municipio: null, confidence: 95, reason: "presidente em exercício, pré-candidato à reeleição em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 0 },
-  { nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "presidente", estado: null, municipio: null, confidence: 90, reason: "governador de SP, cotado para presidência em 2026 (Datafolha/Quaest)", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 0 },
-  { nome: "Romeu Zema", partido: "NOVO", cargo: "presidente", estado: null, municipio: null, confidence: 84, reason: "governador de MG, pré-candidato à presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 2 },
-  { nome: "Ronaldo Caiado", partido: "UNIÃO", cargo: "presidente", estado: null, municipio: null, confidence: 82, reason: "governador de GO, lançou pré-candidatura à presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 1 },
-  { nome: "Ratinho Junior", partido: "PSD", cargo: "presidente", estado: null, municipio: null, confidence: 80, reason: "governador do PR, pré-candidato à presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 1 },
-  { nome: "Eduardo Leite", partido: "PSDB", cargo: "presidente", estado: null, municipio: null, confidence: 72, reason: "governador do RS, articula pré-candidatura presidencial em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: false, only_historical: false, last_mention_months: 3 },
-  // Inelegível — mantido para que UI mostre badge 🔴.
-  { nome: "Jair Bolsonaro", partido: "PL", cargo: "presidente", estado: null, municipio: null, confidence: 40, reason: "inelegível pelo TSE até 2030; articula indicação de candidato apoiado", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 0 },
+  { nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "presidente", estado: null, municipio: null, confidence: 92, reason: "governador de SP, forte cotado para presidência em 2026 (Datafolha/Quaest)", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 0 },
+  { nome: "Ratinho Junior", partido: "PSD", cargo: "presidente", estado: null, municipio: null, confidence: 82, reason: "governador do PR, pré-candidato à presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 1 },
+  { nome: "Ronaldo Caiado", partido: "UNIÃO", cargo: "presidente", estado: null, municipio: null, confidence: 80, reason: "governador de GO, pré-candidato à presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 1 },
+  { nome: "Romeu Zema", partido: "NOVO", cargo: "presidente", estado: null, municipio: null, confidence: 82, reason: "governador de MG, pré-candidato à presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 2 },
+  { nome: "Eduardo Leite", partido: "PSDB", cargo: "presidente", estado: null, municipio: null, confidence: 72, reason: "governador do RS, articula pré-candidatura presidencial em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 3 },
+  { nome: "Flávio Bolsonaro", partido: "PL", cargo: "presidente", estado: null, municipio: null, confidence: 70, reason: "senador RJ, cotado como nome do PL para presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: false, party_signaling: true, only_historical: false, last_mention_months: 1 },
+  { nome: "Michelle Bolsonaro", partido: "PL", cargo: "presidente", estado: null, municipio: null, confidence: 68, reason: "presidente do PL Mulher, ventilada pelo PL para presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: false, party_signaling: true, only_historical: false, last_mention_months: 1 },
 ];
 
-// Seed regional para governador — usado quando IA retorna 0 para "governador" + UF.
-// Apenas nomes que atendem ≥2 critérios (major office / pesquisas / notícias recentes / sinalização partidária).
+// REGRA 2 — Seeds por cargo. Expandir conforme cobertura.
+const PRE_CANDIDATE_SEEDS: Record<string, ExtractedCandidate[]> = {
+  presidente: NATIONAL_SEED,
+  governador: [],
+  prefeito: [],
+  senador: [],
+  deputado_federal: [],
+  deputado_estadual: [],
+  vereador: [],
+};
+
+// Seed regional para governador (fallback quando IA/Web = 0).
 const GOVERNADOR_SEED: Record<string, ExtractedCandidate[]> = {
   SP: [
     { nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "governador", estado: "SP", municipio: null, confidence: 90, reason: "governador em exercício de SP, cotado para reeleição em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 0 },
-    { nome: "Fernando Haddad", partido: "PT", cargo: "governador", estado: "SP", municipio: null, confidence: 75, reason: "ex-prefeito de SP e ministro da Fazenda, ventilado pelo PT para governo de SP em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 2 },
     { nome: "Márcio França", partido: "PSB", cargo: "governador", estado: "SP", municipio: null, confidence: 65, reason: "ex-governador de SP, cotado pelo PSB para governo de SP em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 3 },
     { nome: "Guilherme Boulos", partido: "PSOL", cargo: "governador", estado: "SP", municipio: null, confidence: 62, reason: "deputado federal, cotado pela esquerda para governo de SP em 2026", recent_evidence: true, poll_evidence: true, held_major_office: false, party_signaling: true, only_historical: false, last_mention_months: 2 },
   ],
@@ -477,9 +487,10 @@ const GOVERNADOR_SEED: Record<string, ExtractedCandidate[]> = {
   ],
   RJ: [
     { nome: "Cláudio Castro", partido: "PL", cargo: "governador", estado: "RJ", municipio: null, confidence: 72, reason: "governador em exercício do RJ, articula reeleição em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 1 },
-    { nome: "Eduardo Paes", partido: "PSD", cargo: "governador", estado: "RJ", municipio: null, confidence: 70, reason: "prefeito do Rio (capital), cotado pelo PSD para governo do RJ em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 2 },
+    { nome: "Eduardo Paes", partido: "PSD", cargo: "governador", estado: "RJ", municipio: null, confidence: 70, reason: "prefeito do Rio, cotado pelo PSD para governo do RJ em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 2 },
   ],
 };
+
 
 async function discoverPreCandidates(body: Body): Promise<any[]> {
   const filterCargo = normalizeCargo(body.cargo);
@@ -600,39 +611,26 @@ Deno.serve(async (req) => {
     console.log("[hybrid] CATALOG MODE:", candidateType, "wantsTSE:", wantsTSE, "wantsAI:", wantsAI);
 
     if (candidateType === "pre_candidate" || candidateType === "ai") {
-      // Para cargos municipais (vereador/prefeito/vice_prefeito) priorizar TSE oficial 2024.
-      // Só cair para IA se TSE retornar 0.
+      // REGRA 1 — modo IA NUNCA chama TSE, mesmo se retornar 0.
       const cargoNorm = normalizeCargo(body.cargo);
-      const isMunicipal = MUNICIPAL_CARGO_KEYS.has(cargoNorm as any);
       const munRaw = body.municipio || "";
-      const munNorm = munRaw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
-      const electionYear = cargoNorm ? electionYearForCargo(cargoNorm) : 2022;
-      console.log("cargo raw:", body.cargo, "→ normalized:", cargoNorm);
-      console.log("municipio raw:", munRaw, "→ normalized:", munNorm);
-      console.log("year:", electionYear);
+      const ufRaw = firstValue(body.estado).toUpperCase();
+      console.log("PRE-CANDIDATE MODE (IA-only)");
+      console.log("FILTER CARGO", cargoNorm);
+      console.log("FILTER ESTADO", ufRaw);
+      console.log("FILTER MUNICIPIO", munRaw);
 
-      let tseRows: any[] = [];
-      if (isMunicipal && munRaw && firstValue(body.estado)) {
-        const tse = await callTSE(body, authHeader);
-        tseRows = (tse.rows ?? []).map((r: any) => ({
-          ...r,
-          candidate_type: "official" as const,
-          confidence_score: r.eleito ? 100 : 85,
-          confidence_tier: r.eleito ? "forte" : "possivel",
-          is_eligible: true,
-        }));
-        console.log("[hybrid] TSE rows (municipal priority):", tseRows.length);
-      }
-
-      const aiRows = tseRows.length === 0 ? await discoverPreCandidates(body) : [];
-      const merged = tseRows.length > 0 ? tseRows : aiRows;
-      const total = merged.length;
+      const aiRows = await discoverPreCandidates(body);
+      const total = aiRows.length;
       const start = page * PAGE_SIZE;
-      const paged = merged.slice(start, start + PAGE_SIZE);
-      console.log("[hybrid] TSE COUNT:", tseRows.length);
-      console.log("[hybrid] AI COUNT:", aiRows.length);
-      console.log("[hybrid] FINAL COUNT:", total);
+      const paged = aiRows.slice(start, start + PAGE_SIZE);
+      console.log("AI RESULTS", aiRows.length);
       console.log("ROWS FOUND", paged.length);
+      const message = aiRows.length === 0
+        ? "Não encontramos pré-candidatos IA para esse filtro."
+        : null;
+      const tseRows: any[] = []; // nunca usado no modo IA
+
 
       return new Response(JSON.stringify({
         rows: paged,
@@ -641,7 +639,7 @@ Deno.serve(async (req) => {
         exactTotal: true,
         suggestions: [],
         normalized: {},
-        message: null,
+        message,
         fallback: aiRows.length > 0,
         page,
         last_updated: new Date().toISOString(),
