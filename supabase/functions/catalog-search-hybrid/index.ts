@@ -1048,7 +1048,36 @@ function buildMacroFallbackCandidates(cargo: string, uf: string): DiscoveredCand
   return [];
 }
 
-async function buildMandatoryFallbackRows(body: Body, currentRows: any[] = []): Promise<any[]> {
+function tseRowsToPreCandidateFallback(rows: any[], cargo: string): any[] {
+  return (rows ?? []).slice(0, 50).map((r: any, idx: number) => {
+    const score = Math.max(50, Math.min(72, Math.round(62 + (r.eleito ? 8 : 0) + Number(r.popularidade ?? 0) * 2 - idx * 0.15)));
+    return {
+      ...r,
+      id: `ai-tse:${r.tse_id || normalizeName(r.nome || "")}:${idx}`,
+      cargo,
+      categoria: "pre_candidato" as const,
+      eleito: false,
+      candidate_type: "pre_candidate" as const,
+      confidence_score: score,
+      confidence_tier: tierFromScore(score),
+      confidence_tier_label: TIER_LABEL[tierFromScore(score)],
+      score_breakdown: {
+        historical_strength: 75,
+        political_activity: r.eleito ? 65 : 55,
+        social_signal: null,
+        media_signal: null,
+        candidacy_intent: 45,
+      },
+      score_explainer: SCORE_EXPLAINER,
+      is_eligible: true,
+      ineligible_reason: null,
+      reason: `Fallback TSE obrigatório: candidatura municipal recente em ${r.municipio || "município informado"}/${r.estado || "UF"}.`,
+      source: "tse_fallback",
+    };
+  });
+}
+
+async function buildMandatoryFallbackRows(body: Body, currentRows: any[] = [], authHeader: string | null = null): Promise<any[]> {
   if (currentRows.length) return currentRows;
   const cargo = normalizeCargo(body.cargo);
   const uf = normalizeUf(firstValue(body.estado));
@@ -1065,8 +1094,16 @@ async function buildMandatoryFallbackRows(body: Body, currentRows: any[] = []): 
     console.log("[AI FALLBACK] municipal TSE recent candidates", { cargo, uf, mun });
     const history = await fetchMunicipalHistoryLoose(cargo, uf, mun, cargo === "prefeito");
     const fallback = buildMunicipalFallbackRows({ ...body, cargo: [cargo], estado: [uf], municipio: mun }, history, 50).map((c) => toRow(c, cargo));
-    if (fallback.length) console.warn("AI RETURNED ZERO");
-    return fallback;
+    if (fallback.length) {
+      console.warn("AI RETURNED ZERO");
+      return fallback;
+    }
+
+    console.log("[AI FALLBACK] municipal TSE live search", { cargo, uf, mun });
+    const tse = await callTSE({ ...body, cargo: [cargo], estado: [uf], municipio: mun, page: 0 }, authHeader);
+    const liveFallback = tseRowsToPreCandidateFallback(tse.rows ?? [], cargo);
+    if (liveFallback.length) console.warn("AI RETURNED ZERO");
+    return liveFallback;
   }
 
   if (!currentRows.length) console.warn("AI RETURNED ZERO");
