@@ -1335,11 +1335,20 @@ function dedupeKey(row: any) {
   ].join("|");
 }
 
+function responseSource(rows: any[]): "ai_web" | "fallback" | "tse_fallback" {
+  if (rows.some((r) => r?.source === "tse_fallback")) return "tse_fallback";
+  if (rows.some((r) => r?.source === "fallback")) return "fallback";
+  return "ai_web";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
     const rawBody = (await req.json()) as Body;
+    console.log("PRE-CANDIDATE SEARCH START");
+    console.log("INPUT:", rawBody);
     const body = sanitizeBody(rawBody);
+    console.log("NORMALIZED:", body);
     const candidateType = normalizeCandidateType(body.candidateType);
     const authHeader = req.headers.get("Authorization");
     const page = body.page ?? 0;
@@ -1354,7 +1363,8 @@ Deno.serve(async (req) => {
 
     // Modo IA puro: só descoberta, NUNCA cai em TSE.
     if (candidateType === "pre_candidate" || candidateType === "ai") {
-      const aiRows = await discoverPoliticalActors(body);
+      const discoveredRows = await discoverPoliticalActors(body);
+      const aiRows = await buildMandatoryFallbackRows(body, discoveredRows);
       const total = aiRows.length;
       const start = page * PAGE_SIZE;
       const paged = aiRows.slice(start, start + PAGE_SIZE);
@@ -1367,6 +1377,8 @@ Deno.serve(async (req) => {
 
       return new Response(JSON.stringify({
         rows: paged,
+        candidates: paged,
+        source: responseSource(aiRows),
         total,
         hasMore: start + PAGE_SIZE < total,
         exactTotal: true,
@@ -1378,16 +1390,17 @@ Deno.serve(async (req) => {
         last_updated: new Date().toISOString(),
         nationalOnly: false,
         partial: false,
-        sources: aiRows.length ? [isMunicipal ? "ai_municipal_tse" : "ai_web"] : [],
+        sources: aiRows.length ? [responseSource(aiRows)] : [],
         counts: { official: 0, pre_candidate: aiRows.length, ai: aiRows.length },
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // Modo both/official
-    const [tse, aiRows] = await Promise.all([
+    const [tse, discoveredRows] = await Promise.all([
       wantsTSE ? callTSE(body, authHeader) : Promise.resolve({ rows: [], total: 0, hasMore: false, sources: [] }),
       wantsAI ? discoverPoliticalActors(body) : Promise.resolve([] as any[]),
     ]);
+    const aiRows = wantsAI ? await buildMandatoryFallbackRows(body, discoveredRows) : discoveredRows;
 
     const tseRows = (tse.rows ?? []).map((r: any) => ({
       ...r,
@@ -1423,6 +1436,8 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({
       rows: paged,
+      candidates: paged,
+      source: aiRows.length && tseRows.length === 0 ? responseSource(aiRows) : (aiRows.length ? responseSource(aiRows) : "ai_web"),
       total,
       hasMore: start + PAGE_SIZE < total,
       exactTotal: true,
