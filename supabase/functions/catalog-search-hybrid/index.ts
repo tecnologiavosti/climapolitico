@@ -438,8 +438,12 @@ function scoreRelevance(
   else tier = "fraco";
 
   // Só exibir Tier 1 e Tier 2. Inelegíveis aparecem com badge.
-  const keep = !eligible || (score >= 60 && criteriaMet >= 2);
-  return { score, keep, tier, eligible, ineligibleReason, why: `score=${score} tier=${tier} crit=${criteriaMet}/4 (maj=${major} poll=${poll} rec=${recent} party=${partySig}) elig=${eligible}` };
+  // Para cargos "grandes" (presidente/governador) exigimos ≥2 critérios objetivos.
+  // Para cargos locais/estaduais (senador, deputados, prefeito, vereador) a cobertura
+  // jornalística/pesquisa é escassa — mantemos apenas o piso de score.
+  const strictCargo = filterCargo === "presidente" || filterCargo === "governador" || !filterCargo;
+  const keep = !eligible || (strictCargo ? (score >= 60 && criteriaMet >= 2) : score >= 55);
+  return { score, keep, tier, eligible, ineligibleReason, why: `score=${score} tier=${tier} crit=${criteriaMet}/4 (maj=${major} poll=${poll} rec=${recent} party=${partySig}) elig=${eligible} strict=${strictCargo}` };
 }
 
 const NATIONAL_CARGOS = ["presidente", "vice_presidente", "ministro"];
