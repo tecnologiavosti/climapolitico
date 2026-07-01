@@ -611,39 +611,26 @@ Deno.serve(async (req) => {
     console.log("[hybrid] CATALOG MODE:", candidateType, "wantsTSE:", wantsTSE, "wantsAI:", wantsAI);
 
     if (candidateType === "pre_candidate" || candidateType === "ai") {
-      // Para cargos municipais (vereador/prefeito/vice_prefeito) priorizar TSE oficial 2024.
-      // Só cair para IA se TSE retornar 0.
+      // REGRA 1 — modo IA NUNCA chama TSE, mesmo se retornar 0.
       const cargoNorm = normalizeCargo(body.cargo);
-      const isMunicipal = MUNICIPAL_CARGO_KEYS.has(cargoNorm as any);
       const munRaw = body.municipio || "";
-      const munNorm = munRaw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
-      const electionYear = cargoNorm ? electionYearForCargo(cargoNorm) : 2022;
-      console.log("cargo raw:", body.cargo, "→ normalized:", cargoNorm);
-      console.log("municipio raw:", munRaw, "→ normalized:", munNorm);
-      console.log("year:", electionYear);
+      const ufRaw = firstValue(body.estado).toUpperCase();
+      console.log("PRE-CANDIDATE MODE (IA-only)");
+      console.log("FILTER CARGO", cargoNorm);
+      console.log("FILTER ESTADO", ufRaw);
+      console.log("FILTER MUNICIPIO", munRaw);
 
-      let tseRows: any[] = [];
-      if (isMunicipal && munRaw && firstValue(body.estado)) {
-        const tse = await callTSE(body, authHeader);
-        tseRows = (tse.rows ?? []).map((r: any) => ({
-          ...r,
-          candidate_type: "official" as const,
-          confidence_score: r.eleito ? 100 : 85,
-          confidence_tier: r.eleito ? "forte" : "possivel",
-          is_eligible: true,
-        }));
-        console.log("[hybrid] TSE rows (municipal priority):", tseRows.length);
-      }
-
-      const aiRows = tseRows.length === 0 ? await discoverPreCandidates(body) : [];
-      const merged = tseRows.length > 0 ? tseRows : aiRows;
-      const total = merged.length;
+      const aiRows = await discoverPreCandidates(body);
+      const total = aiRows.length;
       const start = page * PAGE_SIZE;
-      const paged = merged.slice(start, start + PAGE_SIZE);
-      console.log("[hybrid] TSE COUNT:", tseRows.length);
-      console.log("[hybrid] AI COUNT:", aiRows.length);
-      console.log("[hybrid] FINAL COUNT:", total);
+      const paged = aiRows.slice(start, start + PAGE_SIZE);
+      console.log("AI RESULTS", aiRows.length);
       console.log("ROWS FOUND", paged.length);
+      const message = aiRows.length === 0
+        ? "Não encontramos pré-candidatos IA para esse filtro."
+        : null;
+      const tseRows: any[] = []; // nunca usado no modo IA
+
 
       return new Response(JSON.stringify({
         rows: paged,
