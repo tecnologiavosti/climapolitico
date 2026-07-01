@@ -562,6 +562,18 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
     } else if (filterCargo === "governador" && uf && GOVERNADOR_SEED[uf]) {
       console.warn(`[hybrid] IA retornou 0 para governador ${uf} — aplicando GOVERNADOR_SEED`);
       extracted = GOVERNADOR_SEED[uf];
+    } else if (filterCargo === "prefeito" && uf && mun) {
+      const key = `${uf}:${normalizeText(mun)}`;
+      if (PREFEITO_SEED[key]) {
+        console.warn(`[hybrid] IA retornou 0 para prefeito ${key} — aplicando PREFEITO_SEED`);
+        extracted = PREFEITO_SEED[key];
+      }
+    } else if (filterCargo === "vereador" && uf && mun) {
+      const key = `${uf}:${normalizeText(mun)}`;
+      if (VEREADOR_SEED[key]) {
+        console.warn(`[hybrid] IA retornou 0 para vereador ${key} — aplicando VEREADOR_SEED`);
+        extracted = VEREADOR_SEED[key];
+      }
     }
   }
 
