@@ -107,6 +107,7 @@ export default function CandidatesCatalog() {
       setSearchQuery(next.q ?? "");
     }
     setPendingFilters(next);
+    setClientPage(0);
     if (prevCargo !== newCargo && appliedFilters) {
       setAppliedFilters(null);
     }
