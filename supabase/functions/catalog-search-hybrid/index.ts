@@ -700,7 +700,27 @@ JSON estrito:
 }
 
 // ---------- OUTPUT ----------
-type Tier = "forte" | "possivel" | "fraco" | "inelegivel";
+type Tier =
+  | "declarado"       // 90-100
+  | "muito_forte"     // 80-89
+  | "forte"           // 70-79
+  | "possivel"        // 60-69
+  | "observacao"      // 45-59
+  | "fraco"           // <45 (não deve aparecer)
+  | "inelegivel";
+
+const TIER_LABEL: Record<Tier, string> = {
+  declarado: "🟣 Declarado",
+  muito_forte: "🟢 Muito forte",
+  forte: "🟡 Forte",
+  possivel: "🟡 Possível",
+  observacao: "⚪ Em observação",
+  fraco: "Fraco",
+  inelegivel: "🔴 Inelegível",
+};
+
+const SCORE_EXPLAINER =
+  "Score de pré-candidatura IA calculado com base em: força eleitoral histórica (15%), atividade política recente (20%), sinais sociais (20%), presença na mídia (20%) e evidências concretas de intenção de candidatura (25%).";
 
 const INELIGIBLE: Record<string, { until: string; reason: string }> = {
   "jair bolsonaro": { until: "2030", reason: "Inelegível pelo TSE até 2030" },
@@ -708,20 +728,21 @@ const INELIGIBLE: Record<string, { until: string; reason: string }> = {
 };
 
 function tierFromScore(score: number): Tier {
-  if (score >= 90) return "forte";
+  if (score >= 90) return "declarado";
+  if (score >= 80) return "muito_forte";
+  if (score >= 70) return "forte";
   if (score >= 60) return "possivel";
+  if (score >= 45) return "observacao";
   return "fraco";
 }
 
 function toRow(c: DiscoveredCandidate, fallbackCargo: string) {
   const isPresidente = canonicalCargoKey(fallbackCargo) === "presidente";
-  // Regra 1: para filtro Presidente, forçar cargo = presidente
   const cargo = isPresidente
     ? "presidente"
     : (canonicalCargoKey(c.cargo) ?? canonicalCargoKey(fallbackCargo) ?? null);
   const inel = INELIGIBLE[normalizeName(c.nome)];
   const tier: Tier = inel ? "inelegivel" : tierFromScore(c.confidence);
-  // Regra 2: presidenciáveis não exibem município e ocultam UF
   const estado = isPresidente ? null : c.estado;
   const municipio = isPresidente ? null : c.municipio;
   return {
@@ -747,6 +768,15 @@ function toRow(c: DiscoveredCandidate, fallbackCargo: string) {
     candidate_type: "pre_candidate" as const,
     confidence_score: c.confidence,
     confidence_tier: tier,
+    confidence_tier_label: TIER_LABEL[tier],
+    score_breakdown: {
+      historical_strength: c.historicalStrength ?? null,
+      political_activity: c.politicalActivity ?? null,
+      social_signal: c.socialSignal ?? null,
+      media_signal: c.mediaSignal ?? null,
+      candidacy_intent: c.candidacyIntent ?? null,
+    },
+    score_explainer: SCORE_EXPLAINER,
     is_eligible: !inel,
     ineligible_reason: inel?.reason ?? null,
     reason: c.reason || null,
