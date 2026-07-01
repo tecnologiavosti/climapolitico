@@ -429,10 +429,47 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
 
   const isPresidente = cargo === "presidente";
   const minScore = isPresidente ? 60 : 40;
-  const rows = Array.from(dedup.values())
+
+  // Apply eligibility penalty (inelegíveis mantidos, mas score * 0.75)
+  const withPenalty = Array.from(dedup.values()).map((c) => {
+    const inel = INELIGIBLE[normalizeName(c.nome)];
+    if (inel) {
+      const penalized = Math.round(c.confidence * 0.75);
+      return { ...c, confidence: penalized };
+    }
+    return c;
+  });
+
+  // PRESIDENTE: hard filter nationalRelevance >= 60
+  const relevanceFiltered = isPresidente
+    ? withPenalty.filter((c) => {
+        const nr = c.nationalRelevance ?? 0;
+        if (nr < 60) {
+          console.log("[presidente] EXCLUÍDO por baixa relevância nacional:", c.nome, "NR=", nr);
+          return false;
+        }
+        return true;
+      })
+    : withPenalty;
+
+  if (isPresidente) {
+    for (const c of relevanceFiltered) {
+      console.log("PRESIDENTIAL SCORE", {
+        name: c.nome,
+        mentions: c.mentions,
+        engagement: c.engagement,
+        sentiment: c.sentiment,
+        nationalRelevance: c.nationalRelevance,
+        electoralViability: c.electoralViability,
+        finalScore: c.confidence,
+      });
+    }
+  }
+
+  const rows = relevanceFiltered
     .filter((c) => c.confidence >= minScore && (c.nome || "").trim().split(/\s+/).length >= 2)
     .sort((a, b) => b.confidence - a.confidence)
-    .slice(0, isPresidente ? 15 : 50)
+    .slice(0, isPresidente ? 12 : 50)
     .map((c) => toRow(c, cargo));
 
   console.log("STEP 6 FINAL FILTER", rows.length);
