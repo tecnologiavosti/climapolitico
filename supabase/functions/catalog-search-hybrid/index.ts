@@ -380,19 +380,25 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
   console.log("STEP 4 EXTRACTED NAMES", discovered.length);
   console.log("STEP 5 LLM OUTPUT", discovered.map((c) => `${c.nome} (${c.confidence})`).join(" | "));
 
-  // Dedup por nome normalizado
+  // Dedup: chave = últimos 2 tokens do nome normalizado (une "Felipe D'Avila" e "Luiz Felipe D'Avila")
+  const dedupKeyOf = (nome: string) => {
+    const toks = normalizeName(nome).split(/\s+/).filter(Boolean);
+    return toks.length >= 2 ? toks.slice(-2).join(" ") : toks.join(" ");
+  };
   const dedup = new Map<string, DiscoveredCandidate>();
   for (const c of discovered) {
-    const key = normalizeName(c.nome);
+    const key = dedupKeyOf(c.nome);
     if (!key) continue;
     const prev = dedup.get(key);
     if (!prev || c.confidence > prev.confidence) dedup.set(key, c);
   }
 
+  const isPresidente = cargo === "presidente";
+  const minScore = isPresidente ? 60 : 40;
   const rows = Array.from(dedup.values())
-    .filter((c) => c.confidence >= 40 && (c.nome || "").trim().split(/\s+/).length >= 2)
+    .filter((c) => c.confidence >= minScore && (c.nome || "").trim().split(/\s+/).length >= 2)
     .sort((a, b) => b.confidence - a.confidence)
-    .slice(0, 50)
+    .slice(0, isPresidente ? 15 : 50)
     .map((c) => toRow(c, cargo));
 
   console.log("STEP 6 FINAL FILTER", rows.length);
