@@ -1,12 +1,12 @@
-// Busca híbrida: TSE oficial + descoberta dinâmica de pré-candidatos via IA + Web.
-// SEM banco pré-populado. Pré-candidatos descobertos em tempo real via Firecrawl + LLM.
+// Political Actor Discovery Engine
+// Hybrid: TSE oficial (histórico) + descoberta dinâmica de atores políticos via Web + IA.
+// SEM listas fixas, SEM seeds, SEM banco pré-populado.
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { normalizeName } from "../_shared/normalize-name.ts";
 import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 import {
   canonicalCargoKey,
   electionYearForCargo,
-  MUNICIPAL_CARGO_KEYS,
   shouldUseMunicipio,
 } from "../_shared/cargo-map.ts";
 
@@ -47,10 +47,8 @@ function normalizeCargo(value?: string | string[] | null): string {
   return canonicalCargoKey(value) ?? normalizeText(value);
 }
 
-function normalizeCandidateType(value: Body["candidateType"]): "official" | "pre_candidate" | "both" | "ai" {
-  return value === "official" || value === "pre_candidate" || value === "ai" || value === "both"
-    ? value
-    : "both";
+function normalizeCandidateType(v: Body["candidateType"]): "official" | "pre_candidate" | "both" | "ai" {
+  return v === "official" || v === "pre_candidate" || v === "ai" || v === "both" ? v : "both";
 }
 
 function sanitizeBody(body: Body): Body {
@@ -64,7 +62,6 @@ function sanitizeBody(body: Body): Body {
   };
 }
 
-// Mapa UF (sigla) → nome completo do estado. Obrigatório para enviar nomes legíveis à IA/busca web.
 const UF_TO_NAME: Record<string, string> = {
   AC: "Acre", AL: "Alagoas", AP: "Amapá", AM: "Amazonas", BA: "Bahia",
   CE: "Ceará", DF: "Distrito Federal", ES: "Espírito Santo", GO: "Goiás",
@@ -76,221 +73,9 @@ const UF_TO_NAME: Record<string, string> = {
 };
 function ufFullName(uf?: string | null): string {
   if (!uf) return "";
-  const code = String(uf).toUpperCase().slice(0, 2);
-  return UF_TO_NAME[code] || String(uf);
+  return UF_TO_NAME[String(uf).toUpperCase().slice(0, 2)] || String(uf);
 }
 
-function buildCargoQueries(cargo: string, estado?: string, municipio?: string): string[] {
-  const estadoNome = ufFullName(estado);
-  const cargoLabel = cargo.replace(/_/g, " ");
-  const local = municipio || estadoNome || "brasil";
-  const region = estadoNome || estado || "";
-
-  // Municipal: queries agressivas para cobrir cidades pequenas.
-  if ((cargo === "vereador" || cargo === "prefeito") && municipio) {
-    const uf = (estado || "").toUpperCase();
-    return [
-      `política ${municipio} ${uf}`,
-      `vereador ${municipio}`,
-      `câmara municipal ${municipio}`,
-      `eleições ${municipio} 2026`,
-      `pré-candidato ${cargoLabel} ${municipio}`,
-      `${municipio} prefeitura`,
-      `${cargoLabel} ${municipio} ${uf} instagram`,
-      `${municipio} jornal política vereador`,
-    ];
-  }
-
-  const base = [
-    `${cargoLabel} ${local}`,
-    `${cargoLabel} ${region}`,
-    `política ${local}`,
-    `eleições ${local} 2026`,
-    `${cargoLabel} campanha ${local}`,
-    `pré-candidato ${cargoLabel} ${local} 2026`,
-  ];
-  switch (cargo) {
-    case "presidente":
-      return [
-        "pré-candidatos presidente brasil 2026",
-        "candidatos presidência da república 2026",
-        "presidente campanha brasil 2026",
-        "política brasil eleições 2026",
-      ];
-    case "governador":
-    case "senador":
-    case "deputado_federal":
-    case "deputado_estadual":
-    case "deputado_distrital":
-    case "prefeito":
-    case "vereador":
-      return base;
-    default:
-      return cargo ? base : [];
-  }
-}
-
-function buildQueries(body: Body): string[] {
-  const qs: string[] = [];
-  const q = (body.q || "").trim();
-  const cargo = normalizeCargo(body.cargo);
-  const uf = firstValue(body.estado).toUpperCase() || undefined;
-  const mun = body.municipio?.trim() || undefined;
-
-  if (q) {
-    qs.push(`${q} política eleições 2026 brasil${uf ? " " + uf : ""}${mun ? " " + mun : ""}`);
-  }
-  if (cargo) {
-    qs.push(...buildCargoQueries(cargo, uf, mun));
-  }
-  if (!qs.length && (uf || mun)) {
-    qs.push(`pré-candidatos ${mun ?? uf} 2026`);
-  }
-  return Array.from(new Set(qs.map((query) => query.replace(/\s+/g, " ").trim()).filter(Boolean))).slice(0, 8);
-}
-
-interface WebHit { title?: string; description?: string; url?: string }
-
-async function firecrawlSearch(query: string): Promise<WebHit[]> {
-  if (!FIRECRAWL_API_KEY) return [];
-  try {
-    const r = await fetch("https://api.firecrawl.dev/v2/search", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ query, limit: 8, lang: "pt", country: "br", tbs: "qdr:m" }),
-    });
-    const j = await r.json();
-    if (!r.ok) {
-      console.warn("[hybrid] firecrawl status", r.status, String(j?.error ?? j?.message ?? "").slice(0, 180));
-      return [];
-    }
-    const items = Array.isArray(j?.data)
-      ? j.data
-      : Array.isArray(j?.data?.web)
-        ? j.data.web
-        : Array.isArray(j?.web)
-          ? j.web
-          : Array.isArray(j?.results)
-            ? j.results
-            : [];
-    console.log("[hybrid] firecrawl query hits:", query, items.length);
-    return items.slice(0, 8).map((it: any) => ({
-      title: it?.title,
-      description: it?.description ?? it?.snippet ?? it?.markdown?.slice?.(0, 700),
-      url: it?.url,
-    }));
-  } catch (e) { console.warn("[hybrid] firecrawl err", e); return []; }
-}
-
-interface ExtractedCandidate {
-  nome: string;
-  partido?: string | null;
-  cargo?: string | null;
-  estado?: string | null;
-  municipio?: string | null;
-  confidence: number;
-  reason?: string;
-  recent_evidence?: boolean;
-  poll_evidence?: boolean;
-  only_historical?: boolean;
-  last_mention_months?: number | null;
-  held_major_office?: boolean; // já foi governador/senador/ministro/prefeito de capital
-  party_signaling?: boolean;   // partido sinaliza candidatura competitiva
-}
-
-async function extractCandidatesFromWeb(
-  body: Body, hits: WebHit[], queries: string[],
-): Promise<ExtractedCandidate[]> {
-  const cargo = normalizeCargo(body.cargo);
-  const uf = firstValue(body.estado).toUpperCase();
-  const estadoNome = ufFullName(uf);
-  const mun = body.municipio || "";
-  console.log("UF raw:", body.estado, "→ sigla:", uf, "→ nome:", estadoNome);
-  const evidence = hits.length
-    ? hits.slice(0, 12).map((h, i) =>
-      `[${i + 1}] ${h.title ?? ""}\n${h.description ?? ""}\n${h.url ?? ""}`
-    ).join("\n---\n").slice(0, 6000)
-    : `Sem resultados web disponíveis neste momento. Consultas geradas: ${queries.join(" | ")}`;
-
-  const system = `Você é um analista político brasileiro. Extraia pré-candidatos a cargos eletivos no Brasil para 2026 a partir de evidências da web. Responda SEMPRE em JSON estrito.`;
-  const user = `Filtros do usuário:
-- Cargo: ${cargo || "qualquer"}
-- Estado: ${estadoNome || "qualquer"}${uf ? ` (sigla ${uf})` : ""}
-- Município: ${mun || "qualquer"}
-- Nome buscado: ${body.q || "—"}
-Data atual: ${new Date().toISOString().slice(0, 10)}
-
-Evidências (resultados de busca recente):
-${evidence}
-
-${cargo === "governador" && estadoNome ? `Liste nomes realisticamente cotados para disputar o governo de ${estadoNome} em 2026.
-Considere: pesquisas eleitorais, bastidores partidários, notícias dos últimos 12 meses e nomes fortes regionais.
-NÃO limite a capitais ou estados grandes. Inclua nomes regionais relevantes mesmo em estados menores (AC, AP, RR, TO, SE, PI etc.).
-
-` : ""}
-
-Para cada PESSOA REAL, BRASILEIRA, retorne APENAS nomes REALISTICAMENTE COTADOS a disputar o CARGO filtrado em 2026.
-NÃO basta ser "político relevante" no estado. Exige-se viabilidade real de candidatura ao cargo específico.
-
-CRITÉRIOS OBRIGATÓRIOS — incluir o nome SOMENTE se atender pelo menos 2 dos 4:
-  (a) "held_major_office": já foi governador, senador, ministro de Estado OU prefeito de capital;
-  (b) "poll_evidence": aparece em pesquisa eleitoral recente (Datafolha, Quaest, AtlasIntel, Paraná Pesquisas, Genial/Quaest) para o cargo filtrado;
-  (c) "recent_evidence": citado em notícias eleitorais dos últimos 180 dias como cotado/articulado para o cargo;
-  (d) "party_signaling": o partido dele sinalizou candidatura competitiva ao cargo (não apenas filiação).
-
-NÃO incluir político só por: morar no estado, ser deputado estadual/local, ser ex-prefeito de cidade pequena/média, ter notoriedade municipal, ou ser do mesmo partido de alguém forte.
-
-REGRAS DE CARGO:
-- Cargo "governador" + Estado="${estadoNome || "[ESTADO]"}" (sigla ${uf || "[UF]"}): apenas cotados ao GOVERNO de ${estadoNome || "[ESTADO]"}. Use "estado": "${uf || "[UF]"}" (sigla 2 letras).
-- Cargo "presidente": apenas cotados à presidência da República.
-- Cargo "senador"/"deputado federal"/"deputado estadual": apenas para o estado filtrado.
-- Cargo "prefeito"/"vereador": apenas para o município filtrado.
-- "cargo" do item DEVE bater com o cargo filtrado.
-- "estado" SEMPRE em sigla 2 letras (SP, RJ, MG…).
-- "reason": evidência curta (ex.: "ex-prefeito de SP, 22% no Datafolha out/2025 para governo de SP").
-- "confidence" (0-100): viabilidade política real. Tier 1 (85-100) fortemente cotado; Tier 2 (60-84) possível; <60 fraco — NÃO RETORNE <60.
-- "only_historical": true se a relevância é só passada.
-- "last_mention_months": meses desde menção relevante (ou null).
-NÃO invente nomes. Máximo 10 itens, ordenados por confidence desc. NÃO retorne itens com confidence < 60.
-
-JSON estrito:
-{ "candidatos": [
-  { "nome": string, "partido": string|null, "cargo": string|null,
-    "estado": string|null, "municipio": string|null,
-    "confidence": number, "reason": string,
-    "recent_evidence": boolean, "poll_evidence": boolean,
-    "held_major_office": boolean, "party_signaling": boolean,
-    "only_historical": boolean, "last_mention_months": number|null }
-] }`;
-
-  try {
-    const ai = await callAICerebrasFirst({
-      systemMsg: system, userPrompt: user, jsonMode: true,
-      maxTokens: 1400, temperature: 0.2, tag: hits.length ? "catalog-discover" : "catalog-discover-ai-fallback",
-    });
-    const parsed = JSON.parse(ai.content);
-    const arr = Array.isArray(parsed?.candidatos) ? parsed.candidatos : [];
-    return arr
-      .filter((c: any) => c?.nome && typeof c.confidence === "number")
-      .map((c: any) => ({
-        nome: String(c.nome).trim(),
-        partido: c.partido || null,
-        cargo: c.cargo || null,
-        estado: normalizeUf(c.estado),
-        municipio: c.municipio || null,
-        confidence: Math.max(0, Math.min(100, Number(c.confidence) || 0)),
-        reason: c.reason ? String(c.reason).slice(0, 280) : "",
-        recent_evidence: !!c.recent_evidence,
-        poll_evidence: !!c.poll_evidence,
-        held_major_office: !!c.held_major_office,
-        party_signaling: !!c.party_signaling,
-        only_historical: !!c.only_historical,
-        last_mention_months: typeof c.last_mention_months === "number" ? c.last_mention_months : null,
-      }));
-  } catch (e) { console.warn("[hybrid] extract err", e); return []; }
-}
-
-// Mapa nome-de-estado → sigla UF (a IA às vezes devolve "São Paulo" em vez de "SP").
 const UF_BY_NAME: Record<string, string> = {
   "acre": "AC", "alagoas": "AL", "amapa": "AP", "amazonas": "AM", "bahia": "BA",
   "ceara": "CE", "distrito federal": "DF", "espirito santo": "ES", "goias": "GO",
@@ -308,27 +93,211 @@ function normalizeUf(value: any): string | null {
   return UF_BY_NAME[key] || raw.toUpperCase().slice(0, 2);
 }
 
+// ---------- QUERY GENERATION (dynamic, no hardcoded lists) ----------
+function buildDiscoveryQueries(cargo: string, uf: string, mun: string): string[] {
+  const estadoNome = ufFullName(uf);
+  if (cargo === "vereador" && mun) {
+    return [
+      `${mun} política`,
+      `${mun} câmara municipal`,
+      `${mun} vereador`,
+      `${mun} liderança comunitária`,
+      `${mun} associação de bairro`,
+      `${mun} eleições 2026`,
+      `${mun} pré-candidato vereador`,
+      `${mun} ${uf} política local`,
+    ];
+  }
+  if (cargo === "prefeito" && mun) {
+    return [
+      `${mun} prefeito`,
+      `${mun} oposição prefeitura`,
+      `${mun} política municipal`,
+      `${mun} empresário política`,
+      `${mun} pré-candidato prefeito 2026`,
+      `${mun} ${uf} eleições municipais`,
+      `${mun} vereador cotado prefeitura`,
+      `${mun} sindicalista política`,
+    ];
+  }
+  if (cargo === "governador" && estadoNome) {
+    return [
+      `${estadoNome} política`,
+      `${estadoNome} oposição governo`,
+      `${estadoNome} liderança partidária`,
+      `pré-candidato governador ${estadoNome} 2026`,
+      `${estadoNome} pesquisa eleitoral governo`,
+      `${estadoNome} articulação política 2026`,
+    ];
+  }
+  if (cargo === "senador" && estadoNome) {
+    return [
+      `${estadoNome} senador 2026`,
+      `${estadoNome} pré-candidato senado`,
+      `${estadoNome} política senado`,
+    ];
+  }
+  if ((cargo === "deputado_federal" || cargo === "deputado_estadual" || cargo === "deputado_distrital") && estadoNome) {
+    const label = cargo.replace(/_/g, " ");
+    return [
+      `${estadoNome} ${label} 2026`,
+      `${estadoNome} pré-candidato ${label}`,
+      `${estadoNome} política ${label}`,
+    ];
+  }
+  if (cargo === "presidente") {
+    return [
+      "presidenciável 2026",
+      "eleições presidenciais 2026 brasil",
+      "candidato presidente brasil 2026",
+      "pré-candidatos presidência república 2026",
+    ];
+  }
+  // fallback
+  const local = mun || estadoNome || "brasil";
+  return [`${cargo} ${local} 2026`, `política ${local} 2026`];
+}
 
-// Inelegíveis conhecidos (TSE / decisões judiciais públicas).
+// ---------- WEB SEARCH ----------
+interface WebHit { title?: string; description?: string; url?: string }
+
+async function firecrawlSearch(query: string): Promise<WebHit[]> {
+  if (!FIRECRAWL_API_KEY) return [];
+  try {
+    const r = await fetch("https://api.firecrawl.dev/v2/search", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query, limit: 10, lang: "pt", country: "br", tbs: "qdr:y" }),
+    });
+    const j = await r.json();
+    if (!r.ok) {
+      console.warn("[discovery] firecrawl status", r.status, String(j?.error ?? j?.message ?? "").slice(0, 180));
+      return [];
+    }
+    const items = Array.isArray(j?.data) ? j.data
+      : Array.isArray(j?.data?.web) ? j.data.web
+      : Array.isArray(j?.web) ? j.web
+      : Array.isArray(j?.results) ? j.results : [];
+    return items.slice(0, 10).map((it: any) => ({
+      title: it?.title,
+      description: it?.description ?? it?.snippet ?? it?.markdown?.slice?.(0, 700),
+      url: it?.url,
+    }));
+  } catch (e) { console.warn("[discovery] firecrawl err", e); return []; }
+}
+
+// ---------- AI SCORING ----------
+interface DiscoveredCandidate {
+  nome: string;
+  partido?: string | null;
+  cargo?: string | null;
+  estado?: string | null;
+  municipio?: string | null;
+  confidence: number;
+  status?: string;
+  reason?: string;
+}
+
+async function scorePoliticalActors(
+  body: Body, hits: WebHit[], queries: string[],
+): Promise<DiscoveredCandidate[]> {
+  const cargo = normalizeCargo(body.cargo);
+  const uf = firstValue(body.estado).toUpperCase();
+  const estadoNome = ufFullName(uf);
+  const mun = body.municipio || "";
+
+  if (!hits.length) return [];
+
+  const evidence = hits.slice(0, 25).map((h, i) =>
+    `[${i + 1}] ${h.title ?? ""}\n${h.description ?? ""}\n${h.url ?? ""}`
+  ).join("\n---\n").slice(0, 9000);
+
+  const local = mun ? `${mun}/${uf}` : estadoNome ? `${estadoNome}` : "Brasil";
+
+  const system = `Você é um analista político brasileiro especialista em descobrir atores políticos com potencial eleitoral a partir de sinais da web (notícias, redes sociais, blogs, portais locais). Responda SEMPRE em JSON estrito. Nunca invente nomes: use apenas nomes REAIS que aparecem nas evidências fornecidas.`;
+
+  const user = `Baseado nas evidências abaixo, identifique pessoas com potencial de disputar o cargo de "${cargo || "político"}" em ${local} nas eleições de 2026.
+
+Considere qualquer perfil politicamente ativo:
+- vereadores, ex-vereadores em exercício
+- secretários municipais/estaduais
+- prefeitos, ex-prefeitos
+- deputados, ex-deputados
+- líderes comunitários, presidentes de associações
+- sindicalistas, empresários com atuação política
+- influenciadores políticos locais
+- opositores ativos
+- presidentes de partidos locais
+
+Avalie cada nome usando estes pesos:
+1. Influência local (30%)
+2. Frequência em notícias recentes (20%)
+3. Engajamento em redes sociais (15%)
+4. Discurso político explícito (15%)
+5. Viabilidade eleitoral (10%)
+6. Crescimento de visibilidade (10%)
+
+Classifique:
+- forte     (score 90-100): candidatura praticamente certa
+- cotado    (score 75-89):  fortemente ventilado
+- possivel  (score 60-74):  possibilidade real
+- emergente (score 40-59):  nome em ascensão
+
+Retorne 5 a 30 nomes (o máximo que as evidências permitirem). NÃO invente nomes ausentes das evidências. Se possível, infira o partido e o cargo provável. Escreva um "reason" curto citando a evidência.
+
+Cargo filtrado: ${cargo || "qualquer"}
+Estado: ${estadoNome} (${uf || "-"})
+Município: ${mun || "-"}
+
+Evidências:
+${evidence}
+
+JSON estrito:
+{ "candidatos": [
+  { "name": string, "score": number, "status": "forte"|"cotado"|"possivel"|"emergente",
+    "party": string|null, "role": string|null, "reason": string }
+] }`;
+
+  try {
+    const ai = await callAICerebrasFirst({
+      systemMsg: system, userPrompt: user, jsonMode: true,
+      maxTokens: 2200, temperature: 0.3, tag: "discovery-engine",
+    });
+    const parsed = JSON.parse(ai.content);
+    const arr = Array.isArray(parsed?.candidatos) ? parsed.candidatos : [];
+    return arr
+      .filter((c: any) => c?.name && typeof c.score === "number")
+      .map((c: any): DiscoveredCandidate => ({
+        nome: String(c.name).trim(),
+        partido: c.party || null,
+        cargo: c.role || cargo || null,
+        estado: uf || null,
+        municipio: mun || null,
+        confidence: Math.max(0, Math.min(100, Number(c.score) || 0)),
+        status: c.status || "emergente",
+        reason: c.reason ? String(c.reason).slice(0, 300) : "",
+      }));
+  } catch (e) { console.warn("[discovery] ai err", e); return []; }
+}
+
+// ---------- OUTPUT ----------
+type Tier = "forte" | "possivel" | "fraco" | "inelegivel";
+
 const INELIGIBLE: Record<string, { until: string; reason: string }> = {
   "jair bolsonaro": { until: "2030", reason: "Inelegível pelo TSE até 2030" },
   "jair messias bolsonaro": { until: "2030", reason: "Inelegível pelo TSE até 2030" },
 };
 
-function lookupIneligible(nome: string) {
-  const k = normalizeName(nome);
-  return INELIGIBLE[k] || null;
+function tierFromScore(score: number): Tier {
+  if (score >= 90) return "forte";
+  if (score >= 60) return "possivel";
+  return "fraco";
 }
 
-type Tier = "forte" | "possivel" | "fraco" | "inelegivel";
-
-function toRow(
-  c: ExtractedCandidate,
-  fallbackCargo: string,
-  scored: { score: number; tier: Tier; eligible: boolean; ineligibleReason: string | null },
-) {
-  const fallback = (c.cargo || fallbackCargo || "").toLowerCase().replace(/\s+/g, "_") || null;
-  const cargo = canonicalCargoKey(c.cargo) ?? canonicalCargoKey(fallbackCargo) ?? fallback;
+function toRow(c: DiscoveredCandidate, fallbackCargo: string) {
+  const cargo = canonicalCargoKey(c.cargo) ?? canonicalCargoKey(fallbackCargo) ?? null;
+  const inel = INELIGIBLE[normalizeName(c.nome)];
+  const tier: Tier = inel ? "inelegivel" : tierFromScore(c.confidence);
   return {
     id: `ai:${normalizeName(c.nome)}:${(c.estado || "").toUpperCase()}:${(c.municipio || "").toLowerCase()}`,
     tse_id: null,
@@ -349,368 +318,67 @@ function toRow(
     popularidade: 0,
     similarity: 0.7,
     total_count: 0,
-    candidate_type: "pre_candidate",
-    confidence_score: scored.score,
-    confidence_tier: scored.tier,
-    is_eligible: scored.eligible,
-    ineligible_reason: scored.ineligibleReason,
+    candidate_type: "pre_candidate" as const,
+    confidence_score: c.confidence,
+    confidence_tier: tier,
+    is_eligible: !inel,
+    ineligible_reason: inel?.reason ?? null,
     reason: c.reason || null,
   };
 }
 
-// Cargos mutuamente exclusivos.
-const CARGO_INCOMPATIBLE: Record<string, string[]> = {
-  governador: ["presidente", "senador", "deputado_federal", "deputado_estadual", "prefeito", "vereador", "ministro"],
-  presidente: ["governador", "senador", "deputado_federal", "deputado_estadual", "prefeito", "vereador"],
-  senador: ["presidente", "vereador", "prefeito"],
-  prefeito: ["presidente", "governador", "senador", "vereador"],
-  vereador: ["presidente", "governador", "senador", "deputado_federal"],
-};
-
-function evidenceOfCandidacy(reason: string, filterCargo: string, uf: string, mun: string): boolean {
-  const r = (reason || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  if (!filterCargo) return false;
-  const cargoTokens: Record<string, string[]> = {
-    governador: ["governo", "governador"],
-    presidente: ["presidencia", "presidente da republica"],
-    senador: ["senado", "senador"],
-    deputado_federal: ["deputado federal", "camara"],
-    deputado_estadual: ["deputado estadual", "assembleia"],
-    deputado_distrital: ["deputado distrital", "camara legislativa"],
-    prefeito: ["prefeito", "prefeitura"],
-    vereador: ["vereador", "camara municipal"],
-  };
-  const tokens = cargoTokens[filterCargo] || [filterCargo];
-  const hasCargo = tokens.some((t) => r.includes(t));
-  const hasRegion = uf ? r.includes(uf.toLowerCase()) : true;
-  const hasMun = mun ? r.includes(mun.toLowerCase()) : true;
-  return hasCargo && hasRegion && (mun ? hasMun : true);
-}
-
-function scoreRelevance(
-  c: ExtractedCandidate,
-  filterCargo: string,
-  uf: string,
-  mun: string,
-): { score: number; keep: boolean; tier: Tier; eligible: boolean; ineligibleReason: string | null; why: string } {
-  const cCargo = canonicalCargoKey(c.cargo) ?? normalizeText(c.cargo);
-  const cUf = (c.estado || "").toUpperCase();
-  const cMun = normalizeText(c.municipio || "");
-  const munNorm = normalizeText(mun || "");
-
-  // Nome completo (≥ 2 partes).
-  const parts = (c.nome || "").trim().split(/\s+/).filter((p) => p.length >= 2);
-  if (parts.length < 2) {
-    return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: "nome incompleto" };
-  }
-
-  // REGRA 3 — filtro rígido de cargo (sem "include", sem incompatíveis).
-  if (filterCargo && cCargo && cCargo !== filterCargo) {
-    return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `cargo ≠ filtro: ${cCargo} vs ${filterCargo}` };
-  }
-
-  // REGRA 4 — cargos estaduais/federais: exige mesmo UF.
-  const requiresUF = REGIONAL_CARGOS_REQUIRE_UF.includes(filterCargo);
-  if (requiresUF && uf && cUf !== uf) {
-    return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `UF ≠ filtro: ${cUf} vs ${uf}` };
-  }
-
-  // REGRA 5 — cargos municipais: exige mesmo UF + município (normalizado, sem acento).
-  const requiresMun = LOCAL_CARGOS_REQUIRE_MUN.includes(filterCargo);
-  if (requiresMun) {
-    if (!uf || !mun) {
-      return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: "cargo municipal exige UF+município" };
-    }
-    if (cUf && cUf !== uf) {
-      return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `UF ≠ filtro (municipal): ${cUf} vs ${uf}` };
-    }
-    if (cMun && cMun !== munNorm) {
-      return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `município ≠ filtro: ${cMun} vs ${munNorm}` };
-    }
-  }
-
-  // REGRA 6 — score IA: mentions*0.35 + engagement*0.25 + polls*0.25 + news*0.15
-  const mentions = c.recent_evidence ? 100 : (c.last_mention_months != null && c.last_mention_months <= 6 ? 60 : 20);
-  const engagement = Math.max(0, Math.min(100, Number(c.confidence) || 0)); // proxy
-  const polls = c.poll_evidence ? 100 : 0;
-  const news = c.recent_evidence ? 100 : (c.held_major_office || c.party_signaling ? 50 : 0);
-  let score = mentions * 0.35 + engagement * 0.25 + polls * 0.25 + news * 0.15;
-  if (c.only_historical) score -= 25;
-  score = Math.max(0, Math.min(100, Math.round(score)));
-
-  const inel = lookupIneligible(c.nome);
-  const eligible = !inel;
-  const ineligibleReason = inel ? inel.reason : null;
-
-  let tier: Tier;
-  if (!eligible) tier = "inelegivel";
-  else if (score >= 90) tier = "forte";
-  else if (score >= 75) tier = "possivel"; // "Cotado"
-  else if (score >= 60) tier = "possivel"; // "Possível"
-  else tier = "fraco";
-
-  const keep = !eligible || score >= 60;
-  return { score, keep, tier, eligible, ineligibleReason, why: `score=${score} tier=${tier} elig=${eligible}` };
-}
-
-
-const NATIONAL_CARGOS = ["presidente", "vice_presidente", "ministro"];
-const REGIONAL_CARGOS_REQUIRE_UF = ["governador", "vice_governador", "senador", "deputado_federal", "deputado_estadual", "deputado_distrital"];
-const LOCAL_CARGOS_REQUIRE_MUN = ["prefeito", "vice_prefeito", "vereador"];
-
-// REGRA 2 — seeds por cargo. Cada cargo tem sua base própria.
-// Presidente 2026 (REGRA 7): lista realista, sem Haddad/Ciro.
-const NATIONAL_SEED: ExtractedCandidate[] = [
-  { nome: "Luiz Inácio Lula da Silva", partido: "PT", cargo: "presidente", estado: null, municipio: null, confidence: 95, reason: "presidente em exercício, pré-candidato à reeleição em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 0 },
-  { nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "presidente", estado: null, municipio: null, confidence: 92, reason: "governador de SP, forte cotado para presidência em 2026 (Datafolha/Quaest)", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 0 },
-  { nome: "Ratinho Junior", partido: "PSD", cargo: "presidente", estado: null, municipio: null, confidence: 82, reason: "governador do PR, pré-candidato à presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 1 },
-  { nome: "Ronaldo Caiado", partido: "UNIÃO", cargo: "presidente", estado: null, municipio: null, confidence: 80, reason: "governador de GO, pré-candidato à presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 1 },
-  { nome: "Romeu Zema", partido: "NOVO", cargo: "presidente", estado: null, municipio: null, confidence: 82, reason: "governador de MG, pré-candidato à presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 2 },
-  { nome: "Eduardo Leite", partido: "PSDB", cargo: "presidente", estado: null, municipio: null, confidence: 72, reason: "governador do RS, articula pré-candidatura presidencial em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 3 },
-  { nome: "Flávio Bolsonaro", partido: "PL", cargo: "presidente", estado: null, municipio: null, confidence: 70, reason: "senador RJ, cotado como nome do PL para presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: false, party_signaling: true, only_historical: false, last_mention_months: 1 },
-  { nome: "Michelle Bolsonaro", partido: "PL", cargo: "presidente", estado: null, municipio: null, confidence: 68, reason: "presidente do PL Mulher, ventilada pelo PL para presidência em 2026", recent_evidence: true, poll_evidence: true, held_major_office: false, party_signaling: true, only_historical: false, last_mention_months: 1 },
-];
-
-// REGRA 2 — Seeds por cargo. Expandir conforme cobertura.
-const PRE_CANDIDATE_SEEDS: Record<string, ExtractedCandidate[]> = {
-  presidente: NATIONAL_SEED,
-  governador: [],
-  prefeito: [],
-  senador: [],
-  deputado_federal: [],
-  deputado_estadual: [],
-  vereador: [],
-};
-
-// Seed regional para governador (fallback quando IA/Web = 0).
-const GOVERNADOR_SEED: Record<string, ExtractedCandidate[]> = {
-  SP: [
-    { nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "governador", estado: "SP", municipio: null, confidence: 90, reason: "governador em exercício de SP, cotado para reeleição em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 0 },
-    { nome: "Márcio França", partido: "PSB", cargo: "governador", estado: "SP", municipio: null, confidence: 65, reason: "ex-governador de SP, cotado pelo PSB para governo de SP em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 3 },
-    { nome: "Guilherme Boulos", partido: "PSOL", cargo: "governador", estado: "SP", municipio: null, confidence: 62, reason: "deputado federal, cotado pela esquerda para governo de SP em 2026", recent_evidence: true, poll_evidence: true, held_major_office: false, party_signaling: true, only_historical: false, last_mention_months: 2 },
-  ],
-  MG: [
-    { nome: "Cleitinho Azevedo", partido: "REPUBLICANOS", cargo: "governador", estado: "MG", municipio: null, confidence: 65, reason: "senador por MG, cotado para governo de MG em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 2 },
-    { nome: "Rodrigo Pacheco", partido: "PSD", cargo: "governador", estado: "MG", municipio: null, confidence: 70, reason: "ex-presidente do Senado, cotado pelo PSD para governo de MG em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 1 },
-  ],
-  RJ: [
-    { nome: "Cláudio Castro", partido: "PL", cargo: "governador", estado: "RJ", municipio: null, confidence: 72, reason: "governador em exercício do RJ, articula reeleição em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 1 },
-    { nome: "Eduardo Paes", partido: "PSD", cargo: "governador", estado: "RJ", municipio: null, confidence: 70, reason: "prefeito do Rio, cotado pelo PSD para governo do RJ em 2026", recent_evidence: true, poll_evidence: true, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 2 },
-  ],
-};
-
-// Seed municipal para prefeito (key = `${UF}:${municipio-normalizado}`).
-function mkPref(nome: string, partido: string, uf: string, mun: string, confidence: number, reason: string): ExtractedCandidate {
-  return { nome, partido, cargo: "prefeito", estado: uf, municipio: mun, confidence, reason, recent_evidence: true, poll_evidence: false, held_major_office: false, party_signaling: true, only_historical: false, last_mention_months: 3 };
-}
-function mkVer(nome: string, partido: string, uf: string, mun: string, confidence: number, reason: string): ExtractedCandidate {
-  return { nome, partido, cargo: "vereador", estado: uf, municipio: mun, confidence, reason, recent_evidence: true, poll_evidence: false, held_major_office: false, party_signaling: true, only_historical: false, last_mention_months: 3 };
-}
-
-const PREFEITO_SEED: Record<string, ExtractedCandidate[]> = {
-  "SP:jundiai": [
-    mkPref("Gustavo Martinelli", "UNIÃO", "SP", "Jundiaí", 82, "cotado para prefeitura de Jundiaí"),
-    mkPref("Luiz Fernando Machado", "PSDB", "SP", "Jundiaí", 78, "ex-prefeito de Jundiaí, articula retorno"),
-    mkPref("Rogério Ricardo", "PL", "SP", "Jundiaí", 70, "cotado pelo PL para prefeitura de Jundiaí"),
-    mkPref("Paulo Sergio Martins", "PSD", "SP", "Jundiaí", 68, "vereador cotado para disputar prefeitura de Jundiaí"),
-    mkPref("Henrique Parra", "PSOL", "SP", "Jundiaí", 62, "articula candidatura pela esquerda em Jundiaí"),
-  ],
-};
-
-const VEREADOR_SEED: Record<string, ExtractedCandidate[]> = {
-  "SP:jundiai": [
-    mkVer("Faouaz Taha", "PSD", "SP", "Jundiaí", 72, "vereador em exercício em Jundiaí"),
-    mkVer("Gustavo Martinelli", "UNIÃO", "SP", "Jundiaí", 70, "vereador em exercício em Jundiaí"),
-    mkVer("Leandro Basson", "PSDB", "SP", "Jundiaí", 68, "vereador em exercício em Jundiaí"),
-    mkVer("Rafael Tanzi", "REPUBLICANOS", "SP", "Jundiaí", 66, "vereador em exercício em Jundiaí"),
-    mkVer("Romildo Silva", "PP", "SP", "Jundiaí", 64, "vereador em exercício em Jundiaí"),
-    mkVer("Edimilson Lourenço", "PL", "SP", "Jundiaí", 64, "vereador em exercício em Jundiaí"),
-    mkVer("Sandro Rocha", "PSB", "SP", "Jundiaí", 62, "vereador em exercício em Jundiaí"),
-    mkVer("Alexandre Blay", "PODEMOS", "SP", "Jundiaí", 62, "vereador em exercício em Jundiaí"),
-    mkVer("Marcelo Peixão", "PT", "SP", "Jundiaí", 60, "vereador em exercício em Jundiaí"),
-    mkVer("Marcos Tadeu Verrone", "PSD", "SP", "Jundiaí", 60, "vereador em exercício em Jundiaí"),
-    mkVer("Rafael Galvão", "UNIÃO", "SP", "Jundiaí", 58, "cotado para vereança em Jundiaí"),
-    mkVer("Nilton Marques", "MDB", "SP", "Jundiaí", 58, "cotado para vereança em Jundiaí"),
-  ],
-};
-
-
-async function discoverPreCandidates(body: Body): Promise<any[]> {
-  const filterCargo = normalizeCargo(body.cargo);
+// ---------- DISCOVERY ENGINE ----------
+async function discoverPoliticalActors(body: Body): Promise<any[]> {
+  const cargo = normalizeCargo(body.cargo);
   const uf = firstValue(body.estado).toUpperCase();
   const mun = (body.municipio || "").trim();
 
-  const isNational = NATIONAL_CARGOS.includes(filterCargo);
-  const requiresUF = REGIONAL_CARGOS_REQUIRE_UF.includes(filterCargo);
-  const requiresMun = LOCAL_CARGOS_REQUIRE_MUN.includes(filterCargo);
+  console.log("DISCOVERY MODE");
+  console.log("FILTER:", { cargo, uf, mun });
 
-  console.log("estado raw:", body.estado);
-  console.log("estado normalized:", uf);
-  console.log("cargo raw:", body.cargo, "→ normalized:", filterCargo);
-  console.log("IS NATIONAL:", isNational);
-  console.log("STATE REQUIRED:", requiresUF || requiresMun);
-  console.log("MUN REQUIRED:", requiresMun);
+  const queries = buildDiscoveryQueries(cargo, uf, mun);
+  console.log("SEARCH QUERIES:", queries);
 
-  // Bloqueio para cargos regionais sem UF.
-  if (requiresUF && !uf) {
-    console.warn(`[hybrid] cargo "${filterCargo}" exige estado — abortando`);
-    return [];
-  }
-  if (requiresMun && (!uf || !mun)) {
-    console.warn(`[hybrid] cargo "${filterCargo}" exige estado e município — abortando`);
+  if (!queries.length) { console.log("FINAL IA RESULTS: 0 (no queries)"); return []; }
+  if (!FIRECRAWL_API_KEY) {
+    console.warn("[discovery] FIRECRAWL_API_KEY missing — discovery engine requires web signals");
     return [];
   }
 
-  // Para cargos nacionais, ignora UF/município no body antes de gerar queries.
-  const queryBody: Body = isNational ? { ...body, estado: null, municipio: null, regiao: null } : body;
-  const queries = buildQueries(queryBody);
-  console.log("PRE-CANDIDATE MODE");
-  console.log("AI QUERY:", queries);
-
-  if (!queries.length) { console.log("AI RESULTS:", 0); return []; }
-  if (!FIRECRAWL_API_KEY) console.warn("[hybrid] FIRECRAWL_API_KEY missing — using AI-only fallback");
-
-  const hitLists = FIRECRAWL_API_KEY ? await Promise.all(queries.map(firecrawlSearch)) : [];
+  const hitLists = await Promise.all(queries.map(firecrawlSearch));
   const seen = new Set<string>();
   const hits: WebHit[] = [];
   for (const list of hitLists) for (const h of list) {
     const k = h.url || `${h.title}|${h.description}`;
     if (k && !seen.has(k)) { seen.add(k); hits.push(h); }
   }
-  console.log("[hybrid] web hits:", hits.length);
-
-  let extracted = await extractCandidatesFromWeb(queryBody, hits, queries);
-  console.log("AI RESULTS (raw):", extracted.length, extracted.map((c) => `${c.nome} (${c.confidence})`).join(" | "));
-
-  // Fallback seeds quando IA retorna 0.
-  if (extracted.length === 0) {
-    if (isNational) {
-      console.warn("[hybrid] IA retornou 0 para cargo nacional — aplicando NATIONAL_SEED");
-      extracted = NATIONAL_SEED.filter((c) => !filterCargo || c.cargo === filterCargo);
-    } else if (filterCargo === "governador" && uf && GOVERNADOR_SEED[uf]) {
-      console.warn(`[hybrid] IA retornou 0 para governador ${uf} — aplicando GOVERNADOR_SEED`);
-      extracted = GOVERNADOR_SEED[uf];
-    } else if (filterCargo === "prefeito" && uf && mun) {
-      const key = `${uf}:${normalizeText(mun)}`;
-      if (PREFEITO_SEED[key]) {
-        console.warn(`[hybrid] IA retornou 0 para prefeito ${key} — aplicando PREFEITO_SEED`);
-        extracted = PREFEITO_SEED[key];
-      }
-    } else if (filterCargo === "vereador" && uf && mun) {
-      const key = `${uf}:${normalizeText(mun)}`;
-      if (VEREADOR_SEED[key]) {
-        console.warn(`[hybrid] IA retornou 0 para vereador ${key} — aplicando VEREADOR_SEED`);
-        extracted = VEREADOR_SEED[key];
-      }
-    }
-  }
-
-  // REGRA: TSE ≠ Pré-candidato IA. NÃO promover TSE em massa para pré-candidato.
-  // Se seed/web/IA vieram vazios, retornar vazio — o frontend orienta o usuário.
-  const tseDiscoveredCount = 0; // fallback TSE→IA removido intencionalmente
-  console.log("TSE COUNT", tseDiscoveredCount);
-  console.log("AI DISCOVERED", extracted.length);
-
-  // Pós-processamento estrito por cargo/estado/município.
-  const effUf = isNational ? "" : uf;
-  const effMun = isNational ? "" : mun;
-  const scored: any[] = [];
-  for (const c of extracted) {
-    const r = scoreRelevance(c, filterCargo, effUf, effMun);
-    if (!r.keep) { console.log("[hybrid] descartado:", c.nome, "—", r.why); continue; }
-    scored.push(toRow(c, filterCargo, { score: r.score, tier: r.tier, eligible: r.eligible, ineligibleReason: r.ineligibleReason }));
-  }
-  scored.sort((a, b) => (b.confidence_score || 0) - (a.confidence_score || 0));
-
-  // Detectar scoring fake (todos com o mesmo score)
-  if (scored.length >= 3 && scored.every((r) => r.confidence_score === scored[0].confidence_score)) {
-    console.error("FAKE AI SCORING DETECTED", { score: scored[0].confidence_score, count: scored.length });
-  }
-
-  // Threshold dinâmico: municípios pequenos precisam de barra mais baixa.
-  // Sem população disponível, usamos volume de sinais coletados como proxy.
-  const isMunicipal = filterCargo === "prefeito" || filterCargo === "vereador";
-  let threshold = 60;
-  if (isMunicipal && mun) {
-    if (scored.length < 5) threshold = 35;        // cidade pequena / poucos sinais
-    else if (scored.length < 15) threshold = 50;  // cidade média
-    else threshold = 65;                          // cidade grande
-  }
-  console.log("THRESHOLD", threshold, "scored:", scored.length);
-  let filtered = scored.filter((r) => (r.confidence_score || 0) >= threshold);
-
-  // Fallback municipal: se IA não achou ninguém, usar TSE 2024 como "Cotado".
-  if (filtered.length === 0 && isMunicipal && uf && mun) {
-    console.warn("[hybrid] IA vazia — aplicando fallback TSE 2024 como Cotado");
-    const tseFallback = await fetchMunicipalTSEFallback(filterCargo, uf, mun);
-    for (const c of tseFallback) {
-      const r = scoreRelevance(c, filterCargo, uf, mun);
-      if (!r.keep && r.eligible !== false) continue;
-      const row = toRow(c, filterCargo, {
-        score: Math.max(r.score, 55),
-        tier: "cotado" as any,
-        eligible: r.eligible,
-        ineligibleReason: r.ineligibleReason,
-      });
-      filtered.push(row);
-    }
-    console.log("FALLBACK TSE RESULTS", filtered.length);
-  }
-
-  if (isMunicipal) filtered = filtered.slice(0, 15);
-
-  const citySize = filtered.length >= 30 ? "large" : filtered.length >= 10 ? "medium" : "small";
-  console.log("MUNICIPIO:", mun);
-  console.log("MUNICIPAL SEARCH", { cargo: filterCargo, uf, mun });
-  console.log("CITY SIZE", citySize);
   console.log("RAW WEB RESULTS:", hits.length);
-  console.log("CANDIDATES EXTRACTED:", extracted.length);
-  console.log("AFTER SCORE:", filtered.length);
-  console.log("FINAL RESULTS", filtered.length);
-  return filtered;
-}
 
-// Busca no TSE 2024 (última eleição municipal) e converte em pré-candidatos.
-async function fetchMunicipalTSEFallback(cargo: string, uf: string, mun: string): Promise<ExtractedCandidate[]> {
-  try {
-    const r = await fetch(`${SUPABASE_URL}/functions/v1/tse-search`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ANON_KEY}` },
-      body: JSON.stringify({
-        cargo: [cargo],
-        estado: [uf],
-        municipio: mun,
-        electionYear: 2024,
-        page: 0,
-      }),
-    });
-    if (!r.ok) { console.warn("[hybrid] fallback TSE falhou", r.status); return []; }
-    const j = await r.json();
-    const rows: any[] = Array.isArray(j?.rows) ? j.rows : [];
-    console.log(`[hybrid] fallback TSE 2024 encontrou ${rows.length} candidatos`);
-    return rows.slice(0, 50).map((row): ExtractedCandidate => ({
-      nome: row.nome || row.nome_urna || "",
-      partido: row.partido || row.sigla_partido || null,
-      cargo,
-      estado: uf,
-      municipio: mun,
-      confidence: row.eleito ? 75 : 60,
-      reason: row.eleito
-        ? `${cargo} eleito em ${mun} (TSE 2024) — provável recandidatura`
-        : `candidato a ${cargo} em ${mun} em 2024 — potencial pré-candidato`,
-      recent_evidence: true,
-      poll_evidence: false,
-      held_major_office: !!row.eleito,
-      party_signaling: true,
-      only_historical: false,
-      last_mention_months: 6,
-    })).filter((c) => c.nome);
-  } catch (e) {
-    console.warn("[hybrid] fallback TSE erro", (e as Error).message);
-    return [];
+  if (!hits.length) { console.log("FINAL IA RESULTS: 0 (no web hits)"); return []; }
+
+  const discovered = await scorePoliticalActors(body, hits, queries);
+  console.log("EXTRACTED NAMES:", discovered.length);
+
+  // Dedup por nome normalizado
+  const dedup = new Map<string, DiscoveredCandidate>();
+  for (const c of discovered) {
+    const key = normalizeName(c.nome);
+    if (!key) continue;
+    const prev = dedup.get(key);
+    if (!prev || c.confidence > prev.confidence) dedup.set(key, c);
   }
+
+  const rows = Array.from(dedup.values())
+    .filter((c) => c.confidence >= 40 && (c.nome || "").trim().split(/\s+/).length >= 2)
+    .sort((a, b) => b.confidence - a.confidence)
+    .slice(0, 50)
+    .map((c) => toRow(c, cargo));
+
+  console.log("FINAL IA RESULTS:", rows.length);
+  return rows;
 }
 
+// ---------- TSE PROXY (histórico oficial) ----------
 async function callTSE(payload: Body, authHeader: string | null) {
   const url = `${SUPABASE_URL}/functions/v1/tse-search`;
   const r = await fetch(url, {
@@ -742,42 +410,21 @@ Deno.serve(async (req) => {
 
     const cargo = normalizeCargo(body.cargo);
     const electionYear = cargo ? electionYearForCargo(cargo) : null;
-    const municipio = body.municipio ?? null;
-    const querySql = `delegated catalog SQL: cargo=${cargo ?? "null"}; year=${electionYear ?? "null"}; municipio=${municipio ?? "null"}`;
-
     console.log("RAW FILTERS", rawBody);
-    console.log("RAW CARGO:", rawBody.cargo);
-    console.log("NORMALIZED CARGO", cargo);
-    console.log("YEAR", electionYear);
-    console.log("MUNICIPIO", municipio);
-    console.log("QUERY SQL", querySql);
+    console.log("NORMALIZED CARGO", cargo, "YEAR", electionYear, "TYPE", candidateType);
 
     const wantsTSE = candidateType === "official" || candidateType === "both";
     const wantsAI = candidateType === "pre_candidate" || candidateType === "ai" || candidateType === "both";
 
-    console.log("[hybrid] CATALOG MODE:", candidateType, "wantsTSE:", wantsTSE, "wantsAI:", wantsAI);
-
+    // Modo IA puro: só descoberta, NUNCA cai em TSE.
     if (candidateType === "pre_candidate" || candidateType === "ai") {
-      // REGRA 1 — modo IA NUNCA chama TSE, mesmo se retornar 0.
-      const cargoNorm = normalizeCargo(body.cargo);
-      const munRaw = body.municipio || "";
-      const ufRaw = firstValue(body.estado).toUpperCase();
-      console.log("PRE-CANDIDATE MODE (IA-only)");
-      console.log("FILTER CARGO", cargoNorm);
-      console.log("FILTER ESTADO", ufRaw);
-      console.log("FILTER MUNICIPIO", munRaw);
-
-      const aiRows = await discoverPreCandidates(body);
+      const aiRows = await discoverPoliticalActors(body);
       const total = aiRows.length;
       const start = page * PAGE_SIZE;
       const paged = aiRows.slice(start, start + PAGE_SIZE);
-      console.log("AI RESULTS", aiRows.length);
-      console.log("ROWS FOUND", paged.length);
       const message = aiRows.length === 0
-        ? "Não encontramos pré-candidatos IA para esse filtro."
+        ? "Não encontramos sinais políticos suficientes na web para esse filtro."
         : null;
-      const tseRows: any[] = []; // nunca usado no modo IA
-
 
       return new Response(JSON.stringify({
         rows: paged,
@@ -792,21 +439,15 @@ Deno.serve(async (req) => {
         last_updated: new Date().toISOString(),
         nationalOnly: false,
         partial: false,
-        sources: [
-          ...(tseRows.length ? ["tse"] : []),
-          ...(aiRows.length ? ["ai_web"] : []),
-        ],
-        counts: {
-          official: tseRows.length,
-          pre_candidate: aiRows.filter((row) => row.candidate_type === "pre_candidate").length,
-          ai: aiRows.length,
-        },
+        sources: aiRows.length ? ["ai_web"] : [],
+        counts: { official: 0, pre_candidate: aiRows.length, ai: aiRows.length },
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // Modo both/official
     const [tse, aiRows] = await Promise.all([
       wantsTSE ? callTSE(body, authHeader) : Promise.resolve({ rows: [], total: 0, hasMore: false, sources: [] }),
-      wantsAI ? discoverPreCandidates(body) : Promise.resolve([] as any[]),
+      wantsAI ? discoverPoliticalActors(body) : Promise.resolve([] as any[]),
     ]);
 
     const tseRows = (tse.rows ?? []).map((r: any) => ({
@@ -815,8 +456,7 @@ Deno.serve(async (req) => {
       confidence_score: r.eleito ? 100 : 85,
     }));
 
-    console.log("[hybrid] TSE COUNT:", tseRows.length);
-    console.log("[hybrid] AI COUNT:", aiRows.length);
+    console.log("[hybrid] TSE:", tseRows.length, "AI:", aiRows.length);
 
     const map = new Map<string, any>();
     for (const r of tseRows) map.set(dedupeKey(r), r);
@@ -842,9 +482,6 @@ Deno.serve(async (req) => {
       ...(aiRows.length ? ["ai_web"] : []),
     ];
 
-    console.log("[hybrid] FINAL COUNT:", merged.length);
-    console.log("ROWS FOUND", paged.length);
-
     return new Response(JSON.stringify({
       rows: paged,
       total,
@@ -859,11 +496,7 @@ Deno.serve(async (req) => {
       nationalOnly: !!tse.nationalOnly,
       partial: !!tse.partial,
       sources,
-      counts: {
-        official: tseRows.length,
-        pre_candidate: 0,
-        ai: aiRows.length,
-      },
+      counts: { official: tseRows.length, pre_candidate: aiRows.length, ai: aiRows.length },
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     console.error("[catalog-search-hybrid]", e);
