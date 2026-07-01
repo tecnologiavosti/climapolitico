@@ -45,7 +45,22 @@ function normalizeText(value?: string | string[] | null): string {
 }
 
 function normalizeCargo(value?: string | string[] | null): string {
-  return canonicalCargoKey(value) ?? normalizeText(value);
+  if (!value) return "";
+  const normalized = normalizeText(value);
+  const map: Record<string, string> = {
+    presidente: "presidente",
+    governador: "governador",
+    senador: "senador",
+    prefeito: "prefeito",
+    vereador: "vereador",
+    "deputado federal": "deputado_federal",
+    "deputado estadual": "deputado_estadual",
+    "deputado distrital": "deputado_distrital",
+    deputado_federal: "deputado_federal",
+    deputado_estadual: "deputado_estadual",
+    deputado_distrital: "deputado_distrital",
+  };
+  return map[normalized] ?? canonicalCargoKey(value) ?? normalized;
 }
 
 function normalizeCandidateType(v: Body["candidateType"]): "official" | "pre_candidate" | "both" | "ai" {
@@ -244,6 +259,7 @@ interface DiscoveredCandidate {
   candidacyIntent?: number;      // 25% — evidência REAL de intenção
   presidentialChecks?: number;   // 0-5 checkboxes presidenciais
   ignoredReason?: string | null;
+  source?: "ai_web" | "fallback" | "tse_fallback";
 }
 
 interface HistoricalMunicipalCandidate {
@@ -333,6 +349,71 @@ async function fetchMunicipalHistory(
   return Array.from(dedup.values())
     .sort((a, b) => historicalRankScore(b) - historicalRankScore(a) || a.nome.localeCompare(b.nome))
     .slice(0, includeAllMunicipal ? 120 : 100);
+}
+
+async function fetchMunicipalHistoryLoose(
+  cargo: string,
+  uf: string,
+  mun: string,
+  includeAllMunicipal = false,
+): Promise<HistoricalMunicipalCandidate[]> {
+  const exact = await fetchMunicipalHistory(cargo, uf, mun, includeAllMunicipal);
+  if (exact.length || !uf || !mun) return exact;
+
+  const sb = await getBackendClient();
+  const cargos = includeAllMunicipal ? ["vereador", "prefeito"] : [cargo];
+  const wanted = normalizeName(mun);
+  const dedup = new Map<string, HistoricalMunicipalCandidate>();
+  const pageSize = 1000;
+  const maxRows = 15000;
+
+  for (let from = 0; from < maxRows; from += pageSize) {
+    const { data, error } = await sb
+      .from("politicians")
+      .select("nome,nome_urna,partido_sigla,cargo,estado,municipio,eleito,ano_eleicao,popularidade")
+      .eq("ativo", true)
+      .eq("estado", uf)
+      .in("cargo", cargos)
+      .in("ano_eleicao", [2020, 2024])
+      .order("municipio", { ascending: true })
+      .order("eleito", { ascending: false })
+      .order("popularidade", { ascending: false })
+      .range(from, from + pageSize - 1);
+
+    if (error) {
+      console.warn("[municipal-engine] loose TSE history query failed", error.message);
+      break;
+    }
+
+    const rows = data ?? [];
+    for (const row of rows) {
+      const city = normalizeName(row.municipio || "");
+      if (city !== wanted && !city.includes(wanted) && !wanted.includes(city)) continue;
+      const key = normalizeName(row.nome || "");
+      if (!key) continue;
+      const current = {
+        nome: row.nome,
+        nome_urna: row.nome_urna,
+        partido_sigla: row.partido_sigla,
+        cargo: row.cargo,
+        estado: row.estado,
+        municipio: row.municipio,
+        eleito: !!row.eleito,
+        ano_eleicao: row.ano_eleicao,
+        popularidade: Number(row.popularidade ?? 0),
+      };
+      const prev = dedup.get(key);
+      if (!prev || historicalRankScore(current) > historicalRankScore(prev)) dedup.set(key, current);
+    }
+
+    if (dedup.size >= 80 || rows.length < pageSize) break;
+  }
+
+  const out = Array.from(dedup.values())
+    .sort((a, b) => historicalRankScore(b) - historicalRankScore(a) || a.nome.localeCompare(b.nome))
+    .slice(0, includeAllMunicipal ? 120 : 100);
+  console.log("[municipal-engine] loose TSE history rows:", out.length);
+  return out;
 }
 
 async function countMunicipalUniverse(uf: string, mun: string): Promise<number> {
@@ -452,6 +533,7 @@ JSON estrito:
         estado: uf,
         municipio: mun,
         confidence: score,
+        source: "tse_fallback",
         status: c.status || municipalStatus(score),
         reason: c.reason ? String(c.reason).slice(0, 300) : `Histórico TSE municipal em ${hist.ano_eleicao}; score municipal ${score}.`,
         continuityScore,
@@ -490,6 +572,7 @@ function buildMunicipalFallbackRows(
       estado: uf,
       municipio: mun,
       confidence: score,
+      source: "tse_fallback",
       status: "possivel",
       reason: `Fallback municipal: histórico TSE ${h.ano_eleicao || "recente"} em ${mun}/${uf}. Sem depender de notícia pública.`,
       continuityScore,
@@ -552,6 +635,7 @@ JSON estrito:
         partido: c?.party || null,
         cargo, estado: uf, municipio: mun,
         confidence: score,
+        source: "ai_web",
         status: municipalStatus(score),
         reason: c?.reason ? String(c.reason).slice(0, 300) : `Detectado via ${layerTag} em ${mun}/${uf}.`,
         socialScore,
@@ -599,7 +683,7 @@ async function scorePoliticalActors(
     cargo === "deputado_federal" || cargo === "deputado_estadual" || cargo === "deputado_distrital" ||
     cargo === "presidente");
 
-  const system = `Você é um analista político brasileiro sênior. Responda SEMPRE em JSON estrito. Use SEMPRE nomes reais e verificáveis de POLÍTICOS brasileiros (nunca jornalistas, comentaristas, influenciadores, apresentadores, celebridades ou empresários sem campanha ativa).`;
+  const system = `Você é um analista político brasileiro sênior. Responda SEMPRE em JSON estrito. Considere pré-candidato qualquer figura política REAL e verificável com sinais públicos de movimentação eleitoral, inclusive especulação pública, entrevistas, atividade política em redes, menções eleitorais, blogs políticos, podcasts e cobertura local/nacional. Nunca inclua jornalistas, comentaristas, influenciadores, apresentadores, celebridades ou empresários sem sinal político concreto.`;
 
   const isPresidente = cargo === "presidente";
 
@@ -635,10 +719,11 @@ Para cada nome, atribua pontuação nos 4 critérios abaixo com base APENAS nas 
 (ou, para presidente/governador, também no seu conhecimento sobre política brasileira ATUAL).
 Não inclua alguém apenas porque o nome apareceu em PDF antigo ou lista genérica.
 
-C1 — Intenção eleitoral explícita (0 a 40):
+C1 — Intenção/movimentação eleitoral (0 a 40):
   +40 se há trecho contendo termos como "pré-candidato", "pré-candidatura", "deve concorrer",
   "pretende disputar", "candidato a ${cargo || "cargo"}", "eleição 2026/2028", "disputa eleitoral".
-  0 se não houver menção explícita.
+  Também pontue especulação pública, entrevistas, "cotado", "nome forte", articulação partidária,
+  presença recorrente em agenda política ou rumores eleitorais; não exija anúncio oficial.
 
 C2 — Atividade política em redes/agenda pública (0 a 25):
   Sinais nos últimos 90 dias: agenda pública, visitas a bairros, reuniões partidárias, discurso,
@@ -656,10 +741,10 @@ C4 — Histórico político real (0 a 15):
 finalScore = C1 + C2 + C3 + C4  (0-100).
 
 REGRA DE APROVAÇÃO:
-- Se finalScore < 60 → NÃO retorne o nome.
+- Se finalScore < 45 → NÃO retorne o nome.
 - Para PREFEITO/VEREADOR: exigir pelo menos 2 dos 4 critérios com pontuação > 0.
 - Rejeite nomes muito genéricos (ex.: "José Silva", "Maria Souza") sem evidência forte (C1>=30 ou C3>=15).
-- Nunca invente nomes. Prefira retornar lista vazia a produzir falsos positivos.
+- Nunca invente nomes na etapa IA; se a IA falhar, o sistema aplicará fallback determinístico por cargo.
 
 ${presidenteRules}
 
@@ -682,7 +767,7 @@ Para CADA nome retorne também:
 - politicalActivity: atividade política concreta nos últimos 180 dias (agenda, eventos, articulações partidárias).
 - socialSignal: intensidade e engajamento em redes sociais recentes.
 - mediaSignal: cobertura em mídia local/regional/nacional recente.
-- candidacyIntent: EVIDÊNCIA REAL de intenção de disputar (frases como "sou pré-candidato", "pretendo disputar", "vou concorrer", "candidatura", "eleição 2026/2028", "articulação partidária", "convenção", "cotado para", "nome forte", "sucessão", entrevistas confirmando disputa). Se NÃO houver nenhuma evidência dessas nos últimos 180 dias, retorne 0. NÃO invente intenção.
+- candidacyIntent: EVIDÊNCIA REAL OU SINAL PÚBLICO de intenção/movimentação ("sou pré-candidato", "pretendo disputar", "vou concorrer", "candidatura", "eleição 2026/2028", "articulação partidária", "convenção", "cotado para", "nome forte", "sucessão", entrevistas, especulação pública, atividade recorrente em contexto eleitoral). Não exija anúncio oficial.
 ${isPresidente ? `- presidentialChecks (0-5): quantos destes se aplicam: (a) aparece em pesquisas eleitorais nacionais; (b) mídia nacional cita como presidenciável; (c) partido articula candidatura presidencial; (d) capital político nacional consolidado; (e) cargo atual relevante (presidente, governador de estado grande, senador de destaque, ministro).` : ""}
 
 JSON estrito:
@@ -763,6 +848,7 @@ JSON estrito:
           estado: (c.state ? normalizeUf(c.state) : null) || (isPresidente ? null : (uf || null)),
           municipio: mun || null,
           confidence: finalScore,
+          source: "ai_web",
           status: c.status || "emergente",
           reason: c.reason ? String(c.reason).slice(0, 300) : "",
           nationalRelevance: isPresidente ? nationalRelevance : undefined,
@@ -859,6 +945,7 @@ function toRow(c: DiscoveredCandidate, fallbackCargo: string) {
     is_eligible: !inel,
     ineligible_reason: inel?.reason ?? null,
     reason: c.reason || null,
+    source: c.source || "ai_web",
   };
 }
 
@@ -891,6 +978,138 @@ function applyPresidenteAnchor(nome: string, score: number): number {
   return score;
 }
 
+const PRESIDENTE_FALLBACKS: DiscoveredCandidate[] = [
+  { nome: "Lula", partido: "PT", cargo: "presidente", estado: null, municipio: null, confidence: 96, status: "declarado", nationalRelevance: 100, electoralViability: 100, mentions: 96, engagement: 94, sentiment: 85, historicalStrength: 100, politicalActivity: 95, socialSignal: 90, mediaSignal: 100, candidacyIntent: 95, presidentialChecks: 5, reason: "Fallback presidencial confiável: presidente em exercício e principal nome nacional.", source: "fallback" },
+  { nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", cargo: "presidente", estado: null, municipio: null, confidence: 92, status: "muito_forte", nationalRelevance: 95, electoralViability: 94, mentions: 90, engagement: 88, sentiment: 82, historicalStrength: 90, politicalActivity: 92, socialSignal: 86, mediaSignal: 94, candidacyIntent: 88, presidentialChecks: 5, reason: "Fallback presidencial confiável: governador de SP frequentemente citado como presidenciável.", source: "fallback" },
+  { nome: "Ronaldo Caiado", partido: "UNIÃO", cargo: "presidente", estado: null, municipio: null, confidence: 84, status: "muito_forte", nationalRelevance: 84, electoralViability: 82, mentions: 78, engagement: 76, sentiment: 80, historicalStrength: 86, politicalActivity: 84, socialSignal: 74, mediaSignal: 82, candidacyIntent: 78, presidentialChecks: 4, reason: "Fallback presidencial confiável: governador de GO com movimentação nacional.", source: "fallback" },
+  { nome: "Romeu Zema", partido: "NOVO", cargo: "presidente", estado: null, municipio: null, confidence: 79, status: "forte", nationalRelevance: 80, electoralViability: 78, mentions: 75, engagement: 72, sentiment: 76, historicalStrength: 82, politicalActivity: 78, socialSignal: 72, mediaSignal: 78, candidacyIntent: 72, presidentialChecks: 4, reason: "Fallback presidencial confiável: governador de MG citado em articulações nacionais.", source: "fallback" },
+  { nome: "Eduardo Leite", partido: "PSDB", cargo: "presidente", estado: null, municipio: null, confidence: 74, status: "forte", nationalRelevance: 76, electoralViability: 72, mentions: 70, engagement: 68, sentiment: 72, historicalStrength: 76, politicalActivity: 72, socialSignal: 66, mediaSignal: 74, candidacyIntent: 66, presidentialChecks: 3, reason: "Fallback presidencial confiável: governador do RS e nome nacional do PSDB.", source: "fallback" },
+  { nome: "Simone Tebet", partido: "MDB", cargo: "presidente", estado: null, municipio: null, confidence: 73, status: "forte", nationalRelevance: 78, electoralViability: 72, mentions: 70, engagement: 66, sentiment: 74, historicalStrength: 78, politicalActivity: 70, socialSignal: 62, mediaSignal: 74, candidacyIntent: 64, presidentialChecks: 3, reason: "Fallback presidencial confiável: ex-presidenciável e liderança nacional do MDB.", source: "fallback" },
+  { nome: "Ciro Gomes", partido: "PDT", cargo: "presidente", estado: null, municipio: null, confidence: 72, status: "forte", nationalRelevance: 88, electoralViability: 72, mentions: 72, engagement: 70, sentiment: 62, historicalStrength: 88, politicalActivity: 64, socialSignal: 68, mediaSignal: 76, candidacyIntent: 58, presidentialChecks: 3, reason: "Fallback presidencial confiável: presidenciável histórico com presença nacional.", source: "fallback" },
+  { nome: "Marina Silva", partido: "REDE", cargo: "presidente", estado: null, municipio: null, confidence: 70, status: "forte", nationalRelevance: 84, electoralViability: 68, mentions: 68, engagement: 62, sentiment: 76, historicalStrength: 86, politicalActivity: 64, socialSignal: 58, mediaSignal: 72, candidacyIntent: 56, presidentialChecks: 3, reason: "Fallback presidencial confiável: presidenciável histórica e liderança nacional.", source: "fallback" },
+];
+
+const GOVERNADOR_FALLBACKS: Record<string, Array<{ nome: string; partido?: string; score: number }>> = {
+  AC: [{ nome: "Gladson Cameli", partido: "PP", score: 78 }, { nome: "Sérgio Petecão", partido: "PSD", score: 68 }],
+  AL: [{ nome: "Paulo Dantas", partido: "MDB", score: 78 }, { nome: "Renan Filho", partido: "MDB", score: 74 }],
+  AP: [{ nome: "Clécio Luís", partido: "SOLIDARIEDADE", score: 78 }, { nome: "Davi Alcolumbre", partido: "UNIÃO", score: 72 }],
+  AM: [{ nome: "Wilson Lima", partido: "UNIÃO", score: 78 }, { nome: "Omar Aziz", partido: "PSD", score: 72 }],
+  BA: [{ nome: "Jerônimo Rodrigues", partido: "PT", score: 78 }, { nome: "ACM Neto", partido: "UNIÃO", score: 76 }],
+  CE: [{ nome: "Elmano de Freitas", partido: "PT", score: 78 }, { nome: "Cid Gomes", partido: "PSB", score: 74 }],
+  DF: [{ nome: "Ibaneis Rocha", partido: "MDB", score: 76 }, { nome: "Leandro Grass", partido: "PV", score: 66 }],
+  ES: [{ nome: "Renato Casagrande", partido: "PSB", score: 78 }, { nome: "Ricardo Ferraço", partido: "MDB", score: 68 }],
+  GO: [{ nome: "Ronaldo Caiado", partido: "UNIÃO", score: 84 }, { nome: "Daniel Vilela", partido: "MDB", score: 76 }],
+  MA: [{ nome: "Carlos Brandão", partido: "PSB", score: 78 }, { nome: "Weverton Rocha", partido: "PDT", score: 70 }],
+  MT: [{ nome: "Mauro Mendes", partido: "UNIÃO", score: 80 }, { nome: "Jayme Campos", partido: "UNIÃO", score: 68 }],
+  MS: [{ nome: "Eduardo Riedel", partido: "PSDB", score: 78 }, { nome: "André Puccinelli", partido: "MDB", score: 68 }],
+  MG: [{ nome: "Romeu Zema", partido: "NOVO", score: 80 }, { nome: "Rodrigo Pacheco", partido: "PSD", score: 76 }, { nome: "Alexandre Kalil", partido: "PSD", score: 68 }],
+  PA: [{ nome: "Helder Barbalho", partido: "MDB", score: 80 }, { nome: "Éder Mauro", partido: "PL", score: 66 }],
+  PB: [{ nome: "João Azevêdo", partido: "PSB", score: 78 }, { nome: "Efraim Filho", partido: "UNIÃO", score: 70 }],
+  PR: [{ nome: "Ratinho Junior", partido: "PSD", score: 82 }, { nome: "Sergio Moro", partido: "UNIÃO", score: 74 }],
+  PE: [{ nome: "Raquel Lyra", partido: "PSD", score: 78 }, { nome: "João Campos", partido: "PSB", score: 76 }],
+  PI: [{ nome: "Rafael Fonteles", partido: "PT", score: 78 }, { nome: "Ciro Nogueira", partido: "PP", score: 72 }],
+  RJ: [{ nome: "Cláudio Castro", partido: "PL", score: 76 }, { nome: "Eduardo Paes", partido: "PSD", score: 78 }],
+  RN: [{ nome: "Fátima Bezerra", partido: "PT", score: 76 }, { nome: "Rogério Marinho", partido: "PL", score: 72 }],
+  RS: [{ nome: "Eduardo Leite", partido: "PSDB", score: 80 }, { nome: "Onyx Lorenzoni", partido: "PL", score: 68 }],
+  RO: [{ nome: "Marcos Rocha", partido: "UNIÃO", score: 76 }, { nome: "Confúcio Moura", partido: "MDB", score: 70 }],
+  RR: [{ nome: "Antonio Denarium", partido: "PP", score: 76 }, { nome: "Teresa Surita", partido: "MDB", score: 70 }],
+  SC: [{ nome: "Jorginho Mello", partido: "PL", score: 78 }, { nome: "Décio Lima", partido: "PT", score: 68 }],
+  SP: [{ nome: "Tarcísio de Freitas", partido: "REPUBLICANOS", score: 86 }, { nome: "Fernando Haddad", partido: "PT", score: 55 }, { nome: "Márcio França", partido: "PSB", score: 72 }],
+  SE: [{ nome: "Fábio Mitidieri", partido: "PSD", score: 78 }, { nome: "Rogério Carvalho", partido: "PT", score: 70 }],
+  TO: [{ nome: "Wanderlei Barbosa", partido: "REPUBLICANOS", score: 78 }, { nome: "Eduardo Gomes", partido: "PL", score: 68 }],
+};
+
+function fallbackCandidate(nome: string, cargo: string, uf: string | null, score: number, partido?: string): DiscoveredCandidate {
+  return {
+    nome,
+    partido: partido || null,
+    cargo,
+    estado: cargo === "presidente" ? null : uf,
+    municipio: null,
+    confidence: score,
+    status: score >= 80 ? "muito_forte" : score >= 70 ? "forte" : "possivel",
+    historicalStrength: Math.min(100, score + 8),
+    politicalActivity: score,
+    socialSignal: Math.max(45, score - 8),
+    mediaSignal: score,
+    candidacyIntent: Math.max(45, score - 12),
+    reason: `Fallback obrigatório para ${cargo}${uf ? ` em ${uf}` : ""}: figura política com relevância pública e movimentação eleitoral plausível.`,
+    source: "fallback",
+  };
+}
+
+function buildMacroFallbackCandidates(cargo: string, uf: string): DiscoveredCandidate[] {
+  if (cargo === "presidente") return PRESIDENTE_FALLBACKS;
+  if (cargo === "governador") {
+    const state = normalizeUf(uf) || "SP";
+    const list = GOVERNADOR_FALLBACKS[state] ?? GOVERNADOR_FALLBACKS.SP;
+    return list.map((c) => fallbackCandidate(c.nome, "governador", state, c.score, c.partido));
+  }
+  return [];
+}
+
+function tseRowsToPreCandidateFallback(rows: any[], cargo: string): any[] {
+  return (rows ?? []).slice(0, 50).map((r: any, idx: number) => {
+    const score = Math.max(50, Math.min(72, Math.round(62 + (r.eleito ? 8 : 0) + Number(r.popularidade ?? 0) * 2 - idx * 0.15)));
+    return {
+      ...r,
+      id: `ai-tse:${r.tse_id || normalizeName(r.nome || "")}:${idx}`,
+      cargo,
+      categoria: "pre_candidato" as const,
+      eleito: false,
+      candidate_type: "pre_candidate" as const,
+      confidence_score: score,
+      confidence_tier: tierFromScore(score),
+      confidence_tier_label: TIER_LABEL[tierFromScore(score)],
+      score_breakdown: {
+        historical_strength: 75,
+        political_activity: r.eleito ? 65 : 55,
+        social_signal: null,
+        media_signal: null,
+        candidacy_intent: 45,
+      },
+      score_explainer: SCORE_EXPLAINER,
+      is_eligible: true,
+      ineligible_reason: null,
+      reason: `Fallback TSE obrigatório: candidatura municipal recente em ${r.municipio || "município informado"}/${r.estado || "UF"}.`,
+      source: "tse_fallback",
+    };
+  });
+}
+
+async function buildMandatoryFallbackRows(body: Body, currentRows: any[] = [], authHeader: string | null = null): Promise<any[]> {
+  if (currentRows.length) return currentRows;
+  const cargo = normalizeCargo(body.cargo);
+  const uf = normalizeUf(firstValue(body.estado));
+  const mun = (body.municipio || "").trim();
+  const isMunicipal = cargo === "prefeito" || cargo === "vereador";
+
+  if (cargo === "presidente" || cargo === "governador") {
+    const fallback = buildMacroFallbackCandidates(cargo, uf || "").map((c) => toRow(c, cargo));
+    if (fallback.length) console.warn("AI RETURNED ZERO");
+    return fallback;
+  }
+
+  if (isMunicipal && mun && uf) {
+    console.log("[AI FALLBACK] municipal TSE recent candidates", { cargo, uf, mun });
+    const history = await fetchMunicipalHistoryLoose(cargo, uf, mun, cargo === "prefeito");
+    const fallback = buildMunicipalFallbackRows({ ...body, cargo: [cargo], estado: [uf], municipio: mun }, history, 50).map((c) => toRow(c, cargo));
+    if (fallback.length) {
+      console.warn("AI RETURNED ZERO");
+      return fallback;
+    }
+
+    console.log("[AI FALLBACK] municipal TSE live search", { cargo, uf, mun });
+    const tse = await callTSE({ ...body, cargo: [cargo], estado: [uf], municipio: mun, page: 0 }, authHeader);
+    const liveFallback = tseRowsToPreCandidateFallback(tse.rows ?? [], cargo);
+    if (liveFallback.length) console.warn("AI RETURNED ZERO");
+    return liveFallback;
+  }
+
+  if (!currentRows.length) console.warn("AI RETURNED ZERO");
+  return currentRows;
+}
+
 // ---------- DISCOVERY ENGINE ----------
 async function discoverPoliticalActors(body: Body): Promise<any[]> {
   const cargo = normalizeCargo(body.cargo);
@@ -907,7 +1126,7 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
   if (isMunicipal) {
     console.log("DISCOVERY MODE: MUNICIPAL_ENGINE_4_LAYERS");
     const includeAllMunicipalHistory = cargo === "prefeito";
-    const history = await fetchMunicipalHistory(cargo, uf, mun, includeAllMunicipalHistory);
+    const history = await fetchMunicipalHistoryLoose(cargo, uf, mun, includeAllMunicipalHistory);
     const cityUniverse = await countMunicipalUniverse(uf, mun);
     console.log("TSE_HISTORY_ROWS:", history.length);
     console.log("MUNICIPAL_UNIVERSE:", cityUniverse);
@@ -933,10 +1152,12 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
     const layer1Hits = await runMunicipalWebLayer(layer1Queries, "qdr:m6", 8);
     console.log("[AI LAYER 1] hits:", layer1Hits.length);
     if (layer1Hits.length) {
+      console.log("WEB SOURCES FOUND:", layer1Hits.length);
       // Se houver histórico TSE, usa scoring restrito (mais preciso). Sempre também
       // tenta extração aberta para não perder novos nomes.
       if (history.length) addAll(await scoreMunicipalHistoricalActors(body, history, layer1Hits));
       addAll(await extractOpenCandidatesFromHits(layer1Hits, cargo, uf, mun, "layer1-web"));
+      console.log("AI RESULTS:", dedup.size);
     }
 
     // ---------- LAYER 2: PARTY / SOCIAL SITE SEARCH ----------
@@ -952,8 +1173,10 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
       const layer2Hits = await runMunicipalWebLayer(layer2Queries, "qdr:y", 6);
       console.log("[AI LAYER 2] hits:", layer2Hits.length);
       if (layer2Hits.length) {
+        console.log("WEB SOURCES FOUND:", layer2Hits.length);
         if (history.length) addAll(await scoreMunicipalHistoricalActors(body, history, layer2Hits));
         addAll(await extractOpenCandidatesFromHits(layer2Hits, cargo, uf, mun, "layer2-party"));
+        console.log("AI RESULTS:", dedup.size);
       }
     }
 
@@ -977,7 +1200,9 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
       const layer4Hits = await runMunicipalWebLayer(layer4Queries, "qdr:y", 6);
       console.log("[AI LAYER 4] hits:", layer4Hits.length);
       if (layer4Hits.length) {
+        console.log("WEB SOURCES FOUND:", layer4Hits.length);
         addAll(await extractOpenCandidatesFromHits(layer4Hits, cargo, uf, mun, "layer4-social"));
+        console.log("AI RESULTS:", dedup.size);
       }
     }
 
@@ -996,6 +1221,7 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
       .slice(0, 50)
       .map((c) => toRow(c, cargo));
     console.log("[AI FINAL COUNT]", rows.length);
+    console.log("AI RESULTS:", rows.length);
     return rows;
   }
 
@@ -1003,8 +1229,6 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
   const queries = buildDiscoveryQueries(cargo, uf, mun);
   console.log("DISCOVERY MODE: MACRO_ENGINE");
   console.log("SEARCH QUERIES:", queries);
-
-  if (!queries.length) { console.log("FINAL IA RESULTS: 0 (no queries)"); return []; }
 
   // Recência: municipais 90d, demais 180d
   const tbs = isMunicipal ? "qdr:m3" : "qdr:m6";
@@ -1018,9 +1242,11 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
     if (k && !seen.has(k)) { seen.add(k); hits.push(h); }
   }
   console.log("WEB_MATCHES:", hits.length);
+  console.log("WEB SOURCES FOUND:", hits.length);
 
   const discovered = await scorePoliticalActors(body, hits, queries);
   console.log("STEP 4 EXTRACTED NAMES", discovered.length);
+  console.log("AI RESULTS:", discovered.length);
 
   // Dedup
   const dedupKeyOf = (nome: string) => {
@@ -1129,6 +1355,7 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
     .map((c) => toRow(c, cargo));
 
   console.log("FINAL IA RESULTS:", rows.length);
+  if (!rows.length) console.warn("AI RETURNED ZERO");
   return rows;
 }
 
@@ -1153,11 +1380,20 @@ function dedupeKey(row: any) {
   ].join("|");
 }
 
+function responseSource(rows: any[]): "ai_web" | "fallback" | "tse_fallback" {
+  if (rows.some((r) => r?.source === "tse_fallback")) return "tse_fallback";
+  if (rows.some((r) => r?.source === "fallback")) return "fallback";
+  return "ai_web";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
     const rawBody = (await req.json()) as Body;
+    console.log("PRE-CANDIDATE SEARCH START");
+    console.log("INPUT:", rawBody);
     const body = sanitizeBody(rawBody);
+    console.log("NORMALIZED:", body);
     const candidateType = normalizeCandidateType(body.candidateType);
     const authHeader = req.headers.get("Authorization");
     const page = body.page ?? 0;
@@ -1172,7 +1408,8 @@ Deno.serve(async (req) => {
 
     // Modo IA puro: só descoberta, NUNCA cai em TSE.
     if (candidateType === "pre_candidate" || candidateType === "ai") {
-      const aiRows = await discoverPoliticalActors(body);
+      const discoveredRows = await discoverPoliticalActors(body);
+      const aiRows = await buildMandatoryFallbackRows(body, discoveredRows, authHeader);
       const total = aiRows.length;
       const start = page * PAGE_SIZE;
       const paged = aiRows.slice(start, start + PAGE_SIZE);
@@ -1185,6 +1422,8 @@ Deno.serve(async (req) => {
 
       return new Response(JSON.stringify({
         rows: paged,
+        candidates: paged,
+        source: responseSource(aiRows),
         total,
         hasMore: start + PAGE_SIZE < total,
         exactTotal: true,
@@ -1196,16 +1435,17 @@ Deno.serve(async (req) => {
         last_updated: new Date().toISOString(),
         nationalOnly: false,
         partial: false,
-        sources: aiRows.length ? [isMunicipal ? "ai_municipal_tse" : "ai_web"] : [],
+        sources: aiRows.length ? [responseSource(aiRows)] : [],
         counts: { official: 0, pre_candidate: aiRows.length, ai: aiRows.length },
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // Modo both/official
-    const [tse, aiRows] = await Promise.all([
+    const [tse, discoveredRows] = await Promise.all([
       wantsTSE ? callTSE(body, authHeader) : Promise.resolve({ rows: [], total: 0, hasMore: false, sources: [] }),
       wantsAI ? discoverPoliticalActors(body) : Promise.resolve([] as any[]),
     ]);
+    const aiRows = wantsAI ? await buildMandatoryFallbackRows(body, discoveredRows, authHeader) : discoveredRows;
 
     const tseRows = (tse.rows ?? []).map((r: any) => ({
       ...r,
@@ -1241,6 +1481,8 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({
       rows: paged,
+      candidates: paged,
+      source: aiRows.length && tseRows.length === 0 ? responseSource(aiRows) : (aiRows.length ? responseSource(aiRows) : "ai_web"),
       total,
       hasMore: start + PAGE_SIZE < total,
       exactTotal: true,
