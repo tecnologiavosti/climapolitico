@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Users, ChevronLeft, ChevronRight, Sparkles, Search, Loader2, UserPlus, UserSearch } from "lucide-react";
+import { Users, ChevronLeft, ChevronRight, Sparkles, Search, Loader2, UserSearch } from "lucide-react";
 import { useCatalogSearch, PAGE_SIZE, type CatalogFilters as Filters, type PoliticianRow } from "@/hooks/useCatalogSearch";
 import { CatalogFilters } from "@/components/dashboard/CatalogFilters";
 import { CandidateCatalogCard } from "@/components/dashboard/CandidateCatalogCard";
