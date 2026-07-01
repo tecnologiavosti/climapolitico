@@ -45,7 +45,22 @@ function normalizeText(value?: string | string[] | null): string {
 }
 
 function normalizeCargo(value?: string | string[] | null): string {
-  return canonicalCargoKey(value) ?? normalizeText(value);
+  if (!value) return "";
+  const normalized = normalizeText(value);
+  const map: Record<string, string> = {
+    presidente: "presidente",
+    governador: "governador",
+    senador: "senador",
+    prefeito: "prefeito",
+    vereador: "vereador",
+    "deputado federal": "deputado_federal",
+    "deputado estadual": "deputado_estadual",
+    "deputado distrital": "deputado_distrital",
+    deputado_federal: "deputado_federal",
+    deputado_estadual: "deputado_estadual",
+    deputado_distrital: "deputado_distrital",
+  };
+  return map[normalized] ?? canonicalCargoKey(value) ?? normalized;
 }
 
 function normalizeCandidateType(v: Body["candidateType"]): "official" | "pre_candidate" | "both" | "ai" {
@@ -244,6 +259,7 @@ interface DiscoveredCandidate {
   candidacyIntent?: number;      // 25% — evidência REAL de intenção
   presidentialChecks?: number;   // 0-5 checkboxes presidenciais
   ignoredReason?: string | null;
+  source?: "ai_web" | "fallback" | "tse_fallback";
 }
 
 interface HistoricalMunicipalCandidate {
