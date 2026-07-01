@@ -2,6 +2,7 @@
 // Hybrid: TSE oficial (histórico) + descoberta dinâmica de atores políticos via Web + IA.
 // SEM listas fixas, SEM seeds, SEM banco pré-populado.
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { createClient } from "npm:@supabase/supabase-js@2";
 import { normalizeName } from "../_shared/normalize-name.ts";
 import { callAICerebrasFirst } from "../_shared/cerebras-ai.ts";
 import {
@@ -167,13 +168,13 @@ function buildDiscoveryQueries(cargo: string, uf: string, mun: string): string[]
 // ---------- WEB SEARCH ----------
 interface WebHit { title?: string; description?: string; url?: string }
 
-async function firecrawlSearch(query: string, tbs = "qdr:y"): Promise<WebHit[]> {
+async function firecrawlSearch(query: string, tbs = "qdr:y", limit = 10): Promise<WebHit[]> {
   if (!FIRECRAWL_API_KEY) return [];
   try {
     const r = await fetch("https://api.firecrawl.dev/v2/search", {
       method: "POST",
       headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ query, limit: 10, lang: "pt", country: "br", tbs }),
+      body: JSON.stringify({ query, limit, lang: "pt", country: "br", tbs }),
     });
     const j = await r.json();
     if (!r.ok) {
@@ -184,7 +185,7 @@ async function firecrawlSearch(query: string, tbs = "qdr:y"): Promise<WebHit[]> 
       : Array.isArray(j?.data?.web) ? j.data.web
       : Array.isArray(j?.web) ? j.web
       : Array.isArray(j?.results) ? j.results : [];
-    return items.slice(0, 10).map((it: any) => ({
+    return items.slice(0, limit).map((it: any) => ({
       title: it?.title,
       description: it?.description ?? it?.snippet ?? it?.markdown?.slice?.(0, 700),
       url: it?.url,
@@ -232,6 +233,264 @@ interface DiscoveredCandidate {
   mediaScore?: number;       // 0-20
   historyScore?: number;     // 0-15
   criteriaMet?: number;      // quantos dos 4 critérios (>0)
+  continuityScore?: number;  // motor municipal: 0-35
+  politicalEngagementScore?: number; // motor municipal: 0-20
+  localMediaScore?: number;  // motor municipal: 0-15
+}
+
+interface HistoricalMunicipalCandidate {
+  nome: string;
+  nome_urna?: string | null;
+  partido_sigla?: string | null;
+  cargo?: string | null;
+  estado?: string | null;
+  municipio?: string | null;
+  eleito: boolean;
+  ano_eleicao: number | null;
+  popularidade: number;
+}
+
+function titleCaseName(value: string): string {
+  const small = new Set(["da", "de", "do", "das", "dos", "e"]);
+  return String(value || "")
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part, idx) => small.has(part) && idx > 0 ? part : part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function municipalStatus(score: number): "forte" | "cotado" | "possivel" | "emergente" {
+  if (score >= 85) return "forte";
+  if (score >= 70) return "cotado";
+  if (score >= 50) return "possivel";
+  return "emergente";
+}
+
+function historicalRankScore(row: HistoricalMunicipalCandidate): number {
+  const yearBoost = row.ano_eleicao === 2024 ? 8 : row.ano_eleicao === 2020 ? 3 : 0;
+  const electedBoost = row.eleito ? 20 : 0;
+  const popularity = Math.max(0, Math.min(1, Number(row.popularidade ?? 0))) * 10;
+  return electedBoost + yearBoost + popularity;
+}
+
+async function getBackendClient() {
+  return createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ANON_KEY);
+}
+
+async function fetchMunicipalHistory(
+  cargo: string,
+  uf: string,
+  mun: string,
+  includeAllMunicipal = false,
+): Promise<HistoricalMunicipalCandidate[]> {
+  if (!uf || !mun) return [];
+  const sb = await getBackendClient();
+  const cargos = includeAllMunicipal ? ["vereador", "prefeito"] : [cargo];
+  const { data, error } = await sb
+    .from("politicians")
+    .select("nome,nome_urna,partido_sigla,cargo,estado,municipio,eleito,ano_eleicao,popularidade")
+    .eq("ativo", true)
+    .eq("estado", uf)
+    .ilike("municipio", `%${mun}%`)
+    .in("cargo", cargos)
+    .in("ano_eleicao", [2020, 2024])
+    .order("eleito", { ascending: false })
+    .order("ano_eleicao", { ascending: false })
+    .order("popularidade", { ascending: false })
+    .order("nome", { ascending: true })
+    .limit(includeAllMunicipal ? 220 : 140);
+  if (error) {
+    console.warn("[municipal-engine] TSE history query failed", error.message);
+    return [];
+  }
+  const dedup = new Map<string, HistoricalMunicipalCandidate>();
+  for (const row of data ?? []) {
+    const key = normalizeName(row.nome || "");
+    if (!key) continue;
+    const current = {
+      nome: row.nome,
+      nome_urna: row.nome_urna,
+      partido_sigla: row.partido_sigla,
+      cargo: row.cargo,
+      estado: row.estado,
+      municipio: row.municipio,
+      eleito: !!row.eleito,
+      ano_eleicao: row.ano_eleicao,
+      popularidade: Number(row.popularidade ?? 0),
+    };
+    const prev = dedup.get(key);
+    if (!prev || historicalRankScore(current) > historicalRankScore(prev)) dedup.set(key, current);
+  }
+  return Array.from(dedup.values())
+    .sort((a, b) => historicalRankScore(b) - historicalRankScore(a) || a.nome.localeCompare(b.nome))
+    .slice(0, includeAllMunicipal ? 120 : 100);
+}
+
+async function countMunicipalUniverse(uf: string, mun: string): Promise<number> {
+  if (!uf || !mun) return 0;
+  const sb = await getBackendClient();
+  const { count, error } = await sb
+    .from("politicians")
+    .select("id", { count: "exact", head: true })
+    .eq("ativo", true)
+    .eq("estado", uf)
+    .ilike("municipio", `%${mun}%`)
+    .in("cargo", ["vereador", "prefeito"])
+    .in("ano_eleicao", [2020, 2024]);
+  if (error) {
+    console.warn("[municipal-engine] city universe count failed", error.message);
+    return 0;
+  }
+  return count ?? 0;
+}
+
+function buildMunicipalEnrichmentQueries(cargo: string, uf: string, mun: string, history: HistoricalMunicipalCandidate[]): string[] {
+  const base = [
+    `${mun} ${uf} ${cargo} política local últimos 90 dias`,
+    `${mun} ${uf} câmara municipal reunião bairro agenda pública`,
+    `${mun} ${uf} eleição municipal ${cargo} política`,
+  ];
+  const candidateQueries = history.slice(0, 12).map((h) => `"${h.nome_urna || h.nome}" ${mun} ${uf} política ${cargo}`);
+  return [...base, ...candidateQueries];
+}
+
+async function scoreMunicipalHistoricalActors(
+  body: Body,
+  history: HistoricalMunicipalCandidate[],
+  hits: WebHit[],
+): Promise<DiscoveredCandidate[]> {
+  const cargo = normalizeCargo(body.cargo);
+  const uf = firstValue(body.estado).toUpperCase();
+  const mun = (body.municipio || "").trim();
+  if (!history.length) return [];
+
+  const allowed = new Map(history.map((h) => [normalizeName(h.nome), h]));
+  const list = history.slice(0, 100).map((h, i) =>
+    `${i + 1}. ${h.nome} | urna: ${h.nome_urna || "-"} | partido: ${h.partido_sigla || "-"} | cargo TSE: ${h.cargo || "-"} | ${h.eleito ? "eleito" : "não eleito/suplente"} | ano: ${h.ano_eleicao || "-"}`
+  ).join("\n");
+  const evidence = hits.length
+    ? hits.slice(0, 45).map((h, i) => `[${i + 1}] ${h.title ?? ""}\n${h.description ?? ""}\n${h.url ?? ""}`).join("\n---\n").slice(0, 10000)
+    : "Sem evidências web recentes. Use somente o histórico TSE abaixo; não invente sinais sociais ou mídia.";
+
+  const system = `Você é um analista político municipal brasileiro. Responda SEMPRE em JSON estrito. Não invente nomes: só pode usar pessoas que aparecem na lista TSE histórica fornecida.`;
+  const user = `MOTOR MUNICIPAL — Pré-candidatos IA para ${cargo} em ${mun}/${uf}.
+
+ARQUITETURA OBRIGATÓRIA:
+- A fonte principal é o histórico TSE municipal 2020/2024 abaixo.
+- Web/rede social/mídia local são apenas enriquecimento; NÃO são a fonte principal.
+- Candidato municipal quase nunca aparece em jornal. Se o histórico TSE for forte, a candidatura IA pode ser permitida mesmo sem mídia local.
+- Não inclua ninguém fora da lista TSE histórica.
+
+LISTA TSE HISTÓRICA (top por relevância disponível):
+${list}
+
+EVIDÊNCIAS DE ENRIQUECIMENTO (web/rede/mídia local; podem estar vazias):
+${evidence}
+
+Pontue cada pessoa escolhida:
+1) continuityScore 0-35: continua no partido, mandato/cargo público, assessor, diretório, ou TSE recente. Eleito em 2024 ou candidato competitivo em 2024 deve receber continuidade relevante.
+2) socialScore 0-30: últimos 90 dias com agenda pública, bairro, visita, reunião, política local em Instagram/Facebook/TikTok/YouTube.
+3) engagementScore 0-20: sinais/termos vereador, prefeito, campanha, 2028, eleição, comentários políticos.
+4) localMediaScore 0-15: G1 regional, jornais locais, blogs políticos, rádio local.
+
+Score final = soma dos 4 critérios (0-100).
+Faixas: 50-69 possível; 70-84 cotado; 85+ forte. Abaixo de 50 não retornar.
+
+JSON estrito:
+{ "candidatos": [
+  { "name": string, "score": number, "status": "forte"|"cotado"|"possivel", "party": string|null,
+    "continuityScore": number, "socialScore": number, "engagementScore": number, "localMediaScore": number,
+    "reason": string }
+] }`;
+
+  try {
+    const ai = await callAICerebrasFirst({
+      systemMsg: system,
+      userPrompt: user,
+      jsonMode: true,
+      maxTokens: 3200,
+      temperature: 0.15,
+      tag: "municipal-discovery-engine",
+    });
+    const parsed = JSON.parse(ai.content);
+    const arr = Array.isArray(parsed?.candidatos) ? parsed.candidatos : [];
+    const clamp = (n: any, max: number) => Math.max(0, Math.min(max, Number(n) || 0));
+    const out: DiscoveredCandidate[] = [];
+    for (const c of arr) {
+      const key = normalizeName(c?.name || "");
+      const hist = allowed.get(key);
+      if (!hist) {
+        console.log("PRE_CANDIDATE_AI", { name: c?.name, city: mun, state: uf, cargo, status: "REJECTED (fora do TSE histórico municipal)" });
+        continue;
+      }
+      const continuityScore = clamp(c.continuityScore, 35);
+      const socialScore = clamp(c.socialScore, 30);
+      const politicalEngagementScore = clamp(c.engagementScore, 20);
+      const localMediaScore = clamp(c.localMediaScore, 15);
+      const score = Math.round(continuityScore + socialScore + politicalEngagementScore + localMediaScore);
+      if (score < 50) {
+        console.log("PRE_CANDIDATE_AI", {
+          name: hist.nome, city: mun, state: uf, cargo,
+          WEB_MATCHES: hits.length, SOCIAL_MATCHES: socialScore, MEDIA_MATCHES: localMediaScore,
+          TSE_HISTORY: continuityScore, FINAL_SCORE: score, status: "REJECTED (score<50)",
+        });
+        continue;
+      }
+      out.push({
+        nome: titleCaseName(hist.nome),
+        partido: c.party || hist.partido_sigla || null,
+        cargo,
+        estado: uf,
+        municipio: mun,
+        confidence: score,
+        status: c.status || municipalStatus(score),
+        reason: c.reason ? String(c.reason).slice(0, 300) : `Histórico TSE municipal em ${hist.ano_eleicao}; score municipal ${score}.`,
+        continuityScore,
+        socialScore,
+        politicalEngagementScore,
+        localMediaScore,
+        criteriaMet: [continuityScore, socialScore, politicalEngagementScore, localMediaScore].filter((v) => v > 0).length,
+      });
+    }
+    return out;
+  } catch (e) {
+    console.warn("[municipal-engine] ai err", e);
+    return [];
+  }
+}
+
+function buildMunicipalFallbackRows(
+  body: Body,
+  history: HistoricalMunicipalCandidate[],
+  limit = 50,
+): DiscoveredCandidate[] {
+  const cargo = normalizeCargo(body.cargo);
+  const uf = firstValue(body.estado).toUpperCase();
+  const mun = (body.municipio || "").trim();
+  const nonElected = history.filter((h) => !h.eleito);
+  const source = nonElected.length ? nonElected : history;
+  return source.slice(0, limit).map((h) => {
+    const base = h.ano_eleicao === 2024 ? 52 : 48;
+    const continuityScore = h.ano_eleicao === 2024 ? 32 : 25;
+    const politicalEngagementScore = h.ano_eleicao === 2024 ? 18 : 15;
+    const score = Math.max(50, Math.min(69, Math.round(base + Number(h.popularidade ?? 0) * 8 + (h.eleito ? 5 : 0))));
+    return {
+      nome: titleCaseName(h.nome),
+      partido: h.partido_sigla || null,
+      cargo,
+      estado: uf,
+      municipio: mun,
+      confidence: score,
+      status: "possivel",
+      reason: `Fallback municipal: histórico TSE ${h.ano_eleicao || "recente"} em ${mun}/${uf}. Sem depender de notícia pública.`,
+      continuityScore,
+      socialScore: 0,
+      politicalEngagementScore,
+      localMediaScore: 0,
+      criteriaMet: 2,
+    };
+  });
 }
 
 async function scorePoliticalActors(
