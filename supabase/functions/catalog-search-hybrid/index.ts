@@ -492,17 +492,37 @@ const GOVERNADOR_SEED: Record<string, ExtractedCandidate[]> = {
 };
 
 // Seed municipal para prefeito (key = `${UF}:${municipio-normalizado}`).
+function mkPref(nome: string, partido: string, uf: string, mun: string, confidence: number, reason: string): ExtractedCandidate {
+  return { nome, partido, cargo: "prefeito", estado: uf, municipio: mun, confidence, reason, recent_evidence: true, poll_evidence: false, held_major_office: false, party_signaling: true, only_historical: false, last_mention_months: 3 };
+}
+function mkVer(nome: string, partido: string, uf: string, mun: string, confidence: number, reason: string): ExtractedCandidate {
+  return { nome, partido, cargo: "vereador", estado: uf, municipio: mun, confidence, reason, recent_evidence: true, poll_evidence: false, held_major_office: false, party_signaling: true, only_historical: false, last_mention_months: 3 };
+}
+
 const PREFEITO_SEED: Record<string, ExtractedCandidate[]> = {
   "SP:jundiai": [
-    { nome: "Gustavo Martinelli", partido: "UNIÃO", cargo: "prefeito", estado: "SP", municipio: "Jundiaí", confidence: 82, reason: "cotado para prefeitura de Jundiaí em 2028", recent_evidence: true, poll_evidence: false, held_major_office: false, party_signaling: true, only_historical: false, last_mention_months: 2 },
-    { nome: "Luiz Fernando Machado", partido: "PSDB", cargo: "prefeito", estado: "SP", municipio: "Jundiaí", confidence: 78, reason: "ex-prefeito de Jundiaí, articula retorno", recent_evidence: true, poll_evidence: false, held_major_office: true, party_signaling: true, only_historical: false, last_mention_months: 3 },
+    mkPref("Gustavo Martinelli", "UNIÃO", "SP", "Jundiaí", 82, "cotado para prefeitura de Jundiaí"),
+    mkPref("Luiz Fernando Machado", "PSDB", "SP", "Jundiaí", 78, "ex-prefeito de Jundiaí, articula retorno"),
+    mkPref("Rogério Ricardo", "PL", "SP", "Jundiaí", 70, "cotado pelo PL para prefeitura de Jundiaí"),
+    mkPref("Paulo Sergio Martins", "PSD", "SP", "Jundiaí", 68, "vereador cotado para disputar prefeitura de Jundiaí"),
+    mkPref("Henrique Parra", "PSOL", "SP", "Jundiaí", 62, "articula candidatura pela esquerda em Jundiaí"),
   ],
 };
 
-// Seed municipal para vereador.
 const VEREADOR_SEED: Record<string, ExtractedCandidate[]> = {
   "SP:jundiai": [
-    { nome: "Faouaz Taha", partido: "PSD", cargo: "vereador", estado: "SP", municipio: "Jundiaí", confidence: 72, reason: "vereador em exercício em Jundiaí", recent_evidence: true, poll_evidence: false, held_major_office: false, party_signaling: true, only_historical: false, last_mention_months: 1 },
+    mkVer("Faouaz Taha", "PSD", "SP", "Jundiaí", 72, "vereador em exercício em Jundiaí"),
+    mkVer("Gustavo Martinelli", "UNIÃO", "SP", "Jundiaí", 70, "vereador em exercício em Jundiaí"),
+    mkVer("Leandro Basson", "PSDB", "SP", "Jundiaí", 68, "vereador em exercício em Jundiaí"),
+    mkVer("Rafael Tanzi", "REPUBLICANOS", "SP", "Jundiaí", 66, "vereador em exercício em Jundiaí"),
+    mkVer("Romildo Silva", "PP", "SP", "Jundiaí", 64, "vereador em exercício em Jundiaí"),
+    mkVer("Edimilson Lourenço", "PL", "SP", "Jundiaí", 64, "vereador em exercício em Jundiaí"),
+    mkVer("Sandro Rocha", "PSB", "SP", "Jundiaí", 62, "vereador em exercício em Jundiaí"),
+    mkVer("Alexandre Blay", "PODEMOS", "SP", "Jundiaí", 62, "vereador em exercício em Jundiaí"),
+    mkVer("Marcelo Peixão", "PT", "SP", "Jundiaí", 60, "vereador em exercício em Jundiaí"),
+    mkVer("Marcos Tadeu Verrone", "PSD", "SP", "Jundiaí", 60, "vereador em exercício em Jundiaí"),
+    mkVer("Rafael Galvão", "UNIÃO", "SP", "Jundiaí", 58, "cotado para vereança em Jundiaí"),
+    mkVer("Nilton Marques", "MDB", "SP", "Jundiaí", 58, "cotado para vereança em Jundiaí"),
   ],
 };
 
@@ -587,7 +607,10 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
     rows.push(toRow(c, filterCargo, { score: r.score, tier: r.tier, eligible: r.eligible, ineligibleReason: r.ineligibleReason }));
   }
   rows.sort((a, b) => (b.confidence_score || 0) - (a.confidence_score || 0));
-  console.log("AI RESULTS (filtrados):", rows.length);
+  console.log("MUNICIPAL SEARCH", { cargo: filterCargo, uf, mun });
+  console.log("SEED MATCHES", extracted.length);
+  console.log("DISCOVERED NAMES", hits.length);
+  console.log("FINAL AI RESULTS", rows.length);
   return rows;
 }
 
