@@ -149,10 +149,14 @@ function buildDiscoveryQueries(cargo: string, uf: string, mun: string): string[]
   }
   if (cargo === "presidente") {
     return [
-      "presidenciável 2026",
-      "eleições presidenciais 2026 brasil",
-      "candidato presidente brasil 2026",
-      "pré-candidatos presidência república 2026",
+      `"pré-candidato à presidência" 2026`,
+      `"cotado para 2026" presidência`,
+      `"disputa o Planalto" 2026`,
+      `"sucessão presidencial" 2026`,
+      `presidenciáveis 2026 site:folha.uol.com.br OR site:oglobo.globo.com OR site:estadao.com.br`,
+      `presidenciáveis 2026 site:cnnbrasil.com.br OR site:poder360.com.br OR site:uol.com.br OR site:g1.globo.com`,
+      `pré-candidatos presidência república 2026`,
+      `eleição presidencial brasil 2026 favoritos`,
     ];
   }
   // fallback
