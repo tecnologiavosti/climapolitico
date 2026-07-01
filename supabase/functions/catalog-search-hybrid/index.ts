@@ -991,8 +991,11 @@ Deno.serve(async (req) => {
       const total = aiRows.length;
       const start = page * PAGE_SIZE;
       const paged = aiRows.slice(start, start + PAGE_SIZE);
+      const isMunicipal = cargo === "prefeito" || cargo === "vereador";
       const message = aiRows.length === 0
-        ? "Não encontramos sinais políticos suficientes na web para esse filtro."
+        ? isMunicipal
+          ? "Não encontramos pré-candidatos com sinais políticos confiáveis nesta região no momento."
+          : "Não encontramos sinais políticos suficientes na web para esse filtro."
         : null;
 
       return new Response(JSON.stringify({
@@ -1008,7 +1011,7 @@ Deno.serve(async (req) => {
         last_updated: new Date().toISOString(),
         nationalOnly: false,
         partial: false,
-        sources: aiRows.length ? ["ai_web"] : [],
+        sources: aiRows.length ? [isMunicipal ? "ai_municipal_tse" : "ai_web"] : [],
         counts: { official: 0, pre_candidate: aiRows.length, ai: aiRows.length },
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
