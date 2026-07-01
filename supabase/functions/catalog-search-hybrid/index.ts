@@ -1409,7 +1409,7 @@ Deno.serve(async (req) => {
     // Modo IA puro: só descoberta, NUNCA cai em TSE.
     if (candidateType === "pre_candidate" || candidateType === "ai") {
       const discoveredRows = await discoverPoliticalActors(body);
-      const aiRows = await buildMandatoryFallbackRows(body, discoveredRows);
+      const aiRows = await buildMandatoryFallbackRows(body, discoveredRows, authHeader);
       const total = aiRows.length;
       const start = page * PAGE_SIZE;
       const paged = aiRows.slice(start, start + PAGE_SIZE);
@@ -1445,7 +1445,7 @@ Deno.serve(async (req) => {
       wantsTSE ? callTSE(body, authHeader) : Promise.resolve({ rows: [], total: 0, hasMore: false, sources: [] }),
       wantsAI ? discoverPoliticalActors(body) : Promise.resolve([] as any[]),
     ]);
-    const aiRows = wantsAI ? await buildMandatoryFallbackRows(body, discoveredRows) : discoveredRows;
+    const aiRows = wantsAI ? await buildMandatoryFallbackRows(body, discoveredRows, authHeader) : discoveredRows;
 
     const tseRows = (tse.rows ?? []).map((r: any) => ({
       ...r,
