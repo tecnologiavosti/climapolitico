@@ -387,64 +387,64 @@ function scoreRelevance(
 ): { score: number; keep: boolean; tier: Tier; eligible: boolean; ineligibleReason: string | null; why: string } {
   const cCargo = canonicalCargoKey(c.cargo) ?? normalizeText(c.cargo);
   const cUf = (c.estado || "").toUpperCase();
+  const cMun = (c.municipio || "").trim().toLowerCase();
 
-  // Desambiguação: exige nome completo (≥ 2 partes ≥ 2 chars). Single-token ⇒ descarta.
+  // Nome completo (≥ 2 partes).
   const parts = (c.nome || "").trim().split(/\s+/).filter((p) => p.length >= 2);
   if (parts.length < 2) {
-    return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: "nome incompleto (single token)" };
+    return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: "nome incompleto" };
   }
 
-  const hasEvidence = filterCargo ? evidenceOfCandidacy(c.reason || "", filterCargo, uf, mun) : false;
-  const cargoMatch = filterCargo ? (cCargo === filterCargo || cCargo.includes(filterCargo)) : true;
-  const incompatList = filterCargo ? (CARGO_INCOMPATIBLE[filterCargo] || []) : [];
-  const isIncompat = incompatList.some((x) => cCargo === x || cCargo.startsWith(x));
-
-  if (filterCargo && isIncompat && !hasEvidence && !c.recent_evidence) {
-    return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `cargo incompatível: ${cCargo} vs ${filterCargo}` };
-  }
-  if (filterCargo && filterCargo !== "presidente" && uf && cUf && cUf !== uf && !hasEvidence) {
-    return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `UF incompatível: ${cUf} vs ${uf}` };
+  // REGRA 3 — filtro rígido de cargo (sem "include", sem incompatíveis).
+  if (filterCargo && cCargo && cCargo !== filterCargo) {
+    return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `cargo ≠ filtro: ${cCargo} vs ${filterCargo}` };
   }
 
-  // Componentes 0-100.
-  const recent = c.recent_evidence ? 1 : 0;
-  const poll = c.poll_evidence ? 1 : 0;
-  const major = c.held_major_office ? 1 : 0;
-  const partySig = c.party_signaling ? 1 : 0;
-  const monthsAgo = typeof c.last_mention_months === "number" ? c.last_mention_months : 12;
+  // REGRA 4 — cargos estaduais/federais: exige mesmo UF.
+  const requiresUF = REGIONAL_CARGOS_REQUIRE_UF.includes(filterCargo);
+  if (requiresUF && uf && cUf !== uf) {
+    return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `UF ≠ filtro: ${cUf} vs ${uf}` };
+  }
 
-  const media = Math.max(0, Math.min(100, (recent ? 70 : 25) + (poll ? 25 : 0) + (cargoMatch ? 5 : 0)));
-  const relevance = Math.max(0, Math.min(100, (poll ? 70 : 35) + (recent ? 25 : 0) + (hasEvidence ? 5 : 0)));
-  const viability = Math.max(0, Math.min(100, Number(c.confidence) || 0));
-  const recency = Math.max(0, 100 - Math.min(monthsAgo * 10, 100));
+  // REGRA 5 — cargos municipais: exige mesmo UF + município.
+  const requiresMun = LOCAL_CARGOS_REQUIRE_MUN.includes(filterCargo);
+  if (requiresMun) {
+    if (!uf || !mun) {
+      return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: "cargo municipal exige UF+município" };
+    }
+    if (cUf && cUf !== uf) {
+      return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `UF ≠ filtro (municipal): ${cUf} vs ${uf}` };
+    }
+    const munNorm = mun.toLowerCase();
+    if (cMun && cMun !== munNorm) {
+      return { score: 0, keep: false, tier: "fraco", eligible: true, ineligibleReason: null, why: `município ≠ filtro: ${cMun} vs ${munNorm}` };
+    }
+  }
 
-  let score = 0.15 * media + 0.15 * relevance + 0.55 * viability + 0.15 * recency;
+  // REGRA 6 — score IA: mentions*0.35 + engagement*0.25 + polls*0.25 + news*0.15
+  const mentions = c.recent_evidence ? 100 : (c.last_mention_months != null && c.last_mention_months <= 6 ? 60 : 20);
+  const engagement = Math.max(0, Math.min(100, Number(c.confidence) || 0)); // proxy
+  const polls = c.poll_evidence ? 100 : 0;
+  const news = c.recent_evidence ? 100 : (c.held_major_office || c.party_signaling ? 50 : 0);
+  let score = mentions * 0.35 + engagement * 0.25 + polls * 0.25 + news * 0.15;
   if (c.only_historical) score -= 25;
-  if (typeof c.last_mention_months === "number" && c.last_mention_months > 12) score -= 20;
   score = Math.max(0, Math.min(100, Math.round(score)));
 
-  // Elegibilidade — independe do score.
   const inel = lookupIneligible(c.nome);
   const eligible = !inel;
   const ineligibleReason = inel ? inel.reason : null;
 
-  // Critérios obrigatórios: ao menos 2 de 4 (major office / pesquisas / notícias recentes / sinalização partidária).
-  const criteriaMet = major + poll + recent + partySig;
-
   let tier: Tier;
   if (!eligible) tier = "inelegivel";
-  else if (score >= 85 && criteriaMet >= 2) tier = "forte";
-  else if (score >= 60 && criteriaMet >= 2) tier = "possivel";
+  else if (score >= 90) tier = "forte";
+  else if (score >= 75) tier = "possivel"; // "Cotado"
+  else if (score >= 60) tier = "possivel"; // "Possível"
   else tier = "fraco";
 
-  // Só exibir Tier 1 e Tier 2. Inelegíveis aparecem com badge.
-  // Para cargos "grandes" (presidente/governador) exigimos ≥2 critérios objetivos.
-  // Para cargos locais/estaduais (senador, deputados, prefeito, vereador) a cobertura
-  // jornalística/pesquisa é escassa — mantemos apenas o piso de score.
-  const strictCargo = filterCargo === "presidente" || filterCargo === "governador" || !filterCargo;
-  const keep = !eligible || (strictCargo ? (score >= 60 && criteriaMet >= 2) : score >= 55);
-  return { score, keep, tier, eligible, ineligibleReason, why: `score=${score} tier=${tier} crit=${criteriaMet}/4 (maj=${major} poll=${poll} rec=${recent} party=${partySig}) elig=${eligible} strict=${strictCargo}` };
+  const keep = !eligible || score >= 60;
+  return { score, keep, tier, eligible, ineligibleReason, why: `score=${score} tier=${tier} elig=${eligible}` };
 }
+
 
 const NATIONAL_CARGOS = ["presidente", "vice_presidente", "ministro"];
 const REGIONAL_CARGOS_REQUIRE_UF = ["governador", "vice_governador", "senador", "deputado_federal", "deputado_estadual", "deputado_distrital"];
