@@ -83,9 +83,24 @@ function ufFullName(uf?: string | null): string {
 function buildCargoQueries(cargo: string, estado?: string, municipio?: string): string[] {
   const estadoNome = ufFullName(estado);
   const cargoLabel = cargo.replace(/_/g, " ");
-  // Regra simplificada: sinais recentes em notícias, redes, entrevistas, portais locais.
   const local = municipio || estadoNome || "brasil";
   const region = estadoNome || estado || "";
+
+  // Municipal: queries agressivas para cobrir cidades pequenas.
+  if ((cargo === "vereador" || cargo === "prefeito") && municipio) {
+    const uf = (estado || "").toUpperCase();
+    return [
+      `política ${municipio} ${uf}`,
+      `vereador ${municipio}`,
+      `câmara municipal ${municipio}`,
+      `eleições ${municipio} 2026`,
+      `pré-candidato ${cargoLabel} ${municipio}`,
+      `${municipio} prefeitura`,
+      `${cargoLabel} ${municipio} ${uf} instagram`,
+      `${municipio} jornal política vereador`,
+    ];
+  }
+
   const base = [
     `${cargoLabel} ${local}`,
     `${cargoLabel} ${region}`,
