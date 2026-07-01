@@ -351,6 +351,71 @@ async function fetchMunicipalHistory(
     .slice(0, includeAllMunicipal ? 120 : 100);
 }
 
+async function fetchMunicipalHistoryLoose(
+  cargo: string,
+  uf: string,
+  mun: string,
+  includeAllMunicipal = false,
+): Promise<HistoricalMunicipalCandidate[]> {
+  const exact = await fetchMunicipalHistory(cargo, uf, mun, includeAllMunicipal);
+  if (exact.length || !uf || !mun) return exact;
+
+  const sb = await getBackendClient();
+  const cargos = includeAllMunicipal ? ["vereador", "prefeito"] : [cargo];
+  const wanted = normalizeName(mun);
+  const dedup = new Map<string, HistoricalMunicipalCandidate>();
+  const pageSize = 1000;
+  const maxRows = 15000;
+
+  for (let from = 0; from < maxRows; from += pageSize) {
+    const { data, error } = await sb
+      .from("politicians")
+      .select("nome,nome_urna,partido_sigla,cargo,estado,municipio,eleito,ano_eleicao,popularidade")
+      .eq("ativo", true)
+      .eq("estado", uf)
+      .in("cargo", cargos)
+      .in("ano_eleicao", [2020, 2024])
+      .order("municipio", { ascending: true })
+      .order("eleito", { ascending: false })
+      .order("popularidade", { ascending: false })
+      .range(from, from + pageSize - 1);
+
+    if (error) {
+      console.warn("[municipal-engine] loose TSE history query failed", error.message);
+      break;
+    }
+
+    const rows = data ?? [];
+    for (const row of rows) {
+      const city = normalizeName(row.municipio || "");
+      if (city !== wanted && !city.includes(wanted) && !wanted.includes(city)) continue;
+      const key = normalizeName(row.nome || "");
+      if (!key) continue;
+      const current = {
+        nome: row.nome,
+        nome_urna: row.nome_urna,
+        partido_sigla: row.partido_sigla,
+        cargo: row.cargo,
+        estado: row.estado,
+        municipio: row.municipio,
+        eleito: !!row.eleito,
+        ano_eleicao: row.ano_eleicao,
+        popularidade: Number(row.popularidade ?? 0),
+      };
+      const prev = dedup.get(key);
+      if (!prev || historicalRankScore(current) > historicalRankScore(prev)) dedup.set(key, current);
+    }
+
+    if (dedup.size >= 80 || rows.length < pageSize) break;
+  }
+
+  const out = Array.from(dedup.values())
+    .sort((a, b) => historicalRankScore(b) - historicalRankScore(a) || a.nome.localeCompare(b.nome))
+    .slice(0, includeAllMunicipal ? 120 : 100);
+  console.log("[municipal-engine] loose TSE history rows:", out.length);
+  return out;
+}
+
 async function countMunicipalUniverse(uf: string, mun: string): Promise<number> {
   if (!uf || !mun) return 0;
   const sb = await getBackendClient();
