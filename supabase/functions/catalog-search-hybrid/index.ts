@@ -227,15 +227,23 @@ interface DiscoveredCandidate {
   mentions?: number;
   engagement?: number;
   sentiment?: number;
-  // Novos critérios (motor v2)
-  intentionScore?: number;   // 0-40
-  socialScore?: number;      // 0-25
-  mediaScore?: number;       // 0-20
-  historyScore?: number;     // 0-15
-  criteriaMet?: number;      // quantos dos 4 critérios (>0)
-  continuityScore?: number;  // motor municipal: 0-35
-  politicalEngagementScore?: number; // motor municipal: 0-20
-  localMediaScore?: number;  // motor municipal: 0-15
+  // Motor v2 (mantido para compat)
+  intentionScore?: number;
+  socialScore?: number;
+  mediaScore?: number;
+  historyScore?: number;
+  criteriaMet?: number;
+  continuityScore?: number;
+  politicalEngagementScore?: number;
+  localMediaScore?: number;
+  // Motor v3 (0-100 cada, ponderado no confidence)
+  historicalStrength?: number;   // 15%
+  politicalActivity?: number;    // 20%
+  socialSignal?: number;         // 20%
+  mediaSignal?: number;          // 20%
+  candidacyIntent?: number;      // 25% — evidência REAL de intenção
+  presidentialChecks?: number;   // 0-5 checkboxes presidenciais
+  ignoredReason?: string | null;
 }
 
 interface HistoricalMunicipalCandidate {
@@ -589,13 +597,23 @@ Município: ${mun || "-"}
 Evidências:
 ${evidence}
 
+MOTOR v3 — MÉTRICAS OBRIGATÓRIAS (0-100 cada):
+Para CADA nome retorne também:
+- historicalStrength: força eleitoral histórica (votos, mandatos, filiação antiga).
+- politicalActivity: atividade política concreta nos últimos 180 dias (agenda, eventos, articulações partidárias).
+- socialSignal: intensidade e engajamento em redes sociais recentes.
+- mediaSignal: cobertura em mídia local/regional/nacional recente.
+- candidacyIntent: EVIDÊNCIA REAL de intenção de disputar (frases como "sou pré-candidato", "pretendo disputar", "vou concorrer", "candidatura", "eleição 2026/2028", "articulação partidária", "convenção", "cotado para", "nome forte", "sucessão", entrevistas confirmando disputa). Se NÃO houver nenhuma evidência dessas nos últimos 180 dias, retorne 0. NÃO invente intenção.
+${isPresidente ? `- presidentialChecks (0-5): quantos destes se aplicam: (a) aparece em pesquisas eleitorais nacionais; (b) mídia nacional cita como presidenciável; (c) partido articula candidatura presidencial; (d) capital político nacional consolidado; (e) cargo atual relevante (presidente, governador de estado grande, senador de destaque, ministro).` : ""}
+
 JSON estrito:
 { "candidatos": [
   { "name": string, "score": number, "status": "forte"|"cotado"|"possivel"|"emergente",
     "party": string|null, "role": string|null, "state": string|null,
     "category": "politico"|"jornalista"|"influenciador"|"empresario"|"celebridade"|"outro",
     "intentionScore": number, "socialScore": number, "mediaScore": number, "historyScore": number,
-    ${isPresidente ? `"mentions": number, "engagement": number, "sentiment": number, "nationalRelevance": number, "electoralViability": number,` : ""}
+    "historicalStrength": number, "politicalActivity": number, "socialSignal": number, "mediaSignal": number, "candidacyIntent": number,
+    ${isPresidente ? `"presidentialChecks": number, "mentions": number, "engagement": number, "sentiment": number, "nationalRelevance": number, "electoralViability": number,` : ""}
     "reason": string }
 ] }`;
 
@@ -631,17 +649,34 @@ JSON estrito:
         const criteriaMet =
           (intentionScore > 0 ? 1 : 0) + (socialScore > 0 ? 1 : 0) +
           (mediaScore > 0 ? 1 : 0) + (historyScore > 0 ? 1 : 0);
-        let finalScore = clamp(c.score);
-        if (isPresidente && (c.mentions != null || c.nationalRelevance != null)) {
-          finalScore = clamp(
-            mentions * 0.25 + engagement * 0.20 + sentiment * 0.15 +
-            nationalRelevance * 0.20 + electoralViability * 0.20
-          );
-        } else if (c.intentionScore != null || c.socialScore != null ||
-                   c.mediaScore != null || c.historyScore != null) {
-          // Recomputa finalScore pela soma v2 quando disponível
-          finalScore = clamp(intentionScore + socialScore + mediaScore + historyScore);
-        }
+
+        // Motor v3 — se IA não retornou métricas 0-100, deriva das métricas v2
+        const historicalStrength = c.historicalStrength != null
+          ? clamp(c.historicalStrength)
+          : clamp((historyScore / 15) * 100);
+        const politicalActivity = c.politicalActivity != null
+          ? clamp(c.politicalActivity)
+          : clamp((socialScore / 25) * 100);
+        const socialSignal = c.socialSignal != null
+          ? clamp(c.socialSignal)
+          : clamp((socialScore / 25) * 100);
+        const mediaSignal = c.mediaSignal != null
+          ? clamp(c.mediaSignal)
+          : clamp((mediaScore / 20) * 100);
+        const candidacyIntent = c.candidacyIntent != null
+          ? clamp(c.candidacyIntent)
+          : clamp((intentionScore / 40) * 100);
+        const presidentialChecks = c.presidentialChecks != null ? Math.max(0, Math.min(5, Number(c.presidentialChecks) || 0)) : 0;
+
+        // Score ponderado v3 (0-100): 15/20/20/20/25
+        const finalScore = clamp(
+          historicalStrength * 0.15 +
+          politicalActivity  * 0.20 +
+          socialSignal       * 0.20 +
+          mediaSignal        * 0.20 +
+          candidacyIntent    * 0.25
+        );
+
         return {
           nome: String(c.name).trim(),
           partido: c.party || null,
@@ -657,13 +692,35 @@ JSON estrito:
           engagement: isPresidente ? engagement : undefined,
           sentiment: isPresidente ? sentiment : undefined,
           intentionScore, socialScore, mediaScore, historyScore, criteriaMet,
+          historicalStrength, politicalActivity, socialSignal, mediaSignal, candidacyIntent,
+          presidentialChecks,
         };
       });
   } catch (e) { console.warn("[discovery] ai err", e); return []; }
 }
 
 // ---------- OUTPUT ----------
-type Tier = "forte" | "possivel" | "fraco" | "inelegivel";
+type Tier =
+  | "declarado"       // 90-100
+  | "muito_forte"     // 80-89
+  | "forte"           // 70-79
+  | "possivel"        // 60-69
+  | "observacao"      // 45-59
+  | "fraco"           // <45 (não deve aparecer)
+  | "inelegivel";
+
+const TIER_LABEL: Record<Tier, string> = {
+  declarado: "🟣 Declarado",
+  muito_forte: "🟢 Muito forte",
+  forte: "🟡 Forte",
+  possivel: "🟡 Possível",
+  observacao: "⚪ Em observação",
+  fraco: "Fraco",
+  inelegivel: "🔴 Inelegível",
+};
+
+const SCORE_EXPLAINER =
+  "Score de pré-candidatura IA calculado com base em: força eleitoral histórica (15%), atividade política recente (20%), sinais sociais (20%), presença na mídia (20%) e evidências concretas de intenção de candidatura (25%).";
 
 const INELIGIBLE: Record<string, { until: string; reason: string }> = {
   "jair bolsonaro": { until: "2030", reason: "Inelegível pelo TSE até 2030" },
@@ -671,20 +728,21 @@ const INELIGIBLE: Record<string, { until: string; reason: string }> = {
 };
 
 function tierFromScore(score: number): Tier {
-  if (score >= 90) return "forte";
+  if (score >= 90) return "declarado";
+  if (score >= 80) return "muito_forte";
+  if (score >= 70) return "forte";
   if (score >= 60) return "possivel";
+  if (score >= 45) return "observacao";
   return "fraco";
 }
 
 function toRow(c: DiscoveredCandidate, fallbackCargo: string) {
   const isPresidente = canonicalCargoKey(fallbackCargo) === "presidente";
-  // Regra 1: para filtro Presidente, forçar cargo = presidente
   const cargo = isPresidente
     ? "presidente"
     : (canonicalCargoKey(c.cargo) ?? canonicalCargoKey(fallbackCargo) ?? null);
   const inel = INELIGIBLE[normalizeName(c.nome)];
   const tier: Tier = inel ? "inelegivel" : tierFromScore(c.confidence);
-  // Regra 2: presidenciáveis não exibem município e ocultam UF
   const estado = isPresidente ? null : c.estado;
   const municipio = isPresidente ? null : c.municipio;
   return {
@@ -710,6 +768,15 @@ function toRow(c: DiscoveredCandidate, fallbackCargo: string) {
     candidate_type: "pre_candidate" as const,
     confidence_score: c.confidence,
     confidence_tier: tier,
+    confidence_tier_label: TIER_LABEL[tier],
+    score_breakdown: {
+      historical_strength: c.historicalStrength ?? null,
+      political_activity: c.politicalActivity ?? null,
+      social_signal: c.socialSignal ?? null,
+      media_signal: c.mediaSignal ?? null,
+      candidacy_intent: c.candidacyIntent ?? null,
+    },
+    score_explainer: SCORE_EXPLAINER,
     is_eligible: !inel,
     ineligible_reason: inel?.reason ?? null,
     reason: c.reason || null,
@@ -862,7 +929,7 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
     if (!prev || c.confidence > prev.confidence) dedup.set(key, c);
   }
 
-  const minScore = 60; // regra global v2
+  const minScore = 45; // v3: abaixo de 45 nunca exibir
 
   // Penalidade de inelegibilidade
   const withPenalty = Array.from(dedup.values()).map((c) => {
@@ -871,7 +938,7 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
     return c;
   });
 
-  // Filtro presidencial (mantém regras existentes)
+  // Filtro presidencial
   const relevanceFiltered = isPresidente
     ? withPenalty
         .filter((c) => {
@@ -883,46 +950,58 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
         })
         .map((c) => ({ ...c, confidence: applyPresidenteAnchor(c.nome, c.confidence) }))
         .filter((c) => {
+          // Regra v3 Presidente: exigir >=2 checkboxes presidenciais
+          const checks = c.presidentialChecks ?? 0;
           const nr = c.nationalRelevance ?? 0;
-          const passesScore = c.confidence >= 50;
+          const passesChecks = checks >= 2;
           const passesRelevance = nr >= 60;
-          if (!passesRelevance && !passesScore) {
-            console.log("[presidente] EXCLUÍDO:", c.nome, "NR=", nr, "score=", c.confidence);
+          if (!passesChecks && !passesRelevance) {
+            console.log("[presidente] EXCLUÍDO:", c.nome, "checks=", checks, "NR=", nr);
             return false;
           }
           return true;
         })
     : withPenalty;
 
-  // Debug por candidato + regras v2
+  // Debug por candidato + regras v3
   const approved: DiscoveredCandidate[] = [];
   for (const c of relevanceFiltered) {
     const cm = c.criteriaMet ?? 0;
     const nameToks = (c.nome || "").trim().split(/\s+/).length;
     const generic = isGenericName(c.nome);
-    const strongEvidence = (c.intentionScore ?? 0) >= 30 || (c.mediaScore ?? 0) >= 15;
+    const intent = c.candidacyIntent ?? 0;
+    const mediaSig = c.mediaSignal ?? 0;
+    const strongEvidence = intent >= 30 || (c.mediaScore ?? 0) >= 15;
 
     let approvedFlag = true;
     let rejectReason = "";
 
-    if (nameToks < 2) { approvedFlag = false; rejectReason = "nome incompleto"; }
+    // Regra anti-falso-positivo v3: candidacy_intent<20 AND media<20 → IGNORAR
+    if (intent < 20 && mediaSig < 20) {
+      approvedFlag = false; rejectReason = "low_intent (intent<20 && media<20)";
+    }
+    else if (nameToks < 2) { approvedFlag = false; rejectReason = "nome incompleto"; }
     else if (c.confidence < minScore) { approvedFlag = false; rejectReason = `score<${minScore}`; }
     else if (isMunicipal && cm < 2) { approvedFlag = false; rejectReason = "municipal exige >=2 critérios"; }
     else if (generic && !strongEvidence) { approvedFlag = false; rejectReason = "nome genérico sem evidência forte"; }
 
-    console.log("PRE_CANDIDATE_AI", {
+    if (!approvedFlag) {
+      console.log("IGNORED_PRE_CANDIDATE", { name: c.nome, reason: rejectReason });
+    }
+
+    console.log("AI CANDIDATE ANALYSIS", {
       name: c.nome,
+      cargo: c.cargo || cargo,
       city: c.municipio,
       state: c.estado,
-      cargo: c.cargo || cargo,
-      WEB_MATCHES: hits.length,
-      SOCIAL_MATCHES: c.socialScore,
-      MEDIA_MATCHES: c.mediaScore,
-      TSE_HISTORY: c.historyScore,
-      INTENTION: c.intentionScore,
-      criteriaMet: cm,
-      FINAL_SCORE: c.confidence,
-      status: approvedFlag ? "APPROVED" : `REJECTED (${rejectReason})`,
+      historical_strength: c.historicalStrength,
+      political_activity: c.politicalActivity,
+      social_signal: c.socialSignal,
+      media_signal: c.mediaSignal,
+      candidacy_intent: c.candidacyIntent,
+      presidential_checks: c.presidentialChecks ?? 0,
+      final_score: c.confidence,
+      ignored_reason: approvedFlag ? null : rejectReason,
     });
 
     if (approvedFlag) approved.push(c);
