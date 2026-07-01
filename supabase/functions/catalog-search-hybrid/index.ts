@@ -345,25 +345,26 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
   const queries = buildDiscoveryQueries(cargo, uf, mun);
   console.log("SEARCH QUERIES:", queries);
 
-  if (!queries.length) { console.log("FINAL IA RESULTS: 0 (no queries)"); return []; }
-  if (!FIRECRAWL_API_KEY) {
-    console.warn("[discovery] FIRECRAWL_API_KEY missing — discovery engine requires web signals");
-    return [];
-  }
+  console.log("STEP 1 FILTERS", { cargo, uf, mun });
+  console.log("STEP 2 QUERIES", queries);
 
-  const hitLists = await Promise.all(queries.map(firecrawlSearch));
+  if (!queries.length) { console.log("FINAL IA RESULTS: 0 (no queries)"); return []; }
+
+  const hitLists = FIRECRAWL_API_KEY
+    ? await Promise.all(queries.map(firecrawlSearch))
+    : [];
   const seen = new Set<string>();
   const hits: WebHit[] = [];
   for (const list of hitLists) for (const h of list) {
     const k = h.url || `${h.title}|${h.description}`;
     if (k && !seen.has(k)) { seen.add(k); hits.push(h); }
   }
-  console.log("RAW WEB RESULTS:", hits.length);
+  console.log("STEP 3 RAW SEARCH", hits.length);
 
-  if (!hits.length) { console.log("FINAL IA RESULTS: 0 (no web hits)"); return []; }
-
+  // NÃO abortar aqui: para cargos estaduais/nacionais, a IA usa conhecimento próprio como fallback.
   const discovered = await scorePoliticalActors(body, hits, queries);
-  console.log("EXTRACTED NAMES:", discovered.length);
+  console.log("STEP 4 EXTRACTED NAMES", discovered.length);
+  console.log("STEP 5 LLM OUTPUT", discovered.map((c) => `${c.nome} (${c.confidence})`).join(" | "));
 
   // Dedup por nome normalizado
   const dedup = new Map<string, DiscoveredCandidate>();
@@ -380,7 +381,7 @@ async function discoverPoliticalActors(body: Body): Promise<any[]> {
     .slice(0, 50)
     .map((c) => toRow(c, cargo));
 
-  console.log("FINAL IA RESULTS:", rows.length);
+  console.log("STEP 6 FINAL FILTER", rows.length);
   return rows;
 }
 
