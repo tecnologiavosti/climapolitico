@@ -88,8 +88,8 @@ export default function CandidatesCatalog() {
       toast.error(v.message ?? "Filtros inválidos.");
       return;
     }
-    const next: Filters = { ...nextFilters, candidateType: nextFilters.candidateType ?? "both" };
-    console.log("CATALOG REQUEST:", { candidateType: next.candidateType, cargo: next.cargo, estado: next.estado, municipio: next.municipio, q: next.q });
+    const next: Filters = { ...nextFilters, candidateType: "official" };
+    console.log("TSE QUERY:", { cargo: next.cargo, estado: next.estado, municipio: next.municipio, q: next.q });
     setClientPage(0);
     setAppliedFilters(next);
   };
