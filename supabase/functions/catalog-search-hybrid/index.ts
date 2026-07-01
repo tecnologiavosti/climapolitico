@@ -597,6 +597,13 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
     }
   }
 
+  // FALLBACK MUNICIPAL FINAL: para prefeito/vereador em qualquer município,
+  // se seed/web/IA vieram vazios, buscar no TSE 2024 e transformar em pré-candidatos.
+  if (extracted.length === 0 && (filterCargo === "prefeito" || filterCargo === "vereador") && uf && mun) {
+    console.warn(`[hybrid] fallback TSE 2024 para ${filterCargo} ${uf}/${mun}`);
+    extracted = await fetchMunicipalTSEFallback(filterCargo, uf, mun);
+  }
+
   // Pós-processamento estrito por cargo/estado/município (UF/mun ignorados para nacional).
   const effUf = isNational ? "" : uf;
   const effMun = isNational ? "" : mun;
@@ -607,11 +614,54 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
     rows.push(toRow(c, filterCargo, { score: r.score, tier: r.tier, eligible: r.eligible, ineligibleReason: r.ineligibleReason }));
   }
   rows.sort((a, b) => (b.confidence_score || 0) - (a.confidence_score || 0));
+  const citySize = rows.length >= 30 ? "large" : rows.length >= 10 ? "medium" : "small";
   console.log("MUNICIPAL SEARCH", { cargo: filterCargo, uf, mun });
-  console.log("SEED MATCHES", extracted.length);
-  console.log("DISCOVERED NAMES", hits.length);
-  console.log("FINAL AI RESULTS", rows.length);
+  console.log("CITY SIZE", citySize);
+  console.log("WEB RESULTS", hits.length);
+  console.log("FALLBACK RESULTS", extracted.length);
+  console.log("FINAL RESULTS", rows.length);
   return rows;
+}
+
+// Busca no TSE 2024 (última eleição municipal) e converte em pré-candidatos.
+async function fetchMunicipalTSEFallback(cargo: string, uf: string, mun: string): Promise<ExtractedCandidate[]> {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/tse-search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ANON_KEY}` },
+      body: JSON.stringify({
+        cargo: [cargo],
+        estado: [uf],
+        municipio: mun,
+        electionYear: 2024,
+        page: 0,
+      }),
+    });
+    if (!r.ok) { console.warn("[hybrid] fallback TSE falhou", r.status); return []; }
+    const j = await r.json();
+    const rows: any[] = Array.isArray(j?.rows) ? j.rows : [];
+    console.log(`[hybrid] fallback TSE 2024 encontrou ${rows.length} candidatos`);
+    return rows.slice(0, 50).map((row): ExtractedCandidate => ({
+      nome: row.nome || row.nome_urna || "",
+      partido: row.partido || row.sigla_partido || null,
+      cargo,
+      estado: uf,
+      municipio: mun,
+      confidence: row.eleito ? 75 : 60,
+      reason: row.eleito
+        ? `${cargo} eleito em ${mun} (TSE 2024) — provável recandidatura`
+        : `candidato a ${cargo} em ${mun} em 2024 — potencial pré-candidato`,
+      recent_evidence: true,
+      poll_evidence: false,
+      held_major_office: !!row.eleito,
+      party_signaling: true,
+      only_historical: false,
+      last_mention_months: 6,
+    })).filter((c) => c.nome);
+  } catch (e) {
+    console.warn("[hybrid] fallback TSE erro", (e as Error).message);
+    return [];
+  }
 }
 
 async function callTSE(payload: Body, authHeader: string | null) {
