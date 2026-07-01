@@ -627,17 +627,45 @@ async function discoverPreCandidates(body: Body): Promise<any[]> {
     console.error("FAKE AI SCORING DETECTED", { score: scored[0].confidence_score, count: scored.length });
   }
 
-  // Threshold IA: score >= 60 (sinais recentes em notícias/redes/menções políticas)
-  let filtered = scored.filter((r) => (r.confidence_score || 0) >= 60);
-  // Limite municipal: máximo 15 pré-candidatos IA por cidade
-  if (filterCargo === "prefeito" || filterCargo === "vereador") {
-    filtered = filtered.slice(0, 15);
+  // Threshold dinâmico: municípios pequenos precisam de barra mais baixa.
+  // Sem população disponível, usamos volume de sinais coletados como proxy.
+  const isMunicipal = filterCargo === "prefeito" || filterCargo === "vereador";
+  let threshold = 60;
+  if (isMunicipal && mun) {
+    if (scored.length < 5) threshold = 35;        // cidade pequena / poucos sinais
+    else if (scored.length < 15) threshold = 50;  // cidade média
+    else threshold = 65;                          // cidade grande
   }
+  console.log("THRESHOLD", threshold, "scored:", scored.length);
+  let filtered = scored.filter((r) => (r.confidence_score || 0) >= threshold);
+
+  // Fallback municipal: se IA não achou ninguém, usar TSE 2024 como "Cotado".
+  if (filtered.length === 0 && isMunicipal && uf && mun) {
+    console.warn("[hybrid] IA vazia — aplicando fallback TSE 2024 como Cotado");
+    const tseFallback = await fetchMunicipalTSEFallback(filterCargo, uf, mun);
+    for (const c of tseFallback) {
+      const r = scoreRelevance(c, filterCargo, uf, mun);
+      if (!r.keep && r.eligible !== false) continue;
+      const row = toRow(c, filterCargo, {
+        score: Math.max(r.score, 55),
+        tier: "cotado" as any,
+        eligible: r.eligible,
+        ineligibleReason: r.ineligibleReason,
+      });
+      filtered.push(row);
+    }
+    console.log("FALLBACK TSE RESULTS", filtered.length);
+  }
+
+  if (isMunicipal) filtered = filtered.slice(0, 15);
+
   const citySize = filtered.length >= 30 ? "large" : filtered.length >= 10 ? "medium" : "small";
+  console.log("MUNICIPIO:", mun);
   console.log("MUNICIPAL SEARCH", { cargo: filterCargo, uf, mun });
   console.log("CITY SIZE", citySize);
-  console.log("WEB RESULTS", hits.length);
-  console.log("AFTER FILTER", filtered.length);
+  console.log("RAW WEB RESULTS:", hits.length);
+  console.log("CANDIDATES EXTRACTED:", extracted.length);
+  console.log("AFTER SCORE:", filtered.length);
   console.log("FINAL RESULTS", filtered.length);
   return filtered;
 }
