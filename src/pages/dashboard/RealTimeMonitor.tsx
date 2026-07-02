@@ -311,7 +311,7 @@ const RealTimeMonitor = () => {
           </div>
         </div>
         {started && activeCandidate && (
-          <div className="flex flex-col items-end gap-1.5">
+          <div className="flex flex-col items-center text-center md:items-end md:text-right gap-1.5">
             <div className="text-[11px] text-muted-foreground">
               Monitoramento ativo para
             </div>
@@ -321,7 +321,8 @@ const RealTimeMonitor = () => {
                 Última atualização: {format(new Date(brief.fetched_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
               </div>
             )}
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1 flex-wrap justify-center md:justify-end">
+
               <Button
                 size="sm"
                 variant="outline"
