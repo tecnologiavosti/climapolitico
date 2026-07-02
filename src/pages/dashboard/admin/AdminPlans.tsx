@@ -25,6 +25,7 @@ type Plan = {
   features: string[];
   is_active: boolean;
   sort_order: number;
+  visible_in_homepage: boolean;
 };
 
 function PlanCard({ plan, onSave, onDelete }: { plan: Plan; onSave: (p: Plan) => void; onDelete: (id: string) => void }) {
