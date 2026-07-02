@@ -139,17 +139,34 @@ const Auth = () => {
 
   const handleGoogle = async () => {
     setLoading(true);
+    // Failsafe: nunca deixar o botão preso em "Entrando..."
+    const failsafe = window.setTimeout(() => setLoading(false), 15000);
+    // Se o usuário voltar para a aba (popup fechado / cancelado), resetar
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        setLoading(false);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible, { once: true });
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: { redirectTo: `${getAuthOrigin()}/` },
       });
       if (error) {
-        toast({ title: "Erro Google", description: error.message, variant: "destructive" });
-        setLoading(false);
+        const msg = error.message?.toLowerCase() ?? "";
+        if (!msg.includes("popup") && !msg.includes("closed") && !msg.includes("cancel")) {
+          toast({ title: "Erro Google", description: error.message, variant: "destructive" });
+        }
       }
     } catch (e: unknown) {
-      toast({ title: "Erro Google", description: e instanceof Error ? e.message : "Falha", variant: "destructive" });
+      const msg = e instanceof Error ? e.message.toLowerCase() : "";
+      if (!msg.includes("popup") && !msg.includes("closed") && !msg.includes("cancel")) {
+        toast({ title: "Erro Google", description: e instanceof Error ? e.message : "Falha", variant: "destructive" });
+      }
+    } finally {
+      window.clearTimeout(failsafe);
+      document.removeEventListener("visibilitychange", onVisible);
       setLoading(false);
     }
   };
