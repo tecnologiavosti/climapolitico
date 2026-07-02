@@ -7,6 +7,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const isUnlimitedTier = (tier?: string | null) =>
+  ['vip', 'lifetime', 'vitalicio', 'vitalício'].includes(String(tier ?? '').toLowerCase().trim());
+
 interface AIResult {
   model: string;
   sentiment: string;
@@ -325,7 +328,9 @@ serve(async (req) => {
       throw new Error('Subscription not found');
     }
 
-    if (subscription.updates_used_this_month >= subscription.max_updates_per_month) {
+    const unlimitedPlan = isUnlimitedTier(subscription.tier);
+
+    if (!unlimitedPlan && subscription.updates_used_this_month >= subscription.max_updates_per_month) {
       throw new Error('Monthly analysis limit reached');
     }
 
@@ -489,13 +494,15 @@ Formate sua resposta como JSON com estes campos: sentiment, sentimentScore, ideo
       console.log('Source data saved successfully');
     }
 
-    // Update subscription usage
-    await supabase
-      .from('subscriptions')
-      .update({
-        updates_used_this_month: subscription.updates_used_this_month + 1,
-      })
-      .eq('user_id', user.id);
+    // Update subscription usage. VIP/Vitalício não consome créditos.
+    if (!unlimitedPlan) {
+      await supabase
+        .from('subscriptions')
+        .update({
+          updates_used_this_month: subscription.updates_used_this_month + 1,
+        })
+        .eq('user_id', user.id);
+    }
 
     return new Response(
       JSON.stringify({
