@@ -633,16 +633,22 @@ export default function Candidates() {
       )}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="text-sm">
-            <span className="font-semibold">{planLabel}</span>
-            <span className="text-muted-foreground"> · {candidateCount} / {candidateLimit === 9999 ? "∞" : candidateLimit} créditos usados</span>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Info className="inline-block ml-1 h-3.5 w-3.5 text-muted-foreground cursor-help align-text-bottom" />
-                </TooltipTrigger>
-                <TooltipContent>Excluir candidatos não restaura créditos.</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <span className="font-semibold">{isVip ? "👑 " : ""}{planLabel}</span>
+            <span className="text-muted-foreground">
+              {isVip
+                ? " · acesso ilimitado"
+                : ` · ${candidateCount} / ${candidateLimit === 9999 ? "∞" : candidateLimit} créditos usados`}
+            </span>
+            {!isVip && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="inline-block ml-1 h-3.5 w-3.5 text-muted-foreground cursor-help align-text-bottom" />
+                  </TooltipTrigger>
+                  <TooltipContent>Excluir candidatos não restaura créditos.</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </div>
           {isLimitReached && (
             <a
