@@ -251,6 +251,7 @@ All colors MUST be HSL.
     background: var(--gradient-app);
     background-attachment: fixed;
     min-height: 100vh;
+    min-height: 100dvh;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
@@ -258,6 +259,17 @@ All colors MUST be HSL.
     overflow-x: hidden;
     max-width: 100vw;
   }
+
+  /* PWA standalone: respeita notches e barras do sistema (iOS/Android) */
+  @supports (padding: env(safe-area-inset-top)) {
+    @media (display-mode: standalone) {
+      body {
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+    }
+  }
+
 
 
   /* Mobile: promove grids de coluna única para 2 colunas, mantendo
