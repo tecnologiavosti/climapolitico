@@ -99,6 +99,7 @@ export function UserEditDialog({ open, onOpenChange, user }: Props) {
                 <SelectItem value="pro">Pro</SelectItem>
                 <SelectItem value="enterprise">Enterprise</SelectItem>
                 <SelectItem value="lifetime">Vitalício</SelectItem>
+                <SelectItem value="vip">👑 VIP</SelectItem>
               </SelectContent>
             </Select>
           </div>
