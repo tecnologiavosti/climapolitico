@@ -347,6 +347,10 @@ export function AppSidebar() {
           </div>
         </div>
 
+        {/* Botão de instalação PWA — fixo no topo */}
+        <div className="px-3 pt-3">
+          <InstallAppButton collapsed={isCollapsed} />
+        </div>
 
         {!isCollapsed && <OnboardingBanner />}
 
