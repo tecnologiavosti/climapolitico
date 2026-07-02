@@ -162,7 +162,11 @@ export default function CandidatesCatalog() {
       queryClient.invalidateQueries({ queryKey: ["subscription"] });
       toast.success("Candidato adicionado à sua conta!");
     },
-    onError: (e: Error) => toast.error(e.message.includes('candidate_limit_reached') ? 'Limite de candidatos do plano atingido. Faça upgrade para adicionar mais.' : e.message),
+    onError: (e: Error) => toast.error(
+      e.message.includes('candidate_limit_reached') && !isUnlimitedSubscription(subscription)
+        ? 'Limite de candidatos do plano atingido. Faça upgrade para adicionar mais.'
+        : 'Erro ao adicionar candidato: ' + e.message.replace(/^candidate_limit_reached:\s*/i, '')
+    ),
   });
 
   const manualAddMutation = useMutation({
@@ -431,6 +435,11 @@ export default function CandidatesCatalog() {
         onSubmit={(payload) => manualAddMutation.mutate(payload)}
         knownNames={myCandidates}
         initialValues={dialogInitial}
+        limitInfo={{
+          count: (subscription as any)?.candidates_created_total ?? myCandidates.length,
+          limit: isUnlimitedSubscription(subscription) ? Infinity : (subscription?.max_candidates ?? 3),
+          planLabel: isUnlimitedSubscription(subscription) ? 'Plano VIP' : undefined,
+        }}
       />
     </div>
   );
