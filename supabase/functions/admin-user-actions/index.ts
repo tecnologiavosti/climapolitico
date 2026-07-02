@@ -12,6 +12,7 @@ const json = (body: any, status = 200) =>
 
 function limitsForTier(tier: string) {
   switch (tier) {
+    case "vip": return { max_candidates: 9999, max_updates: 9999 };
     case "lifetime": return { max_candidates: 9999, max_updates: 9999 };
     case "enterprise": return { max_candidates: 25, max_updates: 1000 };
     case "pro": return { max_candidates: 5, max_updates: 100 };
