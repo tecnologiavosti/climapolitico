@@ -45,14 +45,31 @@ serve(async (req) => {
 
     if (!candidateId) return json({ error: 'candidateId é obrigatório' }, 400);
 
-    const { data: candidate, error: candError } = await supabaseClient
+    let { data: candidate } = await supabaseClient
       .from('candidates')
       .select('id, full_name, party, region')
       .eq('id', candidateId)
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
-    if (candError || !candidate) return json({ error: 'Candidato não encontrado' }, 404);
+    // Fallback: allow public catalog candidates too
+    if (!candidate) {
+      const { data: pub } = await supabaseClient
+        .from('public_candidates_catalog')
+        .select('id, full_name, party, region')
+        .eq('id', candidateId)
+        .maybeSingle();
+      if (pub) candidate = pub;
+    }
+
+    if (!candidate) {
+      return json({
+        error: 'Candidato não encontrado',
+        fallback: true,
+        message: 'Candidato não encontrado ou removido. Selecione outro candidato.',
+        recommendations: null,
+      }, 200);
+    }
 
     const baseCtx = `Candidato: ${candidate.full_name}${candidate.party ? ` (${candidate.party})` : ''}${candidate.region ? ` — Região: ${candidate.region}` : ''}.
 Período: ${customStart && customEnd ? `${customStart} → ${customEnd}` : `últimos ${daysBack} dias`}.
