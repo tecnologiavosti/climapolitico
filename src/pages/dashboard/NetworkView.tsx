@@ -258,7 +258,7 @@ export default function NetworkView() {
         </div>
 
         {started && activeCandidate && (
-          <div className="flex flex-col items-end gap-1.5">
+          <div className="flex flex-col items-center text-center xl:items-end xl:text-right gap-1.5">
             <div className="text-[11px] text-muted-foreground">Análise social ativa para</div>
             <div className="text-sm font-semibold">{(activeCandidate as any).full_name}</div>
             {report && (
@@ -266,7 +266,8 @@ export default function NetworkView() {
                 Última atualização: {format(new Date(report.generated_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
               </div>
             )}
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1 flex-wrap justify-center xl:justify-end">
+
               <Button size="sm" variant="outline" onClick={() => setNonce((n) => n + 1)} disabled={loading || !range}>
                 <RefreshCw className={`h-4 w-4 mr-1.5 ${loading ? "animate-spin" : ""}`} />
                 Atualizar IA
