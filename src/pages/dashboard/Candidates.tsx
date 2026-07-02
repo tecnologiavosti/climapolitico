@@ -85,7 +85,7 @@ export default function Candidates() {
   }, [searchParams, setSearchParams]);
 
   // Fetch user's subscription
-  const { data: subscription } = useQuery({
+  const { data: subscription, isLoading: subscriptionLoading } = useQuery({
     queryKey: ['subscription'],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -604,11 +604,11 @@ export default function Candidates() {
   );
 
   const isVip = isUnlimitedSubscription(subscription);
-  const candidateLimit = isVip ? Infinity : (subscription?.max_candidates ?? 3);
+  const candidateLimit = isVip || subscriptionLoading ? Infinity : (subscription?.max_candidates ?? 3);
   // Quota vitalícia: usamos o total de candidatos já criados (nunca decrementa ao excluir).
   const candidatesCreatedTotal = (subscription as any)?.candidates_created_total ?? candidates.length;
   const candidateCount = candidatesCreatedTotal;
-  const isLimitReached = !isVip && candidateCount >= candidateLimit;
+  const isLimitReached = !subscriptionLoading && !!subscription && !isVip && candidateCount >= candidateLimit;
   const remaining = isVip ? Infinity : Math.max(0, (candidateLimit as number) - candidateCount);
   const usagePct = isVip ? 0 : Math.min(100, Math.round((candidateCount / Math.max(1, candidateLimit as number)) * 100));
   const planLabel = formatPlanLabel(subscription?.tier);
@@ -634,7 +634,7 @@ export default function Candidates() {
             <span className="font-semibold">{isVip ? "👑 " : ""}{planLabel}</span>
             <span className="text-muted-foreground">
               {isVip
-                ? " · acesso ilimitado"
+                ? " • Acesso Total"
                 : ` · ${candidateCount} / ${candidateLimit === 9999 ? "∞" : candidateLimit} créditos usados`}
             </span>
             {!isVip && (
