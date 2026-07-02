@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { HeroSection } from "@/components/landing/HeroSection";
+import { InstallPwaBanner } from "@/components/pwa/InstallPwaBanner";
 import { SocialProof } from "@/components/landing/SocialProof";
 import { BentoFeatures } from "@/components/landing/BentoFeatures";
 import { TrendingCandidates } from "@/components/landing/TrendingCandidates";
@@ -86,6 +87,9 @@ const Index = () => {
 
 
     <div className="min-h-screen bg-gradient-secondary">
+      {/* PWA install banner — mobile only, antes do Hero */}
+      <InstallPwaBanner />
+
       {/* Hero Section */}
       <HeroSection />
 
