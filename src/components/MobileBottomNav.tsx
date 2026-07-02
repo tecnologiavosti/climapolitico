@@ -38,6 +38,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { cn } from "@/lib/utils";
+import { InstallAppButton } from "@/components/pwa/InstallButton";
 
 const bottomItems = [
   { label: "Visão Geral", icon: Home, to: "/dashboard", end: true },
@@ -251,6 +252,9 @@ export function MobileBottomNav() {
           </div>
 
           <div className="flex-1 overflow-y-auto px-3 py-3">
+            <div className="mb-3 px-1">
+              <InstallAppButton />
+            </div>
             <Accordion
               type="multiple"
               defaultValue={["inicio", "config", "monitor", "analise"]}
