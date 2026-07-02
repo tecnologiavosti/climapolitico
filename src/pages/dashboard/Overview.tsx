@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
+import { MetricIcon } from "@/components/dashboard/MetricIcon";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TrendingUp, TrendingDown, Users, MessageSquare, AlertCircle, Activity, LayoutDashboard, Download, Loader2 } from "lucide-react";
@@ -449,9 +450,7 @@ export default function Overview() {
                   <span>{uniqueAuthors} autores únicos</span>
                 </div>
               </div>
-              <div className="p-3 bg-gradient-primary rounded-lg">
-                <MessageSquare className="h-6 w-6 text-white" />
-              </div>
+              <MetricIcon icon={MessageSquare} />
             </div>
           </Card>
         </HelpTooltip>
@@ -471,9 +470,7 @@ export default function Overview() {
                   <span>monitorados</span>
                 </div>
               </div>
-              <div className="p-3 bg-gradient-primary rounded-lg">
-                <Users className="h-6 w-6 text-white" />
-              </div>
+              <MetricIcon icon={Users} />
             </div>
           </Card>
         </HelpTooltip>
@@ -497,9 +494,7 @@ export default function Overview() {
                   <span>{avgSentiment >= 50 ? 'Positivo' : 'Atenção'}</span>
                 </div>
               </div>
-              <div className="p-3 bg-gradient-primary rounded-lg">
-                <TrendingUp className="h-6 w-6 text-white" />
-              </div>
+              <MetricIcon icon={TrendingUp} />
             </div>
           </Card>
         </HelpTooltip>
@@ -519,9 +514,7 @@ export default function Overview() {
                   <span>curtidas</span>
                 </div>
               </div>
-              <div className="p-3 bg-gradient-primary rounded-lg">
-                <TrendingUp className="h-6 w-6 text-white" />
-              </div>
+              <MetricIcon icon={TrendingUp} />
             </div>
           </Card>
         </HelpTooltip>
