@@ -8,16 +8,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { usePwaInstall } from "./InstallPrompt";
+import { usePwaInstall, isMobileDevice, isIOSSafari } from "./InstallPrompt";
 import { cn } from "@/lib/utils";
-
-function detectPlatform(): "ios" | "android" | "desktop" {
-  if (typeof navigator === "undefined") return "desktop";
-  const ua = navigator.userAgent.toLowerCase();
-  if (/iphone|ipad|ipod/.test(ua)) return "ios";
-  if (/android/.test(ua)) return "android";
-  return "desktop";
-}
 
 export function InstallAppButton({
   collapsed = false,
@@ -29,8 +21,15 @@ export function InstallAppButton({
   const { canInstall, installed, promptInstall } = usePwaInstall();
   const [showHelp, setShowHelp] = useState(false);
 
-  // Se já estiver instalado, esconder totalmente
+  // Mobile-only. Desktop nunca renderiza nada relacionado a PWA.
+  if (!isMobileDevice()) return null;
   if (installed) return null;
+
+  const iosSafari = isIOSSafari();
+
+  // Se não é iOS Safari e não há prompt nativo (ex: Android sem trigger ainda),
+  // não mostrar botão — evita CTA sem ação.
+  if (!canInstall && !iosSafari) return null;
 
   const handleClick = async () => {
     if (canInstall) {
@@ -41,17 +40,17 @@ export function InstallAppButton({
     }
   };
 
-  const platform = detectPlatform();
-
   return (
     <>
       <Button
         onClick={handleClick}
         size="sm"
         className={cn(
-          "w-full h-9 text-xs gap-1.5 bg-white/10 text-white border border-white/20",
-          "transition-all duration-300 hover:bg-[#0ea5e9]/20 hover:border-[#0ea5e9]/60",
-          "hover:shadow-[0_0_20px_rgba(14,165,233,0.45)]",
+          "w-full h-9 text-xs gap-1.5",
+          "bg-primary/10 text-primary border border-primary/20",
+          "dark:bg-cyan-400/15 dark:text-slate-50 dark:border-cyan-400/30",
+          "transition-all duration-300 hover:bg-primary/20",
+          "hover:shadow-[0_0_20px_hsl(var(--primary)/0.35)]",
           className,
         )}
         title="Instale o Clima Político no seu dispositivo"
@@ -65,32 +64,24 @@ export function InstallAppButton({
           <DialogHeader>
             <DialogTitle>Instalar Clima Político</DialogTitle>
             <DialogDescription>
-              Para instalar como aplicativo no seu dispositivo:
+              Adicione o app à tela inicial do seu dispositivo:
             </DialogDescription>
           </DialogHeader>
           <div className="text-sm space-y-3">
-            {platform === "ios" && (
-              <p>
-                No <strong>Safari</strong>: toque no ícone <strong>Compartilhar</strong> (□↑) e
-                selecione <strong>"Adicionar à Tela de Início"</strong>.
-              </p>
-            )}
-            {platform === "android" && (
-              <p>
-                No <strong>Chrome</strong>: toque no menu <strong>⋮</strong> no canto superior
-                direito e selecione <strong>"Instalar aplicativo"</strong> ou{" "}
-                <strong>"Adicionar à tela inicial"</strong>.
-              </p>
-            )}
-            {platform === "desktop" && (
-              <p>
-                No <strong>Chrome/Edge</strong>: clique no ícone de instalação (⊕) na barra de
-                endereço, ou vá em <strong>Menu → Instalar Clima Político</strong>.
-              </p>
+            {iosSafari ? (
+              <ol className="list-decimal pl-5 space-y-1">
+                <li>Toque no ícone <strong>Compartilhar</strong> (□↑) na barra do Safari.</li>
+                <li>Escolha <strong>"Adicionar à Tela de Início"</strong>.</li>
+                <li>Confirme tocando em <strong>Adicionar</strong>.</li>
+              </ol>
+            ) : (
+              <ol className="list-decimal pl-5 space-y-1">
+                <li>Toque no menu <strong>⋮</strong> do Chrome.</li>
+                <li>Selecione <strong>"Instalar aplicativo"</strong> ou <strong>"Adicionar à tela inicial"</strong>.</li>
+              </ol>
             )}
             <p className="text-muted-foreground text-xs">
-              A instalação nativa só está disponível no app publicado (HTTPS) e depende do
-              navegador reconhecer os requisitos do PWA.
+              A instalação só está disponível em dispositivos móveis (Android/iOS) no app publicado via HTTPS.
             </p>
           </div>
         </DialogContent>
