@@ -2,7 +2,7 @@ import { HelpTooltip } from "@/components/ui/help-tooltip";
 import React, { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { isUnlimitedSubscription } from "@/lib/planLimits";
+import { formatPlanLabel, isUnlimitedSubscription } from "@/lib/planLimits";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -215,7 +215,7 @@ export default function Candidates() {
     onError: (error: Error) => {
       const msg = error.message || '';
       if (msg.includes('candidate_limit_reached')) {
-        toast.error('Limite de candidatos do plano atingido. Faça upgrade para adicionar mais.');
+        toast.error(isUnlimitedSubscription(subscription) ? 'Falha ao adicionar candidato. Tente novamente.' : 'Limite de candidatos do plano atingido. Faça upgrade para adicionar mais.');
       } else {
         toast.error(msg || 'Erro ao adicionar candidato');
       }
@@ -611,9 +611,7 @@ export default function Candidates() {
   const isLimitReached = !isVip && candidateCount >= candidateLimit;
   const remaining = isVip ? Infinity : Math.max(0, (candidateLimit as number) - candidateCount);
   const usagePct = isVip ? 0 : Math.min(100, Math.round((candidateCount / Math.max(1, candidateLimit as number)) * 100));
-  const planLabel = subscription?.tier
-    ? `Plano ${subscription.tier.charAt(0).toUpperCase() + subscription.tier.slice(1)}`
-    : "Plano";
+  const planLabel = formatPlanLabel(subscription?.tier);
   const usageColor = isVip
     ? "bg-amber-500"
     : isLimitReached
@@ -659,12 +657,14 @@ export default function Candidates() {
             </a>
           )}
         </div>
-        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-          <div
-            className={cn("h-full rounded-full transition-all duration-500", usageColor)}
-            style={{ width: `${usagePct}%` }}
-          />
-        </div>
+        {!isVip && (
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className={cn("h-full rounded-full transition-all duration-500", usageColor)}
+              style={{ width: `${usagePct}%` }}
+            />
+          </div>
+        )}
       </div>
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
