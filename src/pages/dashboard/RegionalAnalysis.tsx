@@ -509,7 +509,7 @@ export default function RegionalAnalysis() {
             </p>
           </div>
           {started && activeCandidate && (
-            <div className="flex flex-col items-end gap-1.5">
+            <div className="flex flex-col items-center text-center lg:items-end lg:text-right gap-1.5">
               <div className="text-[11px] text-muted-foreground">Análise ativa para</div>
               <div className="text-sm font-semibold">{activeCandidate.full_name}</div>
               {analysis && (
@@ -517,7 +517,8 @@ export default function RegionalAnalysis() {
                   Última atualização: {format(new Date(analysis.generated_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
                 </div>
               )}
-              <div className="flex items-center gap-2 mt-1">
+              <div className="flex items-center gap-2 mt-1 flex-wrap justify-center lg:justify-end">
+
                 <Button size="sm" variant="outline" onClick={() => runAnalysis()} disabled={loading}>
                   <RefreshCw className={cn("h-4 w-4 mr-1.5", loading && "animate-spin")} />
                   Atualizar IA
