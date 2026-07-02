@@ -382,21 +382,27 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
             <div
               className={cn(
                 "rounded-xl border px-4 py-3 text-sm flex items-center justify-between gap-3",
-                limitReached
+                unlimitedPlan
+                  ? "border-amber-400/60 bg-gradient-to-r from-amber-500/10 to-yellow-500/10 text-amber-600 dark:text-amber-400"
+                  : limitReached
                   ? "border-destructive/40 bg-destructive/5 text-destructive"
-                  : remainingSlots !== null && remainingSlots <= 1
+                  : remainingSlots !== null && (remainingSlots as number) <= 1
                   ? "border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-300"
                   : "border-border bg-muted/30 text-muted-foreground"
               )}
             >
               <div>
-                {limitReached ? (
+                {unlimitedPlan ? (
+                  <>
+                    <strong>👑 {limitInfo.planLabel ?? "Plano VIP"}</strong> — candidatos ilimitados.
+                  </>
+                ) : limitReached ? (
                   <>
                     <strong>Limite atingido</strong> — faça upgrade para continuar.
                   </>
                 ) : (
                   <>
-                    Você ainda pode adicionar <strong>{remainingSlots}</strong>{" "}
+                    Você ainda pode adicionar <strong>{remainingSlots as number}</strong>{" "}
                     candidato{remainingSlots === 1 ? "" : "s"}
                     {limitInfo.planLabel ? ` no ${limitInfo.planLabel}` : ""}.
                   </>
