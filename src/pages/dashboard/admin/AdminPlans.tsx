@@ -25,6 +25,7 @@ type Plan = {
   features: string[];
   is_active: boolean;
   sort_order: number;
+  visible_in_homepage: boolean;
 };
 
 function PlanCard({ plan, onSave, onDelete }: { plan: Plan; onSave: (p: Plan) => void; onDelete: (id: string) => void }) {
@@ -56,10 +57,16 @@ function PlanCard({ plan, onSave, onDelete }: { plan: Plan; onSave: (p: Plan) =>
             onChange={e => update({ features: e.target.value.split("\n").filter(Boolean) })}
           />
         </div>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Switch checked={draft.is_active} onCheckedChange={v => update({ is_active: v })} />
-            <span className="text-sm">Plano ativo</span>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Switch checked={draft.is_active} onCheckedChange={v => update({ is_active: v })} />
+              <span className="text-sm">Plano ativo</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={draft.visible_in_homepage} onCheckedChange={v => update({ visible_in_homepage: v })} />
+              <span className="text-sm">Mostrar na home</span>
+            </div>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => onDelete(plan.id)}><Trash2 className="h-3 w-3" /></Button>
@@ -89,7 +96,8 @@ function Inner() {
         tier: p.tier, display_name: p.display_name, price_monthly: p.price_monthly,
         price_yearly: p.price_yearly, max_candidates: p.max_candidates,
         max_updates_per_month: p.max_updates_per_month, features: p.features, is_active: p.is_active,
-      }).eq("id", p.id);
+        visible_in_homepage: p.visible_in_homepage,
+      } as any).eq("id", p.id);
       if (error) throw error;
       await log("plan_updated", "subscription_plan", p.id, { tier: p.tier });
     },

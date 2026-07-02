@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink } from "@/components/NavLink";
+import { VipBadge } from "@/components/VipBadge";
 import { Link, useLocation } from "react-router-dom";
 import logoAsset from "@/assets/clima-politico-logo.jpg.asset.json";
 import {
@@ -376,6 +377,7 @@ export function AppSidebar() {
           />
         )}
 
+        <VipBadge collapsed={isCollapsed} />
         <GroupBlock group={accountGroup} collapsed={isCollapsed} currentPath={location.pathname} />
       </SidebarContent>
     </Sidebar>

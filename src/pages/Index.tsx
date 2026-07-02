@@ -6,6 +6,7 @@ import { SocialProof } from "@/components/landing/SocialProof";
 import { BentoFeatures } from "@/components/landing/BentoFeatures";
 import { TrendingCandidates } from "@/components/landing/TrendingCandidates";
 import { Footer } from "@/components/landing/Footer";
+import { PricingPlans } from "@/components/landing/PricingPlans";
 import { useNavigate } from "react-router-dom";
 import { Sparkles, Gift, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
@@ -145,126 +146,7 @@ const Index = () => {
         </div>
 
 
-        <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto items-stretch">
-          {/* Basic Plan */}
-          <Card
-            className="p-8 hover-lift hover-glow transition-all duration-300 border-2 animate-fade-in-up flex flex-col h-full"
-            style={{ animationDelay: "0ms" }}
-          >
-            <div className="flex flex-col flex-1 space-y-6">
-              <div>
-                <h3 className="text-2xl font-bold mb-2">Básico</h3>
-              </div>
-              <ul className="space-y-3 text-sm flex-1">
-                <li className="flex items-center gap-2">
-                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  Até 3 candidatos
-                </li>
-                <li className="flex items-center gap-2">
-                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />3 atualizações/mês
-                </li>
-                <li className="flex items-center gap-2">
-                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  Dashboard padrão
-                </li>
-              </ul>
-              <div className="flex gap-3 mt-auto">
-                <Button
-                  className="flex-1"
-                  variant="outline"
-                  onClick={() => {
-                    window.location.href = WHATSAPP_LINKS.basico;
-                  }}
-                >
-                  Saiba mais
-                </Button>
-              </div>
-            </div>
-          </Card>
-
-          {/* Pro Plan */}
-          <Card
-            className="p-8 hover-lift hover-glow transition-all duration-300 border-2 border-primary relative animate-fade-in-up flex flex-col h-full"
-            style={{ animationDelay: "100ms" }}
-          >
-            <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-primary animate-glow-pulse">
-              Mais Popular
-            </Badge>
-            <div className="flex flex-col flex-1 space-y-6">
-              <div>
-                <h3 className="text-2xl font-bold mb-2">Pro</h3>
-              </div>
-              <ul className="space-y-3 text-sm flex-1">
-                <li className="flex items-center gap-2">
-                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  Até 10 candidatos
-                </li>
-                <li className="flex items-center gap-2">
-                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  10 atualizações/mês
-                </li>
-                <li className="flex items-center gap-2">
-                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  Relatórios em PDF
-                </li>
-                <li className="flex items-center gap-2">
-                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  Alertas por email/SMS
-                </li>
-              </ul>
-              <div className="flex gap-3 mt-auto">
-                <Button
-                  className="flex-1 bg-gradient-primary hover-glow"
-                  onClick={() => {
-                    window.location.href = WHATSAPP_LINKS.pro;
-                  }}
-                >
-                  Saiba mais
-                </Button>
-              </div>
-            </div>
-          </Card>
-
-          {/* Enterprise Plan */}
-          <Card
-            className="p-8 hover-lift hover-glow transition-all duration-300 border-2 animate-fade-in-up flex flex-col h-full"
-            style={{ animationDelay: "200ms" }}
-          >
-            <div className="flex flex-col flex-1 space-y-6">
-              <div>
-                <h3 className="text-2xl font-bold mb-2">Enterprise</h3>
-              </div>
-              <ul className="space-y-3 text-sm flex-1">
-                <li className="flex items-center gap-2">
-                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  Candidatos ilimitados
-                </li>
-                <li className="flex items-center gap-2">
-                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  Atualizações em tempo real
-                </li>
-                <li className="flex items-center gap-2">
-                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  API privada
-                </li>
-                <li className="flex items-center gap-2">
-                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  Múltiplos usuários
-                </li>
-              </ul>
-              <div className="flex gap-3 mt-auto">
-                <Button
-                  className="flex-1 bg-gradient-primary hover-glow"
-                  onClick={() => {
-                    window.location.href = WHATSAPP_LINKS.enterprise;
-                  }}
-                >
-                  Saiba mais
-                </Button>
-              </div>
-            </div>
-          </Card>
-        </div>
+        <PricingPlans />
       </section>
 
       {/* CTA Section — escondida se já houver teste/plano ativo */}
