@@ -1169,7 +1169,11 @@ export default function Candidates() {
                                 <TooltipContent>
                                   <p>Análise multi-IA (Gemini Flash, Gemini Pro, GPT-5 Mini)</p>
                                   <p className="text-xs text-muted-foreground">
-                                    {subscription ? `${subscription.updates_used_this_month}/${subscription.max_updates_per_month} análises usadas` : ''}
+                                    {isVip
+                                      ? "👑 Plano VIP — análises ilimitadas"
+                                      : subscription
+                                        ? `${subscription.updates_used_this_month}/${subscription.max_updates_per_month} análises usadas`
+                                        : ''}
                                   </p>
                                 </TooltipContent>
                               </Tooltip>
