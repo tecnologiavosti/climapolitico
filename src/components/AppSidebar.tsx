@@ -382,9 +382,6 @@ export function AppSidebar() {
           />
         )}
 
-        <div className="px-3 pt-2">
-          <InstallAppButton collapsed={isCollapsed} />
-        </div>
         <VipBadge collapsed={isCollapsed} />
         <GroupBlock group={accountGroup} collapsed={isCollapsed} currentPath={location.pathname} />
       </SidebarContent>
