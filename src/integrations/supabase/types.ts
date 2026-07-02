@@ -4231,6 +4231,7 @@ export type Database = {
           sort_order: number
           tier: string
           updated_at: string
+          visible_in_homepage: boolean
         }
         Insert: {
           created_at?: string
@@ -4245,6 +4246,7 @@ export type Database = {
           sort_order?: number
           tier: string
           updated_at?: string
+          visible_in_homepage?: boolean
         }
         Update: {
           created_at?: string
@@ -4259,6 +4261,7 @@ export type Database = {
           sort_order?: number
           tier?: string
           updated_at?: string
+          visible_in_homepage?: boolean
         }
         Relationships: []
       }
@@ -5552,6 +5555,7 @@ export type Database = {
         | "lifetime"
         | "free"
         | "starter"
+        | "vip"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -5695,6 +5699,7 @@ export const Constants = {
         "lifetime",
         "free",
         "starter",
+        "vip",
       ],
     },
   },
