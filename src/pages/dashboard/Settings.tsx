@@ -613,19 +613,30 @@ export default function Settings() {
                     </div>
                   </div>
                   <Separator />
+                  {isUnlimitedSubscription(subscription) ? (
+                    <div className="rounded-lg border border-amber-400/60 bg-gradient-to-r from-amber-500/10 to-yellow-500/10 px-4 py-3 text-amber-600 dark:text-amber-400">
+                      <p className="text-sm font-semibold">
+                        👑 {String(subscription.tier).toLowerCase() === "vip" ? "Plano VIP" : "Plano Vitalício"} — acesso ilimitado
+                      </p>
+                      <p className="text-xs text-muted-foreground">Candidatos, análises e ferramentas sem limite.</p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3 md:grid-cols-2 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">Candidatos disponíveis</p>
+                        <p className="text-lg font-semibold">
+                          {candidates?.length || 0} / {subscription.max_candidates}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Análises este mês</p>
+                        <p className="text-lg font-semibold">
+                          {subscription.updates_used_this_month} / {subscription.max_updates_per_month}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   <div className="grid gap-3 md:grid-cols-2 text-sm">
-                    <div>
-                      <p className="text-muted-foreground">Candidatos disponíveis</p>
-                      <p className="text-lg font-semibold">
-                        {candidates?.length || 0} / {subscription.max_candidates}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Análises este mês</p>
-                      <p className="text-lg font-semibold">
-                        {subscription.updates_used_this_month} / {subscription.max_updates_per_month}
-                      </p>
-                    </div>
                     {(() => {
                       const trialStart = user ? getTrialStart(user.id) : null;
                       const daysLeft = user ? getDaysLeft(user.id) : null;
