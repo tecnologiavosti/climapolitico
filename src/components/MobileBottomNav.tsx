@@ -252,9 +252,7 @@ export function MobileBottomNav() {
           </div>
 
           <div className="flex-1 overflow-y-auto px-3 py-3">
-            <div className="mb-3 px-1">
-              <InstallAppButton />
-            </div>
+            {/* PWA install movido para a home pública (landing) */}
             <Accordion
               type="multiple"
               defaultValue={["inicio", "config", "monitor", "analise"]}
