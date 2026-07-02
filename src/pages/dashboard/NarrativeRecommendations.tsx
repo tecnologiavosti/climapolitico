@@ -241,8 +241,8 @@ const NarrativeRecommendationsPage = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground mb-1">
+      <div className="text-center md:text-left">
+        <div className="flex items-center justify-center md:justify-start gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground mb-1">
           <Crosshair className="h-3.5 w-3.5" /> War Room · Inteligência de Campanha
         </div>
         <h1 className="text-3xl font-bold tracking-tight">Recomendações de Narrativa</h1>
@@ -254,9 +254,9 @@ const NarrativeRecommendationsPage = () => {
       {/* Controls */}
       <Card className={card}>
         <CardContent className="pt-6">
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col md:flex-row md:flex-wrap gap-3 items-stretch md:items-end">
             <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
-              <SelectTrigger className="w-[260px]"><SelectValue placeholder="Selecione um candidato" /></SelectTrigger>
+              <SelectTrigger className="w-full md:w-[260px]"><SelectValue placeholder="Selecione um candidato" /></SelectTrigger>
               <SelectContent>
                 {candidates.map((c: any) => (
                   <SelectItem key={c.id} value={c.id}>
@@ -267,7 +267,7 @@ const NarrativeRecommendationsPage = () => {
             </Select>
 
             <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-              <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-full md:w-[180px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {PERIOD_OPTIONS.map((p) => (
                   <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
@@ -276,13 +276,13 @@ const NarrativeRecommendationsPage = () => {
             </Select>
 
             {selectedPeriod === "custom" && (
-              <DateRangePicker dateRange={dateRange} onDateRangeChange={setDateRange} className="w-[320px]" />
+              <DateRangePicker dateRange={dateRange} onDateRangeChange={setDateRange} className="w-full md:w-[320px]" />
             )}
 
             <Button
               onClick={handleGenerate}
               disabled={isLoading || !selectedCandidate}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
+              className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white"
             >
               {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Gerando...</>
                 : <><Sparkles className="mr-2 h-4 w-4" />Gerar Briefing</>}
