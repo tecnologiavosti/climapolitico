@@ -151,9 +151,9 @@ const RejectionAnalysisPage = () => {
       {/* Controls */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-row flex-wrap gap-3 items-end">
+          <div className="flex flex-col md:flex-row md:flex-wrap gap-3 md:items-end items-stretch">
             <Select value={selectedCandidate} onValueChange={setSelectedCandidate}>
-              <SelectTrigger className="w-[200px] sm:w-[320px]">
+              <SelectTrigger className="w-full md:w-[320px]">
                 <SelectValue placeholder="Selecione um candidato" />
               </SelectTrigger>
               <SelectContent>
@@ -166,7 +166,7 @@ const RejectionAnalysisPage = () => {
             </Select>
 
             <Select value={period} onValueChange={(v) => setPeriod(v as PeriodKey)}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-full md:w-[180px]">
                 <SelectValue placeholder="Período" />
               </SelectTrigger>
               <SelectContent>
@@ -182,11 +182,11 @@ const RejectionAnalysisPage = () => {
               <DateRangePicker
                 dateRange={customRange}
                 onDateRangeChange={setCustomRange}
-                className="w-[280px]"
+                className="w-full md:w-[280px]"
               />
             )}
 
-            <Button onClick={handleAnalyze} disabled={isAnalyzing || !selectedCandidate}>
+            <Button onClick={handleAnalyze} disabled={isAnalyzing || !selectedCandidate} className="w-full md:w-auto">
               {isAnalyzing ? (
                 <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />{analysisResult ? "Reanalisando..." : "Analisando..."}</>
               ) : analysisResult ? (
@@ -196,6 +196,7 @@ const RejectionAnalysisPage = () => {
               )}
             </Button>
           </div>
+
           <p className="text-xs text-muted-foreground mt-3">
             Análise reputacional baseada no período selecionado — a IA recalibra peso entre narrativas recentes e desgaste estrutural.
           </p>
