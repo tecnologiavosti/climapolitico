@@ -38,6 +38,19 @@ const Auth = () => {
   const [signupFullName, setSignupFullName] = useState("");
   const [signupOrganization, setSignupOrganization] = useState("");
 
+  // Reset loading on mount and when page is restored from bfcache (voltar após cancelar OAuth)
+  useEffect(() => {
+    setLoading(false);
+    const onPageShow = () => setLoading(false);
+    const onFocus = () => setLoading(false);
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
+
   useEffect(() => {
     if (!user || authLoading) return;
 
