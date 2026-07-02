@@ -260,8 +260,9 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   }, [fullName, formatOk, blacklisted]);
 
   const scope = scopeOf(position);
-  const limitReached = !!limitInfo && limitInfo.count >= limitInfo.limit;
-  const remainingSlots = limitInfo ? Math.max(0, limitInfo.limit - limitInfo.count) : null;
+  const unlimitedPlan = !!limitInfo && !Number.isFinite(limitInfo.limit);
+  const limitReached = !!limitInfo && !unlimitedPlan && limitInfo.count >= limitInfo.limit;
+  const remainingSlots = limitInfo ? (unlimitedPlan ? Infinity : Math.max(0, limitInfo.limit - limitInfo.count)) : null;
   // Bloqueio hard: formato inválido, blacklist ou limite atingido. Score baixo abre modal de confirmação.
   const canSubmit =
     formatOk && !blacklisted && !!party && !!position && !isPending && !limitReached &&
