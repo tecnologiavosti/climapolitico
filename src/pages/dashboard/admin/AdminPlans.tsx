@@ -57,10 +57,16 @@ function PlanCard({ plan, onSave, onDelete }: { plan: Plan; onSave: (p: Plan) =>
             onChange={e => update({ features: e.target.value.split("\n").filter(Boolean) })}
           />
         </div>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Switch checked={draft.is_active} onCheckedChange={v => update({ is_active: v })} />
-            <span className="text-sm">Plano ativo</span>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Switch checked={draft.is_active} onCheckedChange={v => update({ is_active: v })} />
+              <span className="text-sm">Plano ativo</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={draft.visible_in_homepage} onCheckedChange={v => update({ visible_in_homepage: v })} />
+              <span className="text-sm">Mostrar na home</span>
+            </div>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => onDelete(plan.id)}><Trash2 className="h-3 w-3" /></Button>
