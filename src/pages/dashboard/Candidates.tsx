@@ -249,7 +249,8 @@ export default function Candidates() {
     mutationFn: async (candidateId: string) => {
       if (!subscription) throw new Error('Subscription not found');
       
-      if (subscription.updates_used_this_month >= subscription.max_updates_per_month) {
+      if (!isUnlimitedSubscription(subscription) &&
+          subscription.updates_used_this_month >= subscription.max_updates_per_month) {
         throw new Error('Limite mensal de análises atingido');
       }
 
