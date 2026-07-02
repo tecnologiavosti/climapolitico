@@ -430,6 +430,37 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                   </div>
                 );
               }
+
+              // ✅ SUCCESS override: se catálogo identificou OU IA validou com alta confiança,
+              // nunca mostrar "pendente" / "aguardando" / "tentar novamente".
+              const aiOk =
+                hasValidatedCurrentQuery && aiLookup && !aiLookup.error && !aiLookup.pending &&
+                typeof aiLookup.score === "number" && aiLookup.score >= 75;
+              const candidateFound = !!catalogMatch || aiOk;
+
+              if (candidateFound) {
+                const meta = catalogMatch?.meta ?? {};
+                const displayName = catalogMatch?.fullName || aiLookup?.name || fullName.trim();
+                const displayParty = meta.party || aiLookup?.party || party || null;
+                const displayOffice = meta.position || aiLookup?.office || position || null;
+                const displayState = meta.state || aiLookup?.state || state || null;
+                const displayCity = meta.city || aiLookup?.city || city || null;
+                const displayScope = scopeOf(displayOffice || "");
+                const scopeTxt = scopeLabel(displayScope, displayState || undefined, displayCity || undefined);
+                return (
+                  <div className="mt-2 rounded-xl border border-emerald-500/40 bg-emerald-500/[0.08] px-3 py-2.5 text-emerald-700 dark:text-emerald-300 animate-in fade-in-0 slide-in-from-top-1 duration-200">
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                      <Check className="h-3.5 w-3.5" /> Candidato identificado com sucesso
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-foreground">{displayName}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {[displayOffice, displayParty].filter(Boolean).join(" · ")}
+                    </div>
+                    {scopeTxt && <div className="mt-0.5 text-xs opacity-90">{scopeTxt}</div>}
+                  </div>
+                );
+              }
+
               // Sem contexto suficiente: nunca mostra Score 0.
               if (!hasEnoughContext) {
                 const pendingTitle = hasOnlyName ? "⚪ Validação pendente" : "🟡 Aguardando contexto";
@@ -455,60 +486,25 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
                     <div className="flex items-center gap-2 text-sm font-semibold">
                       <Loader2 className="h-3.5 w-3.5 animate-spin" /> Validando candidato…
                     </div>
-                    <div className="mt-0.5 text-xs opacity-90">Consultando IA com fallback automático entre provedores.</div>
                   </div>
                 );
               }
-              // Falha de IA ou pending: nunca dizemos "Validação indisponível" — sempre permite cadastro.
-              if (aiLookup?.error || aiLookup?.pending) {
+              // Falha (IA sem match e sem alta confiança): permite cadastro manual.
+              if (aiLookup?.error || aiLookup?.pending || (aiScore ?? 0) < 75) {
                 return (
                   <div className="mt-2 rounded-xl border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2.5 text-amber-700 dark:text-amber-300 animate-in fade-in-0 slide-in-from-top-1 duration-200">
-                    <div className="flex items-center gap-2 text-sm font-semibold">🟡 Validação pendente</div>
-                    <div className="mt-0.5 text-xs opacity-80">Não foi possível validar agora, mas você pode continuar o cadastro.</div>
+                    <div className="flex items-center gap-2 text-sm font-semibold">🟡 Não foi possível validar automaticamente.</div>
+                    <div className="mt-0.5 text-xs opacity-80">Você pode continuar o cadastro manualmente.</div>
                     <div className="mt-2">
                       <Button type="button" size="sm" variant="outline" className="h-7 rounded-lg" onClick={revalidate} disabled={aiLoading}>
                         {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
-                        Tentar validar novamente
+                        Tentar novamente
                       </Button>
                     </div>
                   </div>
                 );
               }
-              // Resultado IA pronto: 4 faixas.
-              const score = aiScore ?? 0;
-              const tone =
-                score >= 90 ? { icon: "🟢", title: "Validado pela IA", cls: "border-emerald-500/40 bg-emerald-500/[0.08] text-emerald-700 dark:text-emerald-300" }
-                : score >= 70 ? { icon: "🟡", title: "Plausível", cls: "border-amber-500/40 bg-amber-500/[0.08] text-amber-700 dark:text-amber-300" }
-                : score >= 40 ? { icon: "🟠", title: "Pouco confiável", cls: "border-orange-500/40 bg-orange-500/[0.08] text-orange-700 dark:text-orange-300" }
-                : { icon: "🔴", title: "Suspeito", cls: "border-red-500/40 bg-red-500/[0.08] text-red-700 dark:text-red-300" };
-              const subtitle =
-                score >= 70 ? "Candidato plausível para monitoramento político."
-                : score >= 40 ? "Dados parcialmente consistentes. Revise antes de adicionar."
-                : "Este candidato parece inconsistente ou improvável.";
-              const scopeTxt = scopeLabel(scope, state, city);
-              return (
-                <div className={cn("mt-2 rounded-xl border px-3 py-2.5 animate-in fade-in-0 slide-in-from-top-1 duration-200", tone.cls)}>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 text-sm font-semibold">
-                      <span>{tone.icon}</span> {tone.title}
-                    </div>
-                    <span className="text-xs font-medium opacity-80">Score: {score}/100</span>
-                  </div>
-                  <div className="mt-0.5 text-xs opacity-80">{subtitle}</div>
-                  {aiLookup?.reason && (
-                    <div className="mt-1 text-[11px] opacity-75 italic">{aiLookup.reason}</div>
-                  )}
-                  {scopeTxt && <div className="mt-1 text-xs font-medium opacity-90">{scopeTxt}</div>}
-                  {score < 90 && (
-                    <div className="mt-2">
-                      <Button type="button" size="sm" variant="outline" className="h-7 rounded-lg" onClick={revalidate} disabled={aiLoading}>
-                        {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
-                        Tentar validar novamente
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              );
+              return null;
             })()}
 
 
