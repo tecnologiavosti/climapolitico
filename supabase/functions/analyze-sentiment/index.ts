@@ -7,6 +7,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const isUnlimitedTier = (tier?: string | null) =>
+  ['vip', 'lifetime', 'vitalicio', 'vitalício'].includes(String(tier ?? '').toLowerCase().trim());
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -65,7 +68,9 @@ serve(async (req) => {
       );
     }
 
-    if (subscription.updates_used_this_month >= subscription.max_updates_per_month) {
+    const unlimitedPlan = isUnlimitedTier(subscription.tier);
+
+    if (!unlimitedPlan && subscription.updates_used_this_month >= subscription.max_updates_per_month) {
       return new Response(
         JSON.stringify({ 
           error: 'Limite mensal de análises atingido',
@@ -176,11 +181,13 @@ Retorne APENAS um JSON array válido, sem texto adicional.`;
       );
     }
 
-    // Increment usage counter
-    await supabase
-      .from('subscriptions')
-      .update({ updates_used_this_month: subscription.updates_used_this_month + 1 })
-      .eq('user_id', user.id);
+    // Increment usage counter. VIP/Vitalício não consome créditos.
+    if (!unlimitedPlan) {
+      await supabase
+        .from('subscriptions')
+        .update({ updates_used_this_month: subscription.updates_used_this_month + 1 })
+        .eq('user_id', user.id);
+    }
 
     console.log('Analysis complete:', { resultsCount: results.length, userId: user.id });
 
