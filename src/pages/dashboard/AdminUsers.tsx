@@ -176,6 +176,7 @@ function AdminUsersInner() {
                   <SelectItem value="pro">Pro</SelectItem>
                   <SelectItem value="enterprise">Enterprise</SelectItem>
                   <SelectItem value="lifetime">Vitalício</SelectItem>
+                  <SelectItem value="vip">👑 VIP</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={filterStatus} onValueChange={setFilterStatus}>
@@ -227,6 +228,7 @@ function AdminUsersInner() {
                             <SelectItem value="pro">Pro</SelectItem>
                             <SelectItem value="enterprise">Enterprise</SelectItem>
                             <SelectItem value="lifetime">Vitalício</SelectItem>
+                            <SelectItem value="vip">👑 VIP</SelectItem>
                           </SelectContent>
                         </Select>
                       </TableCell>
@@ -267,6 +269,12 @@ function AdminUsersInner() {
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => action.mutate({ action: "change_plan", target_user_id: user.id, tier: "lifetime" })}>
                               <Crown className="h-4 w-4 mr-2" /> Tornar vitalício
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-amber-600 focus:text-amber-600"
+                              onClick={() => action.mutate({ action: "change_plan", target_user_id: user.id, tier: "vip" })}
+                            >
+                              <Crown className="h-4 w-4 mr-2" /> Conceder VIP (acesso total)
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => action.mutate({ action: "revoke_subscription", target_user_id: user.id })}>
                               <RotateCcw className="h-4 w-4 mr-2" /> Revogar assinatura
