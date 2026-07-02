@@ -450,9 +450,7 @@ export default function Overview() {
                   <span>{uniqueAuthors} autores únicos</span>
                 </div>
               </div>
-              <div className="p-3 bg-gradient-primary rounded-lg">
-                <MessageSquare className="h-6 w-6 text-white" />
-              </div>
+              <MetricIcon icon={MessageSquare} />
             </div>
           </Card>
         </HelpTooltip>
