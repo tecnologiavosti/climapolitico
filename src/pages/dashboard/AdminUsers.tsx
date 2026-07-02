@@ -228,6 +228,7 @@ function AdminUsersInner() {
                             <SelectItem value="pro">Pro</SelectItem>
                             <SelectItem value="enterprise">Enterprise</SelectItem>
                             <SelectItem value="lifetime">Vitalício</SelectItem>
+                            <SelectItem value="vip">👑 VIP</SelectItem>
                           </SelectContent>
                         </Select>
                       </TableCell>
