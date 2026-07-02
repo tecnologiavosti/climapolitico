@@ -436,8 +436,8 @@ export default function Overview() {
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <HelpTooltip text="Quantas vezes seus candidatos foram citados nas redes sociais.">
-          <Card className="p-6 cursor-help">
-            <div className="flex items-start justify-between">
+          <Card className="relative p-6 cursor-help">
+            <div className="flex items-start justify-between pr-12">
               <div>
                 <p className="text-sm text-muted-foreground">Menções Total</p>
                 {isLoading ? (
@@ -456,8 +456,8 @@ export default function Overview() {
         </HelpTooltip>
 
         <HelpTooltip text="Quantos candidatos você está acompanhando agora.">
-          <Card className="p-6 cursor-help">
-            <div className="flex items-start justify-between">
+          <Card className="relative p-6 cursor-help">
+            <div className="flex items-start justify-between pr-12">
               <div>
                 <p className="text-sm text-muted-foreground">Candidatos</p>
                 {isLoading ? (
@@ -476,8 +476,8 @@ export default function Overview() {
         </HelpTooltip>
 
         <HelpTooltip text="Como o povo está se sentindo: perto de 100% é elogio, perto de 0% é crítica.">
-          <Card className="p-6 cursor-help">
-            <div className="flex items-start justify-between">
+          <Card className="relative p-6 cursor-help">
+            <div className="flex items-start justify-between pr-12">
               <div>
                 <p className="text-sm text-muted-foreground">Sentimento Médio</p>
                 {isLoading ? (
@@ -500,8 +500,8 @@ export default function Overview() {
         </HelpTooltip>
 
         <HelpTooltip text="Quantas curtidas, respostas e compartilhamentos seus candidatos receberam no total.">
-          <Card className="p-6 cursor-help">
-            <div className="flex items-start justify-between">
+          <Card className="relative p-6 cursor-help">
+            <div className="flex items-start justify-between pr-12">
               <div>
                 <p className="text-sm text-muted-foreground">Engajamento Total</p>
                 {isLoading ? (
