@@ -109,8 +109,17 @@ const Dashboard = () => {
         </div>
 
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="border-b glass sticky top-0 z-10">
-            <div className="flex items-center justify-between gap-2 px-3 sm:px-6 py-3 sm:py-4">
+          <header
+            className="border-b glass sticky top-0 z-10"
+            style={{ paddingTop: "env(safe-area-inset-top)" }}
+          >
+            <div
+              className="flex items-center justify-between gap-2 px-3 sm:px-6 py-3 sm:py-4"
+              style={{
+                paddingLeft: "max(0.75rem, env(safe-area-inset-left))",
+                paddingRight: "max(0.75rem, env(safe-area-inset-right))",
+              }}
+            >
               <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
                 <SidebarTrigger aria-label="Abrir ou fechar menu lateral" className="hidden md:inline-flex" />
                 <div className="flex items-center gap-2 md:hidden min-w-0">
@@ -143,7 +152,14 @@ const Dashboard = () => {
             </div>
           </header>
 
-          <main className="flex-1 p-3 sm:p-6 pb-20 md:pb-6 animate-fade-in overflow-x-hidden">
+          <main
+            className="flex-1 p-3 sm:p-6 pb-20 md:pb-6 animate-fade-in overflow-x-hidden"
+            style={{
+              paddingBottom: "calc(5rem + env(safe-area-inset-bottom))",
+              paddingLeft: "max(0.75rem, env(safe-area-inset-left))",
+              paddingRight: "max(0.75rem, env(safe-area-inset-right))",
+            }}
+          >
             <Suspense fallback={<PageLoader />}>
               <Routes>
                 <Route path="/" element={wrap("Overview", Overview)} />

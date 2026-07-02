@@ -86,7 +86,15 @@ const Index = () => {
 
 
 
-    <div className="min-h-screen bg-gradient-secondary">
+    <div
+      className="min-h-screen bg-gradient-secondary"
+      style={{
+        paddingTop: "env(safe-area-inset-top)",
+        paddingBottom: "env(safe-area-inset-bottom)",
+        paddingLeft: "env(safe-area-inset-left)",
+        paddingRight: "env(safe-area-inset-right)",
+      }}
+    >
       {/* PWA install banner — mobile only, antes do Hero */}
       <InstallPwaBanner />
 
