@@ -38,7 +38,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { cn } from "@/lib/utils";
-import { InstallAppButton } from "@/components/pwa/InstallButton";
+
 
 const bottomItems = [
   { label: "Visão Geral", icon: Home, to: "/dashboard", end: true },
