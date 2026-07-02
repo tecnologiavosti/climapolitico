@@ -7,6 +7,7 @@ import {
   ThumbsUp, ThumbsDown, Minus, Heart,
   AlertTriangle, Youtube
 } from "lucide-react";
+import { MetricIcon } from "@/components/dashboard/MetricIcon";
 import { useCandidateMetrics } from "@/hooks/useCandidateMetrics";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 
