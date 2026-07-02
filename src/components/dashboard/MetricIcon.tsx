@@ -1,30 +1,32 @@
 import type { LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 /**
- * MetricIcon — ícone circular padrão dos cards de métrica.
- * 40x40 fixo, posicionado absolutamente no canto superior direito do card.
- * O card pai precisa ter `position: relative`.
+ * MetricIcon — ícone padrão dos cards de métrica.
+ * Usa a classe global `.metric-icon-wrapper` (definida em index.css)
+ * para garantir tamanho consistente em desktop (40px) e mobile (28px).
+ *
+ * Por padrão é posicionado absolutamente no canto superior direito.
+ * Passe `absolute={false}` para uso inline (dentro de um flex row).
  */
-export function MetricIcon({ icon: Icon }: { icon: LucideIcon }) {
+export function MetricIcon({
+  icon: Icon,
+  absolute = true,
+  className,
+}: {
+  icon: LucideIcon;
+  absolute?: boolean;
+  className?: string;
+}) {
   return (
     <div
-      className="absolute flex items-center justify-center rounded-full shrink-0"
-      style={{
-        top: 12,
-        right: 12,
-        width: 40,
-        height: 40,
-        minWidth: 40,
-        minHeight: 40,
-        maxWidth: 40,
-        maxHeight: 40,
-        aspectRatio: "1 / 1",
-        flexShrink: 0,
-        background: "linear-gradient(135deg, #0ea5e9, #2563eb)",
-        boxShadow: "0 8px 24px rgba(37,99,235,0.25)",
-      }}
+      className={cn(
+        "metric-icon-wrapper",
+        absolute && "absolute top-3 right-3",
+        className,
+      )}
     >
-      <Icon style={{ width: 18, height: 18, flexShrink: 0 }} className="text-white" />
+      <Icon />
     </div>
   );
 }

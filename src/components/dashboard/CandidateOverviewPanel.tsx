@@ -7,6 +7,7 @@ import {
   ThumbsUp, ThumbsDown, Minus, Heart,
   AlertTriangle, Youtube
 } from "lucide-react";
+import { MetricIcon } from "@/components/dashboard/MetricIcon";
 import { useCandidateMetrics } from "@/hooks/useCandidateMetrics";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 
@@ -96,7 +97,7 @@ export function CandidateOverviewPanel({ candidateId, candidateName }: Candidate
         {/* Total Mentions */}
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-start justify-between">
+            <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-sm text-muted-foreground">Total de Menções</p>
                 <p className="text-3xl font-bold mt-1">{Number(metrics.totalMentions ?? 0).toLocaleString('pt-BR')}</p>
@@ -104,9 +105,7 @@ export function CandidateOverviewPanel({ candidateId, candidateName }: Candidate
                   histórico completo · all-time
                 </p>
               </div>
-              <div className="p-3 bg-primary/10 rounded-lg">
-                <MessageSquare className="h-6 w-6 text-primary" />
-              </div>
+              <MetricIcon icon={MessageSquare} absolute={false} />
             </div>
           </CardContent>
         </Card>
@@ -114,7 +113,7 @@ export function CandidateOverviewPanel({ candidateId, candidateName }: Candidate
         {/* Unique Authors */}
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-start justify-between">
+            <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-sm text-muted-foreground">Pessoas Citando</p>
                 <p className="text-3xl font-bold mt-1">{Number(metrics.uniqueAuthors ?? 0).toLocaleString('pt-BR')}</p>
@@ -122,9 +121,7 @@ export function CandidateOverviewPanel({ candidateId, candidateName }: Candidate
                   autores únicos · all-time
                 </p>
               </div>
-              <div className="p-3 bg-primary/10 rounded-lg">
-                <Users className="h-6 w-6 text-primary" />
-              </div>
+              <MetricIcon icon={Users} absolute={false} />
             </div>
           </CardContent>
         </Card>
@@ -132,7 +129,7 @@ export function CandidateOverviewPanel({ candidateId, candidateName }: Candidate
         {/* Engagement - simplified to just likes */}
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-start justify-between">
+            <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-sm text-muted-foreground">Engajamento Total</p>
                 <p className="text-3xl font-bold mt-1">{Number(metrics.totalLikes ?? 0).toLocaleString('pt-BR')}</p>
@@ -140,9 +137,7 @@ export function CandidateOverviewPanel({ candidateId, candidateName }: Candidate
                   curtidas nos comentários
                 </p>
               </div>
-              <div className="p-3 bg-primary/10 rounded-lg">
-                <Heart className="h-6 w-6 text-primary" />
-              </div>
+              <MetricIcon icon={Heart} absolute={false} />
             </div>
           </CardContent>
         </Card>
@@ -150,7 +145,7 @@ export function CandidateOverviewPanel({ candidateId, candidateName }: Candidate
         {/* Average Sentiment */}
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-start justify-between">
+            <div className="flex items-center justify-between gap-3">
               <div className="w-full">
                 <p className="text-sm text-muted-foreground">Sentimento Médio</p>
                 <div className="flex items-center gap-2 mt-1">
@@ -168,13 +163,10 @@ export function CandidateOverviewPanel({ candidateId, candidateName }: Candidate
                   className="h-2 mt-2"
                 />
               </div>
-              <div className="p-3 bg-primary/10 rounded-lg">
-                {metrics.averageSentiment >= 50 ? (
-                  <TrendingUp className="h-6 w-6 text-success" />
-                ) : (
-                  <TrendingDown className="h-6 w-6 text-destructive" />
-                )}
-              </div>
+              <MetricIcon
+                icon={metrics.averageSentiment >= 50 ? TrendingUp : TrendingDown}
+                absolute={false}
+              />
             </div>
           </CardContent>
         </Card>
