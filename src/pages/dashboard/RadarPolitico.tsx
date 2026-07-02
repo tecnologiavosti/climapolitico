@@ -567,9 +567,9 @@ export default function RadarPolitico() {
       {/* Filtros */}
       <Card>
         <CardContent className="p-4 space-y-3">
-          <div className="flex flex-wrap gap-2 items-center">
+          <div className="flex flex-col md:flex-row md:flex-wrap gap-2 md:items-center items-stretch">
             <Select value={candidateId} onValueChange={setCandidateId}>
-              <SelectTrigger className="w-[220px] h-9"><SelectValue placeholder="Candidato" /></SelectTrigger>
+              <SelectTrigger className="w-full md:w-[220px] h-9"><SelectValue placeholder="Candidato" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Selecione um candidato</SelectItem>
                 {candidates?.map((c) => (<SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>))}
@@ -577,14 +577,14 @@ export default function RadarPolitico() {
             </Select>
 
             <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger className="w-[160px] h-9"><SelectValue placeholder="Categoria" /></SelectTrigger>
+              <SelectTrigger className="w-full md:w-[160px] h-9"><SelectValue placeholder="Categoria" /></SelectTrigger>
               <SelectContent>
                 {CATEGORIES.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}
               </SelectContent>
             </Select>
 
             <Select value={sortBy} onValueChange={(v) => setSortBy(v as "date" | "importance" | "social")}>
-              <SelectTrigger className="w-[170px] h-9">
+              <SelectTrigger className="w-full md:w-[170px] h-9">
                 <ArrowUpDown className="h-3.5 w-3.5 mr-1" />
                 <SelectValue />
               </SelectTrigger>
@@ -595,7 +595,7 @@ export default function RadarPolitico() {
               </SelectContent>
             </Select>
 
-            <div className="relative flex-1 min-w-[200px]">
+            <div className="relative w-full md:flex-1 md:min-w-[200px]">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Pesquisar evento..."
@@ -609,7 +609,7 @@ export default function RadarPolitico() {
               size="sm"
               onClick={() => searchMutation.mutate(false)}
               disabled={searchMutation.isPending || isJobRunning || candidateId === "all"}
-              className="h-9"
+              className="h-9 w-full md:w-auto"
             >
               {searchMutation.isPending || isJobRunning ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -619,6 +619,7 @@ export default function RadarPolitico() {
               {isJobRunning ? "Buscando..." : "Buscar Radar"}
             </Button>
           </div>
+
 
           {/* Chips de período */}
           <div className="flex flex-wrap gap-1.5">
