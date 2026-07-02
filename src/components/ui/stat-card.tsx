@@ -58,13 +58,23 @@ export const StatCard = ({
     >
       {Icon && (
         <div
-          className="absolute top-4 right-4 flex items-center justify-center w-12 h-12 rounded-full"
+          className="absolute flex items-center justify-center rounded-full shrink-0"
           style={{
+            top: 14,
+            right: 14,
+            width: 44,
+            height: 44,
+            minWidth: 44,
+            minHeight: 44,
+            maxWidth: 44,
+            maxHeight: 44,
+            aspectRatio: "1 / 1",
+            flexShrink: 0,
             background: "linear-gradient(135deg, #0ea5e9, #2563eb)",
             boxShadow: "0 10px 30px rgba(37,99,235,0.25)",
           }}
         >
-          <Icon className="text-white" style={{ width: 22, height: 22 }} />
+          <Icon className="text-white" style={{ width: 20, height: 20, flexShrink: 0 }} />
         </div>
       )}
       <div className="pr-16 space-y-2">
