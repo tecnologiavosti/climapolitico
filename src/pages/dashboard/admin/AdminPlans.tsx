@@ -96,7 +96,8 @@ function Inner() {
         tier: p.tier, display_name: p.display_name, price_monthly: p.price_monthly,
         price_yearly: p.price_yearly, max_candidates: p.max_candidates,
         max_updates_per_month: p.max_updates_per_month, features: p.features, is_active: p.is_active,
-      }).eq("id", p.id);
+        visible_in_homepage: p.visible_in_homepage,
+      } as any).eq("id", p.id);
       if (error) throw error;
       await log("plan_updated", "subscription_plan", p.id, { tier: p.tier });
     },
