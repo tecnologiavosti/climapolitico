@@ -4,6 +4,7 @@ import { HelmetProvider } from "react-helmet-async";
 import App from "./App.tsx";
 import "./index.css";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { registerSW } from "./lib/pwa/registerSW";
 
 createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>
@@ -12,3 +13,6 @@ createRoot(document.getElementById("root")!).render(
     </HelmetProvider>
   </ErrorBoundary>
 );
+
+void registerSW();
+
