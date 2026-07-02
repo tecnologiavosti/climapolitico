@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { isUnlimitedSubscription } from "@/lib/planLimits";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -140,7 +141,7 @@ export default function CandidatesCatalog() {
       if (!user) throw new Error("Não autenticado");
       const { data: existing } = await supabase.from("candidates").select("id").eq("user_id", user.id);
       const used = (subscription as any)?.candidates_created_total ?? (existing?.length ?? 0);
-      if (subscription && used >= subscription.max_candidates) {
+      if (!isUnlimitedSubscription(subscription) && subscription && used >= subscription.max_candidates) {
         throw new Error(`Limite vitalício de ${subscription.max_candidates} candidatos atingido. Excluir candidatos não restaura créditos — faça upgrade do plano.`);
       }
       const region = [p.municipio, p.estado].filter(Boolean).join(", ") || p.regiao || p.estado || null;
@@ -170,7 +171,7 @@ export default function CandidatesCatalog() {
       if (!user) throw new Error("Não autenticado");
       const { data: existing } = await supabase.from("candidates").select("id").eq("user_id", user.id);
       const used = (subscription as any)?.candidates_created_total ?? (existing?.length ?? 0);
-      if (subscription && used >= subscription.max_candidates) {
+      if (!isUnlimitedSubscription(subscription) && subscription && used >= subscription.max_candidates) {
         throw new Error(`Limite vitalício de ${subscription.max_candidates} candidatos atingido. Excluir candidatos não restaura créditos — faça upgrade do plano.`);
       }
       const region = [p.city, p.state].filter(Boolean).join(", ") || p.region || p.state || null;

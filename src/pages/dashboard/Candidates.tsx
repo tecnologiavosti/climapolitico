@@ -2,6 +2,7 @@ import { HelpTooltip } from "@/components/ui/help-tooltip";
 import React, { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { isUnlimitedSubscription } from "@/lib/planLimits";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -248,7 +249,8 @@ export default function Candidates() {
     mutationFn: async (candidateId: string) => {
       if (!subscription) throw new Error('Subscription not found');
       
-      if (subscription.updates_used_this_month >= subscription.max_updates_per_month) {
+      if (!isUnlimitedSubscription(subscription) &&
+          subscription.updates_used_this_month >= subscription.max_updates_per_month) {
         throw new Error('Limite mensal de análises atingido');
       }
 
@@ -601,17 +603,20 @@ export default function Candidates() {
     (candidate.region && candidate.region.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const candidateLimit = subscription?.max_candidates ?? 3;
+  const isVip = isUnlimitedSubscription(subscription);
+  const candidateLimit = isVip ? Infinity : (subscription?.max_candidates ?? 3);
   // Quota vitalícia: usamos o total de candidatos já criados (nunca decrementa ao excluir).
   const candidatesCreatedTotal = (subscription as any)?.candidates_created_total ?? candidates.length;
   const candidateCount = candidatesCreatedTotal;
-  const isLimitReached = candidateCount >= candidateLimit;
-  const remaining = Math.max(0, candidateLimit - candidateCount);
-  const usagePct = Math.min(100, Math.round((candidateCount / Math.max(1, candidateLimit)) * 100));
+  const isLimitReached = !isVip && candidateCount >= candidateLimit;
+  const remaining = isVip ? Infinity : Math.max(0, (candidateLimit as number) - candidateCount);
+  const usagePct = isVip ? 0 : Math.min(100, Math.round((candidateCount / Math.max(1, candidateLimit as number)) * 100));
   const planLabel = subscription?.tier
     ? `Plano ${subscription.tier.charAt(0).toUpperCase() + subscription.tier.slice(1)}`
     : "Plano";
-  const usageColor = isLimitReached
+  const usageColor = isVip
+    ? "bg-amber-500"
+    : isLimitReached
     ? "bg-destructive"
     : usagePct >= 80
     ? "bg-amber-500"
@@ -628,16 +633,22 @@ export default function Candidates() {
       )}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="text-sm">
-            <span className="font-semibold">{planLabel}</span>
-            <span className="text-muted-foreground"> · {candidateCount} / {candidateLimit === 9999 ? "∞" : candidateLimit} créditos usados</span>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Info className="inline-block ml-1 h-3.5 w-3.5 text-muted-foreground cursor-help align-text-bottom" />
-                </TooltipTrigger>
-                <TooltipContent>Excluir candidatos não restaura créditos.</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <span className="font-semibold">{isVip ? "👑 " : ""}{planLabel}</span>
+            <span className="text-muted-foreground">
+              {isVip
+                ? " · acesso ilimitado"
+                : ` · ${candidateCount} / ${candidateLimit === 9999 ? "∞" : candidateLimit} créditos usados`}
+            </span>
+            {!isVip && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="inline-block ml-1 h-3.5 w-3.5 text-muted-foreground cursor-help align-text-bottom" />
+                  </TooltipTrigger>
+                  <TooltipContent>Excluir candidatos não restaura créditos.</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </div>
           {isLimitReached && (
             <a
@@ -1158,7 +1169,11 @@ export default function Candidates() {
                                 <TooltipContent>
                                   <p>Análise multi-IA (Gemini Flash, Gemini Pro, GPT-5 Mini)</p>
                                   <p className="text-xs text-muted-foreground">
-                                    {subscription ? `${subscription.updates_used_this_month}/${subscription.max_updates_per_month} análises usadas` : ''}
+                                    {isVip
+                                      ? "👑 Plano VIP — análises ilimitadas"
+                                      : subscription
+                                        ? `${subscription.updates_used_this_month}/${subscription.max_updates_per_month} análises usadas`
+                                        : ''}
                                   </p>
                                 </TooltipContent>
                               </Tooltip>
