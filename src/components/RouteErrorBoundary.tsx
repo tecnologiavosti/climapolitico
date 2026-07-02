@@ -27,6 +27,22 @@ export class RouteErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error(`💥 [RouteError:${this.props.routeName ?? "unknown"}]`, error, info);
+
+    // Chunk desatualizado após deploy novo → recarrega 1x automaticamente.
+    const msg = String(error?.message ?? "");
+    const isChunkError =
+      /Failed to fetch dynamically imported module/i.test(msg) ||
+      /Importing a module script failed/i.test(msg) ||
+      /ChunkLoadError/i.test(error?.name ?? "") ||
+      /Loading chunk [\d]+ failed/i.test(msg);
+
+    if (isChunkError && typeof window !== "undefined") {
+      const key = "cp:chunk-reload";
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, "1");
+        window.location.reload();
+      }
+    }
   }
 
   reset = () => this.setState({ hasError: false, error: null });
