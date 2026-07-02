@@ -87,6 +87,9 @@ const Index = () => {
 
 
     <div className="min-h-screen bg-gradient-secondary">
+      {/* PWA install banner — mobile only, antes do Hero */}
+      <InstallPwaBanner />
+
       {/* Hero Section */}
       <HeroSection />
 
