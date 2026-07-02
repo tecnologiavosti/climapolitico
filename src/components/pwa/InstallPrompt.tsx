@@ -18,6 +18,22 @@ type BIPEvent = Event & {
 const DISMISS_KEY = "pwa-install-dismissed-at";
 const DISMISS_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 
+export function isMobileDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const uaMobile = /Android|iPhone|iPad|iPod/i.test(ua);
+  const narrow = typeof window !== "undefined" && window.innerWidth <= 1024;
+  return uaMobile && narrow;
+}
+
+export function isIOSSafari(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const isIOS = /iphone|ipad|ipod/i.test(ua);
+  const isSafari = /^((?!chrome|android|crios|fxios).)*safari/i.test(ua);
+  return isIOS && isSafari;
+}
+
 export function usePwaInstall() {
   const [deferred, setDeferred] = useState<BIPEvent | null>(null);
   const [installed, setInstalled] = useState<boolean>(
@@ -28,6 +44,7 @@ export function usePwaInstall() {
   );
 
   useEffect(() => {
+    if (!isMobileDevice()) return;
     const onBIP = (e: Event) => {
       e.preventDefault();
       setDeferred(e as BIPEvent);
@@ -52,7 +69,11 @@ export function usePwaInstall() {
     return outcome === "accepted";
   };
 
-  return { canInstall: !!deferred && !installed, installed, promptInstall };
+  return {
+    canInstall: isMobileDevice() && !!deferred && !installed,
+    installed,
+    promptInstall,
+  };
 }
 
 export function InstallPromptModal() {
