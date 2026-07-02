@@ -11,9 +11,12 @@ const json = (body: any, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
 function limitsForTier(tier: string) {
-  switch (tier) {
-    case "vip": return { max_candidates: 9999, max_updates: 9999 };
-    case "lifetime": return { max_candidates: 9999, max_updates: 9999 };
+  const normalized = String(tier ?? "").toLowerCase().trim();
+  switch (normalized) {
+    case "vip": return { max_candidates: 999999, max_updates: 999999 };
+    case "lifetime": return { max_candidates: 999999, max_updates: 999999 };
+    case "vitalicio": return { max_candidates: 999999, max_updates: 999999 };
+    case "vitalício": return { max_candidates: 999999, max_updates: 999999 };
     case "enterprise": return { max_candidates: 25, max_updates: 1000 };
     case "pro": return { max_candidates: 5, max_updates: 100 };
     case "starter": return { max_candidates: 2, max_updates: 30 };
