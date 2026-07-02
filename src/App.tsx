@@ -14,6 +14,7 @@ import TestAI from "./pages/TestAI";
 import NotFound from "./pages/NotFound";
 import { CookieConsent } from "@/components/CookieConsent";
 import { SeoHead } from "@/components/SeoHead";
+import { InstallPromptModal } from "@/components/pwa/InstallPrompt";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -47,6 +48,7 @@ const App = () => (
             <Route path="*" element={<NotFound />} />
           </Routes>
           <CookieConsent />
+          <InstallPromptModal />
         </AuthProvider>
       </BrowserRouter>
       </TooltipProvider>
