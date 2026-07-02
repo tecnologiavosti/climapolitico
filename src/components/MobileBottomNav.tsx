@@ -252,6 +252,9 @@ export function MobileBottomNav() {
           </div>
 
           <div className="flex-1 overflow-y-auto px-3 py-3">
+            <div className="mb-3 px-1">
+              <InstallAppButton />
+            </div>
             <Accordion
               type="multiple"
               defaultValue={["inicio", "config", "monitor", "analise"]}
