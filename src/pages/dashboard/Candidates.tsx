@@ -603,17 +603,20 @@ export default function Candidates() {
     (candidate.region && candidate.region.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const candidateLimit = subscription?.max_candidates ?? 3;
+  const isVip = isUnlimitedSubscription(subscription);
+  const candidateLimit = isVip ? Infinity : (subscription?.max_candidates ?? 3);
   // Quota vitalícia: usamos o total de candidatos já criados (nunca decrementa ao excluir).
   const candidatesCreatedTotal = (subscription as any)?.candidates_created_total ?? candidates.length;
   const candidateCount = candidatesCreatedTotal;
-  const isLimitReached = candidateCount >= candidateLimit;
-  const remaining = Math.max(0, candidateLimit - candidateCount);
-  const usagePct = Math.min(100, Math.round((candidateCount / Math.max(1, candidateLimit)) * 100));
+  const isLimitReached = !isVip && candidateCount >= candidateLimit;
+  const remaining = isVip ? Infinity : Math.max(0, (candidateLimit as number) - candidateCount);
+  const usagePct = isVip ? 0 : Math.min(100, Math.round((candidateCount / Math.max(1, candidateLimit as number)) * 100));
   const planLabel = subscription?.tier
     ? `Plano ${subscription.tier.charAt(0).toUpperCase() + subscription.tier.slice(1)}`
     : "Plano";
-  const usageColor = isLimitReached
+  const usageColor = isVip
+    ? "bg-amber-500"
+    : isLimitReached
     ? "bg-destructive"
     : usagePct >= 80
     ? "bg-amber-500"
