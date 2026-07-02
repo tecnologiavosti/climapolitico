@@ -381,7 +381,7 @@ const RealTimeMonitor = () => {
 
       {/* Meta bar */}
       {started && brief && (
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground max-md:justify-center max-md:text-center">
           <Badge variant="outline" className="gap-1">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
             ao vivo · atualiza a cada 5 min
