@@ -51,35 +51,39 @@ export const StatCard = ({
     <Card
       ref={ref}
       className={cn(
-        "p-6 hover-lift hover-glow transition-all duration-300 border-border/50",
+        "relative overflow-visible p-6 hover-lift hover-glow transition-all duration-300 border-border/50",
         hasAnimated ? "opacity-100" : "opacity-0",
         className
       )}
     >
-      <div className="flex items-start justify-between">
-        <div className="space-y-2">
-          <p className="text-sm text-muted-foreground font-medium">
-            {title}
-          </p>
-          <p className="text-3xl font-bold">{value}</p>
-          {change && (
-            <p className={cn(
+      {Icon && (
+        <div
+          className="absolute top-4 right-4 flex items-center justify-center w-12 h-12 rounded-full"
+          style={{
+            background: "linear-gradient(135deg, #0ea5e9, #2563eb)",
+            boxShadow: "0 10px 30px rgba(37,99,235,0.25)",
+          }}
+        >
+          <Icon className="text-white" style={{ width: 22, height: 22 }} />
+        </div>
+      )}
+      <div className="pr-16 space-y-2">
+        <p className="text-sm text-muted-foreground font-medium">{title}</p>
+        <p className="text-3xl font-bold">{value}</p>
+        {change && (
+          <p
+            className={cn(
               "text-sm flex items-center gap-1",
               trend === "up" ? "text-success" : "text-warning"
-            )}>
-              {trend === "up" ? (
-                <TrendingUp className="h-4 w-4" />
-              ) : (
-                <TrendingDown className="h-4 w-4" />
-              )}
-              {change}
-            </p>
-          )}
-        </div>
-        {Icon && (
-          <div className="p-3 bg-gradient-primary rounded-lg">
-            <Icon className="h-6 w-6 text-white" />
-          </div>
+            )}
+          >
+            {trend === "up" ? (
+              <TrendingUp className="h-4 w-4" />
+            ) : (
+              <TrendingDown className="h-4 w-4" />
+            )}
+            {change}
+          </p>
         )}
       </div>
     </Card>
