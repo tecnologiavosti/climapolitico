@@ -171,7 +171,7 @@ export default function CandidatesCatalog() {
       if (!user) throw new Error("Não autenticado");
       const { data: existing } = await supabase.from("candidates").select("id").eq("user_id", user.id);
       const used = (subscription as any)?.candidates_created_total ?? (existing?.length ?? 0);
-      if (subscription && used >= subscription.max_candidates) {
+      if (!isUnlimitedSubscription(subscription) && subscription && used >= subscription.max_candidates) {
         throw new Error(`Limite vitalício de ${subscription.max_candidates} candidatos atingido. Excluir candidatos não restaura créditos — faça upgrade do plano.`);
       }
       const region = [p.city, p.state].filter(Boolean).join(", ") || p.region || p.state || null;
