@@ -2,6 +2,7 @@ import { HelpTooltip } from "@/components/ui/help-tooltip";
 import React, { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { isUnlimitedSubscription } from "@/lib/planLimits";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { z } from "zod";
