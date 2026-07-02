@@ -514,9 +514,7 @@ export default function Overview() {
                   <span>curtidas</span>
                 </div>
               </div>
-              <div className="p-3 bg-gradient-primary rounded-lg">
-                <TrendingUp className="h-6 w-6 text-white" />
-              </div>
+              <MetricIcon icon={TrendingUp} />
             </div>
           </Card>
         </HelpTooltip>
