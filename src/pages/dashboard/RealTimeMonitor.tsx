@@ -413,7 +413,7 @@ const RealTimeMonitor = () => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
               <Card className="lg:col-span-1 border-border/60">
                 <CardContent className="p-4 space-y-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 max-md:justify-center max-md:text-center">
                     <div className={cn("rounded-md p-1.5", intensityTone.bg, intensityTone.text)}>
                       <Activity className="h-4 w-4" />
                     </div>
@@ -421,7 +421,7 @@ const RealTimeMonitor = () => {
                       Intensidade de Movimento Público
                     </span>
                   </div>
-                  <div className="flex items-end gap-2">
+                  <div className="flex items-end gap-2 max-md:justify-center">
                     <div className={cn("text-3xl font-bold tabular-nums", intensityTone.text)}>{intensity.score}</div>
                     <div className={cn("text-sm font-medium pb-1", intensityTone.text)}>{intensity.label}</div>
                   </div>
@@ -438,6 +438,7 @@ const RealTimeMonitor = () => {
                   </div>
                 </CardContent>
               </Card>
+
               {analysis && (
                 <>
                   <KpiCard
