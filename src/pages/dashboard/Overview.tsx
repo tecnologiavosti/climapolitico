@@ -470,9 +470,7 @@ export default function Overview() {
                   <span>monitorados</span>
                 </div>
               </div>
-              <div className="p-3 bg-gradient-primary rounded-lg">
-                <Users className="h-6 w-6 text-white" />
-              </div>
+              <MetricIcon icon={Users} />
             </div>
           </Card>
         </HelpTooltip>
