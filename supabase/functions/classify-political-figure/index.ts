@@ -40,7 +40,7 @@ Retorne JSON estrito:
 {
   "is_political": boolean,
   "confidence": number (0-100),
-  "cargo_sugerido": string ("Presidente"|"Governador"|"Senador"|"Deputado Federal"|"Deputado Estadual"|"Prefeito"|"Vereador"|"Pré-candidato"|null),
+  "cargo_sugerido": string ("Presidente"|"Vice-presidente"|"Ministro"|"Governador"|"Vice-governador"|"Secretário Estadual"|"Senador"|"Deputado Federal"|"Deputado Estadual"|"Deputado Distrital"|"Prefeito"|"Vice-prefeito"|"Secretário Municipal"|"Vereador"|"Presidente de partido"|"Pré-candidato"|null),
   "partido_sugerido": string|null,
   "reason": string (1-2 frases em português)
 }`;

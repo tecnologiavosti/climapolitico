@@ -128,6 +128,13 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
   const [city, setCity] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Regra DF: mandato legislativo local deve ser sempre "Deputado Distrital"
+  useEffect(() => {
+    if (state === "DF" && position === "Deputado Estadual") {
+      setPosition("Deputado Distrital");
+    }
+  }, [state, position]);
+
   // Debounce 600ms para validação IA
   useEffect(() => {
     const t = setTimeout(() => setDebouncedName(fullName), 600);
