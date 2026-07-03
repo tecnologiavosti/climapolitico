@@ -381,20 +381,18 @@ export default function DisinformationRadar() {
       {report && !mutation.isPending && (
 
         <>
-          {/* Analysis mode badge */}
-          {mutation.data?.analysis_mode && (
-            <div className="flex justify-end">
-              {mutation.data.analysis_mode === "data_driven" ? (
-                <Badge variant="outline" className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10">
-                  🟢 Baseado em dados reais ({mutation.data.totals?.total ?? 0} menções)
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="border-violet-500/40 text-violet-600 dark:text-violet-400 bg-violet-500/10">
-                  🧠 Análise preditiva IA (baixo contexto)
-                </Badge>
-              )}
-            </div>
-          )}
+          {/* Analysis mode badge — AI strategic by default; data-driven only when >500 mentions */}
+          <div className="flex justify-end">
+            {mutation.data?.analysis_mode === "data_driven" ? (
+              <Badge variant="outline" className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10">
+                🟢 Baseado em dados reais ({mutation.data.totals?.total ?? 0} menções)
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="border-violet-500/40 text-violet-600 dark:text-violet-400 bg-violet-500/10">
+                🧠 Análise estratégica por IA
+              </Badge>
+            )}
+          </div>
 
           {/* KPI cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -402,12 +400,12 @@ export default function DisinformationRadar() {
             <Card className="glass hover-lift">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs text-muted-foreground font-medium">Fake News Detectadas</p>
+                  <p className="text-xs text-muted-foreground font-medium">Narrativas de Risco</p>
                   <AlertTriangle className="h-4 w-4 text-red-500" />
                 </div>
                 <p className="text-3xl font-bold mt-2">{report.fake_news_count}</p>
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  Possíveis narrativas falsas
+                  Narrativas de ataque plausíveis
                 </p>
               </CardContent>
             </Card>
