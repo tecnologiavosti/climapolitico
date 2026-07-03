@@ -287,7 +287,7 @@ export default function DisinformationRadar() {
       )}
 
       <Dialog open={mutation.isPending} onOpenChange={() => undefined}>
-        <DialogContent className="sm:max-w-lg overflow-hidden border-border/70 bg-card/95 backdrop-blur-xl p-0" hideCloseButton>
+        <DialogContent className="sm:max-w-lg overflow-hidden border-border/70 bg-card/95 backdrop-blur-xl p-0 [&>button]:hidden">
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-red-500 via-orange-500 to-amber-500 animate-pulse" />
           <div className="p-7 sm:p-8 space-y-6">
             <div className="text-center space-y-3">
