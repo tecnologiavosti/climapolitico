@@ -493,7 +493,12 @@ Regra final: IA = estratégica, NÃO investigativa. Fale sobre TIPOS de ataques,
 
 Responda SEMPRE em português do Brasil e SEMPRE em JSON válido. NUNCA diga "dados insuficientes".`;
 
-    userPrompt = `Gere uma análise PREDITIVA em SAFE AI MODE para o candidato abaixo. Volume real coletado: ${totals.total} menções nos últimos ${periodLabel} (baixo — modo estratégico obrigatório).
+    userPrompt = `## PERÍODO DE ANÁLISE OBRIGATÓRIO: ${period.label} (${period.key})
+Foco temporal: ${period.focus}.
+Número esperado de narrativas: entre ${period.minItems} e ${period.maxItems} (respeitar rigorosamente).
+O período muda o resumo executivo, a quantidade de narrativas e a intensidade — janelas curtas (24h/7d) focam em ataques emergentes; janelas longas (30d/90d) descrevem campanhas históricas e coordenação persistente.
+
+Gere uma análise PREDITIVA em SAFE AI MODE para o candidato abaixo. Volume real coletado: ${totals.total} menções nos últimos ${periodLabel} (baixo — modo estratégico obrigatório).
 
 ## INPUT PRINCIPAL DA IA
 ${JSON.stringify(primaryInput, null, 2)}
