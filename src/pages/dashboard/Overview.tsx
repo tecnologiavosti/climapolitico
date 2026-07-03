@@ -766,6 +766,7 @@ export default function Overview() {
           </div>
         )}
       </Card>
+      )}
 
       {/* Fase 6 — Reações por post */}
       <ReactionsPerPost candidateId={selectedCandidateId || undefined} />
