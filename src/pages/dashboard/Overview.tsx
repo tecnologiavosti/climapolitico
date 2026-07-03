@@ -310,24 +310,45 @@ export default function Overview() {
     return map[n?.toLowerCase?.()] || n || 'Outro';
   };
 
-  // Distribuição por rede social (mesma base consolidada da Visão por Rede Social)
+  // Distribuição por rede social — em modo candidato usa APENAS dados do candidato selecionado
   const networkCount: Record<string, number> = {};
-  consolidatedMetrics?.by_network?.forEach((nb: any) => {
-    const key = normalizeNetwork(nb.network);
-    networkCount[key] = (networkCount[key] || 0) + Number(nb.mentions || 0);
-  });
-  if (Object.keys(networkCount).length === 0) allMetrics?.forEach(m => {
-    m.networkBreakdown.forEach(nb => {
+  const metricsForNetwork = isCandidateMode ? scopedMetrics : (allMetrics ?? []);
+
+  // 1) Preferir networkBreakdown do candidato (já validado por useCandidateMetrics para bater com totalMentions)
+  metricsForNetwork.forEach(m => {
+    m.networkBreakdown?.forEach(nb => {
       const key = normalizeNetwork(nb.network);
-      networkCount[key] = (networkCount[key] || 0) + nb.mentions;
+      networkCount[key] = (networkCount[key] || 0) + Number(nb.mentions || 0);
     });
   });
-  // Fallback: se cache vazio, agregar de social_interactions
+
+  // 2) Fallback para a RPC consolidada (também escopada por candidato quando aplicável)
   if (Object.keys(networkCount).length === 0) {
-    socialInteractions?.forEach(i => {
+    consolidatedMetrics?.by_network?.forEach((nb: any) => {
+      const key = normalizeNetwork(nb.network);
+      networkCount[key] = (networkCount[key] || 0) + Number(nb.mentions || 0);
+    });
+  }
+
+  // 3) Fallback final: agregar de social_interactions locais
+  if (Object.keys(networkCount).length === 0) {
+    socialInteractions?.forEach((i: any) => {
       const net = normalizeNetwork(i.social_network || 'Outro');
       networkCount[net] = (networkCount[net] || 0) + 1;
     });
+  }
+
+  // Debug + consistência: soma das barras deve bater com totalMentions do card
+  const networkSum = Object.values(networkCount).reduce((a, b) => a + b, 0);
+  if (isCandidateMode) {
+    console.log("[Overview] TOTAL MENÇÕES:", totalMentions);
+    console.log("[Overview] REDES:", networkCount);
+    console.log("[Overview] SOMA REDES:", networkSum);
+    if (totalMentions > 0 && Math.abs(networkSum - totalMentions) > 1) {
+      console.warn("[Overview] Soma das redes não bate com total de menções", {
+        totalMentions, networkSum, diff: totalMentions - networkSum,
+      });
+    }
   }
 
   const NETWORK_COLORS: Record<string, string> = {
