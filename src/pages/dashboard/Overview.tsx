@@ -210,8 +210,11 @@ export default function Overview() {
   })();
 
 
-  // Aggregate metrics from cache (single source of truth)
-  const fallbackAggregatedMetrics = allMetrics?.reduce(
+  // Aggregate metrics from cache (single source of truth) — filter by selected candidate when in candidate mode
+  const scopedMetrics = isCandidateMode
+    ? (allMetrics?.filter(m => m.candidateId === selectedCandidateId) ?? [])
+    : (allMetrics ?? []);
+  const fallbackAggregatedMetrics = scopedMetrics.reduce(
     (acc, m) => ({
       totalMentions: acc.totalMentions + m.totalMentions,
       uniqueAuthors: acc.uniqueAuthors + m.uniqueAuthors,
@@ -221,7 +224,7 @@ export default function Overview() {
       negativeCount: acc.negativeCount + m.negativeCount,
     }),
     { totalMentions: 0, uniqueAuthors: 0, totalEngagement: 0, positiveCount: 0, neutralCount: 0, negativeCount: 0 }
-  ) || { totalMentions: 0, uniqueAuthors: 0, totalEngagement: 0, positiveCount: 0, neutralCount: 0, negativeCount: 0 };
+  );
 
   const kpis = consolidatedMetrics?.kpis;
   const aggregatedMetrics = kpis ? {
@@ -235,7 +238,7 @@ export default function Overview() {
 
   const totalMentions = aggregatedMetrics.totalMentions;
   const uniqueAuthors = aggregatedMetrics.uniqueAuthors;
-  const totalCandidates = candidates?.length || 0;
+  const totalCandidates = isCandidateMode ? 1 : (candidates?.length || 0);
   const totalSentimentItems = aggregatedMetrics.positiveCount + aggregatedMetrics.neutralCount + aggregatedMetrics.negativeCount;
   const avgSentiment = totalSentimentItems > 0
     ? Math.round(((aggregatedMetrics.positiveCount * 100) + (aggregatedMetrics.neutralCount * 50) + (aggregatedMetrics.negativeCount * 0)) / totalSentimentItems)
