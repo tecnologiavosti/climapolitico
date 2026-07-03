@@ -325,7 +325,7 @@ async function callAI(input: {
   "executive_summary": "3-5 frases analíticas em pt-BR",
   "fake_news_items": [
     {
-      "title": "narrativa específica e plausível",
+      "title": "tipo de narrativa plausível, sem fato inventado",
       "probability": number (0-100),
       "explanation": "por que essa narrativa é plausível neste contexto",
       "likely_origin": "rede social, região ou grupo típico"
@@ -508,7 +508,63 @@ serve(async (req) => {
       );
     }
 
-    // Fetch REAL data for this candidate — social_interactions
+    const searchTerm = candidate.full_name.split(/\s+/).filter(Boolean).slice(0, 2).join(" ") || candidate.full_name;
+    const [{ data: politicalCatalog }, { data: publicCatalog }] = await Promise.all([
+      supabase
+        .from("political_catalog")
+        .select("full_name,cargo,city,state,region,party,status,source,confidence")
+        .ilike("full_name", `%${searchTerm}%`)
+        .limit(10),
+      supabase
+        .from("public_candidates_catalog")
+        .select("full_name,position,city,state,region,macro_region,party,category,description")
+        .ilike("full_name", `%${searchTerm}%`)
+        .limit(10),
+    ]);
+
+    const targetName = normalizeName(candidate.full_name);
+    const catalogRows = [
+      ...((politicalCatalog ?? []) as any[]).map((row) => ({ ...row, origin: "political_catalog" })),
+      ...((publicCatalog ?? []) as any[]).map((row) => ({ ...row, cargo: row.position, origin: "public_candidates_catalog" })),
+    ];
+    const catalogMatch = catalogRows
+      .map((row) => {
+        const rowName = normalizeName(row.full_name || "");
+        const sameParty = candidate.party && row.party && normalizeForMatch(candidate.party) === normalizeForMatch(row.party);
+        const exact = rowName === targetName;
+        const contains = rowName.includes(targetName) || targetName.includes(rowName);
+        return { row, score: (exact ? 100 : contains ? 70 : 0) + (sameParty ? 15 : 0) + (Number(row.confidence) || 0) / 10 };
+      })
+      .sort((a, b) => b.score - a.score)[0]?.row;
+
+    const parsedRegion = parseRegion(candidate.region);
+    const cargo = catalogMatch?.cargo || null;
+    const city = catalogMatch?.city || parsedRegion.city || null;
+    const state = catalogMatch?.state || parsedRegion.state || null;
+    const macroRegion = catalogMatch?.macro_region || (state ? STATE_TO_MACRO_REGION[state] : parsedRegion.macroRegion) || candidate.region || "N/D";
+    const nivelCargo = officeScope(cargo, candidate.region);
+    const partyKey = normalizeForMatch(candidate.party || catalogMatch?.party || "").toUpperCase();
+    const perfilPolitico = PARTY_PROFILES[partyKey] || "perfil político inferido apenas por partido/território; usar abordagem conservadora e contextual";
+    const candidateContext = {
+      name: candidate.full_name,
+      cargo: cargo || "não informado",
+      partido: candidate.party || catalogMatch?.party || "N/D",
+      partido_nome: candidate.party_name || null,
+      cidade: city,
+      estado: state,
+      regiao: macroRegion,
+      perfil_politico: perfilPolitico,
+      historico: [
+        cargo ? `Cargo/posição catalogada: ${cargo}` : "Cargo não confirmado em catálogo estruturado; evitar conclusões específicas sobre mandato.",
+        state || city ? `Território político principal: ${[city, state, macroRegion].filter(Boolean).join(" · ")}` : `Território informado pelo usuário: ${candidate.region || "não informado"}`,
+        candidate.party ? `Partido informado: ${candidate.party}${candidate.party_name ? ` (${candidate.party_name})` : ""}.` : "Partido não informado; reduzir peso ideológico.",
+        catalogMatch?.description ? `Descrição pública resumida: ${String(catalogMatch.description).slice(0, 240)}` : "Sem histórico factual adicional disponível; não inventar biografia, processos ou eventos.",
+      ],
+      nivel_cargo: nivelCargo,
+      temas_politicos_prioritarios: themesForScope(nivelCargo),
+    };
+
+    // Sinais agregados da plataforma: secundários, nunca fonte primária do relatório.
     const sinceIso = new Date(Date.now() - daysBack * 86400_000).toISOString();
     const { data: interactions } = await supabase
       .from("social_interactions")
@@ -529,22 +585,12 @@ serve(async (req) => {
     // Decide analysis mode: data-driven if we have real signal, otherwise AI predictive research
     const mode: AnalysisMode = totals.total > 20 ? "data_driven" : "ai_research";
 
-    // Extract signal (empty arrays for ai_research mode are fine)
+    // Extrai apenas sinais agregados e temas políticos; não envia comentários crus para a IA.
     const allTexts = rows.map((r) => [r.comment_text, r.post_title, r.post_description].filter(Boolean).join(" "));
-    const keywords = topKeywords(allTexts, 25);
-
-    const negatives = rows
-      .filter((r) => (r.sentiment_label || "").toLowerCase().startsWith("neg") && r.comment_text)
-      .slice(0, 20)
-      .map((r) => r.comment_text as string);
-
-    const topPosts = [...rows]
-      .filter((r) => r.post_title || r.comment_text)
-      .sort((a, b) =>
-        ((b.likes_count || 0) + (b.shares_count || 0) + (b.replies_count || 0)) -
-        ((a.likes_count || 0) + (a.shares_count || 0) + (a.replies_count || 0)),
-      )
-      .slice(0, 10);
+    const keywords = topKeywords(allTexts, 25)
+      .filter((keyword) => SAFE_KEYWORD_ALLOWLIST.has(normalizeForMatch(keyword.word)))
+      .slice(0, 12);
+    const topicSignals = buildTopicSignals(allTexts);
 
     const netMap = new Map<string, number>();
     const regMap = new Map<string, number>();
@@ -560,14 +606,14 @@ serve(async (req) => {
     let model_used = "fallback";
     try {
       const r = await callAI({
-        candidate, periodLabel, daysBack, totals,
-        keywords, topNegativeSamples: negatives, topPosts, networks, regions, mode,
+        candidateContext, periodLabel, daysBack, totals,
+        keywords, topicSignals, networks, regions, mode,
       });
-      report = r.report;
+      report = sanitizeReport(r.report, candidateContext);
       model_used = r.model_used;
     } catch (e) {
       console.error("[disinfo-radar] AI failed:", (e as Error).message);
-      report = fallbackReport(candidate, periodLabel);
+      report = fallbackReport(candidateContext, periodLabel);
     }
 
     // Strip any legacy insufficient_data flag — new architecture never returns it
@@ -575,12 +621,14 @@ serve(async (req) => {
 
     const payload = {
       candidate,
+      candidate_context: candidateContext,
       period: { daysBack, label: periodLabel },
       report,
       totals,
       analysis_mode: mode,
       signals: {
         top_keywords: keywords.slice(0, 15),
+        topic_signals: topicSignals.slice(0, 8),
         networks: networks.slice(0, 8),
         regions: regions.slice(0, 8),
       },
