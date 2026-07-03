@@ -1,7 +1,8 @@
-import { useEffect, lazy, Suspense } from "react";
+import { useEffect, useRef, lazy, Suspense } from "react";
 import { useNavigate, useLocation, Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSessionHealthCheck } from "@/hooks/useSessionHealthCheck";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 import logoAsset from "@/assets/clima-politico-logo.jpg.asset.json";
