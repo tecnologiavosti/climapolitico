@@ -98,6 +98,19 @@ const vulnColor: Record<string, string> = {
   Crítica: "text-red-500",
 };
 
+function riskLabel(p: number): "Muito Alta" | "Alta" | "Moderada" | "Baixa" {
+  if (p >= 75) return "Muito Alta";
+  if (p >= 55) return "Alta";
+  if (p >= 35) return "Moderada";
+  return "Baixa";
+}
+const riskLabelClasses: Record<string, string> = {
+  "Muito Alta": "border-red-500/40 text-red-600 dark:text-red-400 bg-red-500/10",
+  "Alta": "border-orange-500/40 text-orange-600 dark:text-orange-400 bg-orange-500/10",
+  "Moderada": "border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/10",
+  "Baixa": "border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10",
+};
+
 export default function DisinformationRadar() {
   const [selectedCandidate, setSelectedCandidate] = useState<string>("");
   const [period, setPeriod] = useState<Period>("7");
