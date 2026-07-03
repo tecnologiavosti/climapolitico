@@ -137,20 +137,37 @@ ${topPosts.length ? topPosts.slice(0, 8).map((p, i) => `${i + 1}. [${p.social_ne
 ${commonJsonSchema}`;
   } else {
     // AI RESEARCH MODE — sem dados coletados suficientes
-    systemMsg = `Você é um analista brasileiro sênior em inteligência política, desinformação eleitoral e comportamento do eleitorado brasileiro. Sua tarefa é gerar uma análise preditiva de possíveis narrativas de fake news que podem atingir um candidato, baseada em conhecimento contextual sobre:
-- histórico político da região
-- polarização ideológica local
+    systemMsg = `Você é um analista brasileiro sênior em inteligência política e desinformação eleitoral, operando em SAFE AI MODE (baixo contexto de dados).
+
+Sua tarefa é gerar análise PREDITIVA e ESTRATÉGICA de tipos de narrativas de fake news que podem atingir um candidato, com base em conhecimento contextual sobre:
 - padrões brasileiros de desinformação eleitoral
-- narrativas típicas contra o cargo político em questão
-- perfil do eleitorado da região/cargo
+- narrativas típicas por nível de cargo
+- polarização ideológica do partido
+- temas sensíveis por região
 
-REGRAS:
-- Fake news devem ser PLAUSÍVEIS e contextualizadas ao cargo, partido e região — não genéricas nem absurdas.
-- Considere o nível do cargo: vereador/prefeito → narrativas municipais; deputado estadual/distrital → estaduais; deputado federal/senador → nacionais/regionais; governador → estaduais amplas; presidente → nacionais.
-- NUNCA diga "dados insuficientes". Gere sempre análise preditiva útil.
-- Responda SEMPRE em português do Brasil e SEMPRE em JSON válido.`;
+⚠️ REGRAS INEGOCIÁVEIS DO SAFE AI MODE ⚠️
+Como NÃO há evidência real coletada, você está PROIBIDO de inventar:
+- nomes de pessoas (familiares, aliados, adversários, servidores)
+- valores monetários (R$, milhões, propina, salários)
+- datas específicas ou anos de supostos crimes
+- nomes de operações policiais ou processos judiciais
+- crimes concretos ("desviou merenda em 2020", "recebeu R$500 mil")
+- obras, contratos, licitações ou eventos específicos
+- vídeos, posts virais ou manchetes específicas
+- parentes ou vínculos familiares específicos
 
-    userPrompt = `Gere uma análise PREDITIVA de fake news e riscos reputacionais para o candidato abaixo. Não há volume suficiente de menções coletadas (${totals.total} nos últimos ${periodLabel}), então baseie a análise em contexto político e padrões brasileiros de desinformação.
+✅ VOCÊ DEVE gerar apenas NARRATIVAS GENÉRICAS PLAUSÍVEIS, escritas em modo estratégico:
+- "Narrativas sobre nepotismo"
+- "Ataques sobre uso da máquina pública"
+- "Boatos de compra de votos"
+- "Acusações vagas de favorecimento familiar"
+- "Questionamentos sobre transparência de gastos"
+
+Regra final: IA = estratégica, NÃO investigativa. Fale sobre TIPOS de ataques, nunca fatos concretos.
+
+Responda SEMPRE em português do Brasil e SEMPRE em JSON válido. NUNCA diga "dados insuficientes".`;
+
+    userPrompt = `Gere uma análise PREDITIVA em SAFE AI MODE para o candidato abaixo. Volume real coletado: ${totals.total} menções nos últimos ${periodLabel} (baixo — modo genérico obrigatório).
 
 ## CANDIDATO
 - Nome: ${candidate.full_name}
@@ -158,21 +175,27 @@ REGRAS:
 - Partido: ${candidate.party || "N/D"}
 - Estado/Região: ${candidate.region || "N/D"}
 
-## TAREFA
-Analise possíveis narrativas de fake news que podem atingir este candidato considerando:
-1. Cargo político e nível de exposição (municipal, estadual, federal)
-2. Espectro ideológico do partido e polarização típica que ele gera
-3. Contexto regional (${candidate.region || "Brasil"}) — histórico político, temas sensíveis
-4. Padrões brasileiros de desinformação eleitoral (ex: para vereadores → favorecimento familiar, compra de votos, desvio de verba municipal; para presidente → corrupção nacional, manipulação econômica)
-5. Perfil típico do eleitorado adversário
+## CONTEXTO PARA CALIBRAR AS NARRATIVAS (não inventar fatos)
+- Nível do cargo → escopo dos ataques: vereador/prefeito = municipal (nepotismo, uso da máquina, verba local); deputado estadual/distrital = estadual (emendas, ligações estaduais); deputado federal/senador = nacional/regional (votações polêmicas, alinhamentos); governador = estadual amplo (gestão, segurança, saúde); presidente = nacional (economia, ideologia, corrupção sistêmica).
+- Espectro ideológico do partido → tipo de polarização típica.
+- Região → apenas temas gerais sensíveis, sem inventar casos.
 
-Gere:
-- 4 a 7 narrativas de fake news PLAUSÍVEIS e contextualizadas
-- Score de risco reputacional realista
-- Intensidade de ataques esperada
-- Vulnerabilidade digital
-- Como identificar e como neutralizar essas narrativas
-- Categorias de narrativa com intensidade estimada
+## TAREFA
+Gere de 4 a 7 narrativas de fake news PLAUSÍVEIS e GENÉRICAS.
+Cada item deve seguir o padrão:
+- title: tipo de ataque ("Narrativas sobre X", "Boatos de Y", "Ataques sobre Z") — SEM nomes, valores, datas ou fatos.
+- explanation: por que esse TIPO de narrativa é plausível para este perfil (cargo/partido/região), em linguagem estratégica e genérica.
+- likely_origin: canal ou perfil típico ("adversários locais", "grupos de WhatsApp da região", "perfis anônimos no X"), sem citar pessoas reais.
+- probability: score realista (30-75, evite extremos sem evidência).
+
+Também gere:
+- Score de risco reputacional coerente com cargo e polarização (não alto sem justificativa contextual).
+- Intensidade de ataques estimada.
+- Vulnerabilidade digital.
+- Como identificar e como neutralizar (dicas estratégicas e genéricas).
+- Categorias de narrativa com intensidade estimada.
+
+LEMBRE-SE: qualquer nome próprio, valor em R$, ano de crime, nome de operação, obra ou processo é ALUCINAÇÃO PROIBIDA neste modo.
 
 ${commonJsonSchema}`;
   }
