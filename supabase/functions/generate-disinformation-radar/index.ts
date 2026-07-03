@@ -696,14 +696,14 @@ serve(async (req) => {
     let model_used = "fallback";
     try {
       const r = await callAI({
-        candidateContext, periodLabel, daysBack, totals,
+        candidateContext, periodLabel, daysBack, period, totals,
         keywords, topicSignals, networks, regions, mode,
       });
-      report = sanitizeReport(r.report, candidateContext);
+      report = sanitizeReport(r.report, candidateContext, period);
       model_used = r.model_used;
     } catch (e) {
       console.error("[disinfo-radar] AI failed:", (e as Error).message);
-      report = fallbackReport(candidateContext, periodLabel);
+      report = sanitizeReport(fallbackReport(candidateContext, periodLabel), candidateContext, period);
     }
 
     // Strip any legacy insufficient_data flag — new architecture never returns it
