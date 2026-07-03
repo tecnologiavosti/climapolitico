@@ -512,7 +512,7 @@ ${JSON.stringify(secondarySignals, null, 2)}
 - Região → apenas temas gerais sensíveis, sem inventar casos.
 
 ## TAREFA
-Gere de 4 a 7 narrativas de fake news PLAUSÍVEIS e GENÉRICAS.
+Gere de ${period.minItems} a ${period.maxItems} narrativas de fake news PLAUSÍVEIS e GENÉRICAS.
 Cada item deve seguir o padrão:
 - title: tipo de ataque ("Narrativas sobre X", "Boatos de Y", "Ataques sobre Z") — SEM nomes, valores, datas ou fatos.
 - explanation: por que esse TIPO de narrativa é plausível para este perfil (cargo/partido/região), em linguagem estratégica e genérica.
