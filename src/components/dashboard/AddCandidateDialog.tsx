@@ -135,6 +135,13 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     }
   }, [state, position]);
 
+  // Debounce 300ms para autocomplete TSE em tempo real
+  const [nameQuick, setNameQuick] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setNameQuick(fullName.trim()), 300);
+    return () => clearTimeout(t);
+  }, [fullName]);
+
   // Debounce 600ms para validação IA
   useEffect(() => {
     const t = setTimeout(() => setDebouncedName(fullName), 600);
@@ -146,6 +153,63 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     if (q.length < 2) return [];
     return suggestCandidateNames(q, knownNames, 0.75);
   }, [debouncedName, knownNames]);
+
+  // ===== Autocomplete em tempo real na base TSE (public.politicians) =====
+  const SLUG_TO_POSITION: Record<string, string> = {
+    presidente: "Presidente", vice_presidente: "Vice-presidente", ministro: "Ministro",
+    governador: "Governador", vice_governador: "Vice-governador",
+    senador: "Senador", deputado_federal: "Deputado Federal",
+    deputado_estadual: "Deputado Estadual", deputado_distrital: "Deputado Distrital",
+    prefeito: "Prefeito", vice_prefeito: "Vice-prefeito", vereador: "Vereador",
+  };
+  type TseHit = { id: string; nome: string; nome_urna: string | null; cargo: string | null; partido_sigla: string | null; estado: string | null; municipio: string | null };
+  const [tseHits, setTseHits] = useState<TseHit[]>([]);
+  const [tseLoading, setTseLoading] = useState(false);
+  const [tseSearched, setTseSearched] = useState(false);
+  const [manualMode, setManualMode] = useState(false);
+
+  useEffect(() => {
+    if (nameQuick.length < 3) { setTseHits([]); setTseSearched(false); return; }
+    let cancelled = false;
+    setTseLoading(true);
+    (async () => {
+      try {
+        const { data } = await supabase.functions.invoke("catalog-search-hybrid", {
+          body: { q: nameQuick, page: 0, candidateType: "both" },
+        });
+        if (cancelled) return;
+        const rows = ((data?.rows ?? []) as any[]).slice(0, 5).map((r) => ({
+          id: r.id, nome: r.nome, nome_urna: r.nome_urna,
+          cargo: r.cargo, partido_sigla: r.partido_sigla,
+          estado: r.estado, municipio: r.municipio,
+        }));
+        setTseHits(rows);
+        setTseSearched(true);
+      } catch (e) {
+        if (!cancelled) { setTseHits([]); setTseSearched(true); }
+      } finally {
+        if (!cancelled) setTseLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [nameQuick]);
+
+  const applyTseHit = (h: TseHit) => {
+    setFullName(h.nome);
+    if (h.partido_sigla) setParty(h.partido_sigla);
+    const pos = h.cargo ? SLUG_TO_POSITION[h.cargo] : null;
+    if (pos && VALID_POSITIONS.has(pos)) {
+      // Regra DF
+      const finalPos = h.estado === "DF" && pos === "Deputado Estadual" ? "Deputado Distrital" : pos;
+      setPosition(finalPos);
+      if (scopeOf(finalPos) === "national") { setState(""); setCity(""); }
+    }
+    if (h.estado) setState(h.estado);
+    if (h.municipio) setCity(h.municipio);
+    setTseHits([]);
+    setManualMode(false);
+  };
+
 
   const autoCorrect = suggestions.find((s) => s.similarity >= 0.98) ?? null;
 
@@ -522,6 +586,49 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
             })()}
 
 
+            {/* Autocomplete TSE em tempo real */}
+            {nameQuick.length >= 3 && !manualMode && (tseLoading || tseHits.length > 0 || tseSearched) && (
+              <div className="mt-2 rounded-xl border border-border/70 bg-popover/95 backdrop-blur shadow-sm overflow-hidden animate-in fade-in-0 slide-in-from-top-1 duration-200">
+                <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/40 flex items-center gap-2">
+                  <Sparkles className="h-3 w-3" /> Sugestões da base TSE
+                  {tseLoading && <Loader2 className="h-3 w-3 animate-spin ml-auto" />}
+                </div>
+                {tseHits.length > 0 ? (
+                  <ul className="divide-y divide-border/50">
+                    {tseHits.map((h) => {
+                      const initials = h.nome.split(/\s+/).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
+                      const posLabel = h.cargo ? (SLUG_TO_POSITION[h.cargo] ?? h.cargo) : null;
+                      const finalPos = h.estado === "DF" && posLabel === "Deputado Estadual" ? "Deputado Distrital" : posLabel;
+                      const sub = [finalPos, h.partido_sigla, h.estado].filter(Boolean).join(" · ");
+                      return (
+                        <li key={h.id}>
+                          <button
+                            type="button"
+                            onClick={() => applyTseHit(h)}
+                            className="w-full flex items-center gap-3 px-3 py-2 hover:bg-muted/60 transition-colors text-left"
+                          >
+                            <div className="h-8 w-8 shrink-0 rounded-full bg-primary/15 text-primary text-xs font-semibold flex items-center justify-center">
+                              {initials}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-semibold truncate">{h.nome_urna || h.nome}</div>
+                              <div className="text-[11px] text-muted-foreground truncate">{sub || "—"}</div>
+                            </div>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : !tseLoading && tseSearched ? (
+                  <div className="px-3 py-3 text-xs text-muted-foreground flex items-center justify-between gap-2">
+                    <span>Nenhum candidato encontrado.</span>
+                    <Button type="button" size="sm" variant="secondary" className="h-7 rounded-lg" onClick={() => setManualMode(true)}>
+                      Cadastrar manualmente
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            )}
 
 
             {autoCorrect && normalizeCandidateName(fullName) !== normalizeCandidateName(autoCorrect.fullName) && (
