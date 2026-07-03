@@ -275,8 +275,9 @@ export default function Overview() {
     }
   });
 
-  const candidateData = candidates
-    ?.map(c => {
+  const candidateData = (candidates ?? [])
+    .filter(c => !isCandidateMode || c.id === selectedCandidateId)
+    .map(c => {
       const cached = metricsMap.get(c.id);
       const fallback = interactionsByCandidate[c.id];
       const mentions = cached?.totalMentions || fallback?.mentions || 0;
@@ -286,7 +287,7 @@ export default function Overview() {
     })
     .filter(d => d.mentions > 0)
     .sort((a, b) => b.mentions - a.mentions)
-    .slice(0, 5) || [];
+    .slice(0, 5);
 
   // Normaliza nomes de rede social (banco usa 'google_news', UI exibe 'Google News')
   const normalizeNetwork = (n: string): string => {
