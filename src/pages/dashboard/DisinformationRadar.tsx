@@ -4,6 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -11,7 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -46,6 +46,13 @@ const PERIODS: { value: Period; label: string }[] = [
   { value: "15", label: "15 dias" },
   { value: "30", label: "30 dias" },
   { value: "90", label: "90 dias" },
+];
+
+const LOADING_STEPS = [
+  "Analisando padrões de desinformação...",
+  "Consultando contexto político...",
+  "Mapeando narrativas digitais...",
+  "Gerando relatório estratégico...",
 ];
 
 interface FakeItem {
@@ -124,7 +131,7 @@ export default function DisinformationRadar() {
     mutationFn: async () => {
       setLoadingStep(0);
       const start = Date.now();
-      const steps = [700, 1400, 2100, 2800];
+      const steps = [900, 1800, 2700, 3600];
       const timers = steps.map((ms, i) => setTimeout(() => setLoadingStep(i + 1), ms));
       try {
         const [{ data, error }] = await Promise.all([
@@ -135,7 +142,7 @@ export default function DisinformationRadar() {
         if (error) throw error;
         // Minimum visual time
         const elapsed = Date.now() - start;
-        if (elapsed < 2500) await new Promise((r) => setTimeout(r, 2500 - elapsed));
+        if (elapsed < 3800) await new Promise((r) => setTimeout(r, 3800 - elapsed));
         return data as ApiResponse;
       } finally {
         timers.forEach(clearTimeout);
@@ -279,73 +286,82 @@ export default function DisinformationRadar() {
         </Card>
       )}
 
-      {/* Premium loading */}
-      {mutation.isPending && (
-        <Card className="glass overflow-hidden relative">
+      <Dialog open={mutation.isPending} onOpenChange={() => undefined}>
+        <DialogContent className="sm:max-w-lg overflow-hidden border-border/70 bg-card/95 backdrop-blur-xl p-0" hideCloseButton>
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-red-500 via-orange-500 to-amber-500 animate-pulse" />
-          <CardContent className="py-10 space-y-6">
-            <div className="text-center space-y-2">
-              <div className="inline-flex p-3 rounded-full bg-gradient-to-br from-red-500/20 to-orange-500/10 border border-red-500/30 animate-pulse">
-                <ShieldAlert className="h-8 w-8 text-red-500" />
+          <div className="p-7 sm:p-8 space-y-6">
+            <div className="text-center space-y-3">
+              <div className="mx-auto relative h-16 w-16">
+                <div className="absolute inset-0 rounded-full border border-red-500/25 animate-ping" />
+                <div className="absolute inset-2 rounded-full bg-gradient-to-br from-red-500/20 to-orange-500/10 border border-red-500/30 flex items-center justify-center">
+                  <ShieldAlert className="h-8 w-8 text-red-500" />
+                </div>
               </div>
-              <h3 className="text-xl font-bold">Analisando narrativas…</h3>
-              <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                Investigando redes sociais, notícias e sinais de desinformação sobre o candidato.
-              </p>
+              <div className="space-y-1">
+                <h3 className="text-xl font-bold">Radar estratégico em processamento</h3>
+                <p className="text-sm text-muted-foreground min-h-5 transition-all duration-500">
+                  {LOADING_STEPS[Math.min(loadingStep, LOADING_STEPS.length - 1)]}
+                </p>
+              </div>
             </div>
-            <div className="max-w-md mx-auto space-y-2">
-              {[
-                "Coletando posts e menções reais",
-                "Analisando comentários e sentimento",
-                "Detectando padrões e temas dominantes",
-                "Gerando relatório IA contextual",
-              ].map((label, i) => {
+
+            <div className="space-y-3">
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-red-500 via-orange-500 to-amber-500 transition-all duration-700 ease-out"
+                  style={{ width: `${Math.max(12, Math.min(100, ((loadingStep + 1) / LOADING_STEPS.length) * 100))}%` }}
+                />
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {LOADING_STEPS.map((label, i) => {
+                  const done = loadingStep > i;
+                  const active = loadingStep === i;
+                  return (
+                    <div
+                      key={label}
+                      className={cn(
+                        "h-1 rounded-full transition-colors duration-500",
+                        done || active ? "bg-orange-500" : "bg-muted",
+                      )}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {LOADING_STEPS.map((label, i) => {
                 const done = loadingStep > i;
                 const active = loadingStep === i;
                 return (
                   <div
-                    key={i}
+                    key={label}
                     className={cn(
-                      "flex items-center gap-3 px-3 py-2 rounded-lg transition-all",
+                      "flex items-center gap-3 rounded-lg px-3 py-2 transition-all duration-300",
                       done && "bg-emerald-500/10",
-                      active && "bg-primary/10",
+                      active && "bg-orange-500/10",
                     )}
                   >
                     <div
                       className={cn(
-                        "h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
+                        "h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-colors",
                         done
-                          ? "bg-emerald-500 text-white"
+                          ? "bg-emerald-500 text-primary-foreground"
                           : active
-                          ? "bg-primary text-primary-foreground"
+                          ? "bg-orange-500 text-primary-foreground"
                           : "bg-muted text-muted-foreground",
                       )}
                     >
                       {done ? "✓" : active ? <Loader2 className="h-3 w-3 animate-spin" /> : i + 1}
                     </div>
-                    <span
-                      className={cn(
-                        "text-sm",
-                        done && "text-foreground",
-                        active && "text-foreground font-medium",
-                        !done && !active && "text-muted-foreground",
-                      )}
-                    >
-                      {label}
-                    </span>
+                    <span className={cn("text-sm", active && "font-medium", !done && !active && "text-muted-foreground")}>{label}</span>
                   </div>
                 );
               })}
             </div>
-            <div className="max-w-md mx-auto h-1.5 bg-muted rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-red-500 to-orange-500 transition-all duration-700"
-                style={{ width: `${Math.min(100, (loadingStep / 4) * 100)}%` }}
-              />
-            </div>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Report */}
       {report && !mutation.isPending && (
