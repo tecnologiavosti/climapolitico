@@ -135,6 +135,13 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     }
   }, [state, position]);
 
+  // Debounce 300ms para autocomplete TSE em tempo real
+  const [nameQuick, setNameQuick] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setNameQuick(fullName.trim()), 300);
+    return () => clearTimeout(t);
+  }, [fullName]);
+
   // Debounce 600ms para validação IA
   useEffect(() => {
     const t = setTimeout(() => setDebouncedName(fullName), 600);
@@ -146,6 +153,63 @@ export function AddCandidateDialog({ open, onOpenChange, isPending, trigger, onS
     if (q.length < 2) return [];
     return suggestCandidateNames(q, knownNames, 0.75);
   }, [debouncedName, knownNames]);
+
+  // ===== Autocomplete em tempo real na base TSE (public.politicians) =====
+  const SLUG_TO_POSITION: Record<string, string> = {
+    presidente: "Presidente", vice_presidente: "Vice-presidente", ministro: "Ministro",
+    governador: "Governador", vice_governador: "Vice-governador",
+    senador: "Senador", deputado_federal: "Deputado Federal",
+    deputado_estadual: "Deputado Estadual", deputado_distrital: "Deputado Distrital",
+    prefeito: "Prefeito", vice_prefeito: "Vice-prefeito", vereador: "Vereador",
+  };
+  type TseHit = { id: string; nome: string; nome_urna: string | null; cargo: string | null; partido_sigla: string | null; estado: string | null; municipio: string | null };
+  const [tseHits, setTseHits] = useState<TseHit[]>([]);
+  const [tseLoading, setTseLoading] = useState(false);
+  const [tseSearched, setTseSearched] = useState(false);
+  const [manualMode, setManualMode] = useState(false);
+
+  useEffect(() => {
+    if (nameQuick.length < 3) { setTseHits([]); setTseSearched(false); return; }
+    let cancelled = false;
+    setTseLoading(true);
+    (async () => {
+      try {
+        const { data } = await supabase.functions.invoke("catalog-search-hybrid", {
+          body: { q: nameQuick, page: 0, candidateType: "both" },
+        });
+        if (cancelled) return;
+        const rows = ((data?.rows ?? []) as any[]).slice(0, 5).map((r) => ({
+          id: r.id, nome: r.nome, nome_urna: r.nome_urna,
+          cargo: r.cargo, partido_sigla: r.partido_sigla,
+          estado: r.estado, municipio: r.municipio,
+        }));
+        setTseHits(rows);
+        setTseSearched(true);
+      } catch (e) {
+        if (!cancelled) { setTseHits([]); setTseSearched(true); }
+      } finally {
+        if (!cancelled) setTseLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [nameQuick]);
+
+  const applyTseHit = (h: TseHit) => {
+    setFullName(h.nome);
+    if (h.partido_sigla) setParty(h.partido_sigla);
+    const pos = h.cargo ? SLUG_TO_POSITION[h.cargo] : null;
+    if (pos && VALID_POSITIONS.has(pos)) {
+      // Regra DF
+      const finalPos = h.estado === "DF" && pos === "Deputado Estadual" ? "Deputado Distrital" : pos;
+      setPosition(finalPos);
+      if (scopeOf(finalPos) === "national") { setState(""); setCity(""); }
+    }
+    if (h.estado) setState(h.estado);
+    if (h.municipio) setCity(h.municipio);
+    setTseHits([]);
+    setManualMode(false);
+  };
+
 
   const autoCorrect = suggestions.find((s) => s.similarity >= 0.98) ?? null;
 
