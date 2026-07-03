@@ -1,8 +1,14 @@
 // deno-lint-ignore-file no-explicit-any
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+
+const supabase = createClient(
+  Deno.env.get("SUPABASE_URL")!,
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+);
 
 // Fallback chain de modelos OpenRouter — tentamos um por um.
 const MODELS = [
@@ -17,6 +23,22 @@ const VALID_OFFICES = new Set([
   "Senador", "Deputado Federal", "Deputado Estadual", "Deputado Distrital",
   "Vereador", "Presidente de partido",
 ]);
+
+// Mapeia label do modal -> slug usado em public.politicians.cargo
+const OFFICE_TO_CARGO_SLUG: Record<string, string> = {
+  "Presidente": "presidente",
+  "Vice-presidente": "vice_presidente",
+  "Ministro": "ministro",
+  "Governador": "governador",
+  "Vice-governador": "vice_governador",
+  "Senador": "senador",
+  "Deputado Federal": "deputado_federal",
+  "Deputado Estadual": "deputado_estadual",
+  "Deputado Distrital": "deputado_distrital",
+  "Prefeito": "prefeito",
+  "Vice-prefeito": "vice_prefeito",
+  "Vereador": "vereador",
+};
 
 const BLACKLIST = new Set([
   "batman", "naruto", "goku", "homem aranha", "homem-aranha", "spiderman",
