@@ -76,10 +76,23 @@ export const MonitoredSources = () => {
             >
               <img
                 src={`https://cdn.simpleicons.org/${s.slug}/${s.color}`}
-                alt={s.name}
+                alt=""
+                aria-hidden="true"
                 loading="lazy"
-                className="h-7 w-7 sm:h-9 sm:w-9 object-contain transition-transform duration-300 group-hover:scale-110 dark:invert-[0.08] dark:brightness-110"
+                onError={(e) => {
+                  const el = e.currentTarget;
+                  el.style.display = "none";
+                  const fb = el.nextElementSibling as HTMLElement | null;
+                  if (fb) fb.style.display = "flex";
+                }}
+                className="h-7 w-7 sm:h-9 sm:w-9 object-contain block transition-transform duration-300 group-hover:scale-110 dark:brightness-110"
               />
+              <span
+                aria-hidden="true"
+                className="hidden h-7 w-7 sm:h-9 sm:w-9 items-center justify-center text-lg sm:text-xl"
+              >
+                🌐
+              </span>
               <span className="text-xs sm:text-sm font-semibold text-foreground/90">
                 {s.name}
               </span>
