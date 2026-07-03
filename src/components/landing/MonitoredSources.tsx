@@ -15,8 +15,8 @@ const SOURCES: { name: string; slug: string; color: string }[] = [
 ];
 
 export const MonitoredSources = () => {
-  const [paused, setPaused] = useState(false);
   const trackRef = useRef<HTMLDivElement>(null);
+  const pausedRef = useRef(false);
 
   // Duplicate list for seamless infinite loop
   const loop = [...SOURCES, ...SOURCES];
@@ -27,10 +27,9 @@ export const MonitoredSources = () => {
     let raf = 0;
     let x = 0;
     const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches;
-    // ~2.5x faster ticker (px per frame @ 60fps)
     const speed = isMobile ? 1.6 : 1.1;
     const step = () => {
-      const pausedNow = paused && !isMobile;
+      const pausedNow = pausedRef.current && !isMobile;
       if (!pausedNow) {
         x -= speed;
         const half = el.scrollWidth / 2;
@@ -41,7 +40,7 @@ export const MonitoredSources = () => {
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [paused]);
+  }, []);
 
   return (
     <section className="container mx-auto px-4 py-16 sm:py-20">
