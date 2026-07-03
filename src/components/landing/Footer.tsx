@@ -80,7 +80,7 @@ export const Footer = () => {
 
         <div className="mt-10 pt-6 border-t border-border/50 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
           <p>© {new Date().getFullYear()} Clima Político. Todos os direitos reservados.</p>
-          <p>Feito com IA para decisões políticas mais inteligentes.</p>
+          <p className="opacity-75">Atualização 1.0.0</p>
         </div>
       </div>
     </footer>
