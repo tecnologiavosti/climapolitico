@@ -52,9 +52,11 @@ interface FakeItem {
   title: string;
   probability: number;
   explanation: string;
+  likely_origin?: string;
 }
 
 interface Report {
+  insufficient_data?: boolean;
   fake_news_count: number;
   reputational_risk: "Baixo" | "Médio" | "Alto" | "Crítico";
   attack_intensity: number;
@@ -67,9 +69,11 @@ interface Report {
 }
 
 interface ApiResponse {
-  candidate: { id: string; full_name: string; party: string; region: string; position: string };
+  candidate: { id: string; full_name: string; party: string; region: string };
   period: { daysBack: number; label: string };
   report: Report;
+  totals?: { total: number; positive: number; negative: number; neutral: number };
+  signals?: { top_keywords: { word: string; count: number }[]; networks: any[]; regions: any[] };
   model_used: string;
   generated_at: string;
 }
@@ -114,14 +118,29 @@ export default function DisinformationRadar() {
     }
   }, [candidates, selectedCandidate]);
 
+  const [loadingStep, setLoadingStep] = useState(0);
+
   const mutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke(
-        "generate-disinformation-radar",
-        { body: { candidateId: selectedCandidate, daysBack: parseInt(period) } },
-      );
-      if (error) throw error;
-      return data as ApiResponse;
+      setLoadingStep(0);
+      const start = Date.now();
+      const steps = [700, 1400, 2100, 2800];
+      const timers = steps.map((ms, i) => setTimeout(() => setLoadingStep(i + 1), ms));
+      try {
+        const [{ data, error }] = await Promise.all([
+          supabase.functions.invoke("generate-disinformation-radar", {
+            body: { candidateId: selectedCandidate, daysBack: parseInt(period) },
+          }),
+        ]);
+        if (error) throw error;
+        // Minimum visual time
+        const elapsed = Date.now() - start;
+        if (elapsed < 2500) await new Promise((r) => setTimeout(r, 2500 - elapsed));
+        return data as ApiResponse;
+      } finally {
+        timers.forEach(clearTimeout);
+        setLoadingStep(4);
+      }
     },
     onError: (e: any) => {
       console.error(e);
