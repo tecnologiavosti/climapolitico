@@ -98,6 +98,19 @@ const vulnColor: Record<string, string> = {
   Crítica: "text-red-500",
 };
 
+function riskLabel(p: number): "Muito Alta" | "Alta" | "Moderada" | "Baixa" {
+  if (p >= 75) return "Muito Alta";
+  if (p >= 55) return "Alta";
+  if (p >= 35) return "Moderada";
+  return "Baixa";
+}
+const riskLabelClasses: Record<string, string> = {
+  "Muito Alta": "border-red-500/40 text-red-600 dark:text-red-400 bg-red-500/10",
+  "Alta": "border-orange-500/40 text-orange-600 dark:text-orange-400 bg-orange-500/10",
+  "Moderada": "border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/10",
+  "Baixa": "border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10",
+};
+
 export default function DisinformationRadar() {
   const [selectedCandidate, setSelectedCandidate] = useState<string>("");
   const [period, setPeriod] = useState<Period>("7");
@@ -368,20 +381,18 @@ export default function DisinformationRadar() {
       {report && !mutation.isPending && (
 
         <>
-          {/* Analysis mode badge */}
-          {mutation.data?.analysis_mode && (
-            <div className="flex justify-end">
-              {mutation.data.analysis_mode === "data_driven" ? (
-                <Badge variant="outline" className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10">
-                  🟢 Baseado em dados reais ({mutation.data.totals?.total ?? 0} menções)
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="border-violet-500/40 text-violet-600 dark:text-violet-400 bg-violet-500/10">
-                  🧠 Análise preditiva IA (baixo contexto)
-                </Badge>
-              )}
-            </div>
-          )}
+          {/* Analysis mode badge — AI strategic by default; data-driven only when >500 mentions */}
+          <div className="flex justify-end">
+            {mutation.data?.analysis_mode === "data_driven" ? (
+              <Badge variant="outline" className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10">
+                🟢 Baseado em dados reais ({mutation.data.totals?.total ?? 0} menções)
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="border-violet-500/40 text-violet-600 dark:text-violet-400 bg-violet-500/10">
+                🧠 Análise estratégica por IA
+              </Badge>
+            )}
+          </div>
 
           {/* KPI cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -389,12 +400,12 @@ export default function DisinformationRadar() {
             <Card className="glass hover-lift">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs text-muted-foreground font-medium">Fake News Detectadas</p>
+                  <p className="text-xs text-muted-foreground font-medium">Narrativas de Risco</p>
                   <AlertTriangle className="h-4 w-4 text-red-500" />
                 </div>
                 <p className="text-3xl font-bold mt-2">{report.fake_news_count}</p>
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  Possíveis narrativas falsas
+                  Narrativas de ataque plausíveis
                 </p>
               </CardContent>
             </Card>
@@ -412,11 +423,11 @@ export default function DisinformationRadar() {
             <Card className="glass hover-lift">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs text-muted-foreground font-medium">Intensidade de Ataques</p>
+                  <p className="text-xs text-muted-foreground font-medium">Potencial de Ataque Digital</p>
                   <Users className="h-4 w-4 text-amber-500" />
                 </div>
                 <p className="text-3xl font-bold mt-2">{report.attack_intensity}</p>
-                <p className="text-[11px] text-muted-foreground mt-1">Score 0–100</p>
+                <p className="text-[11px] text-muted-foreground mt-1">Score IA 0–100</p>
               </CardContent>
             </Card>
             <Card className="glass hover-lift">
@@ -446,39 +457,39 @@ export default function DisinformationRadar() {
             </CardContent>
           </Card>
 
-          {/* Fake news items */}
+          {/* Narrativas de risco plausíveis */}
           {report.fake_news_items?.length > 0 && (
             <Card className="glass">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <AlertTriangle className="h-5 w-5 text-red-500" /> Possíveis Fake News
+                  <AlertTriangle className="h-5 w-5 text-red-500" /> Narrativas de Risco Plausíveis
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {report.fake_news_items.map((f, i) => (
-                  <div
-                    key={i}
-                    className="p-4 rounded-lg border border-border/60 bg-muted/20 hover:bg-muted/30 transition-colors"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="font-semibold text-sm flex-1">"{f.title}"</p>
-                      <Badge
-                        variant={f.probability >= 75 ? "destructive" : "secondary"}
-                        className="shrink-0"
-                      >
-                        {f.probability}%
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
-                      {f.explanation}
-                    </p>
-                    {f.likely_origin && (
-                      <p className="text-[10px] text-primary/80 mt-1.5 font-medium">
-                        Origem provável: {f.likely_origin}
+                {report.fake_news_items.map((f, i) => {
+                  const label = riskLabel(f.probability);
+                  return (
+                    <div
+                      key={i}
+                      className="p-4 rounded-lg border border-border/60 bg-muted/20 hover:bg-muted/30 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="font-semibold text-sm flex-1">"{f.title}"</p>
+                        <Badge variant="outline" className={cn("shrink-0", riskLabelClasses[label])}>
+                          Risco: {label}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                        {f.explanation}
                       </p>
-                    )}
-                  </div>
-                ))}
+                      {f.likely_origin && (
+                        <p className="text-[10px] text-primary/80 mt-1.5 font-medium">
+                          Origem provável: {f.likely_origin}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </CardContent>
             </Card>
           )}
