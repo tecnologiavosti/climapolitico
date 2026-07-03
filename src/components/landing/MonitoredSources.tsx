@@ -70,9 +70,8 @@ export const MonitoredSources = () => {
               key={`${s.slug}-${i}`}
               className="group relative flex flex-col items-center justify-center gap-2.5 rounded-[20px] border transition-all duration-[250ms] cursor-pointer shrink-0
                 w-[130px] h-[90px] sm:w-[180px] sm:h-[110px]
-                bg-white/95 border-black/[0.06] shadow-sm
-                dark:bg-slate-800/70 dark:border-white/[0.06] dark:backdrop-blur-xl
-                aurora:bg-gradient-to-br aurora:from-cyan-400/[0.14] aurora:to-blue-500/[0.08] aurora:border-white/10 aurora:backdrop-blur-xl
+                bg-white/95 border-black/[0.06] shadow-sm backdrop-blur-xl
+                dark:bg-slate-800/70 dark:border-white/[0.06]
                 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-[0_12px_30px_rgba(0,0,0,0.18)]"
             >
               <img
