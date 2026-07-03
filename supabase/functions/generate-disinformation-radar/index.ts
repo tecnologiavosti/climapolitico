@@ -582,8 +582,8 @@ serve(async (req) => {
       neutral: rows.filter((r) => (r.sentiment_label || "").toLowerCase().startsWith("neu")).length,
     };
 
-    // Decide analysis mode: data-driven if we have real signal, otherwise AI predictive research
-    const mode: AnalysisMode = totals.total > 20 ? "data_driven" : "ai_research";
+    // AI-FIRST: only switch to data-driven when there is a substantial real signal (>500 mentions).
+    const mode: AnalysisMode = totals.total > 500 ? "data_driven" : "ai_research";
 
     // Extrai apenas sinais agregados e temas políticos; não envia comentários crus para a IA.
     const allTexts = rows.map((r) => [r.comment_text, r.post_title, r.post_description].filter(Boolean).join(" "));
