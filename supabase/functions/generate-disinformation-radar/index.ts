@@ -124,7 +124,7 @@ serve(async (req) => {
 
     const { data: candidate, error: candErr } = await supabase
       .from("candidates")
-      .select("id, full_name, party, region, position, user_id")
+      .select("id, full_name, party, party_name, region, user_id")
       .eq("id", body.candidateId)
       .eq("user_id", userData.user.id)
       .maybeSingle();
