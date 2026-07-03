@@ -6,6 +6,7 @@ import { InstallPwaBanner } from "@/components/pwa/InstallPwaBanner";
 import { SocialProof } from "@/components/landing/SocialProof";
 import { BentoFeatures } from "@/components/landing/BentoFeatures";
 import { TrendingCandidates } from "@/components/landing/TrendingCandidates";
+import { MonitoredSources } from "@/components/landing/MonitoredSources";
 import { Footer } from "@/components/landing/Footer";
 import { PricingPlans } from "@/components/landing/PricingPlans";
 import { useNavigate } from "react-router-dom";
