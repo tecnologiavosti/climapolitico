@@ -439,7 +439,8 @@ export default function Overview() {
         <CandidateOverviewPanel candidateId={selectedCandidateId} />
       )}
 
-      {/* Stats Grid */}
+      {/* Stats Grid — ocultado no modo candidato (KPIs já aparecem no painel do topo) */}
+      {!isCandidateMode && (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <HelpTooltip text="Quantas vezes seus candidatos foram citados nas redes sociais.">
           <Card className="relative p-6 cursor-help">
@@ -525,6 +526,7 @@ export default function Overview() {
           </Card>
         </HelpTooltip>
       </div>
+      )}
 
       {/* Componentes de IA temporariamente ocultos da Visão Geral */}
       {/* <AIModelsPanel /> */}
