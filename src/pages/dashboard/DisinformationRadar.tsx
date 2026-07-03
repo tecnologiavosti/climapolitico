@@ -351,8 +351,24 @@ export default function DisinformationRadar() {
       {report && !mutation.isPending && (
 
         <>
+          {/* Analysis mode badge */}
+          {mutation.data?.analysis_mode && (
+            <div className="flex justify-end">
+              {mutation.data.analysis_mode === "data_driven" ? (
+                <Badge variant="outline" className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10">
+                  🟢 Baseado em dados reais ({mutation.data.totals?.total ?? 0} menções)
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="border-violet-500/40 text-violet-600 dark:text-violet-400 bg-violet-500/10">
+                  🧠 Análise preditiva por IA
+                </Badge>
+              )}
+            </div>
+          )}
+
           {/* KPI cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+
             <Card className="glass hover-lift">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
