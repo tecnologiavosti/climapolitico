@@ -587,7 +587,8 @@ serve(async (req) => {
       });
     }
 
-    const periodLabel = `${daysBack} dias`;
+    const period = periodProfile(daysBack);
+    const periodLabel = period.label;
     const cacheKey = `${candidate.id}::${daysBack}`;
     const cached = CACHE.get(cacheKey);
     if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
