@@ -56,7 +56,6 @@ interface FakeItem {
 }
 
 interface Report {
-  insufficient_data?: boolean;
   fake_news_count: number;
   reputational_risk: "Baixo" | "Médio" | "Alto" | "Crítico";
   attack_intensity: number;
@@ -73,6 +72,7 @@ interface ApiResponse {
   period: { daysBack: number; label: string };
   report: Report;
   totals?: { total: number; positive: number; negative: number; neutral: number };
+  analysis_mode?: "data_driven" | "ai_research";
   signals?: { top_keywords: { word: string; count: number }[]; networks: any[]; regions: any[] };
   model_used: string;
   generated_at: string;
@@ -347,24 +347,28 @@ export default function DisinformationRadar() {
         </Card>
       )}
 
-      {/* Insufficient-data state */}
-      {report?.insufficient_data && !mutation.isPending && (
-        <Card className="glass">
-          <CardContent className="py-10">
-            <EmptyState
-              icon={AlertTriangle}
-              title="Dados insuficientes para análise confiável de fake news"
-              description={report.executive_summary}
-            />
-          </CardContent>
-        </Card>
-      )}
-
       {/* Report */}
-      {report && !report.insufficient_data && !mutation.isPending && (
+      {report && !mutation.isPending && (
+
         <>
+          {/* Analysis mode badge */}
+          {mutation.data?.analysis_mode && (
+            <div className="flex justify-end">
+              {mutation.data.analysis_mode === "data_driven" ? (
+                <Badge variant="outline" className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10">
+                  🟢 Baseado em dados reais ({mutation.data.totals?.total ?? 0} menções)
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="border-violet-500/40 text-violet-600 dark:text-violet-400 bg-violet-500/10">
+                  🧠 Análise preditiva por IA
+                </Badge>
+              )}
+            </div>
+          )}
+
           {/* KPI cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+
             <Card className="glass hover-lift">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
