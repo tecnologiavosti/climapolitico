@@ -125,27 +125,29 @@ export default function Overview() {
   // Query: Métricas agregadas do cache (fonte única de verdade)
   const { data: allMetrics, isLoading: loadingMetrics } = useAllCandidateMetrics();
 
+  const isCandidateMode = !!selectedCandidateId;
+
   const { data: consolidatedMetrics, isLoading: loadingConsolidated } = useQuery({
-    queryKey: ["overview-consolidated-core", user?.id],
+    queryKey: ["overview-consolidated-core", user?.id, selectedCandidateId || null],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("network_view_core_metrics", { p_candidate_id: null, p_network: null, p_days: 3650 });
+      const { data, error } = await supabase.rpc("network_view_core_metrics", { p_candidate_id: selectedCandidateId || null, p_network: null, p_days: 3650 });
       if (error) throw error;
       return (data as any)?.data;
     },
     enabled: !!user,
-    staleTime: 60 * 1000, // M1: alinhado com Tempo Real
+    staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
   });
 
   const { data: weeklyCore } = useQuery({
-    queryKey: ["overview-weekly-core", user?.id],
+    queryKey: ["overview-weekly-core", user?.id, selectedCandidateId || null],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("network_view_core_metrics", { p_candidate_id: null, p_network: null, p_days: 7 });
+      const { data, error } = await supabase.rpc("network_view_core_metrics", { p_candidate_id: selectedCandidateId || null, p_network: null, p_days: 7 });
       if (error) throw error;
       return (data as any)?.data;
     },
     enabled: !!user,
-    staleTime: 60 * 1000, // M1: alinhado com Tempo Real
+    staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
   });
 
@@ -208,8 +210,11 @@ export default function Overview() {
   })();
 
 
-  // Aggregate metrics from cache (single source of truth)
-  const fallbackAggregatedMetrics = allMetrics?.reduce(
+  // Aggregate metrics from cache (single source of truth) — filter by selected candidate when in candidate mode
+  const scopedMetrics = isCandidateMode
+    ? (allMetrics?.filter(m => m.candidateId === selectedCandidateId) ?? [])
+    : (allMetrics ?? []);
+  const fallbackAggregatedMetrics = scopedMetrics.reduce(
     (acc, m) => ({
       totalMentions: acc.totalMentions + m.totalMentions,
       uniqueAuthors: acc.uniqueAuthors + m.uniqueAuthors,
@@ -219,7 +224,7 @@ export default function Overview() {
       negativeCount: acc.negativeCount + m.negativeCount,
     }),
     { totalMentions: 0, uniqueAuthors: 0, totalEngagement: 0, positiveCount: 0, neutralCount: 0, negativeCount: 0 }
-  ) || { totalMentions: 0, uniqueAuthors: 0, totalEngagement: 0, positiveCount: 0, neutralCount: 0, negativeCount: 0 };
+  );
 
   const kpis = consolidatedMetrics?.kpis;
   const aggregatedMetrics = kpis ? {
@@ -233,7 +238,7 @@ export default function Overview() {
 
   const totalMentions = aggregatedMetrics.totalMentions;
   const uniqueAuthors = aggregatedMetrics.uniqueAuthors;
-  const totalCandidates = candidates?.length || 0;
+  const totalCandidates = isCandidateMode ? 1 : (candidates?.length || 0);
   const totalSentimentItems = aggregatedMetrics.positiveCount + aggregatedMetrics.neutralCount + aggregatedMetrics.negativeCount;
   const avgSentiment = totalSentimentItems > 0
     ? Math.round(((aggregatedMetrics.positiveCount * 100) + (aggregatedMetrics.neutralCount * 50) + (aggregatedMetrics.negativeCount * 0)) / totalSentimentItems)
@@ -270,8 +275,9 @@ export default function Overview() {
     }
   });
 
-  const candidateData = candidates
-    ?.map(c => {
+  const candidateData = (candidates ?? [])
+    .filter(c => !isCandidateMode || c.id === selectedCandidateId)
+    .map(c => {
       const cached = metricsMap.get(c.id);
       const fallback = interactionsByCandidate[c.id];
       const mentions = cached?.totalMentions || fallback?.mentions || 0;
@@ -281,7 +287,7 @@ export default function Overview() {
     })
     .filter(d => d.mentions > 0)
     .sort((a, b) => b.mentions - a.mentions)
-    .slice(0, 5) || [];
+    .slice(0, 5);
 
   // Normaliza nomes de rede social (banco usa 'google_news', UI exibe 'Google News')
   const normalizeNetwork = (n: string): string => {
@@ -467,7 +473,7 @@ export default function Overview() {
                 )}
                 <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
                   <Activity className="h-4 w-4" />
-                  <span>monitorados</span>
+                  <span>{isCandidateMode ? 'selecionado' : 'monitorados'}</span>
                 </div>
               </div>
               <MetricIcon icon={Users} />
@@ -657,6 +663,7 @@ export default function Overview() {
       </Card>
 
       {/* Rankings */}
+      {!isCandidateMode && (
       <Card className="p-6">
         <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
           <div>
@@ -759,6 +766,7 @@ export default function Overview() {
           </div>
         )}
       </Card>
+      )}
 
       {/* Fase 6 — Reações por post */}
       <ReactionsPerPost candidateId={selectedCandidateId || undefined} />
