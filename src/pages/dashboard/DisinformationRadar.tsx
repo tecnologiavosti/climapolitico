@@ -451,6 +451,11 @@ export default function DisinformationRadar() {
                     <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
                       {f.explanation}
                     </p>
+                    {f.likely_origin && (
+                      <p className="text-[10px] text-primary/80 mt-1.5 font-medium">
+                        Origem provável: {f.likely_origin}
+                      </p>
+                    )}
                   </div>
                 ))}
               </CardContent>
