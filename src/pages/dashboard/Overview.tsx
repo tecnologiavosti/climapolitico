@@ -526,6 +526,7 @@ export default function Overview() {
           </Card>
         </HelpTooltip>
       </div>
+      )}
 
       {/* Componentes de IA temporariamente ocultos da Visão Geral */}
       {/* <AIModelsPanel /> */}
