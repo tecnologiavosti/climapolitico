@@ -60,6 +60,8 @@ function fallbackReport(candidate: any, periodLabel: string) {
   };
 }
 
+type AnalysisMode = "data_driven" | "ai_research";
+
 async function callAI(input: {
   candidate: any;
   periodLabel: string;
@@ -70,22 +72,47 @@ async function callAI(input: {
   topPosts: any[];
   networks: { network: string; count: number }[];
   regions: { region: string; count: number }[];
+  mode: AnalysisMode;
 }) {
   const {
     candidate, periodLabel, daysBack, totals,
-    keywords, topNegativeSamples, topPosts, networks, regions
+    keywords, topNegativeSamples, topPosts, networks, regions, mode,
   } = input;
 
-  const systemMsg = `Você é um analista brasileiro sênior em inteligência política e desinformação. Sua tarefa é identificar narrativas de fake news e ataques reputacionais REAIS ou altamente plausíveis contra um candidato específico, com base EXCLUSIVAMENTE nos dados coletados fornecidos.
+  const commonJsonSchema = `Responda EXCLUSIVAMENTE com JSON válido no formato:
+{
+  "fake_news_count": number,
+  "reputational_risk": "Baixo" | "Médio" | "Alto" | "Crítico",
+  "attack_intensity": number (0-100),
+  "digital_vulnerability": "Baixa" | "Moderada" | "Alta" | "Crítica",
+  "executive_summary": "3-5 frases analíticas em pt-BR",
+  "fake_news_items": [
+    {
+      "title": "narrativa específica e plausível",
+      "probability": number (0-100),
+      "explanation": "por que essa narrativa é plausível neste contexto",
+      "likely_origin": "rede social, região ou grupo típico"
+    }
+  ],
+  "how_to_identify": ["dica prática 1", ...] (4-6 dicas),
+  "how_to_respond": ["ação estratégica 1", ...] (4-6 ações),
+  "narrative_categories": [
+    { "category": "nome da categoria", "intensity": 0-100 }
+  ]
+}`;
 
-REGRAS INEGOCIÁVEIS:
-- NÃO invente acusações genéricas (ex: "desvio de merenda", "milícia", "lavagem de dinheiro", "compra de votos") a menos que apareçam claramente nos dados reais fornecidos.
-- NÃO reutilize narrativas padrão de outros candidatos.
-- Toda fake news identificada DEVE ter conexão direta com os temas dominantes, palavras-chave, comentários negativos ou contexto regional presente nos dados.
-- Se os dados forem insuficientes ou não apontarem para narrativas específicas, retorne "insufficient_data": true e uma lista vazia de fake_news_items — NUNCA invente.
+  let systemMsg: string;
+  let userPrompt: string;
+
+  if (mode === "data_driven") {
+    systemMsg = `Você é um analista brasileiro sênior em inteligência política e desinformação. Analise fake news e ataques reputacionais REAIS contra o candidato com base EXCLUSIVAMENTE nos dados coletados fornecidos.
+
+REGRAS:
+- Toda fake news identificada DEVE ter conexão direta com temas dominantes, palavras-chave ou comentários negativos presentes nos dados.
+- NÃO reutilize narrativas padrão genéricas se não estiverem nos dados.
 - Responda SEMPRE em português do Brasil e SEMPRE em JSON válido.`;
 
-  const userPrompt = `Analise os dados REAIS coletados sobre o candidato abaixo nos últimos ${periodLabel}.
+    userPrompt = `Analise os dados REAIS coletados sobre o candidato abaixo nos últimos ${periodLabel}.
 
 ## CANDIDATO
 - Nome: ${candidate.full_name}
@@ -98,51 +125,65 @@ REGRAS INEGOCIÁVEIS:
 - Redes com maior volume: ${networks.slice(0, 5).map(n => `${n.network} (${n.count})`).join(", ") || "N/D"}
 - Regiões com maior volume: ${regions.slice(0, 5).map(r => `${r.region} (${r.count})`).join(", ") || "N/D"}
 
-## PALAVRAS-CHAVE DOMINANTES (extraídas dos comentários e posts reais)
+## PALAVRAS-CHAVE DOMINANTES
 ${keywords.slice(0, 20).map(k => `- ${k.word} (${k.count}x)`).join("\n") || "- (nenhuma detectada)"}
 
 ## AMOSTRAS DE COMENTÁRIOS NEGATIVOS REAIS
-${topNegativeSamples.length ? topNegativeSamples.map((c, i) => `${i + 1}. "${c.slice(0, 260)}"`).join("\n") : "(nenhum comentário negativo relevante)"}
+${topNegativeSamples.length ? topNegativeSamples.map((c, i) => `${i + 1}. "${c.slice(0, 260)}"`).join("\n") : "(nenhum)"}
 
-## POSTS/HEADLINES DE MAIOR ENGAJAMENTO
-${topPosts.length ? topPosts.slice(0, 8).map((p, i) => `${i + 1}. [${p.social_network || "?"}] ${(p.post_title || p.comment_text || "").slice(0, 200)}`).join("\n") : "(nenhum post relevante)"}
+## POSTS DE MAIOR ENGAJAMENTO
+${topPosts.length ? topPosts.slice(0, 8).map((p, i) => `${i + 1}. [${p.social_network || "?"}] ${(p.post_title || p.comment_text || "").slice(0, 200)}`).join("\n") : "(nenhum)"}
+
+${commonJsonSchema}`;
+  } else {
+    // AI RESEARCH MODE — sem dados coletados suficientes
+    systemMsg = `Você é um analista brasileiro sênior em inteligência política, desinformação eleitoral e comportamento do eleitorado brasileiro. Sua tarefa é gerar uma análise preditiva de possíveis narrativas de fake news que podem atingir um candidato, baseada em conhecimento contextual sobre:
+- histórico político da região
+- polarização ideológica local
+- padrões brasileiros de desinformação eleitoral
+- narrativas típicas contra o cargo político em questão
+- perfil do eleitorado da região/cargo
+
+REGRAS:
+- Fake news devem ser PLAUSÍVEIS e contextualizadas ao cargo, partido e região — não genéricas nem absurdas.
+- Considere o nível do cargo: vereador/prefeito → narrativas municipais; deputado estadual/distrital → estaduais; deputado federal/senador → nacionais/regionais; governador → estaduais amplas; presidente → nacionais.
+- NUNCA diga "dados insuficientes". Gere sempre análise preditiva útil.
+- Responda SEMPRE em português do Brasil e SEMPRE em JSON válido.`;
+
+    userPrompt = `Gere uma análise PREDITIVA de fake news e riscos reputacionais para o candidato abaixo. Não há volume suficiente de menções coletadas (${totals.total} nos últimos ${periodLabel}), então baseie a análise em contexto político e padrões brasileiros de desinformação.
+
+## CANDIDATO
+- Nome: ${candidate.full_name}
+- Cargo/Posição: ${candidate.party_name || "N/D"}
+- Partido: ${candidate.party || "N/D"}
+- Estado/Região: ${candidate.region || "N/D"}
 
 ## TAREFA
-Com base ESTRITAMENTE nos dados acima, identifique:
-1. Narrativas de desinformação ou fake news que já estão circulando OU têm alta probabilidade de surgir dado o contexto real do candidato.
-2. Cada fake news identificada precisa citar em "explanation" a evidência específica dos dados que a sustenta (palavras-chave, tópicos, comentários).
-3. Se os dados não apontarem para narrativas específicas (ex: total < 20 menções OU keywords sem padrão hostil), retorne "insufficient_data": true e "fake_news_items": [].
+Analise possíveis narrativas de fake news que podem atingir este candidato considerando:
+1. Cargo político e nível de exposição (municipal, estadual, federal)
+2. Espectro ideológico do partido e polarização típica que ele gera
+3. Contexto regional (${candidate.region || "Brasil"}) — histórico político, temas sensíveis
+4. Padrões brasileiros de desinformação eleitoral (ex: para vereadores → favorecimento familiar, compra de votos, desvio de verba municipal; para presidente → corrupção nacional, manipulação econômica)
+5. Perfil típico do eleitorado adversário
 
-Responda EXCLUSIVAMENTE com JSON no formato:
-{
-  "insufficient_data": boolean,
-  "fake_news_count": number,
-  "reputational_risk": "Baixo" | "Médio" | "Alto" | "Crítico",
-  "attack_intensity": number (0-100, baseado em % negativas e volume real),
-  "digital_vulnerability": "Baixa" | "Moderada" | "Alta" | "Crítica",
-  "executive_summary": "3-5 frases citando dados concretos: volume, redes dominantes, temas reais detectados",
-  "fake_news_items": [
-    {
-      "title": "narrativa específica ligada aos dados reais",
-      "probability": number (0-100, baseado em frequência real nos dados),
-      "explanation": "por que é suspeita, citando keywords/temas encontrados",
-      "likely_origin": "rede social, região ou padrão observado nos dados"
-    }
-  ],
-  "how_to_identify": ["dica prática 1", ...] (4-6 dicas contextualizadas ao caso),
-  "how_to_respond": ["ação estratégica 1", ...] (4-6 ações específicas para este candidato/contexto),
-  "narrative_categories": [
-    { "category": "nome da categoria REAL detectada nos dados", "intensity": 0-100 }
-  ] (use apenas categorias que emergem dos dados; se detectar temas como "obras públicas", "mobilidade", "orçamento", use-os literalmente)
-}`;
+Gere:
+- 4 a 7 narrativas de fake news PLAUSÍVEIS e contextualizadas
+- Score de risco reputacional realista
+- Intensidade de ataques esperada
+- Vulnerabilidade digital
+- Como identificar e como neutralizar essas narrativas
+- Categorias de narrativa com intensidade estimada
+
+${commonJsonSchema}`;
+  }
 
   const r = await callAICerebrasFirst({
     systemMsg,
     userPrompt,
     jsonMode: true,
     maxTokens: 2800,
-    temperature: 0.35,
-    tag: "disinfo-radar",
+    temperature: mode === "ai_research" ? 0.6 : 0.4,
+    tag: `disinfo-radar-${mode}`,
   });
   const parsed = JSON.parse(r.content || "{}");
   return { report: parsed, model_used: `${r.provider}/${r.model}` };
