@@ -2901,6 +2901,7 @@ export type Database = {
           full_name: string | null
           id: string
           is_banned: boolean
+          is_first_login: boolean
           language: string
           notification_preferences: Json | null
           onboarding_completed_at: string | null
@@ -2927,6 +2928,7 @@ export type Database = {
           full_name?: string | null
           id: string
           is_banned?: boolean
+          is_first_login?: boolean
           language?: string
           notification_preferences?: Json | null
           onboarding_completed_at?: string | null
@@ -2953,6 +2955,7 @@ export type Database = {
           full_name?: string | null
           id?: string
           is_banned?: boolean
+          is_first_login?: boolean
           language?: string
           notification_preferences?: Json | null
           onboarding_completed_at?: string | null

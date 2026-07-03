@@ -1,7 +1,8 @@
-import { useEffect, lazy, Suspense } from "react";
+import { useEffect, useRef, lazy, Suspense } from "react";
 import { useNavigate, useLocation, Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useSessionHealthCheck } from "@/hooks/useSessionHealthCheck";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 import logoAsset from "@/assets/clima-politico-logo.jpg.asset.json";
@@ -95,6 +96,29 @@ const Dashboard = () => {
   useEffect(() => {
     validateOnboardingTargets();
   }, []);
+
+  // First-login onboarding: open Add-Candidate dialog on the very first dashboard visit.
+  const firstLoginCheckedRef = useRef(false);
+  useEffect(() => {
+    if (!user || firstLoginCheckedRef.current) return;
+    firstLoginCheckedRef.current = true;
+    (async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("is_first_login")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (error || !data?.is_first_login) return;
+      // Flip flag immediately so it can never re-open (refresh, re-login, etc.)
+      await supabase
+        .from("profiles")
+        .update({ is_first_login: false })
+        .eq("id", user.id);
+      // Route to Candidates with the auto-open param that page already handles.
+      navigate("/dashboard/candidates?add=1", { replace: true });
+    })();
+  }, [user, navigate]);
+
 
 
 
