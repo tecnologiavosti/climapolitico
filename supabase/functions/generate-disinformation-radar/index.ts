@@ -201,7 +201,7 @@ function strategicItems(candidateContext: any) {
   ];
 }
 
-function sanitizeReport(report: any, candidateContext: any) {
+function sanitizeReport(report: any, candidateContext: any, period: ReturnType<typeof periodProfile>) {
   const baseItems = strategicItems(candidateContext);
   const rawItems = Array.isArray(report?.fake_news_items) ? report.fake_news_items : [];
   const safeItems = rawItems
@@ -216,10 +216,12 @@ function sanitizeReport(report: any, candidateContext: any) {
       likely_origin: item.likely_origin ? String(item.likely_origin).slice(0, 160) : "grupos de mensagens e perfis anônimos",
     }));
 
+  // Ensure count within period range
   for (const item of baseItems) {
-    if (safeItems.length >= 4) break;
+    if (safeItems.length >= period.minItems) break;
     if (!safeItems.some((existing: any) => existing.title === item.title)) safeItems.push(item);
   }
+  const finalItems = safeItems.slice(0, period.maxItems);
 
   const categories = Array.isArray(report?.narrative_categories) && report.narrative_categories.length
     ? report.narrative_categories
@@ -228,13 +230,25 @@ function sanitizeReport(report: any, candidateContext: any) {
       intensity: Math.max(35, 70 - index * 6),
     }));
 
+  // Deterministic period-aware score (overrides AI to guarantee variation)
+  const attack_intensity = computeAttackScore(candidateContext, period);
+
+  const aiRisk = ["Baixo", "Médio", "Alto", "Crítico"].includes(report?.reputational_risk) ? report.reputational_risk : "Médio";
+  const reputational_risk = capRisk(aiRisk, period.riskCap);
+
+  // Scale category intensity by period weight so bars visibly change per period
+  const scaledCategories = categories.slice(0, 8).map((c: any) => ({
+    category: String(c.category || "Categoria"),
+    intensity: Math.max(15, Math.min(100, Math.round((Number(c.intensity) || 50) * (0.55 + period.weight * 0.55)))),
+  }));
+
   return {
-    fake_news_count: safeItems.length,
-    reputational_risk: ["Baixo", "Médio", "Alto", "Crítico"].includes(report?.reputational_risk) ? report.reputational_risk : "Médio",
-    attack_intensity: Math.max(20, Math.min(85, Number(report?.attack_intensity) || 48)),
+    fake_news_count: finalItems.length,
+    reputational_risk,
+    attack_intensity,
     digital_vulnerability: ["Baixa", "Moderada", "Alta", "Crítica"].includes(report?.digital_vulnerability) ? report.digital_vulnerability : "Moderada",
-    executive_summary: report?.executive_summary || `A vulnerabilidade de ${candidateContext?.name || "este candidato"} deve ser avaliada pelo contexto político, pelo território de atuação e pelos tipos de ataque digital comuns no Brasil, não por comentários isolados. O risco principal está em narrativas vagas que simplificam temas administrativos e exploram emoções do eleitorado.`,
-    fake_news_items: safeItems.slice(0, 7),
+    executive_summary: report?.executive_summary || `Análise de ${period.label} para ${candidateContext?.name || "o candidato"}: ${period.focus}.`,
+    fake_news_items: finalItems,
     how_to_identify: Array.isArray(report?.how_to_identify) && report.how_to_identify.length ? report.how_to_identify : [
       "Verificar se a acusação apresenta fonte primária, documento oficial e data verificável.",
       "Desconfiar de prints, áudios e vídeos recortados sem contexto completo.",
@@ -247,7 +261,7 @@ function sanitizeReport(report: any, candidateContext: any) {
       "Publicar material preventivo sobre temas administrativos sensíveis.",
       "Monitorar repetição da narrativa antes de ampliar sua visibilidade.",
     ],
-    narrative_categories: categories.slice(0, 8),
+    narrative_categories: scaledCategories,
   };
 }
 
@@ -279,12 +293,74 @@ function fallbackReport(candidateContext: any, periodLabel: string) {
   };
 }
 
+function periodProfile(daysBack: number) {
+  if (daysBack <= 1) return {
+    key: "24h", label: "24 horas", weight: 0.30, minItems: 1, maxItems: 3,
+    focus: "ataques emergentes e rumores recentes das últimas horas; ignorar padrões históricos",
+    riskCap: "Médio" as const, intensityBand: [20, 45] as [number, number],
+  };
+  if (daysBack <= 7) return {
+    key: "7d", label: "7 dias", weight: 0.45, minItems: 2, maxItems: 5,
+    focus: "narrativas de curto prazo em circulação recente, sem análise histórica",
+    riskCap: "Alto" as const, intensityBand: [30, 60] as [number, number],
+  };
+  if (daysBack <= 15) return {
+    key: "15d", label: "15 dias", weight: 0.60, minItems: 3, maxItems: 6,
+    focus: "consolidação de narrativas recorrentes de curto/médio prazo",
+    riskCap: "Alto" as const, intensityBand: [40, 70] as [number, number],
+  };
+  if (daysBack <= 30) return {
+    key: "30d", label: "30 dias", weight: 0.80, minItems: 4, maxItems: 8,
+    focus: "campanhas de médio prazo, incluindo narrativas repetidas e coordenação inicial",
+    riskCap: "Crítico" as const, intensityBand: [50, 82] as [number, number],
+  };
+  return {
+    key: "90d", label: "90 dias", weight: 1.0, minItems: 6, maxItems: 12,
+    focus: "análise histórica ampla, detecção de campanhas coordenadas persistentes e padrões recorrentes",
+    riskCap: "Crítico" as const, intensityBand: [60, 92] as [number, number],
+  };
+}
+
+function polarizationScore(context: any): number {
+  const perfil = String(context?.perfil_politico || "").toLowerCase();
+  if (perfil.includes("alta polarização") || perfil.includes("alta exposição")) return 0.9;
+  if (perfil.includes("polarização") || perfil.includes("exposição")) return 0.65;
+  return 0.5;
+}
+
+function baseExposureScore(context: any): number {
+  const scope = context?.nivel_cargo;
+  if (scope === "presidencial") return 0.95;
+  if (scope === "governador") return 0.8;
+  if (scope === "nacional_regional") return 0.7;
+  if (scope === "estadual") return 0.6;
+  if (scope === "municipal") return 0.45;
+  return 0.5;
+}
+
+function computeAttackScore(context: any, period: ReturnType<typeof periodProfile>): number {
+  const base = baseExposureScore(context);
+  const pol = polarizationScore(context);
+  const raw = (base * 0.4) + (period.weight * 0.3) + (pol * 0.3);
+  const [min, max] = period.intensityBand;
+  return Math.round(Math.max(min, Math.min(max, raw * 100)));
+}
+
+const RISK_ORDER = ["Baixo", "Médio", "Alto", "Crítico"] as const;
+function capRisk(risk: string, cap: (typeof RISK_ORDER)[number]): string {
+  const idx = RISK_ORDER.indexOf(risk as any);
+  const capIdx = RISK_ORDER.indexOf(cap);
+  if (idx === -1) return cap;
+  return RISK_ORDER[Math.min(idx, capIdx)];
+}
+
 type AnalysisMode = "data_driven" | "ai_research";
 
 async function callAI(input: {
   candidateContext: any;
   periodLabel: string;
   daysBack: number;
+  period: ReturnType<typeof periodProfile>;
   totals: any;
   keywords: { word: string; count: number }[];
   topicSignals: { category: string; count: number }[];
@@ -293,13 +369,16 @@ async function callAI(input: {
   mode: AnalysisMode;
 }) {
   const {
-    candidateContext, periodLabel, daysBack, totals,
+    candidateContext, periodLabel, daysBack, period, totals,
     keywords, topicSignals, networks, regions, mode,
   } = input;
 
   const primaryInput = {
     candidate: candidateContext,
-    period: `${daysBack}d`,
+    period: period.key,
+    period_label: period.label,
+    period_focus: period.focus,
+    expected_items_range: [period.minItems, period.maxItems],
   };
 
   const secondarySignals = {
@@ -357,7 +436,12 @@ REGRAS CRÍTICAS:
 - Sem evidência real explícita, nunca cite Folha, Globo, Polícia Federal, STF ou TSE.
 - Responda SEMPRE em português do Brasil e SEMPRE em JSON válido.`;
 
-    userPrompt = `Gere uma análise estratégica de desinformação para os últimos ${periodLabel}, usando o INPUT PRINCIPAL abaixo como fonte dominante.
+    userPrompt = `## PERÍODO DE ANÁLISE OBRIGATÓRIO: ${period.label} (${period.key})
+Foco temporal: ${period.focus}.
+Número esperado de narrativas: entre ${period.minItems} e ${period.maxItems} (respeitar rigorosamente).
+Ajustar intensidade, score e resumo executivo ao horizonte temporal — janelas curtas produzem menos itens e scores menores; janelas longas produzem mais itens e maior intensidade acumulada.
+
+Gere uma análise estratégica de desinformação para os últimos ${periodLabel}, usando o INPUT PRINCIPAL abaixo como fonte dominante.
 
 ## INPUT PRINCIPAL DA IA (peso 80%)
 ${JSON.stringify(primaryInput, null, 2)}
@@ -409,7 +493,12 @@ Regra final: IA = estratégica, NÃO investigativa. Fale sobre TIPOS de ataques,
 
 Responda SEMPRE em português do Brasil e SEMPRE em JSON válido. NUNCA diga "dados insuficientes".`;
 
-    userPrompt = `Gere uma análise PREDITIVA em SAFE AI MODE para o candidato abaixo. Volume real coletado: ${totals.total} menções nos últimos ${periodLabel} (baixo — modo estratégico obrigatório).
+    userPrompt = `## PERÍODO DE ANÁLISE OBRIGATÓRIO: ${period.label} (${period.key})
+Foco temporal: ${period.focus}.
+Número esperado de narrativas: entre ${period.minItems} e ${period.maxItems} (respeitar rigorosamente).
+O período muda o resumo executivo, a quantidade de narrativas e a intensidade — janelas curtas (24h/7d) focam em ataques emergentes; janelas longas (30d/90d) descrevem campanhas históricas e coordenação persistente.
+
+Gere uma análise PREDITIVA em SAFE AI MODE para o candidato abaixo. Volume real coletado: ${totals.total} menções nos últimos ${periodLabel} (baixo — modo estratégico obrigatório).
 
 ## INPUT PRINCIPAL DA IA
 ${JSON.stringify(primaryInput, null, 2)}
@@ -423,7 +512,7 @@ ${JSON.stringify(secondarySignals, null, 2)}
 - Região → apenas temas gerais sensíveis, sem inventar casos.
 
 ## TAREFA
-Gere de 4 a 7 narrativas de fake news PLAUSÍVEIS e GENÉRICAS.
+Gere de ${period.minItems} a ${period.maxItems} narrativas de fake news PLAUSÍVEIS e GENÉRICAS.
 Cada item deve seguir o padrão:
 - title: tipo de ataque ("Narrativas sobre X", "Boatos de Y", "Ataques sobre Z") — SEM nomes, valores, datas ou fatos.
 - explanation: por que esse TIPO de narrativa é plausível para este perfil (cargo/partido/região), em linguagem estratégica e genérica.
@@ -498,7 +587,8 @@ serve(async (req) => {
       });
     }
 
-    const periodLabel = `${daysBack} dias`;
+    const period = periodProfile(daysBack);
+    const periodLabel = period.label;
     const cacheKey = `${candidate.id}::${daysBack}`;
     const cached = CACHE.get(cacheKey);
     if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
@@ -606,14 +696,14 @@ serve(async (req) => {
     let model_used = "fallback";
     try {
       const r = await callAI({
-        candidateContext, periodLabel, daysBack, totals,
+        candidateContext, periodLabel, daysBack, period, totals,
         keywords, topicSignals, networks, regions, mode,
       });
-      report = sanitizeReport(r.report, candidateContext);
+      report = sanitizeReport(r.report, candidateContext, period);
       model_used = r.model_used;
     } catch (e) {
       console.error("[disinfo-radar] AI failed:", (e as Error).message);
-      report = fallbackReport(candidateContext, periodLabel);
+      report = sanitizeReport(fallbackReport(candidateContext, periodLabel), candidateContext, period);
     }
 
     // Strip any legacy insufficient_data flag — new architecture never returns it
