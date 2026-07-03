@@ -201,7 +201,7 @@ function strategicItems(candidateContext: any) {
   ];
 }
 
-function sanitizeReport(report: any, candidateContext: any) {
+function sanitizeReport(report: any, candidateContext: any, period: ReturnType<typeof periodProfile>) {
   const baseItems = strategicItems(candidateContext);
   const rawItems = Array.isArray(report?.fake_news_items) ? report.fake_news_items : [];
   const safeItems = rawItems
@@ -216,10 +216,12 @@ function sanitizeReport(report: any, candidateContext: any) {
       likely_origin: item.likely_origin ? String(item.likely_origin).slice(0, 160) : "grupos de mensagens e perfis anônimos",
     }));
 
+  // Ensure count within period range
   for (const item of baseItems) {
-    if (safeItems.length >= 4) break;
+    if (safeItems.length >= period.minItems) break;
     if (!safeItems.some((existing: any) => existing.title === item.title)) safeItems.push(item);
   }
+  const finalItems = safeItems.slice(0, period.maxItems);
 
   const categories = Array.isArray(report?.narrative_categories) && report.narrative_categories.length
     ? report.narrative_categories
@@ -228,13 +230,25 @@ function sanitizeReport(report: any, candidateContext: any) {
       intensity: Math.max(35, 70 - index * 6),
     }));
 
+  // Deterministic period-aware score (overrides AI to guarantee variation)
+  const attack_intensity = computeAttackScore(candidateContext, period);
+
+  const aiRisk = ["Baixo", "Médio", "Alto", "Crítico"].includes(report?.reputational_risk) ? report.reputational_risk : "Médio";
+  const reputational_risk = capRisk(aiRisk, period.riskCap);
+
+  // Scale category intensity by period weight so bars visibly change per period
+  const scaledCategories = categories.slice(0, 8).map((c: any) => ({
+    category: String(c.category || "Categoria"),
+    intensity: Math.max(15, Math.min(100, Math.round((Number(c.intensity) || 50) * (0.55 + period.weight * 0.55)))),
+  }));
+
   return {
-    fake_news_count: safeItems.length,
-    reputational_risk: ["Baixo", "Médio", "Alto", "Crítico"].includes(report?.reputational_risk) ? report.reputational_risk : "Médio",
-    attack_intensity: Math.max(20, Math.min(85, Number(report?.attack_intensity) || 48)),
+    fake_news_count: finalItems.length,
+    reputational_risk,
+    attack_intensity,
     digital_vulnerability: ["Baixa", "Moderada", "Alta", "Crítica"].includes(report?.digital_vulnerability) ? report.digital_vulnerability : "Moderada",
-    executive_summary: report?.executive_summary || `A vulnerabilidade de ${candidateContext?.name || "este candidato"} deve ser avaliada pelo contexto político, pelo território de atuação e pelos tipos de ataque digital comuns no Brasil, não por comentários isolados. O risco principal está em narrativas vagas que simplificam temas administrativos e exploram emoções do eleitorado.`,
-    fake_news_items: safeItems.slice(0, 7),
+    executive_summary: report?.executive_summary || `Análise de ${period.label} para ${candidateContext?.name || "o candidato"}: ${period.focus}.`,
+    fake_news_items: finalItems,
     how_to_identify: Array.isArray(report?.how_to_identify) && report.how_to_identify.length ? report.how_to_identify : [
       "Verificar se a acusação apresenta fonte primária, documento oficial e data verificável.",
       "Desconfiar de prints, áudios e vídeos recortados sem contexto completo.",
@@ -247,7 +261,7 @@ function sanitizeReport(report: any, candidateContext: any) {
       "Publicar material preventivo sobre temas administrativos sensíveis.",
       "Monitorar repetição da narrativa antes de ampliar sua visibilidade.",
     ],
-    narrative_categories: categories.slice(0, 8),
+    narrative_categories: scaledCategories,
   };
 }
 
