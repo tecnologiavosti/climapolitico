@@ -90,20 +90,27 @@ export default function DisinformationRadar() {
   const [selectedCandidate, setSelectedCandidate] = useState<string>("");
   const [period, setPeriod] = useState<Period>("7");
 
-  const { data: candidates } = useQuery({
+  const { data: candidates, isLoading: loadingCandidates } = useQuery({
     queryKey: ["candidates-for-disinfo"],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
       const { data, error } = await supabase
         .from("candidates")
-        .select("id, full_name, party, region, position")
+        .select("id, full_name, party, party_name, region")
         .eq("user_id", user.id)
         .order("full_name");
       if (error) throw error;
-      return data;
+      return data ?? [];
     },
   });
+
+  // Auto-select if only 1 candidate
+  useMemo(() => {
+    if (!selectedCandidate && candidates && candidates.length === 1) {
+      setSelectedCandidate(candidates[0].id);
+    }
+  }, [candidates, selectedCandidate]);
 
   const mutation = useMutation({
     mutationFn: async () => {
