@@ -26,9 +26,12 @@ export const MonitoredSources = () => {
     if (!el) return;
     let raf = 0;
     let x = 0;
-    const speed = 0.4; // px per frame
+    const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches;
+    // ~2.5x faster ticker (px per frame @ 60fps)
+    const speed = isMobile ? 1.6 : 1.1;
     const step = () => {
-      if (!paused) {
+      const pausedNow = paused && !isMobile;
+      if (!pausedNow) {
         x -= speed;
         const half = el.scrollWidth / 2;
         if (Math.abs(x) >= half) x = 0;
