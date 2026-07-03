@@ -423,11 +423,11 @@ export default function DisinformationRadar() {
             <Card className="glass hover-lift">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs text-muted-foreground font-medium">Intensidade de Ataques</p>
+                  <p className="text-xs text-muted-foreground font-medium">Potencial de Ataque Digital</p>
                   <Users className="h-4 w-4 text-amber-500" />
                 </div>
                 <p className="text-3xl font-bold mt-2">{report.attack_intensity}</p>
-                <p className="text-[11px] text-muted-foreground mt-1">Score 0–100</p>
+                <p className="text-[11px] text-muted-foreground mt-1">Score IA 0–100</p>
               </CardContent>
             </Card>
             <Card className="glass hover-lift">
