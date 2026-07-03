@@ -56,7 +56,6 @@ interface FakeItem {
 }
 
 interface Report {
-  insufficient_data?: boolean;
   fake_news_count: number;
   reputational_risk: "Baixo" | "Médio" | "Alto" | "Crítico";
   attack_intensity: number;
@@ -73,6 +72,7 @@ interface ApiResponse {
   period: { daysBack: number; label: string };
   report: Report;
   totals?: { total: number; positive: number; negative: number; neutral: number };
+  analysis_mode?: "data_driven" | "ai_research";
   signals?: { top_keywords: { word: string; count: number }[]; networks: any[]; regions: any[] };
   model_used: string;
   generated_at: string;
