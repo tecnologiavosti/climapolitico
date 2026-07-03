@@ -125,27 +125,29 @@ export default function Overview() {
   // Query: Métricas agregadas do cache (fonte única de verdade)
   const { data: allMetrics, isLoading: loadingMetrics } = useAllCandidateMetrics();
 
+  const isCandidateMode = !!selectedCandidateId;
+
   const { data: consolidatedMetrics, isLoading: loadingConsolidated } = useQuery({
-    queryKey: ["overview-consolidated-core", user?.id],
+    queryKey: ["overview-consolidated-core", user?.id, selectedCandidateId || null],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("network_view_core_metrics", { p_candidate_id: null, p_network: null, p_days: 3650 });
+      const { data, error } = await supabase.rpc("network_view_core_metrics", { p_candidate_id: selectedCandidateId || null, p_network: null, p_days: 3650 });
       if (error) throw error;
       return (data as any)?.data;
     },
     enabled: !!user,
-    staleTime: 60 * 1000, // M1: alinhado com Tempo Real
+    staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
   });
 
   const { data: weeklyCore } = useQuery({
-    queryKey: ["overview-weekly-core", user?.id],
+    queryKey: ["overview-weekly-core", user?.id, selectedCandidateId || null],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("network_view_core_metrics", { p_candidate_id: null, p_network: null, p_days: 7 });
+      const { data, error } = await supabase.rpc("network_view_core_metrics", { p_candidate_id: selectedCandidateId || null, p_network: null, p_days: 7 });
       if (error) throw error;
       return (data as any)?.data;
     },
     enabled: !!user,
-    staleTime: 60 * 1000, // M1: alinhado com Tempo Real
+    staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
   });
 
