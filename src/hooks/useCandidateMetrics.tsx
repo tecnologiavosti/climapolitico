@@ -105,9 +105,26 @@ export function useCandidateMetrics(candidateId: string | null) {
         dataConfidence = 'medium';
       }
 
+      let networkBreakdown = parseNetworkBreakdown(data.network_breakdown);
+      const totalMentions = data.total_mentions ?? 0;
+      const breakdownSum = networkBreakdown.reduce((s, n) => s + (n.mentions || 0), 0);
+
+      // Consistency guard: if the cached network breakdown doesn't match the
+      // cached total mentions, recompute from social_interactions so the chart
+      // matches the top KPI card (sum(bars) === totalMentions).
+      if (totalMentions > 0 && breakdownSum !== totalMentions) {
+        console.warn('[useCandidateMetrics] network breakdown mismatch', {
+          totalMentionsCard: totalMentions,
+          totalMentionsGraph: breakdownSum,
+          networkBreakdown,
+        });
+        const fresh = await calculateMetricsOnTheFly(candidateId, user.id);
+        if (fresh) return fresh;
+      }
+
       return {
         candidateId: data.candidate_id,
-        totalMentions: data.total_mentions,
+        totalMentions,
         uniqueAuthors: data.unique_authors,
         totalEngagement: data.total_engagement,
         totalLikes: data.total_likes,
@@ -117,7 +134,7 @@ export function useCandidateMetrics(candidateId: string | null) {
         neutralCount: data.neutral_count,
         negativeCount: data.negative_count,
         averageSentiment: data.average_sentiment ?? 50,
-        networkBreakdown: parseNetworkBreakdown(data.network_breakdown),
+        networkBreakdown,
         followersCount: data.followers_count,
         lastCalculatedAt: data.last_calculated_at,
         dominantSentiment,
