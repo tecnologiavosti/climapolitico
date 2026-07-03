@@ -279,17 +279,89 @@ export default function DisinformationRadar() {
         </Card>
       )}
 
-      {/* Loading skeleton */}
+      {/* Premium loading */}
       {mutation.isPending && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-28" />
-          ))}
-        </div>
+        <Card className="glass overflow-hidden relative">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-red-500 via-orange-500 to-amber-500 animate-pulse" />
+          <CardContent className="py-10 space-y-6">
+            <div className="text-center space-y-2">
+              <div className="inline-flex p-3 rounded-full bg-gradient-to-br from-red-500/20 to-orange-500/10 border border-red-500/30 animate-pulse">
+                <ShieldAlert className="h-8 w-8 text-red-500" />
+              </div>
+              <h3 className="text-xl font-bold">Analisando narrativas…</h3>
+              <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                Investigando redes sociais, notícias e sinais de desinformação sobre o candidato.
+              </p>
+            </div>
+            <div className="max-w-md mx-auto space-y-2">
+              {[
+                "Coletando posts e menções reais",
+                "Analisando comentários e sentimento",
+                "Detectando padrões e temas dominantes",
+                "Gerando relatório IA contextual",
+              ].map((label, i) => {
+                const done = loadingStep > i;
+                const active = loadingStep === i;
+                return (
+                  <div
+                    key={i}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2 rounded-lg transition-all",
+                      done && "bg-emerald-500/10",
+                      active && "bg-primary/10",
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
+                        done
+                          ? "bg-emerald-500 text-white"
+                          : active
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {done ? "✓" : active ? <Loader2 className="h-3 w-3 animate-spin" /> : i + 1}
+                    </div>
+                    <span
+                      className={cn(
+                        "text-sm",
+                        done && "text-foreground",
+                        active && "text-foreground font-medium",
+                        !done && !active && "text-muted-foreground",
+                      )}
+                    >
+                      {label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="max-w-md mx-auto h-1.5 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-red-500 to-orange-500 transition-all duration-700"
+                style={{ width: `${Math.min(100, (loadingStep / 4) * 100)}%` }}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Insufficient-data state */}
+      {report?.insufficient_data && !mutation.isPending && (
+        <Card className="glass">
+          <CardContent className="py-10">
+            <EmptyState
+              icon={AlertTriangle}
+              title="Dados insuficientes para análise confiável de fake news"
+              description={report.executive_summary}
+            />
+          </CardContent>
+        </Card>
       )}
 
       {/* Report */}
-      {report && !mutation.isPending && (
+      {report && !report.insufficient_data && !mutation.isPending && (
         <>
           {/* KPI cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
