@@ -260,23 +260,10 @@ serve(async (req) => {
       neutral: rows.filter((r) => (r.sentiment_label || "").toLowerCase().startsWith("neu")).length,
     };
 
-    // Insufficient data guard — do NOT hallucinate
-    if (totals.total < 15) {
-      const payload = {
-        candidate,
-        period: { daysBack, label: periodLabel },
-        report: fallbackInsufficient(candidate, periodLabel, totals),
-        totals,
-        model_used: "deterministic/insufficient-data",
-        generated_at: new Date().toISOString(),
-      };
-      CACHE.set(cacheKey, { data: payload, ts: Date.now() });
-      return new Response(JSON.stringify(payload), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    // Decide analysis mode: data-driven if we have real signal, otherwise AI predictive research
+    const mode: AnalysisMode = totals.total > 20 ? "data_driven" : "ai_research";
 
-    // Extract signal
+    // Extract signal (empty arrays for ai_research mode are fine)
     const allTexts = rows.map((r) => [r.comment_text, r.post_title, r.post_description].filter(Boolean).join(" "));
     const keywords = topKeywords(allTexts, 25);
 
@@ -308,20 +295,24 @@ serve(async (req) => {
     try {
       const r = await callAI({
         candidate, periodLabel, daysBack, totals,
-        keywords, topNegativeSamples: negatives, topPosts, networks, regions,
+        keywords, topNegativeSamples: negatives, topPosts, networks, regions, mode,
       });
       report = r.report;
       model_used = r.model_used;
     } catch (e) {
       console.error("[disinfo-radar] AI failed:", (e as Error).message);
-      report = fallbackInsufficient(candidate, periodLabel, totals);
+      report = fallbackReport(candidate, periodLabel);
     }
+
+    // Strip any legacy insufficient_data flag — new architecture never returns it
+    if (report && typeof report === "object") delete report.insufficient_data;
 
     const payload = {
       candidate,
       period: { daysBack, label: periodLabel },
       report,
       totals,
+      analysis_mode: mode,
       signals: {
         top_keywords: keywords.slice(0, 15),
         networks: networks.slice(0, 8),
