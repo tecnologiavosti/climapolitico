@@ -173,13 +173,23 @@ export default function DisinformationRadar() {
                 <SelectValue placeholder="Selecione um candidato..." />
               </SelectTrigger>
               <SelectContent>
-                {candidates?.map((c: any) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.full_name}
-                    {c.party ? ` · ${c.party}` : ""}
-                    {c.region ? ` · ${c.region}` : ""}
-                  </SelectItem>
-                ))}
+                {candidates?.map((c: any) => {
+                  const initials = c.full_name.split(" ").map((n: string) => n[0]).slice(0, 2).join("").toUpperCase();
+                  const subtitle = [c.party || c.party_name, c.region].filter(Boolean).join(" · ");
+                  return (
+                    <SelectItem key={c.id} value={c.id}>
+                      <div className="flex items-center gap-2">
+                        <div className="h-7 w-7 rounded-full bg-primary/15 text-primary flex items-center justify-center text-[10px] font-bold">
+                          {initials}
+                        </div>
+                        <div className="flex flex-col text-left leading-tight">
+                          <span className="font-semibold text-sm">{c.full_name}</span>
+                          {subtitle && <span className="text-[11px] text-muted-foreground">{subtitle}</span>}
+                        </div>
+                      </div>
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
             <Button
@@ -219,8 +229,25 @@ export default function DisinformationRadar() {
         </CardContent>
       </Card>
 
-      {/* Empty state */}
-      {!selectedCandidate && (
+      {/* Empty state — no candidates monitored */}
+      {!loadingCandidates && candidates && candidates.length === 0 && (
+        <Card className="glass">
+          <CardContent className="py-12">
+            <EmptyState
+              icon={ShieldAlert}
+              title="Nenhum candidato monitorado"
+              description="Adicione um candidato para usar o Radar de Desinformação."
+              action={{
+                label: "Ir para catálogo",
+                onClick: () => navigate("/dashboard/candidates-catalog"),
+              }}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Empty state — has candidates but none selected */}
+      {candidates && candidates.length > 0 && !selectedCandidate && (
         <Card className="glass">
           <CardContent className="py-12">
             <EmptyState
