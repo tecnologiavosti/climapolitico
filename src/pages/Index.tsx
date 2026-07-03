@@ -108,6 +108,10 @@ const Index = () => {
       {/* Trending Candidates (public, dynamic) */}
       <TrendingCandidates />
 
+      {/* Monitored sources carousel */}
+      <MonitoredSources />
+
+
       {/* Features Section */}
       <BentoFeatures />
 
