@@ -347,21 +347,9 @@ export default function DisinformationRadar() {
         </Card>
       )}
 
-      {/* Insufficient-data state */}
-      {report?.insufficient_data && !mutation.isPending && (
-        <Card className="glass">
-          <CardContent className="py-10">
-            <EmptyState
-              icon={AlertTriangle}
-              title="Dados insuficientes para análise confiável de fake news"
-              description={report.executive_summary}
-            />
-          </CardContent>
-        </Card>
-      )}
-
       {/* Report */}
-      {report && !report.insufficient_data && !mutation.isPending && (
+      {report && !mutation.isPending && (
+
         <>
           {/* KPI cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
