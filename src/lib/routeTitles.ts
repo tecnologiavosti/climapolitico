@@ -14,6 +14,7 @@ export const ROUTE_TITLES: Record<string, string> = {
   "rejection-analysis": "Análise de Rejeição",
   "narrative-recommendations": "Recomendações de Narrativa",
   "radar-politico": "Radar Político",
+  "radar-desinformacao": "Radar de Desinformação",
   "regional-analysis": "Análise Regional",
   "historical-comparison": "Comparativo Histórico",
   "network-view": "Visão por Rede",

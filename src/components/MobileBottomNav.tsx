@@ -27,6 +27,7 @@ import {
   Network,
   Brain,
   Flame,
+  ShieldAlert,
 } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import {
@@ -93,6 +94,7 @@ const sections: Section[] = [
     items: [
       { label: "Sentimento", icon: Heart, to: "/dashboard/rejection-analysis" },
       { label: "Radar Político", icon: Calendar, to: "/dashboard/radar-politico" },
+      { label: "Radar de Desinformação", icon: ShieldAlert, to: "/dashboard/radar-desinformacao", badge: "ai" },
       { label: "Mapa de Aceitação", icon: MapPinned, to: "/dashboard/regional-analysis" },
       { label: "Comparação", icon: GitCompareArrows, to: "/dashboard/candidate-comparison" },
     ],
