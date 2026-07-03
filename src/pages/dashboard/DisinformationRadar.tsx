@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -106,7 +107,7 @@ export default function DisinformationRadar() {
   });
 
   // Auto-select if only 1 candidate
-  useMemo(() => {
+  useEffect(() => {
     if (!selectedCandidate && candidates && candidates.length === 1) {
       setSelectedCandidate(candidates[0].id);
     }
