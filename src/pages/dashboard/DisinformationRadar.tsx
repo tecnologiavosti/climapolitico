@@ -90,6 +90,7 @@ const vulnColor: Record<string, string> = {
 export default function DisinformationRadar() {
   const [selectedCandidate, setSelectedCandidate] = useState<string>("");
   const [period, setPeriod] = useState<Period>("7");
+  const navigate = useNavigate();
 
   const { data: candidates, isLoading: loadingCandidates } = useQuery({
     queryKey: ["candidates-for-disinfo"],
