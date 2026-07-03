@@ -35,6 +35,7 @@ const RejectionAnalysis = lazy(() => import("./dashboard/RejectionAnalysis"));
 const NarrativeRecommendations = lazy(() => import("./dashboard/NarrativeRecommendations"));
 const CandidateComparison = lazy(() => import("./dashboard/CandidateComparison"));
 const RadarPolitico = lazy(() => import("./dashboard/RadarPolitico"));
+const DisinformationRadar = lazy(() => import("./dashboard/DisinformationRadar"));
 const Brand24Collector = lazy(() => import("./dashboard/Brand24Collector"));
 const CandidatesCatalog = lazy(() => import("./dashboard/CandidatesCatalog"));
 const Settings = lazy(() => import("./dashboard/Settings"));
@@ -168,6 +169,7 @@ const Dashboard = () => {
                 <Route path="/narrative-recommendations" element={wrap("NarrativeRecommendations", NarrativeRecommendations)} />
                 <Route path="/candidate-comparison" element={wrap("CandidateComparison", CandidateComparison)} />
                 <Route path="/radar-politico" element={wrap("RadarPolitico", RadarPolitico)} />
+                <Route path="/radar-desinformacao" element={wrap("DisinformationRadar", DisinformationRadar)} />
                 <Route path="/pico-mencao" element={<Navigate to="/dashboard/radar-politico" replace />} />
                 <Route path="/picos-mencao" element={<Navigate to="/dashboard/radar-politico" replace />} />
                 <Route path="/candidates" element={wrap("Candidates", Candidates)} />
