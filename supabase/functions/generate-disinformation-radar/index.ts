@@ -53,7 +53,7 @@ async function callAI(candidate: any, periodLabel: string, daysBack: number) {
   const userPrompt = `Analise possíveis riscos de desinformação, fake news e ataques narrativos contra o candidato abaixo nos últimos ${daysBack} dias (${periodLabel}).
 
 Candidato: ${candidate.full_name}
-Cargo: ${candidate.position || "N/D"}
+Partido (nome): ${candidate.party_name || "N/D"}
 Partido: ${candidate.party || "N/D"}
 Estado: ${candidate.region || "N/D"}
 
@@ -124,7 +124,7 @@ serve(async (req) => {
 
     const { data: candidate, error: candErr } = await supabase
       .from("candidates")
-      .select("id, full_name, party, region, position, user_id")
+      .select("id, full_name, party, party_name, region, user_id")
       .eq("id", body.candidateId)
       .eq("user_id", userData.user.id)
       .maybeSingle();
@@ -163,7 +163,7 @@ serve(async (req) => {
         full_name: candidate.full_name,
         party: candidate.party,
         region: candidate.region,
-        position: candidate.position,
+        party_name: candidate.party_name,
       },
       period: { daysBack, label: periodLabel },
       report,
