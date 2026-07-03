@@ -219,7 +219,7 @@ export default function DisinformationRadar() {
             >
               {mutation.isPending ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Analisando...
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Gerando análise...
                 </>
               ) : (
                 <>
