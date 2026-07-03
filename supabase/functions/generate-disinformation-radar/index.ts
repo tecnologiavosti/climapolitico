@@ -279,6 +279,67 @@ function fallbackReport(candidateContext: any, periodLabel: string) {
   };
 }
 
+function periodProfile(daysBack: number) {
+  if (daysBack <= 1) return {
+    key: "24h", label: "24 horas", weight: 0.30, minItems: 1, maxItems: 3,
+    focus: "ataques emergentes e rumores recentes das últimas horas; ignorar padrões históricos",
+    riskCap: "Médio" as const, intensityBand: [20, 45] as [number, number],
+  };
+  if (daysBack <= 7) return {
+    key: "7d", label: "7 dias", weight: 0.45, minItems: 2, maxItems: 5,
+    focus: "narrativas de curto prazo em circulação recente, sem análise histórica",
+    riskCap: "Alto" as const, intensityBand: [30, 60] as [number, number],
+  };
+  if (daysBack <= 15) return {
+    key: "15d", label: "15 dias", weight: 0.60, minItems: 3, maxItems: 6,
+    focus: "consolidação de narrativas recorrentes de curto/médio prazo",
+    riskCap: "Alto" as const, intensityBand: [40, 70] as [number, number],
+  };
+  if (daysBack <= 30) return {
+    key: "30d", label: "30 dias", weight: 0.80, minItems: 4, maxItems: 8,
+    focus: "campanhas de médio prazo, incluindo narrativas repetidas e coordenação inicial",
+    riskCap: "Crítico" as const, intensityBand: [50, 82] as [number, number],
+  };
+  return {
+    key: "90d", label: "90 dias", weight: 1.0, minItems: 6, maxItems: 12,
+    focus: "análise histórica ampla, detecção de campanhas coordenadas persistentes e padrões recorrentes",
+    riskCap: "Crítico" as const, intensityBand: [60, 92] as [number, number],
+  };
+}
+
+function polarizationScore(context: any): number {
+  const perfil = String(context?.perfil_politico || "").toLowerCase();
+  if (perfil.includes("alta polarização") || perfil.includes("alta exposição")) return 0.9;
+  if (perfil.includes("polarização") || perfil.includes("exposição")) return 0.65;
+  return 0.5;
+}
+
+function baseExposureScore(context: any): number {
+  const scope = context?.nivel_cargo;
+  if (scope === "presidencial") return 0.95;
+  if (scope === "governador") return 0.8;
+  if (scope === "nacional_regional") return 0.7;
+  if (scope === "estadual") return 0.6;
+  if (scope === "municipal") return 0.45;
+  return 0.5;
+}
+
+function computeAttackScore(context: any, period: ReturnType<typeof periodProfile>): number {
+  const base = baseExposureScore(context);
+  const pol = polarizationScore(context);
+  const raw = (base * 0.4) + (period.weight * 0.3) + (pol * 0.3);
+  const [min, max] = period.intensityBand;
+  return Math.round(Math.max(min, Math.min(max, raw * 100)));
+}
+
+const RISK_ORDER = ["Baixo", "Médio", "Alto", "Crítico"] as const;
+function capRisk(risk: string, cap: (typeof RISK_ORDER)[number]): string {
+  const idx = RISK_ORDER.indexOf(risk as any);
+  const capIdx = RISK_ORDER.indexOf(cap);
+  if (idx === -1) return cap;
+  return RISK_ORDER[Math.min(idx, capIdx)];
+}
+
 type AnalysisMode = "data_driven" | "ai_research";
 
 async function callAI(input: {
