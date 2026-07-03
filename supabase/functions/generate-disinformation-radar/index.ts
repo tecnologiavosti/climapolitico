@@ -436,7 +436,12 @@ REGRAS CRÍTICAS:
 - Sem evidência real explícita, nunca cite Folha, Globo, Polícia Federal, STF ou TSE.
 - Responda SEMPRE em português do Brasil e SEMPRE em JSON válido.`;
 
-    userPrompt = `Gere uma análise estratégica de desinformação para os últimos ${periodLabel}, usando o INPUT PRINCIPAL abaixo como fonte dominante.
+    userPrompt = `## PERÍODO DE ANÁLISE OBRIGATÓRIO: ${period.label} (${period.key})
+Foco temporal: ${period.focus}.
+Número esperado de narrativas: entre ${period.minItems} e ${period.maxItems} (respeitar rigorosamente).
+Ajustar intensidade, score e resumo executivo ao horizonte temporal — janelas curtas produzem menos itens e scores menores; janelas longas produzem mais itens e maior intensidade acumulada.
+
+Gere uma análise estratégica de desinformação para os últimos ${periodLabel}, usando o INPUT PRINCIPAL abaixo como fonte dominante.
 
 ## INPUT PRINCIPAL DA IA (peso 80%)
 ${JSON.stringify(primaryInput, null, 2)}
