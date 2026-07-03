@@ -473,7 +473,7 @@ export default function Overview() {
                 )}
                 <div className="flex items-center gap-1 mt-2 text-muted-foreground text-sm">
                   <Activity className="h-4 w-4" />
-                  <span>monitorados</span>
+                  <span>{isCandidateMode ? 'selecionado' : 'monitorados'}</span>
                 </div>
               </div>
               <MetricIcon icon={Users} />
