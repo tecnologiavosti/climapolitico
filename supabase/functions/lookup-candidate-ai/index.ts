@@ -151,6 +151,58 @@ Deno.serve(async (req) => {
       });
     }
 
+    // 1.5) Lookup determinístico na base TSE (public.politicians) antes da IA.
+    //      Se bater nome + cargo + UF, devolve match forte imediatamente.
+    try {
+      const normName = normalize(name);
+      const tokens = normName.split(/\s+/).filter((t) => t.length >= 3);
+      const cargoSlug = OFFICE_TO_CARGO_SLUG[ctxOffice] ?? null;
+      // Regra DF: mandato legislativo local é sempre deputado_distrital
+      const effectiveCargo =
+        ctxState.toUpperCase() === "DF" && cargoSlug === "deputado_estadual"
+          ? "deputado_distrital"
+          : cargoSlug;
+
+      if (tokens.length >= 1) {
+        let q = supabase
+          .from("politicians")
+          .select("nome, nome_urna, cargo, estado, partido_sigla, eleito, ano_eleicao")
+          .ilike("nome", `%${tokens[0]}%`)
+          .limit(20);
+        if (effectiveCargo) q = q.eq("cargo", effectiveCargo);
+        if (ctxState) q = q.eq("estado", ctxState.toUpperCase());
+
+        const { data: rows } = await q;
+        const match = (rows ?? []).find((r: any) => {
+          const rn = normalize(r.nome ?? "");
+          const ru = normalize(r.nome_urna ?? "");
+          return tokens.every((t) => rn.includes(t)) ||
+                 tokens.every((t) => ru.includes(t));
+        });
+
+        if (match) {
+          const officeLabel = Object.keys(OFFICE_TO_CARGO_SLUG)
+            .find((k) => OFFICE_TO_CARGO_SLUG[k] === match.cargo) ?? ctxOffice;
+          return json({
+            score: 95, valid: true, plausibility: "high",
+            reason: `Candidato encontrado na base oficial TSE ${match.ano_eleicao ?? ""}.`.trim(),
+            provider: "tse",
+            source: "tse",
+            found: true,
+            confidence: 0.95,
+            name: match.nome,
+            party: match.partido_sigla ?? ctxParty ?? null,
+            office: officeLabel,
+            state: match.estado ?? ctxState ?? null,
+            city: ctxCity || null,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("[lookup-candidate-ai] tse lookup failed", (e as Error).message);
+    }
+
+
     if (!OPENROUTER_API_KEY) {
       // Sem chave: nunca trava — devolve pendente neutro.
       return json({
