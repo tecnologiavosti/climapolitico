@@ -360,6 +360,7 @@ async function callAI(input: {
   candidateContext: any;
   periodLabel: string;
   daysBack: number;
+  period: ReturnType<typeof periodProfile>;
   totals: any;
   keywords: { word: string; count: number }[];
   topicSignals: { category: string; count: number }[];
@@ -368,13 +369,16 @@ async function callAI(input: {
   mode: AnalysisMode;
 }) {
   const {
-    candidateContext, periodLabel, daysBack, totals,
+    candidateContext, periodLabel, daysBack, period, totals,
     keywords, topicSignals, networks, regions, mode,
   } = input;
 
   const primaryInput = {
     candidate: candidateContext,
-    period: `${daysBack}d`,
+    period: period.key,
+    period_label: period.label,
+    period_focus: period.focus,
+    expected_items_range: [period.minItems, period.maxItems],
   };
 
   const secondarySignals = {
