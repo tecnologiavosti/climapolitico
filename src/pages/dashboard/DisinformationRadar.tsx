@@ -360,7 +360,7 @@ export default function DisinformationRadar() {
                 </Badge>
               ) : (
                 <Badge variant="outline" className="border-violet-500/40 text-violet-600 dark:text-violet-400 bg-violet-500/10">
-                  🧠 Análise preditiva por IA
+                  🧠 Análise preditiva IA (baixo contexto)
                 </Badge>
               )}
             </div>
