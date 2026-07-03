@@ -46,14 +46,13 @@ function topKeywords(texts: string[], limit = 20): { word: string; count: number
     .slice(0, limit);
 }
 
-function fallbackInsufficient(candidate: any, periodLabel: string, totals: any) {
+function fallbackReport(candidate: any, periodLabel: string) {
   return {
-    insufficient_data: true,
     fake_news_count: 0,
-    reputational_risk: "Baixo",
-    attack_intensity: 0,
-    digital_vulnerability: "Baixa",
-    executive_summary: `Dados insuficientes para análise confiável de fake news sobre ${candidate.full_name} nos últimos ${periodLabel}. Foram coletadas apenas ${totals.total} menções, o que não permite identificar narrativas de desinformação com segurança. Aumente o período de análise ou aguarde mais coleta de dados.`,
+    reputational_risk: "Médio",
+    attack_intensity: 30,
+    digital_vulnerability: "Moderada",
+    executive_summary: `Não foi possível gerar análise detalhada para ${candidate.full_name} nos últimos ${periodLabel}. Tente novamente em instantes.`,
     fake_news_items: [],
     how_to_identify: [],
     how_to_respond: [],
