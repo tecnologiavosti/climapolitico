@@ -457,39 +457,39 @@ export default function DisinformationRadar() {
             </CardContent>
           </Card>
 
-          {/* Fake news items */}
+          {/* Narrativas de risco plausíveis */}
           {report.fake_news_items?.length > 0 && (
             <Card className="glass">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <AlertTriangle className="h-5 w-5 text-red-500" /> Possíveis Fake News
+                  <AlertTriangle className="h-5 w-5 text-red-500" /> Narrativas de Risco Plausíveis
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {report.fake_news_items.map((f, i) => (
-                  <div
-                    key={i}
-                    className="p-4 rounded-lg border border-border/60 bg-muted/20 hover:bg-muted/30 transition-colors"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="font-semibold text-sm flex-1">"{f.title}"</p>
-                      <Badge
-                        variant={f.probability >= 75 ? "destructive" : "secondary"}
-                        className="shrink-0"
-                      >
-                        {f.probability}%
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
-                      {f.explanation}
-                    </p>
-                    {f.likely_origin && (
-                      <p className="text-[10px] text-primary/80 mt-1.5 font-medium">
-                        Origem provável: {f.likely_origin}
+                {report.fake_news_items.map((f, i) => {
+                  const label = riskLabel(f.probability);
+                  return (
+                    <div
+                      key={i}
+                      className="p-4 rounded-lg border border-border/60 bg-muted/20 hover:bg-muted/30 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="font-semibold text-sm flex-1">"{f.title}"</p>
+                        <Badge variant="outline" className={cn("shrink-0", riskLabelClasses[label])}>
+                          Risco: {label}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                        {f.explanation}
                       </p>
-                    )}
-                  </div>
-                ))}
+                      {f.likely_origin && (
+                        <p className="text-[10px] text-primary/80 mt-1.5 font-medium">
+                          Origem provável: {f.likely_origin}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </CardContent>
             </Card>
           )}
