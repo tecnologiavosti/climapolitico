@@ -229,7 +229,6 @@ export default function Settings() {
       setTwoFactorEnabled(newValue);
       setOtpDialogOpen(false);
       setOtpCode("");
-      setDevCode(null);
       queryClient.invalidateQueries({ queryKey: ["profile"] });
       toast.success(newValue ? "2FA ativado!" : "2FA desativado!");
     },
