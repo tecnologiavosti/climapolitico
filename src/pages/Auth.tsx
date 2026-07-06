@@ -211,7 +211,7 @@ const Auth = () => {
       return;
     }
     setLoading(true);
-    // Usa edge function própria — não dispara e-mail nativo do Supabase (sem "System-Blueprint")
+    // Usa função própria — não dispara e-mail nativo de autenticação.
     const { data, error } = await supabase.functions.invoke("signup-user", {
       body: {
         email: signupEmail,
