@@ -325,7 +325,45 @@ const Auth = () => {
         </div>
 
 
-        {forgotOpen ? (
+        {twoFAOpen ? (
+          <div className="space-y-4">
+            <div className="text-center space-y-1">
+              <h2 className="text-lg font-semibold">Verificação em duas etapas</h2>
+              <p className="text-sm text-muted-foreground">
+                Digite o código de 6 dígitos enviado para seu e-mail.
+              </p>
+            </div>
+            <div className="flex justify-center">
+              <InputOTP maxLength={6} value={twoFACode} onChange={setTwoFACode} autoFocus>
+                <InputOTPGroup>
+                  {[0, 1, 2, 3, 4, 5].map((i) => (
+                    <InputOTPSlot key={i} index={i} />
+                  ))}
+                </InputOTPGroup>
+              </InputOTP>
+            </div>
+            <Button
+              className="w-full bg-gradient-primary"
+              onClick={handle2FAVerify}
+              disabled={twoFACode.length !== 6 || twoFAVerifying}
+            >
+              {twoFAVerifying ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Verificando...</> : "Confirmar"}
+            </Button>
+            <div className="flex items-center justify-between text-sm">
+              <button
+                type="button"
+                onClick={handle2FAResend}
+                disabled={resendCooldown > 0}
+                className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
+              >
+                {resendCooldown > 0 ? `Reenviar em ${resendCooldown}s` : "Reenviar código"}
+              </button>
+              <button type="button" onClick={handle2FACancel} className="text-muted-foreground hover:text-foreground">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        ) : forgotOpen ? (
           <form onSubmit={handleForgot} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="forgot-email">Seu email cadastrado</Label>
