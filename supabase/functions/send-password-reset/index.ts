@@ -64,7 +64,7 @@ serve(async (req) => {
     );
     if (!target) return genericOk();
 
-    // Token próprio — não usa admin.generateLink (evita e-mail interno do Lovable)
+    // Token próprio — não usa template/e-mail nativo de autenticação.
     const token = randomToken(32);
     const tokenHash = await sha256(token);
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
