@@ -14,7 +14,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { email, redirectTo } = await req.json();
+    const { email } = await req.json();
     if (!email || typeof email !== "string") {
       return new Response(JSON.stringify({ error: "Email é obrigatório" }), {
         status: 400,
@@ -31,6 +31,9 @@ serve(async (req) => {
       );
     }
 
+    // Sempre força o domínio oficial de produção, ignorando origem do request
+    const BASE_URL = "https://climapolitico.com.br";
+
     const admin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
@@ -40,7 +43,7 @@ serve(async (req) => {
     const { data, error } = await admin.auth.admin.generateLink({
       type: "recovery",
       email,
-      options: { redirectTo: redirectTo || "https://climapolitico.com.br/reset-password" },
+      options: { redirectTo: `${BASE_URL}/reset-password` },
     });
 
     if (error) {
