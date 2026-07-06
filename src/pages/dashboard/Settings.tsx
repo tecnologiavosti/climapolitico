@@ -99,7 +99,7 @@ export default function Settings() {
 
   const [otpDialogOpen, setOtpDialogOpen] = useState(false);
   const [otpCode, setOtpCode] = useState("");
-  const [devCode, setDevCode] = useState<string | null>(null);
+  
 
   useEffect(() => {
     if (profile) {
@@ -203,9 +203,8 @@ export default function Settings() {
       return data;
     },
     onSuccess: (data) => {
-      setDevCode(data?.devCode || null);
       setOtpDialogOpen(true);
-      toast.success(data?.message || "Código enviado");
+      toast.success(data?.message || "Código enviado para seu e-mail");
     },
     onError: (e: Error) => toast.error("Erro ao enviar código: " + e.message),
   });
@@ -230,7 +229,6 @@ export default function Settings() {
       setTwoFactorEnabled(newValue);
       setOtpDialogOpen(false);
       setOtpCode("");
-      setDevCode(null);
       queryClient.invalidateQueries({ queryKey: ["profile"] });
       toast.success(newValue ? "2FA ativado!" : "2FA desativado!");
     },
@@ -556,13 +554,8 @@ export default function Settings() {
                 <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
                   <div>
                     <p className="font-medium">Digite o código de 6 dígitos enviado para seu e-mail</p>
-                    {devCode && (
-                      <p className="text-sm text-warning mt-2">
-                        ⚠️ E-mail não configurado ainda. Código de teste:{" "}
-                        <span className="font-mono font-bold">{devCode}</span>
-                      </p>
-                    )}
                   </div>
+
                   <InputOTP maxLength={6} value={otpCode} onChange={setOtpCode}>
                     <InputOTPGroup>
                       {[0, 1, 2, 3, 4, 5].map((i) => (
@@ -583,7 +576,7 @@ export default function Settings() {
                       onClick={() => {
                         setOtpDialogOpen(false);
                         setOtpCode("");
-                        setDevCode(null);
+                        
                       }}
                     >
                       Cancelar
