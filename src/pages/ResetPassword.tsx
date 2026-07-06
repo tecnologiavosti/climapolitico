@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,27 +29,37 @@ const passwordStrength = (pwd: string) => {
 const ResetPassword = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [params] = useSearchParams();
+  const token = params.get("token");
+  const [checking, setChecking] = useState(true);
+  const [validToken, setValidToken] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [validSession, setValidSession] = useState(false);
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
 
   useEffect(() => {
-    // Supabase popula a sessão do hash quando type=recovery
-    const hash = window.location.hash;
-    if (!hash.includes("type=recovery") && !hash.includes("access_token")) {
-      toast({ title: "Link inválido ou expirado", description: "Solicite um novo email de redefinição.", variant: "destructive" });
-      navigate("/auth");
-      return;
-    }
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) setValidSession(true);
-      else {
-        toast({ title: "Sessão de recuperação inválida", variant: "destructive" });
+    (async () => {
+      if (!token) {
+        toast({ title: "Link inválido", description: "Solicite um novo e-mail de redefinição.", variant: "destructive" });
         navigate("/auth");
+        return;
       }
-    });
-  }, [navigate, toast]);
+      const { data, error } = await supabase.functions.invoke("verify-password-reset", {
+        body: { token, verifyOnly: true },
+      });
+      setChecking(false);
+      if (error || !data?.valid) {
+        toast({
+          title: "Link inválido ou expirado",
+          description: "Solicite um novo e-mail de redefinição.",
+          variant: "destructive",
+        });
+        navigate("/auth");
+        return;
+      }
+      setValidToken(true);
+    })();
+  }, [token, navigate, toast]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,21 +72,27 @@ const ResetPassword = () => {
       return;
     }
     setLoading(true);
-    const { error } = await supabase.auth.updateUser({ password });
+    const { data, error } = await supabase.functions.invoke("verify-password-reset", {
+      body: { token, password },
+    });
     setLoading(false);
-    if (error) {
-      toast({ title: "Erro ao atualizar senha", description: error.message, variant: "destructive" });
+    if (error || !data?.success) {
+      toast({
+        title: "Erro ao atualizar senha",
+        description: data?.error || error?.message || "Tente novamente.",
+        variant: "destructive",
+      });
       return;
     }
-    toast({ title: "Senha redefinida com sucesso!", description: "Redirecionando..." });
-    setTimeout(() => navigate("/dashboard"), 800);
+    toast({ title: "Senha redefinida com sucesso!", description: "Faça login com sua nova senha." });
+    setTimeout(() => navigate("/auth"), 1000);
   };
 
   const strength = passwordStrength(password);
   const strengthColors = ["bg-destructive", "bg-destructive", "bg-warning", "bg-warning", "bg-success"];
   const strengthLabels = ["Muito fraca", "Fraca", "Razoável", "Boa", "Forte"];
 
-  if (!validSession) {
+  if (checking || !validToken) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
