@@ -203,9 +203,8 @@ export default function Settings() {
       return data;
     },
     onSuccess: (data) => {
-      setDevCode(data?.devCode || null);
       setOtpDialogOpen(true);
-      toast.success(data?.message || "Código enviado");
+      toast.success(data?.message || "Código enviado para seu e-mail");
     },
     onError: (e: Error) => toast.error("Erro ao enviar código: " + e.message),
   });
