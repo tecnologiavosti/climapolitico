@@ -69,6 +69,7 @@ const Auth = () => {
 
   useEffect(() => {
     if (!user || authLoading) return;
+    if (twoFAOpenRef.current) return; // aguardando verificação 2FA
 
     if (consumeTrialAfterLogin() && !getTrialStart(user.id)) {
       const startedAt = startTrial(user.id);
@@ -86,7 +87,19 @@ const Auth = () => {
     }
 
     navigate("/dashboard");
-  }, [user, authLoading, navigate, toast]);
+  }, [user, authLoading, navigate, toast, twoFAOpen]);
+
+  const trigger2FA = async () => {
+    const { error } = await supabase.functions.invoke("send-2fa-code");
+    if (error) {
+      toast({ title: "Erro ao enviar código", description: error.message, variant: "destructive" });
+      await supabase.auth.signOut();
+      setTwoFAOpen(false);
+      return false;
+    }
+    setResendCooldown(30);
+    return true;
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,7 +116,7 @@ const Auth = () => {
       return;
     }
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPassword });
+    const { data: signInData, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPassword });
     if (error) {
       toast({
         title: "Erro ao fazer login",
@@ -113,9 +126,70 @@ const Auth = () => {
       setLoading(false);
       return;
     }
+
+    // Verifica se 2FA está ativado para este usuário
+    const uid = signInData.user?.id;
+    if (uid) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("two_factor_enabled")
+        .eq("id", uid)
+        .maybeSingle();
+      if (profile?.two_factor_enabled) {
+        setTwoFAOpen(true);
+        setTwoFACode("");
+        setTwoFAAttempts(0);
+        await trigger2FA();
+        setLoading(false);
+        toast({ title: "Verificação necessária", description: "Enviamos um código para seu e-mail." });
+        return;
+      }
+    }
+
     toast({ title: "Bem-vindo ao Clima Político", description: "Redirecionando..." });
     setLoading(false);
   };
+
+  const handle2FAVerify = async () => {
+    if (twoFACode.length !== 6) return;
+    setTwoFAVerifying(true);
+    const { data, error } = await supabase.functions.invoke("verify-2fa-code", {
+      body: { code: twoFACode },
+    });
+    setTwoFAVerifying(false);
+    if (error || !data?.success) {
+      const nextAttempts = twoFAAttempts + 1;
+      setTwoFAAttempts(nextAttempts);
+      const msg = data?.error || error?.message || "Código inválido";
+      if (nextAttempts >= 5) {
+        toast({ title: "Muitas tentativas", description: "Sessão encerrada por segurança.", variant: "destructive" });
+        await supabase.auth.signOut();
+        setTwoFAOpen(false);
+      } else {
+        toast({ title: "Código incorreto", description: `${msg} (${5 - nextAttempts} tentativas restantes)`, variant: "destructive" });
+      }
+      setTwoFACode("");
+      return;
+    }
+    setTwoFAOpen(false);
+    setTwoFACode("");
+    toast({ title: "Verificado!", description: "Redirecionando..." });
+    navigate("/dashboard");
+  };
+
+  const handle2FAResend = async () => {
+    if (resendCooldown > 0) return;
+    const ok = await trigger2FA();
+    if (ok) toast({ title: "Novo código enviado", description: "Verifique seu e-mail." });
+  };
+
+  const handle2FACancel = async () => {
+    await supabase.auth.signOut();
+    setTwoFAOpen(false);
+    setTwoFACode("");
+    setTwoFAAttempts(0);
+  };
+
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
