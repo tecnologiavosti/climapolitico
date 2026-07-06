@@ -99,7 +99,7 @@ export default function Settings() {
 
   const [otpDialogOpen, setOtpDialogOpen] = useState(false);
   const [otpCode, setOtpCode] = useState("");
-  const [devCode, setDevCode] = useState<string | null>(null);
+  
 
   useEffect(() => {
     if (profile) {
