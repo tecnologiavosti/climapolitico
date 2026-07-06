@@ -285,12 +285,12 @@ const Auth = () => {
       return;
     }
     setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
-      redirectTo: `${getAuthOrigin()}/reset-password`,
+    const { data, error } = await supabase.functions.invoke("send-password-reset", {
+      body: { email: forgotEmail, redirectTo: `${getAuthOrigin()}/reset-password` },
     });
     setLoading(false);
-    if (error) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    if (error || (data as any)?.error) {
+      toast({ title: "Erro", description: (data as any)?.error || error?.message || "Falha ao enviar", variant: "destructive" });
     } else {
       toast({ title: "Enviamos um email", description: "Verifique sua caixa de entrada para redefinir a senha." });
       setForgotOpen(false);
