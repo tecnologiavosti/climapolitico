@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { EMAIL_BRAND, sendAuthEmail } from "../_shared/auth-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,8 +8,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const BRAND_NAME = "Clima Político";
-const FROM_EMAIL = Deno.env.get("RESEND_FROM_EMAIL") ?? "onboarding@resend.dev";
 const BASE_URL = "https://climapolitico.com.br";
 
 async function sha256(text: string): Promise<string> {
@@ -44,15 +43,6 @@ serve(async (req) => {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
-    }
-
-    const resendKey = Deno.env.get("RESEND_API_KEY");
-    if (!resendKey) {
-      console.error("RESEND_API_KEY não configurada");
-      return new Response(
-        JSON.stringify({ error: "Serviço de e-mail não configurado" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
     }
 
     const admin = createClient(
@@ -100,7 +90,7 @@ serve(async (req) => {
 
     const html = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; color: #0f172a;">
-        <h2 style="color: #1e3a8a; margin: 0 0 16px;">${BRAND_NAME}</h2>
+        <h2 style="color: #1e3a8a; margin: 0 0 16px;">${EMAIL_BRAND}</h2>
         <p style="margin: 0 0 12px; font-size: 15px;">Você solicitou a redefinição da sua senha.</p>
         <p style="margin: 0 0 20px; font-size: 15px;">Clique no botão abaixo para criar uma nova senha:</p>
         <p style="text-align:center; margin: 24px 0;">
@@ -111,33 +101,16 @@ serve(async (req) => {
         </p>
         <p style="color: #475569; font-size: 13px; margin: 0 0 6px;">Este link expira em 15 minutos.</p>
         <p style="color: #64748b; font-size: 13px; margin: 16px 0 0;">Se você não solicitou isso, ignore este e-mail.</p>
-        <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">${BRAND_NAME}</p>
+        <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">${EMAIL_BRAND}</p>
       </div>
     `;
 
-    const resendRes = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${resendKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: `${BRAND_NAME} <${FROM_EMAIL}>`,
-        to: [target.email],
-        subject: `Redefinição de senha - ${BRAND_NAME}`,
-        html,
-        text: `Redefina sua senha em: ${resetUrl}\n\nExpira em 15 minutos.\n\n${BRAND_NAME}`,
-      }),
+    await sendAuthEmail({
+      to: target.email,
+      subject: `Redefinição de senha - ${EMAIL_BRAND}`,
+      html,
+      text: `Redefina sua senha em: ${resetUrl}\n\nExpira em 15 minutos.\n\n${EMAIL_BRAND}`,
     });
-
-    const body = await resendRes.text();
-    if (!resendRes.ok) {
-      console.error("Resend error:", resendRes.status, body);
-      return new Response(
-        JSON.stringify({ error: "Falha ao enviar e-mail", detail: body }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
 
     console.log(`[reset] Email enviado para ${target.email}`);
     return new Response(
