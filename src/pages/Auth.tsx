@@ -39,6 +39,21 @@ const Auth = () => {
   const [signupFullName, setSignupFullName] = useState("");
   const [signupOrganization, setSignupOrganization] = useState("");
 
+  // 2FA state
+  const [twoFAOpen, setTwoFAOpen] = useState(false);
+  const [twoFACode, setTwoFACode] = useState("");
+  const [twoFAAttempts, setTwoFAAttempts] = useState(0);
+  const [twoFAVerifying, setTwoFAVerifying] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const twoFAOpenRef = useRef(false);
+  twoFAOpenRef.current = twoFAOpen;
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const t = setTimeout(() => setResendCooldown((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendCooldown]);
+
   // Reset loading on mount and when page is restored from bfcache (voltar após cancelar OAuth)
   useEffect(() => {
     setLoading(false);
