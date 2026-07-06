@@ -576,7 +576,7 @@ export default function Settings() {
                       onClick={() => {
                         setOtpDialogOpen(false);
                         setOtpCode("");
-                        setDevCode(null);
+                        
                       }}
                     >
                       Cancelar
