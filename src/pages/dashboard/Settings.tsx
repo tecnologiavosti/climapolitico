@@ -554,13 +554,8 @@ export default function Settings() {
                 <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
                   <div>
                     <p className="font-medium">Digite o código de 6 dígitos enviado para seu e-mail</p>
-                    {devCode && (
-                      <p className="text-sm text-warning mt-2">
-                        ⚠️ E-mail não configurado ainda. Código de teste:{" "}
-                        <span className="font-mono font-bold">{devCode}</span>
-                      </p>
-                    )}
                   </div>
+
                   <InputOTP maxLength={6} value={otpCode} onChange={setOtpCode}>
                     <InputOTPGroup>
                       {[0, 1, 2, 3, 4, 5].map((i) => (
