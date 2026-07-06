@@ -129,11 +129,18 @@ Deno.serve(async (req) => {
         await audit({ method: "direct" });
         return json({ ok: true, mode: "direct" });
       }
-      // Send recovery email
+      // Send recovery email via nosso fluxo Resend (sem e-mail nativo do Supabase)
       const { data: u } = await admin.auth.admin.getUserById(target_user_id);
       if (!u.user?.email) return json({ error: "no email" }, 400);
-      const { error } = await admin.auth.admin.generateLink({ type: "recovery", email: u.user.email });
-      if (error) return json({ error: error.message }, 400);
+      const resetRes = await fetch(`${SUPABASE_URL}/functions/v1/send-password-reset`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_ROLE}` },
+        body: JSON.stringify({ email: u.user.email }),
+      });
+      if (!resetRes.ok) {
+        const txt = await resetRes.text();
+        return json({ error: "Falha ao enviar e-mail", detail: txt }, 502);
+      }
       await audit({ method: "email" });
       return json({ ok: true, mode: "email" });
     }
