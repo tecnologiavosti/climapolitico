@@ -211,22 +211,24 @@ const Auth = () => {
       return;
     }
     setLoading(true);
-    const redirectUrl = `${getAuthOrigin()}/`;
-    const { error } = await supabase.auth.signUp({
-      email: signupEmail,
-      password: signupPassword,
-      options: { emailRedirectTo: redirectUrl, data: { full_name: signupFullName, organization: signupOrganization } },
+    // Usa edge function própria — não dispara e-mail nativo do Supabase (sem "System-Blueprint")
+    const { data, error } = await supabase.functions.invoke("signup-user", {
+      body: {
+        email: signupEmail,
+        password: signupPassword,
+        full_name: signupFullName,
+        organization: signupOrganization,
+      },
     });
-    if (error) {
+    if (error || !data?.success) {
       toast({
         title: "Erro ao criar conta",
-        description: error.message === "User already registered" ? "Este email já está cadastrado" : error.message,
+        description: data?.error || error?.message || "Tente novamente.",
         variant: "destructive",
       });
       setLoading(false);
       return;
     }
-    // Auto-confirm está ativado no backend — entramos direto sem confirmação por email.
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email: signupEmail,
       password: signupPassword,
