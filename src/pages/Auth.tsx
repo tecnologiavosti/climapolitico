@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
+
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -25,11 +26,13 @@ const getAuthOrigin = () => {
 
 const Auth = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(searchParams.get("forgot") === "password");
   const [forgotEmail, setForgotEmail] = useState("");
+
 
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -287,18 +290,19 @@ const Auth = () => {
       return;
     }
     setLoading(true);
-    const { data, error } = await supabase.functions.invoke("send-password-reset", {
-      body: { email: forgotEmail },
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+      redirectTo: `${getAuthOrigin()}/reset-password`,
     });
     setLoading(false);
-    if (error || (data as any)?.error) {
-      toast({ title: "Erro", description: (data as any)?.error || error?.message || "Falha ao enviar", variant: "destructive" });
+    if (error) {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
     } else {
       toast({ title: "Enviamos um email", description: "Verifique sua caixa de entrada para redefinir a senha." });
       setForgotOpen(false);
       setForgotEmail("");
     }
   };
+
 
   if (authLoading) {
     return (

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,40 +26,74 @@ const passwordStrength = (pwd: string) => {
   return Math.min(score, 4);
 };
 
+type RecoveryStatus = "checking" | "valid" | "invalid";
+
 const ResetPassword = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [params] = useSearchParams();
-  const token = params.get("token");
-  const [checking, setChecking] = useState(true);
-  const [validToken, setValidToken] = useState(false);
+  const [recoveryStatus, setRecoveryStatus] = useState<RecoveryStatus>("checking");
   const [loading, setLoading] = useState(false);
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [show, setShow] = useState(false);
 
   useEffect(() => {
-    (async () => {
-      if (!token) {
-        toast({ title: "Link inválido", description: "Solicite um novo e-mail de redefinição.", variant: "destructive" });
-        navigate("/auth");
-        return;
+    let mounted = true;
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY" && mounted) {
+        setRecoveryStatus("valid");
       }
-      const { data, error } = await supabase.functions.invoke("verify-password-reset", {
-        body: { token, verifyOnly: true },
-      });
-      setChecking(false);
-      if (error || !data?.valid) {
-        toast({
-          title: "Link inválido ou expirado",
-          description: "Solicite um novo e-mail de redefinição.",
-          variant: "destructive",
-        });
-        navigate("/auth");
-        return;
+    });
+
+    const confirmRecoverySession = async () => {
+      try {
+        // 1) Hash fragment: #access_token=...&type=recovery
+        const hash = window.location.hash.startsWith("#")
+          ? window.location.hash.slice(1)
+          : window.location.hash;
+        const hashParams = new URLSearchParams(hash);
+        const type = hashParams.get("type");
+        const accessToken = hashParams.get("access_token");
+        const refreshToken = hashParams.get("refresh_token");
+
+        if (type === "recovery" && accessToken && refreshToken) {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (mounted) setRecoveryStatus(error ? "invalid" : "valid");
+          // clean hash
+          window.history.replaceState(null, "", window.location.pathname);
+          return;
+        }
+
+        // 2) PKCE query param: ?code=...
+        const url = new URL(window.location.href);
+        const code = url.searchParams.get("code");
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (mounted) setRecoveryStatus(error ? "invalid" : "valid");
+          url.searchParams.delete("code");
+          window.history.replaceState(null, "", url.pathname);
+          return;
+        }
+
+        // 3) Fallback: existing session (evento PASSWORD_RECOVERY já pode ter disparado)
+        const { data } = await supabase.auth.getSession();
+        if (mounted) setRecoveryStatus(data.session ? "valid" : "invalid");
+      } catch {
+        if (mounted) setRecoveryStatus("invalid");
       }
-      setValidToken(true);
-    })();
-  }, [token, navigate, toast]);
+    };
+
+    confirmRecoverySession();
+
+    return () => {
+      mounted = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,31 +105,61 @@ const ResetPassword = () => {
       }
       return;
     }
+    if (password !== confirmPassword) {
+      toast({ title: "Senhas não coincidem", description: "Confirme sua nova senha corretamente.", variant: "destructive" });
+      return;
+    }
     setLoading(true);
-    const { data, error } = await supabase.functions.invoke("verify-password-reset", {
-      body: { token, password },
-    });
+    const { error } = await supabase.auth.updateUser({ password });
     setLoading(false);
-    if (error || !data?.success) {
-      toast({
-        title: "Erro ao atualizar senha",
-        description: data?.error || error?.message || "Tente novamente.",
-        variant: "destructive",
-      });
+    if (error) {
+      toast({ title: "Erro ao atualizar senha", description: error.message, variant: "destructive" });
       return;
     }
     toast({ title: "Senha redefinida com sucesso!", description: "Faça login com sua nova senha." });
-    setTimeout(() => navigate("/auth"), 1000);
+    await supabase.auth.signOut();
+    setTimeout(() => navigate("/auth"), 800);
   };
 
   const strength = passwordStrength(password);
   const strengthColors = ["bg-destructive", "bg-destructive", "bg-warning", "bg-warning", "bg-success"];
   const strengthLabels = ["Muito fraca", "Fraca", "Razoável", "Boa", "Forte"];
 
-  if (checking || !validToken) {
+  if (recoveryStatus === "checking") {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (recoveryStatus === "invalid") {
+    return (
+      <div className="min-h-screen bg-gradient-secondary flex items-center justify-center p-4">
+        <Card className="w-full max-w-md p-8 space-y-6 text-center">
+          <h1 className="text-2xl font-bold">Link de recuperação inválido ou expirado</h1>
+          <p className="text-sm text-muted-foreground">
+            Solicite um novo e-mail de redefinição para continuar.
+          </p>
+          <div className="flex flex-col gap-2">
+            <Button
+              className="w-full bg-gradient-primary"
+              onClick={() => navigate("/auth?forgot=password", { replace: true })}
+            >
+              Solicitar novo link
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={async () => {
+                await supabase.auth.signOut();
+                navigate("/auth");
+              }}
+            >
+              Voltar ao Login
+            </Button>
+          </div>
+        </Card>
       </div>
     );
   }
@@ -148,6 +212,17 @@ const ResetPassword = () => {
                 <p className="text-xs text-muted-foreground">Força: {strengthLabels[strength]}</p>
               </div>
             )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="confirm-password">Confirmar nova senha</Label>
+            <Input
+              id="confirm-password"
+              type={show ? "text" : "password"}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              disabled={loading}
+              required
+            />
           </div>
           <Button type="submit" className="w-full bg-gradient-primary" disabled={loading || strength < 2}>
             {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...</> : "Redefinir senha"}
