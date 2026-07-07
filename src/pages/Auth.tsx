@@ -19,10 +19,13 @@ import { PasswordChecklist, isPasswordValid } from "@/components/auth/PasswordCh
 
 const emailSchema = z.string().email("Email inválido");
 const fullNameSchema = z.string().min(2, "Nome deve ter no mínimo 2 caracteres");
+const PRODUCTION_ORIGIN = "https://climapolitico.com.br";
 const getAuthOrigin = () => {
-  if (typeof window === "undefined") return "";
+  if (typeof window === "undefined") return PRODUCTION_ORIGIN;
   return window.location.origin;
 };
+const getPasswordResetRedirect = () => `${PRODUCTION_ORIGIN}/reset-password`;
+
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -291,8 +294,9 @@ const Auth = () => {
     }
     setLoading(true);
     const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
-      redirectTo: `${getAuthOrigin()}/reset-password`,
+      redirectTo: getPasswordResetRedirect(),
     });
+
     setLoading(false);
     if (error) {
       toast({ title: "Erro", description: error.message, variant: "destructive" });
