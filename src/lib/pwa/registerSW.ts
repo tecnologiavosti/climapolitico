@@ -1,5 +1,6 @@
-// Guarded service worker registration wrapper.
-// NEVER registers in Lovable preview, iframe, or dev.
+// Guarded service worker cleanup wrapper.
+// Auth must never be served from a stale PWA bundle: older cached builds used
+// the native recovery email flow, which sends the default System-Blueprint email.
 const SW_PATH = "/sw.js";
 
 function isPreviewHost(host: string): boolean {
@@ -19,11 +20,12 @@ async function unregisterMatching() {
   if (!("serviceWorker" in navigator)) return;
   try {
     const regs = await navigator.serviceWorker.getRegistrations();
-    await Promise.all(
-      regs
-        .filter((r) => (r.active?.scriptURL || r.installing?.scriptURL || r.waiting?.scriptURL || "").endsWith(SW_PATH))
-        .map((r) => r.unregister()),
-    );
+    await Promise.all(regs.map((r) => r.unregister()));
+
+    if ("caches" in window) {
+      const keys = await window.caches.keys();
+      await Promise.all(keys.map((key) => window.caches.delete(key)));
+    }
   } catch {
     /* noop */
   }
@@ -32,23 +34,5 @@ async function unregisterMatching() {
 export async function registerSW() {
   if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
 
-  const url = new URL(window.location.href);
-  const host = window.location.hostname;
-  const inIframe = window.self !== window.top;
-
-  if (
-    !import.meta.env.PROD ||
-    inIframe ||
-    isPreviewHost(host) ||
-    url.searchParams.get("sw") === "off"
-  ) {
-    await unregisterMatching();
-    return;
-  }
-
-  try {
-    await navigator.serviceWorker.register(SW_PATH, { scope: "/" });
-  } catch (err) {
-    console.warn("[PWA] SW registration failed", err);
-  }
+  await unregisterMatching();
 }
