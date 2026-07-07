@@ -6,6 +6,8 @@ import "./index.css";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { registerSW } from "./lib/pwa/registerSW";
 
+void registerSW();
+
 createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>
     <HelmetProvider>
@@ -13,6 +15,4 @@ createRoot(document.getElementById("root")!).render(
     </HelmetProvider>
   </ErrorBoundary>
 );
-
-void registerSW();
 
