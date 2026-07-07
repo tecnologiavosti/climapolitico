@@ -1,6 +1,6 @@
 // Guarded service worker cleanup wrapper.
 // Auth must never be served from a stale PWA bundle: older cached builds used
-// the native recovery email flow, which sends the default System-Blueprint email.
+// the native recovery email flow instead of the custom branded function.
 async function unregisterMatching() {
   if (!("serviceWorker" in navigator)) return;
   try {
