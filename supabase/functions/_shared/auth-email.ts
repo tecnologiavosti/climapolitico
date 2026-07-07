@@ -1,5 +1,10 @@
 export const EMAIL_BRAND = "Clima Político";
-export const EMAIL_FROM = "Clima Político <no-reply@climapolitico.com.br>";
+// Usar sender do Resend enquanto climapolitico.com.br não estiver verificado.
+// Após verificar o domínio em https://resend.com/domains, trocar para
+// "Clima Político <no-reply@climapolitico.com.br>".
+export const EMAIL_FROM =
+  Deno.env.get("RESEND_FROM_EMAIL") ??
+  "Clima Político <onboarding@resend.dev>";
 
 type SendAuthEmailParams = {
   to: string | string[];
