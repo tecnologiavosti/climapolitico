@@ -447,6 +447,13 @@ export default function CandidatesCatalog() {
           planLabel: isUnlimitedSubscription(subscription) ? 'Plano VIP' : undefined,
         }}
       />
+
+      <AutoCollectionOverlay
+        open={!!autoCollect}
+        candidateId={autoCollect?.id ?? null}
+        candidateName={autoCollect?.name}
+        onClose={() => setAutoCollect(null)}
+      />
     </div>
   );
 }
