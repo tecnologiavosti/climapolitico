@@ -22,6 +22,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 // ArrowUpRight, ArrowDownRight, Minus removidos temporariamente (coluna Tendência oculta)
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 import { AddCandidateDialog, type AddCandidatePayload } from "@/components/dashboard/AddCandidateDialog";
+import { AutoCollectionOverlay } from "@/components/dashboard/AutoCollectionOverlay";
 import { findDuplicateCandidate, type DuplicateMatch } from "@/lib/candidateNameNormalizer";
 import { cn } from "@/lib/utils";
 
@@ -72,6 +73,7 @@ export default function Candidates() {
     | { match: DuplicateMatch<{ id: string; full_name: string }>; payload: AddCandidatePayload }
     | null
   >(null);
+  const [autoCollect, setAutoCollect] = useState<{ id: string; name: string } | null>(null);
 
   // Open add-candidate dialog automatically when navigated with ?add=1 (from sidebar)
   const [searchParams, setSearchParams] = useSearchParams();
@@ -186,9 +188,11 @@ export default function Candidates() {
     onSuccess: async (data) => {
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
       queryClient.invalidateQueries({ queryKey: ['subscription'] });
-      toast.success('Candidato adicionado e métricas iniciais processadas!');
+      toast.success('Candidato adicionado! Iniciando coleta automática de todas as fontes…');
       setDialogOpen(false);
       setValidationErrors({});
+      // Dispara overlay de coleta automática em paralelo (Telegram, GNews, YouTube, X, Facebook, TikTok, Reddit, Wikipedia)
+      setAutoCollect({ id: data.id, name: data.full_name });
 
       // Geração automática de canais/subreddits/keywords via IA (não bloqueante)
       try {
@@ -1236,6 +1240,14 @@ export default function Candidates() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Overlay de coleta automática após criação de candidato */}
+      <AutoCollectionOverlay
+        open={!!autoCollect}
+        candidateId={autoCollect?.id ?? null}
+        candidateName={autoCollect?.name}
+        onClose={() => setAutoCollect(null)}
+      />
     </div>
   );
 }
