@@ -102,16 +102,14 @@ const Index = () => {
       {/* Hero Section */}
       <HeroSection />
 
-      {/* Monitored sources — right after hero buttons, outside the blue card */}
-      <MonitoredSources />
-
       {/* Social Proof Stats */}
       <SocialProof />
 
       {/* Trending Candidates (public, dynamic) */}
       <TrendingCandidates />
 
-
+      {/* Monitored sources carousel */}
+      <MonitoredSources />
 
 
       {/* Features Section */}
