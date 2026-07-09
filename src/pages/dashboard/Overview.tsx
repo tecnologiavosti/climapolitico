@@ -33,6 +33,22 @@ import { ChartDebugFrame } from "@/components/dashboard/ChartDebugFrame";
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--destructive))', 'hsl(var(--warning))', 'hsl(var(--muted))'];
 
+function highlightMatch(text: string, query: string) {
+  if (!query.trim()) return text;
+  const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const nText = norm(text);
+  const nQuery = norm(query);
+  const idx = nText.indexOf(nQuery);
+  if (idx === -1) return text;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <strong className="font-semibold text-foreground">{text.slice(idx, idx + query.length)}</strong>
+      {text.slice(idx + query.length)}
+    </>
+  );
+}
+
 export default function Overview() {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
   const [candidatePickerOpen, setCandidatePickerOpen] = useState(false);
