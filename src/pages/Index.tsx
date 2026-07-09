@@ -102,15 +102,14 @@ const Index = () => {
       {/* Hero Section */}
       <HeroSection />
 
+      {/* Monitored sources carousel — logo abaixo dos botões da Hero */}
+      <MonitoredSources />
+
       {/* Social Proof Stats */}
       <SocialProof />
 
       {/* Trending Candidates (public, dynamic) */}
       <TrendingCandidates />
-
-      {/* Monitored sources carousel */}
-      <MonitoredSources />
-
 
       {/* Features Section */}
       <BentoFeatures />
