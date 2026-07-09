@@ -11,6 +11,7 @@ import { useCatalogSearch, PAGE_SIZE, type CatalogFilters as Filters, type Polit
 import { CatalogFilters } from "@/components/dashboard/CatalogFilters";
 import { CandidateCatalogCard } from "@/components/dashboard/CandidateCatalogCard";
 import { AddCandidateDialog, type AddCandidatePayload } from "@/components/dashboard/AddCandidateDialog";
+import { AutoCollectionOverlay } from "@/components/dashboard/AutoCollectionOverlay";
 
 // Mapeia enum interno do catálogo -> label aceito pelo AddCandidateDialog
 const CARGO_TO_POSITION: Record<string, string> = {
@@ -73,6 +74,7 @@ export default function CandidatesCatalog() {
   const partial = data?.partial ?? false;
   const sources = data?.sources ?? [];
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [autoCollect, setAutoCollect] = useState<{ id: string; name: string } | null>(null);
   const page = appliedFilters?.page ?? 0;
   const exactTotal = data?.exactTotal !== false;
   const hasNext = data?.hasMore ?? (page < Math.max(1, Math.ceil(total / PAGE_SIZE)) - 1);
@@ -146,21 +148,23 @@ export default function CandidatesCatalog() {
       }
       const region = [p.municipio, p.estado].filter(Boolean).join(", ") || p.regiao || p.estado || null;
       const social = p.redes_sociais ? (Object.values(p.redes_sociais)[0] as string | undefined) : undefined;
-      const { error } = await supabase.from("candidates").insert({
+      const { data: inserted, error } = await supabase.from("candidates").insert({
         user_id: user.id,
         full_name: p.nome,
         party: p.partido_sigla,
         region,
         social_media_link: social ?? null,
-      });
+      }).select("id, full_name").single();
       if (error) throw error;
+      return inserted;
     },
-    onSuccess: () => {
+    onSuccess: (inserted) => {
       queryClient.invalidateQueries({ queryKey: ["my-candidates-names"] });
       queryClient.invalidateQueries({ queryKey: ["candidates"] });
       queryClient.invalidateQueries({ queryKey: ["candidates-overview"] });
       queryClient.invalidateQueries({ queryKey: ["subscription"] });
-      toast.success("Candidato adicionado à sua conta!");
+      toast.success("Candidato adicionado! Iniciando coleta automática...");
+      if (inserted?.id) setAutoCollect({ id: inserted.id, name: inserted.full_name });
     },
     onError: (e: Error) => toast.error(
       e.message.includes('candidate_limit_reached') && !isUnlimitedSubscription(subscription)
@@ -179,7 +183,7 @@ export default function CandidatesCatalog() {
         throw new Error(`Limite vitalício de ${subscription.max_candidates} candidatos atingido. Excluir candidatos não restaura créditos — faça upgrade do plano.`);
       }
       const region = [p.city, p.state].filter(Boolean).join(", ") || p.region || p.state || null;
-      const { error } = await supabase.from("candidates").insert({
+      const { data: inserted, error } = await supabase.from("candidates").insert({
         user_id: user.id,
         full_name: p.fullName,
         party: p.party,
@@ -187,16 +191,18 @@ export default function CandidatesCatalog() {
         party_number: p.partyNumber ?? null,
         region,
         social_media_link: null,
-      });
+      }).select("id, full_name").single();
       if (error) throw error;
+      return inserted;
     },
-    onSuccess: () => {
+    onSuccess: (inserted) => {
       queryClient.invalidateQueries({ queryKey: ["my-candidates-names"] });
       queryClient.invalidateQueries({ queryKey: ["candidates"] });
       queryClient.invalidateQueries({ queryKey: ["candidates-overview"] });
       queryClient.invalidateQueries({ queryKey: ["subscription"] });
-      toast.success("Candidato cadastrado com sucesso!");
+      toast.success("Candidato cadastrado! Iniciando coleta automática...");
       setAddDialogOpen(false);
+      if (inserted?.id) setAutoCollect({ id: inserted.id, name: inserted.full_name });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -440,6 +446,13 @@ export default function CandidatesCatalog() {
           limit: isUnlimitedSubscription(subscription) ? Infinity : (subscription?.max_candidates ?? 3),
           planLabel: isUnlimitedSubscription(subscription) ? 'Plano VIP' : undefined,
         }}
+      />
+
+      <AutoCollectionOverlay
+        open={!!autoCollect}
+        candidateId={autoCollect?.id ?? null}
+        candidateName={autoCollect?.name}
+        onClose={() => setAutoCollect(null)}
       />
     </div>
   );
