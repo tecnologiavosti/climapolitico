@@ -73,6 +73,7 @@ export default function Candidates() {
     | { match: DuplicateMatch<{ id: string; full_name: string }>; payload: AddCandidatePayload }
     | null
   >(null);
+  const [autoCollect, setAutoCollect] = useState<{ id: string; name: string } | null>(null);
 
   // Open add-candidate dialog automatically when navigated with ?add=1 (from sidebar)
   const [searchParams, setSearchParams] = useSearchParams();
