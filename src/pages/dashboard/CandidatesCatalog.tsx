@@ -11,6 +11,7 @@ import { useCatalogSearch, PAGE_SIZE, type CatalogFilters as Filters, type Polit
 import { CatalogFilters } from "@/components/dashboard/CatalogFilters";
 import { CandidateCatalogCard } from "@/components/dashboard/CandidateCatalogCard";
 import { AddCandidateDialog, type AddCandidatePayload } from "@/components/dashboard/AddCandidateDialog";
+import { AutoCollectionOverlay } from "@/components/dashboard/AutoCollectionOverlay";
 
 // Mapeia enum interno do catálogo -> label aceito pelo AddCandidateDialog
 const CARGO_TO_POSITION: Record<string, string> = {
