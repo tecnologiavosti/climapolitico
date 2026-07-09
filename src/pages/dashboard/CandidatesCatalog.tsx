@@ -148,21 +148,23 @@ export default function CandidatesCatalog() {
       }
       const region = [p.municipio, p.estado].filter(Boolean).join(", ") || p.regiao || p.estado || null;
       const social = p.redes_sociais ? (Object.values(p.redes_sociais)[0] as string | undefined) : undefined;
-      const { error } = await supabase.from("candidates").insert({
+      const { data: inserted, error } = await supabase.from("candidates").insert({
         user_id: user.id,
         full_name: p.nome,
         party: p.partido_sigla,
         region,
         social_media_link: social ?? null,
-      });
+      }).select("id, full_name").single();
       if (error) throw error;
+      return inserted;
     },
-    onSuccess: () => {
+    onSuccess: (inserted) => {
       queryClient.invalidateQueries({ queryKey: ["my-candidates-names"] });
       queryClient.invalidateQueries({ queryKey: ["candidates"] });
       queryClient.invalidateQueries({ queryKey: ["candidates-overview"] });
       queryClient.invalidateQueries({ queryKey: ["subscription"] });
-      toast.success("Candidato adicionado à sua conta!");
+      toast.success("Candidato adicionado! Iniciando coleta automática...");
+      if (inserted?.id) setAutoCollect({ id: inserted.id, name: inserted.full_name });
     },
     onError: (e: Error) => toast.error(
       e.message.includes('candidate_limit_reached') && !isUnlimitedSubscription(subscription)
