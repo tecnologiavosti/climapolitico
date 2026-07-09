@@ -188,9 +188,11 @@ export default function Candidates() {
     onSuccess: async (data) => {
       queryClient.invalidateQueries({ queryKey: ['candidates'] });
       queryClient.invalidateQueries({ queryKey: ['subscription'] });
-      toast.success('Candidato adicionado e métricas iniciais processadas!');
+      toast.success('Candidato adicionado! Iniciando coleta automática de todas as fontes…');
       setDialogOpen(false);
       setValidationErrors({});
+      // Dispara overlay de coleta automática em paralelo (Telegram, GNews, YouTube, X, Facebook, TikTok, Reddit, Wikipedia)
+      setAutoCollect({ id: data.id, name: data.full_name });
 
       // Geração automática de canais/subreddits/keywords via IA (não bloqueante)
       try {
