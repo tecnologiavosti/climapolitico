@@ -35,6 +35,8 @@ const COLORS = ['hsl(var(--primary))', 'hsl(var(--destructive))', 'hsl(var(--war
 
 export default function Overview() {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
+  const [candidatePickerOpen, setCandidatePickerOpen] = useState(false);
+  const [candidateSearch, setCandidateSearch] = useState("");
   const [collecting, setCollecting] = useState(false);
   const [calculatingRanking, setCalculatingRanking] = useState(false);
   const { isAdmin } = useAdminCheck();
