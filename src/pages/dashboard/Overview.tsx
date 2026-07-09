@@ -436,18 +436,68 @@ export default function Overview() {
             <span className="font-medium">Visão Consolidada do Candidato</span>
           </div>
           <HelpTooltip text="Clique aqui pra ver os números só de um candidato específico.">
-            <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
-              <SelectTrigger className="w-64">
-                <SelectValue placeholder="Selecione um candidato para análise detalhada" />
-              </SelectTrigger>
-              <SelectContent>
-                {candidates?.map((candidate) => (
-                  <SelectItem key={candidate.id} value={candidate.id}>
-                    {candidate.full_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Popover open={candidatePickerOpen} onOpenChange={setCandidatePickerOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={candidatePickerOpen}
+                  className="w-64 justify-between font-normal"
+                >
+                  <span className="truncate">
+                    {selectedCandidateId
+                      ? candidates?.find((c) => c.id === selectedCandidateId)?.full_name
+                      : "Selecione um candidato para análise detalhada"}
+                  </span>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-0" align="start">
+                <Command
+                  filter={(value, search) => {
+                    const norm = (s: string) =>
+                      s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+                    return norm(value).includes(norm(search)) ? 1 : 0;
+                  }}
+                >
+                  <CommandInput
+                    placeholder="Pesquisar candidato..."
+                    value={candidateSearch}
+                    onValueChange={setCandidateSearch}
+                  />
+                  <CommandList>
+                    <CommandEmpty>
+                      <div className="flex flex-col items-center gap-2 py-4 text-muted-foreground">
+                        <SearchX className="h-5 w-5" />
+                        <span className="text-sm">Nenhum candidato encontrado</span>
+                      </div>
+                    </CommandEmpty>
+                    <CommandGroup>
+                      {candidates?.map((candidate) => (
+                        <CommandItem
+                          key={candidate.id}
+                          value={candidate.full_name}
+                          onSelect={() => {
+                            setSelectedCandidateId(candidate.id);
+                            setCandidatePickerOpen(false);
+                            setCandidateSearch("");
+                          }}
+                        >
+                          <Check
+                            className={`mr-2 h-4 w-4 ${
+                              selectedCandidateId === candidate.id ? "opacity-100" : "opacity-0"
+                            }`}
+                          />
+                          <span className="truncate">
+                            {highlightMatch(candidate.full_name, candidateSearch)}
+                          </span>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </HelpTooltip>
           {selectedCandidateId && (
             <HelpTooltip text="Volta pra tela que mostra todos os candidatos juntos.">
