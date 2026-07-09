@@ -1240,6 +1240,14 @@ export default function Candidates() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Overlay de coleta automática após criação de candidato */}
+      <AutoCollectionOverlay
+        open={!!autoCollect}
+        candidateId={autoCollect?.id ?? null}
+        candidateName={autoCollect?.name}
+        onClose={() => setAutoCollect(null)}
+      />
     </div>
   );
 }
