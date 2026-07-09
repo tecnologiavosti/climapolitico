@@ -3,7 +3,9 @@ import { Card } from "@/components/ui/card";
 import { MetricIcon } from "@/components/dashboard/MetricIcon";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TrendingUp, TrendingDown, Users, MessageSquare, AlertCircle, Activity, LayoutDashboard, Download, Loader2 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { TrendingUp, TrendingDown, Users, MessageSquare, AlertCircle, Activity, LayoutDashboard, Download, Loader2, Check, ChevronsUpDown, SearchX } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -31,8 +33,26 @@ import { ChartDebugFrame } from "@/components/dashboard/ChartDebugFrame";
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--destructive))', 'hsl(var(--warning))', 'hsl(var(--muted))'];
 
+function highlightMatch(text: string, query: string) {
+  if (!query.trim()) return text;
+  const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const nText = norm(text);
+  const nQuery = norm(query);
+  const idx = nText.indexOf(nQuery);
+  if (idx === -1) return text;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <strong className="font-semibold text-foreground">{text.slice(idx, idx + query.length)}</strong>
+      {text.slice(idx + query.length)}
+    </>
+  );
+}
+
 export default function Overview() {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
+  const [candidatePickerOpen, setCandidatePickerOpen] = useState(false);
+  const [candidateSearch, setCandidateSearch] = useState("");
   const [collecting, setCollecting] = useState(false);
   const [calculatingRanking, setCalculatingRanking] = useState(false);
   const { isAdmin } = useAdminCheck();
@@ -432,18 +452,68 @@ export default function Overview() {
             <span className="font-medium">Visão Consolidada do Candidato</span>
           </div>
           <HelpTooltip text="Clique aqui pra ver os números só de um candidato específico.">
-            <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
-              <SelectTrigger className="w-64">
-                <SelectValue placeholder="Selecione um candidato para análise detalhada" />
-              </SelectTrigger>
-              <SelectContent>
-                {candidates?.map((candidate) => (
-                  <SelectItem key={candidate.id} value={candidate.id}>
-                    {candidate.full_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Popover open={candidatePickerOpen} onOpenChange={setCandidatePickerOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={candidatePickerOpen}
+                  className="w-64 justify-between font-normal"
+                >
+                  <span className="truncate">
+                    {selectedCandidateId
+                      ? candidates?.find((c) => c.id === selectedCandidateId)?.full_name
+                      : "Selecione um candidato para análise detalhada"}
+                  </span>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-0" align="start">
+                <Command
+                  filter={(value, search) => {
+                    const norm = (s: string) =>
+                      s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+                    return norm(value).includes(norm(search)) ? 1 : 0;
+                  }}
+                >
+                  <CommandInput
+                    placeholder="Pesquisar candidato..."
+                    value={candidateSearch}
+                    onValueChange={setCandidateSearch}
+                  />
+                  <CommandList>
+                    <CommandEmpty>
+                      <div className="flex flex-col items-center gap-2 py-4 text-muted-foreground">
+                        <SearchX className="h-5 w-5" />
+                        <span className="text-sm">Nenhum candidato encontrado</span>
+                      </div>
+                    </CommandEmpty>
+                    <CommandGroup>
+                      {candidates?.map((candidate) => (
+                        <CommandItem
+                          key={candidate.id}
+                          value={candidate.full_name}
+                          onSelect={() => {
+                            setSelectedCandidateId(candidate.id);
+                            setCandidatePickerOpen(false);
+                            setCandidateSearch("");
+                          }}
+                        >
+                          <Check
+                            className={`mr-2 h-4 w-4 ${
+                              selectedCandidateId === candidate.id ? "opacity-100" : "opacity-0"
+                            }`}
+                          />
+                          <span className="truncate">
+                            {highlightMatch(candidate.full_name, candidateSearch)}
+                          </span>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </HelpTooltip>
           {selectedCandidateId && (
             <HelpTooltip text="Volta pra tela que mostra todos os candidatos juntos.">
