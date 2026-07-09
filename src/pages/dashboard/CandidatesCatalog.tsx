@@ -183,7 +183,7 @@ export default function CandidatesCatalog() {
         throw new Error(`Limite vitalício de ${subscription.max_candidates} candidatos atingido. Excluir candidatos não restaura créditos — faça upgrade do plano.`);
       }
       const region = [p.city, p.state].filter(Boolean).join(", ") || p.region || p.state || null;
-      const { error } = await supabase.from("candidates").insert({
+      const { data: inserted, error } = await supabase.from("candidates").insert({
         user_id: user.id,
         full_name: p.fullName,
         party: p.party,
@@ -191,16 +191,18 @@ export default function CandidatesCatalog() {
         party_number: p.partyNumber ?? null,
         region,
         social_media_link: null,
-      });
+      }).select("id, full_name").single();
       if (error) throw error;
+      return inserted;
     },
-    onSuccess: () => {
+    onSuccess: (inserted) => {
       queryClient.invalidateQueries({ queryKey: ["my-candidates-names"] });
       queryClient.invalidateQueries({ queryKey: ["candidates"] });
       queryClient.invalidateQueries({ queryKey: ["candidates-overview"] });
       queryClient.invalidateQueries({ queryKey: ["subscription"] });
-      toast.success("Candidato cadastrado com sucesso!");
+      toast.success("Candidato cadastrado! Iniciando coleta automática...");
       setAddDialogOpen(false);
+      if (inserted?.id) setAutoCollect({ id: inserted.id, name: inserted.full_name });
     },
     onError: (e: Error) => toast.error(e.message),
   });
