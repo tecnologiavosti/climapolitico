@@ -22,6 +22,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 // ArrowUpRight, ArrowDownRight, Minus removidos temporariamente (coluna Tendência oculta)
 import { CandidateOverviewPanel } from "@/components/dashboard/CandidateOverviewPanel";
 import { AddCandidateDialog, type AddCandidatePayload } from "@/components/dashboard/AddCandidateDialog";
+import { AutoCollectionOverlay } from "@/components/dashboard/AutoCollectionOverlay";
 import { findDuplicateCandidate, type DuplicateMatch } from "@/lib/candidateNameNormalizer";
 import { cn } from "@/lib/utils";
 
