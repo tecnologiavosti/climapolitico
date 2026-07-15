@@ -12,6 +12,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import TestAI from "./pages/TestAI";
 import NotFound from "./pages/NotFound";
+import PainelMigracao from "./pages/PainelMigracao";
 import { CookieConsent } from "@/components/CookieConsent";
 import { SeoHead } from "@/components/SeoHead";
 import { InstallPromptModal } from "@/components/pwa/InstallPrompt";
@@ -44,6 +45,7 @@ const App = () => (
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/dashboard/*" element={<Dashboard />} />
             <Route path="/test-ai" element={<TestAI />} />
+            <Route path="/painel-migracao" element={<PainelMigracao />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
