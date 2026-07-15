@@ -12,6 +12,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import TestAI from "./pages/TestAI";
 import NotFound from "./pages/NotFound";
+import PainelMigracao from "./pages/PainelMigracao";
 import { CookieConsent } from "@/components/CookieConsent";
 import { SeoHead } from "@/components/SeoHead";
 import { InstallPromptModal } from "@/components/pwa/InstallPrompt";
