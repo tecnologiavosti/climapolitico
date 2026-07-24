@@ -14,6 +14,7 @@ import {
   Activity,
   Settings as SettingsIcon,
   Search,
+  Bell,
 } from "lucide-react";
 
 // Reuse existing admin pages — each already provides its own UI; we mount them inside tabs.
@@ -30,6 +31,7 @@ const AdminSystem = lazy(() => import("./AdminSystem"));
 const AdminApiSettings = lazy(() => import("../AdminApiSettings"));
 const AdminSettings = lazy(() => import("./AdminSettings"));
 const AdminSeoComplete = lazy(() => import("./AdminSeoComplete"));
+const AdminTokenAlerts = lazy(() => import("./AdminTokenAlerts"));
 
 const TABS = [
   { value: "overview", label: "Visão Geral", icon: LayoutDashboard, El: AdminDashboard },
@@ -43,6 +45,7 @@ const TABS = [
   { value: "logs", label: "Logs", icon: Activity, El: AdminLogs },
   { value: "system", label: "Sistema", icon: SettingsIcon, El: AdminSystem },
   { value: "api", label: "APIs", icon: SettingsIcon, El: AdminApiSettings },
+  { value: "token-alerts", label: "Alertas de Tokens", icon: Bell, El: AdminTokenAlerts },
   { value: "seo", label: "SEO", icon: Search, El: AdminSeoComplete },
   { value: "settings", label: "Configurações", icon: SettingsIcon, El: AdminSettings },
 ];
