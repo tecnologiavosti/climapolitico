@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 
-const SOURCES: { name: string; slug: string; color: string }[] = [
+const SOURCES: { name: string; slug: string; color: string; invertOnDark?: boolean }[] = [
   { name: "LinkedIn", slug: "linkedin", color: "0A66C2" },
-  { name: "Wikipedia", slug: "wikipedia", color: "000000" },
+  { name: "Wikipedia", slug: "wikipedia", color: "000000", invertOnDark: true },
   { name: "Telegram", slug: "telegram", color: "26A5E4" },
   { name: "Google News", slug: "googlenews", color: "4285F4" },
-  { name: "TikTok", slug: "tiktok", color: "000000" },
+  { name: "TikTok", slug: "tiktok", color: "000000", invertOnDark: true },
   { name: "YouTube", slug: "youtube", color: "FF0000" },
   { name: "Bluesky", slug: "bluesky", color: "0285FF" },
   { name: "Reddit", slug: "reddit", color: "FF4500" },
   { name: "Facebook", slug: "facebook", color: "1877F2" },
   { name: "Instagram", slug: "instagram", color: "E4405F" },
-  { name: "X / Twitter", slug: "x", color: "000000" },
+  { name: "X / Twitter", slug: "x", color: "000000", invertOnDark: true },
 ];
 
 export const MonitoredSources = () => {
@@ -72,8 +72,7 @@ export const MonitoredSources = () => {
               key={`${s.slug}-${i}`}
               className="group relative flex flex-col items-center justify-center gap-2.5 rounded-[20px] border transition-all duration-[250ms] cursor-pointer shrink-0
                 w-[130px] h-[90px] sm:w-[180px] sm:h-[110px]
-                bg-white/95 border-black/[0.06] shadow-sm backdrop-blur-xl
-                dark:bg-slate-800/70 dark:border-white/[0.06]
+                bg-card text-card-foreground border-border shadow-sm backdrop-blur-xl
                 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-[0_12px_30px_rgba(0,0,0,0.18)]"
             >
               <img
@@ -87,7 +86,7 @@ export const MonitoredSources = () => {
                   const fb = el.nextElementSibling as HTMLElement | null;
                   if (fb) fb.style.display = "flex";
                 }}
-                className="h-7 w-7 sm:h-9 sm:w-9 object-contain block transition-transform duration-300 group-hover:scale-110 dark:brightness-110"
+                className={`h-7 w-7 sm:h-9 sm:w-9 object-contain block transition-transform duration-300 group-hover:scale-110 ${s.invertOnDark ? "dark:invert" : ""}`}
               />
               <span
                 aria-hidden="true"
@@ -95,7 +94,7 @@ export const MonitoredSources = () => {
               >
                 🌐
               </span>
-              <span className="text-xs sm:text-sm font-semibold text-foreground/90">
+              <span className="text-xs sm:text-sm font-semibold text-card-foreground">
                 {s.name}
               </span>
             </div>
