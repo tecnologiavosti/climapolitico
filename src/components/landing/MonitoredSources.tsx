@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 
-const SOURCES: { name: string; slug: string; color: string }[] = [
+const SOURCES: { name: string; slug: string; color: string; invertOnDark?: boolean }[] = [
   { name: "LinkedIn", slug: "linkedin", color: "0A66C2" },
-  { name: "Wikipedia", slug: "wikipedia", color: "000000" },
+  { name: "Wikipedia", slug: "wikipedia", color: "000000", invertOnDark: true },
   { name: "Telegram", slug: "telegram", color: "26A5E4" },
   { name: "Google News", slug: "googlenews", color: "4285F4" },
-  { name: "TikTok", slug: "tiktok", color: "000000" },
+  { name: "TikTok", slug: "tiktok", color: "000000", invertOnDark: true },
   { name: "YouTube", slug: "youtube", color: "FF0000" },
   { name: "Bluesky", slug: "bluesky", color: "0285FF" },
   { name: "Reddit", slug: "reddit", color: "FF4500" },
   { name: "Facebook", slug: "facebook", color: "1877F2" },
   { name: "Instagram", slug: "instagram", color: "E4405F" },
-  { name: "X / Twitter", slug: "x", color: "000000" },
+  { name: "X / Twitter", slug: "x", color: "000000", invertOnDark: true },
 ];
 
 export const MonitoredSources = () => {
