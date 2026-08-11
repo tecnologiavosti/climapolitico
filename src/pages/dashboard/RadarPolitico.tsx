@@ -755,7 +755,6 @@ export default function RadarPolitico() {
             <div className="border rounded-md bg-card max-h-[70vh] overflow-y-auto">
               {visibleEvents.map((e, index) => {
                 if (!e) return null;
-              const b = band(e.importance);
               const entity = candidateId !== "all" && candidateName
                 ? analyzeEventEntity(e, candidateName)
                 : null;
@@ -798,16 +797,8 @@ export default function RadarPolitico() {
                           title: e.title, summary: e.summary, category: e.category,
                           social_score: e.social_score, importance: e.importance, source_count: e.source_count,
                         })} compact />
-                        {entity && import.meta.env.DEV && (
-                          <div className="mt-2 rounded border border-dashed border-amber-500/40 bg-amber-500/5 p-2 text-[10px] font-mono text-amber-700 dark:text-amber-300 space-y-0.5">
-                            <div>[debug] primary_entity: {entity.primaryEntity ?? "—"}</div>
-                            <div>[debug] match_score: {entity.score.toFixed(2)} ({entity.matched ? "incluído" : "excluído"})</div>
-                            <div>[debug] motivo: {entity.reason}</div>
-                            {entity.secondaryEntities.length > 0 && (
-                              <div>[debug] secondary: {entity.secondaryEntities.join(", ")}</div>
-                            )}
-                          </div>
-                        )}
+
+
 
                       </div>
                     </div>
