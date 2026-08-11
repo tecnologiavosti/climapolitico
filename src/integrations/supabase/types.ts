@@ -5088,7 +5088,6 @@ export type Database = {
         Args: { p_candidate_id: string; p_end: string; p_start: string }
         Returns: Json
       }
-      exec_sql: { Args: { sql_query: string }; Returns: Json }
       get_cities_ranking_summary: {
         Args: { _candidate_id: string; _user_id: string }
         Returns: Json

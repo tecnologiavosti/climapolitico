@@ -16,7 +16,6 @@ import {
   UserCheck,
   Settings as SettingsIcon,
   Search,
-  Bell,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -46,7 +45,6 @@ const adminTabs: AdminItem[] = [
   { title: "Logs", url: "/dashboard/admin?tab=logs", icon: Activity, tab: "logs" },
   { title: "Sistema", url: "/dashboard/admin?tab=system", icon: SettingsIcon, tab: "system" },
   { title: "APIs", url: "/dashboard/admin?tab=api", icon: SettingsIcon, tab: "api" },
-  { title: "Alertas de Tokens", url: "/dashboard/admin?tab=token-alerts", icon: Bell, tab: "token-alerts" },
   { title: "SEO", url: "/dashboard/admin?tab=seo", icon: Search, tab: "seo" },
   { title: "Configurações", url: "/dashboard/admin?tab=settings", icon: SettingsIcon, tab: "settings" },
 ];
