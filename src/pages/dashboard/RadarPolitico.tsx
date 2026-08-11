@@ -756,7 +756,6 @@ export default function RadarPolitico() {
               {visibleEvents.map((e, index) => {
                 if (!e) return null;
               const entity = candidateId !== "all" && candidateName
-              const entity = candidateId !== "all" && candidateName
                 ? analyzeEventEntity(e, candidateName)
                 : null;
               return (
