@@ -96,6 +96,8 @@ const Index = () => {
         paddingRight: "env(safe-area-inset-right)",
       }}
     >
+      Faça uma auditoria e me de possiveis causas desse failed to fetch
+
       {/* PWA install banner — mobile only, antes do Hero */}
       <InstallPwaBanner />
 
