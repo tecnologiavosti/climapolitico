@@ -810,14 +810,6 @@ export default function RadarPolitico() {
                         )}
 
                       </div>
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${b.tone}`}>
-                          {b.label} · {e.importance}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground font-mono">
-                          social {e.social_score}
-                        </span>
-                      </div>
                     </div>
                   </button>
                 </div>
