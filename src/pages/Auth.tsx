@@ -124,9 +124,12 @@ const Auth = () => {
     setLoading(true);
     const { data: signInData, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password: loginPassword });
     if (error) {
+      const isFetchError = error.message?.toLowerCase().includes("fetch");
       toast({
-        title: "Erro ao fazer login",
-        description: error.message === "Invalid login credentials" ? "Email ou senha incorretos" : error.message,
+        title: isFetchError ? "Erro de Conexão" : "Erro ao fazer login",
+        description: isFetchError 
+          ? "Não foi possível conectar ao servidor. Verifique sua internet ou tente novamente em instantes."
+          : (error.message === "Invalid login credentials" ? "Email ou senha incorretos" : error.message),
         variant: "destructive",
       });
       setLoading(false);
