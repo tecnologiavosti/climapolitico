@@ -446,9 +446,6 @@ export default function RadarPolitico() {
     mutationFn: async (_force: boolean = true) => {
       // Busca manual SEMPRE força refresh — nunca retorna cache antigo
       const forceRefresh = true;
-      console.log("FORCE REFRESH", forceRefresh);
-      console.log("CACHE HIT", false);
-      console.log("RUNNING NEW SEARCH");
 
       // Limpa qualquer cache local antes de buscar
       try {
@@ -515,21 +512,6 @@ export default function RadarPolitico() {
 
   const backendTotal = jobStatus?.events_count ?? events.length;
   useEffect(() => {
-    console.log({ fetched: events.length, rendered: visibleEvents.length });
-    if (events.length !== visibleEvents.length) {
-      console.error("Radar render mismatch");
-    }
-    if (import.meta.env.DEV) {
-      console.log("[Radar Debug]", {
-        totalFetched: events.length,
-        backendTotal,
-        totalAfterFilter: filtered.length,
-        totalRendered: visibleEvents.length,
-      });
-      if (events.length !== visibleEvents.length) {
-        console.warn(`Radar mismatch: fetched ${events.length} / rendered ${visibleEvents.length}`);
-      }
-    }
   }, [backendTotal, filtered.length, visibleEvents.length, events.length]);
   const timeline = useMemo(() => {
     const map = new Map<string, number>();
