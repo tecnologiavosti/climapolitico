@@ -22,7 +22,12 @@ const fullNameSchema = z.string().min(2, "Nome deve ter no mínimo 2 caracteres"
 const PRODUCTION_ORIGIN = "https://climapolitico.com.br";
 const getAuthOrigin = () => {
   if (typeof window === "undefined") return PRODUCTION_ORIGIN;
-  return window.location.origin;
+  const host = window.location.hostname;
+  // Em desenvolvimento local mantemos a origem atual; em qualquer outro
+  // ambiente (preview/produção) o OAuth precisa voltar para o domínio oficial,
+  // que é o único autorizado no provedor Google.
+  if (host === "localhost" || host === "127.0.0.1") return window.location.origin;
+  return PRODUCTION_ORIGIN;
 };
 const getPasswordResetRedirect = () => `${PRODUCTION_ORIGIN}/reset-password`;
 
