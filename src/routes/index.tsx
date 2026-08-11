@@ -3,7 +3,7 @@ import React from "react";
 const Index = () => {
   return (
     <body>
-      A página /auth não está funcionando
+      Saia do arquivos de rotas, faça o q estou pedindo
     </body>
   );
 };
