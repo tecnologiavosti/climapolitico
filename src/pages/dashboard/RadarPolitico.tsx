@@ -755,7 +755,7 @@ export default function RadarPolitico() {
             <div className="border rounded-md bg-card max-h-[70vh] overflow-y-auto">
               {visibleEvents.map((e, index) => {
                 if (!e) return null;
-              const b = band(e.importance);
+              const entity = candidateId !== "all" && candidateName
               const entity = candidateId !== "all" && candidateName
                 ? analyzeEventEntity(e, candidateName)
                 : null;
