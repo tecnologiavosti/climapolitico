@@ -3,7 +3,7 @@ import React from "react";
 const Index = () => {
   return (
     <body>
-      o /auth não está renderizando
+      A página /auth não está funcionando
     </body>
   );
 };
