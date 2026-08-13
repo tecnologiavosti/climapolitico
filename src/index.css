@@ -230,9 +230,10 @@ All colors MUST be HSL.
   .dark .recharts-cartesian-axis-tick text,
   .dark .recharts-legend-item-text,
   .aurora .recharts-cartesian-axis-tick text,
-  .aurora .recharts-legend-item-text {
-    fill: #E2E8F0 !important;
-    color: #E2E8F0 !important;
+  .aurora .recharts-legend-item-text,
+  .aurora .recharts-text {
+    fill: #F8FAFC !important;
+    color: #F8FAFC !important;
   }
 
   /* Transição suave ao trocar tema */
