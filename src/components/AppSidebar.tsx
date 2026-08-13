@@ -208,16 +208,16 @@ function OnboardingBanner() {
   const hasCandidates = useHasCandidates();
   if (hasCandidates !== false) return null;
   return (
-    <div className="mx-3 mt-3 mb-1 rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 to-primary/5 p-3 shadow-sm">
+    <div className="mx-3 mt-3 mb-1 rounded-xl border border-white/20 bg-white/10 p-3 shadow-lg backdrop-blur-sm">
       <div className="flex items-start gap-2">
-        <div className="rounded-lg bg-primary/15 p-1.5">
-          <Sparkles className="h-4 w-4 text-primary" />
+        <div className="rounded-lg bg-white/20 p-1.5 text-white">
+          <Sparkles className="h-4 w-4" />
         </div>
         <div className="min-w-0">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-primary">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-white">
             Passo 1
           </div>
-          <p className="text-xs text-foreground/80 mt-0.5 leading-snug">
+          <p className="text-xs text-white/90 mt-0.5 leading-snug">
             Adicione um candidato para começar.
           </p>
         </div>
