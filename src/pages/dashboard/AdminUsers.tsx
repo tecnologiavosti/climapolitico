@@ -17,7 +17,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Shield, Users, TrendingUp, BarChart3, MoreHorizontal, Edit, Trash2, Ban, ShieldCheck,
-  KeyRound, LogIn, Clock, Plus, Crown, Zap, RotateCcw, Search,
+  KeyRound, LogIn, Clock, Plus, Crown, Zap, RotateCcw, Search, Calendar,
+  Activity, ArrowUpRight
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,6 +26,12 @@ import { AdminRoute } from "@/components/admin/AdminRoute";
 import { UserEditDialog } from "@/components/admin/UserEditDialog";
 import { CreateUserDialog } from "@/components/admin/CreateUserDialog";
 import { useMemo, useState } from "react";
+import {
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, AreaChart, Area
+} from "recharts";
+import { format, startOfDay, subDays, eachDayOfInterval, isSameDay } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 interface UserRow {
   id: string;
@@ -52,6 +59,7 @@ function AdminUsersInner() {
   const [search, setSearch] = useState("");
   const [filterTier, setFilterTier] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [showAnalytics, setShowAnalytics] = useState(false);
 
   const { data: users, isLoading } = useQuery({
     queryKey: ["admin-users"],
@@ -77,6 +85,45 @@ function AdminUsersInner() {
     },
     enabled: isAdmin,
   });
+
+  const analyticsData = useMemo(() => {
+    if (!users) return null;
+
+    const last30Days = eachDayOfInterval({
+      start: subDays(new Date(), 30),
+      end: new Date(),
+    });
+
+    const growthData = last30Days.map(date => {
+      const formattedDate = format(date, "dd/MM", { locale: ptBR });
+      const newUsers = users.filter(u => isSameDay(new Date(u.created_at), date)).length;
+      const totalToDate = users.filter(u => new Date(u.created_at) <= date).length;
+      
+      return {
+        name: formattedDate,
+        novos: newUsers,
+        total: totalToDate,
+      };
+    });
+
+    const tierDistribution = [
+      { name: "Free", value: users.filter(u => !u.subscription || u.subscription.tier === "free").length, color: "#94a3b8" },
+      { name: "Starter", value: users.filter(u => u.subscription?.tier === "starter").length, color: "#3b82f6" },
+      { name: "Pro", value: users.filter(u => u.subscription?.tier === "pro").length, color: "#8b5cf6" },
+      { name: "Enterprise", value: users.filter(u => u.subscription?.tier === "enterprise").length, color: "#f59e0b" },
+      { name: "Vitalício", value: users.filter(u => u.subscription?.tier === "lifetime").length, color: "#10b981" },
+      { name: "VIP", value: users.filter(u => u.subscription?.tier === "vip").length, color: "#ec4899" },
+    ].filter(t => t.value > 0);
+
+    const activeLast24h = users.filter(u => {
+      // Mocking recent access as we don't have last_sign_in_at in profiles yet
+      // In a real scenario, we'd query auth.users or a custom session log
+      // For now, let's show "recently created" as a placeholder or just random
+      return new Date(u.created_at) > subDays(new Date(), 1);
+    }).length;
+
+    return { growthData, tierDistribution, activeLast24h };
+  }, [users]);
 
   const filtered = useMemo(() => {
     return (users ?? []).filter(u => {
@@ -148,49 +195,155 @@ function AdminUsersInner() {
         <Button onClick={() => setCreating(true)}><Plus className="h-4 w-4 mr-2" /> Criar Usuário</Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Usuários</CardTitle><Users className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{stats.totalUsers}</div></CardContent></Card>
-        <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Planos Ativos</CardTitle><TrendingUp className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{stats.activePlans}</div></CardContent></Card>
-        <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Análises</CardTitle><BarChart3 className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{stats.totalAnalyses}</div></CardContent></Card>
-        <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Candidatos</CardTitle><Users className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{stats.totalCandidates}</div></CardContent></Card>
+      <div className="flex items-center gap-2 p-1 bg-muted/50 rounded-lg w-fit">
+        <Button 
+          variant={!showAnalytics ? "secondary" : "ghost"} 
+          size="sm" 
+          onClick={() => setShowAnalytics(false)}
+          className="gap-2"
+        >
+          <Users className="h-4 w-4" /> Usuários
+        </Button>
+        <Button 
+          variant={showAnalytics ? "secondary" : "ghost"} 
+          size="sm" 
+          onClick={() => setShowAnalytics(true)}
+          className="gap-2"
+        >
+          <BarChart3 className="h-4 w-4" /> Analytics
+        </Button>
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <CardTitle>Gestão de Usuários</CardTitle>
-              <CardDescription>{filtered.length} usuário(s)</CardDescription>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative">
-                <Search className="h-4 w-4 absolute left-2 top-2.5 text-muted-foreground" />
-                <Input placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 w-56" />
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Total Usuários</CardTitle><Users className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{stats.totalUsers}</div></CardContent></Card>
+        <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Novos (24h)</CardTitle><Activity className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{analyticsData?.activeLast24h}</div></CardContent></Card>
+        <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Assinaturas Ativas</CardTitle><TrendingUp className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{stats.activePlans}</div></CardContent></Card>
+        <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm">Conversão</CardTitle><ArrowUpRight className="h-4 w-4 text-muted-foreground" /></CardHeader><CardContent><div className="text-2xl font-bold">{stats.totalUsers > 0 ? ((stats.activePlans / stats.totalUsers) * 100).toFixed(1) : 0}%</div></CardContent></Card>
+      </div>
+
+      {showAnalytics && analyticsData ? (
+        <div className="grid gap-6 md:grid-cols-2">
+          <Card className="col-span-1 md:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2"><TrendingUp className="h-5 w-5 text-primary" /> Crescimento da Base</CardTitle>
+              <CardDescription>Evolução total de usuários nos últimos 30 dias</CardDescription>
+            </CardHeader>
+            <CardContent className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={analyticsData.growthData}>
+                  <defs>
+                    <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  />
+                  <Area type="monotone" dataKey="total" name="Total" stroke="#3b82f6" fillOpacity={1} fill="url(#colorTotal)" strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2"><Plus className="h-5 w-5 text-primary" /> Novos Usuários Diários</CardTitle>
+              <CardDescription>Cadastros realizados dia a dia</CardDescription>
+            </CardHeader>
+            <CardContent className="h-[250px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={analyticsData.growthData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
+                  <Tooltip 
+                    cursor={{fill: '#f1f5f9'}}
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  />
+                  <Bar dataKey="novos" name="Novos" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2"><BarChart3 className="h-5 w-5 text-primary" /> Distribuição de Planos</CardTitle>
+              <CardDescription>Composição da base por nível de assinatura</CardDescription>
+            </CardHeader>
+            <CardContent className="h-[250px] flex items-center">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={analyticsData.tierDistribution}
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {analyticsData.tierDistribution.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" className="fill-foreground font-bold text-xl">
+                    {stats.totalUsers}
+                  </text>
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="flex flex-col gap-2 ml-4">
+                {analyticsData.tierDistribution.map((t) => (
+                  <div key={t.name} className="flex items-center gap-2 text-xs">
+                    <div className="w-3 h-3 rounded-full" style={{backgroundColor: t.color}} />
+                    <span className="font-medium">{t.name}:</span>
+                    <span className="text-muted-foreground">{t.value}</span>
+                  </div>
+                ))}
               </div>
-              <Select value={filterTier} onValueChange={setFilterTier}>
-                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos planos</SelectItem>
-                  <SelectItem value="free">Free</SelectItem>
-                  <SelectItem value="starter">Starter</SelectItem>
-                  <SelectItem value="pro">Pro</SelectItem>
-                  <SelectItem value="enterprise">Enterprise</SelectItem>
-                  <SelectItem value="lifetime">Vitalício</SelectItem>
-                  <SelectItem value="vip">👑 VIP</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos status</SelectItem>
-                  <SelectItem value="active">Ativos</SelectItem>
-                  <SelectItem value="cancelled">Cancelados</SelectItem>
-                  <SelectItem value="banned">Banidos</SelectItem>
-                </SelectContent>
-              </Select>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <CardTitle>Gestão de Usuários</CardTitle>
+                <CardDescription>{filtered.length} usuário(s) encontrados</CardDescription>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative">
+                  <Search className="h-4 w-4 absolute left-2 top-2.5 text-muted-foreground" />
+                  <Input placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 w-56" />
+                </div>
+                <Select value={filterTier} onValueChange={setFilterTier}>
+                  <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos planos</SelectItem>
+                    <SelectItem value="free">Free</SelectItem>
+                    <SelectItem value="starter">Starter</SelectItem>
+                    <SelectItem value="pro">Pro</SelectItem>
+                    <SelectItem value="enterprise">Enterprise</SelectItem>
+                    <SelectItem value="lifetime">Vitalício</SelectItem>
+                    <SelectItem value="vip">👑 VIP</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos status</SelectItem>
+                    <SelectItem value="active">Ativos</SelectItem>
+                    <SelectItem value="cancelled">Cancelados</SelectItem>
+                    <SelectItem value="banned">Banidos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          </div>
-        </CardHeader>
+          </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
@@ -332,6 +485,7 @@ function AdminUsersInner() {
           )}
         </CardContent>
       </Card>
+      )}
 
       <UserEditDialog open={!!editing} onOpenChange={v => !v && setEditing(null)} user={editing} />
       <CreateUserDialog open={creating} onOpenChange={setCreating} />
