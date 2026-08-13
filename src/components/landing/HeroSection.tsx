@@ -33,7 +33,7 @@ export const HeroSection = () => {
             Powered by AI Analytics
           </Badge>
 
-          <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold leading-tight">
+          <h1 className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-bold leading-tight">
             <span className="text-white drop-shadow">Clima Político</span>
             <br />
             <span className="text-white/80">Analytics</span>

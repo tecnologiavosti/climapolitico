@@ -316,6 +316,14 @@ All colors MUST be HSL.
   /* Garantir que nenhum container ultrapasse a viewport no mobile/tablet */
   main, [role="main"] { min-width: 0; }
 
+  /* Grid KPIs - Mobile 2 colunas */
+  @media (max-width: 640px) {
+    .grid-cols-1.md\:grid-cols-2.lg\:grid-cols-4 {
+      grid-template-columns: repeat(2, 1fr) !important;
+      gap: 0.75rem !important;
+    }
+  }
+
   h1, h2, h3, h4, h5, h6 {
     text-wrap: balance;
   }

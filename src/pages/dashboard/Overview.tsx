@@ -519,11 +519,9 @@ export default function Overview() {
               </div>
             </HelpTooltip>
             {selectedCandidateId && (
-              <HelpTooltip text="Volta pra tela que mostra todos os candidatos juntos.">
-                <Button variant="ghost" size="sm" onClick={() => setSelectedCandidateId("")} className="h-10 sm:h-9">
-                  Limpar seleção
-                </Button>
-              </HelpTooltip>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedCandidateId("")} className="h-10 sm:h-9">
+                Limpar seleção
+              </Button>
             )}
           </div>
         </div>
