@@ -96,7 +96,7 @@ export const MonitoredSources = () => {
               >
                 🌐
               </span>
-              <span className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 aurora:text-white">
+              <span className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 aurora:text-white drop-shadow-sm">
                 {s.name}
               </span>
             </div>
