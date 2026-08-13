@@ -74,7 +74,7 @@ export const MonitoredSources = () => {
                 w-[130px] h-[90px] sm:w-[180px] sm:h-[110px]
                 bg-slate-100/90 border-black/[0.06] shadow-sm backdrop-blur-xl
                 dark:bg-slate-800/70 dark:border-white/[0.06]
-                aurora:bg-slate-900/60 aurora:border-white/10 aurora:backdrop-blur-2xl
+                aurora:bg-slate-800/95 aurora:border-white/20 aurora:backdrop-blur-2xl
                 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-[0_12px_30px_rgba(0,0,0,0.18)]"
             >
               <img
