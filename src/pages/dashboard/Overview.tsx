@@ -442,22 +442,33 @@ export default function Overview() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-0 sm:px-0">
       {!loadingCandidates && totalCandidates === 0 && <EmptyCandidatesCTA />}
       {/* Candidate Selector for Consolidated View */}
-      <Card className="p-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+      <Card className="p-4 mx-0">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
           <div className="flex items-center gap-2">
-            <LayoutDashboard className="h-5 w-5 text-primary" />
-            <span className="font-medium">Visão Consolidada do Candidato</span>
+            <LayoutDashboard className="h-5 w-5 text-primary shrink-0" />
+            <span className="font-medium text-sm sm:text-base">Visão Consolidada do Candidato</span>
           </div>
           <HelpTooltip text="Clique aqui pra ver os números só de um candidato específico.">
-            <Popover open={candidatePickerOpen} onOpenChange={setCandidatePickerOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  aria-expanded={candidatePickerOpen}
+            <div className="w-full sm:w-auto">
+              <Popover open={candidatePickerOpen} onOpenChange={setCandidatePickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={candidatePickerOpen}
+                    className="w-full sm:w-[300px] justify-between text-left font-normal"
+                  >
+                    <span className="truncate">
+                      {consolidatedId 
+                        ? candidates?.find(c => c.id === consolidatedId)?.name 
+                        : "Selecionar candidato..."}
+                    </span>
+                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
                   className="w-64 justify-between font-normal"
                 >
                   <span className="truncate">
