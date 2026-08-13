@@ -315,35 +315,35 @@ function AdminUsersInner() {
                 <CardTitle>Gestão de Usuários</CardTitle>
                 <CardDescription>{filtered.length} usuário(s) encontrados</CardDescription>
               </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative">
-                <Search className="h-4 w-4 absolute left-2 top-2.5 text-muted-foreground" />
-                <Input placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 w-56" />
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative">
+                  <Search className="h-4 w-4 absolute left-2 top-2.5 text-muted-foreground" />
+                  <Input placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 w-56" />
+                </div>
+                <Select value={filterTier} onValueChange={setFilterTier}>
+                  <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos planos</SelectItem>
+                    <SelectItem value="free">Free</SelectItem>
+                    <SelectItem value="starter">Starter</SelectItem>
+                    <SelectItem value="pro">Pro</SelectItem>
+                    <SelectItem value="enterprise">Enterprise</SelectItem>
+                    <SelectItem value="lifetime">Vitalício</SelectItem>
+                    <SelectItem value="vip">👑 VIP</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos status</SelectItem>
+                    <SelectItem value="active">Ativos</SelectItem>
+                    <SelectItem value="cancelled">Cancelados</SelectItem>
+                    <SelectItem value="banned">Banidos</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <Select value={filterTier} onValueChange={setFilterTier}>
-                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos planos</SelectItem>
-                  <SelectItem value="free">Free</SelectItem>
-                  <SelectItem value="starter">Starter</SelectItem>
-                  <SelectItem value="pro">Pro</SelectItem>
-                  <SelectItem value="enterprise">Enterprise</SelectItem>
-                  <SelectItem value="lifetime">Vitalício</SelectItem>
-                  <SelectItem value="vip">👑 VIP</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos status</SelectItem>
-                  <SelectItem value="active">Ativos</SelectItem>
-                  <SelectItem value="cancelled">Cancelados</SelectItem>
-                  <SelectItem value="banned">Banidos</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
-          </div>
-        </CardHeader>
+          </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
