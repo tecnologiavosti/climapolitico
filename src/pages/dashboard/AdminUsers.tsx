@@ -485,6 +485,7 @@ function AdminUsersInner() {
           )}
         </CardContent>
       </Card>
+      )}
 
       <UserEditDialog open={!!editing} onOpenChange={v => !v && setEditing(null)} user={editing} />
       <CreateUserDialog open={creating} onOpenChange={setCreating} />
