@@ -442,86 +442,88 @@ export default function Overview() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-0 sm:px-0">
       {!loadingCandidates && totalCandidates === 0 && <EmptyCandidatesCTA />}
       {/* Candidate Selector for Consolidated View */}
-      <Card className="p-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+      <Card className="p-4 mx-0">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
           <div className="flex items-center gap-2">
-            <LayoutDashboard className="h-5 w-5 text-primary" />
-            <span className="font-medium">Visão Consolidada do Candidato</span>
+            <LayoutDashboard className="h-5 w-5 text-primary shrink-0" />
+            <span className="font-medium text-sm sm:text-base">Visão Consolidada do Candidato</span>
           </div>
-          <HelpTooltip text="Clique aqui pra ver os números só de um candidato específico.">
-            <Popover open={candidatePickerOpen} onOpenChange={setCandidatePickerOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  aria-expanded={candidatePickerOpen}
-                  className="w-64 justify-between font-normal"
-                >
-                  <span className="truncate">
-                    {selectedCandidateId
-                      ? candidates?.find((c) => c.id === selectedCandidateId)?.full_name
-                      : "Selecione um candidato para análise detalhada"}
-                  </span>
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-64 p-0" align="start">
-                <Command
-                  filter={(value, search) => {
-                    const norm = (s: string) =>
-                      s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-                    return norm(value).includes(norm(search)) ? 1 : 0;
-                  }}
-                >
-                  <CommandInput
-                    placeholder="Pesquisar candidato..."
-                    value={candidateSearch}
-                    onValueChange={setCandidateSearch}
-                  />
-                  <CommandList>
-                    <CommandEmpty>
-                      <div className="flex flex-col items-center gap-2 py-4 text-muted-foreground">
-                        <SearchX className="h-5 w-5" />
-                        <span className="text-sm">Nenhum candidato encontrado</span>
-                      </div>
-                    </CommandEmpty>
-                    <CommandGroup>
-                      {candidates?.map((candidate) => (
-                        <CommandItem
-                          key={candidate.id}
-                          value={candidate.full_name}
-                          onSelect={() => {
-                            setSelectedCandidateId(candidate.id);
-                            setCandidatePickerOpen(false);
-                            setCandidateSearch("");
-                          }}
-                        >
-                          <Check
-                            className={`mr-2 h-4 w-4 ${
-                              selectedCandidateId === candidate.id ? "opacity-100" : "opacity-0"
-                            }`}
-                          />
-                          <span className="truncate">
-                            {highlightMatch(candidate.full_name, candidateSearch)}
-                          </span>
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-          </HelpTooltip>
-          {selectedCandidateId && (
-            <HelpTooltip text="Volta pra tela que mostra todos os candidatos juntos.">
-              <Button variant="ghost" size="sm" onClick={() => setSelectedCandidateId("")}>
+          <div className="flex flex-col sm:flex-row flex-1 items-stretch sm:items-center gap-3">
+            <HelpTooltip text="Clique aqui pra ver os números só de um candidato específico.">
+              <div className="w-full sm:w-auto">
+                <Popover open={candidatePickerOpen} onOpenChange={setCandidatePickerOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={candidatePickerOpen}
+                      className="w-full sm:w-[320px] justify-between text-left font-normal"
+                    >
+                      <span className="truncate">
+                        {selectedCandidateId
+                          ? candidates?.find((c) => c.id === selectedCandidateId)?.full_name
+                          : "Selecione um candidato para análise detalhada"}
+                      </span>
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[calc(100vw-2rem)] sm:w-80 p-0" align="start">
+                    <Command
+                      filter={(value, search) => {
+                        const norm = (s: string) =>
+                          s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+                        return norm(value).includes(norm(search)) ? 1 : 0;
+                      }}
+                    >
+                      <CommandInput
+                        placeholder="Pesquisar candidato..."
+                        value={candidateSearch}
+                        onValueChange={setCandidateSearch}
+                      />
+                      <CommandList>
+                        <CommandEmpty>
+                          <div className="flex flex-col items-center gap-2 py-4 text-muted-foreground">
+                            <SearchX className="h-5 w-5" />
+                            <span className="text-sm">Nenhum candidato encontrado</span>
+                          </div>
+                        </CommandEmpty>
+                        <CommandGroup>
+                          {candidates?.map((candidate) => (
+                            <CommandItem
+                              key={candidate.id}
+                              value={candidate.full_name}
+                              onSelect={() => {
+                                setSelectedCandidateId(candidate.id);
+                                setCandidatePickerOpen(false);
+                                setCandidateSearch("");
+                              }}
+                            >
+                              <Check
+                                className={`mr-2 h-4 w-4 ${
+                                  selectedCandidateId === candidate.id ? "opacity-100" : "opacity-0"
+                                }`}
+                              />
+                              <span className="truncate">
+                                {highlightMatch(candidate.full_name, candidateSearch)}
+                              </span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </HelpTooltip>
+            {selectedCandidateId && (
+              <Button variant="ghost" size="sm" onClick={() => setSelectedCandidateId("")} className="h-10 sm:h-9">
                 Limpar seleção
               </Button>
-            </HelpTooltip>
-          )}
+            )}
+          </div>
         </div>
       </Card>
 

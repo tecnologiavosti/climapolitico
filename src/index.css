@@ -275,48 +275,54 @@ All colors MUST be HSL.
 
   /* Mobile: promove grids de coluna única para 2 colunas, mantendo
      os blocos lado a lado como no desktop. */
+  /* Mobile adjustments */
   @media (max-width: 640px) {
-    /* Só promove para 2 colunas grids de KPIs (md:grid-cols-*).
-       Grids de gráficos usam lg:grid-cols-* e ficam em coluna única
-       para o gráfico ter largura suficiente. */
-    .grid.grid-cols-1[class*="md\:grid-cols-"] {
+    /* Só promove para 2 colunas grids de KPIs (md:grid-cols-*) que não sejam o grid principal de charts */
+    .grid.grid-cols-1[class*="md\:grid-cols-"]:not(.lg\:grid-cols-2) {
       grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
       gap: 0.75rem !important;
     }
-    /* Reduz fontes grandes para caber 2 colunas confortavelmente */
+
+    /* Otimização de containers */
+    .container {
+      @apply px-4;
+    }
+
+    /* Reduz fontes para mobile */
     .text-4xl { font-size: 1.5rem !important; line-height: 1.2 !important; }
     .text-3xl { font-size: 1.375rem !important; line-height: 1.2 !important; }
     .text-2xl { font-size: 1.125rem !important; line-height: 1.25 !important; }
-    /* Padding mais enxuto em cards no mobile pra dar respiro interno */
+
+    /* Padding cards */
     .p-6 { padding: 0.875rem !important; }
     .p-4 { padding: 0.75rem !important; }
-    /* Não quebra palavras no meio — só onde há espaço/hífen natural */
-    * { word-break: normal !important; overflow-wrap: break-word !important; }
-    /* Ícones decorativos dos StatCards menores no mobile.
-       Importante: só afeta SVG direto do container para não comprimir SVGs internos do Recharts. */
-    .p-3.rounded-lg { padding: 0.5rem !important; }
-    .p-3.rounded-lg > svg { width: 1rem !important; height: 1rem !important; }
-    /* Recharts: força responsividade total dentro do container */
-    .recharts-responsive-container { width: 100% !important; max-width: 100% !important; }
-    .recharts-wrapper, .recharts-surface { max-width: 100% !important; }
-    /* Mobile: legenda compacta. Mantém o posicionamento absoluto padrão do Recharts
-       para que a legenda fique dentro do ResponsiveContainer e não seja cortada por
-       containers com overflow-hidden. */
-    .recharts-legend-wrapper { width: 100% !important; padding-top: 4px; }
-    .recharts-default-legend { text-align: center !important; font-size: 11px !important; line-height: 1.3 !important; }
-    .recharts-legend-item { display: inline-flex !important; align-items: center; margin: 2px 6px !important; }
-    .recharts-pie-label-text { font-size: 10px !important; }
-    .recharts-cartesian-axis-tick text { font-size: 10px !important; }
-    .recharts-tooltip-wrapper { max-width: 90vw !important; }
-    /* SVGs (mapas, charts) nunca podem estourar a largura */
-    svg { max-width: 100%; }
-    /* Tabelas com scroll horizontal seguro */
+
+    /* Força Recharts responsividade */
+    .recharts-responsive-container { width: 100% !important; max-width: 100% !important; min-height: 250px; }
+    .recharts-legend-wrapper { width: 100% !important; position: static !important; }
+    .recharts-default-legend { font-size: 10px !important; }
+
+    /* Scroll horizontal seguro */
+    .overflow-x-touch {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Ajuste global de tabelas */
     table { display: block; max-width: 100%; overflow-x: auto; }
   }
 
 
   /* Garantir que nenhum container ultrapasse a viewport no mobile/tablet */
   main, [role="main"] { min-width: 0; }
+
+  /* Grid KPIs - Mobile 2 colunas */
+  @media (max-width: 640px) {
+    .grid-cols-1.md\:grid-cols-2.lg\:grid-cols-4 {
+      grid-template-columns: repeat(2, 1fr) !important;
+      gap: 0.75rem !important;
+    }
+  }
 
   h1, h2, h3, h4, h5, h6 {
     text-wrap: balance;

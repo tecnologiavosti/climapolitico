@@ -781,30 +781,52 @@ const CandidateComparisonPage = () => {
                       const bWins = !aInsuf && !bInsuf && (row.higherWins ? bVal > aVal : bVal < aVal);
                       const max = Math.max(aVal, bVal, 1);
                       return (
-                        <div key={i} className="grid grid-cols-[1fr_160px_1fr] items-center gap-3 px-3 py-2.5 text-sm">
-                          <div className="flex items-center gap-2 justify-end">
-                            <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                              <motion.div className={`h-full ml-auto ${aWins ? "bg-emerald-400" : "bg-muted-foreground/40"}`}
-                                initial={{ width: 0 }} animate={{ width: aInsuf ? "0%" : `${(aVal / max) * 100}%` }} transition={{ duration: 0.6 }}
-                                style={{ marginLeft: "auto" }}
-                              />
-                            </div>
-                            <span className={`tabular-nums w-12 text-right text-xs ${aWins ? "text-emerald-400 font-semibold" : ""}`}>
-                              {aInsuf ? <span className="text-muted-foreground italic">s/dados</span> : aVal}
-                            </span>
+                        <div key={i} className="flex flex-col sm:grid sm:grid-cols-[1fr_160px_1fr] items-center gap-2 sm:gap-3 px-3 py-3 sm:py-2.5 text-sm border-b last:border-0 sm:border-0 border-border/10">
+                          <div className="hidden sm:flex items-center justify-center gap-1 text-xs text-muted-foreground order-1">
+                             <span>{row.label}</span>
+                             <InfoTip text={row.tip} iconClassName="h-3 w-3" />
                           </div>
-                          <div className="text-xs text-muted-foreground text-center flex items-center justify-center gap-1">
+
+                          <div className="flex items-center gap-2 justify-between sm:justify-end w-full sm:order-0">
+                            <span className="sm:hidden text-xs font-medium text-muted-foreground flex items-center gap-1">
+                              {row.label} (A) <InfoTip text={row.tip} iconClassName="h-3 w-3" />
+                            </span>
+                            <div className="flex items-center gap-2 flex-1 justify-end">
+                              <div className="flex-1 max-w-[120px] sm:max-w-none h-2 rounded-full bg-muted overflow-hidden">
+                                <motion.div className={`h-full ml-auto ${aWins ? "bg-emerald-400" : "bg-muted-foreground/40"}`}
+                                  initial={{ width: 0 }} animate={{ width: aInsuf ? "0%" : `${(aVal / max) * 100}%` }} transition={{ duration: 0.6 }}
+                                  style={{ marginLeft: "auto" }}
+                                />
+                              </div>
+                              <span className={`tabular-nums w-12 text-right text-xs ${aWins ? "text-emerald-400 font-semibold" : ""}`}>
+                                {aInsuf ? <span className="text-muted-foreground italic">s/dados</span> : aVal}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="sm:hidden w-full flex items-center justify-center py-0.5">
+                            <div className="h-px bg-border/20 w-full" />
+                          </div>
+
+                          <div className="flex items-center gap-2 justify-between sm:justify-start w-full order-2">
+                             <span className="sm:hidden text-xs font-medium text-muted-foreground">
+                              {row.label} (B)
+                            </span>
+                            <div className="flex items-center gap-2 flex-1">
+                              <span className={`tabular-nums w-12 text-xs ${bWins ? "text-emerald-400 font-semibold" : ""}`}>
+                                {bInsuf ? <span className="text-muted-foreground italic">s/dados</span> : bVal}
+                              </span>
+                              <div className="flex-1 max-w-[120px] sm:max-w-none h-2 rounded-full bg-muted overflow-hidden">
+                                <motion.div className={`h-full ${bWins ? "bg-emerald-400" : "bg-muted-foreground/40"}`}
+                                  initial={{ width: 0 }} animate={{ width: bInsuf ? "0%" : `${(bVal / max) * 100}%` }} transition={{ duration: 0.6 }} />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Desktop Label (middle column) */}
+                          <div className="hidden sm:flex text-xs text-muted-foreground text-center items-center justify-center gap-1 order-1">
                             <span>{row.label}</span>
                             <InfoTip text={row.tip} iconClassName="h-3 w-3" />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className={`tabular-nums w-12 text-xs ${bWins ? "text-emerald-400 font-semibold" : ""}`}>
-                              {bInsuf ? <span className="text-muted-foreground italic">s/dados</span> : bVal}
-                            </span>
-                            <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                              <motion.div className={`h-full ${bWins ? "bg-emerald-400" : "bg-muted-foreground/40"}`}
-                                initial={{ width: 0 }} animate={{ width: bInsuf ? "0%" : `${(bVal / max) * 100}%` }} transition={{ duration: 0.6 }} />
-                            </div>
                           </div>
                         </div>
                       );

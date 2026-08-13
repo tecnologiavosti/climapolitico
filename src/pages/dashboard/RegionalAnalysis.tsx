@@ -835,17 +835,17 @@ function KpiCard({ icon, label, value, sub, suffix, tint, onClick, tip }: { icon
       className={cn("bg-gradient-to-br border-0 transition-all duration-300", colors, onClick && "cursor-pointer hover:scale-[1.02]")}
       onClick={onClick}
     >
-      <CardContent className="pt-5">
-        <div className="flex items-center gap-2 text-xs font-medium opacity-80 mb-2">
-          <span className="[&>svg]:h-4 [&>svg]:w-4">{icon}</span>
-          <span>{label}</span>
-          {tip && <InfoTip text={tip} />}
+      <CardContent className="pt-4 sm:pt-5 pb-4 px-4">
+        <div className="flex items-center gap-2 text-[10px] sm:text-xs font-medium opacity-80 mb-1.5 sm:mb-2">
+          <span className="[&>svg]:h-3.5 [&>svg]:w-3.5 sm:[&>svg]:h-4 sm:[&>svg]:w-4 shrink-0">{icon}</span>
+          <span className="truncate">{label}</span>
+          {tip && <InfoTip text={tip} iconClassName="h-3 w-3" />}
         </div>
-        <div className="text-2xl font-bold text-foreground">
+        <div className="text-xl sm:text-2xl font-bold text-foreground">
           {value}
-          {suffix && <span className="text-sm text-muted-foreground ml-1">{suffix}</span>}
+          {suffix && <span className="text-[10px] sm:text-sm text-muted-foreground ml-1 font-normal">{suffix}</span>}
         </div>
-        {sub && <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>}
+        {sub && <div className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 truncate">{sub}</div>}
       </CardContent>
     </Card>
   );

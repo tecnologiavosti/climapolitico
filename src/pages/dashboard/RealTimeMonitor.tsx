@@ -631,15 +631,14 @@ const KpiCard = ({
   tone: { text: string; bg: string };
 }) => (
   <Card className="border-border/60">
-    <CardContent className="p-4 space-y-2">
-      <div className="flex items-center gap-2 max-md:justify-center max-md:text-center">
-        <div className={cn("rounded-md p-1.5", tone.bg, tone.text)}>{icon}</div>
-        <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{label}</span>
+    <CardContent className="p-3 sm:p-4 space-y-2">
+      <div className="flex items-center gap-2 max-sm:flex-col max-sm:items-center max-sm:text-center">
+        <div className={cn("rounded-md p-1.5 shrink-0", tone.bg, tone.text)}>{icon}</div>
+        <span className="text-[10px] sm:text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{label}</span>
       </div>
-      <div className="max-md:text-center">{valueNode}</div>
+      <div className="max-sm:text-center overflow-hidden">{valueNode}</div>
     </CardContent>
   </Card>
-
 );
 
 const LoadingState = () => (
