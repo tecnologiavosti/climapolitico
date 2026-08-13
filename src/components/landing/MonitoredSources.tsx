@@ -70,10 +70,11 @@ export const MonitoredSources = () => {
           {loop.map((s, i) => (
             <div
               key={`${s.slug}-${i}`}
-              className="group relative flex flex-col items-center justify-center gap-2.5 rounded-[20px] border transition-all duration-[250ms] cursor-pointer shrink-0
+                className="group relative flex flex-col items-center justify-center gap-2.5 rounded-[20px] border transition-all duration-[250ms] cursor-pointer shrink-0
                 w-[130px] h-[90px] sm:w-[180px] sm:h-[110px]
                 bg-white/95 border-black/[0.06] shadow-sm backdrop-blur-xl
                 dark:bg-slate-800/70 dark:border-white/[0.06]
+                aurora:bg-slate-900/60 aurora:border-white/10 aurora:backdrop-blur-2xl
                 hover:-translate-y-1 hover:scale-[1.02] hover:shadow-[0_12px_30px_rgba(0,0,0,0.18)]"
             >
               <img
@@ -95,7 +96,7 @@ export const MonitoredSources = () => {
               >
                 🌐
               </span>
-              <span className="text-xs sm:text-sm font-semibold text-foreground/90">
+              <span className="text-xs sm:text-sm font-semibold text-foreground/90 aurora:text-white">
                 {s.name}
               </span>
             </div>
