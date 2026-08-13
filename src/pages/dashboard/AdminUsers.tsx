@@ -17,7 +17,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Shield, Users, TrendingUp, BarChart3, MoreHorizontal, Edit, Trash2, Ban, ShieldCheck,
-  KeyRound, LogIn, Clock, Plus, Crown, Zap, RotateCcw, Search,
+  KeyRound, LogIn, Clock, Plus, Crown, Zap, RotateCcw, Search, Calendar,
+  Activity, ArrowUpRight
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,6 +26,12 @@ import { AdminRoute } from "@/components/admin/AdminRoute";
 import { UserEditDialog } from "@/components/admin/UserEditDialog";
 import { CreateUserDialog } from "@/components/admin/CreateUserDialog";
 import { useMemo, useState } from "react";
+import {
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, AreaChart, Area
+} from "recharts";
+import { format, startOfDay, subDays, eachDayOfInterval, isSameDay } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 interface UserRow {
   id: string;
