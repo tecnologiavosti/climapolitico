@@ -59,6 +59,7 @@ function AdminUsersInner() {
   const [search, setSearch] = useState("");
   const [filterTier, setFilterTier] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [showAnalytics, setShowAnalytics] = useState(false);
 
   const { data: users, isLoading } = useQuery({
     queryKey: ["admin-users"],
@@ -84,6 +85,45 @@ function AdminUsersInner() {
     },
     enabled: isAdmin,
   });
+
+  const analyticsData = useMemo(() => {
+    if (!users) return null;
+
+    const last30Days = eachDayOfInterval({
+      start: subDays(new Date(), 30),
+      end: new Date(),
+    });
+
+    const growthData = last30Days.map(date => {
+      const formattedDate = format(date, "dd/MM", { locale: ptBR });
+      const newUsers = users.filter(u => isSameDay(new Date(u.created_at), date)).length;
+      const totalToDate = users.filter(u => new Date(u.created_at) <= date).length;
+      
+      return {
+        name: formattedDate,
+        novos: newUsers,
+        total: totalToDate,
+      };
+    });
+
+    const tierDistribution = [
+      { name: "Free", value: users.filter(u => !u.subscription || u.subscription.tier === "free").length, color: "#94a3b8" },
+      { name: "Starter", value: users.filter(u => u.subscription?.tier === "starter").length, color: "#3b82f6" },
+      { name: "Pro", value: users.filter(u => u.subscription?.tier === "pro").length, color: "#8b5cf6" },
+      { name: "Enterprise", value: users.filter(u => u.subscription?.tier === "enterprise").length, color: "#f59e0b" },
+      { name: "Vitalício", value: users.filter(u => u.subscription?.tier === "lifetime").length, color: "#10b981" },
+      { name: "VIP", value: users.filter(u => u.subscription?.tier === "vip").length, color: "#ec4899" },
+    ].filter(t => t.value > 0);
+
+    const activeLast24h = users.filter(u => {
+      // Mocking recent access as we don't have last_sign_in_at in profiles yet
+      // In a real scenario, we'd query auth.users or a custom session log
+      // For now, let's show "recently created" as a placeholder or just random
+      return new Date(u.created_at) > subDays(new Date(), 1);
+    }).length;
+
+    return { growthData, tierDistribution, activeLast24h };
+  }, [users]);
 
   const filtered = useMemo(() => {
     return (users ?? []).filter(u => {
